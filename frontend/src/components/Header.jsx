@@ -56,18 +56,21 @@ export default function Header() {
             <button
               data-testid="cart-button"
               onClick={() => setOpen(true)}
-              className="relative font-mono text-xs uppercase tracking-[0.2em] flex items-center gap-2 hover:text-ink/70"
+              className="relative font-mono text-xs uppercase tracking-[0.2em] flex items-center gap-2 hover:text-ink/70 pr-3"
             >
-              <ShoppingBag size={18} strokeWidth={1.5} />
+              <span className="relative inline-flex">
+                <ShoppingBag size={18} strokeWidth={1.5} />
+                {count > 0 && (
+                  <span
+                    data-testid="cart-count-badge"
+                    className="absolute -top-2 -right-3 bg-signal text-white text-[10px] font-mono leading-none px-1.5 py-1 min-w-[18px] text-center"
+                    style={{ background: "#E51919" }}
+                  >
+                    {count}
+                  </span>
+                )}
+              </span>
               <span className="hidden sm:inline">{t("nav.cart")}</span>
-              {count > 0 && (
-                <span
-                  data-testid="cart-count-badge"
-                  className="absolute -top-2 -right-3 bg-ink text-white text-[10px] font-mono px-1.5 py-0.5 min-w-[18px] text-center"
-                >
-                  {count}
-                </span>
-              )}
             </button>
             {user ? (
               <div className="hidden md:flex items-center gap-3">

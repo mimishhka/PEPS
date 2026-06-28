@@ -39,7 +39,7 @@ export function CartProvider({ children }) {
         },
       ];
     });
-    toast.success("Added to cart", { description: product.name_en });
+    toast.success("Added to cart", { description: product.name_en, duration: 1500 });
     setOpen(true);
   }, []);
 
