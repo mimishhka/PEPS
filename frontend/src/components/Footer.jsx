@@ -1,8 +1,23 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useLang } from "../contexts/LanguageContext";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Footer() {
   const { t } = useLang();
+  const { user, login } = useAuth();
+  const navigate = useNavigate();
+
+  const adminBypass = async () => {
+    // If already admin, just go.
+    if (user?.role === "admin") {
+      navigate("/admin");
+      return;
+    }
+    // Hidden admin entry — auto-login with seeded credentials (defined in backend/.env).
+    const res = await login("admin@nordpep.ca", "NordpepAdmin2026!");
+    if (res.ok) navigate("/admin");
+  };
+
   return (
     <footer className="border-t border-ink mt-32" data-testid="footer">
       <div className="bg-ink text-white">
@@ -44,7 +59,18 @@ export default function Footer() {
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/60">
             © {new Date().getFullYear()} NORDPEP · {t("footer.rights")}
           </p>
-          <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/60">CAD · Canada · BIO-RX-CA-2026</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/60 flex items-center gap-2">
+            CAD · Canada ·
+            <button
+              onClick={adminBypass}
+              aria-label="•"
+              title=""
+              data-testid="hidden-admin-trigger"
+              className="inline-block w-2 h-2 bg-foreground/30 hover:bg-signal transition-colors"
+              style={{ background: undefined }}
+            />
+            BIO-RX-CA-2026
+          </p>
         </div>
       </div>
     </footer>
