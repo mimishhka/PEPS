@@ -1,0 +1,132 @@
+{
+  "project_name": "NORDPEP",
+  "theme_and_archetype": {
+    "theme": "light",
+    "archetype": "Archetype 4 (Swiss & High-Contrast)",
+    "description": "Lab-grade pristine, authoritative, strictly functional. Blends Swiss Brutalism with Nordic minimalism. Emphasizes scientific credibility, transparency, and strict compliance through high-contrast typography, structural grids, and deliberate absence of decorative elements."
+  },
+  "global_rules": [
+    "95% monochrome UI. Color is function only.",
+    "Use Signal Red strictly for compliance notices and destructive actions.",
+    "Grids must have exposed structural borders (The Technical Look). Container `border-collapse`, items `border-r border-b border-black/10`.",
+    "No soft shadows. Use sharp 1px borders or hard, flat shadows if absolutely necessary.",
+    "Buttons and cards must use sharp corners (`rounded-none`).",
+    "All interactive elements MUST have `data-testid` attributes (kebab-case, role-based).",
+    "Never use generic pharma blue or purple gradients.",
+    "Language toggle (FR/EN) must be universally accessible in the header."
+  ],
+  "typography": {
+    "fonts": {
+      "headings": "Cabinet Grotesk",
+      "body": "Satoshi",
+      "mono": "JetBrains Mono"
+    },
+    "hierarchy": {
+      "h1": "text-5xl sm:text-6xl tracking-tighter font-bold uppercase",
+      "h2": "text-3xl sm:text-4xl tracking-tight font-bold",
+      "h3": "text-xl sm:text-2xl font-medium",
+      "body": "text-base leading-relaxed",
+      "labels_and_overline": "text-xs font-mono uppercase tracking-[0.2em]"
+    },
+    "instructions": "Avoid Inter/Roboto. Use 'tracking-tight' for headings. Monospace is crucial for peptide sequences, dosages, and compliance tags to enforce the 'lab report' aesthetic."
+  },
+  "colors": {
+    "tailwind_config_extension": {
+      "background": "#FFFFFF",
+      "foreground": "#050505",
+      "card": {
+        "DEFAULT": "#FFFFFF",
+        "foreground": "#050505"
+      },
+      "border": "rgba(5, 5, 5, 0.15)",
+      "primary": {
+        "DEFAULT": "#050505",
+        "foreground": "#FFFFFF"
+      },
+      "secondary": {
+        "DEFAULT": "#F5F5F5",
+        "foreground": "#050505"
+      },
+      "destructive": {
+        "DEFAULT": "#E51919",
+        "foreground": "#FFFFFF"
+      },
+      "muted": {
+        "DEFAULT": "#FAFAFA",
+        "foreground": "#737373"
+      },
+      "compliance": {
+        "warning": "#FFCC00",
+        "text": "#050505"
+      }
+    }
+  },
+  "spacing_and_layout": {
+    "philosophy": "Generous spacing. Strict grid adherence.",
+    "grid_system": "Bento-style or strict table grids. Items stretch to fill cells. No jagged bottoms. Override stretch with `align-items: start` when needed.",
+    "containers": "Max-width `max-w-7xl` centered, with `px-6` or `px-8`.",
+    "padding": "Use generous padding (`py-24`, `py-32`) between sections."
+  },
+  "components": {
+    "buttons": "Square edges (`rounded-none`). Solid black for primary, bordered for secondary. Monospace text inside. Hover: invert colors or solid gray.",
+    "cards": "Square edges, pure white, 1px solid border. No drop shadow. Hover effect: slight translate up (`-translate-y-1`) with a hard `shadow-[4px_4px_0px_#050505]`.",
+    "inputs_and_forms": "Shadcn based. Sharp corners, thick 1px bottom border only (Material style) OR full 1px square border. Floating labels if possible.",
+    "modals_and_sheets": "Stark white surface, 1px border. Dark glass backdrop (`backdrop-blur-xl bg-black/60`).",
+    "badges": "Square edges, monospace font. Lab/COA badges should be bordered with black text. Compliance badges in warning yellow or red.",
+    "icons": "lucide-react. Keep stroke-width at 1.5 or 1 for a precise, technical feel."
+  },
+  "pages_and_flows": {
+    "global_header": {
+      "layout": "Sticky, solid white background with 1px bottom border. Left: NORDPEP bold logo. Center: Navigation. Right: [FR/EN] Toggle (monospace), Cart, Login.",
+      "behavior": "Language toggle persists to localStorage."
+    },
+    "age_verification_modal": {
+      "trigger": "On first visit.",
+      "design": "Brutalist block centered on screen. Headline: 'RESTRICTED ACCESS'. Body: 'You must be 19+ to enter. Products are for Research Use Only.' Big primary button 'I AM 19+', secondary 'EXIT'. Destructive red accents."
+    },
+    "homepage": {
+      "hero": "Split layout. Left: Massive typographic statement 'PRECISION PEPTIDES FOR CANADIAN RESEARCH'. Right: Grayscale abstract nordic ice or vial image. Strict borders between sections.",
+      "featured_products": "Technical grid (`border-collapse`). Each product card is a grid cell with right and bottom borders.",
+      "trust_bar": "Monospace scrolling marquee or grid showing: '3RD PARTY LAB TESTED', 'SHIPS FROM CANADA', '99.9% PURITY'."
+    },
+    "product_catalog": {
+      "layout": "Left sidebar for categories (Healing, Weight Loss, Cognitive, GH Secretagogues). Right side: Product Grid.",
+      "cards": "Image at top (vials), Monospace SKU/Sequence below, Name in Grotesk, Add to cart button filling the entire bottom of the card."
+    },
+    "product_detail": {
+      "layout": "2-column. Left: sticky image. Right: Data-heavy. Dosage/sequence info in table format. Prominent Red 'For Research Use Only - Not for Human Consumption' banner. COA/Lab report download link."
+    },
+    "cart_drawer": {
+      "layout": "Slide out from right. Sharp borders. Clear total. Checkout button locked to bottom."
+    },
+    "checkout": {
+      "flow": "Standard Shadcn forms. Must check 'I agree to Terms & Conditions and confirm I am 19+'.",
+      "payment_methods": "Shadcn Tabs to switch between 'Interac e-Transfer' and 'NOWPayments (Crypto)'. Interac shows manual instructions upon confirmation. Crypto redirects or shows QR."
+    },
+    "admin_dashboard": {
+      "layout": "Sidebar navigation. Main area uses Shadcn Tables. Heavy use of monospace for Order IDs, SKUs. Color-coded status badges (Pending = Gray, Paid = Blue, Shipped = Orange, Delivered = Green)."
+    },
+    "compliance_footer": {
+      "layout": "Massive padding (`py-24`). Top section: Large bold disclaimers 'HEALTH CANADA NOTICE: NOT FOR HUMAN CONSUMPTION'. Bottom: standard links."
+    }
+  },
+  "media": {
+    "hero_abstract_ice": {
+      "url": "https://images.unsplash.com/photo-1721009140154-7bb3e2dce95d",
+      "description": "Abstract nordic glacier, high contrast. Use as hero background or graphical element."
+    },
+    "generic_product_vials": {
+      "url": "https://images.unsplash.com/photo-1576671081837-49000212a370",
+      "description": "Grayscale glass medical vials. Use for default product images to maintain the pristine aesthetic."
+    },
+    "lab_environment": {
+      "url": "https://images.unsplash.com/photo-1616996691748-3f5f78093ab0",
+      "description": "Clean, modern science lab. Use in 'About Us' or 'Quality/Lab Tested' sections."
+    }
+  },
+  "tech_stack_instructions": {
+    "language_toggle": "Implement a simple React Context or Zustand store for `lang` ('en'|'fr'). Store in localStorage. Translate static strings via a simple dictionary object.",
+    "ui_library": "Use Shadcn UI primitives but override Tailwind classes heavily to remove radii (`rounded-none`) and enforce stark borders.",
+    "testing": "Add `data-testid` to all interactive elements."
+  }
+}
