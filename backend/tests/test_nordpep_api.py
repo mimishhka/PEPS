@@ -41,6 +41,8 @@ def test_meta(s):
     assert data["min_age"] == 19
     assert data["interac_email"] == "orders@nordpep.ca"
     assert "QC" in data["provinces"]
+    # Iteration 2: shipping flat changed to $20
+    assert data["shipping_flat_cad"] == 20.0
 
 
 # ---------------- Products ----------------
@@ -131,9 +133,12 @@ def test_checkout_interac_qc(user_session):
     assert order["payment_status"] == "awaiting_etransfer"
     assert order["payment_info"]["instructions"]["send_to"] == "orders@nordpep.ca"
     assert order["order_number"].startswith("NP-")
-    # QC tax rate
-    assert abs(order["tax_rate"] - 0.14975) < 1e-6
-    assert order["shipping"] == 18.0
+    # Taxes removed in iteration 2
+    assert order["tax_rate"] == 0.0
+    assert order["tax"] == 0.0
+    assert order["shipping"] == 20.0
+    # subtotal = price * 2, total = subtotal + 20 (no tax)
+    assert abs(order["total"] - (order["subtotal"] + 20.0)) < 1e-6
 
 
 def test_checkout_nowpayments_mock():
@@ -247,3 +252,169 @@ def test_admin_product_crud(admin_token):
     assert r4.status_code == 200
     r5 = requests.get(f"{BASE_URL}/api/products/{slug}")
     assert r5.status_code == 404
+
+
+# ---------------- Iteration 2: Tax removed, shipping=$20, guest checkout, email logs ----------------
+def _find_product_by_price(target_price: float):
+    """Find a product matching given price (e.g., 64.99) for iteration 2 tests."""
+    r = requests.get(f"{BASE_URL}/api/products")
+    for p in r.json():
+        if abs(p["price_cad"] - target_price) < 1e-6:
+            return p
+    return None
+
+
+def test_iter2_qc_64_99_no_tax_shipping_20():
+    """QC + $64.99 product qty 1 → subtotal=64.99, tax=0, shipping=20, total=84.99."""
+    p = _find_product_by_price(64.99)
+    if not p:
+        pytest.skip("No product priced at $64.99 in catalog")
+    payload = {
+        "items": [{"product_id": p["id"], "qty": 1}],
+        "shipping": {
+            "full_name": "Test QC",
+            "address1": "1 Rue",
+            "city": "Montreal",
+            "province": "QC",
+            "postal_code": "H2X1Y4",
+            "country": "CA",
+        },
+        "payment_method": "interac",
+        "accept_terms": True,
+        "confirm_age": True,
+        "confirm_research_use": True,
+    }
+    r = requests.post(f"{BASE_URL}/api/checkout", json=payload)
+    assert r.status_code == 200, r.text
+    o = r.json()
+    assert o["subtotal"] == 64.99
+    assert o["tax_rate"] == 0.0
+    assert o["tax"] == 0.0
+    assert o["shipping"] == 20.0
+    assert o["total"] == 84.99
+
+
+def test_iter2_guest_checkout_stores_email():
+    """Guest (no auth) checkout with payload.email → order stored with that email."""
+    pid = _get_first_product_id()
+    guest_email = f"TEST_guest_{uuid.uuid4().hex[:6]}@example.com"
+    payload = {
+        "email": guest_email,
+        "items": [{"product_id": pid, "qty": 1}],
+        "shipping": {
+            "full_name": "Guest User",
+            "address1": "1 Main",
+            "city": "Toronto",
+            "province": "ON",
+            "postal_code": "M5H2N2",
+            "country": "CA",
+        },
+        "payment_method": "interac",
+        "accept_terms": True,
+        "confirm_age": True,
+        "confirm_research_use": True,
+    }
+    r = requests.post(f"{BASE_URL}/api/checkout", json=payload)
+    assert r.status_code == 200, r.text
+    o = r.json()
+    assert o["email"] == guest_email.lower()
+    assert o["user_id"] is None
+    # Verify persistence: GET order back
+    g = requests.get(f"{BASE_URL}/api/orders/{o['id']}")
+    assert g.status_code == 200
+    assert g.json()["email"] == guest_email.lower()
+
+
+def test_iter2_any_province_returns_zero_tax():
+    """Tax logic removed entirely — any province code returns tax=0.0."""
+    pid = _get_first_product_id()
+    for prov in ["QC", "ON", "BC", "AB", "NS"]:
+        payload = {
+            "items": [{"product_id": pid, "qty": 1}],
+            "shipping": {
+                "full_name": "P", "address1": "1", "city": "C",
+                "province": prov, "postal_code": "A1A1A1", "country": "CA",
+            },
+            "payment_method": "interac",
+            "accept_terms": True, "confirm_age": True, "confirm_research_use": True,
+        }
+        r = requests.post(f"{BASE_URL}/api/checkout", json=payload)
+        assert r.status_code == 200, f"{prov}: {r.text}"
+        o = r.json()
+        assert o["tax_rate"] == 0.0, f"{prov} tax_rate not zero"
+        assert o["tax"] == 0.0, f"{prov} tax not zero"
+        assert o["shipping"] == 20.0
+
+
+def _read_backend_log_tail(n: int = 400) -> str:
+    """Read last n lines of supervisor backend log."""
+    import subprocess, glob
+    paths = sorted(glob.glob("/var/log/supervisor/backend.*.log"))
+    if not paths:
+        return ""
+    out = ""
+    for p in paths[-2:]:
+        try:
+            with open(p, "r") as f:
+                out += f.read()
+        except Exception:
+            pass
+    return "\n".join(out.splitlines()[-n:])
+
+
+def test_iter2_checkout_logs_two_emails():
+    """After checkout, backend log shows '[email-log] would send' for customer + admin."""
+    pid = _get_first_product_id()
+    test_email = f"TEST_logcheck_{uuid.uuid4().hex[:6]}@example.com"
+    payload = {
+        "email": test_email,
+        "items": [{"product_id": pid, "qty": 1}],
+        "shipping": {
+            "full_name": "Log Test", "address1": "1", "city": "Toronto",
+            "province": "ON", "postal_code": "M5H2N2", "country": "CA",
+        },
+        "payment_method": "interac",
+        "accept_terms": True, "confirm_age": True, "confirm_research_use": True,
+    }
+    r = requests.post(f"{BASE_URL}/api/checkout", json=payload)
+    assert r.status_code == 200, r.text
+    order_no = r.json()["order_number"]
+    # Wait briefly for fire-and-forget email tasks
+    time.sleep(3)
+    logs = _read_backend_log_tail(800)
+    # Customer Order received email (logged because RESEND_API_KEY empty)
+    assert "[email-log] would send" in logs, "No [email-log] entries found in backend logs"
+    assert test_email.lower() in logs.lower(), f"Customer email {test_email} not in log"
+    assert "admin@nordpep.ca" in logs, "Admin email recipient not in log"
+    assert "received" in logs.lower() or order_no in logs
+
+
+def test_iter2_payment_received_email_on_status_paid(admin_token, user_session):
+    """When admin marks payment_status=paid (was not paid) and order has email → payment-received email logged."""
+    pid = _get_first_product_id()
+    payload = {
+        "items": [{"product_id": pid, "qty": 1}],
+        "shipping": {
+            "full_name": "PayTest", "address1": "1", "city": "Toronto",
+            "province": "ON", "postal_code": "M5H2N2", "country": "CA",
+        },
+        "payment_method": "interac",
+        "accept_terms": True, "confirm_age": True, "confirm_research_use": True,
+    }
+    headers = {"Authorization": f"Bearer {user_session['token']}"}
+    o = requests.post(f"{BASE_URL}/api/checkout", json=payload, headers=headers).json()
+    user_email = user_session["email"].lower()
+    # Now flip to paid via admin
+    h = {"Authorization": f"Bearer {admin_token}"}
+    time.sleep(1)
+    r = requests.put(f"{BASE_URL}/api/admin/orders/{o['id']}/status",
+                     params={"payment_status": "paid"}, headers=h)
+    assert r.status_code == 200
+    assert r.json()["payment_status"] == "paid"
+    time.sleep(3)
+    logs = _read_backend_log_tail(1200)
+    # Should contain a "Payment received" log line for this user email
+    assert "[email-log] would send" in logs
+    assert "payment received" in logs.lower() or "Payment received" in logs, \
+        "No 'Payment received' email log found after status flip"
+    assert user_email in logs.lower(), f"User email {user_email} not in payment-received log"

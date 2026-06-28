@@ -177,7 +177,7 @@ export const dict = {
       fulfillmentStatus: "Fulfillment",
     },
     footer: {
-      compliance: "HEALTH CANADA NOTICE · FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION",
+      compliance: "FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION · 19+ ONLY",
       tagline: "Independent Canadian peptide reference supplier. Research only.",
       shop: "Shop",
       company: "Company",
@@ -368,7 +368,7 @@ export const dict = {
       fulfillmentStatus: "Exécution",
     },
     footer: {
-      compliance: "AVIS SANTÉ CANADA · USAGE EN LABORATOIRE UNIQUEMENT · PAS POUR CONSOMMATION HUMAINE OU VÉTÉRINAIRE",
+      compliance: "USAGE EN LABORATOIRE UNIQUEMENT · PAS POUR CONSOMMATION HUMAINE OU VÉTÉRINAIRE · 19+ SEULEMENT",
       tagline: "Fournisseur canadien indépendant de peptides de référence. Recherche uniquement.",
       shop: "Boutique",
       company: "Entreprise",

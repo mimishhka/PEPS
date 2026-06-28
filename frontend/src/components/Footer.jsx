@@ -8,10 +8,10 @@ export default function Footer() {
       <div className="bg-ink text-white">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 py-16">
           <p className="font-display text-2xl sm:text-4xl font-extrabold uppercase tracking-tight leading-[1.05]" data-testid="footer-disclaimer">
-            HEALTH CANADA NOTICE · FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION
+            FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION · 19+ ONLY
           </p>
           <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.2em] text-white/60 max-w-3xl">
-            By accessing this website you confirm you are a qualified researcher and assume full responsibility for the proper handling, storage, and disposal of these compounds in accordance with applicable provincial and federal regulations.
+            By accessing this website you confirm you are a qualified researcher and assume full responsibility for the proper handling, storage, and disposal of these compounds in accordance with all applicable provincial and federal regulations.
           </p>
         </div>
       </div>

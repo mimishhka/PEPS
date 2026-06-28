@@ -8,12 +8,14 @@ import os
 import uuid
 import logging
 import secrets
+import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
 import bcrypt
 import jwt
 import httpx
+import resend
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -34,6 +36,13 @@ INTERAC_EMAIL = os.environ.get("INTERAC_EMAIL", "orders@nordpep.ca")
 INTERAC_PASSWORD_HINT = os.environ.get("INTERAC_PASSWORD_HINT", "NORDPEP")
 NOWPAYMENTS_API_KEY = os.environ.get("NOWPAYMENTS_API_KEY", "")
 NOWPAYMENTS_BASE_URL = "https://api.nowpayments.io/v1"
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@nordpep.ca")
+ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@nordpep.ca")
+SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
+
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -179,6 +188,7 @@ class ShippingAddress(BaseModel):
 class CheckoutIn(BaseModel):
     items: List[CartItem]
     shipping: ShippingAddress
+    email: Optional[EmailStr] = None  # guest email; auth user's email is used if logged in
     payment_method: Literal["interac", "nowpayments"]
     pay_currency: Optional[str] = "btc"  # used only for nowpayments
     accept_terms: bool
@@ -187,14 +197,9 @@ class CheckoutIn(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Tax rates by province (combined GST/HST/QST/PST for 2025-2026)
+# Tax & shipping (no tax — shipping flat-rate)
 # ---------------------------------------------------------------------------
-PROVINCE_TAX = {
-    "AB": 0.05, "BC": 0.12, "MB": 0.12, "NB": 0.15, "NL": 0.15,
-    "NS": 0.15, "NT": 0.05, "NU": 0.05, "ON": 0.13, "PE": 0.15,
-    "QC": 0.14975, "SK": 0.11, "YT": 0.05,
-}
-SHIPPING_FLAT_CAD = 18.00
+PROVINCES_CA = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"]
 
 
 # ---------------------------------------------------------------------------
@@ -336,10 +341,10 @@ async def _build_order_totals(items: List[CartItem], province: str):
         })
         subtotal += line_total
     subtotal = round(subtotal, 2)
-    tax_rate = PROVINCE_TAX.get(province.upper(), 0.05)
+    tax_rate = 0.0
     shipping = SHIPPING_FLAT_CAD
-    tax = round(subtotal * tax_rate, 2)
-    total = round(subtotal + tax + shipping, 2)
+    tax = 0.0
+    total = round(subtotal + shipping, 2)
     return line_items, subtotal, tax_rate, tax, shipping, total
 
 
@@ -373,6 +378,112 @@ async def _nowpayments_create(order_id: str, total_cad: float, pay_currency: str
     except Exception as e:
         logging.error("NOWPayments error: %s", e)
         raise HTTPException(502, "Crypto payment provider unavailable")
+
+
+# ---------------------------------------------------------------------------
+# Email helpers (Resend)
+# ---------------------------------------------------------------------------
+def _items_html(items: list) -> str:
+    rows = []
+    for it in items:
+        rows.append(
+            f'<tr><td style="padding:8px 0;border-bottom:1px solid #eee">'
+            f'<strong>{it["qty"]}× {it["name_en"]}</strong>'
+            f'<div style="font-family:monospace;font-size:11px;color:#888">{it["slug"]}</div>'
+            f'</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;font-weight:bold">'
+            f'${it["line_total"]:.2f}</td></tr>'
+        )
+    return "".join(rows)
+
+
+def _order_email_html(order: dict, body_intro: str) -> str:
+    interac = order["payment_info"].get("instructions") if order["payment_method"] == "interac" else None
+    np_info = order["payment_info"].get("provider_response") if order["payment_method"] == "nowpayments" else None
+
+    payment_block = ""
+    if interac:
+        payment_block = f"""
+        <div style="background:#fef2f2;border:2px solid #E51919;padding:20px;margin:24px 0">
+          <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#E51919;font-weight:bold;margin-bottom:12px">⚡ INTERAC E-TRANSFER INSTRUCTIONS</div>
+          <table style="width:100%;font-family:monospace;font-size:13px">
+            <tr><td style="padding:6px 0;color:#666">Send to:</td><td style="padding:6px 0;font-weight:bold">{interac["send_to"]}</td></tr>
+            <tr><td style="padding:6px 0;color:#666">Amount:</td><td style="padding:6px 0;font-weight:bold">${interac["amount_cad"]:.2f} CAD</td></tr>
+            <tr><td style="padding:6px 0;color:#666">Reference (required):</td><td style="padding:6px 0;font-weight:bold;color:#E51919">{interac["reference"]}</td></tr>
+            <tr><td style="padding:6px 0;color:#666">Security question:</td><td style="padding:6px 0">{interac["security_question"]}</td></tr>
+            <tr><td style="padding:6px 0;color:#666">Security answer:</td><td style="padding:6px 0;font-weight:bold">{interac["security_answer_hint"]}</td></tr>
+          </table>
+        </div>"""
+    elif np_info:
+        mock_warning = ""
+        if np_info.get("mock"):
+            mock_warning = '<div style="background:#fffbe6;border:1px solid #FFCC00;padding:10px;margin-bottom:12px;font-size:12px">⚠ DEMO MODE — Configure NOWPAYMENTS_API_KEY for live crypto payments.</div>'
+        payment_block = f"""
+        <div style="background:#f5f5f5;border:2px solid #050505;padding:20px;margin:24px 0">
+          <div style="font-family:monospace;font-size:11px;letter-spacing:2px;font-weight:bold;margin-bottom:12px">₿ CRYPTO PAYMENT INSTRUCTIONS</div>
+          {mock_warning}
+          <table style="width:100%;font-family:monospace;font-size:13px">
+            <tr><td style="padding:6px 0;color:#666">Deposit address:</td><td style="padding:6px 0;font-weight:bold;word-break:break-all">{np_info.get("pay_address","")}</td></tr>
+            <tr><td style="padding:6px 0;color:#666">Send exactly:</td><td style="padding:6px 0;font-weight:bold">{np_info.get("pay_amount","")} {str(np_info.get("pay_currency","")).upper()}</td></tr>
+          </table>
+        </div>"""
+
+    return f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#fafafa;font-family:'Helvetica Neue',Arial,sans-serif;color:#050505">
+  <table style="width:100%;max-width:640px;margin:0 auto;background:#fff;border:1px solid #050505">
+    <tr><td style="background:#050505;color:#fff;padding:20px 28px;font-family:monospace;font-size:11px;letter-spacing:3px">// NORDPEP · ORDER {order["order_number"]}</td></tr>
+    <tr><td style="padding:32px 28px">
+      <h1 style="margin:0 0 8px;font-size:28px;font-weight:900;letter-spacing:-0.02em;text-transform:uppercase">{body_intro}</h1>
+      <p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6">Order <strong>{order["order_number"]}</strong> · {len(order["items"])} item(s) · ${order["total"]:.2f} CAD</p>
+      {payment_block}
+      <table style="width:100%;margin-top:24px;font-size:14px">
+        {_items_html(order["items"])}
+        <tr><td style="padding:10px 0;color:#666;font-size:12px">Subtotal</td><td style="padding:10px 0;text-align:right">${order["subtotal"]:.2f}</td></tr>
+        <tr><td style="padding:4px 0;color:#666;font-size:12px">Shipping</td><td style="padding:4px 0;text-align:right">${order["shipping"]:.2f}</td></tr>
+        <tr><td style="padding:14px 0;border-top:2px solid #050505;font-weight:bold;font-size:18px">TOTAL CAD</td><td style="padding:14px 0;border-top:2px solid #050505;text-align:right;font-weight:bold;font-size:18px">${order["total"]:.2f}</td></tr>
+      </table>
+      <p style="margin:32px 0 0;font-family:monospace;font-size:10px;letter-spacing:2px;color:#999;text-transform:uppercase">For Research Use Only · Not For Human Or Veterinary Consumption</p>
+    </td></tr>
+    <tr><td style="background:#050505;color:#fff;padding:14px 28px;font-family:monospace;font-size:10px;letter-spacing:2px">NORDPEP · CANADA · {datetime.now(timezone.utc).strftime("%Y")}</td></tr>
+  </table>
+</body></html>"""
+
+
+async def _send_email(to: str | list, subject: str, html: str) -> None:
+    """Sends via Resend; logs and continues silently on any failure (no API key, send error, etc.)."""
+    to_list = to if isinstance(to, list) else [to]
+    if not RESEND_API_KEY:
+        logging.info("[email-log] would send to %s subj=%r (no RESEND_API_KEY configured)", to_list, subject)
+        return
+    try:
+        params = {"from": SENDER_EMAIL, "to": to_list, "subject": subject, "html": html}
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        logging.info("[email] sent id=%s to=%s", result.get("id") if isinstance(result, dict) else result, to_list)
+    except Exception as e:
+        logging.error("[email] failed to send to=%s err=%s", to_list, e)
+
+
+async def send_order_confirmation(order: dict) -> None:
+    if not order.get("email"):
+        logging.info("[email] skip customer confirm: no email on order %s", order["order_number"])
+    else:
+        html = _order_email_html(order, "Order received")
+        await _send_email(order["email"], f"NORDPEP — Order {order['order_number']} received", html)
+
+    # Admin notification
+    admin_html = _order_email_html(order, "New order received")
+    await _send_email(
+        ADMIN_NOTIFICATION_EMAIL,
+        f"[NORDPEP ADMIN] New order {order['order_number']} — ${order['total']:.2f} CAD",
+        admin_html,
+    )
+
+
+async def send_payment_received(order: dict) -> None:
+    if not order.get("email"):
+        logging.info("[email] skip payment-received: no email on order %s", order["order_number"])
+        return
+    html = _order_email_html(order, "Payment received")
+    await _send_email(order["email"], f"NORDPEP — Payment received for {order['order_number']}", html)
 
 
 @api.post("/checkout")
@@ -413,7 +524,7 @@ async def checkout(payload: CheckoutIn, request: Request):
         "id": order_id,
         "order_number": order_number,
         "user_id": user["id"] if user else None,
-        "email": user["email"] if user else None,
+        "email": (user["email"] if user else None) or (payload.email.lower() if payload.email else None),
         "items": line_items,
         "subtotal": subtotal,
         "tax_rate": tax_rate,
@@ -436,6 +547,10 @@ async def checkout(payload: CheckoutIn, request: Request):
     }
     await db.orders.insert_one(order_doc)
     order_doc.pop("_id", None)
+
+    # Fire-and-forget order confirmation + admin notification
+    asyncio.create_task(send_order_confirmation(order_doc))
+
     return order_doc
 
 
@@ -477,10 +592,23 @@ async def admin_update_order(
         update["fulfillment_status"] = fulfillment_status
     if not update:
         raise HTTPException(400, "No fields to update")
-    res = await db.orders.update_one({"id": order_id}, {"$set": update})
-    if res.matched_count == 0:
+
+    existing = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not existing:
         raise HTTPException(404, "Order not found")
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+    await db.orders.update_one({"id": order_id}, {"$set": update})
+    updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+    # Trigger payment-received email when payment transitions to "paid"
+    if (
+        payment_status == "paid"
+        and existing.get("payment_status") != "paid"
+        and updated.get("email")
+    ):
+        asyncio.create_task(send_payment_received(updated))
+
+    return updated
 
 
 @api.get("/admin/customers")
@@ -521,7 +649,7 @@ async def meta():
         "store": "NORDPEP",
         "currency": "CAD",
         "shipping_flat_cad": SHIPPING_FLAT_CAD,
-        "provinces": list(PROVINCE_TAX.keys()),
+        "provinces": PROVINCES_CA,
         "min_age": 19,
         "interac_email": INTERAC_EMAIL,
     }

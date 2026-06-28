@@ -26,8 +26,8 @@ export default function Compliance() {
             : "No product is intended for medicinal, food, cosmetic or veterinary use, or for human or animal consumption, nor for any therapeutic use, diagnosis, treatment, cure or prevention of any disease."}
           </p>
           <p>{isFr
-            ? "Le client assume l'entière responsabilité de la manipulation, du stockage, de l'utilisation et de l'élimination appropriés des produits conformément aux règlements provinciaux et fédéraux applicables, y compris ceux administrés par Santé Canada."
-            : "The customer assumes full responsibility for the proper handling, storage, use and disposal of products in accordance with all applicable provincial and federal regulations, including those administered by Health Canada."}
+            ? "Le client assume l'entière responsabilité de la manipulation, du stockage, de l'utilisation et de l'élimination appropriés des produits conformément aux règlements provinciaux et fédéraux applicables."
+            : "The customer assumes full responsibility for the proper handling, storage, use and disposal of products in accordance with all applicable provincial and federal regulations."}
           </p>
         </div>
       </section>

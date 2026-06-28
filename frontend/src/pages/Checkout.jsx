@@ -7,21 +7,21 @@ import { useLang } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 
 const PROVINCES = [
-  { code: "AB", name: "Alberta", rate: 0.05 },
-  { code: "BC", name: "British Columbia", rate: 0.12 },
-  { code: "MB", name: "Manitoba", rate: 0.12 },
-  { code: "NB", name: "New Brunswick", rate: 0.15 },
-  { code: "NL", name: "Newfoundland and Labrador", rate: 0.15 },
-  { code: "NS", name: "Nova Scotia", rate: 0.15 },
-  { code: "NT", name: "Northwest Territories", rate: 0.05 },
-  { code: "NU", name: "Nunavut", rate: 0.05 },
-  { code: "ON", name: "Ontario", rate: 0.13 },
-  { code: "PE", name: "Prince Edward Island", rate: 0.15 },
-  { code: "QC", name: "Québec", rate: 0.14975 },
-  { code: "SK", name: "Saskatchewan", rate: 0.11 },
-  { code: "YT", name: "Yukon", rate: 0.05 },
+  { code: "AB", name: "Alberta" },
+  { code: "BC", name: "British Columbia" },
+  { code: "MB", name: "Manitoba" },
+  { code: "NB", name: "New Brunswick" },
+  { code: "NL", name: "Newfoundland and Labrador" },
+  { code: "NS", name: "Nova Scotia" },
+  { code: "NT", name: "Northwest Territories" },
+  { code: "NU", name: "Nunavut" },
+  { code: "ON", name: "Ontario" },
+  { code: "PE", name: "Prince Edward Island" },
+  { code: "QC", name: "Québec" },
+  { code: "SK", name: "Saskatchewan" },
+  { code: "YT", name: "Yukon" },
 ];
-const SHIPPING_FLAT = 18.0;
+const SHIPPING_FLAT = 20.0;
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -45,9 +45,7 @@ export default function Checkout() {
   const [ack, setAck] = useState({ a1: false, a2: false, a3: false });
   const [submitting, setSubmitting] = useState(false);
 
-  const provinceInfo = PROVINCES.find((p) => p.code === form.province) || PROVINCES[0];
-  const tax = useMemo(() => +(subtotal * provinceInfo.rate).toFixed(2), [subtotal, provinceInfo]);
-  const total = useMemo(() => +(subtotal + tax + SHIPPING_FLAT).toFixed(2), [subtotal, tax]);
+  const total = useMemo(() => +(subtotal + SHIPPING_FLAT).toFixed(2), [subtotal]);
 
   if (items.length === 0) {
     return (
@@ -70,6 +68,7 @@ export default function Checkout() {
     try {
       const { data } = await api.post("/checkout", {
         items: items.map((i) => ({ product_id: i.product_id, qty: i.qty })),
+        email: form.email,
         shipping: {
           full_name: form.full_name,
           address1: form.address1,
@@ -128,7 +127,7 @@ export default function Checkout() {
               className="w-full border-b border-ink px-1 py-3 bg-transparent font-mono text-sm focus:outline-none"
               data-testid="checkout-province"
             >
-              {PROVINCES.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name} ({(p.rate * 100).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}%)</option>)}
+              {PROVINCES.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
             </select>
           </div>
         </section>
@@ -216,8 +215,7 @@ export default function Checkout() {
         </ul>
         <div className="mt-6 border-t border-ink/20 pt-4 space-y-2 font-mono text-sm">
           <div className="flex justify-between"><span className="text-foreground/60 uppercase tracking-[0.15em] text-xs">{t("common.subtotal")}</span><span data-testid="summary-subtotal">${subtotal.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span className="text-foreground/60 uppercase tracking-[0.15em] text-xs">{t("common.shipping")}</span><span>${SHIPPING_FLAT.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span className="text-foreground/60 uppercase tracking-[0.15em] text-xs">{t("common.tax")} ({form.province})</span><span data-testid="summary-tax">${tax.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-foreground/60 uppercase tracking-[0.15em] text-xs">{t("common.shipping")}</span><span data-testid="summary-shipping">${SHIPPING_FLAT.toFixed(2)}</span></div>
         </div>
         <div className="mt-4 border-t-2 border-ink pt-4 flex justify-between items-end">
           <span className="font-mono uppercase tracking-[0.2em] text-xs">{t("common.total")} CAD</span>
