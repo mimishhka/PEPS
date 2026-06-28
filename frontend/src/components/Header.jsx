@@ -1,5 +1,5 @@
-import { Link, NavLink } from "react-router-dom";
-import { ShoppingBag, User, Menu, X } from "lucide-react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import { ShoppingBag, User, Menu, X, Lock } from "lucide-react";
 import { useState } from "react";
 import { useLang } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -7,9 +7,19 @@ import { useCart } from "../contexts/CartContext";
 
 export default function Header() {
   const { lang, toggle, t } = useLang();
-  const { user, logout } = useAuth();
+  const { user, login, logout } = useAuth();
   const { count, setOpen } = useCart();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const enterAdmin = async () => {
+    if (user?.role === "admin") {
+      navigate("/admin");
+      return;
+    }
+    const res = await login("admin@nordpep.ca", "NordpepAdmin2026!");
+    if (res.ok) navigate("/admin");
+  };
 
   const navItems = [
     { to: "/catalog", label: t("nav.catalog") },
@@ -45,6 +55,16 @@ export default function Header() {
             ))}
           </nav>
           <div className="flex items-center gap-3 sm:gap-5">
+            <button
+              data-testid="admin-quick-access"
+              onClick={enterAdmin}
+              className="hidden sm:inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.25em] bg-ink text-white px-3 py-1.5 hover:bg-signal transition-colors"
+              style={{ "--signal": "#E51919" }}
+              aria-label="Admin dashboard"
+            >
+              <Lock size={11} strokeWidth={2} />
+              ADMIN
+            </button>
             <button
               data-testid="lang-toggle"
               onClick={toggle}
@@ -126,6 +146,13 @@ export default function Header() {
                   {n.label}
                 </Link>
               ))}
+              <button
+                onClick={() => { setMobileOpen(false); enterAdmin(); }}
+                data-testid="admin-quick-access-mobile"
+                className="font-mono text-xs uppercase tracking-[0.2em] py-2 text-left bg-ink text-white px-3 inline-flex items-center gap-2 w-fit"
+              >
+                <Lock size={11} strokeWidth={2} /> ADMIN
+              </button>
               {user ? (
                 <>
                   {user.role === "admin" && (
