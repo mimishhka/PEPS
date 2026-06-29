@@ -163,15 +163,15 @@ function ProductEditor({ product, setProduct, onSave, onCancel }) {
               <F label="Stock units" type="number" value={product.stock} onChange={(v) => setProduct({ ...product, stock: parseInt(v) || 0 })} test="f-stock" />
               <F label="Low stock threshold" type="number" value={product.low_stock_threshold} onChange={(v) => setProduct({ ...product, low_stock_threshold: parseInt(v) || 0 })} test="f-low-stock" />
             </Grid2>
-            <Toggle checked={product.preorder_allowed} onChange={(c) => setProduct({ ...product, preorder_allowed: c })} label="Allow pre-orders when out of stock" test="f-preorder" />
+            <Toggle checked={product.preorder_allowed} onChange={(c) => setProduct({ ...product, preorder_allowed: c })} label="Allow pre-orders when out of stock" test="f-preorder_allowed" />
           </Section>
 
           <Section title="COA · Lab">
             <Grid2>
-              <F label="COA URL (PDF link)" value={product.coa_url} onChange={(v) => setProduct({ ...product, coa_url: v })} test="f-coa-url" />
-              <F label="COA Lot" value={product.coa_lot} onChange={(v) => setProduct({ ...product, coa_lot: v })} test="f-coa-lot" />
+              <F label="COA URL (PDF link)" value={product.coa_url} onChange={(v) => setProduct({ ...product, coa_url: v })} test="f-coa_url" />
+              <F label="COA Lot" value={product.coa_lot} onChange={(v) => setProduct({ ...product, coa_lot: v })} test="f-coa_lot" />
             </Grid2>
-            <F label="COA Date" value={product.coa_date} onChange={(v) => setProduct({ ...product, coa_date: v })} placeholder="2026-01-12" test="f-coa-date" />
+            <F label="COA Date" value={product.coa_date} onChange={(v) => setProduct({ ...product, coa_date: v })} placeholder="2026-01-12" test="f-coa_date" />
             <Toggle checked={product.lab_tested} onChange={(c) => setProduct({ ...product, lab_tested: c })} label="Mark as Lab Tested (badge)" test="f-lab-tested" />
           </Section>
 

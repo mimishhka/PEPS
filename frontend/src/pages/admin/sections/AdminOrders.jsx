@@ -126,6 +126,12 @@ function OrderDetail({ order, onClose, onUpdate }) {
   const [carrier, setCarrier] = useState(order.shipping_info?.carrier || "Canada Post");
   const [noteText, setNoteText] = useState("");
 
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const confirmPayment = async () => {
     try {
       await api.post(`/admin/orders/${order.id}/confirm-payment`);

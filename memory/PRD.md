@@ -1,85 +1,91 @@
 # NORDPEP — Product Requirements Document
 
-**Last updated**: 2026-06-28
+**Last updated**: 2026-06-29
 
 ## Original Problem Statement
-> E-commerce website for peptides, toggle button for French English, compliance ready for Canada.
+E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (NORDPEP brand).
 
-## Brand & Positioning
-**NORDPEP** — Canadian, lab-grade research peptides supplier. Nordic/Swiss brutalist aesthetic, strictly research-use (Health Canada compliant disclaimers).
+## Stack
+- Backend: FastAPI 0.110 · Motor · bcrypt · PyJWT · httpx · resend · reportlab
+- Frontend: React 19 · React Router 7 · Tailwind · shadcn/ui · lucide-react · sonner
+- DB: MongoDB (users, products, orders, coupons, shipping_zones, shipping_methods)
 
-## User Personas
-1. **Researcher / Lab buyer** — wants lab-tested peptides, COA access, fast Canadian shipping, Interac or crypto payment.
-2. **Admin / Store operator** — manages catalog, confirms incoming Interac e-Transfers, marks orders as shipped.
+## Iteration log
 
-## Core Requirements (Static)
-- Bilingual FR/EN toggle (header, persists in localStorage).
-- Age verification gate (19+, persists).
-- "For Research Use Only — Not for Human Consumption" disclaimer on PDP and confirmation.
-- Terms & Conditions acceptance at checkout (3 mandatory checkboxes).
-- Canada-only checkout: Province dropdown drives GST/HST/QST tax calc.
-- Payment: Interac e-Transfer (manual instructions) + NOWPayments crypto (sandbox-ready).
-- Admin dashboard: CRUD products, manage orders, view customers, stats.
+### iteration_1 (MVP) — 2026-06-28
+- 12 seeded peptides, FR/EN i18n, age gate 19+, JWT auth, sliding cart, QC tax demo, Interac + NOWPayments mock checkout, basic admin tabs (orders/products/customers), bilingual Compliance + Lab + About pages.
 
-## Implementation Status (2026-06-28 · MVP v1)
-### Backend (FastAPI + MongoDB)
-- ✅ JWT auth: register / login / logout / me (Bearer + httpOnly cookie)
-- ✅ Admin seeded on startup (admin@nordpep.ca)
-- ✅ 12 pre-populated peptides (BPC-157, TB-500, Semaglutide, Tirzepatide, Ipamorelin, CJC-1295, Selank, Semax, GHK-Cu, Epitalon, Melanotan II, PT-141)
-- ✅ Product CRUD admin endpoints
-- ✅ Checkout endpoint with province tax matrix (13 provinces/territories), flat $18 CAD shipping
-- ✅ Interac flow: returns instructions (email, amount, reference, security Q/A)
-- ✅ NOWPayments integration with mock fallback when API key missing
-- ✅ Admin: orders list, status updates, customers list, stats (revenue, counts)
-- ✅ Compliance flags persisted on each order (age, research-use, terms, IP)
+### iteration_2 — 2026-06-28
+- Resend email integration (order confirmation + admin alert + payment-received).
+- Removed all taxes; flat $20 CAD shipping.
+- "Health Canada" wording removed (kept research-use + 19+ disclaimer).
+- Hidden admin entry (footer dot) + visible ADMIN button in header (auto-login).
 
-### Frontend (React + Tailwind + shadcn)
-- ✅ Swiss/Brutalist design system (Cabinet Grotesk + Satoshi + JetBrains Mono, sharp edges, monochrome + signal red for compliance)
-- ✅ FR/EN i18n with comprehensive dictionary
-- ✅ Age gate modal with hard-shadow brutalist style
-- ✅ Home: typographic hero, marquee trust bar, featured products grid, category tiles
-- ✅ Catalog: sidebar filters, sort, grid of products
-- ✅ Product detail: lab data table, research-only red banner, COA placeholder
-- ✅ Sliding cart drawer with qty controls
-- ✅ Checkout: contact + shipping + payment (Interac / crypto tabs) + compliance acks + live tax/total
-- ✅ Order confirmation: Interac instructions with copy-to-clipboard or crypto deposit address
-- ✅ Auth pages (split layout)
-- ✅ Account page with order history
-- ✅ Admin console with Tabs (Overview stats, Orders, Products manager, Customers)
-- ✅ Compliance page (Terms, Privacy, Shipping, FAQ) bilingual
-- ✅ Lab page with COA listing
+### iteration_3 — 2026-06-29 (current)
+**Backend additions** (server.py):
+- Product fields: `featured`, `preorder_allowed`, `low_stock_threshold`, `coa_url`, `coa_lot`, `coa_date`.
+- Order fields: `notes[]`, `shipping_info{carrier,tracking_number,shipped_at}`, `discount`, `coupon`, `has_preorder`, `paid_at`.
+- Coupon model (CRUD): code, percent/fixed, min_subtotal, usage_limit, expires_at.
+- Shipping zones + methods (CRUD): Canada + International seeded with 3 default methods.
+- Endpoints:
+  - `POST /api/admin/orders/{id}/confirm-payment` → atomic paid + processing transition + email.
+  - `POST /api/admin/orders/{id}/notes` · `PUT /admin/orders/{id}/shipping` · `PUT /admin/products/{id}/stock`.
+  - `GET /api/admin/coupons` (+ POST/PUT/DELETE) · `POST /api/coupons/validate`.
+  - `GET /api/admin/shipping/zones` + `methods` CRUD.
+  - `GET /api/admin/analytics` (daily revenue 30d, top products, recent orders).
+  - `GET /api/admin/orders.csv` + `GET /api/admin/products.csv` exports.
+  - `GET /api/orders/{id}/invoice.pdf` — reportlab-generated branded invoice with NORDPEP logo, items table, totals, footer disclaimer.
+- Stock auto-decrement on checkout. Coupon usage auto-increment. Pre-order line items don't decrement stock below 0.
+- Payment status → "paid" automatically transitions fulfillment to "processing".
+- Featured filter on `/products?featured=true`. 6 products seeded as featured.
 
-## Test Results (iteration_1)
-- Backend: **100%** (15/15 pytest scenarios pass)
-- Frontend: **100%** (E2E flows pass)
+**Frontend additions**:
+- New admin layout (`/admin/*`) — WooCommerce-style sidebar nav + clean white panels.
+  - Dashboard: 4 KPI cards (Revenue, Orders, Customers, Products w/ low-stock), 30-day revenue bar chart, top products, recent orders.
+  - Orders: filters (search, payment, fulfillment), CSV export, click → drawer with confirm-payment button, invoice PDF download, carrier+tracking save (auto marks as shipped), payment/fulfillment selectors, internal notes thread.
+  - Products: table with image, stock indicator (low/out/numeric), COA badge (Verified/Pending), Featured star, full editor drawer with Basic / Stock / COA / Visibility sections, CSV export.
+  - Coupons: full CRUD with code, percent/fixed, usage limit, expiry.
+  - Customers: list.
+  - Shipping: zones + methods CRUD.
+- Customer-side:
+  - Home Featured Compounds: 3-column with `gap-8 lg:gap-12` (much more aerated), uses `featured=true` filter.
+  - Product detail: green "COA Verified" / orange "COA Pending" badge linking to PDF, pre-order badge + disabled add-to-cart when out of stock.
+  - Checkout: coupon code input with apply/remove, shows discount line in summary.
+
+## Test Results
+- iteration_1: 100% backend + 100% frontend pass
+- iteration_2: 100% backend + 100% frontend pass
+- iteration_3: pending testing-agent verification
 
 ## Prioritized Backlog
-### P0 (next)
-- Configure real NOWPAYMENTS_API_KEY when user provides it (replace mock fallback).
-- Add IPN webhook endpoint `/api/webhooks/nowpayments` to auto-mark orders as paid.
+### P0 (provided keys needed)
+- Resend `RESEND_API_KEY` + nordpep.ca domain verification → live emails.
+- NOWPayments API key + IPN webhook for live crypto.
+- Real `INTERAC_EMAIL` for actual e-Transfer recipient.
 
 ### P1
-- Email notifications: order confirmation + payment received (Resend or SMTP).
-- Real COA PDF uploads + per-batch download from product detail.
-- Inventory decrement on paid order.
-- Shipping rate by weight/region instead of flat $18.
+- Real Canada Post integration (Shipsy/EasyPost/Sendle) for label generation.
+- COA PDF upload to object storage (currently URL field only).
+- Stock back-in-stock email subscription on out-of-stock products.
+- Order shipping cost computed from selected zone+method (currently flat $20).
+- Brute-force lockout on login.
 
 ### P2
-- Loyalty / discount codes.
-- Wishlist + saved address book.
-- Product reviews (researcher verified).
-- Multi-currency display (USD/EUR for international researchers — but order still CAD only).
-- Brute-force rate limit on /api/auth/login (5 fails → 15 min lockout).
-- Tighten anonymous order access (currently anyone with order_id can view).
-
-## Tech Stack
-- **Backend**: FastAPI 0.110 · Motor (Mongo) · bcrypt · PyJWT · httpx
-- **Frontend**: React 19 · React Router 7 · TailwindCSS · shadcn/ui · lucide-react · sonner
-- **DB**: MongoDB (collections: users, products, orders)
+- Magic-link admin entry (replace credentials hardcoded in client).
+- Product variants (e.g., 5mg/10mg vials).
+- Loyalty / referral discounts.
+- Customer accounts: saved addresses, reorder button.
 
 ## Environment Variables
 - `MONGO_URL`, `DB_NAME`
 - `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`
 - `INTERAC_EMAIL`, `INTERAC_PASSWORD_HINT`
-- `NOWPAYMENTS_API_KEY` (empty = mock mode), `NOWPAYMENTS_IPN_SECRET`
+- `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`
+- `RESEND_API_KEY`, `SENDER_EMAIL`, `ADMIN_NOTIFICATION_EMAIL`
+- `SHIPPING_FLAT_CAD` (default 20.00)
 - `REACT_APP_BACKEND_URL` (frontend)
+
+## Admin
+- Email: `admin@nordpep.ca`
+- Password: `NordpepAdmin2026!`
+- One-click entry via ADMIN button in header (auto-login) or hidden dot in footer.
