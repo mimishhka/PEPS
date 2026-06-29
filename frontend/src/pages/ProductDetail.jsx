@@ -40,9 +40,18 @@ export default function ProductDetail() {
         <div className="absolute top-5 left-5 font-mono text-[10px] uppercase tracking-[0.25em] bg-white px-3 py-1.5 border border-ink">
           {product.dosage_mg}MG · VIAL
         </div>
-        {product.lab_tested && (
-          <div className="absolute bottom-5 left-5 font-mono text-[10px] uppercase tracking-[0.25em] bg-ink text-white px-3 py-1.5">
-            COA · LAB TESTED ✓
+        {product.coa_url ? (
+          <a href={product.coa_url} target="_blank" rel="noopener noreferrer" data-testid="coa-badge-verified" className="absolute bottom-5 left-5 font-mono text-[10px] uppercase tracking-[0.25em] bg-emerald-600 text-white px-3 py-1.5 hover:bg-emerald-700">
+            COA · VERIFIED ✓
+          </a>
+        ) : (
+          <div data-testid="coa-badge-pending" className="absolute bottom-5 left-5 font-mono text-[10px] uppercase tracking-[0.25em] bg-orange-500 text-white px-3 py-1.5">
+            COA · PENDING
+          </div>
+        )}
+        {product.stock <= 0 && product.preorder_allowed && (
+          <div data-testid="preorder-badge" className="absolute top-5 right-5 font-mono text-[10px] uppercase tracking-[0.25em] bg-orange-500 text-white px-3 py-1.5">
+            PRE-ORDER
           </div>
         )}
       </div>
@@ -110,17 +119,34 @@ export default function ProductDetail() {
         <button
           onClick={() => add(product, qty)}
           data-testid="product-add-to-cart"
-          className="w-full bg-ink text-white font-mono text-sm uppercase tracking-[0.3em] py-5 hover:bg-foreground/85"
+          disabled={product.stock <= 0 && !product.preorder_allowed}
+          className="w-full bg-ink text-white font-mono text-sm uppercase tracking-[0.3em] py-5 hover:bg-foreground/85 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {t("common.addToCart")} — ${(product.price_cad * qty).toFixed(2)} CAD
+          {product.stock <= 0 && product.preorder_allowed
+            ? `PRE-ORDER · $${(product.price_cad * qty).toFixed(2)} CAD`
+            : product.stock <= 0
+              ? "OUT OF STOCK"
+              : `${t("common.addToCart")} — $${(product.price_cad * qty).toFixed(2)} CAD`}
         </button>
 
-        <button
-          data-testid="download-coa"
-          className="w-full border border-ink font-mono text-xs uppercase tracking-[0.25em] py-4 hover:bg-ink hover:text-white"
-        >
-          {t("product.labReport")} ↓ (PDF · 240KB)
-        </button>
+        {product.coa_url ? (
+          <a
+            href={product.coa_url}
+            target="_blank" rel="noopener noreferrer"
+            data-testid="download-coa"
+            className="block text-center border border-emerald-600 text-emerald-700 font-mono text-xs uppercase tracking-[0.25em] py-4 hover:bg-emerald-600 hover:text-white"
+          >
+            {t("product.labReport")} · Lot {product.coa_lot || "—"} ↓
+          </a>
+        ) : (
+          <button
+            data-testid="download-coa"
+            disabled
+            className="w-full border border-orange-400 text-orange-700 font-mono text-xs uppercase tracking-[0.25em] py-4 opacity-70"
+          >
+            COA PENDING — {t("product.labReport")}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -5,6 +5,8 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 import os
+import io
+import csv
 import uuid
 import logging
 import secrets
@@ -17,9 +19,14 @@ import jwt
 import httpx
 import resend
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query
+from fastapi.responses import StreamingResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from reportlab.lib.pagesizes import LETTER
+from reportlab.lib import colors as rl_colors
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas as rl_canvas
 
 
 # ---------------------------------------------------------------------------
@@ -159,9 +166,15 @@ class ProductIn(BaseModel):
     description_fr: str
     price_cad: float
     stock: int = 100
+    low_stock_threshold: int = 10
     image_url: str = ""
     lab_tested: bool = True
     active: bool = True
+    featured: bool = False
+    preorder_allowed: bool = False
+    coa_url: Optional[str] = ""
+    coa_lot: Optional[str] = ""
+    coa_date: Optional[str] = ""
 
 
 class ProductOut(ProductIn):
@@ -191,9 +204,48 @@ class CheckoutIn(BaseModel):
     email: Optional[EmailStr] = None  # guest email; auth user's email is used if logged in
     payment_method: Literal["interac", "nowpayments"]
     pay_currency: Optional[str] = "btc"  # used only for nowpayments
+    coupon_code: Optional[str] = None
     accept_terms: bool
     confirm_age: bool
     confirm_research_use: bool
+
+
+class CouponIn(BaseModel):
+    code: str
+    discount_type: Literal["percent", "fixed"]
+    value: float = Field(gt=0)  # percent 1-100 or absolute CAD
+    min_subtotal: float = 0.0
+    usage_limit: Optional[int] = None  # None = unlimited
+    active: bool = True
+    expires_at: Optional[str] = None  # ISO string
+
+
+class OrderNoteIn(BaseModel):
+    text: str = Field(min_length=1)
+
+
+class ShippingInfoIn(BaseModel):
+    carrier: Optional[str] = ""
+    tracking_number: Optional[str] = ""
+    shipped_at: Optional[str] = None  # ISO; defaults to now() if not provided
+
+
+class StockAdjustIn(BaseModel):
+    delta: int  # positive to add, negative to subtract
+
+
+class ShippingZoneIn(BaseModel):
+    name: str
+    countries: List[str] = []  # e.g., ["CA"], ["US"], ["INTL"]
+    provinces: List[str] = []  # optional sub-region restriction (Canadian provinces)
+
+
+class ShippingMethodIn(BaseModel):
+    zone_id: str
+    name: str  # e.g., "Canada Post Xpresspost", "Expedited", "International Tracked"
+    cost_cad: float
+    eta_days: str = ""  # e.g., "2-3 business days"
+    active: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -264,10 +316,12 @@ async def me(user: dict = Depends(get_current_user)):
 # Product endpoints
 # ---------------------------------------------------------------------------
 @api.get("/products")
-async def list_products(category: Optional[str] = None, q: Optional[str] = None):
+async def list_products(category: Optional[str] = None, q: Optional[str] = None, featured: Optional[bool] = None):
     filt: dict = {"active": True}
     if category and category != "all":
         filt["category"] = category
+    if featured is True:
+        filt["featured"] = True
     if q:
         filt["$or"] = [
             {"name_en": {"$regex": q, "$options": "i"}},
@@ -319,15 +373,23 @@ async def admin_delete_product(product_id: str, _admin: dict = Depends(get_admin
 # ---------------------------------------------------------------------------
 # Order / Checkout
 # ---------------------------------------------------------------------------
-async def _build_order_totals(items: List[CartItem], province: str):
+async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] = None):
     line_items = []
     subtotal = 0.0
+    has_preorder = False
     for it in items:
         p = await db.products.find_one({"id": it.product_id}, {"_id": 0})
         if not p:
             raise HTTPException(400, f"Product {it.product_id} not found")
         if not p.get("active"):
             raise HTTPException(400, f"Product {p['name_en']} unavailable")
+        is_preorder = False
+        if p.get("stock", 0) < it.qty:
+            if p.get("preorder_allowed"):
+                is_preorder = True
+                has_preorder = True
+            else:
+                raise HTTPException(400, f"Insufficient stock for {p['name_en']}")
         line_total = round(p["price_cad"] * it.qty, 2)
         line_items.append({
             "product_id": p["id"],
@@ -338,14 +400,39 @@ async def _build_order_totals(items: List[CartItem], province: str):
             "qty": it.qty,
             "line_total": line_total,
             "image_url": p.get("image_url", ""),
+            "preorder": is_preorder,
         })
         subtotal += line_total
     subtotal = round(subtotal, 2)
+
+    # Apply coupon
+    discount = 0.0
+    applied_coupon = None
+    if coupon_code:
+        coupon = await db.coupons.find_one({"code": coupon_code.upper().strip()}, {"_id": 0})
+        if not coupon or not coupon.get("active"):
+            raise HTTPException(400, "Invalid coupon code")
+        if coupon.get("expires_at"):
+            try:
+                if datetime.fromisoformat(coupon["expires_at"].replace("Z", "+00:00")) < datetime.now(timezone.utc):
+                    raise HTTPException(400, "Coupon expired")
+            except ValueError:
+                pass
+        if coupon.get("usage_limit") and coupon.get("used_count", 0) >= coupon["usage_limit"]:
+            raise HTTPException(400, "Coupon usage limit reached")
+        if subtotal < coupon.get("min_subtotal", 0):
+            raise HTTPException(400, f"Minimum subtotal of ${coupon['min_subtotal']:.2f} required for this coupon")
+        if coupon["discount_type"] == "percent":
+            discount = round(subtotal * (coupon["value"] / 100.0), 2)
+        else:
+            discount = round(min(coupon["value"], subtotal), 2)
+        applied_coupon = {"code": coupon["code"], "discount_type": coupon["discount_type"], "value": coupon["value"], "discount_amount": discount}
+
     tax_rate = 0.0
     shipping = SHIPPING_FLAT_CAD
     tax = 0.0
-    total = round(subtotal + shipping, 2)
-    return line_items, subtotal, tax_rate, tax, shipping, total
+    total = round(max(0, subtotal - discount) + shipping, 2)
+    return line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder
 
 
 async def _nowpayments_create(order_id: str, total_cad: float, pay_currency: str):
@@ -495,8 +582,8 @@ async def checkout(payload: CheckoutIn, request: Request):
 
     user = await _resolve_user(request)
 
-    line_items, subtotal, tax_rate, tax, shipping, total = await _build_order_totals(
-        payload.items, payload.shipping.province
+    line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder = await _build_order_totals(
+        payload.items, payload.coupon_code
     )
 
     order_id = str(uuid.uuid4())
@@ -527,16 +614,21 @@ async def checkout(payload: CheckoutIn, request: Request):
         "email": (user["email"] if user else None) or (payload.email.lower() if payload.email else None),
         "items": line_items,
         "subtotal": subtotal,
+        "discount": discount,
+        "coupon": applied_coupon,
         "tax_rate": tax_rate,
         "tax": tax,
         "shipping": shipping,
         "total": total,
         "currency": "CAD",
         "shipping_address": payload.shipping.model_dump(),
+        "shipping_info": {"carrier": "", "tracking_number": "", "shipped_at": None},
         "payment_method": payload.payment_method,
         "payment_status": payment_status,
         "payment_info": payment_info,
-        "fulfillment_status": "pending",
+        "fulfillment_status": "preorder" if has_preorder else "pending",
+        "has_preorder": has_preorder,
+        "notes": [],
         "created_at": datetime.now(timezone.utc).isoformat(),
         "compliance": {
             "accept_terms": True,
@@ -547,6 +639,15 @@ async def checkout(payload: CheckoutIn, request: Request):
     }
     await db.orders.insert_one(order_doc)
     order_doc.pop("_id", None)
+
+    # Decrement stock for available units (preorder items don't decrement below 0)
+    for it in line_items:
+        if not it.get("preorder"):
+            await db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": -it["qty"]}})
+
+    # Track coupon usage
+    if applied_coupon:
+        await db.coupons.update_one({"code": applied_coupon["code"]}, {"$inc": {"used_count": 1}})
 
     # Fire-and-forget order confirmation + admin notification
     asyncio.create_task(send_order_confirmation(order_doc))
@@ -597,6 +698,14 @@ async def admin_update_order(
     if not existing:
         raise HTTPException(404, "Order not found")
 
+    # Auto-transition: when payment becomes paid, move fulfillment to processing
+    if (
+        payment_status == "paid"
+        and existing.get("payment_status") != "paid"
+        and existing.get("fulfillment_status") in ("pending", "preorder", None)
+    ):
+        update["fulfillment_status"] = "processing"
+
     await db.orders.update_one({"id": order_id}, {"$set": update})
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
 
@@ -608,6 +717,28 @@ async def admin_update_order(
     ):
         asyncio.create_task(send_payment_received(updated))
 
+    return updated
+
+
+@api.post("/admin/orders/{order_id}/confirm-payment")
+async def admin_confirm_payment(order_id: str, _admin: dict = Depends(get_admin_user)):
+    """One-click 'Mark as Paid' — atomically marks order as paid + processing + sends email."""
+    existing = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Order not found")
+    if existing.get("payment_status") == "paid":
+        return existing  # idempotent
+    await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {
+            "payment_status": "paid",
+            "fulfillment_status": "processing",
+            "paid_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if updated.get("email"):
+        asyncio.create_task(send_payment_received(updated))
     return updated
 
 
@@ -624,6 +755,9 @@ async def admin_stats(_admin: dict = Depends(get_admin_user)):
     paid = await db.orders.count_documents({"payment_status": "paid"})
     users = await db.users.count_documents({"role": "user"})
     products = await db.products.count_documents({})
+    low_stock = await db.products.count_documents(
+        {"$expr": {"$lte": ["$stock", {"$ifNull": ["$low_stock_threshold", 10]}]}, "active": True}
+    )
     revenue_cursor = db.orders.aggregate([
         {"$match": {"payment_status": "paid"}},
         {"$group": {"_id": None, "total": {"$sum": "$total"}}},
@@ -636,8 +770,427 @@ async def admin_stats(_admin: dict = Depends(get_admin_user)):
         "paid_orders": paid,
         "customers": users,
         "products": products,
+        "low_stock": low_stock,
         "revenue_cad": round(revenue, 2),
     }
+
+
+# ---------------------------------------------------------------------------
+# Admin — order notes & shipping & stock
+# ---------------------------------------------------------------------------
+@api.post("/admin/orders/{order_id}/notes")
+async def admin_add_order_note(order_id: str, payload: OrderNoteIn, admin: dict = Depends(get_admin_user)):
+    note = {
+        "text": payload.text,
+        "admin_email": admin["email"],
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    res = await db.orders.update_one({"id": order_id}, {"$push": {"notes": note}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Order not found")
+    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+
+@api.put("/admin/orders/{order_id}/shipping")
+async def admin_set_shipping_info(order_id: str, payload: ShippingInfoIn, _admin: dict = Depends(get_admin_user)):
+    shipped_at = payload.shipped_at or (datetime.now(timezone.utc).isoformat() if payload.tracking_number else None)
+    shipping_info = {
+        "carrier": payload.carrier or "",
+        "tracking_number": payload.tracking_number or "",
+        "shipped_at": shipped_at,
+    }
+    update = {"shipping_info": shipping_info}
+    if payload.tracking_number:
+        update["fulfillment_status"] = "shipped"
+    res = await db.orders.update_one({"id": order_id}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Order not found")
+    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+
+@api.put("/admin/products/{product_id}/stock")
+async def admin_adjust_stock(product_id: str, payload: StockAdjustIn, _admin: dict = Depends(get_admin_user)):
+    res = await db.products.update_one({"id": product_id}, {"$inc": {"stock": payload.delta}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Product not found")
+    return await db.products.find_one({"id": product_id}, {"_id": 0})
+
+
+# ---------------------------------------------------------------------------
+# Admin — coupons
+# ---------------------------------------------------------------------------
+@api.get("/admin/coupons")
+async def admin_list_coupons(_admin: dict = Depends(get_admin_user)):
+    return await db.coupons.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+@api.post("/admin/coupons")
+async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(get_admin_user)):
+    code = payload.code.upper().strip()
+    if await db.coupons.find_one({"code": code}):
+        raise HTTPException(409, "Coupon code already exists")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "code": code,
+        "discount_type": payload.discount_type,
+        "value": payload.value,
+        "min_subtotal": payload.min_subtotal,
+        "usage_limit": payload.usage_limit,
+        "used_count": 0,
+        "active": payload.active,
+        "expires_at": payload.expires_at,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.coupons.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/admin/coupons/{coupon_id}")
+async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = Depends(get_admin_user)):
+    update = payload.model_dump()
+    update["code"] = update["code"].upper().strip()
+    res = await db.coupons.update_one({"id": coupon_id}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Coupon not found")
+    return await db.coupons.find_one({"id": coupon_id}, {"_id": 0})
+
+
+@api.delete("/admin/coupons/{coupon_id}")
+async def admin_delete_coupon(coupon_id: str, _admin: dict = Depends(get_admin_user)):
+    res = await db.coupons.delete_one({"id": coupon_id})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Coupon not found")
+    return {"ok": True}
+
+
+@api.post("/coupons/validate")
+async def validate_coupon(code: str, subtotal: float):
+    coupon = await db.coupons.find_one({"code": code.upper().strip()}, {"_id": 0})
+    if not coupon or not coupon.get("active"):
+        raise HTTPException(400, "Invalid coupon code")
+    if coupon.get("expires_at"):
+        try:
+            if datetime.fromisoformat(coupon["expires_at"].replace("Z", "+00:00")) < datetime.now(timezone.utc):
+                raise HTTPException(400, "Coupon expired")
+        except ValueError:
+            pass
+    if coupon.get("usage_limit") and coupon.get("used_count", 0) >= coupon["usage_limit"]:
+        raise HTTPException(400, "Coupon usage limit reached")
+    if subtotal < coupon.get("min_subtotal", 0):
+        raise HTTPException(400, f"Minimum subtotal of ${coupon['min_subtotal']:.2f} required")
+    if coupon["discount_type"] == "percent":
+        discount = round(subtotal * (coupon["value"] / 100.0), 2)
+    else:
+        discount = round(min(coupon["value"], subtotal), 2)
+    return {"code": coupon["code"], "discount_type": coupon["discount_type"],
+            "value": coupon["value"], "discount_amount": discount, "min_subtotal": coupon.get("min_subtotal", 0)}
+
+
+# ---------------------------------------------------------------------------
+# Admin — shipping zones & methods
+# ---------------------------------------------------------------------------
+@api.get("/admin/shipping/zones")
+async def admin_list_zones(_admin: dict = Depends(get_admin_user)):
+    zones = await db.shipping_zones.find({}, {"_id": 0}).sort("name", 1).to_list(200)
+    # attach methods
+    out = []
+    for z in zones:
+        methods = await db.shipping_methods.find({"zone_id": z["id"]}, {"_id": 0}).to_list(200)
+        z["methods"] = methods
+        out.append(z)
+    return out
+
+
+@api.post("/admin/shipping/zones")
+async def admin_create_zone(payload: ShippingZoneIn, _admin: dict = Depends(get_admin_user)):
+    doc = payload.model_dump()
+    doc["id"] = str(uuid.uuid4())
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    await db.shipping_zones.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/admin/shipping/zones/{zone_id}")
+async def admin_update_zone(zone_id: str, payload: ShippingZoneIn, _admin: dict = Depends(get_admin_user)):
+    res = await db.shipping_zones.update_one({"id": zone_id}, {"$set": payload.model_dump()})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Zone not found")
+    return await db.shipping_zones.find_one({"id": zone_id}, {"_id": 0})
+
+
+@api.delete("/admin/shipping/zones/{zone_id}")
+async def admin_delete_zone(zone_id: str, _admin: dict = Depends(get_admin_user)):
+    await db.shipping_methods.delete_many({"zone_id": zone_id})
+    res = await db.shipping_zones.delete_one({"id": zone_id})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Zone not found")
+    return {"ok": True}
+
+
+@api.post("/admin/shipping/methods")
+async def admin_create_method(payload: ShippingMethodIn, _admin: dict = Depends(get_admin_user)):
+    doc = payload.model_dump()
+    doc["id"] = str(uuid.uuid4())
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    await db.shipping_methods.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/admin/shipping/methods/{method_id}")
+async def admin_update_method(method_id: str, payload: ShippingMethodIn, _admin: dict = Depends(get_admin_user)):
+    res = await db.shipping_methods.update_one({"id": method_id}, {"$set": payload.model_dump()})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Method not found")
+    return await db.shipping_methods.find_one({"id": method_id}, {"_id": 0})
+
+
+@api.delete("/admin/shipping/methods/{method_id}")
+async def admin_delete_method(method_id: str, _admin: dict = Depends(get_admin_user)):
+    res = await db.shipping_methods.delete_one({"id": method_id})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Method not found")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Admin — Analytics
+# ---------------------------------------------------------------------------
+@api.get("/admin/analytics")
+async def admin_analytics(_admin: dict = Depends(get_admin_user)):
+    # Revenue per day (last 30 days)
+    since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    daily_cursor = db.orders.aggregate([
+        {"$match": {"payment_status": "paid", "created_at": {"$gte": since}}},
+        {"$group": {
+            "_id": {"$substr": ["$created_at", 0, 10]},
+            "revenue": {"$sum": "$total"},
+            "orders": {"$sum": 1},
+        }},
+        {"$sort": {"_id": 1}},
+    ])
+    daily = await daily_cursor.to_list(60)
+    daily = [{"date": d["_id"], "revenue": round(d["revenue"], 2), "orders": d["orders"]} for d in daily]
+
+    # Top products
+    top_cursor = db.orders.aggregate([
+        {"$match": {"payment_status": "paid"}},
+        {"$unwind": "$items"},
+        {"$group": {
+            "_id": "$items.slug",
+            "name_en": {"$first": "$items.name_en"},
+            "units_sold": {"$sum": "$items.qty"},
+            "revenue": {"$sum": "$items.line_total"},
+        }},
+        {"$sort": {"units_sold": -1}},
+        {"$limit": 10},
+    ])
+    top = await top_cursor.to_list(10)
+    top = [{"slug": t["_id"], "name_en": t["name_en"], "units_sold": t["units_sold"], "revenue": round(t["revenue"], 2)} for t in top]
+
+    # Recent orders
+    recent = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10)
+
+    return {"daily_revenue": daily, "top_products": top, "recent_orders": recent}
+
+
+# ---------------------------------------------------------------------------
+# Admin — CSV exports
+# ---------------------------------------------------------------------------
+def _csv_response(rows: list, filename: str) -> StreamingResponse:
+    buf = io.StringIO()
+    if not rows:
+        buf.write("\n")
+    else:
+        writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@api.get("/admin/orders.csv")
+async def admin_orders_csv(_admin: dict = Depends(get_admin_user)):
+    orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    rows = []
+    for o in orders:
+        addr = o.get("shipping_address", {})
+        rows.append({
+            "order_number": o.get("order_number", ""),
+            "created_at": o.get("created_at", ""),
+            "email": o.get("email") or "",
+            "customer": addr.get("full_name", ""),
+            "city": addr.get("city", ""),
+            "province": addr.get("province", ""),
+            "postal_code": addr.get("postal_code", ""),
+            "country": addr.get("country", ""),
+            "payment_method": o.get("payment_method", ""),
+            "payment_status": o.get("payment_status", ""),
+            "fulfillment_status": o.get("fulfillment_status", ""),
+            "items_count": len(o.get("items", [])),
+            "subtotal_cad": o.get("subtotal", 0),
+            "discount_cad": o.get("discount", 0),
+            "shipping_cad": o.get("shipping", 0),
+            "total_cad": o.get("total", 0),
+            "tracking_number": (o.get("shipping_info") or {}).get("tracking_number", ""),
+            "carrier": (o.get("shipping_info") or {}).get("carrier", ""),
+        })
+    return _csv_response(rows, f"nordpep-orders-{datetime.now().strftime('%Y%m%d')}.csv")
+
+
+@api.get("/admin/products.csv")
+async def admin_products_csv(_admin: dict = Depends(get_admin_user)):
+    products = await db.products.find({}, {"_id": 0}).sort("name_en", 1).to_list(2000)
+    rows = []
+    for p in products:
+        rows.append({
+            "slug": p.get("slug", ""),
+            "name_en": p.get("name_en", ""),
+            "name_fr": p.get("name_fr", ""),
+            "category": p.get("category", ""),
+            "sequence": p.get("sequence", ""),
+            "purity": p.get("purity", ""),
+            "dosage_mg": p.get("dosage_mg", 0),
+            "price_cad": p.get("price_cad", 0),
+            "stock": p.get("stock", 0),
+            "low_stock_threshold": p.get("low_stock_threshold", 10),
+            "featured": p.get("featured", False),
+            "preorder_allowed": p.get("preorder_allowed", False),
+            "lab_tested": p.get("lab_tested", False),
+            "coa_url": p.get("coa_url", ""),
+            "coa_lot": p.get("coa_lot", ""),
+            "coa_date": p.get("coa_date", ""),
+            "active": p.get("active", True),
+        })
+    return _csv_response(rows, f"nordpep-products-{datetime.now().strftime('%Y%m%d')}.csv")
+
+
+# ---------------------------------------------------------------------------
+# PDF Invoice
+# ---------------------------------------------------------------------------
+def _generate_invoice_pdf(order: dict) -> bytes:
+    buf = io.BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=LETTER)
+    w, h = LETTER
+
+    # Header band
+    c.setFillColor(rl_colors.black)
+    c.rect(0, h - 18 * mm, w, 18 * mm, fill=1, stroke=0)
+    c.setFillColor(rl_colors.white)
+    c.setFont("Helvetica-Bold", 22)
+    c.drawString(20 * mm, h - 13 * mm, "NORDPEP")
+    c.setFillColor(rl_colors.HexColor("#E51919"))
+    c.circle(20 * mm + 41 * mm, h - 13 * mm + 1.5 * mm, 1.5 * mm, fill=1, stroke=0)
+    c.setFillColor(rl_colors.white)
+    c.setFont("Courier", 8)
+    c.drawRightString(w - 20 * mm, h - 9 * mm, "// INVOICE")
+    c.drawRightString(w - 20 * mm, h - 14 * mm, f"ORDER {order.get('order_number','')}")
+
+    # Meta
+    y = h - 30 * mm
+    c.setFillColor(rl_colors.black)
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(20 * mm, y, "INVOICE")
+    c.setFont("Helvetica", 9)
+    y -= 6 * mm
+    c.drawString(20 * mm, y, f"Order #: {order.get('order_number','')}")
+    y -= 4 * mm
+    c.drawString(20 * mm, y, f"Date: {(order.get('created_at') or '')[:10]}")
+    y -= 4 * mm
+    c.drawString(20 * mm, y, f"Status: {order.get('payment_status','')} / {order.get('fulfillment_status','')}")
+
+    # Bill to
+    addr = order.get("shipping_address") or {}
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(110 * mm, h - 36 * mm, "SHIP TO")
+    c.setFont("Helvetica", 9)
+    sy = h - 42 * mm
+    for line in [
+        addr.get("full_name", ""),
+        addr.get("address1", ""),
+        addr.get("address2", "") or None,
+        f"{addr.get('city','')}, {addr.get('province','')} {addr.get('postal_code','')}",
+        addr.get("country", ""),
+        order.get("email") or "",
+    ]:
+        if line:
+            c.drawString(110 * mm, sy, str(line))
+            sy -= 4 * mm
+
+    # Items table
+    y -= 20 * mm
+    c.setFillColor(rl_colors.black)
+    c.rect(20 * mm, y - 1, w - 40 * mm, 7 * mm, fill=1, stroke=0)
+    c.setFillColor(rl_colors.white)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(22 * mm, y + 1.5 * mm, "ITEM")
+    c.drawString(110 * mm, y + 1.5 * mm, "QTY")
+    c.drawRightString(150 * mm, y + 1.5 * mm, "UNIT")
+    c.drawRightString(w - 22 * mm, y + 1.5 * mm, "TOTAL")
+    y -= 6 * mm
+    c.setFillColor(rl_colors.black)
+    c.setFont("Helvetica", 9)
+    for it in order.get("items", []):
+        y -= 6 * mm
+        c.drawString(22 * mm, y, f"{it.get('name_en','')} ({it.get('slug','')})")
+        c.drawString(110 * mm, y, str(it.get("qty", 0)))
+        c.drawRightString(150 * mm, y, f"${it.get('price_cad',0):.2f}")
+        c.drawRightString(w - 22 * mm, y, f"${it.get('line_total',0):.2f}")
+        c.setStrokeColor(rl_colors.HexColor("#e0e0e0"))
+        c.line(20 * mm, y - 2 * mm, w - 20 * mm, y - 2 * mm)
+
+    # Totals
+    y -= 12 * mm
+    c.setFont("Helvetica", 9)
+    c.drawRightString(150 * mm, y, "Subtotal")
+    c.drawRightString(w - 22 * mm, y, f"${order.get('subtotal',0):.2f}")
+    if order.get("discount", 0) > 0:
+        y -= 4 * mm
+        c.drawRightString(150 * mm, y, f"Discount ({(order.get('coupon') or {}).get('code','')})")
+        c.drawRightString(w - 22 * mm, y, f"-${order.get('discount',0):.2f}")
+    y -= 4 * mm
+    c.drawRightString(150 * mm, y, "Shipping")
+    c.drawRightString(w - 22 * mm, y, f"${order.get('shipping',0):.2f}")
+    y -= 6 * mm
+    c.setStrokeColor(rl_colors.black)
+    c.line(110 * mm, y + 2 * mm, w - 20 * mm, y + 2 * mm)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(150 * mm, y - 3 * mm, "TOTAL CAD")
+    c.drawRightString(w - 22 * mm, y - 3 * mm, f"${order.get('total',0):.2f}")
+
+    # Footer disclaimer
+    c.setFont("Courier", 7)
+    c.setFillColor(rl_colors.HexColor("#666666"))
+    c.drawCentredString(w / 2, 20 * mm, "FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION · 19+ ONLY")
+    c.drawCentredString(w / 2, 16 * mm, f"NORDPEP · CANADA · INVOICE GENERATED {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+
+    c.showPage()
+    c.save()
+    buf.seek(0)
+    return buf.getvalue()
+
+
+@api.get("/orders/{order_id}/invoice.pdf")
+async def order_invoice_pdf(order_id: str, request: Request):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    user = await _resolve_user(request)
+    if order.get("user_id"):
+        if not user or (user["id"] != order["user_id"] and user.get("role") != "admin"):
+            raise HTTPException(403, "Forbidden")
+    pdf = _generate_invoice_pdf(order)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="invoice-{order.get("order_number","order")}.pdf"'},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -883,13 +1436,79 @@ async def seed_admin_and_products():
                                   {"$set": {"password_hash": hashed, "role": "admin"}})
 
     # Products
+    featured_slugs = {"bpc-157-5mg", "semaglutide-5mg", "tirzepatide-10mg", "ipamorelin-5mg", "ghk-cu-50mg", "epitalon-10mg"}
     for p in SEED_PRODUCTS:
+        defaults = {
+            **p,
+            "id": str(uuid.uuid4()),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "featured": p["slug"] in featured_slugs,
+            "preorder_allowed": False,
+            "low_stock_threshold": 10,
+            "coa_url": "",
+            "coa_lot": "",
+            "coa_date": "",
+        }
+        await db.products.update_one({"slug": p["slug"]}, {"$setOnInsert": defaults}, upsert=True)
+        # Backfill featured / new fields on existing docs
         await db.products.update_one(
             {"slug": p["slug"]},
-            {"$setOnInsert": {**p, "id": str(uuid.uuid4()),
-                              "created_at": datetime.now(timezone.utc).isoformat()}},
-            upsert=True,
+            {"$set": {"featured": p["slug"] in featured_slugs}},
         )
+        for field, value in {"preorder_allowed": False, "low_stock_threshold": 10,
+                              "coa_url": "", "coa_lot": "", "coa_date": ""}.items():
+            await db.products.update_one(
+                {"slug": p["slug"], field: {"$exists": False}},
+                {"$set": {field: value}},
+            )
+
+    # Default shipping zone: Canada
+    if await db.shipping_zones.count_documents({}) == 0:
+        canada_zone_id = str(uuid.uuid4())
+        await db.shipping_zones.insert_one({
+            "id": canada_zone_id,
+            "name": "Canada",
+            "countries": ["CA"],
+            "provinces": PROVINCES_CA,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        intl_zone_id = str(uuid.uuid4())
+        await db.shipping_zones.insert_one({
+            "id": intl_zone_id,
+            "name": "International",
+            "countries": ["INTL"],
+            "provinces": [],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        await db.shipping_methods.insert_many([
+            {
+                "id": str(uuid.uuid4()),
+                "zone_id": canada_zone_id,
+                "name": "Canada Post Xpresspost",
+                "cost_cad": 20.0,
+                "eta_days": "2-3 business days",
+                "active": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "zone_id": canada_zone_id,
+                "name": "Canada Post Expedited",
+                "cost_cad": 12.0,
+                "eta_days": "5-7 business days",
+                "active": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "zone_id": intl_zone_id,
+                "name": "International Tracked",
+                "cost_cad": 45.0,
+                "eta_days": "10-20 business days",
+                "active": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
+        ])
 
 
 @app.on_event("startup")

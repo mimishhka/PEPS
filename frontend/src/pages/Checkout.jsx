@@ -44,8 +44,22 @@ export default function Checkout() {
   const [payCurrency, setPayCurrency] = useState("btc");
   const [ack, setAck] = useState({ a1: false, a2: false, a3: false });
   const [submitting, setSubmitting] = useState(false);
+  const [coupon, setCoupon] = useState({ code: "", applied: null, error: "" });
 
-  const total = useMemo(() => +(subtotal + SHIPPING_FLAT).toFixed(2), [subtotal]);
+  const discount = coupon.applied?.discount_amount || 0;
+  const total = useMemo(() => +(Math.max(0, subtotal - discount) + SHIPPING_FLAT).toFixed(2), [subtotal, discount]);
+
+  const applyCoupon = async () => {
+    if (!coupon.code.trim()) return;
+    try {
+      const { data } = await api.post(`/coupons/validate?code=${encodeURIComponent(coupon.code.trim())}&subtotal=${subtotal}`);
+      setCoupon({ code: data.code, applied: data, error: "" });
+      toast.success(`Coupon ${data.code} applied — ${data.discount_type === "percent" ? data.value + "%" : "$" + data.value} off`);
+    } catch (e) {
+      setCoupon({ code: coupon.code, applied: null, error: formatApiError(e.response?.data?.detail) });
+    }
+  };
+  const removeCoupon = () => setCoupon({ code: "", applied: null, error: "" });
 
   if (items.length === 0) {
     return (
@@ -81,6 +95,7 @@ export default function Checkout() {
         },
         payment_method: paymentMethod,
         pay_currency: payCurrency,
+        coupon_code: coupon.applied?.code || null,
         accept_terms: ack.a3,
         confirm_age: ack.a1,
         confirm_research_use: ack.a2,
@@ -215,7 +230,42 @@ export default function Checkout() {
         </ul>
         <div className="mt-6 border-t border-ink/20 pt-4 space-y-2 font-mono text-sm">
           <div className="flex justify-between"><span className="text-foreground/60 uppercase tracking-[0.15em] text-xs">{t("common.subtotal")}</span><span data-testid="summary-subtotal">${subtotal.toFixed(2)}</span></div>
+          {discount > 0 && (
+            <div className="flex justify-between text-emerald-700" data-testid="summary-discount">
+              <span className="uppercase tracking-[0.15em] text-xs">DISCOUNT ({coupon.applied.code})</span>
+              <span>-${discount.toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex justify-between"><span className="text-foreground/60 uppercase tracking-[0.15em] text-xs">{t("common.shipping")}</span><span data-testid="summary-shipping">${SHIPPING_FLAT.toFixed(2)}</span></div>
+        </div>
+
+        {/* Coupon */}
+        <div className="mt-4 pt-4 border-t border-ink/10" data-testid="coupon-section">
+          {!coupon.applied ? (
+            <div className="space-y-2">
+              <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60">Coupon code</label>
+              <div className="flex gap-2">
+                <input
+                  value={coupon.code}
+                  onChange={(e) => setCoupon({ ...coupon, code: e.target.value.toUpperCase(), error: "" })}
+                  placeholder="NORDPEP10"
+                  data-testid="coupon-input"
+                  className="flex-1 border border-ink/20 px-3 py-2 text-sm font-mono uppercase"
+                />
+                <button type="button" onClick={applyCoupon} data-testid="apply-coupon" className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 hover:bg-foreground/80">
+                  Apply
+                </button>
+              </div>
+              {coupon.error && <div className="font-mono text-[11px] text-red-600" data-testid="coupon-error">{coupon.error}</div>}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between bg-emerald-50 border border-emerald-600 px-3 py-2" data-testid="coupon-applied">
+              <div className="text-sm">
+                <span className="font-mono font-bold">{coupon.applied.code}</span> applied · ${discount.toFixed(2)} off
+              </div>
+              <button type="button" onClick={removeCoupon} className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-700">Remove</button>
+            </div>
+          )}
         </div>
         <div className="mt-4 border-t-2 border-ink pt-4 flex justify-between items-end">
           <span className="font-mono uppercase tracking-[0.2em] text-xs">{t("common.total")} CAD</span>

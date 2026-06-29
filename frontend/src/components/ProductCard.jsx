@@ -9,7 +9,7 @@ export default function ProductCard({ product, index = 0 }) {
 
   return (
     <div
-      className="group bg-white border-r border-b border-ink/15 flex flex-col"
+      className="group bg-white border border-ink/15 flex flex-col card-hover"
       data-testid={`product-card-${product.slug}`}
     >
       <Link to={`/product/${product.slug}`} className="block relative bg-secondary aspect-[4/5] overflow-hidden">

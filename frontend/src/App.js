@@ -22,7 +22,7 @@ import Account from "./pages/Account";
 import About from "./pages/About";
 import Lab from "./pages/Lab";
 import Compliance from "./pages/Compliance";
-import Admin from "./pages/admin/Admin";
+import Admin from "./pages/admin/AdminLayout";
 
 import "./index.css";
 
@@ -58,7 +58,7 @@ export default function App() {
                 <Route path="/about" element={<About />} />
                 <Route path="/lab" element={<Lab />} />
                 <Route path="/compliance" element={<Compliance />} />
-                <Route path="/admin" element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />
+                <Route path="/admin/*" element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />
                 <Route path="*" element={<Home />} />
               </Routes>
             </Shell>

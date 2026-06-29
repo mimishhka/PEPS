@@ -10,7 +10,7 @@ export default function Home() {
   const [products, setProducts] = useState([]);
 
   useEffect(() => {
-    api.get("/products").then((r) => setProducts(r.data.slice(0, 8))).catch(() => {});
+    api.get("/products", { params: { featured: true } }).then((r) => setProducts(r.data.slice(0, 6))).catch(() => {});
   }, []);
 
   const trustItems = [
@@ -113,9 +113,9 @@ export default function Home() {
 
       {/* FEATURED PRODUCTS */}
       <section className="border-b border-ink" data-testid="featured-products">
-        <div className="px-6 lg:px-12 pt-20 pb-10 flex items-end justify-between gap-6 flex-wrap">
+        <div className="px-6 lg:px-16 pt-24 pb-12 flex items-end justify-between gap-6 flex-wrap">
           <div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">02 — CATALOG</div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">02 — FEATURED</div>
             <h2 className="font-display text-4xl sm:text-5xl font-extrabold uppercase tracking-tight mt-3">
               {t("home.featuredTitle")}
             </h2>
@@ -125,10 +125,12 @@ export default function Home() {
             {t("common.viewAll")} →
           </Link>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 border-t border-l border-ink/15">
-          {products.map((p, i) => (
-            <ProductCard product={p} key={p.id} index={i} />
-          ))}
+        <div className="px-6 lg:px-16 pb-24">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-12">
+            {products.map((p, i) => (
+              <ProductCard product={p} key={p.id} index={i} />
+            ))}
+          </div>
         </div>
       </section>
 
