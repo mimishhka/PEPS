@@ -25,7 +25,6 @@ export default function Header() {
     { to: "/catalog", label: t("nav.catalog") },
     { to: "/lab", label: t("nav.lab") },
     { to: "/about", label: t("nav.about") },
-    { to: "/compliance", label: t("nav.compliance") },
   ];
 
   return (

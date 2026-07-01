@@ -89,3 +89,8 @@ E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (N
 - Email: `admin@nordpep.ca`
 - Password: `NordpepAdmin2026!`
 - One-click entry via ADMIN button in header (auto-login) or hidden dot in footer.
+
+## Update — Juin 2026 (session fork)
+- Conditions Générales complètes réécrites (17 sections, inspirées de thepeptidelabs.ca sans plagiat) : acceptation, avertissements, restriction 19+, usage recherche uniquement, retours (ventes finales), engagement client, usage professionnel, obligations réglementaires (formulation neutre, sans mention Santé Canada/FDA), responsabilité acheteur, limitation de responsabilité, indemnisation, disponibilité du site, intégralité, divisibilité, titres, force majeure, reconnaissance finale. Bilingue FR/EN.
+- Page /compliance renommée « Conditions Générales » (mots « Conformité » et « Légal » retirés de l'UI).
+- Lien retiré du menu du haut ; accessible uniquement via le pied de page, section renommée « Informations ».
