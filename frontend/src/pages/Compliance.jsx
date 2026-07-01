@@ -240,6 +240,90 @@ const TERMS = [
   },
 ];
 
+const SHIPPING = [
+  {
+    id: "carriers",
+    en: { title: "Carriers & Free Shipping" },
+    fr: { title: "Transporteurs et livraison gratuite" },
+    paras: [
+      {
+        en: "Shipping is free on all orders of $200 or more. Depending on the destination, parcels are sent via Canada Post or UPS, with tracking included. When you select the free or economy option, NORDPEP chooses the carrier best suited to your location.",
+        fr: "La livraison est gratuite pour toute commande de 200 $ et plus. Selon la destination, les colis sont envoyés via Postes Canada ou UPS, avec suivi inclus. Lorsque vous choisissez l'option gratuite ou économique, NORDPEP sélectionne le transporteur le mieux adapté à votre emplacement.",
+      },
+    ],
+  },
+  {
+    id: "delivery-times",
+    en: { title: "Delivery Times" },
+    fr: { title: "Délais de livraison" },
+    paras: [
+      {
+        en: "All orders are shipped from Canada. Transit time depends on the distance to your address: Ontario and Québec typically receive their parcel within 1 to 2 business days, Western and Atlantic Canada within 4 to 5 business days, and remote regions may require up to 10 days.",
+        fr: "Toutes les commandes sont expédiées depuis le Canada. Le délai de transport dépend de la distance jusqu'à votre adresse : l'Ontario et le Québec reçoivent généralement leur colis en 1 à 2 jours ouvrables, l'Ouest et les provinces de l'Atlantique en 4 à 5 jours ouvrables, et les régions éloignées peuvent nécessiter jusqu'à 10 jours.",
+      },
+    ],
+  },
+  {
+    id: "dispatch",
+    en: { title: "Dispatch of Orders" },
+    fr: { title: "Expédition des commandes" },
+    paras: [
+      {
+        en: "Orders leave our facility Monday through Friday, excluding statutory holidays, as carriers only accept new shipments on business days. Orders placed and paid before 2:00 p.m. Eastern time are dispatched the same day; orders received after 2:00 p.m. leave the next business day. An order paid after 2:00 p.m. on a Friday will be shipped the following Monday (holidays excluded).",
+        fr: "Les commandes quittent nos installations du lundi au vendredi, à l'exception des jours fériés, car les transporteurs n'acceptent de nouveaux envois que les jours ouvrables. Les commandes passées et payées avant 14 h (heure de l'Est) sont expédiées le jour même ; celles reçues après 14 h partent le jour ouvrable suivant. Une commande payée après 14 h un vendredi sera expédiée le lundi suivant (jours fériés exclus).",
+      },
+    ],
+  },
+  {
+    id: "delays",
+    en: { title: "Shipping Delays" },
+    fr: { title: "Retards de livraison" },
+    paras: [
+      {
+        en: "A shipping \"day\" corresponds to a 24-hour period and excludes the day the parcel leaves our facility. For example, a parcel dispatched Monday afternoon that arrives Wednesday afternoon has travelled 2 days. Published transit times are estimates for most destinations and are not guaranteed.",
+        fr: "Un « jour » de livraison correspond à une période de 24 heures et exclut le jour où le colis quitte nos installations. Par exemple, un colis expédié lundi après-midi qui arrive mercredi après-midi a voyagé 2 jours. Les délais publiés sont des estimations pour la plupart des destinations et ne sont pas garantis.",
+      },
+      {
+        en: "NORDPEP hands your parcel to the selected carrier in accordance with the dispatch schedule above. Should the carrier experience a delay, we will do our best to help expedite delivery; however, NORDPEP cannot be held responsible for delays caused by the carrier.",
+        fr: "NORDPEP remet votre colis au transporteur sélectionné conformément à l'horaire d'expédition ci-dessus. En cas de retard du transporteur, nous ferons de notre mieux pour accélérer la livraison ; toutefois, NORDPEP ne peut être tenue responsable des retards causés par le transporteur.",
+      },
+    ],
+  },
+  {
+    id: "address-errors",
+    en: { title: "Address Errors" },
+    fr: { title: "Erreurs d'adresse" },
+    paras: [
+      {
+        en: "We rely on you to provide a complete and accurate delivery address. If a parcel is returned to us because of an error in the address you supplied, it will be reshipped once you have covered the fees charged by the carrier for the return and the new shipment.",
+        fr: "Nous comptons sur vous pour fournir une adresse de livraison complète et exacte. Si un colis nous est retourné en raison d'une erreur dans l'adresse que vous avez fournie, il sera réexpédié une fois que vous aurez acquitté les frais facturés par le transporteur pour le retour et le nouvel envoi.",
+      },
+    ],
+  },
+  {
+    id: "lost-packages",
+    en: { title: "Lost Packages" },
+    fr: { title: "Colis perdus" },
+    paras: [
+      {
+        en: "In the rare event a parcel is lost in transit (no delivery scan at your address), it will be reshipped at no cost to you once the carrier officially declares it lost. If the parcel was scanned as delivered at your address, a reshipment is only possible after the carrier completes its investigation and concludes the parcel was lost or misdelivered. If the investigation establishes that the parcel was delivered to your address, no reshipment will be issued.",
+        fr: "Dans le cas rare où un colis serait perdu en transit (aucun balayage de livraison à votre adresse), il sera réexpédié sans frais dès que le transporteur l'aura officiellement déclaré perdu. Si le colis a été balayé comme livré à votre adresse, une réexpédition n'est possible qu'après que le transporteur a terminé son enquête et conclu que le colis a été perdu ou mal livré. Si l'enquête établit que le colis a bien été livré à votre adresse, aucune réexpédition ne sera effectuée.",
+      },
+    ],
+  },
+  {
+    id: "returns-note",
+    en: { title: "Returns" },
+    fr: { title: "Retours" },
+    paras: [
+      {
+        en: "Due to the nature of the products, all sales are final. No returns or refunds, except in the case of a documented product defect reported within 48 hours of delivery.",
+        fr: "En raison de la nature des produits, toutes les ventes sont finales. Aucun retour ni remboursement, sauf en cas de défaut de produit documenté et signalé dans les 48 heures suivant la livraison.",
+      },
+    ],
+  },
+];
+
 export default function Compliance() {
   const { lang } = useLang();
   const isFr = lang === "fr";
@@ -291,20 +375,22 @@ export default function Compliance() {
         </div>
       </section>
 
-      <section id="shipping" data-testid="section-shipping" className="border-t border-ink pt-12">
+      <section id="shipping" data-testid="section-shipping" className="border-t border-ink pt-12 space-y-10">
         <h2 className="font-display text-3xl font-bold uppercase tracking-tight">
-          {isFr ? "Livraison & Retours" : "Shipping & Returns"}
+          {isFr ? "Politique d'expédition" : "Shipping Policy"}
         </h2>
-        <div className="mt-6 space-y-4 text-foreground/80 leading-relaxed">
-          <p>{isFr
-            ? "Toutes les commandes sont expédiées depuis le Canada via Postes Canada Xpresspost (suivi inclus). Les commandes intérieures sont expédiées sous 24-48 heures suivant la confirmation du paiement."
-            : "All orders ship from Canada via Canada Post Xpresspost (tracking included). Domestic orders ship within 24-48 hours of payment confirmation."}
-          </p>
-          <p>{isFr
-            ? "En raison de la nature des produits, toutes les ventes sont finales. Aucun retour ni remboursement, sauf en cas de défaut documenté du produit dans les 48 heures suivant la livraison."
-            : "Due to the nature of the products, all sales are final. No returns or refunds, except in the case of documented product defects within 48 hours of delivery."}
-          </p>
-        </div>
+        {SHIPPING.map((s) => (
+          <div key={s.id} id={`shipping-${s.id}`} data-testid={`shipping-section-${s.id}`}>
+            <h3 className="font-display text-xl font-bold uppercase tracking-tight">
+              {isFr ? s.fr.title : s.en.title}
+            </h3>
+            <div className="mt-3 space-y-3 text-foreground/80 leading-relaxed">
+              {s.paras.map((p, j) => (
+                <p key={j}>{isFr ? p.fr : p.en}</p>
+              ))}
+            </div>
+          </div>
+        ))}
       </section>
 
       <section id="faq" data-testid="section-faq" className="border-t border-ink pt-12">
