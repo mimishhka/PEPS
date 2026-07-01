@@ -1376,6 +1376,54 @@ async def stripe_status(session_id: str, request: Request):
     }
 
 
+@api.get("/payments/crypto/status/{order_id}")
+async def crypto_status(order_id: str):
+    """Poll NOWPayments payment status. Marks order paid only when np status is 'finished'."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order or order.get("payment_method") != "nowpayments":
+        raise HTTPException(404, "Order not found")
+    if order.get("payment_status") == "paid":
+        return {"order_id": order_id, "payment_status": "paid", "np_status": "finished"}
+    np_info = (order.get("payment_info") or {}).get("provider_response") or {}
+    payment_id = np_info.get("payment_id")
+    if not payment_id or np_info.get("mock"):
+        return {"order_id": order_id, "payment_status": order.get("payment_status"), "np_status": "waiting", "mock": True}
+    if not NOWPAYMENTS_API_KEY:
+        raise HTTPException(503, "Crypto provider not configured")
+    try:
+        async with httpx.AsyncClient(timeout=15) as cx:
+            r = await cx.get(
+                f"{NOWPAYMENTS_BASE_URL}/payment/{payment_id}",
+                headers={"x-api-key": NOWPAYMENTS_API_KEY},
+            )
+            r.raise_for_status()
+            data = r.json()
+    except Exception as e:
+        logging.error("NOWPayments status err: %s", e)
+        raise HTTPException(502, "Crypto status unavailable")
+    np_status = data.get("payment_status", "waiting")
+    if np_status != np_info.get("payment_status"):
+        await db.orders.update_one(
+            {"id": order_id},
+            {"$set": {"payment_info.provider_response.payment_status": np_status}},
+        )
+    if np_status == "finished":
+        res = await db.orders.update_one(
+            {"id": order_id, "payment_status": {"$ne": "paid"}},
+            {"$set": {
+                "payment_status": "paid",
+                "fulfillment_status": "processing",
+                "paid_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        if res.modified_count:
+            fresh = await db.orders.find_one({"id": order_id}, {"_id": 0})
+            if fresh.get("email"):
+                asyncio.create_task(send_payment_received(fresh))
+        return {"order_id": order_id, "payment_status": "paid", "np_status": np_status}
+    return {"order_id": order_id, "payment_status": order.get("payment_status"), "np_status": np_status}
+
+
 @api.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     """Handle Stripe webhook events to mark orders as paid."""

@@ -11,6 +11,7 @@ export default function OrderConfirmation() {
   const [order, setOrder] = useState(state?.order || null);
   const [copied, setCopied] = useState("");
   const [stripePolling, setStripePolling] = useState(false);
+  const [remainingMs, setRemainingMs] = useState(null);
 
   useEffect(() => {
     if (!order) {
@@ -46,6 +47,37 @@ export default function OrderConfirmation() {
     };
     poll();
   }, [id]);
+
+  // Countdown for awaiting payments (48h from order creation)
+  useEffect(() => {
+    if (!order || !["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status)) return;
+    const deadline = new Date(order.created_at).getTime() + 48 * 3600 * 1000;
+    const tick = () => setRemainingMs(deadline - Date.now());
+    tick();
+    const iv = setInterval(tick, 30000);
+    return () => clearInterval(iv);
+  }, [order]);
+
+  // NOWPayments live status polling
+  useEffect(() => {
+    if (!order) return;
+    if (order.payment_method !== "nowpayments" || order.payment_status !== "awaiting_crypto") return;
+    if (order.payment_info?.provider_response?.mock) return;
+    let attempts = 0;
+    const iv = setInterval(async () => {
+      attempts += 1;
+      if (attempts > 45) { clearInterval(iv); return; }
+      try {
+        const { data } = await api.get(`/payments/crypto/status/${order.id}`);
+        if (data.payment_status === "paid") {
+          clearInterval(iv);
+          const fresh = await api.get(`/orders/${order.id}`);
+          setOrder(fresh.data);
+        }
+      } catch { /* ignore */ }
+    }, 20000);
+    return () => clearInterval(iv);
+  }, [order]);
 
   if (!order) return <div className="p-16 font-mono text-xs uppercase tracking-[0.25em]">{t("common.loading")}</div>;
 
@@ -94,6 +126,15 @@ export default function OrderConfirmation() {
                 ? "Votre commande sera automatiquement annulée si le paiement n'est pas reçu dans les 48 heures."
                 : "Your order will be automatically cancelled if payment is not received within 48 hours."}
             </p>
+            {remainingMs !== null && (
+              <div className="mt-3 font-mono text-sm font-bold tracking-[0.1em]" data-testid="payment-countdown">
+                {remainingMs > 0
+                  ? (lang === "fr"
+                      ? `⏳ Il vous reste ${Math.floor(remainingMs / 3600000)} h ${Math.floor((remainingMs % 3600000) / 60000)} min pour payer`
+                      : `⏳ You have ${Math.floor(remainingMs / 3600000)}h ${Math.floor((remainingMs % 3600000) / 60000)}min left to pay`)
+                  : (lang === "fr" ? "⚠ Délai expiré — la commande sera annulée." : "⚠ Deadline expired — the order will be cancelled.")}
+              </div>
+            )}
           </div>
         </div>
       )}
