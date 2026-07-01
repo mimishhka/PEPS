@@ -7,7 +7,7 @@ import { useLang } from "../contexts/LanguageContext";
 export default function OrderConfirmation() {
   const { id } = useParams();
   const { state } = useLocation();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [order, setOrder] = useState(state?.order || null);
   const [copied, setCopied] = useState("");
   const [stripePolling, setStripePolling] = useState(false);
@@ -57,6 +57,7 @@ export default function OrderConfirmation() {
 
   const interac = order.payment_info?.type === "interac" ? order.payment_info.instructions : null;
   const np = order.payment_info?.type === "nowpayments" ? order.payment_info.provider_response : null;
+  const awaitingPayment = ["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status);
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-16" data-testid="confirmation-page">
@@ -78,6 +79,22 @@ export default function OrderConfirmation() {
       {stripePolling && (
         <div className="mt-8 border border-ink p-4 bg-yellow-50 font-mono text-xs uppercase tracking-[0.2em]" data-testid="stripe-polling">
           ⏳ Verifying your Stripe payment…
+        </div>
+      )}
+
+      {awaitingPayment && (
+        <div className="mt-8 border-2 border-signal p-5 flex items-start gap-3" style={{ borderColor: "#E51919" }} data-testid="payment-deadline-warning">
+          <span className="font-display font-extrabold text-xl leading-none" style={{ color: "#E51919" }}>!</span>
+          <div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.25em]" style={{ color: "#E51919" }}>
+              {lang === "fr" ? "Paiement requis sous 48 heures" : "Payment required within 48 hours"}
+            </div>
+            <p className="mt-2 text-sm text-foreground/80 leading-relaxed">
+              {lang === "fr"
+                ? "Votre commande sera automatiquement annulée et le stock réservé sera libéré si le paiement n'est pas reçu dans les 48 heures."
+                : "Your order will be automatically cancelled and the reserved stock released if payment is not received within 48 hours."}
+            </p>
+          </div>
         </div>
       )}
 
