@@ -295,7 +295,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
               {(order.notes || []).map((n, i) => (
                 <div key={i} className="text-sm border-l-2 border-ink/30 pl-3 py-1" data-testid={`note-${i}`}>
                   <div className="text-foreground/85">{n.text}</div>
-                  <div className="font-mono text-[10px] text-foreground/50 mt-1">{n.admin_email} · {(n.ts || "").slice(0, 16).replace("T", " ")}</div>
+                  <div className="font-mono text-[10px] text-foreground/50 mt-1">{n.admin_email || n.author} · {((n.ts || n.created_at) || "").slice(0, 16).replace("T", " ")}</div>
                 </div>
               ))}
               {!order.notes?.length && <div className="font-mono text-[10px] text-foreground/50">No notes yet.</div>}
