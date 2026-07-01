@@ -7,6 +7,9 @@ load_dotenv(ROOT_DIR / ".env")
 import os
 import io
 import csv
+import json
+import hmac
+import hashlib
 import uuid
 import logging
 import secrets
@@ -42,6 +45,8 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "NordpepAdmin2026!")
 INTERAC_EMAIL = os.environ.get("INTERAC_EMAIL", "orders@nordpep.ca")
 INTERAC_PASSWORD_HINT = os.environ.get("INTERAC_PASSWORD_HINT", "NORDPEP")
 NOWPAYMENTS_API_KEY = os.environ.get("NOWPAYMENTS_API_KEY", "")
+NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "")
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 NOWPAYMENTS_BASE_URL = "https://api.nowpayments.io/v1"
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@nordpep.ca")
@@ -524,7 +529,7 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
 
 
 async def _nowpayments_create(order_id: str, total_cad: float, pay_currency: str):
-    """Create a NOWPayments invoice. Falls back to mock if no API key."""
+    """Create a NOWPayments invoice (embeddable widget, exact amount). Falls back to mock if no API key."""
     if not NOWPAYMENTS_API_KEY:
         return {
             "mock": True,
@@ -535,21 +540,33 @@ async def _nowpayments_create(order_id: str, total_cad: float, pay_currency: str
             "order_id": order_id,
             "payment_status": "waiting",
         }
+    body = {
+        "price_amount": total_cad,
+        "price_currency": "cad",
+        "order_id": order_id,
+        "order_description": f"NORDPEP order {order_id}",
+    }
+    if PUBLIC_BASE_URL:
+        body["ipn_callback_url"] = f"{PUBLIC_BASE_URL}/api/webhook/nowpayments"
+        body["success_url"] = f"{PUBLIC_BASE_URL}/order/{order_id}"
+        body["cancel_url"] = f"{PUBLIC_BASE_URL}/order/{order_id}"
     try:
         async with httpx.AsyncClient(timeout=15) as cx:
             r = await cx.post(
-                f"{NOWPAYMENTS_BASE_URL}/payment",
+                f"{NOWPAYMENTS_BASE_URL}/invoice",
                 headers={"x-api-key": NOWPAYMENTS_API_KEY, "Content-Type": "application/json"},
-                json={
-                    "price_amount": total_cad,
-                    "price_currency": "cad",
-                    "pay_currency": pay_currency,
-                    "order_id": order_id,
-                    "order_description": f"NORDPEP order {order_id}",
-                },
+                json=body,
             )
             r.raise_for_status()
-            return r.json()
+            inv = r.json()
+            return {
+                "invoice_id": inv.get("id"),
+                "invoice_url": inv.get("invoice_url"),
+                "order_id": order_id,
+                "price_amount": total_cad,
+                "price_currency": "cad",
+                "payment_status": "waiting",
+            }
     except Exception as e:
         logging.error("NOWPayments error: %s", e)
         raise HTTPException(502, "Crypto payment provider unavailable")
@@ -592,7 +609,15 @@ def _order_email_html(order: dict, body_intro: str) -> str:
         mock_warning = ""
         if np_info.get("mock"):
             mock_warning = '<div style="background:#fffbe6;border:1px solid #FFCC00;padding:10px;margin-bottom:12px;font-size:12px">⚠ DEMO MODE — Configure NOWPAYMENTS_API_KEY for live crypto payments.</div>'
-        payment_block = f"""
+        if np_info.get("invoice_url"):
+            payment_block = f"""
+        <div style="background:#f5f5f5;border:2px solid #050505;padding:20px;margin:24px 0">
+          <div style="font-family:monospace;font-size:11px;letter-spacing:2px;font-weight:bold;margin-bottom:12px">₿ CRYPTO PAYMENT</div>
+          <p style="font-size:13px;margin:0 0 16px">Pay the exact order amount securely via NOWPayments — your order is confirmed automatically once payment is received.</p>
+          <a href="{np_info["invoice_url"]}" style="display:inline-block;background:#050505;color:#fff;font-family:monospace;font-size:12px;letter-spacing:2px;padding:12px 24px;text-decoration:none">PAY NOW →</a>
+        </div>"""
+        else:
+            payment_block = f"""
         <div style="background:#f5f5f5;border:2px solid #050505;padding:20px;margin:24px 0">
           <div style="font-family:monospace;font-size:11px;letter-spacing:2px;font-weight:bold;margin-bottom:12px">₿ CRYPTO PAYMENT INSTRUCTIONS</div>
           {mock_warning}
@@ -1376,6 +1401,58 @@ async def stripe_status(session_id: str, request: Request):
     }
 
 
+@api.post("/webhook/nowpayments")
+async def nowpayments_ipn(request: Request):
+    """NOWPayments IPN callback. HMAC-SHA512 signature verified against sorted JSON payload."""
+    if not NOWPAYMENTS_IPN_SECRET:
+        raise HTTPException(503, "IPN not configured")
+    raw = await request.body()
+    sig = request.headers.get("x-nowpayments-sig", "")
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        raise HTTPException(400, "Invalid payload")
+    expected = hmac.new(
+        NOWPAYMENTS_IPN_SECRET.encode(),
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode(),
+        hashlib.sha512,
+    ).hexdigest()
+    if not sig or not hmac.compare_digest(expected, sig):
+        logging.warning("NOWPayments IPN: invalid signature")
+        raise HTTPException(401, "Invalid signature")
+    order_id = payload.get("order_id")
+    np_status = payload.get("payment_status", "")
+    if not order_id:
+        return {"ok": True}
+    updates = {"payment_info.provider_response.payment_status": np_status}
+    if payload.get("payment_id"):
+        updates["payment_info.provider_response.payment_id"] = str(payload["payment_id"])
+    if payload.get("pay_currency"):
+        updates["payment_info.provider_response.pay_currency"] = payload["pay_currency"]
+    await db.orders.update_one({"id": order_id}, {"$set": updates})
+    if np_status == "finished":
+        res = await db.orders.update_one(
+            {"id": order_id, "payment_status": {"$ne": "paid"}},
+            {"$set": {
+                "payment_status": "paid",
+                "fulfillment_status": "processing",
+                "paid_at": datetime.now(timezone.utc).isoformat(),
+            },
+             "$push": {"notes": {
+                 "id": str(uuid.uuid4()),
+                 "text": f"Crypto payment confirmed via NOWPayments IPN (payment_id {payload.get('payment_id')})",
+                 "author": "system",
+                 "created_at": datetime.now(timezone.utc).isoformat(),
+             }}},
+        )
+        if res.modified_count:
+            fresh = await db.orders.find_one({"id": order_id}, {"_id": 0})
+            if fresh and fresh.get("email"):
+                asyncio.create_task(send_payment_received(fresh))
+            logging.info("Order %s marked paid via NOWPayments IPN", order_id)
+    return {"ok": True}
+
+
 @api.get("/payments/crypto/status/{order_id}")
 async def crypto_status(order_id: str):
     """Poll NOWPayments payment status. Marks order paid only when np status is 'finished'."""
@@ -1387,7 +1464,13 @@ async def crypto_status(order_id: str):
     np_info = (order.get("payment_info") or {}).get("provider_response") or {}
     payment_id = np_info.get("payment_id")
     if not payment_id or np_info.get("mock"):
-        return {"order_id": order_id, "payment_status": order.get("payment_status"), "np_status": "waiting", "mock": True}
+        # Invoice/widget flow (paid state is pushed via IPN) or mock mode: return DB status
+        return {
+            "order_id": order_id,
+            "payment_status": order.get("payment_status"),
+            "np_status": np_info.get("payment_status", "waiting"),
+            **({"mock": True} if np_info.get("mock") else {}),
+        }
     if not NOWPAYMENTS_API_KEY:
         raise HTTPException(503, "Crypto provider not configured")
     try:

@@ -162,19 +162,48 @@ export default function OrderConfirmation() {
           <div className="bg-ink text-white px-6 py-3 font-mono text-[11px] uppercase tracking-[0.25em]">
             ₿ {t("confirmation.cryptoHeading")}
           </div>
-          <div className="p-8 space-y-5 font-mono text-sm">
-            {np.mock && (
-              <div className="border border-warning bg-yellow-50 p-3 text-xs uppercase tracking-[0.15em]" style={{ borderColor: "#FFCC00" }}>
-                ⚠ DEMO MODE · Configure NOWPAYMENTS_API_KEY to enable live crypto payments.
-              </div>
-            )}
-            <Row label={t("confirmation.cryptoAddress")} value={np.pay_address} onCopy={() => copy(np.pay_address, "addr")} copied={copied === "addr"} testId="crypto-address" highlight />
-            <Row label={t("confirmation.cryptoAmount")} value={`${np.pay_amount} ${np.pay_currency?.toUpperCase()}`} onCopy={() => copy(`${np.pay_amount}`, "amt")} copied={copied === "amt"} testId="crypto-amount" />
-            <Row label={t("confirmation.cryptoNetwork")} value={np.pay_currency?.toUpperCase()} testId="crypto-network" />
-            <p className="text-xs text-foreground/70 pt-4 border-t border-ink/15 leading-relaxed font-sans">
-              {t("confirmation.cryptoFooter")}
-            </p>
-          </div>
+          {np.invoice_id ? (
+            <div className="p-6 flex flex-col items-center gap-4" data-testid="crypto-widget-container">
+              <p className="text-sm text-foreground/70 leading-relaxed text-center max-w-md">
+                {lang === "fr"
+                  ? `Payez ${order.total.toFixed(2)} $ CAD en crypto via le module sécurisé NOWPayments ci-dessous — le montant exact est déjà pré-rempli. La confirmation de votre commande est automatique dès réception du paiement.`
+                  : `Pay $${order.total.toFixed(2)} CAD in crypto through the secure NOWPayments module below — the exact amount is pre-filled. Your order is confirmed automatically once payment is received.`}
+              </p>
+              <iframe
+                title="NOWPayments"
+                src={`https://nowpayments.io/embeds/payment-widget?iid=${np.invoice_id}`}
+                width="410"
+                height="696"
+                frameBorder="0"
+                scrolling="no"
+                style={{ overflowY: "hidden", maxWidth: "100%" }}
+                data-testid="nowpayments-widget"
+              />
+              <a
+                href={np.invoice_url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[11px] uppercase tracking-[0.2em] underline text-foreground/60 hover:text-foreground"
+                data-testid="crypto-invoice-link"
+              >
+                {lang === "fr" ? "Ouvrir la page de paiement dans un nouvel onglet →" : "Open the payment page in a new tab →"}
+              </a>
+            </div>
+          ) : (
+            <div className="p-8 space-y-5 font-mono text-sm">
+              {np.mock && (
+                <div className="border border-warning bg-yellow-50 p-3 text-xs uppercase tracking-[0.15em]" style={{ borderColor: "#FFCC00" }}>
+                  ⚠ DEMO MODE · Configure NOWPAYMENTS_API_KEY to enable live crypto payments.
+                </div>
+              )}
+              <Row label={t("confirmation.cryptoAddress")} value={np.pay_address} onCopy={() => copy(np.pay_address, "addr")} copied={copied === "addr"} testId="crypto-address" highlight />
+              <Row label={t("confirmation.cryptoAmount")} value={`${np.pay_amount} ${np.pay_currency?.toUpperCase()}`} onCopy={() => copy(`${np.pay_amount}`, "amt")} copied={copied === "amt"} testId="crypto-amount" />
+              <Row label={t("confirmation.cryptoNetwork")} value={np.pay_currency?.toUpperCase()} testId="crypto-network" />
+              <p className="text-xs text-foreground/70 pt-4 border-t border-ink/15 leading-relaxed font-sans">
+                {t("confirmation.cryptoFooter")}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
