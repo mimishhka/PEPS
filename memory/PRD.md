@@ -100,3 +100,4 @@ E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (N
 - Livraison : tarif fixe 20 $ sous 200 $, GRATUITE dès 200 $ (backend _build_order_totals + checkout frontend avec indice « plus que X $ »). Env: FREE_SHIPPING_THRESHOLD_CAD=200.
 - Annulation automatique des commandes impayées après 48 h (watchdog asyncio horaire + au démarrage) : statuts cancelled, note système, remise en stock des variantes. Env: UNPAID_ORDER_TTL_HOURS=48.
 - Textes mis à jour : politique d'expédition (tarif fixe + section Commandes impayées) et FAQ (2 réponses). Testé par testing_agent (iteration_5.json — 100 % backend & frontend).
+- Bandeau d'avertissement rouge « Paiement requis sous 48 heures » sur la page de confirmation (Interac/crypto, masqué si payé/annulé). Validé par testing_agent (iteration_6.json, 8/8). Mention « stock réservé libéré » retirée du bandeau à la demande de l'utilisateur.

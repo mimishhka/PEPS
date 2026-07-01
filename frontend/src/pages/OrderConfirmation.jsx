@@ -91,8 +91,8 @@ export default function OrderConfirmation() {
             </div>
             <p className="mt-2 text-sm text-foreground/80 leading-relaxed">
               {lang === "fr"
-                ? "Votre commande sera automatiquement annulée et le stock réservé sera libéré si le paiement n'est pas reçu dans les 48 heures."
-                : "Your order will be automatically cancelled and the reserved stock released if payment is not received within 48 hours."}
+                ? "Votre commande sera automatiquement annulée si le paiement n'est pas reçu dans les 48 heures."
+                : "Your order will be automatically cancelled if payment is not received within 48 hours."}
             </p>
           </div>
         </div>
