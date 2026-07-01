@@ -38,7 +38,7 @@ export default function CartDrawer() {
                 const name = lang === "fr" ? it.name_fr : it.name_en;
                 return (
                   <li
-                    key={it.product_id}
+                    key={`${it.product_id}-${it.variant_id || "default"}`}
                     className="grid grid-cols-[80px_1fr_auto] gap-4 p-4 border-b border-ink/10"
                     data-testid={`cart-item-${it.slug}`}
                   >
@@ -48,10 +48,10 @@ export default function CartDrawer() {
                     <div className="flex flex-col gap-1">
                       <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">{it.slug}</div>
                       <div className="font-display font-bold text-sm">{name}</div>
-                      <div className="font-mono text-[10px] text-foreground/60">{it.dosage_mg}MG</div>
+                      <div className="font-mono text-[10px] text-foreground/60">{it.variant_name || `${it.dosage_mg}MG`}</div>
                       <div className="flex items-center gap-2 mt-2">
                         <button
-                          onClick={() => setQty(it.product_id, Math.max(1, it.qty - 1))}
+                          onClick={() => setQty(it.product_id, it.variant_id, Math.max(1, it.qty - 1))}
                           className="w-6 h-6 border border-ink flex items-center justify-center hover:bg-ink hover:text-white"
                           data-testid={`cart-qty-dec-${it.slug}`}
                         >
@@ -59,7 +59,7 @@ export default function CartDrawer() {
                         </button>
                         <span className="font-mono text-xs w-6 text-center" data-testid={`cart-qty-${it.slug}`}>{it.qty}</span>
                         <button
-                          onClick={() => setQty(it.product_id, it.qty + 1)}
+                          onClick={() => setQty(it.product_id, it.variant_id, it.qty + 1)}
                           className="w-6 h-6 border border-ink flex items-center justify-center hover:bg-ink hover:text-white"
                           data-testid={`cart-qty-inc-${it.slug}`}
                         >
@@ -68,7 +68,7 @@ export default function CartDrawer() {
                       </div>
                     </div>
                     <div className="flex flex-col items-end justify-between">
-                      <button onClick={() => remove(it.product_id)} data-testid={`cart-remove-${it.slug}`} aria-label="Remove">
+                      <button onClick={() => remove(it.product_id, it.variant_id)} data-testid={`cart-remove-${it.slug}`} aria-label="Remove">
                         <Trash2 size={14} strokeWidth={1.5} />
                       </button>
                       <div className="font-display font-bold">${(it.price_cad * it.qty).toFixed(2)}</div>

@@ -46,7 +46,16 @@ NOWPAYMENTS_BASE_URL = "https://api.nowpayments.io/v1"
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@nordpep.ca")
 ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@nordpep.ca")
+STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
+
+try:
+    from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
+    _STRIPE_AVAILABLE = True
+except Exception:
+    _STRIPE_AVAILABLE = False
+    StripeCheckout = None
+    CheckoutSessionRequest = None
 
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
@@ -154,6 +163,21 @@ class UserOut(BaseModel):
     created_at: str
 
 
+class ProductVariant(BaseModel):
+    id: Optional[str] = None  # generated server-side if missing
+    name: str  # "5mg", "10mg", "500mcg"
+    price: float
+    stock: int = 0
+    sku: str = ""
+    badge_coa_available: bool = False
+    badge_coa_pending: bool = False
+    badge_coming_soon: bool = False
+    preorder_enabled: bool = False
+    preorder_delay_message: str = ""
+    preorder_price: Optional[float] = None
+    preorder_note: str = ""
+
+
 class ProductIn(BaseModel):
     slug: str
     name_en: str
@@ -161,20 +185,21 @@ class ProductIn(BaseModel):
     category: str  # healing | gh-secretagogues | weight-loss | cognitive | longevity
     sequence: Optional[str] = ""
     purity: str = "≥ 99%"
-    dosage_mg: float
+    dosage_mg: float = 0.0  # informational only — variants drive actual pricing/stock
     description_en: str
     description_fr: str
-    price_cad: float
-    stock: int = 100
+    price_cad: float = 0.0  # legacy/fallback (= price of first variant)
+    stock: int = 0  # legacy/fallback (= total across variants)
     low_stock_threshold: int = 10
     image_url: str = ""
     lab_tested: bool = True
     active: bool = True
     featured: bool = False
-    preorder_allowed: bool = False
+    preorder_allowed: bool = False  # legacy product-level (variants override)
     coa_url: Optional[str] = ""
     coa_lot: Optional[str] = ""
     coa_date: Optional[str] = ""
+    variants: List[ProductVariant] = []
 
 
 class ProductOut(ProductIn):
@@ -184,6 +209,7 @@ class ProductOut(ProductIn):
 
 class CartItem(BaseModel):
     product_id: str
+    variant_id: Optional[str] = None
     qty: int = Field(ge=1)
 
 
@@ -202,9 +228,10 @@ class CheckoutIn(BaseModel):
     items: List[CartItem]
     shipping: ShippingAddress
     email: Optional[EmailStr] = None  # guest email; auth user's email is used if logged in
-    payment_method: Literal["interac", "nowpayments"]
+    payment_method: Literal["interac", "nowpayments", "stripe"]
     pay_currency: Optional[str] = "btc"  # used only for nowpayments
     coupon_code: Optional[str] = None
+    origin_url: Optional[str] = None  # used by stripe to build success/cancel URLs
     accept_terms: bool
     confirm_age: bool
     confirm_research_use: bool
@@ -340,12 +367,30 @@ async def get_product(slug: str):
     return product
 
 
+def _ensure_variant_ids(payload_doc: dict) -> dict:
+    """Ensure every variant has an id. Sync legacy price_cad/stock from first variant if variants present."""
+    variants = payload_doc.get("variants") or []
+    out_variants = []
+    for v in variants:
+        v = dict(v)
+        if not v.get("id"):
+            v["id"] = str(uuid.uuid4())
+        out_variants.append(v)
+    payload_doc["variants"] = out_variants
+    # Sync legacy fields for backward compat / cart fallback
+    if out_variants:
+        payload_doc["price_cad"] = float(out_variants[0].get("price", 0.0))
+        payload_doc["stock"] = sum(int(v.get("stock", 0)) for v in out_variants)
+    return payload_doc
+
+
 @api.post("/admin/products")
 async def admin_create_product(payload: ProductIn, _admin: dict = Depends(get_admin_user)):
     existing = await db.products.find_one({"slug": payload.slug})
     if existing:
         raise HTTPException(409, "Slug already exists")
     doc = payload.model_dump()
+    doc = _ensure_variant_ids(doc)
     doc["id"] = str(uuid.uuid4())
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
     await db.products.insert_one(doc)
@@ -356,6 +401,7 @@ async def admin_create_product(payload: ProductIn, _admin: dict = Depends(get_ad
 @api.put("/admin/products/{product_id}")
 async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict = Depends(get_admin_user)):
     update = payload.model_dump()
+    update = _ensure_variant_ids(update)
     res = await db.products.update_one({"id": product_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Product not found")
@@ -373,6 +419,39 @@ async def admin_delete_product(product_id: str, _admin: dict = Depends(get_admin
 # ---------------------------------------------------------------------------
 # Order / Checkout
 # ---------------------------------------------------------------------------
+def _resolve_variant(p: dict, variant_id: Optional[str]) -> dict:
+    """Return the selected variant subdoc. Falls back to first variant or builds a synthetic one from legacy fields."""
+    variants = p.get("variants") or []
+    if variant_id:
+        for v in variants:
+            if v.get("id") == variant_id:
+                return v
+        raise HTTPException(400, f"Variant {variant_id} not found for product {p['slug']}")
+    if variants:
+        return variants[0]
+    # Legacy synthetic variant
+    return {
+        "id": "_default",
+        "name": f"{p.get('dosage_mg', 0)}mg" if p.get("dosage_mg") else "Default",
+        "price": p.get("price_cad", 0.0),
+        "stock": p.get("stock", 0),
+        "sku": p["slug"].upper(),
+        "preorder_enabled": p.get("preorder_allowed", False),
+        "preorder_delay_message": "",
+        "preorder_price": None,
+        "preorder_note": "",
+        "badge_coa_available": bool(p.get("coa_url")),
+        "badge_coa_pending": not bool(p.get("coa_url")),
+        "badge_coming_soon": False,
+    }
+
+
+def _variant_effective_price(v: dict, is_preorder: bool) -> float:
+    if is_preorder and v.get("preorder_price"):
+        return float(v["preorder_price"])
+    return float(v.get("price", 0.0))
+
+
 async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] = None):
     line_items = []
     subtotal = 0.0
@@ -383,20 +462,27 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
             raise HTTPException(400, f"Product {it.product_id} not found")
         if not p.get("active"):
             raise HTTPException(400, f"Product {p['name_en']} unavailable")
+
+        v = _resolve_variant(p, it.variant_id)
         is_preorder = False
-        if p.get("stock", 0) < it.qty:
-            if p.get("preorder_allowed"):
+        if v.get("stock", 0) < it.qty:
+            if v.get("preorder_enabled") or p.get("preorder_allowed"):
                 is_preorder = True
                 has_preorder = True
             else:
-                raise HTTPException(400, f"Insufficient stock for {p['name_en']}")
-        line_total = round(p["price_cad"] * it.qty, 2)
+                raise HTTPException(400, f"Insufficient stock for {p['name_en']} ({v.get('name','')})")
+
+        unit_price = _variant_effective_price(v, is_preorder)
+        line_total = round(unit_price * it.qty, 2)
         line_items.append({
             "product_id": p["id"],
+            "variant_id": v.get("id"),
+            "variant_name": v.get("name", ""),
             "slug": p["slug"],
+            "sku": v.get("sku", p["slug"].upper()),
             "name_en": p["name_en"],
             "name_fr": p["name_fr"],
-            "price_cad": p["price_cad"],
+            "price_cad": unit_price,
             "qty": it.qty,
             "line_total": line_total,
             "image_url": p.get("image_url", ""),
@@ -405,7 +491,7 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
         subtotal += line_total
     subtotal = round(subtotal, 2)
 
-    # Apply coupon
+    # Apply coupon (unchanged logic)
     discount = 0.0
     applied_coupon = None
     if coupon_code:
@@ -602,6 +688,45 @@ async def checkout(payload: CheckoutIn, request: Request):
             },
         }
         payment_status = "awaiting_etransfer"
+    elif payload.payment_method == "stripe":
+        if not _STRIPE_AVAILABLE or not STRIPE_API_KEY:
+            raise HTTPException(503, "Stripe not configured")
+        origin = (payload.origin_url or "").rstrip("/")
+        if not origin:
+            raise HTTPException(400, "origin_url is required for Stripe checkout")
+        success_url = f"{origin}/order/{order_id}?session_id={{CHECKOUT_SESSION_ID}}"
+        cancel_url = f"{origin}/checkout"
+        stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{origin}/api/webhook/stripe")
+        try:
+            req = CheckoutSessionRequest(
+                amount=float(total),
+                currency="cad",
+                success_url=success_url,
+                cancel_url=cancel_url,
+                metadata={"order_id": order_id, "order_number": order_number,
+                          "user_id": user["id"] if user else "guest"},
+            )
+            session = await stripe_checkout.create_checkout_session(req)
+        except Exception as e:
+            logging.error("Stripe checkout session error: %s", e)
+            raise HTTPException(502, "Stripe checkout unavailable")
+        await db.payment_transactions.insert_one({
+            "id": str(uuid.uuid4()),
+            "order_id": order_id,
+            "session_id": session.session_id,
+            "amount": total,
+            "currency": "cad",
+            "metadata": {"order_number": order_number},
+            "payment_status": "pending",
+            "status": "initiated",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        payment_info = {
+            "type": "stripe",
+            "session_id": session.session_id,
+            "checkout_url": session.url,
+        }
+        payment_status = "awaiting_stripe"
     else:
         np = await _nowpayments_create(order_id, total, payload.pay_currency or "btc")
         payment_info = {"type": "nowpayments", "provider_response": np}
@@ -640,10 +765,17 @@ async def checkout(payload: CheckoutIn, request: Request):
     await db.orders.insert_one(order_doc)
     order_doc.pop("_id", None)
 
-    # Decrement stock for available units (preorder items don't decrement below 0)
+    # Decrement variant stock for available units (preorder items don't decrement below 0)
     for it in line_items:
-        if not it.get("preorder"):
-            await db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": -it["qty"]}})
+        if it.get("preorder") or it.get("variant_id") == "_default":
+            # Legacy/synthetic — fall back to product-level stock decrement
+            if not it.get("preorder"):
+                await db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": -it["qty"]}})
+            continue
+        await db.products.update_one(
+            {"id": it["product_id"], "variants.id": it["variant_id"]},
+            {"$inc": {"variants.$.stock": -it["qty"]}},
+        )
 
     # Track coupon usage
     if applied_coupon:
@@ -1193,6 +1325,90 @@ async def order_invoice_pdf(order_id: str, request: Request):
     )
 
 
+@api.get("/payments/stripe/status/{session_id}")
+async def stripe_status(session_id: str, request: Request):
+    """Poll Stripe checkout session status. Updates payment_transactions + order atomically once paid."""
+    if not _STRIPE_AVAILABLE or not STRIPE_API_KEY:
+        raise HTTPException(503, "Stripe not configured")
+    txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not txn:
+        raise HTTPException(404, "Session not found")
+    # Idempotent: if already paid in our DB, return cached
+    if txn.get("payment_status") == "paid":
+        return {"session_id": session_id, "payment_status": "paid", "status": "complete"}
+
+    origin = str(request.base_url).rstrip("/")
+    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{origin}/api/webhook/stripe")
+    try:
+        status_resp = await stripe_checkout.get_checkout_status(session_id)
+    except Exception as e:
+        logging.error("Stripe status err: %s", e)
+        raise HTTPException(502, "Stripe status unavailable")
+
+    await db.payment_transactions.update_one(
+        {"session_id": session_id},
+        {"$set": {"payment_status": status_resp.payment_status, "status": status_resp.status,
+                  "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    # If paid and our order is not yet paid, mark it paid + processing + send email (idempotent)
+    if status_resp.payment_status == "paid":
+        order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
+        if order and order.get("payment_status") != "paid":
+            await db.orders.update_one(
+                {"id": txn["order_id"]},
+                {"$set": {
+                    "payment_status": "paid",
+                    "fulfillment_status": "processing",
+                    "paid_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+            order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
+            if order.get("email"):
+                asyncio.create_task(send_payment_received(order))
+    return {
+        "session_id": session_id,
+        "payment_status": status_resp.payment_status,
+        "status": status_resp.status,
+        "amount_total": status_resp.amount_total,
+        "currency": status_resp.currency,
+    }
+
+
+@api.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhook events to mark orders as paid."""
+    if not _STRIPE_AVAILABLE or not STRIPE_API_KEY:
+        return {"ok": False, "reason": "stripe_disabled"}
+    body = await request.body()
+    sig = request.headers.get("Stripe-Signature", "")
+    origin = str(request.base_url).rstrip("/")
+    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{origin}/api/webhook/stripe")
+    try:
+        evt = await stripe_checkout.handle_webhook(body, sig)
+    except Exception as e:
+        logging.error("Stripe webhook err: %s", e)
+        return {"ok": False}
+    if evt.payment_status == "paid" and evt.session_id:
+        txn = await db.payment_transactions.find_one({"session_id": evt.session_id})
+        if txn:
+            await db.payment_transactions.update_one(
+                {"session_id": evt.session_id},
+                {"$set": {"payment_status": "paid", "status": "complete",
+                          "updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
+            order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
+            if order and order.get("payment_status") != "paid":
+                await db.orders.update_one(
+                    {"id": txn["order_id"]},
+                    {"$set": {"payment_status": "paid", "fulfillment_status": "processing",
+                              "paid_at": datetime.now(timezone.utc).isoformat()}},
+                )
+                order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
+                if order.get("email"):
+                    asyncio.create_task(send_payment_received(order))
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------
 # Public meta
 # ---------------------------------------------------------------------------
@@ -1438,6 +1654,20 @@ async def seed_admin_and_products():
     # Products
     featured_slugs = {"bpc-157-5mg", "semaglutide-5mg", "tirzepatide-10mg", "ipamorelin-5mg", "ghk-cu-50mg", "epitalon-10mg"}
     for p in SEED_PRODUCTS:
+        default_variant = {
+            "id": str(uuid.uuid4()),
+            "name": f"{p['dosage_mg']}mg",
+            "price": p["price_cad"],
+            "stock": p["stock"],
+            "sku": p["slug"].upper(),
+            "badge_coa_available": True,
+            "badge_coa_pending": False,
+            "badge_coming_soon": False,
+            "preorder_enabled": False,
+            "preorder_delay_message": "",
+            "preorder_price": None,
+            "preorder_note": "",
+        }
         defaults = {
             **p,
             "id": str(uuid.uuid4()),
@@ -1448,6 +1678,7 @@ async def seed_admin_and_products():
             "coa_url": "",
             "coa_lot": "",
             "coa_date": "",
+            "variants": [default_variant],
         }
         await db.products.update_one({"slug": p["slug"]}, {"$setOnInsert": defaults}, upsert=True)
         # Backfill featured / new fields on existing docs
@@ -1461,6 +1692,11 @@ async def seed_admin_and_products():
                 {"slug": p["slug"], field: {"$exists": False}},
                 {"$set": {field: value}},
             )
+        # Ensure at least one variant exists on legacy products
+        await db.products.update_one(
+            {"slug": p["slug"], "$or": [{"variants": {"$exists": False}}, {"variants": []}]},
+            {"$set": {"variants": [default_variant]}},
+        )
 
     # Default shipping zone: Canada
     if await db.shipping_zones.count_documents({}) == 0:

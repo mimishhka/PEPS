@@ -11,12 +11,17 @@ export default function ProductDetail() {
   const { add } = useCart();
   const [product, setProduct] = useState(null);
   const [qty, setQty] = useState(1);
+  const [variantId, setVariantId] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
     api.get(`/products/${slug}`)
-      .then((r) => setProduct(r.data))
+      .then((r) => {
+        setProduct(r.data);
+        const firstAvailable = (r.data.variants || []).find((v) => !v.badge_coming_soon) || r.data.variants?.[0];
+        setVariantId(firstAvailable?.id || null);
+      })
       .finally(() => setLoading(false));
   }, [slug]);
 
@@ -32,6 +37,16 @@ export default function ProductDetail() {
   }
   const name = lang === "fr" ? product.name_fr : product.name_en;
   const desc = lang === "fr" ? product.description_fr : product.description_en;
+  const variants = product.variants || [];
+  const selectedVariant = variants.find((v) => v.id === variantId) || variants[0] || null;
+  const effectivePrice = selectedVariant
+    ? (selectedVariant.preorder_enabled && selectedVariant.stock <= 0 && selectedVariant.preorder_price
+        ? selectedVariant.preorder_price
+        : selectedVariant.price)
+    : product.price_cad;
+  const isVariantPreorder = !!(selectedVariant && selectedVariant.preorder_enabled && selectedVariant.stock <= 0);
+  const isComingSoon = !!(selectedVariant && selectedVariant.badge_coming_soon);
+  const isOutOfStock = !!(selectedVariant && selectedVariant.stock <= 0 && !selectedVariant.preorder_enabled);
 
   return (
     <div data-testid="product-detail-page" className="grid lg:grid-cols-2 border-b border-ink">
@@ -81,7 +96,7 @@ export default function ProductDetail() {
           <tbody className="font-mono text-xs">
             <tr className="border-t border-b border-ink/20">
               <td className="py-3 uppercase tracking-[0.2em] text-foreground/60 w-1/3">{t("product.sku")}</td>
-              <td className="py-3">{product.slug.toUpperCase()}</td>
+              <td className="py-3">{selectedVariant?.sku || product.slug.toUpperCase()}</td>
             </tr>
             {product.sequence && (
               <tr className="border-b border-ink/20">
@@ -95,19 +110,58 @@ export default function ProductDetail() {
             </tr>
             <tr className="border-b border-ink/20">
               <td className="py-3 uppercase tracking-[0.2em] text-foreground/60">{t("product.dosage")}</td>
-              <td className="py-3">{product.dosage_mg} mg · single vial</td>
+              <td className="py-3">{selectedVariant?.name || `${product.dosage_mg} mg`} · single vial</td>
             </tr>
             <tr className="border-b border-ink/20">
               <td className="py-3 uppercase tracking-[0.2em] text-foreground/60">{t("product.stock")}</td>
-              <td className="py-3">{product.stock > 0 ? `${product.stock} units` : t("product.outOfStock")}</td>
+              <td className="py-3">
+                {isComingSoon ? "Coming soon"
+                  : isVariantPreorder ? (selectedVariant.preorder_delay_message || "Pre-order available")
+                  : (selectedVariant?.stock ?? 0) > 0 ? `${selectedVariant.stock} units`
+                  : t("product.outOfStock")}
+              </td>
             </tr>
           </tbody>
         </table>
 
+        {variants.length > 1 && (
+          <div data-testid="variant-selector">
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-2">Choose a size / dosage</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {variants.map((v) => {
+                const active = v.id === variantId;
+                const outNoPre = v.stock <= 0 && !v.preorder_enabled;
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => setVariantId(v.id)}
+                    disabled={v.badge_coming_soon || outNoPre}
+                    data-testid={`variant-${v.name}`}
+                    className={`p-3 border text-left transition-colors ${active ? "border-ink bg-ink text-white" : "border-ink/30 hover:border-ink"} disabled:opacity-40 disabled:cursor-not-allowed`}
+                  >
+                    <div className="font-display font-bold">{v.name}</div>
+                    <div className="font-mono text-[10px] mt-0.5 opacity-80">${v.price?.toFixed(2)} CAD</div>
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {v.badge_coa_available && <span className="text-[9px] font-mono bg-emerald-600 text-white px-1.5 py-0.5">COA</span>}
+                      {v.badge_coa_pending && <span className="text-[9px] font-mono bg-orange-500 text-white px-1.5 py-0.5">COA…</span>}
+                      {v.badge_coming_soon && <span className="text-[9px] font-mono bg-blue-600 text-white px-1.5 py-0.5">SOON</span>}
+                      {v.preorder_enabled && v.stock <= 0 && <span className="text-[9px] font-mono bg-orange-500 text-white px-1.5 py-0.5">PRE</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="border-t border-ink pt-8 flex items-end justify-between gap-6 flex-wrap">
           <div>
             <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50">CAD</div>
-            <div className="font-display text-5xl font-extrabold" data-testid="product-price">${product.price_cad.toFixed(2)}</div>
+            <div className="font-display text-5xl font-extrabold" data-testid="product-price">${effectivePrice.toFixed(2)}</div>
+            {isVariantPreorder && selectedVariant.preorder_note && (
+              <div className="font-mono text-[11px] text-orange-600 mt-1" data-testid="preorder-note">{selectedVariant.preorder_note}</div>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="w-10 h-10 border border-ink flex items-center justify-center hover:bg-ink hover:text-white" data-testid="product-qty-dec"><Minus size={14} /></button>
@@ -117,16 +171,15 @@ export default function ProductDetail() {
         </div>
 
         <button
-          onClick={() => add(product, qty)}
+          onClick={() => add(product, qty, selectedVariant)}
           data-testid="product-add-to-cart"
-          disabled={product.stock <= 0 && !product.preorder_allowed}
+          disabled={isOutOfStock || isComingSoon}
           className="w-full bg-ink text-white font-mono text-sm uppercase tracking-[0.3em] py-5 hover:bg-foreground/85 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {product.stock <= 0 && product.preorder_allowed
-            ? `PRE-ORDER · $${(product.price_cad * qty).toFixed(2)} CAD`
-            : product.stock <= 0
-              ? "OUT OF STOCK"
-              : `${t("common.addToCart")} — $${(product.price_cad * qty).toFixed(2)} CAD`}
+          {isComingSoon ? "COMING SOON"
+            : isVariantPreorder ? `PRE-ORDER · $${(effectivePrice * qty).toFixed(2)} CAD`
+            : isOutOfStock ? "OUT OF STOCK"
+            : `${t("common.addToCart")} — $${(effectivePrice * qty).toFixed(2)} CAD`}
         </button>
 
         {product.coa_url ? (

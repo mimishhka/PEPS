@@ -10,12 +10,42 @@ export default function OrderConfirmation() {
   const { t } = useLang();
   const [order, setOrder] = useState(state?.order || null);
   const [copied, setCopied] = useState("");
+  const [stripePolling, setStripePolling] = useState(false);
 
   useEffect(() => {
     if (!order) {
       api.get(`/orders/${id}`).then((r) => setOrder(r.data)).catch(() => {});
     }
   }, [id, order]);
+
+  // Stripe success-redirect polling
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get("session_id");
+    if (!sessionId) return;
+    let attempts = 0;
+    const max = 8;
+    setStripePolling(true);
+    const poll = async () => {
+      try {
+        const { data } = await api.get(`/payments/stripe/status/${sessionId}`);
+        if (data.payment_status === "paid") {
+          setStripePolling(false);
+          const fresh = await api.get(`/orders/${id}`);
+          setOrder(fresh.data);
+          return;
+        }
+        if (data.status === "expired") {
+          setStripePolling(false);
+          return;
+        }
+      } catch { /* ignore */ }
+      attempts += 1;
+      if (attempts < max) setTimeout(poll, 2000);
+      else setStripePolling(false);
+    };
+    poll();
+  }, [id]);
 
   if (!order) return <div className="p-16 font-mono text-xs uppercase tracking-[0.25em]">{t("common.loading")}</div>;
 
@@ -44,6 +74,12 @@ export default function OrderConfirmation() {
           <p className="text-foreground/70 mt-2">{t("confirmation.sub")}</p>
         </div>
       </div>
+
+      {stripePolling && (
+        <div className="mt-8 border border-ink p-4 bg-yellow-50 font-mono text-xs uppercase tracking-[0.2em]" data-testid="stripe-polling">
+          ⏳ Verifying your Stripe payment…
+        </div>
+      )}
 
       {interac && (
         <div className="mt-8 border border-ink" data-testid="interac-instructions">

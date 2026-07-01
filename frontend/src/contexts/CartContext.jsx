@@ -17,9 +17,12 @@ export function CartProvider({ children }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
-  const add = useCallback((product, qty = 1) => {
+  const add = useCallback((product, qty = 1, variant = null) => {
+    const v = variant || (product.variants && product.variants[0]) || null;
+    const variant_id = v?.id || null;
+    const unit_price = v?.price ?? product.price_cad ?? 0;
     setItems((curr) => {
-      const idx = curr.findIndex((i) => i.product_id === product.id);
+      const idx = curr.findIndex((i) => i.product_id === product.id && i.variant_id === variant_id);
       if (idx >= 0) {
         const next = [...curr];
         next[idx] = { ...next[idx], qty: next[idx].qty + qty };
@@ -29,26 +32,28 @@ export function CartProvider({ children }) {
         ...curr,
         {
           product_id: product.id,
+          variant_id,
+          variant_name: v?.name || "",
           slug: product.slug,
           name_en: product.name_en,
           name_fr: product.name_fr,
-          price_cad: product.price_cad,
+          price_cad: unit_price,
           qty,
           image_url: product.image_url,
           dosage_mg: product.dosage_mg,
         },
       ];
     });
-    toast.success("Added to cart", { description: product.name_en, duration: 1500 });
+    toast.success("Added to cart", { description: `${product.name_en}${v?.name ? ` · ${v.name}` : ""}`, duration: 1500 });
     setOpen(true);
   }, []);
 
-  const remove = useCallback((productId) => {
-    setItems((curr) => curr.filter((i) => i.product_id !== productId));
+  const remove = useCallback((productId, variantId = null) => {
+    setItems((curr) => curr.filter((i) => !(i.product_id === productId && (i.variant_id || null) === (variantId || null))));
   }, []);
 
-  const setQty = useCallback((productId, qty) => {
-    setItems((curr) => curr.map((i) => (i.product_id === productId ? { ...i, qty: Math.max(1, qty) } : i)));
+  const setQty = useCallback((productId, variantId, qty) => {
+    setItems((curr) => curr.map((i) => (i.product_id === productId && (i.variant_id || null) === (variantId || null) ? { ...i, qty: Math.max(1, qty) } : i)));
   }, []);
 
   const clear = useCallback(() => setItems([]), []);

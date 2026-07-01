@@ -81,7 +81,7 @@ export default function Checkout() {
     setSubmitting(true);
     try {
       const { data } = await api.post("/checkout", {
-        items: items.map((i) => ({ product_id: i.product_id, qty: i.qty })),
+        items: items.map((i) => ({ product_id: i.product_id, variant_id: i.variant_id || null, qty: i.qty })),
         email: form.email,
         shipping: {
           full_name: form.full_name,
@@ -96,11 +96,17 @@ export default function Checkout() {
         payment_method: paymentMethod,
         pay_currency: payCurrency,
         coupon_code: coupon.applied?.code || null,
+        origin_url: window.location.origin,
         accept_terms: ack.a3,
         confirm_age: ack.a1,
         confirm_research_use: ack.a2,
       });
       clear();
+      // Stripe: redirect to hosted checkout
+      if (paymentMethod === "stripe" && data.payment_info?.checkout_url) {
+        window.location.href = data.payment_info.checkout_url;
+        return;
+      }
       navigate(`/order/${data.id}`, { state: { order: data } });
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || err.message);
@@ -150,7 +156,7 @@ export default function Checkout() {
         {/* Payment */}
         <section className="space-y-4">
           <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50">03 · {t("checkout.payment")}</div>
-          <div className="grid sm:grid-cols-2 gap-0 border border-ink">
+          <div className="grid sm:grid-cols-3 gap-0 border border-ink">
             <button
               type="button"
               onClick={() => setPaymentMethod("interac")}
@@ -160,6 +166,16 @@ export default function Checkout() {
               <div className="font-mono text-[10px] uppercase tracking-[0.25em]">{paymentMethod === "interac" ? "✓ SELECTED" : "SELECT"}</div>
               <div className="font-display text-lg font-bold mt-2">{t("checkout.interac")}</div>
               <div className="text-xs mt-1 opacity-80">{t("checkout.interacDesc")}</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaymentMethod("stripe")}
+              data-testid="payment-stripe"
+              className={`p-5 text-left border-r border-ink ${paymentMethod === "stripe" ? "bg-ink text-white" : "bg-white"}`}
+            >
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em]">{paymentMethod === "stripe" ? "✓ SELECTED" : "SELECT"}</div>
+              <div className="font-display text-lg font-bold mt-2">Card · Stripe</div>
+              <div className="text-xs mt-1 opacity-80">Visa, Mastercard, Amex. Secure 3-D Secure checkout.</div>
             </button>
             <button
               type="button"
