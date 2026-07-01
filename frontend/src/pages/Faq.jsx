@@ -17,8 +17,8 @@ const GROUPS = [
         id: "free-shipping",
         q: { en: "Do you offer free shipping?", fr: "Offrez-vous la livraison gratuite ?" },
         a: {
-          en: "Yes — shipping is free on all orders of $200 or more within Canada. Below that amount, the rate is calculated at checkout based on your shipping zone.",
-          fr: "Oui — la livraison est gratuite pour toute commande de 200 $ et plus au Canada. En dessous de ce montant, le tarif est calculé au moment du paiement selon votre zone de livraison.",
+          en: "Yes — shipping is free on all orders of $200 or more within Canada. Below that amount, a flat rate of $20 applies, calculated automatically at checkout.",
+          fr: "Oui — la livraison est gratuite pour toute commande de 200 $ et plus au Canada. En dessous de ce montant, un tarif fixe de 20 $ s'applique, calculé automatiquement au moment du paiement.",
         },
       },
       {
@@ -137,6 +137,14 @@ const GROUPS = [
         a: {
           en: "Yes — via NOWPayments. BTC, ETH, USDT, LTC, SOL and 100+ other cryptocurrencies are supported, with instant on-chain confirmations.",
           fr: "Oui — via NOWPayments. BTC, ETH, USDT, LTC, SOL et plus de 100 autres cryptomonnaies sont supportées, avec confirmations instantanées sur la chaîne.",
+        },
+      },
+      {
+        id: "unpaid",
+        q: { en: "What happens if I don't send my payment?", fr: "Que se passe-t-il si je n'envoie pas mon paiement ?" },
+        a: {
+          en: "Orders awaiting payment (Interac e-Transfer or crypto) are automatically cancelled if payment is not received within 48 hours, and the reserved stock is released. You can simply place a new order afterwards.",
+          fr: "Les commandes en attente de paiement (virement Interac ou crypto) sont automatiquement annulées si le paiement n'est pas reçu dans les 48 heures, et le stock réservé est libéré. Vous pouvez simplement passer une nouvelle commande par la suite.",
         },
       },
     ],

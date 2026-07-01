@@ -1,0 +1,32 @@
+{
+  "summary": "NORDPEP iteration 5 — free-shipping threshold + auto-cancel unpaid orders — fully verified. Backend: 3/3 new pytest cases PASS (test_iter5_shipping_autocancel.py) + 40/41 regression across all suites (1 pre-existing flaky email-log test unrelated to this iteration). Frontend: /checkout summary correctly shows $20.00 shipping + free-shipping-hint under $200, FREE (EN) / GRATUIT (FR) at >=$200; /compliance has shipping-section-carriers + shipping-section-unpaid-orders with correct copy; /faq has faq-item-free-shipping + faq-item-unpaid, accordions open on trigger click with expected content ($20, 48h, cancel).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Checkout <select> province", "issues": ["React hydration warning: '<span> cannot be a child of <option>' — Emergent visual-editor instrumentation wraps option text in <span>. Runtime works but console spam. Not blocking; may want to disable ve-instrumentation for <option> children."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter5_shipping_autocancel.py",
+    "/app/test_reports/pytest/iter5_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_build_order_totals (server.py:520) correctly applies FREE_SHIPPING_THRESHOLD_CAD after discount is subtracted: `shipping = 0.0 if (subtotal - discount) >= FREE_SHIPPING_THRESHOLD_CAD else SHIPPING_FLAT_CAD` — matches frontend Checkout.jsx:51 computation, preventing UI/API drift.",
+    "cancel_stale_unpaid_orders uses an atomic conditional update (matches on original payment_status) before restocking, so concurrent watchdog runs / manual admin actions cannot double-restock. Good.",
+    "_restock_order_items correctly skips preorder line items and handles both variant and legacy (_default) SKUs. Verified via test — variant stock returned to original after cancellation.",
+    "Watchdog cadence is 1h (`await asyncio.sleep(3600)`) — reasonable. Also runs immediately at startup so a restart flushes any accumulated stale orders — verified.",
+    "System note structure is `{id, text, author='system', created_at}` — note that iter3 admin notes use key `admin_email`/`ts` while watchdog uses `author`/`created_at`. Minor inconsistency in notes schema across the two writers; consider unifying to a single {id, text, author, created_at} shape for easier UI rendering.",
+    "FAQ accordion + Compliance sections have correct data-testids and copy present in both FR/EN arrays."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter5_shipping_autocancel.py"],
+  "success_rate": {"backend": "100% (3/3 new + 40/41 overall, 1 pre-existing unrelated flake)", "frontend": "100% (all 3 pages, 5 assertions)"},
+  "test_credentials": "Admin admin@nordpep.ca / NordpepAdmin2026! (from /app/memory/test_credentials.md). Guest checkout used for iter5 tests — no auth required.",
+  "seed_data_creation": "Test creates transient orders (deleted at test end) and briefly decrements/re-increments variant stock. All test data cleaned up in fixtures.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend suite is now 4 files: test_nordpep_api.py, test_iter3_features.py, test_iter5_shipping_autocancel.py (+ conftest? none). Run with: cd /app && python -m pytest backend/tests/ -v -o addopts=. iter5 test restarts backend via `sudo supervisorctl restart backend` and waits up to 45s for the startup-watchdog to cancel a backdated order — expect test wall time ~15-20s. Pre-existing flake test_iter2_checkout_logs_two_emails is log-window dependent and fails intermittently when the log ring buffer is full — not related to shipping/auto-cancel.",
+  "rca of the issue": "N/A — no bugs found in iteration 5 implementation. Main agent's manual curl verification matches automated results: qty=1 (subtotal $64.99) → shipping $20; qty=4 (subtotal $259.96) → shipping $0; backdate created_at 72h + backend restart → payment_status='cancelled', fulfillment_status='cancelled', system note added with exact text 'Auto-cancelled: payment not received within 48h', variant stock incremented back by ordered qty."
+}

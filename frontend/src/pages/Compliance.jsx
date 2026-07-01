@@ -247,8 +247,8 @@ const SHIPPING = [
     fr: { title: "Transporteurs et livraison gratuite" },
     paras: [
       {
-        en: "Shipping is free on all orders of $200 or more. Depending on the destination, parcels are sent via Canada Post or UPS, with tracking included. When you select the free or economy option, NORDPEP chooses the carrier best suited to your location.",
-        fr: "La livraison est gratuite pour toute commande de 200 $ et plus. Selon la destination, les colis sont envoyés via Postes Canada ou UPS, avec suivi inclus. Lorsque vous choisissez l'option gratuite ou économique, NORDPEP sélectionne le transporteur le mieux adapté à votre emplacement.",
+        en: "Shipping is free on all orders of $200 or more. For orders under $200, a flat rate of $20 applies, calculated automatically at checkout. Depending on the destination, parcels are sent via Canada Post or UPS, with tracking included. When you select the free or economy option, NORDPEP chooses the carrier best suited to your location.",
+        fr: "La livraison est gratuite pour toute commande de 200 $ et plus. Pour les commandes de moins de 200 $, un tarif fixe de 20 $ s'applique, calculé automatiquement au moment du paiement. Selon la destination, les colis sont envoyés via Postes Canada ou UPS, avec suivi inclus. Lorsque vous choisissez l'option gratuite ou économique, NORDPEP sélectionne le transporteur le mieux adapté à votre emplacement.",
       },
     ],
   },
@@ -260,6 +260,17 @@ const SHIPPING = [
       {
         en: "All orders are shipped from Canada. Transit time depends on the distance to your address: Ontario and Québec typically receive their parcel within 1 to 2 business days, Western and Atlantic Canada within 4 to 5 business days, and remote regions may require up to 10 days.",
         fr: "Toutes les commandes sont expédiées depuis le Canada. Le délai de transport dépend de la distance jusqu'à votre adresse : l'Ontario et le Québec reçoivent généralement leur colis en 1 à 2 jours ouvrables, l'Ouest et les provinces de l'Atlantique en 4 à 5 jours ouvrables, et les régions éloignées peuvent nécessiter jusqu'à 10 jours.",
+      },
+    ],
+  },
+  {
+    id: "unpaid-orders",
+    en: { title: "Unpaid Orders" },
+    fr: { title: "Commandes impayées" },
+    paras: [
+      {
+        en: "Orders placed with a deferred payment method (Interac e-Transfer or cryptocurrency) must be paid within 48 hours. If payment has not been received within that window, the order is automatically cancelled and the reserved stock is released. Simply place a new order if you still wish to purchase.",
+        fr: "Les commandes passées avec un mode de paiement différé (virement Interac ou cryptomonnaie) doivent être payées dans un délai de 48 heures. Si le paiement n'est pas reçu dans ce délai, la commande est automatiquement annulée et le stock réservé est libéré. Il vous suffit de passer une nouvelle commande si vous souhaitez toujours acheter.",
       },
     ],
   },

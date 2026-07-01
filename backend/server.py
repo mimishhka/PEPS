@@ -48,6 +48,8 @@ SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@nordpep.ca")
 ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@nordpep.ca")
 STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
+FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))
+UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "48"))
 
 try:
     from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
@@ -515,7 +517,7 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
         applied_coupon = {"code": coupon["code"], "discount_type": coupon["discount_type"], "value": coupon["value"], "discount_amount": discount}
 
     tax_rate = 0.0
-    shipping = SHIPPING_FLAT_CAD
+    shipping = 0.0 if (subtotal - discount) >= FREE_SHIPPING_THRESHOLD_CAD else SHIPPING_FLAT_CAD
     tax = 0.0
     total = round(max(0, subtotal - discount) + shipping, 2)
     return line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder
@@ -1747,9 +1749,59 @@ async def seed_admin_and_products():
         ])
 
 
+async def _restock_order_items(order: dict):
+    for it in order.get("items", []):
+        if it.get("preorder"):
+            continue
+        if it.get("variant_id") in (None, "", "_default"):
+            await db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": it["qty"]}})
+            continue
+        await db.products.update_one(
+            {"id": it["product_id"], "variants.id": it["variant_id"]},
+            {"$inc": {"variants.$.stock": it["qty"]}},
+        )
+
+
+async def cancel_stale_unpaid_orders():
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=UNPAID_ORDER_TTL_HOURS)).isoformat()
+    stale = await db.orders.find(
+        {
+            "payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto", "awaiting_stripe"]},
+            "created_at": {"$lt": cutoff},
+        },
+        {"_id": 0},
+    ).to_list(500)
+    for order in stale:
+        note = {
+            "id": str(uuid.uuid4()),
+            "text": f"Auto-cancelled: payment not received within {int(UNPAID_ORDER_TTL_HOURS)}h",
+            "author": "system",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        res = await db.orders.update_one(
+            {"id": order["id"], "payment_status": order["payment_status"]},
+            {"$set": {"payment_status": "cancelled", "fulfillment_status": "cancelled"},
+             "$push": {"notes": note}},
+        )
+        if res.modified_count:
+            await _restock_order_items(order)
+            logging.info("Auto-cancelled unpaid order %s", order.get("order_number", order["id"]))
+    return len(stale)
+
+
+async def _unpaid_orders_watchdog():
+    while True:
+        try:
+            await cancel_stale_unpaid_orders()
+        except Exception as e:
+            logging.error("Unpaid order watchdog error: %s", e)
+        await asyncio.sleep(3600)
+
+
 @app.on_event("startup")
 async def startup_event():
     await seed_admin_and_products()
+    asyncio.create_task(_unpaid_orders_watchdog())
 
 
 @app.on_event("shutdown")

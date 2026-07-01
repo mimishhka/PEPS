@@ -22,6 +22,7 @@ const PROVINCES = [
   { code: "YT", name: "Yukon" },
 ];
 const SHIPPING_FLAT = 20.0;
+const FREE_SHIPPING_THRESHOLD = 200.0;
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -47,7 +48,8 @@ export default function Checkout() {
   const [coupon, setCoupon] = useState({ code: "", applied: null, error: "" });
 
   const discount = coupon.applied?.discount_amount || 0;
-  const total = useMemo(() => +(Math.max(0, subtotal - discount) + SHIPPING_FLAT).toFixed(2), [subtotal, discount]);
+  const shipping = useMemo(() => (Math.max(0, subtotal - discount) >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FLAT), [subtotal, discount]);
+  const total = useMemo(() => +(Math.max(0, subtotal - discount) + shipping).toFixed(2), [subtotal, discount, shipping]);
 
   const applyCoupon = async () => {
     if (!coupon.code.trim()) return;
@@ -252,7 +254,17 @@ export default function Checkout() {
               <span>-${discount.toFixed(2)}</span>
             </div>
           )}
-          <div className="flex justify-between"><span className="text-foreground/60 uppercase tracking-[0.15em] text-xs">{t("common.shipping")}</span><span data-testid="summary-shipping">${SHIPPING_FLAT.toFixed(2)}</span></div>
+          <div className="flex justify-between">
+            <span className="text-foreground/60 uppercase tracking-[0.15em] text-xs">{t("common.shipping")}</span>
+            <span data-testid="summary-shipping">{shipping === 0 ? (lang === "fr" ? "GRATUIT" : "FREE") : `$${shipping.toFixed(2)}`}</span>
+          </div>
+          {shipping > 0 && (
+            <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-foreground/50" data-testid="free-shipping-hint">
+              {lang === "fr"
+                ? `Livraison gratuite dès ${FREE_SHIPPING_THRESHOLD.toFixed(0)} $ — plus que $${(FREE_SHIPPING_THRESHOLD - Math.max(0, subtotal - discount)).toFixed(2)}`
+                : `Free shipping at $${FREE_SHIPPING_THRESHOLD.toFixed(0)} — only $${(FREE_SHIPPING_THRESHOLD - Math.max(0, subtotal - discount)).toFixed(2)} to go`}
+            </div>
+          )}
         </div>
 
         {/* Coupon */}
