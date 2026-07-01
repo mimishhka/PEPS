@@ -376,26 +376,6 @@ export default function Compliance() {
           </div>
         ))}
       </section>
-
-      <section id="faq" data-testid="section-faq" className="border-t border-ink pt-12">
-        <h2 className="font-display text-3xl font-bold uppercase tracking-tight">FAQ</h2>
-        <div className="mt-6 space-y-6 text-foreground/80">
-          <div>
-            <h3 className="font-bold">{isFr ? "Comment fonctionne le paiement Interac ?" : "How does Interac payment work?"}</h3>
-            <p className="mt-2 text-sm">{isFr
-              ? "Après avoir passé votre commande, vous recevez des instructions détaillées pour envoyer un virement Interac. Nous confirmons la réception sous 24 h et expédions immédiatement."
-              : "After placing your order, you receive detailed Interac e-Transfer instructions. We confirm receipt within 24h and ship immediately."}
-            </p>
-          </div>
-          <div>
-            <h3 className="font-bold">{isFr ? "Acceptez-vous les cryptos ?" : "Do you accept crypto?"}</h3>
-            <p className="mt-2 text-sm">{isFr
-              ? "Oui — via NOWPayments. BTC, ETH, USDT, LTC, SOL et plus de 100 autres cryptos sont supportés. Confirmations instantanées sur la chaîne."
-              : "Yes — via NOWPayments. BTC, ETH, USDT, LTC, SOL and 100+ other cryptos. Instant on-chain confirmations."}
-            </p>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }

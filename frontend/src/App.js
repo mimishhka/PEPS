@@ -23,6 +23,7 @@ import About from "./pages/About";
 import Lab from "./pages/Lab";
 import Compliance from "./pages/Compliance";
 import Privacy from "./pages/Privacy";
+import Faq from "./pages/Faq";
 import Admin from "./pages/admin/AdminLayout";
 
 import "./index.css";
@@ -60,6 +61,7 @@ export default function App() {
                 <Route path="/lab" element={<Lab />} />
                 <Route path="/compliance" element={<Compliance />} />
                 <Route path="/privacy" element={<Privacy />} />
+                <Route path="/faq" element={<Faq />} />
                 <Route path="/admin/*" element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />
                 <Route path="*" element={<Home />} />
               </Routes>

@@ -50,7 +50,7 @@ export default function Footer() {
             <li><Link to="/compliance" className="link-underline">{t("footer.terms")}</Link></li>
             <li><Link to="/privacy" className="link-underline">{t("footer.privacy")}</Link></li>
             <li><Link to="/compliance#shipping" className="link-underline">{t("footer.shipping")}</Link></li>
-            <li><Link to="/compliance#faq" className="link-underline">{t("footer.faq")}</Link></li>
+            <li><Link to="/faq" className="link-underline">{t("footer.faq")}</Link></li>
           </ul>
         </div>
       </div>
