@@ -48,7 +48,7 @@ export default function Footer() {
           <div className="font-mono text-[11px] uppercase tracking-[0.25em] mb-4 text-foreground/50">{t("footer.legal")}</div>
           <ul className="space-y-2 text-sm">
             <li><Link to="/compliance" className="link-underline">{t("footer.terms")}</Link></li>
-            <li><Link to="/compliance#privacy" className="link-underline">{t("footer.privacy")}</Link></li>
+            <li><Link to="/privacy" className="link-underline">{t("footer.privacy")}</Link></li>
             <li><Link to="/compliance#shipping" className="link-underline">{t("footer.shipping")}</Link></li>
             <li><Link to="/compliance#faq" className="link-underline">{t("footer.faq")}</Link></li>
           </ul>

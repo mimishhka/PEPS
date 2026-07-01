@@ -359,22 +359,6 @@ export default function Compliance() {
         ))}
       </section>
 
-      <section id="privacy" data-testid="section-privacy" className="border-t border-ink pt-12">
-        <h2 className="font-display text-3xl font-bold uppercase tracking-tight">
-          {isFr ? "Politique de confidentialité" : "Privacy Policy"}
-        </h2>
-        <div className="mt-6 space-y-4 text-foreground/80 leading-relaxed">
-          <p>{isFr
-            ? "Nous recueillons uniquement les renseignements nécessaires à l'exécution des commandes : nom, adresse de livraison, courriel et téléphone. Vos données ne sont jamais vendues à des tiers."
-            : "We collect only the information necessary to fulfill orders: name, shipping address, email and phone. Your data is never sold to third parties."}
-          </p>
-          <p>{isFr
-            ? "NORDPEP est conforme à la LPRPDE (loi canadienne sur la protection des renseignements personnels) et, pour les résidents du Québec, à la Loi 25."
-            : "NORDPEP complies with PIPEDA (Canadian privacy law) and, for Québec residents, with Law 25."}
-          </p>
-        </div>
-      </section>
-
       <section id="shipping" data-testid="section-shipping" className="border-t border-ink pt-12 space-y-10">
         <h2 className="font-display text-3xl font-bold uppercase tracking-tight">
           {isFr ? "Politique d'expédition" : "Shipping Policy"}
