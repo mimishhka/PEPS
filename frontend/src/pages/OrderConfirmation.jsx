@@ -87,9 +87,9 @@ export default function OrderConfirmation() {
     setTimeout(() => setCopied(""), 1500);
   };
 
-  const interac = order.payment_info?.type === "interac" ? order.payment_info.instructions : null;
-  const np = order.payment_info?.type === "nowpayments" ? order.payment_info.provider_response : null;
   const awaitingPayment = ["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status);
+  const interac = awaitingPayment && order.payment_info?.type === "interac" ? order.payment_info.instructions : null;
+  const np = awaitingPayment && order.payment_info?.type === "nowpayments" ? order.payment_info.provider_response : null;
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-16" data-testid="confirmation-page">
@@ -111,6 +111,22 @@ export default function OrderConfirmation() {
       {stripePolling && (
         <div className="mt-8 border border-ink p-4 bg-yellow-50 font-mono text-xs uppercase tracking-[0.2em]" data-testid="stripe-polling">
           ⏳ Verifying your Stripe payment…
+        </div>
+      )}
+
+      {order.payment_status === "paid" && (
+        <div className="mt-8 border-2 p-5 flex items-start gap-3" style={{ borderColor: "#16a34a" }} data-testid="payment-paid-banner">
+          <span className="font-display font-extrabold text-xl leading-none" style={{ color: "#16a34a" }}>✓</span>
+          <div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.25em]" style={{ color: "#16a34a" }}>
+              {lang === "fr" ? "Paiement reçu" : "Payment received"}
+            </div>
+            <p className="mt-2 text-sm text-foreground/80 leading-relaxed">
+              {lang === "fr"
+                ? "Merci ! Votre paiement a été confirmé et votre commande est en cours de préparation."
+                : "Thank you! Your payment has been confirmed and your order is now being prepared."}
+            </p>
+          </div>
         </div>
       )}
 
