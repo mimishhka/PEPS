@@ -204,6 +204,25 @@ export default function OrderConfirmation() {
               >
                 {lang === "fr" ? "Ouvrir la page de paiement dans un nouvel onglet →" : "Open the payment page in a new tab →"}
               </a>
+              <div className="w-full max-w-md border-t border-ink/15 pt-4 mt-2" data-testid="crypto-key-notes">
+                <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/60 mb-3">
+                  {lang === "fr" ? "Points importants" : "Key things to note"}
+                </div>
+                <ul className="space-y-2 text-sm text-foreground/75 leading-relaxed">
+                  <li className="flex gap-2"><span style={{ color: "#16a34a" }}>✓</span>{lang === "fr"
+                    ? "Nous recommandons de rester sur cette page jusqu'à la fin du paiement."
+                    : "We recommend staying on this page until the payment is completed."}</li>
+                  <li className="flex gap-2"><span style={{ color: "#16a34a" }}>✓</span>{lang === "fr"
+                    ? "Les paiements à taux fixe exigent le montant exact et doivent être envoyés avant l'expiration du minuteur."
+                    : "Fixed-rate payments require the exact amount and must be sent before the timer expires."}</li>
+                  <li className="flex gap-2"><span style={{ color: "#E51919" }}>✕</span>{lang === "fr"
+                    ? "Les paiements inférieurs au montant minimum ne peuvent pas être traités."
+                    : "Payments below the minimum amount can't be processed."}</li>
+                  <li className="flex gap-2"><span style={{ color: "#E51919" }}>✕</span>{lang === "fr"
+                    ? "Les paiements complétés ne sont pas remboursables."
+                    : "Completed payments are non-refundable."}</li>
+                </ul>
+              </div>
             </div>
           ) : (
             <div className="p-8 space-y-5 font-mono text-sm">
