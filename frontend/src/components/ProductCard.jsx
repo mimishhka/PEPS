@@ -7,6 +7,20 @@ export default function ProductCard({ product, index = 0 }) {
   const { add } = useCart();
   const name = lang === "fr" ? product.name_fr : product.name_en;
 
+  const variants = product.variants || [];
+  const priced = variants.map((v) => {
+    const coaComing = v.badge_coa_pending || v.badge_coming_soon;
+    const isPre = v.preorder_enabled && (v.stock <= 0 || coaComing);
+    const sale = v.sale_price && v.sale_price < v.price;
+    const eff = isPre && v.preorder_price ? v.preorder_price : sale ? v.sale_price : v.price;
+    return { ...v, eff, isPre, sale };
+  });
+  const cheapest = priced.length ? priced.reduce((m, v) => (v.eff < m.eff ? v : m), priced[0]) : null;
+  const displayPrice = cheapest ? cheapest.eff : product.price_cad;
+  const displayOriginal = cheapest && cheapest.eff < cheapest.price ? cheapest.price : null;
+  const anyPreorder = priced.some((v) => v.isPre);
+  const anySale = priced.some((v) => v.sale && !v.isPre);
+
   return (
     <div
       className="group bg-white border border-ink/15 flex flex-col card-hover"
@@ -28,6 +42,18 @@ export default function ProductCard({ product, index = 0 }) {
             COA ✓
           </div>
         )}
+        <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
+          {anySale && (
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] bg-red-600 text-white px-2 py-1" data-testid={`sale-badge-${product.slug}`}>
+              {lang === "fr" ? "PROMO" : "SALE"}
+            </span>
+          )}
+          {anyPreorder && (
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] bg-orange-500 text-white px-2 py-1" data-testid={`preorder-badge-${product.slug}`}>
+              {lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"}
+            </span>
+          )}
+        </div>
       </Link>
       <div className="p-5 flex flex-col gap-3">
         <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50">
@@ -41,8 +67,19 @@ export default function ProductCard({ product, index = 0 }) {
         )}
         <div className="flex items-end justify-between pt-2">
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">CAD</div>
-            <div className="font-display text-2xl font-bold">${product.price_cad.toFixed(2)}</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">
+              {variants.length > 1 ? (lang === "fr" ? "DÈS · CAD" : "FROM · CAD") : "CAD"}
+            </div>
+            <div className="flex items-baseline gap-2">
+              {displayOriginal && (
+                <span className="font-display text-sm font-bold line-through text-foreground/40" data-testid={`card-original-price-${product.slug}`}>
+                  ${displayOriginal.toFixed(2)}
+                </span>
+              )}
+              <span className={`font-display text-2xl font-bold ${displayOriginal ? "text-red-600" : ""}`} data-testid={`card-price-${product.slug}`}>
+                ${(displayPrice ?? 0).toFixed(2)}
+              </span>
+            </div>
           </div>
           <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60">
             {product.purity}

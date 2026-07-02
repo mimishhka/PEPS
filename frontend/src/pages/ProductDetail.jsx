@@ -19,7 +19,7 @@ export default function ProductDetail() {
     api.get(`/products/${slug}`)
       .then((r) => {
         setProduct(r.data);
-        const firstAvailable = (r.data.variants || []).find((v) => !v.badge_coming_soon) || r.data.variants?.[0];
+        const firstAvailable = (r.data.variants || []).find((v) => !v.badge_coming_soon || v.preorder_enabled) || r.data.variants?.[0];
         setVariantId(firstAvailable?.id || null);
       })
       .finally(() => setLoading(false));
@@ -39,14 +39,17 @@ export default function ProductDetail() {
   const desc = lang === "fr" ? product.description_fr : product.description_en;
   const variants = product.variants || [];
   const selectedVariant = variants.find((v) => v.id === variantId) || variants[0] || null;
+  const coaComing = !!(selectedVariant && (selectedVariant.badge_coa_pending || selectedVariant.badge_coming_soon));
+  const isVariantPreorder = !!(selectedVariant && selectedVariant.preorder_enabled && (selectedVariant.stock <= 0 || coaComing));
+  const hasSale = !!(selectedVariant && selectedVariant.sale_price && selectedVariant.sale_price < selectedVariant.price);
   const effectivePrice = selectedVariant
-    ? (selectedVariant.preorder_enabled && selectedVariant.stock <= 0 && selectedVariant.preorder_price
+    ? (isVariantPreorder && selectedVariant.preorder_price
         ? selectedVariant.preorder_price
-        : selectedVariant.price)
+        : hasSale ? selectedVariant.sale_price : selectedVariant.price)
     : product.price_cad;
-  const isVariantPreorder = !!(selectedVariant && selectedVariant.preorder_enabled && selectedVariant.stock <= 0);
-  const isComingSoon = !!(selectedVariant && selectedVariant.badge_coming_soon);
-  const isOutOfStock = !!(selectedVariant && selectedVariant.stock <= 0 && !selectedVariant.preorder_enabled);
+  const showOriginal = !!(selectedVariant && effectivePrice < selectedVariant.price);
+  const isComingSoon = !!(selectedVariant && selectedVariant.badge_coming_soon && !selectedVariant.preorder_enabled);
+  const isOutOfStock = !!(selectedVariant && selectedVariant.stock <= 0 && !selectedVariant.preorder_enabled && !coaComing);
 
   return (
     <div data-testid="product-detail-page" className="grid lg:grid-cols-2 border-b border-ink">
@@ -130,23 +133,31 @@ export default function ProductDetail() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {variants.map((v) => {
                 const active = v.id === variantId;
-                const outNoPre = v.stock <= 0 && !v.preorder_enabled;
+                const vCoaComing = v.badge_coa_pending || v.badge_coming_soon;
+                const vPre = v.preorder_enabled && (v.stock <= 0 || vCoaComing);
+                const vSale = v.sale_price && v.sale_price < v.price;
+                const vPrice = vPre && v.preorder_price ? v.preorder_price : vSale ? v.sale_price : v.price;
+                const outNoPre = v.stock <= 0 && !v.preorder_enabled && !v.badge_coming_soon;
                 return (
                   <button
                     key={v.id}
                     type="button"
                     onClick={() => setVariantId(v.id)}
-                    disabled={v.badge_coming_soon || outNoPre}
+                    disabled={(v.badge_coming_soon && !v.preorder_enabled) || outNoPre}
                     data-testid={`variant-${v.name}`}
                     className={`p-3 border text-left transition-colors ${active ? "border-ink bg-ink text-white" : "border-ink/30 hover:border-ink"} disabled:opacity-40 disabled:cursor-not-allowed`}
                   >
                     <div className="font-display font-bold">{v.name}</div>
-                    <div className="font-mono text-[10px] mt-0.5 opacity-80">${v.price?.toFixed(2)} CAD</div>
+                    <div className="font-mono text-[10px] mt-0.5 opacity-80">
+                      {vPrice < v.price && <span className="line-through mr-1 opacity-60">${v.price?.toFixed(2)}</span>}
+                      <span className={vPrice < v.price ? "text-red-500 font-bold" : ""}>${vPrice?.toFixed(2)} CAD</span>
+                    </div>
                     <div className="flex flex-wrap gap-1 mt-1.5">
                       {v.badge_coa_available && <span className="text-[9px] font-mono bg-emerald-600 text-white px-1.5 py-0.5">COA</span>}
                       {v.badge_coa_pending && <span className="text-[9px] font-mono bg-orange-500 text-white px-1.5 py-0.5">COA…</span>}
                       {v.badge_coming_soon && <span className="text-[9px] font-mono bg-blue-600 text-white px-1.5 py-0.5">SOON</span>}
-                      {v.preorder_enabled && v.stock <= 0 && <span className="text-[9px] font-mono bg-orange-500 text-white px-1.5 py-0.5">PRE</span>}
+                      {vPre && <span className="text-[9px] font-mono bg-orange-500 text-white px-1.5 py-0.5">PRE</span>}
+                      {vSale && !vPre && <span className="text-[9px] font-mono bg-red-600 text-white px-1.5 py-0.5">SALE</span>}
                     </div>
                   </button>
                 );
@@ -158,7 +169,24 @@ export default function ProductDetail() {
         <div className="border-t border-ink pt-8 flex items-end justify-between gap-6 flex-wrap">
           <div>
             <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50">CAD</div>
-            <div className="font-display text-5xl font-extrabold" data-testid="product-price">${effectivePrice.toFixed(2)}</div>
+            <div className="flex items-baseline gap-3 flex-wrap">
+              {showOriginal && (
+                <span className="font-display text-2xl font-bold line-through text-foreground/40" data-testid="product-original-price">
+                  ${selectedVariant.price.toFixed(2)}
+                </span>
+              )}
+              <span className={`font-display text-5xl font-extrabold ${showOriginal ? "text-red-600" : ""}`} data-testid="product-price">
+                ${effectivePrice.toFixed(2)}
+              </span>
+              {showOriginal && (
+                <span className="font-mono text-[11px] uppercase tracking-[0.2em] bg-red-600 text-white px-2 py-1" data-testid="product-discount-badge">
+                  {isVariantPreorder && selectedVariant.preorder_price
+                    ? (lang === "fr" ? "PRIX PRÉCOMMANDE" : "PRE-ORDER PRICE")
+                    : (lang === "fr" ? "PRIX SPÉCIAL" : "SPECIAL PRICE")}
+                  {" "}−{Math.round((1 - effectivePrice / selectedVariant.price) * 100)}%
+                </span>
+              )}
+            </div>
             {isVariantPreorder && selectedVariant.preorder_note && (
               <div className="font-mono text-[11px] text-orange-600 mt-1" data-testid="preorder-note">{selectedVariant.preorder_note}</div>
             )}
@@ -182,14 +210,14 @@ export default function ProductDetail() {
             : `${t("common.addToCart")} — $${(effectivePrice * qty).toFixed(2)} CAD`}
         </button>
 
-        {product.coa_url ? (
+        {(selectedVariant?.coa_url || product.coa_url) ? (
           <a
-            href={product.coa_url}
+            href={selectedVariant?.coa_url || product.coa_url}
             target="_blank" rel="noopener noreferrer"
             data-testid="download-coa"
             className="block text-center border border-emerald-600 text-emerald-700 font-mono text-xs uppercase tracking-[0.25em] py-4 hover:bg-emerald-600 hover:text-white"
           >
-            {t("product.labReport")} · Lot {product.coa_lot || "—"} ↓
+            {t("product.labReport")}{selectedVariant?.coa_url && selectedVariant?.name ? ` · ${selectedVariant.name}` : ` · Lot ${product.coa_lot || "—"}`} ↓
           </a>
         ) : (
           <button

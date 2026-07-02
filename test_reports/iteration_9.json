@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 9 — validated variant sale_price + coa_url + COA-pending pre-order flow. Backend 5/5 pytest cases PASS. Frontend visually verified: product detail (5mg sale $49.99 with COA link, 10mg pre-order $85.00 with PRE-ORDER · $85.00 CAD button), catalog SALE + PRE-ORDER badges + strikethrough, FR translation 'PRIX SPÉCIAL', admin editor exposes v-sale-price-0/v-coa-url-0 inputs. Backend charges the correct effective price per variant and does NOT decrement stock for COA-pending pre-orders even when stock > 0.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": [
+    "BACKEND pytest test_iter9_variant_sale_preorder.py — 5/5 PASS",
+    "  * test_product_variants_expose_sale_and_coa: GET /api/products/bpc-157-5mg returns sale_price=49.99, coa_url on 5mg; preorder_enabled+badge_coa_pending+preorder_price=85 on 10mg",
+    "  * test_checkout_5mg_uses_sale_price_and_decrements: interac checkout charges 49.99 (not 64.99), items[0].preorder=False, has_preorder=False, stock decremented by 1",
+    "  * test_checkout_10mg_is_preorder_no_stock_decrement: interac checkout for COA-pending variant with stock > 0 succeeds, charges 85.00, items[0].preorder=True, order.has_preorder=True, fulfillment_status='preorder', stock UNCHANGED",
+    "  * test_admin_update_persists_sale_and_coa: admin login → PUT /api/admin/products/{id} with modified variants persists sale_price + coa_url; restore worked",
+    "  * test_zzz_cleanup: created orders removed, 5mg stock restored",
+    "FRONTEND UI (Playwright, preview URL):",
+    "  * Product /product/bpc-157-5mg 5mg default: data-testid=product-original-price='$64.99' (strikethrough), product-price='$49.99', product-discount-badge='SPECIAL PRICE −23%', download-coa href starts with example.com/coa ✓",
+    "  * FR toggle 5mg: badge 'PRIX SPÉCIAL −23%' ✓",
+    "  * Variant switch to 10.0mg via data-testid='variant-10.0mg': product-original-price='$100.00', product-price='$85.00', product-discount-badge='PRE-ORDER PRICE −15%', CTA reads 'PRE-ORDER · $85.00 CAD', 'Lock in the pre-order price' hint visible ✓",
+    "  * Catalog: data-testid='sale-badge-bpc-157-5mg' + 'preorder-badge-bpc-157-5mg' present, card-original-price=$64.99, card-price=$49.99 ✓",
+    "  * Cart LocalStorage (nordpep_cart_v1): 10mg line stored with price_cad=85 (correct pre-order price)",
+    "  * Admin /admin → ADMIN header button auto-login → Products → edit-bpc-157-5mg → editor shows v-sale-price-0 value=49.99, v-coa-url-0 value=https://example.com/coa-bpc157-5mg.pdf, labels 'Special price (sale)' and 'COA URL (PDF)' ✓"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iter9_variant_sale_preorder.py",
+    "/app/test_reports/pytest/iter9_results.xml"
+  ],
+  "action_items": [
+    "Minor testid inconsistency (non-blocking): review request references 'add-to-cart-btn' but code implements 'product-add-to-cart'. Everything works; consider aligning the test-id name for external docs.",
+    "Cosmetic: previous carry-over from iter 6/7 — React hydration warning '<span> cannot be a child of <option>' still present on Checkout province select (dev-only, no user-visible impact)."
+  ],
+  "critical_code_review_comments": [
+    "server.py _variant_effective_price (line 460) correctly prefers preorder_price when is_preorder, falls back to sale_price when sale < price, else base price — logic sound.",
+    "server.py _build_order_totals (line 481-491) marks is_preorder=True whenever variant.preorder_enabled AND (badge_coa_pending or badge_coming_soon) — even with stock > 0 → correct COA-pending pre-order semantics.",
+    "server.py stock decrement (line 806-816) skips increment when it['preorder']==True → matches spec: pre-order line items must not consume inventory. Verified by test.",
+    "server.py fulfillment_status set to 'preorder' when has_preorder=True (line 792) — correct.",
+    "ProductVariant model exposes sale_price/coa_url — admin PUT round-trips these fields correctly via ProductIn (validated by test)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter9_variant_sale_preorder.py (new)"
+  ],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% (visual+testid confirmed for product/catalog/admin/FR)"},
+  "test_credentials": "Admin: admin@nordpep.ca / NordpepAdmin2026! (ADMIN header button auto-logs in). Guest checkout — no credentials required.",
+  "seed_data_creation": "Created 2 test orders (5mg interac sale + 10mg interac preorder) via backend pytest — both deleted in test_zzz_cleanup. 5mg stock restored (+1). 10mg stock never decremented so no restore needed. Admin sale_price/coa_url edit reverted to original values (49.99 / example.com/coa-bpc157-5mg.pdf).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Feature complete and verified end-to-end. If further changes needed to variant pricing/preorder logic, /app/backend/tests/test_iter9_variant_sale_preorder.py is idempotent (uses TEST_iter9_ prefixed email and cleans up). Admin edit test round-trips the exact product doc via public GET → admin PUT which is a reliable pattern given no GET /api/admin/products endpoint exists. UI testid for add-to-cart button is 'product-add-to-cart' (not 'add-to-cart-btn' as the review request mentioned).",
+  "rca_of_the_issue": "No bugs found — all requirements satisfied."
+}

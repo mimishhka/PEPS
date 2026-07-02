@@ -179,6 +179,8 @@ class ProductVariant(BaseModel):
     badge_coa_available: bool = False
     badge_coa_pending: bool = False
     badge_coming_soon: bool = False
+    coa_url: str = ""
+    sale_price: Optional[float] = None  # special/discount price (must be < price to apply)
     preorder_enabled: bool = False
     preorder_delay_message: str = ""
     preorder_price: Optional[float] = None
@@ -450,12 +452,17 @@ def _resolve_variant(p: dict, variant_id: Optional[str]) -> dict:
         "badge_coa_available": bool(p.get("coa_url")),
         "badge_coa_pending": not bool(p.get("coa_url")),
         "badge_coming_soon": False,
+        "coa_url": p.get("coa_url", "") or "",
+        "sale_price": None,
     }
 
 
 def _variant_effective_price(v: dict, is_preorder: bool) -> float:
     if is_preorder and v.get("preorder_price"):
         return float(v["preorder_price"])
+    sale = v.get("sale_price")
+    if sale and float(sale) < float(v.get("price", 0.0)):
+        return float(sale)
     return float(v.get("price", 0.0))
 
 
@@ -472,8 +479,12 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
 
         v = _resolve_variant(p, it.variant_id)
         is_preorder = False
-        if v.get("stock", 0) < it.qty:
-            if v.get("preorder_enabled") or p.get("preorder_allowed"):
+        coa_coming = bool(v.get("badge_coa_pending") or v.get("badge_coming_soon"))
+        if v.get("preorder_enabled") and (coa_coming or v.get("stock", 0) < it.qty):
+            is_preorder = True
+            has_preorder = True
+        elif v.get("stock", 0) < it.qty:
+            if p.get("preorder_allowed"):
                 is_preorder = True
                 has_preorder = True
             else:

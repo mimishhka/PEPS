@@ -118,7 +118,7 @@ export default function AdminProducts() {
 
 function newVariant(name = "") {
   return {
-    name, price: 0, stock: 0, sku: "",
+    name, price: 0, sale_price: null, stock: 0, sku: "", coa_url: "",
     badge_coa_available: false, badge_coa_pending: false, badge_coming_soon: false,
     preorder_enabled: false, preorder_delay_message: "", preorder_price: null, preorder_note: "",
   };
@@ -223,12 +223,21 @@ function VariantRow({ index, variant, onChange, onRemove }) {
           <Trash2 size={12} />
         </button>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <F label="Name (5mg/500mcg)" value={variant.name} onChange={(v) => onChange({ name: v })} test={`v-name-${index}`} />
         <F label="Price (CAD)" type="number" value={variant.price} onChange={(v) => onChange({ price: parseFloat(v) || 0 })} test={`v-price-${index}`} />
+        <F label="Special price (sale)" type="number"
+           placeholder="(blank = no discount)"
+           value={variant.sale_price ?? ""}
+           onChange={(v) => onChange({ sale_price: v === "" ? null : parseFloat(v) })}
+           test={`v-sale-price-${index}`} />
         <F label="Stock" type="number" value={variant.stock} onChange={(v) => onChange({ stock: parseInt(v) || 0 })} test={`v-stock-${index}`} />
         <F label="SKU" value={variant.sku} onChange={(v) => onChange({ sku: v })} test={`v-sku-${index}`} />
+        <F label="COA URL (PDF)" value={variant.coa_url || ""} onChange={(v) => onChange({ coa_url: v })} placeholder="https://…/coa.pdf" test={`v-coa-url-${index}`} />
       </div>
+      {variant.sale_price != null && variant.sale_price >= variant.price && (
+        <div className="font-mono text-[10px] text-red-600 uppercase tracking-[0.15em]">⚠ Special price must be lower than the regular price to apply.</div>
+      )}
 
       <div>
         <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 mb-2">Badges (independent toggles)</div>
@@ -245,11 +254,14 @@ function VariantRow({ index, variant, onChange, onRemove }) {
           test={`v-preorder-enabled-${index}`} />
         {variant.preorder_enabled && (
           <div className="space-y-3 pt-2">
+            <div className="font-mono text-[10px] text-foreground/60 uppercase tracking-[0.15em]">
+              Applies when stock is 0 OR the variant is marked COA Pending / Coming Soon.
+            </div>
             <F label="Estimated delay message" placeholder="Ships in 3–4 weeks"
                value={variant.preorder_delay_message} onChange={(v) => onChange({ preorder_delay_message: v })}
                test={`v-preorder-delay-${index}`} />
             <Grid2>
-              <F label="Pre-order price (optional)" type="number"
+              <F label="Pre-order price (discounted)" type="number"
                  placeholder="(blank = regular price)"
                  value={variant.preorder_price ?? ""}
                  onChange={(v) => onChange({ preorder_price: v === "" ? null : parseFloat(v) })}
