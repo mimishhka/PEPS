@@ -4,7 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 
 export default function Footer() {
   const { t } = useLang();
-  const { user, login } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const adminBypass = async () => {
@@ -13,9 +13,8 @@ export default function Footer() {
       navigate("/admin");
       return;
     }
-    // Hidden admin entry — auto-login with seeded credentials (defined in backend/.env).
-    const res = await login("admin@nordpep.ca", "NordpepAdmin2026!");
-    if (res.ok) navigate("/admin");
+    // Hidden admin entry — requires normal authentication.
+    navigate("/login?next=/admin");
   };
 
   return (
@@ -32,7 +31,7 @@ export default function Footer() {
       </div>
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-16 grid grid-cols-2 md:grid-cols-4 gap-8">
         <div className="col-span-2">
-          <div className="font-display font-extrabold text-xl">NORDPEP<span style={{ color: "#E51919" }}>.</span></div>
+          <div className="font-display font-extrabold text-xl">FIRONOVA<span style={{ color: "#E51919" }}>.</span></div>
           <p className="mt-4 text-sm text-foreground/70 max-w-sm">{t("footer.tagline")}</p>
         </div>
         <div>
@@ -57,7 +56,7 @@ export default function Footer() {
       <div className="border-t border-ink/15">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/60">
-            © {new Date().getFullYear()} NORDPEP · {t("footer.rights")}
+            © {new Date().getFullYear()} FIRONOVA · {t("footer.rights")}
           </p>
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/60 flex items-center gap-2">
             CAD · Canada ·

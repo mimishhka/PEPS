@@ -4,11 +4,13 @@ import { useState } from "react";
 import { useLang } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
+import { useSiteConfig } from "../contexts/SiteConfigContext";
 
 export default function Header() {
   const { lang, toggle, t } = useLang();
-  const { user, login, logout } = useAuth();
+  const { user, logout } = useAuth();
   const { count, setOpen } = useCart();
+  const { coaPageEnabled } = useSiteConfig();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -17,13 +19,12 @@ export default function Header() {
       navigate("/admin");
       return;
     }
-    const res = await login("admin@nordpep.ca", "NordpepAdmin2026!");
-    if (res.ok) navigate("/admin");
+    navigate("/login?next=/admin");
   };
 
   const navItems = [
     { to: "/catalog", label: t("nav.catalog") },
-    { to: "/lab", label: t("nav.lab") },
+    ...(coaPageEnabled ? [{ to: "/lab", label: t("nav.lab") }] : []),
     { to: "/about", label: t("nav.about") },
   ];
 
@@ -35,7 +36,7 @@ export default function Header() {
       <header className="sticky top-0 z-40 bg-white border-b border-ink/15">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 flex items-center justify-between h-16">
           <Link to="/" data-testid="header-logo" className="font-display font-extrabold text-xl tracking-tight">
-            NORDPEP<span className="text-signal" style={{ color: "#E51919" }}>.</span>
+            FIRONOVA<span className="text-signal" style={{ color: "#E51919" }}>.</span>
           </Link>
           <nav className="hidden md:flex items-center gap-8">
             {navItems.map((n) => (

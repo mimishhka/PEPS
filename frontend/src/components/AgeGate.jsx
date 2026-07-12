@@ -6,14 +6,14 @@ export default function AgeGate() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    const accepted = localStorage.getItem("nordpep_age_confirmed");
+    const accepted = localStorage.getItem("fironova_age_confirmed");
     if (!accepted) setOpen(true);
   }, []);
 
   if (!open) return null;
 
   const confirm = () => {
-    localStorage.setItem("nordpep_age_confirmed", "1");
+    localStorage.setItem("fironova_age_confirmed", "1");
     setOpen(false);
   };
 
@@ -28,7 +28,7 @@ export default function AgeGate() {
     >
       <div className="relative w-full max-w-lg border border-ink bg-white">
         <div className="bg-ink px-6 py-3 font-mono text-[11px] uppercase tracking-[0.25em] text-white flex items-center justify-between">
-          <span data-testid="age-gate-tag">// RESTRICTED · NORDPEP</span>
+          <span data-testid="age-gate-tag">// RESTRICTED · FIRONOVA</span>
           <span className="text-signal" style={{ color: "#E51919" }}>19+</span>
         </div>
         <div className="p-8">
