@@ -1,4 +1,4 @@
-@import url("https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800,900&f[]=satoshi@400,500,700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap");
 
 @tailwind base;
@@ -7,25 +7,25 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 2%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 2%;
+    --background: 27 100% 98%;   /* #FFFAF6 paper */
+    --foreground: 4 76% 13%;     /* #3A0A08 oxblood ink */
+    --card: 30 100% 99%;
+    --card-foreground: 4 76% 13%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 2%;
-    --primary: 0 0% 2%;
+    --primary: 1 93% 22%;        /* #6B0504 oxblood */
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 2%;
-    --muted: 0 0% 98%;
-    --muted-foreground: 0 0% 45%;
-    --accent: 0 0% 94%;
-    --accent-foreground: 0 0% 2%;
-    --destructive: 0 80% 50%;
+    --secondary: 24 45% 94%;
+    --secondary-foreground: 4 76% 13%;
+    --muted: 26 60% 96%;
+    --muted-foreground: 10 25% 40%;
+    --accent: 22 42% 55%;        /* #B06C49 copper */
+    --accent-foreground: 27 100% 98%;
+    --destructive: 358 98% 38%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 88%;
-    --input: 0 0% 88%;
-    --ring: 0 0% 2%;
+    --border: 20 35% 86%;
+    --input: 20 35% 86%;
+    --ring: 358 98% 38%;         /* #C20114 signal */
     --radius: 0;
   }
 }
@@ -41,15 +41,15 @@ html, body, #root {
 
 body {
   margin: 0;
-  font-family: "Satoshi", "Inter", system-ui, sans-serif;
+  font-family: "Space Grotesk", "Satoshi", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "ss01", "ss02";
 }
 
 ::selection {
-  background: #050505;
-  color: #fff;
+  background: #6B0504;
+  color: #FFFAF6;
 }
 
 /* Subtle grain noise overlay for premium texture */
@@ -63,7 +63,7 @@ body {
   mix-blend-mode: multiply;
 }
 
-.font-display { font-family: "Cabinet Grotesk", "Inter Tight", system-ui, sans-serif; letter-spacing: -0.02em; }
+.font-display { font-family: "Instrument Serif", "Fraunces", Georgia, serif; letter-spacing: -0.01em; font-weight: 400 !important; font-synthesis-weight: none; }
 .font-mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; }
 
 /* Brutalist hard-shadow hover for cards */
@@ -71,8 +71,12 @@ body {
   transition: transform 200ms ease, box-shadow 200ms ease;
 }
 .card-hover:hover {
-  transform: translate(-3px, -3px);
-  box-shadow: 6px 6px 0 #050505;
+  transform: translateY(-4px);
+  box-shadow:
+    0 1px 2px rgba(58, 10, 8, 0.06),
+    0 8px 24px rgba(107, 5, 4, 0.10),
+    0 24px 48px rgba(176, 108, 73, 0.12),
+    6px 6px 0 #B06C49;
 }
 
 /* Inputs / buttons sharp edges */
@@ -105,8 +109,61 @@ button, input, textarea, select {
 
 /* Compliance banner */
 .compliance-band {
-  background: #050505;
-  color: #fff;
+  background: #6B0504;
+  color: #FFFAF6;
   letter-spacing: 0.18em;
   font-size: 11px;
+}
+
+
+/* ---------------------------------------------------------------------------
+   FIRONOVA — maison de luxe editorial layer
+--------------------------------------------------------------------------- */
+.shadow-luxe {
+  box-shadow:
+    0 1px 2px rgba(58, 10, 8, 0.05),
+    0 6px 18px rgba(107, 5, 4, 0.08),
+    0 18px 40px rgba(176, 108, 73, 0.10);
+}
+.shadow-luxe-lg {
+  box-shadow:
+    0 2px 4px rgba(58, 10, 8, 0.06),
+    0 12px 32px rgba(107, 5, 4, 0.12),
+    0 32px 64px rgba(176, 108, 73, 0.14);
+}
+
+/* Fade-up reveal (à utiliser avec framer-motion ou seul) */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fade-up 600ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-fade-up-delay-1 { animation: fade-up 600ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both; }
+.animate-fade-up-delay-2 { animation: fade-up 600ms cubic-bezier(0.22, 1, 0.36, 1) 240ms both; }
+
+/* Rotation lente — sceau de certification */
+@keyframes seal-rotate { to { transform: rotate(360deg); } }
+.animate-seal { animation: seal-rotate 24s linear infinite; transform-origin: center; }
+
+/* Trait HPLC animé (SVG stroke) */
+@keyframes hplc-draw { to { stroke-dashoffset: 0; } }
+.hplc-trace {
+  stroke-dasharray: 1200;
+  stroke-dashoffset: 1200;
+  animation: hplc-draw 3.2s cubic-bezier(0.4, 0, 0.2, 1) 300ms forwards;
+}
+
+/* Boutons — transition raffinée */
+button, a { transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease, box-shadow 220ms ease, transform 220ms ease; }
+button:hover:not(:disabled) { transform: translateY(-1px); }
+button:active:not(:disabled) { transform: translateY(0); }
+
+/* Filet copper sous les titres de section */
+.rule-copper { border-top: 1px solid #B06C49; opacity: 0.5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up, .animate-fade-up-delay-1, .animate-fade-up-delay-2,
+  .animate-seal, .hplc-trace, .marquee-track { animation: none !important; }
+  .hplc-trace { stroke-dashoffset: 0; }
+  * { transition-duration: 0.01ms !important; }
 }
