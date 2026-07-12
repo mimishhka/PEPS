@@ -118,7 +118,7 @@ export default function AdminProducts() {
 
 function newVariant(name = "") {
   return {
-    name, price: 0, sale_price: null, stock: 0, sku: "", coa_url: "",
+    name, price: 0, sale_price: null, stock: 0, sku: "", coa_url: "", weight_grams: 50,
     badge_coa_available: false, badge_coa_pending: false, badge_coming_soon: false,
     preorder_enabled: false, preorder_delay_message: "", preorder_price: null, preorder_note: "",
   };
@@ -181,7 +181,7 @@ function ProductEditor({ product, setProduct, onSave, onCancel }) {
 
           <Section title="COA · Lab (product-level)">
             <Grid2>
-              <F label="COA URL (PDF link)" value={product.coa_url} onChange={(v) => setProduct({ ...product, coa_url: v })} test="f-coa_url" />
+              <CoaUploader value={product.coa_url} onChange={(v) => setProduct({ ...product, coa_url: v })} test="f-coa_url" />
               <F label="COA Lot" value={product.coa_lot} onChange={(v) => setProduct({ ...product, coa_lot: v })} test="f-coa_lot" />
             </Grid2>
             <F label="COA Date" value={product.coa_date} onChange={(v) => setProduct({ ...product, coa_date: v })} placeholder="2026-01-12" test="f-coa_date" />
@@ -233,7 +233,8 @@ function VariantRow({ index, variant, onChange, onRemove }) {
            test={`v-sale-price-${index}`} />
         <F label="Stock" type="number" value={variant.stock} onChange={(v) => onChange({ stock: parseInt(v) || 0 })} test={`v-stock-${index}`} />
         <F label="SKU" value={variant.sku} onChange={(v) => onChange({ sku: v })} test={`v-sku-${index}`} />
-        <F label="COA URL (PDF)" value={variant.coa_url || ""} onChange={(v) => onChange({ coa_url: v })} placeholder="https://…/coa.pdf" test={`v-coa-url-${index}`} />
+        <F label="Weight (g)" type="number" value={variant.weight_grams ?? 50} onChange={(v) => onChange({ weight_grams: parseFloat(v) || 0 })} test={`v-weight-${index}`} />
+        <CoaUploader value={variant.coa_url} onChange={(v) => onChange({ coa_url: v })} test={`v-coa-url-${index}`} />
       </div>
       {variant.sale_price != null && variant.sale_price >= variant.price && (
         <div className="font-mono text-[10px] text-red-600 uppercase tracking-[0.15em]">⚠ Special price must be lower than the regular price to apply.</div>
@@ -273,6 +274,65 @@ function VariantRow({ index, variant, onChange, onRemove }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function CoaUploader({ value, onChange, test }) {
+  const [uploading, setUploading] = useState(false);
+  const inputId = `coa-upload-${test}`;
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      toast.error("Only PDF files are allowed");
+      return;
+    }
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await api.post("/admin/upload/coa", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      onChange(res.data.url);
+      toast.success("COA PDF uploaded");
+    } catch (err) {
+      toast.error(formatApiError(err?.response?.data?.detail));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">COA PDF</label>
+      <div className="flex items-center gap-2">
+        <input
+          value={value ?? ""}
+          placeholder="https://…/coa.pdf"
+          onChange={(e) => onChange(e.target.value)}
+          data-testid={test}
+          className="w-full border border-ink/20 px-3 py-2 text-sm"
+        />
+        <label
+          htmlFor={inputId}
+          data-testid={`${test}-upload-btn`}
+          className={`shrink-0 border border-ink font-mono text-[10px] uppercase tracking-[0.15em] px-3 py-2 cursor-pointer hover:bg-ink hover:text-white ${uploading ? "opacity-50 pointer-events-none" : ""}`}
+        >
+          {uploading ? "Uploading…" : "Upload PDF"}
+        </label>
+        <input id={inputId} type="file" accept="application/pdf" className="hidden" onChange={handleFile} />
+      </div>
+      {value && (
+        <a href={value.startsWith("http") ? value : `${API_BASE.replace(/\/api$/, "")}${value}`}
+           target="_blank" rel="noreferrer"
+           className="mt-1 inline-block font-mono text-[10px] text-foreground/50 underline">
+          View current PDF ↗
+        </a>
+      )}
     </div>
   );
 }

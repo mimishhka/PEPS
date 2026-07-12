@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, Search, X, FileText, CheckCircle2, Save, Truck, MessageSquarePlus } from "lucide-react";
+import { Download, Search, X, FileText, CheckCircle2, Save, Truck, MessageSquarePlus, Mail, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
 
-const FULFILLMENT_OPTS = ["pending", "preorder", "processing", "shipped", "delivered", "cancelled"];
-const PAYMENT_OPTS = ["awaiting_etransfer", "awaiting_crypto", "paid", "refunded"];
+const FULFILLMENT_OPTS = ["pending", "preorder", "processing", "shipped", "delivered", "cancelled", "failed", "refunded"];
+const PAYMENT_OPTS = ["awaiting_etransfer", "awaiting_crypto", "paid", "refunded", "cancelled", "failed"];
+const TABS = [
+  { key: "active", label: "Active" },
+  { key: "completed", label: "Completed" },
+  { key: "cancelled", label: "Cancelled" },
+  { key: "all", label: "All" },
+];
 
 export default function AdminOrders() {
   const [orders, setOrders] = useState([]);
@@ -13,9 +19,15 @@ export default function AdminOrders() {
   const [filterPayment, setFilterPayment] = useState("all");
   const [filterFulfill, setFilterFulfill] = useState("all");
   const [selected, setSelected] = useState(null);
+  const [tab, setTab] = useState("active");
+  const [counts, setCounts] = useState({});
 
-  const load = () => api.get("/admin/orders").then((r) => setOrders(r.data));
-  useEffect(() => { load(); }, []);
+  const load = () => {
+    const qs = tab === "all" ? "" : `?status_group=${tab}`;
+    api.get(`/admin/orders${qs}`).then((r) => setOrders(r.data));
+    api.get("/admin/orders/counts").then((r) => setCounts(r.data));
+  };
+  useEffect(() => { load(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
     return orders.filter((o) => {
@@ -38,14 +50,41 @@ export default function AdminOrders() {
           <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">Orders</h1>
           <p className="font-mono text-xs text-foreground/60 mt-1">{filtered.length} of {orders.length}</p>
         </div>
-        <a
-          href={`${API_BASE}/admin/orders.csv`}
-          target="_blank" rel="noopener noreferrer"
-          data-testid="export-orders-csv"
-          className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-foreground/80"
-        >
-          <Download size={14} /> Export CSV
-        </a>
+        <div className="flex items-center gap-2">
+          <a
+            href={`${API_BASE}/admin/orders.csv${tab === "all" ? "" : `?status_group=${tab}`}`}
+            target="_blank" rel="noopener noreferrer"
+            data-testid="export-orders-csv"
+            className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-foreground/80"
+          >
+            <Download size={14} /> CSV
+          </a>
+          <a
+            href={`${API_BASE}/admin/orders.xlsx${tab === "all" ? "" : `?status_group=${tab}`}`}
+            target="_blank" rel="noopener noreferrer"
+            data-testid="export-orders-xlsx"
+            className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-ink hover:text-white"
+          >
+            <Download size={14} /> Excel
+          </a>
+        </div>
+      </div>
+
+      {/* Status group tabs */}
+      <div className="flex gap-0 mb-4 border border-ink/15 bg-white w-fit" data-testid="orders-tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            data-testid={`orders-tab-${t.key}`}
+            className={`font-mono text-xs uppercase tracking-[0.2em] px-5 py-2.5 flex items-center gap-2 ${tab === t.key ? "bg-ink text-white" : "hover:bg-secondary"}`}
+          >
+            {t.label}
+            <span className={`text-[10px] px-1.5 py-0.5 ${tab === t.key ? "bg-white/20" : "bg-secondary"}`} data-testid={`orders-count-${t.key}`}>
+              {counts[t.key] ?? "…"}
+            </span>
+          </button>
+        ))}
       </div>
 
       {/* Filters */}
@@ -89,6 +128,11 @@ export default function AdminOrders() {
                 <td className="px-6 py-3">
                   <div className="font-mono font-bold text-xs">{o.order_number}</div>
                   <div className="font-mono text-[10px] text-foreground/50">{(o.created_at || "").slice(0, 10)}</div>
+                  {o.dispatch_batch && (
+                    <div className="font-mono text-[10px] text-copper" data-testid={`dispatch-batch-${o.order_number}`}>
+                      LOT {o.dispatch_batch}
+                    </div>
+                  )}
                 </td>
                 <td className="px-6 py-3">
                   <div className="text-sm">{o.shipping_address?.full_name || "—"}</div>
@@ -125,6 +169,8 @@ function OrderDetail({ order, onClose, onUpdate }) {
   const [tracking, setTracking] = useState(order.shipping_info?.tracking_number || "");
   const [carrier, setCarrier] = useState(order.shipping_info?.carrier || "Canada Post");
   const [noteText, setNoteText] = useState("");
+  const [noteVisible, setNoteVisible] = useState(false);
+  const [refundAmount, setRefundAmount] = useState("");
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -158,8 +204,26 @@ function OrderDetail({ order, onClose, onUpdate }) {
   const addNote = async () => {
     if (!noteText.trim()) return;
     try {
-      await api.post(`/admin/orders/${order.id}/notes`, { text: noteText });
-      setNoteText(""); onUpdate();
+      await api.post(`/admin/orders/${order.id}/notes`, { text: noteText, visible_to_customer: noteVisible });
+      if (noteVisible) toast.success("Note added — email sent to customer");
+      setNoteText(""); setNoteVisible(false); onUpdate();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+
+  const issueRefund = async () => {
+    const amt = parseFloat(refundAmount);
+    if (!amt || amt <= 0) { toast.error("Enter a valid refund amount"); return; }
+    try {
+      const { data } = await api.post(`/admin/orders/${order.id}/refund`, { amount: amt });
+      toast.success(`Refunded $${amt.toFixed(2)} — total refunded $${data.refunded_amount?.toFixed(2)}`);
+      setRefundAmount(""); onUpdate();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+
+  const resendEmail = async () => {
+    try {
+      const { data } = await api.post(`/admin/orders/${order.id}/resend-email`);
+      toast.success(`Order email re-sent to ${data.sent_to}`);
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
 
@@ -172,6 +236,11 @@ function OrderDetail({ order, onClose, onUpdate }) {
           <div>
             <div className="font-mono text-[10px] uppercase tracking-[0.25em]">// ORDER</div>
             <div className="font-display text-xl font-bold tracking-tight" data-testid="order-detail-number">{order.order_number}</div>
+            {order.dispatch_batch && (
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-copperlight" data-testid="order-detail-dispatch-batch">
+                LOT D'EXPÉDITION · {order.dispatch_batch}
+              </div>
+            )}
           </div>
           <button onClick={onClose} aria-label="Close" data-testid="close-order-detail"><X size={20} /></button>
         </div>
@@ -198,6 +267,15 @@ function OrderDetail({ order, onClose, onUpdate }) {
             >
               <FileText size={14} /> Invoice PDF
             </a>
+            {order.email && (
+              <button
+                onClick={resendEmail}
+                data-testid="resend-email-btn"
+                className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
+              >
+                <Mail size={14} /> Resend Email
+              </button>
+            )}
           </div>
 
           {/* Customer + Address */}
@@ -288,22 +366,49 @@ function OrderDetail({ order, onClose, onUpdate }) {
             </div>
           </div>
 
+          {/* Refund */}
+          <div className="bg-white border border-ink/10 p-4">
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3 flex items-center gap-2"><Undo2 size={12} /> Refund</div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                type="number" min="0.01" step="0.01"
+                value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)}
+                placeholder={`Amount (max $${(order.total - (order.refunded_amount || 0)).toFixed(2)})`}
+                data-testid="refund-amount-input"
+                className="border border-ink/20 px-3 py-2 text-sm w-56"
+              />
+              <button onClick={issueRefund} data-testid="issue-refund-btn" className="bg-red-600 text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:bg-red-700">
+                Issue Refund
+              </button>
+              <div className="font-mono text-[10px] text-foreground/60" data-testid="refunded-so-far">
+                Refunded so far: ${(order.refunded_amount || 0).toFixed(2)} / ${order.total?.toFixed(2)}
+              </div>
+            </div>
+          </div>
+
           {/* Notes */}
           <div className="bg-white border border-ink/10 p-4">
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3 flex items-center gap-2"><MessageSquarePlus size={12} /> Internal Notes</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3 flex items-center gap-2"><MessageSquarePlus size={12} /> Order Notes</div>
             <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
               {(order.notes || []).map((n, i) => (
-                <div key={i} className="text-sm border-l-2 border-ink/30 pl-3 py-1" data-testid={`note-${i}`}>
+                <div key={i} className={`text-sm border-l-2 pl-3 py-1 ${n.visible_to_customer ? "border-emerald-500" : "border-ink/30"}`} data-testid={`note-${i}`}>
                   <div className="text-foreground/85">{n.text}</div>
-                  <div className="font-mono text-[10px] text-foreground/50 mt-1">{n.admin_email || n.author} · {((n.ts || n.created_at) || "").slice(0, 16).replace("T", " ")}</div>
+                  <div className="font-mono text-[10px] text-foreground/50 mt-1">
+                    {n.admin_email || n.author} · {((n.ts || n.created_at) || "").slice(0, 16).replace("T", " ")}
+                    {n.visible_to_customer && <span className="ml-2 text-emerald-600 font-bold">CUSTOMER</span>}
+                  </div>
                 </div>
               ))}
               {!order.notes?.length && <div className="font-mono text-[10px] text-foreground/50">No notes yet.</div>}
             </div>
             <div className="flex gap-2">
-              <input value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Add an internal note…" data-testid="note-input" className="flex-1 border border-ink/20 px-3 py-2 text-sm" />
+              <input value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Add a note…" data-testid="note-input" className="flex-1 border border-ink/20 px-3 py-2 text-sm" />
               <button onClick={addNote} data-testid="add-note-btn" className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4">Add</button>
             </div>
+            <label className="flex items-center gap-2 mt-2 cursor-pointer">
+              <input type="checkbox" checked={noteVisible} onChange={(e) => setNoteVisible(e.target.checked)} data-testid="note-visible-checkbox" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-foreground/70">Visible to customer (sends email)</span>
+            </label>
           </div>
         </div>
       </div>
