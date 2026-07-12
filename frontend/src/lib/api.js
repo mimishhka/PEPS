@@ -10,7 +10,7 @@ const api = axios.create({
 
 // Add Bearer token if stored (fallback to cookie)
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("nordpep_token");
+  const token = localStorage.getItem("fironova_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
