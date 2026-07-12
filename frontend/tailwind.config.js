@@ -5,8 +5,8 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        display: ["'Cabinet Grotesk'", "'Inter Tight'", "system-ui", "sans-serif"],
-        sans: ["'Satoshi'", "'Inter'", "system-ui", "sans-serif"],
+        display: ["'Instrument Serif'", "'Fraunces'", "Georgia", "serif"],
+        sans: ["'Space Grotesk'", "'Satoshi'", "system-ui", "sans-serif"],
         mono: ["'JetBrains Mono'", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       borderRadius: {
@@ -50,7 +50,12 @@ module.exports = {
         ring: "hsl(var(--ring))",
         signal: "#E51919",
         warning: "#FFCC00",
-        ink: "#050505",
+        ink: "#3A0A08",          /* encre oxblood profonde — texte & structures */
+        paper: "#FFFAF6",        /* fond maison de luxe */
+        oxblood: "#6B0504",
+        signal: "#C20114",
+        copper: "#B06C49",
+        copperlight: "#DCB49A",
       },
       keyframes: {
         "accordion-down": { from: { height: "0" }, to: { height: "var(--radix-accordion-content-height)" } },
