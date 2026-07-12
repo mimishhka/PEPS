@@ -13,8 +13,8 @@ export default function About() {
           </h1>
           <p className="mt-8 text-lg text-foreground/75 max-w-md leading-relaxed">
             {isFr
-              ? "NORDPEP est un fournisseur canadien indépendant de peptides de référence de pureté laboratoire. Chaque lot est analysé par un laboratoire tiers (HPLC, spectrométrie de masse) avant expédition depuis nos installations à Montréal."
-              : "NORDPEP is an independent Canadian supplier of laboratory-grade reference peptides. Every batch is third-party lab tested (HPLC, mass spectrometry) before shipping from our Montréal facility."}
+              ? "FIRONOVA est un fournisseur canadien indépendant de peptides de référence de pureté laboratoire. Chaque lot est analysé par un laboratoire tiers (HPLC, spectrométrie de masse) avant expédition depuis nos installations à Montréal."
+              : "FIRONOVA is an independent Canadian supplier of laboratory-grade reference peptides. Every batch is third-party lab tested (HPLC, mass spectrometry) before shipping from our Montréal facility."}
           </p>
         </div>
         <div className="relative min-h-[500px] bg-secondary border-l border-ink">

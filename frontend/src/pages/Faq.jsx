@@ -25,8 +25,8 @@ const GROUPS = [
         id: "outside-canada",
         q: { en: "Do you ship outside Canada?", fr: "Livrez-vous à l'extérieur du Canada ?" },
         a: {
-          en: "No. NORDPEP ships exclusively to Canadian addresses, unless otherwise stated.",
-          fr: "Non. NORDPEP livre exclusivement à des adresses canadiennes, sauf indication contraire.",
+          en: "No. FIRONOVA ships exclusively to Canadian addresses, unless otherwise stated.",
+          fr: "Non. FIRONOVA livre exclusivement à des adresses canadiennes, sauf indication contraire.",
         },
       },
       {
@@ -205,8 +205,8 @@ const GROUPS = [
         id: "human-use",
         q: { en: "Are your products for personal or human use?", fr: "Vos produits sont-ils destinés à un usage personnel ou humain ?" },
         a: {
-          en: "No. Every product sold on NORDPEP is intended strictly for in-vitro laboratory research or educational purposes only. Any personal use, or human or animal consumption, is strictly prohibited. See our Terms & Conditions for full details.",
-          fr: "Non. Chaque produit vendu sur NORDPEP est destiné strictement à la recherche en laboratoire in vitro ou à des fins éducatives uniquement. Tout usage personnel, ou toute consommation humaine ou animale, est strictement interdit. Consultez nos Conditions Générales pour tous les détails.",
+          en: "No. Every product sold on FIRONOVA is intended strictly for in-vitro laboratory research or educational purposes only. Any personal use, or human or animal consumption, is strictly prohibited. See our Terms & Conditions for full details.",
+          fr: "Non. Chaque produit vendu sur FIRONOVA est destiné strictement à la recherche en laboratoire in vitro ou à des fins éducatives uniquement. Tout usage personnel, ou toute consommation humaine ou animale, est strictement interdit. Consultez nos Conditions Générales pour tous les détails.",
         },
         termsLink: true,
       },
@@ -220,7 +220,7 @@ const GROUPS = [
       },
       {
         id: "who-can-buy",
-        q: { en: "Who can purchase from NORDPEP?", fr: "Qui peut acheter chez NORDPEP ?" },
+        q: { en: "Who can purchase from FIRONOVA?", fr: "Qui peut acheter chez FIRONOVA ?" },
         a: {
           en: "Our products are offered solely to qualified laboratory research professionals who are trained and authorized to handle such materials in an appropriate research setting, as set out in our Terms & Conditions.",
           fr: "Nos produits sont offerts uniquement aux professionnels qualifiés de la recherche en laboratoire, formés et autorisés à manipuler de telles matières dans un cadre de recherche approprié, tel que prévu dans nos Conditions Générales.",
@@ -237,7 +237,7 @@ export default function Faq() {
   return (
     <div className="max-w-4xl mx-auto px-6 py-16 space-y-16" data-testid="faq-page">
       <header className="border-b border-ink pb-6">
-        <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// NORDPEP</div>
+        <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// FIRONOVA</div>
         <h1 className="font-display text-5xl sm:text-6xl font-extrabold uppercase tracking-tight mt-2">FAQ</h1>
         <p className="mt-4 text-sm text-foreground/60">
           {isFr
@@ -284,11 +284,11 @@ export default function Faq() {
             : "Email us and we will do our best to reply within 24 hours (maximum 2 business days)."}
         </p>
         <a
-          href="mailto:info@nordpep.ca"
+          href="mailto:info@fironova.ca"
           className="inline-block mt-4 bg-ink text-white font-mono text-xs uppercase tracking-[0.2em] px-6 py-3 hover:bg-signal transition-colors"
           data-testid="faq-contact-email"
         >
-          info@nordpep.ca
+          info@fironova.ca
         </a>
       </section>
     </div>

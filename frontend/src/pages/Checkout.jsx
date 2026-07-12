@@ -276,7 +276,7 @@ export default function Checkout() {
                 <input
                   value={coupon.code}
                   onChange={(e) => setCoupon({ ...coupon, code: e.target.value.toUpperCase(), error: "" })}
-                  placeholder="NORDPEP10"
+                  placeholder="FIRONOVA10"
                   data-testid="coupon-input"
                   className="flex-1 border border-ink/20 px-3 py-2 text-sm font-mono uppercase"
                 />

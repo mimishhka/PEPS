@@ -19,7 +19,10 @@ export default function Login() {
     const res = await login(email, password);
     setBusy(false);
     if (res.ok) {
-      const next = location.state?.from || "/account";
+      const next =
+        new URLSearchParams(location.search).get("next") ||
+        location.state?.from ||
+        "/account";
       navigate(next, { replace: true });
     } else {
       toast.error(res.error);
@@ -31,7 +34,7 @@ export default function Login() {
       <div className="hidden lg:block relative bg-ink overflow-hidden">
         <img src="https://images.unsplash.com/photo-1616996691748-3f5f78093ab0?auto=format&fit=crop&w=1200&q=80" alt="Lab" className="absolute inset-0 w-full h-full object-cover opacity-60" style={{ filter: "grayscale(1) contrast(1.2)" }} />
         <div className="relative h-full p-12 flex flex-col justify-between text-white">
-          <div className="font-mono text-[11px] uppercase tracking-[0.3em]">// AUTH · NORDPEP</div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.3em]">// AUTH · FIRONOVA</div>
           <div>
             <h2 className="font-display text-5xl font-extrabold uppercase tracking-tight leading-[0.95]">
               Lab-grade<br/>peptides.<br/>Canadian.

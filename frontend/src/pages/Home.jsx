@@ -3,10 +3,12 @@ import { Link } from "react-router-dom";
 import { ArrowRight, ShieldCheck, MapPin, FlaskConical, Package } from "lucide-react";
 import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
+import { useSiteConfig } from "../contexts/SiteConfigContext";
 import ProductCard from "../components/ProductCard";
 
 export default function Home() {
   const { t, lang } = useLang();
+  const { coaPageEnabled } = useSiteConfig();
   const [products, setProducts] = useState([]);
 
   useEffect(() => {
@@ -56,13 +58,15 @@ export default function Home() {
                 >
                   {t("home.heroCta")} <ArrowRight size={14} />
                 </Link>
-                <Link
-                  to="/lab"
-                  data-testid="hero-cta-lab"
-                  className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-6 py-4 inline-flex items-center gap-3 hover:bg-ink hover:text-white"
-                >
-                  {t("home.heroCta2")}
-                </Link>
+                {coaPageEnabled && (
+                  <Link
+                    to="/lab"
+                    data-testid="hero-cta-lab"
+                    className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-6 py-4 inline-flex items-center gap-3 hover:bg-ink hover:text-white"
+                  >
+                    {t("home.heroCta2")}
+                  </Link>
+                )}
               </div>
             </div>
             <div className="mt-12 font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 grid grid-cols-3 gap-4">

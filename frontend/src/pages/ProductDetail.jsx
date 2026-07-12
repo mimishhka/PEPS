@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { Plus, Minus, AlertTriangle } from "lucide-react";
-import api from "../lib/api";
+import { Plus, Minus, AlertTriangle, BellRing, Check } from "lucide-react";
+import { toast } from "sonner";
+import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import { useCart } from "../contexts/CartContext";
 
@@ -13,6 +14,9 @@ export default function ProductDetail() {
   const [qty, setQty] = useState(1);
   const [variantId, setVariantId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [notifyEmail, setNotifyEmail] = useState("");
+  const [notifySubmitting, setNotifySubmitting] = useState(false);
+  const [notifyDone, setNotifyDone] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -24,6 +28,11 @@ export default function ProductDetail() {
       })
       .finally(() => setLoading(false));
   }, [slug]);
+
+  useEffect(() => {
+    setNotifyDone(false);
+    setNotifyEmail("");
+  }, [variantId, slug]);
 
   if (loading) {
     return <div className="p-16 font-mono text-xs uppercase tracking-[0.25em]">{t("common.loading")}</div>;
@@ -50,6 +59,26 @@ export default function ProductDetail() {
   const showOriginal = !!(selectedVariant && effectivePrice < selectedVariant.price);
   const isComingSoon = !!(selectedVariant && selectedVariant.badge_coming_soon && !selectedVariant.preorder_enabled);
   const isOutOfStock = !!(selectedVariant && selectedVariant.stock <= 0 && !selectedVariant.preorder_enabled && !coaComing);
+
+  const submitNotify = async () => {
+    if (!/^\S+@\S+\.\S+$/.test(notifyEmail)) {
+      toast.error(lang === "fr" ? "Adresse courriel invalide" : "Invalid email address");
+      return;
+    }
+    setNotifySubmitting(true);
+    try {
+      await api.post("/notify-stock", {
+        email: notifyEmail,
+        product_id: product.id,
+        variant_id: selectedVariant && selectedVariant.id !== "_default" ? selectedVariant.id : null,
+      });
+      setNotifyDone(true);
+    } catch (err) {
+      toast.error(formatApiError(err?.response?.data?.detail));
+    } finally {
+      setNotifySubmitting(false);
+    }
+  };
 
   return (
     <div data-testid="product-detail-page" className="grid lg:grid-cols-2 border-b border-ink">
@@ -209,6 +238,42 @@ export default function ProductDetail() {
             : isOutOfStock ? "OUT OF STOCK"
             : `${t("common.addToCart")} — $${(effectivePrice * qty).toFixed(2)} CAD`}
         </button>
+
+        {isOutOfStock && (
+          <div className="border border-ink/20 bg-secondary/40 p-4" data-testid="notify-stock-block">
+            {notifyDone ? (
+              <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.2em] text-emerald-700">
+                <Check size={14} />
+                {lang === "fr" ? "Nous vous écrirons dès le retour en stock." : "We'll email you when it's back."}
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.2em] mb-2">
+                  <BellRing size={14} />
+                  {lang === "fr" ? "M'avertir du retour en stock" : "Notify me when back in stock"}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={notifyEmail}
+                    onChange={(e) => setNotifyEmail(e.target.value)}
+                    placeholder={lang === "fr" ? "votre@courriel.com" : "you@email.com"}
+                    data-testid="notify-stock-email"
+                    className="flex-1 border border-ink/20 px-3 py-2 text-sm bg-white"
+                  />
+                  <button
+                    onClick={submitNotify}
+                    disabled={notifySubmitting}
+                    data-testid="notify-stock-submit"
+                    className="border border-ink font-mono text-xs uppercase tracking-[0.2em] px-4 py-2 hover:bg-ink hover:text-white disabled:opacity-40"
+                  >
+                    {notifySubmitting ? "…" : lang === "fr" ? "M'avertir" : "Notify me"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {(selectedVariant?.coa_url || product.coa_url) ? (
           <a

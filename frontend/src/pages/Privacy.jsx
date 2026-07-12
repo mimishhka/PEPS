@@ -7,16 +7,16 @@ const SECTIONS = [
     fr: { title: "Collecte et utilisation des renseignements" },
     paras: [
       {
-        en: "When you use NORDPEP, we may ask you for certain personally identifiable details needed to identify or contact you, such as your name, email address, phone number and postal address (\"Personal Information\").",
-        fr: "Lorsque vous utilisez NORDPEP, nous pouvons vous demander certains renseignements personnels nécessaires pour vous identifier ou vous joindre, tels que votre nom, votre adresse courriel, votre numéro de téléphone et votre adresse postale (« Renseignements personnels »).",
+        en: "When you use FIRONOVA, we may ask you for certain personally identifiable details needed to identify or contact you, such as your name, email address, phone number and postal address (\"Personal Information\").",
+        fr: "Lorsque vous utilisez FIRONOVA, nous pouvons vous demander certains renseignements personnels nécessaires pour vous identifier ou vous joindre, tels que votre nom, votre adresse courriel, votre numéro de téléphone et votre adresse postale (« Renseignements personnels »).",
       },
       {
-        en: "This information is collected solely to operate the service: processing and shipping your orders, communicating with you, answering your questions and requests, and improving what we offer. NORDPEP never uses or shares your information except as described in this policy, and your data is never sold to third parties.",
-        fr: "Ces renseignements sont recueillis uniquement pour faire fonctionner le service : traiter et expédier vos commandes, communiquer avec vous, répondre à vos questions et demandes, et améliorer notre offre. NORDPEP n'utilise ni ne partage jamais vos renseignements autrement que ce qui est décrit dans la présente politique, et vos données ne sont jamais vendues à des tiers.",
+        en: "This information is collected solely to operate the service: processing and shipping your orders, communicating with you, answering your questions and requests, and improving what we offer. FIRONOVA never uses or shares your information except as described in this policy, and your data is never sold to third parties.",
+        fr: "Ces renseignements sont recueillis uniquement pour faire fonctionner le service : traiter et expédier vos commandes, communiquer avec vous, répondre à vos questions et demandes, et améliorer notre offre. FIRONOVA n'utilise ni ne partage jamais vos renseignements autrement que ce qui est décrit dans la présente politique, et vos données ne sont jamais vendues à des tiers.",
       },
       {
-        en: "NORDPEP complies with PIPEDA (the Canadian federal privacy legislation) and, for Québec residents, with Law 25.",
-        fr: "NORDPEP se conforme à la LPRPDE (loi fédérale canadienne sur la protection des renseignements personnels) et, pour les résidents du Québec, à la Loi 25.",
+        en: "FIRONOVA complies with PIPEDA (the Canadian federal privacy legislation) and, for Québec residents, with Law 25.",
+        fr: "FIRONOVA se conforme à la LPRPDE (loi fédérale canadienne sur la protection des renseignements personnels) et, pour les résidents du Québec, à la Loi 25.",
       },
     ],
   },
@@ -56,8 +56,8 @@ const SECTIONS = [
     fr: { title: "Signal « Ne pas suivre » (Do Not Track)" },
     paras: [
       {
-        en: "NORDPEP honours the Do Not Track (\"DNT\") signal, a preference you can enable in your web browser to tell websites you do not wish to be tracked. You can turn DNT on or off in your browser's settings or preferences page.",
-        fr: "NORDPEP respecte le signal « Ne pas suivre » (« DNT »), une préférence que vous pouvez activer dans votre navigateur pour indiquer aux sites web que vous ne souhaitez pas être suivi. Vous pouvez activer ou désactiver le DNT dans la page de paramètres ou de préférences de votre navigateur.",
+        en: "FIRONOVA honours the Do Not Track (\"DNT\") signal, a preference you can enable in your web browser to tell websites you do not wish to be tracked. You can turn DNT on or off in your browser's settings or preferences page.",
+        fr: "FIRONOVA respecte le signal « Ne pas suivre » (« DNT »), une préférence que vous pouvez activer dans votre navigateur pour indiquer aux sites web que vous ne souhaitez pas être suivi. Vous pouvez activer ou désactiver le DNT dans la page de paramètres ou de préférences de votre navigateur.",
       },
     ],
   },
@@ -89,8 +89,8 @@ const SECTIONS = [
     fr: { title: "Divulgation exigée par la loi" },
     paras: [
       {
-        en: "NORDPEP will disclose Personal Information when required by law or by a valid court order, or when we believe in good faith that doing so is necessary to comply with legal obligations, respond to reasonable requests from authorities, or protect the security and integrity of our service.",
-        fr: "NORDPEP divulguera des Renseignements personnels lorsque la loi ou une ordonnance judiciaire valide l'exige, ou lorsque nous croyons de bonne foi que cela est nécessaire pour respecter nos obligations légales, répondre aux demandes raisonnables des autorités ou protéger la sécurité et l'intégrité de notre service.",
+        en: "FIRONOVA will disclose Personal Information when required by law or by a valid court order, or when we believe in good faith that doing so is necessary to comply with legal obligations, respond to reasonable requests from authorities, or protect the security and integrity of our service.",
+        fr: "FIRONOVA divulguera des Renseignements personnels lorsque la loi ou une ordonnance judiciaire valide l'exige, ou lorsque nous croyons de bonne foi que cela est nécessaire pour respecter nos obligations légales, répondre aux demandes raisonnables des autorités ou protéger la sécurité et l'intégrité de notre service.",
       },
     ],
   },
@@ -158,14 +158,14 @@ export default function Privacy() {
   return (
     <div className="max-w-4xl mx-auto px-6 py-16 space-y-16" data-testid="privacy-page">
       <header className="border-b border-ink pb-6">
-        <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// NORDPEP</div>
+        <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// FIRONOVA</div>
         <h1 className="font-display text-5xl sm:text-6xl font-extrabold uppercase tracking-tight mt-2">
           {isFr ? "Politique de confidentialité" : "Privacy Policy"}
         </h1>
         <p className="mt-4 text-sm text-foreground/60">
           {isFr
-            ? "Cette page décrit nos pratiques concernant la collecte, l'utilisation et la divulgation des Renseignements personnels lorsque vous utilisez NORDPEP. En utilisant le service, vous consentez à la collecte et à l'utilisation de vos renseignements conformément à la présente politique."
-            : "This page describes our practices regarding the collection, use and disclosure of Personal Information when you use NORDPEP. By using the service, you consent to the collection and use of your information in accordance with this policy."}
+            ? "Cette page décrit nos pratiques concernant la collecte, l'utilisation et la divulgation des Renseignements personnels lorsque vous utilisez FIRONOVA. En utilisant le service, vous consentez à la collecte et à l'utilisation de vos renseignements conformément à la présente politique."
+            : "This page describes our practices regarding the collection, use and disclosure of Personal Information when you use FIRONOVA. By using the service, you consent to the collection and use of your information in accordance with this policy."}
         </p>
       </header>
 
