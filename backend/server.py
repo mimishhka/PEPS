@@ -17,12 +17,15 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
+import xml.etree.ElementTree as ET
+
 import bcrypt
 import jwt
 import httpx
 import resend
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
@@ -43,7 +46,7 @@ ACCESS_TOKEN_MINUTES = 60 * 24 * 7  # 7 days for ecommerce UX
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@nordpep.ca")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "NordpepAdmin2026!")
 INTERAC_EMAIL = os.environ.get("INTERAC_EMAIL", "orders@nordpep.ca")
-INTERAC_PASSWORD_HINT = os.environ.get("INTERAC_PASSWORD_HINT", "NORDPEP")
+INTERAC_PASSWORD_HINT = os.environ.get("INTERAC_PASSWORD_HINT", "FIRONOVA")
 NOWPAYMENTS_API_KEY = os.environ.get("NOWPAYMENTS_API_KEY", "")
 NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "")
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
@@ -54,7 +57,70 @@ ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@nor
 STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
 FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))
-UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "48"))
+UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "24"))
+
+# Feature flags — toggle without deploying new code, just flip the env var and restart.
+COA_PAGE_ENABLED = os.environ.get("COA_PAGE_ENABLED", "false").strip().lower() == "true"
+
+# File uploads (COA PDFs). Served statically at /uploads/coa/<file>.
+UPLOAD_DIR = ROOT_DIR / "uploads"
+COA_UPLOAD_DIR = UPLOAD_DIR / "coa"
+COA_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+MAX_COA_UPLOAD_MB = float(os.environ.get("MAX_COA_UPLOAD_MB", "10"))
+
+# Postes Canada (Canada Post) rating/tracking API — leave blank to keep using the flat-rate
+# shipping_zones/shipping_methods system already in place.
+CANADA_POST_API_KEY = os.environ.get("CANADA_POST_API_KEY", "")
+CANADA_POST_CUSTOMER_NUMBER = os.environ.get("CANADA_POST_CUSTOMER_NUMBER", "")
+CANADA_POST_CONTRACT_ID = os.environ.get("CANADA_POST_CONTRACT_ID", "")
+CANADA_POST_ORIGIN_POSTAL_CODE = os.environ.get("CANADA_POST_ORIGIN_POSTAL_CODE", "")
+CANADA_POST_ENVIRONMENT = os.environ.get("CANADA_POST_ENVIRONMENT", "dev")  # "dev" (soa-gw) or "prod" (soa-gw prod host)
+CANADA_POST_BASE_URL = (
+    "https://ct.soa-gw.canadapost.ca" if CANADA_POST_ENVIRONMENT == "dev"
+    else "https://soa-gw.canadapost.ca"
+)
+
+# ---------------------------------------------------------------------------
+# Dispatch batch (fenêtre de traitement des commandes)
+# Cutoff 13h heure de l'Est, jours ouvrables seulement (week-ends + fériés exclus).
+# ---------------------------------------------------------------------------
+from zoneinfo import ZoneInfo
+try:
+    import holidays as _holidays_lib
+    _CA_HOLIDAYS = _holidays_lib.Canada()  # fériés fédéraux canadiens
+except Exception:  # pragma: no cover - lib absente => aucun férié bloqué
+    _CA_HOLIDAYS = set()
+
+ORDER_CUTOFF_HOUR = int(os.environ.get("ORDER_CUTOFF_HOUR", "13"))
+ORDER_CUTOFF_TZ = os.environ.get("ORDER_CUTOFF_TZ", "America/Toronto")
+
+
+def _is_business_day(d) -> bool:
+    """False les samedis, dimanches et jours fériés fédéraux canadiens."""
+    if d.weekday() >= 5:  # 5 = samedi, 6 = dimanche
+        return False
+    return d not in _CA_HOLIDAYS
+
+
+def compute_dispatch_batch(paid_at) -> str:
+    """
+    Retourne la date du lot d'expédition (prochain jour ouvrable) au format
+    'YYYY-MM-DD' en date locale (ORDER_CUTOFF_TZ), à partir d'un horodatage de
+    paiement (datetime aware UTC, ou string ISO).
+    Règle : payé avant le cutoff un jour ouvrable => jour même, sinon jour
+    suivant ; puis on avance jusqu'au prochain jour ouvrable.
+    """
+    if isinstance(paid_at, str):
+        paid_at = datetime.fromisoformat(paid_at.replace("Z", "+00:00"))
+    if paid_at.tzinfo is None:
+        paid_at = paid_at.replace(tzinfo=timezone.utc)
+    local = paid_at.astimezone(ZoneInfo(ORDER_CUTOFF_TZ))
+    candidate = local.date()
+    if not (local.hour < ORDER_CUTOFF_HOUR and _is_business_day(candidate)):
+        candidate = candidate + timedelta(days=1)
+    while not _is_business_day(candidate):
+        candidate = candidate + timedelta(days=1)
+    return candidate.isoformat()
 
 try:
     from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
@@ -70,8 +136,11 @@ if RESEND_API_KEY:
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
-app = FastAPI(title="NORDPEP API", version="1.0.0")
+app = FastAPI(title="FIRONOVA API", version="1.0.0")
 api = APIRouter(prefix="/api")
+
+# Serve uploaded files (COA PDFs, etc.) at /uploads/...
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +254,7 @@ class ProductVariant(BaseModel):
     preorder_delay_message: str = ""
     preorder_price: Optional[float] = None
     preorder_note: str = ""
+    weight_grams: float = 50.0  # used to estimate parcel weight for live Canada Post rating
 
 
 class ProductIn(BaseModel):
@@ -258,6 +328,11 @@ class CouponIn(BaseModel):
 
 class OrderNoteIn(BaseModel):
     text: str = Field(min_length=1)
+    visible_to_customer: bool = False
+
+
+class RefundIn(BaseModel):
+    amount: float = Field(gt=0)
 
 
 class ShippingInfoIn(BaseModel):
@@ -268,6 +343,12 @@ class ShippingInfoIn(BaseModel):
 
 class StockAdjustIn(BaseModel):
     delta: int  # positive to add, negative to subtract
+
+
+class StockNotifyIn(BaseModel):
+    email: EmailStr
+    product_id: str
+    variant_id: Optional[str] = None
 
 
 class ShippingZoneIn(BaseModel):
@@ -282,6 +363,12 @@ class ShippingMethodIn(BaseModel):
     cost_cad: float
     eta_days: str = ""  # e.g., "2-3 business days"
     active: bool = True
+
+
+class ShippingRateRequest(BaseModel):
+    postal_code: str
+    country: str = "CA"
+    items: Optional[List[CartItem]] = None  # used to estimate parcel weight; omit for a default estimate
 
 
 # ---------------------------------------------------------------------------
@@ -319,12 +406,35 @@ async def register(payload: RegisterIn, response: Response):
     }
 
 
+# In-memory brute-force protection: max 5 failed attempts per IP+email in a 15-min window
+_LOGIN_ATTEMPTS: dict = {}
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_WINDOW_SECONDS = 900
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "unknown")
+
+
+def _login_throttle_check(key: str):
+    now = datetime.now(timezone.utc).timestamp()
+    attempts = [t for t in _LOGIN_ATTEMPTS.get(key, []) if now - t < _LOGIN_WINDOW_SECONDS]
+    _LOGIN_ATTEMPTS[key] = attempts
+    if len(attempts) >= _LOGIN_MAX_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Too many login attempts. Try again in 15 minutes.")
+
+
 @api.post("/auth/login")
-async def login(payload: LoginIn, response: Response):
+async def login(payload: LoginIn, response: Response, request: Request):
     email = payload.email.lower().strip()
+    throttle_key = f"{_client_ip(request)}:{email}"
+    _login_throttle_check(throttle_key)
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(payload.password, user["password_hash"]):
+        _LOGIN_ATTEMPTS.setdefault(throttle_key, []).append(datetime.now(timezone.utc).timestamp())
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    _LOGIN_ATTEMPTS.pop(throttle_key, None)
     token = create_access_token(user["id"], user["email"], user["role"])
     set_auth_cookie(response, token)
     return {
@@ -376,6 +486,32 @@ async def get_product(slug: str):
     return product
 
 
+@api.post("/notify-stock")
+async def notify_stock_request(payload: StockNotifyIn):
+    """Public endpoint — a visitor asks to be emailed once a sold-out product/variant is back."""
+    product = await db.products.find_one({"id": payload.product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(404, "Product not found")
+    variant_id = payload.variant_id
+    if variant_id and not any(v.get("id") == variant_id for v in product.get("variants", [])):
+        raise HTTPException(400, "Variant not found for this product")
+    email = payload.email.lower().strip()
+    existing = await db.stock_notifications.find_one({
+        "email": email, "product_id": payload.product_id, "variant_id": variant_id, "notified": False,
+    })
+    if existing:
+        return {"ok": True, "already_subscribed": True}
+    await db.stock_notifications.insert_one({
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "product_id": payload.product_id,
+        "variant_id": variant_id,
+        "notified": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"ok": True, "already_subscribed": False}
+
+
 def _ensure_variant_ids(payload_doc: dict) -> dict:
     """Ensure every variant has an id. Sync legacy price_cad/stock from first variant if variants present."""
     variants = payload_doc.get("variants") or []
@@ -409,12 +545,25 @@ async def admin_create_product(payload: ProductIn, _admin: dict = Depends(get_ad
 
 @api.put("/admin/products/{product_id}")
 async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict = Depends(get_admin_user)):
+    before = await db.products.find_one({"id": product_id}, {"_id": 0})
     update = payload.model_dump()
     update = _ensure_variant_ids(update)
     res = await db.products.update_one({"id": product_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Product not found")
-    return await db.products.find_one({"id": product_id}, {"_id": 0})
+    after = await db.products.find_one({"id": product_id}, {"_id": 0})
+
+    # Back-in-stock: fire for any variant (or legacy product-level stock) that went from <=0 to >0.
+    if before:
+        before_variant_stock = {v.get("id"): v.get("stock", 0) for v in before.get("variants", [])}
+        for v in after.get("variants", []):
+            vid = v.get("id")
+            if before_variant_stock.get(vid, 0) <= 0 < v.get("stock", 0):
+                asyncio.create_task(_maybe_notify_restock(product_id, vid))
+        if before.get("stock", 0) <= 0 < after.get("stock", 0):
+            asyncio.create_task(_maybe_notify_restock(product_id, None))
+
+    return after
 
 
 @api.delete("/admin/products/{product_id}")
@@ -423,6 +572,33 @@ async def admin_delete_product(product_id: str, _admin: dict = Depends(get_admin
     if res.deleted_count == 0:
         raise HTTPException(404, "Product not found")
     return {"ok": True}
+
+
+@api.post("/admin/upload/coa")
+async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(get_admin_user)):
+    """Uploads a Certificate of Analysis PDF and returns a URL to paste into a
+    product's or variant's coa_url field. Storage is local disk under UPLOAD_DIR,
+    served statically at /uploads/coa/<file>."""
+    filename = file.filename or ""
+    is_pdf = (file.content_type == "application/pdf") or filename.lower().endswith(".pdf")
+    if not is_pdf:
+        raise HTTPException(400, "Only PDF files are allowed")
+
+    contents = await file.read()
+    size_mb = len(contents) / (1024 * 1024)
+    if size_mb > MAX_COA_UPLOAD_MB:
+        raise HTTPException(400, f"File too large — max {MAX_COA_UPLOAD_MB:.0f} MB")
+    if not contents.startswith(b"%PDF"):
+        raise HTTPException(400, "File is not a valid PDF")
+
+    safe_name = f"{uuid.uuid4().hex}.pdf"
+    dest = COA_UPLOAD_DIR / safe_name
+    with open(dest, "wb") as f:
+        f.write(contents)
+
+    rel_path = f"/uploads/coa/{safe_name}"
+    url = f"{PUBLIC_BASE_URL}{rel_path}" if PUBLIC_BASE_URL else rel_path
+    return {"url": url, "original_filename": filename, "size_bytes": len(contents)}
 
 
 # ---------------------------------------------------------------------------
@@ -555,7 +731,7 @@ async def _nowpayments_create(order_id: str, total_cad: float, pay_currency: str
         "price_amount": total_cad,
         "price_currency": "cad",
         "order_id": order_id,
-        "order_description": f"NORDPEP order {order_id}",
+        "order_description": f"FIRONOVA order {order_id}",
     }
     if PUBLIC_BASE_URL:
         body["ipn_callback_url"] = f"{PUBLIC_BASE_URL}/api/webhook/nowpayments"
@@ -581,6 +757,120 @@ async def _nowpayments_create(order_id: str, total_cad: float, pay_currency: str
     except Exception as e:
         logging.error("NOWPayments error: %s", e)
         raise HTTPException(502, "Crypto payment provider unavailable")
+
+
+# ---------------------------------------------------------------------------
+# Canada Post (Postes Canada) — live rating & tracking.
+# Gracefully returns nothing when not configured, so callers fall back to the
+# existing flat-rate shipping_zones/shipping_methods system (same pattern used
+# for NOWPayments' mock mode above).
+# ---------------------------------------------------------------------------
+_CP_RATE_NS = {"cp": "http://www.canadapost.ca/ws/ship/rate-v4"}
+_CP_TRACK_NS = {"cp": "http://www.canadapost.ca/ws/track"}
+
+
+async def _estimate_parcel_weight_kg(items: Optional[List["CartItem"]]) -> float:
+    if not items:
+        return 0.5
+    total_g = 0.0
+    for it in items:
+        p = await db.products.find_one({"id": it.product_id}, {"_id": 0})
+        if not p:
+            continue
+        v = _resolve_variant(p, it.variant_id)
+        total_g += float(v.get("weight_grams") or 50.0) * it.qty
+    return max(0.1, round(total_g / 1000.0, 3))
+
+
+async def _canada_post_get_rates(destination_postal_code: str, destination_country: str, weight_kg: float) -> list:
+    """Calls Canada Post's Rating API (rate-v4). Returns [] if not configured or on any error —
+    callers must fall back to the flat-rate system in that case."""
+    if not (CANADA_POST_API_KEY and CANADA_POST_CUSTOMER_NUMBER and CANADA_POST_ORIGIN_POSTAL_CODE):
+        return []
+
+    origin_pc = CANADA_POST_ORIGIN_POSTAL_CODE.replace(" ", "").upper()
+    dest_pc = (destination_postal_code or "").replace(" ", "").upper()
+    weight_kg = max(0.1, round(weight_kg, 3))
+
+    if destination_country == "CA":
+        destination_xml = f"<domestic><postal-code>{dest_pc}</postal-code></domestic>"
+    elif destination_country == "US":
+        destination_xml = f"<united-states><zip-code>{dest_pc}</zip-code></united-states>"
+    else:
+        destination_xml = f"<international><country-code>{destination_country}</country-code></international>"
+
+    contract_xml = f"<contract-id>{CANADA_POST_CONTRACT_ID}</contract-id>" if CANADA_POST_CONTRACT_ID else ""
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<mailing-scenario xmlns="http://www.canadapost.ca/ws/ship/rate-v4">'
+        f"<customer-number>{CANADA_POST_CUSTOMER_NUMBER}</customer-number>"
+        f"{contract_xml}"
+        f"<parcel-characteristics><weight>{weight_kg}</weight></parcel-characteristics>"
+        f"<origin-postal-code>{origin_pc}</origin-postal-code>"
+        f"<destination>{destination_xml}</destination>"
+        "</mailing-scenario>"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=15) as cx:
+            r = await cx.post(
+                f"{CANADA_POST_BASE_URL}/rs/ship/price",
+                content=body.encode("utf-8"),
+                auth=(CANADA_POST_API_KEY, ""),
+                headers={
+                    "Accept": "application/vnd.cpc.ship.rate-v4+xml",
+                    "Content-Type": "application/vnd.cpc.ship.rate-v4+xml",
+                },
+            )
+            if r.status_code >= 400:
+                logging.error("Canada Post rating error %s: %s", r.status_code, r.text[:500])
+                return []
+            root = ET.fromstring(r.text)
+            quotes = []
+            for pq in root.findall("cp:price-quote", _CP_RATE_NS):
+                due_el = pq.find("cp:price-details/cp:due", _CP_RATE_NS)
+                quotes.append({
+                    "carrier": "Canada Post",
+                    "service_code": pq.findtext("cp:service-code", default="", namespaces=_CP_RATE_NS),
+                    "service_name": pq.findtext("cp:service-name", default="", namespaces=_CP_RATE_NS),
+                    "cost_cad": float(due_el.text) if due_el is not None and due_el.text else None,
+                    "eta_days": pq.findtext(
+                        "cp:service-standard/cp:expected-transit-time", default="", namespaces=_CP_RATE_NS
+                    ),
+                })
+            return [q for q in quotes if q["cost_cad"] is not None]
+    except Exception as e:
+        logging.error("Canada Post rating request failed: %s", e)
+        return []
+
+
+async def _canada_post_track(pin: str) -> Optional[dict]:
+    """Live tracking lookup by PIN. Returns None if not configured or on any error."""
+    if not CANADA_POST_API_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=15) as cx:
+            r = await cx.get(
+                f"{CANADA_POST_BASE_URL}/vis/track/pin/{pin}/detail",
+                auth=(CANADA_POST_API_KEY, ""),
+                headers={"Accept": "application/vnd.cpc.track+xml"},
+            )
+            if r.status_code >= 400:
+                logging.error("Canada Post tracking error %s: %s", r.status_code, r.text[:400])
+                return None
+            root = ET.fromstring(r.text)
+            events = []
+            for ev in root.findall(".//cp:occurrence", _CP_TRACK_NS):
+                events.append({
+                    "date": ev.findtext("cp:event-date", default="", namespaces=_CP_TRACK_NS),
+                    "time": ev.findtext("cp:event-time", default="", namespaces=_CP_TRACK_NS),
+                    "description": ev.findtext("cp:event-description", default="", namespaces=_CP_TRACK_NS),
+                    "location": ev.findtext("cp:event-site", default="", namespaces=_CP_TRACK_NS),
+                })
+            summary = root.findtext(".//cp:significant-status/cp:description", default="", namespaces=_CP_TRACK_NS)
+            return {"pin": pin, "summary": summary, "events": events}
+    except Exception as e:
+        logging.error("Canada Post tracking request failed: %s", e)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -641,7 +931,7 @@ def _order_email_html(order: dict, body_intro: str) -> str:
     return f"""<!DOCTYPE html>
 <html><body style="margin:0;padding:0;background:#fafafa;font-family:'Helvetica Neue',Arial,sans-serif;color:#050505">
   <table style="width:100%;max-width:640px;margin:0 auto;background:#fff;border:1px solid #050505">
-    <tr><td style="background:#050505;color:#fff;padding:20px 28px;font-family:monospace;font-size:11px;letter-spacing:3px">// NORDPEP · ORDER {order["order_number"]}</td></tr>
+    <tr><td style="background:#050505;color:#fff;padding:20px 28px;font-family:monospace;font-size:11px;letter-spacing:3px">// FIRONOVA · ORDER {order["order_number"]}</td></tr>
     <tr><td style="padding:32px 28px">
       <h1 style="margin:0 0 8px;font-size:28px;font-weight:900;letter-spacing:-0.02em;text-transform:uppercase">{body_intro}</h1>
       <p style="margin:0 0 24px;color:#555;font-size:15px;line-height:1.6">Order <strong>{order["order_number"]}</strong> · {len(order["items"])} item(s) · ${order["total"]:.2f} CAD</p>
@@ -654,7 +944,7 @@ def _order_email_html(order: dict, body_intro: str) -> str:
       </table>
       <p style="margin:32px 0 0;font-family:monospace;font-size:10px;letter-spacing:2px;color:#999;text-transform:uppercase">For Research Use Only · Not For Human Or Veterinary Consumption</p>
     </td></tr>
-    <tr><td style="background:#050505;color:#fff;padding:14px 28px;font-family:monospace;font-size:10px;letter-spacing:2px">NORDPEP · CANADA · {datetime.now(timezone.utc).strftime("%Y")}</td></tr>
+    <tr><td style="background:#050505;color:#fff;padding:14px 28px;font-family:monospace;font-size:10px;letter-spacing:2px">FIRONOVA · CANADA · {datetime.now(timezone.utc).strftime("%Y")}</td></tr>
   </table>
 </body></html>"""
 
@@ -678,13 +968,13 @@ async def send_order_confirmation(order: dict) -> None:
         logging.info("[email] skip customer confirm: no email on order %s", order["order_number"])
     else:
         html = _order_email_html(order, "Order received")
-        await _send_email(order["email"], f"NORDPEP — Order {order['order_number']} received", html)
+        await _send_email(order["email"], f"FIRONOVA — Order {order['order_number']} received", html)
 
     # Admin notification
     admin_html = _order_email_html(order, "New order received")
     await _send_email(
         ADMIN_NOTIFICATION_EMAIL,
-        f"[NORDPEP ADMIN] New order {order['order_number']} — ${order['total']:.2f} CAD",
+        f"[FIRONOVA ADMIN] New order {order['order_number']} — ${order['total']:.2f} CAD",
         admin_html,
     )
 
@@ -694,7 +984,141 @@ async def send_payment_received(order: dict) -> None:
         logging.info("[email] skip payment-received: no email on order %s", order["order_number"])
         return
     html = _order_email_html(order, "Payment received")
-    await _send_email(order["email"], f"NORDPEP — Payment received for {order['order_number']}", html)
+    await _send_email(order["email"], f"FIRONOVA — Payment received for {order['order_number']}", html)
+
+
+def _simple_order_email_html(order: dict, heading: str, body_html: str) -> str:
+    return f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#fafafa;font-family:'Helvetica Neue',Arial,sans-serif;color:#050505">
+  <table style="width:100%;max-width:640px;margin:0 auto;background:#fff;border:1px solid #050505">
+    <tr><td style="background:#050505;color:#fff;padding:20px 28px">
+      <div style="font-family:monospace;font-size:12px;letter-spacing:3px">FIRONOVA.</div>
+      <div style="font-size:20px;font-weight:800;letter-spacing:-0.5px;margin-top:6px">{heading}</div>
+    </td></tr>
+    <tr><td style="padding:28px">
+      <div style="font-family:monospace;font-size:12px;letter-spacing:2px;color:#666">ORDER {order.get('order_number','')}</div>
+      <div style="font-size:14px;line-height:1.7;margin-top:14px">{body_html}</div>
+    </td></tr>
+    <tr><td style="background:#f5f5f5;padding:16px 28px;font-family:monospace;font-size:10px;letter-spacing:1px;color:#888">
+      FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION · 19+ ONLY
+    </td></tr>
+  </table>
+</body></html>"""
+
+
+async def send_customer_note_email(order: dict, note_text: str) -> None:
+    if not order.get("email"):
+        return
+    body = (
+        f"A note has been added to your order / Une note a été ajoutée à votre commande :"
+        f"<div style='border-left:3px solid #050505;padding:10px 14px;margin-top:12px;background:#fafafa'>{note_text}</div>"
+    )
+    html = _simple_order_email_html(order, "Note about your order / Note sur votre commande", body)
+    await _send_email(order["email"], f"FIRONOVA — Note about order {order['order_number']}", html)
+
+
+async def send_refund_email(order: dict, amount: float, total_refunded: float) -> None:
+    if not order.get("email"):
+        return
+    full = total_refunded >= float(order.get("total", 0))
+    kind = "Full refund / Remboursement total" if full else "Partial refund / Remboursement partiel"
+    body = (
+        f"{kind}<br/>"
+        f"Refunded amount / Montant remboursé : <b>${amount:.2f} CAD</b><br/>"
+        f"Total refunded to date / Total remboursé à ce jour : <b>${total_refunded:.2f} CAD</b> "
+        f"(order total / total de la commande : ${float(order.get('total',0)):.2f} CAD)"
+    )
+    html = _simple_order_email_html(order, "Order refunded / Commande remboursée", body)
+    await _send_email(order["email"], f"FIRONOVA — Refund for order {order['order_number']}", html)
+
+
+# ---------------------------------------------------------------------------
+# Back-in-stock notifications
+# ---------------------------------------------------------------------------
+def _restock_email_html(product: dict, variant: Optional[dict]) -> str:
+    name = product.get("name_en", product.get("slug", ""))
+    variant_label = f" — {variant['name']}" if variant and variant.get("name") else ""
+    slug = product.get("slug", "")
+    link = f"{PUBLIC_BASE_URL}/product/{slug}" if PUBLIC_BASE_URL else f"/product/{slug}"
+    return f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#fafafa;font-family:'Helvetica Neue',Arial,sans-serif;color:#050505">
+  <table style="width:100%;max-width:640px;margin:0 auto;background:#fff;border:1px solid #050505">
+    <tr><td style="background:#050505;color:#fff;padding:20px 28px;font-family:monospace;font-size:11px;letter-spacing:3px">// FIRONOVA · BACK IN STOCK</td></tr>
+    <tr><td style="padding:32px 28px">
+      <h1 style="margin:0 0 12px;font-size:24px;font-weight:900;letter-spacing:-0.02em;text-transform:uppercase">{name}{variant_label}</h1>
+      <p style="margin:0 0 20px;color:#555;font-size:15px;line-height:1.6">
+        Good news — the product you were tracking is available again.<br/>
+        Bonne nouvelle — le produit que vous suiviez est de nouveau en stock.
+      </p>
+      <a href="{link}" style="display:inline-block;background:#050505;color:#fff;font-family:monospace;font-size:12px;letter-spacing:2px;padding:12px 24px;text-decoration:none">VIEW PRODUCT / VOIR LE PRODUIT →</a>
+      <p style="margin:32px 0 0;font-family:monospace;font-size:10px;letter-spacing:2px;color:#999;text-transform:uppercase">For Research Use Only · Not For Human Or Veterinary Consumption</p>
+    </td></tr>
+    <tr><td style="background:#050505;color:#fff;padding:14px 28px;font-family:monospace;font-size:10px;letter-spacing:2px">FIRONOVA · CANADA · {datetime.now(timezone.utc).strftime("%Y")}</td></tr>
+  </table>
+</body></html>"""
+
+
+async def _send_restock_email(to_email: str, product: dict, variant: Optional[dict]) -> None:
+    name = product.get("name_en", product.get("slug", ""))
+    html = _restock_email_html(product, variant)
+    await _send_email(to_email, f"FIRONOVA — {name} is back in stock", html)
+
+
+async def _maybe_notify_restock(product_id: str, variant_id: Optional[str] = None) -> None:
+    """Checks current stock for a product/variant; if positive, emails every pending
+    subscriber for that exact product/variant and marks them notified (one-shot)."""
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        return
+    variant = None
+    if variant_id and variant_id not in ("", "_default"):
+        variant = next((v for v in product.get("variants", []) if v.get("id") == variant_id), None)
+        current_stock = variant.get("stock", 0) if variant else 0
+    else:
+        variant_id = None  # normalize "" / "_default" to None for legacy/product-level match
+        current_stock = product.get("stock", 0)
+    if current_stock <= 0:
+        return
+
+    pending = await db.stock_notifications.find(
+        {"product_id": product_id, "variant_id": variant_id, "notified": False},
+        {"_id": 0},
+    ).to_list(1000)
+    if not pending:
+        return
+    for sub in pending:
+        asyncio.create_task(_send_restock_email(sub["email"], product, variant))
+    await db.stock_notifications.update_many(
+        {"product_id": product_id, "variant_id": variant_id, "notified": False},
+        {"$set": {"notified": True, "notified_at": datetime.now(timezone.utc).isoformat()}},
+    )
+
+
+@api.post("/shipping/rates")
+async def get_shipping_rates(payload: ShippingRateRequest):
+    """Live Canada Post rates when CANADA_POST_API_KEY is configured; otherwise falls back
+    to the existing flat-rate shipping_zones/shipping_methods (same zones used at checkout)."""
+    weight_kg = await _estimate_parcel_weight_kg(payload.items)
+    live_rates = await _canada_post_get_rates(payload.postal_code, payload.country, weight_kg)
+    if live_rates:
+        return {"source": "canada_post_live", "weight_kg": weight_kg, "rates": live_rates}
+
+    zones = await db.shipping_zones.find({}, {"_id": 0}).to_list(50)
+    zone = next((z for z in zones if payload.country in z.get("countries", [])), None)
+    if not zone:
+        zone = next((z for z in zones if "INTL" in z.get("countries", [])), None)
+    methods = []
+    if zone:
+        methods = await db.shipping_methods.find(
+            {"zone_id": zone["id"], "active": True}, {"_id": 0}
+        ).to_list(50)
+    rates = [
+        {"carrier": m["name"], "service_code": None, "service_name": m["name"],
+         "cost_cad": m["cost_cad"], "eta_days": m["eta_days"]}
+        for m in methods
+    ] or [{"carrier": "FIRONOVA", "service_code": None, "service_name": "Standard",
+           "cost_cad": SHIPPING_FLAT_CAD, "eta_days": "3-7 business days"}]
+    return {"source": "flat_rate_fallback", "weight_kg": weight_kg, "rates": rates}
 
 
 @api.post("/checkout")
@@ -841,12 +1265,76 @@ async def get_order(order_id: str, request: Request):
     if order.get("user_id"):
         if not user or (user["id"] != order["user_id"] and user.get("role") != "admin"):
             raise HTTPException(403, "Forbidden")
+    if not (user and user.get("role") == "admin"):
+        if isinstance(order.get("compliance"), dict):
+            order["compliance"].pop("ip", None)
+        order["notes"] = [n for n in (order.get("notes") or []) if n.get("visible_to_customer")]
     return order
 
 
+@api.get("/orders/{order_id}/tracking")
+async def order_tracking(order_id: str, request: Request):
+    """Live Canada Post tracking for the order's tracking_number, when configured."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    user = await _resolve_user(request)
+    if order.get("user_id"):
+        if not user or (user["id"] != order["user_id"] and user.get("role") != "admin"):
+            raise HTTPException(403, "Forbidden")
+    pin = (order.get("shipping_info") or {}).get("tracking_number")
+    if not pin:
+        return {"tracked": False, "reason": "no_tracking_number"}
+    live = await _canada_post_track(pin)
+    if live:
+        return {"tracked": True, "source": "canada_post_live", **live}
+    return {"tracked": False, "reason": "unavailable_or_not_configured", "pin": pin}
+
+
+_ORDER_STATUS_GROUPS = {
+    "active": {"fulfillment_status": {"$nin": ["delivered", "cancelled", "failed"]}},
+    "completed": {"fulfillment_status": "delivered"},
+    "cancelled": {"fulfillment_status": {"$in": ["cancelled", "failed"]}},
+}
+
+
+def _status_group_filter(status_group: Optional[str]) -> dict:
+    return dict(_ORDER_STATUS_GROUPS.get(status_group or "", {}))
+
+
 @api.get("/admin/orders")
-async def admin_orders(_admin: dict = Depends(get_admin_user)):
-    return await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+async def admin_orders(status_group: Optional[str] = None, _admin: dict = Depends(get_admin_user)):
+    return await db.orders.find(_status_group_filter(status_group), {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+@api.get("/admin/orders/counts")
+async def admin_order_counts(_admin: dict = Depends(get_admin_user)):
+    out = {}
+    for group, filt in _ORDER_STATUS_GROUPS.items():
+        out[group] = await db.orders.count_documents(filt)
+    out["all"] = await db.orders.count_documents({})
+    return out
+
+
+@api.get("/admin/orders/dispatch-batch")
+async def admin_dispatch_batch(
+    date: Optional[str] = None, _admin: dict = Depends(get_admin_user)
+):
+    """
+    Commandes du lot d'expédition d'un jour donné (défaut : prochain jour
+    ouvrable courant). Payées, non annulées/expédiées/livrées, triées par paiement.
+    """
+    if not date:
+        date = compute_dispatch_batch(datetime.now(timezone.utc))
+    filt = {
+        "dispatch_batch": date,
+        "payment_status": "paid",
+        "fulfillment_status": {"$nin": ["cancelled", "failed", "shipped", "delivered"]},
+    }
+    orders = (
+        await db.orders.find(filt, {"_id": 0}).sort("paid_at", 1).to_list(500)
+    )
+    return {"batch_date": date, "count": len(orders), "orders": orders}
 
 
 @api.put("/admin/orders/{order_id}/status")
@@ -876,6 +1364,22 @@ async def admin_update_order(
     ):
         update["fulfillment_status"] = "processing"
 
+    # Affecte le lot d'expédition au moment du paiement (idempotent).
+    if (
+        payment_status == "paid"
+        and existing.get("payment_status") != "paid"
+        and not existing.get("dispatch_batch")
+    ):
+        _paid_ref = update.get("paid_at") or existing.get("paid_at") or datetime.now(timezone.utc).isoformat()
+        update["dispatch_batch"] = compute_dispatch_batch(_paid_ref)
+
+    # Restock inventory when moving into cancelled/failed from a non-terminal state
+    if (
+        update.get("fulfillment_status") in ("cancelled", "failed")
+        and existing.get("fulfillment_status") not in ("cancelled", "failed")
+    ):
+        await _restock_order_items(existing)
+
     await db.orders.update_one({"id": order_id}, {"$set": update})
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
 
@@ -898,12 +1402,14 @@ async def admin_confirm_payment(order_id: str, _admin: dict = Depends(get_admin_
         raise HTTPException(404, "Order not found")
     if existing.get("payment_status") == "paid":
         return existing  # idempotent
+    _paid_at = datetime.now(timezone.utc).isoformat()
     await db.orders.update_one(
         {"id": order_id},
         {"$set": {
             "payment_status": "paid",
             "fulfillment_status": "processing",
-            "paid_at": datetime.now(timezone.utc).isoformat(),
+            "paid_at": _paid_at,
+            "dispatch_batch": existing.get("dispatch_batch") or compute_dispatch_batch(_paid_at),
         }},
     )
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
@@ -953,12 +1459,58 @@ async def admin_add_order_note(order_id: str, payload: OrderNoteIn, admin: dict 
     note = {
         "text": payload.text,
         "admin_email": admin["email"],
+        "visible_to_customer": payload.visible_to_customer,
         "ts": datetime.now(timezone.utc).isoformat(),
     }
     res = await db.orders.update_one({"id": order_id}, {"$push": {"notes": note}})
     if res.matched_count == 0:
         raise HTTPException(404, "Order not found")
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if payload.visible_to_customer and order.get("email"):
+        asyncio.create_task(send_customer_note_email(order, payload.text))
+    return order
+
+
+@api.post("/admin/orders/{order_id}/refund")
+async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Depends(get_admin_user)):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    already = float(order.get("refunded_amount", 0) or 0)
+    total = float(order.get("total", 0))
+    amount = round(payload.amount, 2)
+    if already + amount > total + 0.001:
+        raise HTTPException(400, f"Refund exceeds order total (already refunded ${already:.2f} of ${total:.2f})")
+    new_refunded = round(already + amount, 2)
+    update = {"refunded_amount": new_refunded}
+    if new_refunded >= total:
+        update["payment_status"] = "refunded"
+        update["fulfillment_status"] = "refunded"
+    note = {
+        "text": f"Refund issued: ${amount:.2f} CAD (total refunded ${new_refunded:.2f} / ${total:.2f})",
+        "admin_email": admin["email"],
+        "visible_to_customer": False,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.orders.update_one({"id": order_id}, {"$set": update, "$push": {"notes": note}})
+    updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if updated.get("email"):
+        asyncio.create_task(send_refund_email(updated, amount, new_refunded))
+    return updated
+
+
+@api.post("/admin/orders/{order_id}/resend-email")
+async def admin_resend_order_email(order_id: str, _admin: dict = Depends(get_admin_user)):
+    """Re-sends the order details / payment-instructions email to the customer."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if not order.get("email"):
+        raise HTTPException(400, "Order has no customer email")
+    heading = "Payment received" if order.get("payment_status") == "paid" else "Order received"
+    html = _order_email_html(order, heading)
+    await _send_email(order["email"], f"FIRONOVA — Order {order['order_number']} details", html)
+    return {"ok": True, "sent_to": order["email"]}
 
 
 @api.put("/admin/orders/{order_id}/shipping")
@@ -983,7 +1535,16 @@ async def admin_adjust_stock(product_id: str, payload: StockAdjustIn, _admin: di
     res = await db.products.update_one({"id": product_id}, {"$inc": {"stock": payload.delta}})
     if res.matched_count == 0:
         raise HTTPException(404, "Product not found")
+    if payload.delta > 0:
+        asyncio.create_task(_maybe_notify_restock(product_id, None))
     return await db.products.find_one({"id": product_id}, {"_id": 0})
+
+
+@api.get("/admin/stock-notifications")
+async def admin_list_stock_notifications(_admin: dict = Depends(get_admin_user)):
+    """Overview of pending back-in-stock subscriptions, grouped implicitly by product/variant."""
+    pending = await db.stock_notifications.find({"notified": False}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    return pending
 
 
 # ---------------------------------------------------------------------------
@@ -1186,8 +1747,12 @@ def _csv_response(rows: list, filename: str) -> StreamingResponse:
 
 
 @api.get("/admin/orders.csv")
-async def admin_orders_csv(_admin: dict = Depends(get_admin_user)):
-    orders = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(5000)
+async def admin_orders_csv(status_group: Optional[str] = None, _admin: dict = Depends(get_admin_user)):
+    orders = await db.orders.find(_status_group_filter(status_group), {"_id": 0}).sort("created_at", -1).to_list(5000)
+    return _csv_response(_orders_export_rows(orders), f"fironova-orders-{datetime.now().strftime('%Y%m%d')}.csv")
+
+
+def _orders_export_rows(orders: list) -> list:
     rows = []
     for o in orders:
         addr = o.get("shipping_address", {})
@@ -1208,10 +1773,43 @@ async def admin_orders_csv(_admin: dict = Depends(get_admin_user)):
             "discount_cad": o.get("discount", 0),
             "shipping_cad": o.get("shipping", 0),
             "total_cad": o.get("total", 0),
+            "refunded_cad": o.get("refunded_amount", 0),
             "tracking_number": (o.get("shipping_info") or {}).get("tracking_number", ""),
             "carrier": (o.get("shipping_info") or {}).get("carrier", ""),
         })
-    return _csv_response(rows, f"nordpep-orders-{datetime.now().strftime('%Y%m%d')}.csv")
+    return rows
+
+
+def _xlsx_response(rows: list, filename: str) -> Response:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    wb = Workbook()
+    ws = wb.active
+    headers = list(rows[0].keys()) if rows else ["no_data"]
+    ws.append(headers)
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="050505", end_color="050505", fill_type="solid")
+    for cell in ws[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+    for r in rows:
+        ws.append([r.get(h, "") for h in headers])
+    for col_idx, h in enumerate(headers, start=1):
+        width = max([len(str(h))] + [len(str(r.get(h, ""))) for r in rows[:500]]) + 2
+        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = min(width, 50)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@api.get("/admin/orders.xlsx")
+async def admin_orders_xlsx(status_group: Optional[str] = None, _admin: dict = Depends(get_admin_user)):
+    orders = await db.orders.find(_status_group_filter(status_group), {"_id": 0}).sort("created_at", -1).to_list(5000)
+    return _xlsx_response(_orders_export_rows(orders), f"fironova-orders-{datetime.now().strftime('%Y%m%d')}.xlsx")
 
 
 @api.get("/admin/products.csv")
@@ -1238,7 +1836,32 @@ async def admin_products_csv(_admin: dict = Depends(get_admin_user)):
             "coa_date": p.get("coa_date", ""),
             "active": p.get("active", True),
         })
-    return _csv_response(rows, f"nordpep-products-{datetime.now().strftime('%Y%m%d')}.csv")
+    return _csv_response(rows, f"fironova-products-{datetime.now().strftime('%Y%m%d')}.csv")
+
+
+@api.get("/admin/products.xlsx")
+async def admin_products_xlsx(_admin: dict = Depends(get_admin_user)):
+    products = await db.products.find({}, {"_id": 0}).sort("name_en", 1).to_list(2000)
+    rows = []
+    for p in products:
+        rows.append({
+            "slug": p.get("slug", ""),
+            "name_en": p.get("name_en", ""),
+            "name_fr": p.get("name_fr", ""),
+            "category": p.get("category", ""),
+            "purity": p.get("purity", ""),
+            "dosage_mg": p.get("dosage_mg", 0),
+            "price_cad": p.get("price_cad", 0),
+            "stock": p.get("stock", 0),
+            "variants": "; ".join(
+                f"{v.get('name','')} ${v.get('price',0)} stock={v.get('stock',0)}" for v in (p.get("variants") or [])
+            ),
+            "low_stock_threshold": p.get("low_stock_threshold", 10),
+            "featured": p.get("featured", False),
+            "lab_tested": p.get("lab_tested", False),
+            "active": p.get("active", True),
+        })
+    return _xlsx_response(rows, f"fironova-products-{datetime.now().strftime('%Y%m%d')}.xlsx")
 
 
 # ---------------------------------------------------------------------------
@@ -1254,7 +1877,7 @@ def _generate_invoice_pdf(order: dict) -> bytes:
     c.rect(0, h - 18 * mm, w, 18 * mm, fill=1, stroke=0)
     c.setFillColor(rl_colors.white)
     c.setFont("Helvetica-Bold", 22)
-    c.drawString(20 * mm, h - 13 * mm, "NORDPEP")
+    c.drawString(20 * mm, h - 13 * mm, "FIRONOVA")
     c.setFillColor(rl_colors.HexColor("#E51919"))
     c.circle(20 * mm + 41 * mm, h - 13 * mm + 1.5 * mm, 1.5 * mm, fill=1, stroke=0)
     c.setFillColor(rl_colors.white)
@@ -1338,7 +1961,7 @@ def _generate_invoice_pdf(order: dict) -> bytes:
     c.setFont("Courier", 7)
     c.setFillColor(rl_colors.HexColor("#666666"))
     c.drawCentredString(w / 2, 20 * mm, "FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION · 19+ ONLY")
-    c.drawCentredString(w / 2, 16 * mm, f"NORDPEP · CANADA · INVOICE GENERATED {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    c.drawCentredString(w / 2, 16 * mm, f"FIRONOVA · CANADA · INVOICE GENERATED {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
 
     c.showPage()
     c.save()
@@ -1397,12 +2020,28 @@ async def stripe_status(session_id: str, request: Request):
                 {"$set": {
                     "payment_status": "paid",
                     "fulfillment_status": "processing",
-                    "paid_at": datetime.now(timezone.utc).isoformat(),
+                    "paid_at": (_pa := datetime.now(timezone.utc).isoformat()),
+                    "dispatch_batch": compute_dispatch_batch(_pa),
                 }},
             )
             order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
             if order.get("email"):
                 asyncio.create_task(send_payment_received(order))
+    # Expired Stripe session = active payment failure → "failed" (distinct from voluntary "cancelled")
+    if status_resp.status == "expired":
+        order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
+        if order and order.get("payment_status") not in ("paid",) and order.get("fulfillment_status") not in ("cancelled", "failed"):
+            await db.orders.update_one(
+                {"id": txn["order_id"]},
+                {"$set": {"payment_status": "failed", "fulfillment_status": "failed"},
+                 "$push": {"notes": {
+                     "id": str(uuid.uuid4()),
+                     "text": "Payment failed: Stripe checkout session expired",
+                     "author": "system",
+                     "created_at": datetime.now(timezone.utc).isoformat(),
+                 }}},
+            )
+            await _restock_order_items(order)
     return {
         "session_id": session_id,
         "payment_status": status_resp.payment_status,
@@ -1447,7 +2086,8 @@ async def nowpayments_ipn(request: Request):
             {"$set": {
                 "payment_status": "paid",
                 "fulfillment_status": "processing",
-                "paid_at": datetime.now(timezone.utc).isoformat(),
+                "paid_at": (_pa := datetime.now(timezone.utc).isoformat()),
+                "dispatch_batch": compute_dispatch_batch(_pa),
             },
              "$push": {"notes": {
                  "id": str(uuid.uuid4()),
@@ -1507,7 +2147,8 @@ async def crypto_status(order_id: str):
             {"$set": {
                 "payment_status": "paid",
                 "fulfillment_status": "processing",
-                "paid_at": datetime.now(timezone.utc).isoformat(),
+                "paid_at": (_pa := datetime.now(timezone.utc).isoformat()),
+                "dispatch_batch": compute_dispatch_batch(_pa),
             }},
         )
         if res.modified_count:
@@ -1545,7 +2186,8 @@ async def stripe_webhook(request: Request):
                 await db.orders.update_one(
                     {"id": txn["order_id"]},
                     {"$set": {"payment_status": "paid", "fulfillment_status": "processing",
-                              "paid_at": datetime.now(timezone.utc).isoformat()}},
+                              "paid_at": (_pa := datetime.now(timezone.utc).isoformat()),
+                              "dispatch_batch": compute_dispatch_batch(_pa)}},
                 )
                 order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
                 if order.get("email"):
@@ -1559,18 +2201,20 @@ async def stripe_webhook(request: Request):
 @api.get("/meta")
 async def meta():
     return {
-        "store": "NORDPEP",
+        "store": "FIRONOVA",
         "currency": "CAD",
         "shipping_flat_cad": SHIPPING_FLAT_CAD,
         "provinces": PROVINCES_CA,
         "min_age": 19,
         "interac_email": INTERAC_EMAIL,
+        "coa_page_enabled": COA_PAGE_ENABLED,
+        "canada_post_enabled": bool(CANADA_POST_API_KEY and CANADA_POST_CUSTOMER_NUMBER),
     }
 
 
 @api.get("/")
 async def root():
-    return {"service": "nordpep-api", "status": "ok"}
+    return {"service": "fironova-api", "status": "ok"}
 
 
 # ---------------------------------------------------------------------------
@@ -1778,6 +2422,7 @@ async def seed_admin_and_products():
     await db.products.create_index("slug", unique=True)
     await db.orders.create_index("order_number")
     await db.orders.create_index("user_id")
+    await db.stock_notifications.create_index([("product_id", 1), ("variant_id", 1), ("notified", 1)])
 
     # Admin
     existing = await db.users.find_one({"email": ADMIN_EMAIL.lower()})
@@ -1786,7 +2431,7 @@ async def seed_admin_and_products():
         await db.users.insert_one({
             "id": str(uuid.uuid4()),
             "email": ADMIN_EMAIL.lower(),
-            "name": "NORDPEP Admin",
+            "name": "FIRONOVA Admin",
             "password_hash": hashed,
             "role": "admin",
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -1897,11 +2542,13 @@ async def _restock_order_items(order: dict):
             continue
         if it.get("variant_id") in (None, "", "_default"):
             await db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": it["qty"]}})
+            asyncio.create_task(_maybe_notify_restock(it["product_id"], None))
             continue
         await db.products.update_one(
             {"id": it["product_id"], "variants.id": it["variant_id"]},
             {"$inc": {"variants.$.stock": it["qty"]}},
         )
+        asyncio.create_task(_maybe_notify_restock(it["product_id"], it["variant_id"]))
 
 
 async def cancel_stale_unpaid_orders():
@@ -1944,6 +2591,26 @@ async def _unpaid_orders_watchdog():
 async def startup_event():
     await seed_admin_and_products()
     asyncio.create_task(_unpaid_orders_watchdog())
+    asyncio.create_task(_backfill_dispatch_batch())
+
+
+async def _backfill_dispatch_batch():
+    """Renseigne dispatch_batch pour les commandes payées qui n'en ont pas (non destructif)."""
+    try:
+        cursor = db.orders.find(
+            {"payment_status": "paid", "paid_at": {"$ne": None},
+             "dispatch_batch": {"$in": [None, ""]}},
+            {"_id": 0, "id": 1, "paid_at": 1},
+        )
+        n = 0
+        async for o in cursor:
+            batch = compute_dispatch_batch(o["paid_at"])
+            await db.orders.update_one({"id": o["id"]}, {"$set": {"dispatch_batch": batch}})
+            n += 1
+        if n:
+            logging.info("dispatch_batch backfill: %d commande(s) mise(s) à jour", n)
+    except Exception as e:  # pragma: no cover
+        logging.error("dispatch_batch backfill failed: %s", e)
 
 
 @app.on_event("shutdown")
