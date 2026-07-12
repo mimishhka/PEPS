@@ -6,11 +6,11 @@ const LanguageContext = createContext(null);
 export function LanguageProvider({ children }) {
   const [lang, setLang] = useState(() => {
     if (typeof window === "undefined") return "en";
-    return localStorage.getItem("nordpep_lang") || "en";
+    return localStorage.getItem("fironova_lang") || "en";
   });
 
   useEffect(() => {
-    localStorage.setItem("nordpep_lang", lang);
+    localStorage.setItem("fironova_lang", lang);
     document.documentElement.lang = lang;
   }, [lang]);
 

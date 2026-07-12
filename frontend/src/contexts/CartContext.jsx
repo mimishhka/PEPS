@@ -3,7 +3,7 @@ import { toast } from "sonner";
 
 const CartContext = createContext(null);
 
-const STORAGE_KEY = "nordpep_cart_v1";
+const STORAGE_KEY = "fironova_cart_v1";
 
 export function CartProvider({ children }) {
   const [items, setItems] = useState(() => {

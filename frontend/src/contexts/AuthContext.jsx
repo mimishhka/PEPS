@@ -25,7 +25,7 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     try {
       const { data } = await api.post("/auth/login", { email, password });
-      if (data.token) localStorage.setItem("nordpep_token", data.token);
+      if (data.token) localStorage.setItem("fironova_token", data.token);
       setUser({ id: data.id, email: data.email, name: data.name, role: data.role, created_at: data.created_at });
       return { ok: true };
     } catch (e) {
@@ -36,7 +36,7 @@ export function AuthProvider({ children }) {
   const register = useCallback(async (name, email, password) => {
     try {
       const { data } = await api.post("/auth/register", { name, email, password });
-      if (data.token) localStorage.setItem("nordpep_token", data.token);
+      if (data.token) localStorage.setItem("fironova_token", data.token);
       setUser({ id: data.id, email: data.email, name: data.name, role: data.role, created_at: data.created_at });
       return { ok: true };
     } catch (e) {
@@ -46,7 +46,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch { /* ignore */ }
-    localStorage.removeItem("nordpep_token");
+    localStorage.removeItem("fironova_token");
     setUser(null);
   }, []);
 
