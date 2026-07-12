@@ -35,7 +35,7 @@ export default function AdminLayout() {
         <aside className="w-60 bg-white border-r border-ink/10 min-h-screen sticky top-0 hidden lg:flex flex-col" data-testid="admin-sidebar">
           <div className="px-6 py-6 border-b border-ink/10">
             <div className="font-display font-extrabold text-xl tracking-tight">
-              NORDPEP<span style={{ color: "#E51919" }}>.</span>
+              FIRONOVA<span style={{ color: "#E51919" }}>.</span>
             </div>
             <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mt-1">// Admin</div>
           </div>
