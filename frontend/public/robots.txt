@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /$
+Allow: /catalog
+Allow: /product/
+Allow: /about
+Allow: /compliance
+Allow: /faq
+Allow: /privacy
+Disallow: /checkout
+Disallow: /order/
+Disallow: /account
+Disallow: /login
+Disallow: /register
+Disallow: /admin
+Disallow: /lab
+
+Sitemap: https://fironova.ca/sitemap.xml
