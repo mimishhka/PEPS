@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useLang } from "../contexts/LanguageContext";
+import useDocumentHead from "../hooks/useDocumentHead";
 import {
   Accordion,
   AccordionContent,
@@ -232,6 +233,7 @@ const GROUPS = [
 ];
 
 export default function Faq() {
+  useDocumentHead({ title: "FAQ", path: "/faq" });
   const { lang } = useLang();
   const isFr = lang === "fr";
   return (
