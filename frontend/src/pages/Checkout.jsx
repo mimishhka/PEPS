@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
+import useDocumentHead from "../hooks/useDocumentHead";
 import { useAuth } from "../contexts/AuthContext";
 
 const PROVINCES = [
@@ -25,6 +26,7 @@ const SHIPPING_FLAT = 20.0;
 const FREE_SHIPPING_THRESHOLD = 200.0;
 
 export default function Checkout() {
+  useDocumentHead({ title: "Checkout", path: "/checkout", noindex: true });
   const navigate = useNavigate();
   const { lang, t } = useLang();
   const { user } = useAuth();
