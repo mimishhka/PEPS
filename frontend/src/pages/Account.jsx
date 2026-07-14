@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import api from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
+import useDocumentHead from "../hooks/useDocumentHead";
 
 const statusColor = {
   awaiting_etransfer: "bg-secondary",
@@ -14,6 +15,7 @@ const statusColor = {
 };
 
 export default function Account() {
+  useDocumentHead({ title: "My Account", path: "/account", noindex: true });
   const { user, logout } = useAuth();
   const { t } = useLang();
   const [orders, setOrders] = useState([]);
