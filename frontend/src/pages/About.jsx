@@ -1,6 +1,8 @@
 import { useLang } from "../contexts/LanguageContext";
+import useDocumentHead from "../hooks/useDocumentHead";
 
 export default function About() {
+  useDocumentHead({ title: "About", path: "/about" });
   const { lang } = useLang();
   const isFr = lang === "fr";
   return (
