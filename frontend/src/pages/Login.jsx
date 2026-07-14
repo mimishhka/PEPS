@@ -3,8 +3,10 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
+import useDocumentHead from "../hooks/useDocumentHead";
 
 export default function Login() {
+  useDocumentHead({ title: "Sign in", path: "/login", noindex: true });
   const { t } = useLang();
   const { login } = useAuth();
   const navigate = useNavigate();
