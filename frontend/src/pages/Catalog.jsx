@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
+import useDocumentHead from "../hooks/useDocumentHead";
 import ProductCard from "../components/ProductCard";
 
 const CATEGORIES = ["all", "healing", "gh-secretagogues", "weight-loss", "cognitive", "longevity"];
 
 export default function Catalog() {
+  useDocumentHead({ title: "Catalog", description: "Browse Fironova research peptides. Certificate-of-analysis documentation. For Research Use Only.", path: "/catalog" });
   const { t } = useLang();
   const [params, setParams] = useSearchParams();
   const [products, setProducts] = useState([]);
