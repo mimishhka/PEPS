@@ -1,4 +1,5 @@
 import { useLang } from "../contexts/LanguageContext";
+import useDocumentHead from "../hooks/useDocumentHead";
 
 const TERMS = [
   {
@@ -336,6 +337,7 @@ const SHIPPING = [
 ];
 
 export default function Compliance() {
+  useDocumentHead({ title: "Compliance", description: "Fironova compliance and regulatory positioning. For Research Use Only. Not for human consumption.", path: "/compliance" });
   const { lang } = useLang();
   const isFr = lang === "fr";
   return (
