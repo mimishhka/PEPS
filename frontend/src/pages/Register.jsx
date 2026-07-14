@@ -3,8 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
+import useDocumentHead from "../hooks/useDocumentHead";
 
 export default function Register() {
+  useDocumentHead({ title: "Register", path: "/register", noindex: true });
   const { t } = useLang();
   const { register } = useAuth();
   const navigate = useNavigate();
