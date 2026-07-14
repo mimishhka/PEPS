@@ -3,10 +3,12 @@ import { Link } from "react-router-dom";
 import { ArrowRight, ShieldCheck, MapPin, FlaskConical, Package } from "lucide-react";
 import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
+import useDocumentHead from "../hooks/useDocumentHead";
 import { useSiteConfig } from "../contexts/SiteConfigContext";
 import ProductCard from "../components/ProductCard";
 
 export default function Home() {
+  useDocumentHead({ title: "Research Peptides", description: "Research-grade peptides for laboratory use, with certificate-of-analysis documentation. For Research Use Only.", path: "/" });
   const { t, lang } = useLang();
   const { coaPageEnabled } = useSiteConfig();
   const [products, setProducts] = useState([]);
