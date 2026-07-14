@@ -4,6 +4,7 @@ import { Plus, Minus, AlertTriangle, BellRing, Check } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
+import useDocumentHead from "../hooks/useDocumentHead";
 import { useCart } from "../contexts/CartContext";
 
 export default function ProductDetail() {
@@ -17,6 +18,12 @@ export default function ProductDetail() {
   const [notifyEmail, setNotifyEmail] = useState("");
   const [notifySubmitting, setNotifySubmitting] = useState(false);
   const [notifyDone, setNotifyDone] = useState(false);
+
+  useDocumentHead({
+    title: product ? (lang === "fr" ? product.name_fr : product.name_en) : "Product",
+    description: product ? ((lang === "fr" ? product.description_fr : product.description_en) || "").slice(0, 155) : undefined,
+    path: `/product/${slug}`,
+  });
 
   useEffect(() => {
     setLoading(true);
