@@ -1,4 +1,5 @@
 import { useLang } from "../contexts/LanguageContext";
+import useDocumentHead from "../hooks/useDocumentHead";
 
 const SECTIONS = [
   {
@@ -153,6 +154,7 @@ const SECTIONS = [
 ];
 
 export default function Privacy() {
+  useDocumentHead({ title: "Privacy", path: "/privacy" });
   const { lang } = useLang();
   const isFr = lang === "fr";
   return (
