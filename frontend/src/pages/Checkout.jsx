@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
@@ -48,6 +48,34 @@ export default function Checkout() {
   const [ack, setAck] = useState({ a1: false, a2: false, a3: false });
   const [submitting, setSubmitting] = useState(false);
   const [coupon, setCoupon] = useState({ code: "", applied: null, error: "" });
+
+  // Adresses sauvegardées : chargées seulement si connecté ; l'adresse par
+  // défaut pré-remplit le formulaire automatiquement au premier rendu.
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const applySavedAddress = (a) => {
+    setForm((f) => ({
+      ...f,
+      full_name: a.full_name,
+      phone: a.phone || "",
+      address1: a.address1,
+      address2: a.address2 || "",
+      city: a.city,
+      province: a.province,
+      postal_code: a.postal_code,
+      country: a.country || "CA",
+    }));
+  };
+  useEffect(() => {
+    if (!user) return;
+    api.get("/account/addresses")
+      .then((r) => {
+        setSavedAddresses(r.data);
+        const def = r.data.find((a) => a.is_default);
+        if (def) applySavedAddress(def);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const discount = coupon.applied?.discount_amount || 0;
   const shipping = useMemo(() => (Math.max(0, subtotal - discount) >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FLAT), [subtotal, discount]);
@@ -136,6 +164,27 @@ export default function Checkout() {
         {/* Shipping */}
         <section className="space-y-4">
           <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50">02 · {t("checkout.shipping")}</div>
+          {savedAddresses.length > 0 && (
+            <div data-testid="saved-address-picker">
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-2">
+                {t("checkout.savedAddresses")}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {savedAddresses.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => applySavedAddress(a)}
+                    data-testid={`saved-address-${a.id}`}
+                    className="border border-ink px-4 py-2 font-mono text-[10px] uppercase tracking-[0.15em] hover:bg-ink hover:text-white rounded-sm"
+                  >
+                    {a.label || a.address1}
+                    {a.is_default ? " ★" : ""}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <Input label={t("checkout.fullName")} required value={form.full_name} onChange={(v) => setForm({ ...form, full_name: v })} testId="checkout-name" />
           <Input label={t("checkout.phone")} value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} testId="checkout-phone" />
           <Input label={t("checkout.address1")} required value={form.address1} onChange={(v) => setForm({ ...form, address1: v })} testId="checkout-address1" />
@@ -214,7 +263,7 @@ export default function Checkout() {
 
         {/* Compliance */}
         <section className="space-y-4 bg-secondary p-6 border border-ink/20">
-          <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-signal" style={{ color: "#E51919" }}>04 · COMPLIANCE — REQUIRED</div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-signal" style={{ color: "#C20114" }}>04 · COMPLIANCE — REQUIRED</div>
           <Checkbox checked={ack.a1} onChange={(c) => setAck({ ...ack, a1: c })} label={t("checkout.ack1")} testId="ack-age" />
           <Checkbox checked={ack.a2} onChange={(c) => setAck({ ...ack, a2: c })} label={t("checkout.ack2")} testId="ack-research" />
           <Checkbox checked={ack.a3} onChange={(c) => setAck({ ...ack, a3: c })} label={t("checkout.ack3")} testId="ack-terms" />

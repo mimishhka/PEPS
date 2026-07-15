@@ -122,7 +122,7 @@ export default function ProductDetail() {
           </h1>
         </div>
 
-        <div className="border border-signal text-signal p-4 flex items-start gap-3" style={{ borderColor: "#E51919", color: "#E51919" }} data-testid="research-only-banner">
+        <div className="border border-signal text-signal p-4 flex items-start gap-3" style={{ borderColor: "#C20114", color: "#C20114" }} data-testid="research-only-banner">
           <AlertTriangle size={18} strokeWidth={1.5} className="mt-0.5 shrink-0" />
           <p className="font-mono text-[11px] uppercase tracking-[0.2em] leading-relaxed">
             {t("product.researchOnly")}

@@ -133,10 +133,10 @@ export default function OrderConfirmation() {
       )}
 
       {awaitingPayment && (
-        <div className="mt-8 border-2 border-signal p-5 flex items-start gap-3" style={{ borderColor: "#E51919" }} data-testid="payment-deadline-warning">
-          <span className="font-display font-extrabold text-xl leading-none" style={{ color: "#E51919" }}>!</span>
+        <div className="mt-8 border-2 border-signal p-5 flex items-start gap-3" style={{ borderColor: "#C20114" }} data-testid="payment-deadline-warning">
+          <span className="font-display font-extrabold text-xl leading-none" style={{ color: "#C20114" }}>!</span>
           <div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.25em]" style={{ color: "#E51919" }}>
+            <div className="font-mono text-[11px] uppercase tracking-[0.25em]" style={{ color: "#C20114" }}>
               {lang === "fr" ? "Paiement requis sous 48 heures" : "Payment required within 48 hours"}
             </div>
             <p className="mt-2 text-sm text-foreground/80 leading-relaxed">
@@ -159,7 +159,7 @@ export default function OrderConfirmation() {
 
       {interac && (
         <div className="mt-8 border border-ink" data-testid="interac-instructions">
-          <div className="bg-signal text-white px-6 py-3 font-mono text-[11px] uppercase tracking-[0.25em]" style={{ background: "#E51919" }}>
+          <div className="bg-signal text-white px-6 py-3 font-mono text-[11px] uppercase tracking-[0.25em]" style={{ background: "#C20114" }}>
             ⚡ {t("confirmation.interacHeading")}
           </div>
           <div className="p-8 space-y-5 font-mono text-sm">
@@ -217,10 +217,10 @@ export default function OrderConfirmation() {
                   <li className="flex gap-2"><span style={{ color: "#16a34a" }}>✓</span>{lang === "fr"
                     ? "Les paiements à taux fixe exigent le montant exact et doivent être envoyés avant l'expiration du minuteur."
                     : "Fixed-rate payments require the exact amount and must be sent before the timer expires."}</li>
-                  <li className="flex gap-2"><span style={{ color: "#E51919" }}>✕</span>{lang === "fr"
+                  <li className="flex gap-2"><span style={{ color: "#C20114" }}>✕</span>{lang === "fr"
                     ? "Les paiements inférieurs au montant minimum ne peuvent pas être traités."
                     : "Payments below the minimum amount can't be processed."}</li>
-                  <li className="flex gap-2"><span style={{ color: "#E51919" }}>✕</span>{lang === "fr"
+                  <li className="flex gap-2"><span style={{ color: "#C20114" }}>✕</span>{lang === "fr"
                     ? "Les paiements complétés ne sont pas remboursables."
                     : "Completed payments are non-refundable."}</li>
                 </ul>
@@ -270,7 +270,7 @@ export default function OrderConfirmation() {
 
 function Row({ label, value, onCopy, copied, testId, highlight }) {
   return (
-    <div className={`grid grid-cols-[1fr_auto] items-start gap-4 ${highlight ? "bg-secondary -mx-3 px-3 py-3 border-l-2 border-signal" : ""}`} style={highlight ? { borderLeftColor: "#E51919" } : {}}>
+    <div className={`grid grid-cols-[1fr_auto] items-start gap-4 ${highlight ? "bg-secondary -mx-3 px-3 py-3 border-l-2 border-signal" : ""}`} style={highlight ? { borderLeftColor: "#C20114" } : {}}>
       <div>
         <div className="text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">{label}</div>
         <div className="text-base font-bold break-all" data-testid={testId}>{value}</div>
