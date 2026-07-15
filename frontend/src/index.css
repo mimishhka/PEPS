@@ -1,5 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap");
+@import "./styles/tokens.css";
 
 @tailwind base;
 @tailwind components;
@@ -13,7 +14,7 @@
     --card-foreground: 4 76% 13%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 2%;
-    --primary: 1 93% 22%;        /* #6B0504 oxblood */
+    --primary: 1 93% 22%;        /* #6B0504 garnet */
     --primary-foreground: 0 0% 100%;
     --secondary: 24 45% 94%;
     --secondary-foreground: 4 76% 13%;
@@ -26,7 +27,7 @@
     --border: 20 35% 86%;
     --input: 20 35% 86%;
     --ring: 358 98% 38%;         /* #C20114 signal */
-    --radius: 0;
+    --radius: 12px;              /* --fn-radius-md (était 0) */
   }
 }
 
@@ -41,10 +42,10 @@ html, body, #root {
 
 body {
   margin: 0;
-  font-family: "Space Grotesk", "Satoshi", system-ui, sans-serif;
+  /* Voix body = Inter (token typography.families.body) */
+  font-family: "Inter", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "ss01", "ss02";
 }
 
 ::selection {
@@ -63,10 +64,27 @@ body {
   mix-blend-mode: multiply;
 }
 
-.font-display { font-family: "Instrument Serif", "Fraunces", Georgia, serif; letter-spacing: -0.01em; font-weight: 400 !important; font-synthesis-weight: none; }
-.font-mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; }
+/* ---------------------------------------------------------------------------
+   TYPOGRAPHIE — règle « two rooms, one person » (tokens.json)
+   .font-display = voix BOUTIQUE (Space Grotesk). Le serif Instrument est
+   réservé à la voix sociale via .font-social — jamais dans l'UI boutique.
+   ↩︎ Pour revenir au serif en boutique : re-pointer .font-display sur
+   "Instrument Serif" ici ET dans tailwind.config.js.
+--------------------------------------------------------------------------- */
+.font-display {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  letter-spacing: -0.01em;
+  font-synthesis-weight: none;
+}
+.font-social {
+  font-family: "Instrument Serif", Georgia, serif;
+  letter-spacing: -0.01em;
+  font-weight: 400;
+  font-synthesis-weight: none;
+}
+.font-mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; font-variant-numeric: tabular-nums; }
 
-/* Brutalist hard-shadow hover for cards */
+/* Card hover — ombre chaude, plus de hard-shadow brutaliste (radius tokens) */
 .card-hover {
   transition: transform 200ms ease, box-shadow 200ms ease;
 }
@@ -75,13 +93,12 @@ body {
   box-shadow:
     0 1px 2px rgba(58, 10, 8, 0.06),
     0 8px 24px rgba(107, 5, 4, 0.10),
-    0 24px 48px rgba(176, 108, 73, 0.12),
-    6px 6px 0 #B06C49;
+    0 24px 48px rgba(176, 108, 73, 0.12);
 }
 
-/* Inputs / buttons sharp edges */
+/* Contrôles — radius tokens (était 0 !important, brutaliste) */
 button, input, textarea, select {
-  border-radius: 0 !important;
+  border-radius: var(--fn-radius-sm);
 }
 
 /* Marquee container */
@@ -145,16 +162,16 @@ button, input, textarea, select {
 @keyframes seal-rotate { to { transform: rotate(360deg); } }
 .animate-seal { animation: seal-rotate 24s linear infinite; transform-origin: center; }
 
-/* Trait HPLC animé (SVG stroke) */
+/* Trait HPLC animé (SVG stroke) — LA LIGNE, motion signature */
 @keyframes hplc-draw { to { stroke-dashoffset: 0; } }
 .hplc-trace {
   stroke-dasharray: 1200;
   stroke-dashoffset: 1200;
-  animation: hplc-draw 3.2s cubic-bezier(0.4, 0, 0.2, 1) 300ms forwards;
+  animation: hplc-draw var(--fn-draw-duration, 800ms) var(--fn-draw-ease, cubic-bezier(0.6, 0, 0.2, 1)) 300ms forwards;
 }
 
-/* Boutons — transition raffinée */
-button, a { transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease, box-shadow 220ms ease, transform 220ms ease; }
+/* Boutons — transition raffinée (--fn-ui-duration) */
+button, a { transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 220ms ease, transform 220ms ease; }
 button:hover:not(:disabled) { transform: translateY(-1px); }
 button:active:not(:disabled) { transform: translateY(0); }
 

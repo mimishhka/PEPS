@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 
@@ -11,6 +12,7 @@ import Footer from "./components/Footer";
 import AgeGate from "./components/AgeGate";
 import CartDrawer from "./components/CartDrawer";
 import ProtectedRoute from "./components/ProtectedRoute";
+import AdminGate from "./components/AdminGate";
 
 import Home from "./pages/Home";
 import Catalog from "./pages/Catalog";
@@ -26,7 +28,17 @@ import Compliance from "./pages/Compliance";
 import Privacy from "./pages/Privacy";
 import Faq from "./pages/Faq";
 import NotFound from "./pages/NotFound";
-import Admin from "./pages/admin/AdminLayout";
+
+// Chargé à la demande (chunk séparé) — le code du panneau admin n'est PLUS
+// téléchargé par un visiteur du site public tant qu'il ne visite pas cette
+// route précise. Avant ce changement, tout le bundle admin (React.lazy absent)
+// était livré à chaque visiteur, même caché derrière /admin.
+const Admin = lazy(() => import("./pages/admin/AdminLayout"));
+
+// ⚠️ À PERSONNALISER avant mise en prod : remplacer par un chemin que toi
+// seul(e) et ton équipe connaissez. Ne JAMAIS le mettre dans robots.txt,
+// le sitemap, ou un lien visible — sa confidentialité EST la protection.
+const ADMIN_PATH = "/ops-portal-fn7k2q";
 
 import "./index.css";
 
@@ -68,7 +80,21 @@ function AppRoutes() {
       <Route path="/compliance" element={<Compliance />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/faq" element={<Faq />} />
-      <Route path="/admin/*" element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />
+      <Route
+        path={`${ADMIN_PATH}/*`}
+        element={
+          <AdminGate>
+            <Suspense fallback={null}>
+              <ProtectedRoute adminOnly>
+                <Admin basePath={ADMIN_PATH} />
+              </ProtectedRoute>
+            </Suspense>
+          </AdminGate>
+        }
+      />
+      {/* L'ancien /admin ne mène plus nulle part de spécial — traité comme
+          n'importe quelle URL inconnue, comme si le panneau n'avait jamais
+          existé à cet endroit. */}
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
