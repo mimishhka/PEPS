@@ -11,7 +11,6 @@ Disallow: /order/
 Disallow: /account
 Disallow: /login
 Disallow: /register
-Disallow: /admin
 Disallow: /lab
 
 Sitemap: https://fironova.ca/sitemap.xml
