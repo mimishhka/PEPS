@@ -72,7 +72,7 @@ export default function AdminDashboard() {
               <div key={d.date} className="flex-1 flex flex-col items-center gap-1 group">
                 <div
                   className="w-full bg-ink hover:bg-signal transition-colors relative"
-                  style={{ height: `${Math.max(2, (d.revenue / dailyMax) * 100)}%`, "--signal": "#E51919" }}
+                  style={{ height: `${Math.max(2, (d.revenue / dailyMax) * 100)}%`, "--signal": "#C20114" }}
                   title={`${d.date}: $${d.revenue.toFixed(2)} (${d.orders} orders)`}
                 >
                   <div className="absolute -top-7 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 font-mono text-[10px] bg-ink text-white px-2 py-1 whitespace-nowrap pointer-events-none transition-opacity">
@@ -117,7 +117,7 @@ export default function AdminDashboard() {
             <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50">// RECENT</div>
             <h2 className="font-display text-xl font-bold uppercase tracking-tight mt-1">Latest Orders</h2>
           </div>
-          <Link to="/admin/orders" className="font-mono text-xs uppercase tracking-[0.2em] flex items-center gap-1 link-underline">
+          <Link to="orders" className="font-mono text-xs uppercase tracking-[0.2em] flex items-center gap-1 link-underline">
             View all <ArrowUpRight size={14} />
           </Link>
         </div>
