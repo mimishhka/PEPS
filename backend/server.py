@@ -43,9 +43,22 @@ DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_MINUTES = 60 * 24 * 7  # 7 days for ecommerce UX
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@nordpep.ca")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "NordpepAdmin2026!")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@fironova.ca")
+# Aucun défaut : un mot de passe admin en dur dans le repo est un mot de passe public.
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+if not ADMIN_PASSWORD:
+    raise RuntimeError(
+        "ADMIN_PASSWORD est obligatoire. Définissez-le dans l'environnement "
+        "avant de démarrer le serveur."
+    )
 INTERAC_EMAIL = os.environ.get("INTERAC_EMAIL", "orders@nordpep.ca")
+
+# Code d'accès facultatif demandé AVANT même l'écran de login admin, côté SPA
+# publique. Ne remplace pas l'auth (JWT + rôle restent la vraie barrière sur
+# /api/admin/*) — sert seulement à ce qu'un visiteur qui tombe sur l'URL admin
+# obscure par hasard ne voie même pas d'écran de login. Si non défini, la
+# passerelle est désactivée (aucun blocage).
+ADMIN_GATE_CODE = os.environ.get("ADMIN_GATE_CODE")
 INTERAC_PASSWORD_HINT = os.environ.get("INTERAC_PASSWORD_HINT", "FIRONOVA")
 NOWPAYMENTS_API_KEY = os.environ.get("NOWPAYMENTS_API_KEY", "")
 NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "")
@@ -157,11 +170,12 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(user_id: str, email: str, role: str) -> str:
+def create_access_token(user_id: str, email: str, role: str, token_version: int = 0) -> str:
     payload = {
         "sub": user_id,
         "email": email,
         "role": role,
+        "tv": token_version,  # doit correspondre à users.token_version — sinon token révoqué
         "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_MINUTES),
         "type": "access",
     }
@@ -197,6 +211,15 @@ async def _resolve_user(request: Request) -> Optional[dict]:
         if payload.get("type") != "access":
             return None
         user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+        if not user:
+            return None
+        # Révocation : si le token_version du JWT ne correspond plus à celui
+        # stocké sur l'utilisateur (changement de mot de passe, changement
+        # d'email confirmé, déconnexion globale, suppression de compte),
+        # le token est considéré invalide même s'il n'a pas expiré.
+        if payload.get("tv", 0) != user.get("token_version", 0):
+            return None
+        user.pop("token_version", None)  # détail interne, pas exposé à l'API
         return user
     except jwt.PyJWTError:
         return None
@@ -351,6 +374,44 @@ class StockNotifyIn(BaseModel):
     variant_id: Optional[str] = None
 
 
+class NewsletterSubscribeIn(BaseModel):
+    email: EmailStr
+    lang: Optional[Literal["en", "fr"]] = "en"
+    source: Optional[str] = "footer"  # d'où vient l'inscription (footer, popup, checkout…)
+
+
+# --- Mon Compte -------------------------------------------------------------
+class ProfileUpdateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class PasswordChangeIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
+
+
+class EmailChangeRequestIn(BaseModel):
+    new_email: EmailStr
+    current_password: str  # exigé : empêche un token volé de détourner le compte
+
+
+class SavedAddressIn(BaseModel):
+    label: Optional[str] = ""  # "Maison", "Labo", …
+    full_name: str
+    address1: str
+    address2: Optional[str] = ""
+    city: str
+    province: str
+    postal_code: str
+    country: str = "CA"
+    phone: Optional[str] = ""
+    is_default: bool = False
+
+
+class AccountDeleteIn(BaseModel):
+    current_password: str  # confirmation forte avant action irréversible
+
+
 class ShippingZoneIn(BaseModel):
     name: str
     countries: List[str] = []  # e.g., ["CA"], ["US"], ["INTL"]
@@ -392,10 +453,11 @@ async def register(payload: RegisterIn, response: Response, request: Request):
         "name": payload.name.strip(),
         "password_hash": hash_password(payload.password),
         "role": "user",
+        "token_version": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(user_doc)
-    token = create_access_token(user_doc["id"], email, "user")
+    token = create_access_token(user_doc["id"], email, "user", token_version=0)
     set_auth_cookie(response, token)
     return {
         "id": user_doc["id"],
@@ -428,10 +490,29 @@ def _login_throttle_check(key: str):
 
 # In-memory rate limiting for public write endpoints (same pattern as login throttle).
 _RATE_BUCKETS: dict = {}
+_RATE_LAST_SWEEP = {"t": 0.0}
+
+
+def _sweep_rate_buckets(now: float, window_seconds: int) -> None:
+    """Purge les clés expirées. Sans ça, chaque IP unique laissait une entrée
+    permanente dans le dict → croissance mémoire linéaire au trafic."""
+    if now - _RATE_LAST_SWEEP["t"] < 300:
+        return
+    _RATE_LAST_SWEEP["t"] = now
+    for bname, b in list(_RATE_BUCKETS.items()):
+        for k, ts in list(b.items()):
+            if not [t for t in ts if now - t < window_seconds]:
+                b.pop(k, None)
+        if not b:
+            _RATE_BUCKETS.pop(bname, None)
+    for k, ts in list(_LOGIN_ATTEMPTS.items()):
+        if not [t for t in ts if now - t < _LOGIN_WINDOW_SECONDS]:
+            _LOGIN_ATTEMPTS.pop(k, None)
 
 
 def _rate_limit(bucket: str, key: str, max_hits: int, window_seconds: int, detail: str):
     now = datetime.now(timezone.utc).timestamp()
+    _sweep_rate_buckets(now, window_seconds)
     b = _RATE_BUCKETS.setdefault(bucket, {})
     hits = [t for t in b.get(key, []) if now - t < window_seconds]
     if len(hits) >= max_hits:
@@ -439,6 +520,23 @@ def _rate_limit(bucket: str, key: str, max_hits: int, window_seconds: int, detai
         raise HTTPException(status_code=429, detail=detail)
     hits.append(now)
     b[key] = hits
+
+
+class AdminGateIn(BaseModel):
+    code: str
+
+
+@api.post("/admin/gate/verify")
+async def admin_gate_verify(payload: AdminGateIn, request: Request):
+    """Passerelle avant le login admin — voir ADMIN_GATE_CODE plus haut.
+    Rate-limit distinct et plus strict que le login (pas de compte à protéger
+    ici, juste dissuader le brute-force du code lui-même)."""
+    if not ADMIN_GATE_CODE:
+        return {"ok": True}  # passerelle désactivée si aucun code configuré
+    _rate_limit("admin_gate", _client_ip(request), 5, 3600, "Too many attempts. Try again later.")
+    if not secrets.compare_digest(payload.code, ADMIN_GATE_CODE):
+        raise HTTPException(status_code=403, detail="Invalid code")
+    return {"ok": True}
 
 
 @api.post("/auth/login")
@@ -451,7 +549,7 @@ async def login(payload: LoginIn, response: Response, request: Request):
         _LOGIN_ATTEMPTS.setdefault(throttle_key, []).append(datetime.now(timezone.utc).timestamp())
         raise HTTPException(status_code=401, detail="Invalid email or password")
     _LOGIN_ATTEMPTS.pop(throttle_key, None)
-    token = create_access_token(user["id"], user["email"], user["role"])
+    token = create_access_token(user["id"], user["email"], user["role"], token_version=user.get("token_version", 0))
     set_auth_cookie(response, token)
     return {
         "id": user["id"],
@@ -469,9 +567,240 @@ async def logout(response: Response):
     return {"ok": True}
 
 
+@api.post("/auth/logout-all")
+async def logout_all_devices(response: Response, user: dict = Depends(get_current_user)):
+    """Révoque tous les tokens émis avant cet appel, sur tous les appareils.
+    Utile après un changement de mot de passe suspect ou une perte d'appareil."""
+    await db.users.update_one({"id": user["id"]}, {"$inc": {"token_version": 1}})
+    clear_auth_cookie(response)
+    return {"ok": True}
+
+
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
     return user
+
+
+# ---------------------------------------------------------------------------
+# Mon Compte — profil, mot de passe, changement d'email (double opt-in),
+# adresses sauvegardées, suppression de compte avec anonymisation.
+# ---------------------------------------------------------------------------
+EMAIL_CHANGE_TTL_HOURS = 24
+
+
+@api.put("/account/profile")
+async def account_update_profile(payload: ProfileUpdateIn, user: dict = Depends(get_current_user)):
+    name = payload.name.strip()
+    await db.users.update_one({"id": user["id"]}, {"$set": {"name": name}})
+    return {"ok": True, "name": name}
+
+
+@api.put("/account/password")
+async def account_change_password(payload: PasswordChangeIn, response: Response,
+                                  user: dict = Depends(get_current_user)):
+    doc = await db.users.find_one({"id": user["id"]})
+    if not doc or not verify_password(payload.current_password, doc["password_hash"]):
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+    new_tv = doc.get("token_version", 0) + 1
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"password_hash": hash_password(payload.new_password), "token_version": new_tv}},
+    )
+    # On révoque tous les anciens tokens (token_version+1) mais on ré-émet
+    # immédiatement un token frais pour CET appareil : l'utilisateur qui vient
+    # de changer son mot de passe ne doit pas être déconnecté lui-même.
+    token = create_access_token(doc["id"], doc["email"], doc["role"], token_version=new_tv)
+    set_auth_cookie(response, token)
+    return {"ok": True, "token": token}
+
+
+def _email_change_html(confirm_url: str, lang: str = "fr") -> str:
+    if lang == "fr":
+        heading = "Confirmez votre nouvelle adresse email"
+        body = ("Vous avez demandé à changer l'adresse email de votre compte FIRONOVA. "
+                "Cliquez sur le bouton ci-dessous pour confirmer. "
+                f"Ce lien expire dans {EMAIL_CHANGE_TTL_HOURS} heures. "
+                "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.")
+        btn = "Confirmer mon email"
+    else:
+        heading = "Confirm your new email address"
+        body = ("You requested to change the email on your FIRONOVA account. "
+                "Click the button below to confirm. "
+                f"This link expires in {EMAIL_CHANGE_TTL_HOURS} hours. "
+                "If you didn't request this, you can safely ignore this message.")
+        btn = "Confirm my email"
+    return f"""
+    <div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;padding:32px;color:#3A0A08;background:#FFFAF6">
+      <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px">FIRONOVA<span style="color:#C20114">.</span></div>
+      <h2 style="margin-top:24px">{heading}</h2>
+      <p style="line-height:1.6">{body}</p>
+      <a href="{confirm_url}" style="display:inline-block;margin-top:16px;background:#3A0A08;color:#fff;
+         padding:14px 28px;text-decoration:none;font-family:monospace;font-size:12px;
+         letter-spacing:0.2em;text-transform:uppercase">{btn} →</a>
+      <p style="margin-top:24px;font-size:12px;color:#6B0504">{confirm_url}</p>
+    </div>
+    """
+
+
+@api.post("/account/email/request-change")
+async def account_request_email_change(payload: EmailChangeRequestIn, request: Request,
+                                       user: dict = Depends(get_current_user)):
+    _rate_limit("email_change", user["id"], 3, 3600, "Too many email change requests. Try again later.")
+    doc = await db.users.find_one({"id": user["id"]})
+    if not doc or not verify_password(payload.current_password, doc["password_hash"]):
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+    new_email = payload.new_email.lower().strip()
+    if new_email == doc["email"]:
+        raise HTTPException(status_code=400, detail="This is already your email address")
+    if await db.users.find_one({"email": new_email}):
+        raise HTTPException(status_code=409, detail="Email already in use")
+
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    await db.email_change_requests.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "new_email": new_email,
+        "token": token,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(hours=EMAIL_CHANGE_TTL_HOURS)).isoformat(),
+        "used": False,
+    })
+    base = PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
+    confirm_url = f"{base}/api/account/email/confirm?token={token}"
+    lang = "fr"  # les emails transactionnels suivent la langue du site ; FR par défaut au Québec
+    asyncio.create_task(_send_email(new_email, "FIRONOVA — Confirmez votre nouvelle adresse email",
+                                    _email_change_html(confirm_url, lang)))
+    return {"ok": True, "sent_to": new_email}
+
+
+@api.get("/account/email/confirm")
+async def account_confirm_email_change(token: str):
+    """Lien cliqué depuis l'email — pas d'authentification (l'utilisateur peut
+    ouvrir le lien sur un autre appareil). Le token à usage unique + TTL fait
+    office de preuve."""
+    now = datetime.now(timezone.utc).isoformat()
+    req = await db.email_change_requests.find_one({"token": token, "used": False})
+    if not req or req["expires_at"] < now:
+        raise HTTPException(status_code=400, detail="Invalid or expired confirmation link")
+    # Re-vérifier l'unicité : l'email a pu être pris entre la demande et le clic.
+    if await db.users.find_one({"email": req["new_email"]}):
+        raise HTTPException(status_code=409, detail="Email already in use")
+    user = await db.users.find_one({"id": req["user_id"]})
+    if not user:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    await db.users.update_one(
+        {"id": req["user_id"]},
+        {"$set": {"email": req["new_email"]},
+         "$inc": {"token_version": 1}},  # révoque les sessions liées à l'ancien email
+    )
+    await db.email_change_requests.update_one({"token": token}, {"$set": {"used": True, "used_at": now}})
+    # Réponse HTML minimale : le lien est ouvert dans un navigateur, pas via l'app.
+    return Response(
+        content=f"""<!doctype html><html><body style="font-family:Georgia,serif;background:#FFFAF6;color:#3A0A08;
+        display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+        <div style="text-align:center"><div style="font-size:22px;font-weight:800">FIRONOVA<span style="color:#C20114">.</span></div>
+        <h2>Email confirmé ✓ / Email confirmed ✓</h2>
+        <p>Reconnectez-vous avec votre nouvelle adresse.<br/>Please sign in again with your new address.</p>
+        </div></body></html>""",
+        media_type="text/html",
+    )
+
+
+# --- Adresses sauvegardées ---------------------------------------------------
+@api.get("/account/addresses")
+async def account_list_addresses(user: dict = Depends(get_current_user)):
+    return await db.addresses.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(20)
+
+
+@api.post("/account/addresses")
+async def account_add_address(payload: SavedAddressIn, user: dict = Depends(get_current_user)):
+    count = await db.addresses.count_documents({"user_id": user["id"]})
+    if count >= 10:
+        raise HTTPException(status_code=400, detail="Address limit reached (10)")
+    doc = payload.model_dump()
+    doc.update({
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    # Première adresse = défaut automatique ; sinon respecter le flag envoyé.
+    if count == 0:
+        doc["is_default"] = True
+    elif doc["is_default"]:
+        await db.addresses.update_many({"user_id": user["id"]}, {"$set": {"is_default": False}})
+    await db.addresses.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/account/addresses/{address_id}")
+async def account_update_address(address_id: str, payload: SavedAddressIn,
+                                 user: dict = Depends(get_current_user)):
+    existing = await db.addresses.find_one({"id": address_id, "user_id": user["id"]})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Address not found")
+    doc = payload.model_dump()
+    if doc["is_default"]:
+        await db.addresses.update_many({"user_id": user["id"]}, {"$set": {"is_default": False}})
+    await db.addresses.update_one({"id": address_id, "user_id": user["id"]}, {"$set": doc})
+    fresh = await db.addresses.find_one({"id": address_id}, {"_id": 0})
+    return fresh
+
+
+@api.delete("/account/addresses/{address_id}")
+async def account_delete_address(address_id: str, user: dict = Depends(get_current_user)):
+    res = await db.addresses.delete_one({"id": address_id, "user_id": user["id"]})
+    if not res.deleted_count:
+        raise HTTPException(status_code=404, detail="Address not found")
+    # Si on vient de supprimer l'adresse par défaut, promouvoir la plus récente.
+    remaining_default = await db.addresses.find_one({"user_id": user["id"], "is_default": True})
+    if not remaining_default:
+        newest = await db.addresses.find_one({"user_id": user["id"]}, sort=[("created_at", -1)])
+        if newest:
+            await db.addresses.update_one({"id": newest["id"]}, {"$set": {"is_default": True}})
+    return {"ok": True}
+
+
+# --- Suppression de compte (PIPEDA / Loi 25) ---------------------------------
+@api.post("/account/delete")
+async def account_delete(payload: AccountDeleteIn, response: Response,
+                         user: dict = Depends(get_current_user)):
+    """Suppression du compte + anonymisation des commandes.
+    Les commandes sont CONSERVÉES (obligations comptables/fiscales) mais toutes
+    les données personnelles y sont remplacées. Irréversible."""
+    doc = await db.users.find_one({"id": user["id"]})
+    if not doc or not verify_password(payload.current_password, doc["password_hash"]):
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+    if doc.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Admin accounts cannot be self-deleted")
+
+    now = datetime.now(timezone.utc).isoformat()
+    anon = f"deleted-user-{doc['id'][:8]}"
+
+    # 1. Anonymiser les commandes (on garde montants, items, dates — pas l'identité)
+    await db.orders.update_many(
+        {"user_id": doc["id"]},
+        {"$set": {
+            "email": f"{anon}@anonymized.invalid",
+            "shipping_address.full_name": "[deleted]",
+            "shipping_address.address1": "[deleted]",
+            "shipping_address.address2": "",
+            "shipping_address.phone": "",
+            "anonymized_at": now,
+        }},
+    )
+    # 2. Purger les données annexes
+    await db.addresses.delete_many({"user_id": doc["id"]})
+    await db.stock_notifications.delete_many({"email": doc["email"]})
+    await db.subscribers.delete_one({"email": doc["email"]})
+    await db.email_change_requests.delete_many({"user_id": doc["id"]})
+    # 3. Supprimer l'utilisateur
+    await db.users.delete_one({"id": doc["id"]})
+    clear_auth_cookie(response)
+    logging.info("Account deleted + orders anonymized for user %s", anon)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -527,6 +856,66 @@ async def notify_stock_request(payload: StockNotifyIn, request: Request):
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
     return {"ok": True, "already_subscribed": False}
+
+
+# ---------------------------------------------------------------------------
+# Newsletter / subscribers — conforme LCAP (CASL) : on conserve la preuve de
+# consentement (date, IP, source) pour chaque inscription, et un lien de
+# désabonnement fonctionne sans authentification (obligatoire par la loi).
+# ---------------------------------------------------------------------------
+@api.post("/newsletter/subscribe")
+async def newsletter_subscribe(payload: NewsletterSubscribeIn, request: Request):
+    _rate_limit("newsletter_subscribe", _client_ip(request), 10, 3600, "Too many requests. Try again later.")
+    email = payload.email.lower().strip()
+    now = datetime.now(timezone.utc).isoformat()
+    ip = _client_ip(request)
+
+    existing = await db.subscribers.find_one({"email": email}, {"_id": 0})
+    if existing and existing.get("status") == "subscribed":
+        return {"ok": True, "already_subscribed": True}
+
+    if existing:
+        # Ancien désabonné qui se réinscrit : nouveau consentement, nouvelle preuve.
+        await db.subscribers.update_one(
+            {"email": email},
+            {"$set": {
+                "status": "subscribed",
+                "lang": payload.lang,
+                "source": payload.source,
+                "consent_at": now,
+                "consent_ip": ip,
+                "unsubscribed_at": None,
+            }},
+        )
+    else:
+        await db.subscribers.insert_one({
+            "id": str(uuid.uuid4()),
+            "email": email,
+            "lang": payload.lang,
+            "source": payload.source,
+            "status": "subscribed",
+            "consent_at": now,
+            "consent_ip": ip,
+            "unsubscribe_token": str(uuid.uuid4()),
+            "unsubscribed_at": None,
+            "created_at": now,
+        })
+    return {"ok": True, "already_subscribed": False}
+
+
+@api.get("/newsletter/unsubscribe")
+async def newsletter_unsubscribe(token: str):
+    """Aucune authentification requise — un lien de désabonnement doit
+    fonctionner en un clic, sans login, exigence CASL/LCAP."""
+    res = await db.subscribers.update_one(
+        {"unsubscribe_token": token, "status": "subscribed"},
+        {"$set": {"status": "unsubscribed", "unsubscribed_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if not res.matched_count:
+        # Idempotent : déjà désabonné ou token invalide → même réponse,
+        # on ne révèle pas si l'email existe.
+        return {"ok": True}
+    return {"ok": True}
 
 
 def _ensure_variant_ids(payload_doc: dict) -> dict:
@@ -659,12 +1048,80 @@ def _variant_effective_price(v: dict, is_preorder: bool) -> float:
     return float(v.get("price", 0.0))
 
 
+# ---------------------------------------------------------------------------
+# Réservation atomique du stock.
+# Remplace le pattern check-then-act (lecture dans _build_order_totals,
+# écriture historiquement ~200 lignes plus loin dans checkout). Le filtre
+# $gte dans le update_one garantit qu'aucune décrémentation ne peut passer
+# sous zéro, même avec N workers concurrents sur le dernier flacon.
+# ---------------------------------------------------------------------------
+async def _reserve_stock_atomic(line_items: list) -> list:
+    """
+    Décrémente le stock de chaque ligne non-preorder de façon atomique.
+    Retourne la liste des lignes effectivement réservées (pour rollback).
+    Lève HTTPException(400) et rollback si une ligne échoue.
+    """
+    reserved: list = []
+    for it in line_items:
+        if it.get("preorder"):
+            continue
+        qty = it["qty"]
+        vid = it.get("variant_id")
+
+        if vid in (None, "", "_default"):
+            res = await db.products.update_one(
+                {"id": it["product_id"], "stock": {"$gte": qty}},
+                {"$inc": {"stock": -qty}},
+            )
+        else:
+            res = await db.products.update_one(
+                {"id": it["product_id"],
+                 "variants": {"$elemMatch": {"id": vid, "stock": {"$gte": qty}}}},
+                {"$inc": {"variants.$[v].stock": -qty}},
+                array_filters=[{"v.id": vid}],
+            )
+
+        if res.modified_count != 1:
+            await _release_stock_atomic(reserved)
+            raise HTTPException(
+                400,
+                f"Insufficient stock for {it.get('name_en', it['product_id'])}"
+                f"{(' (' + it['variant_name'] + ')') if it.get('variant_name') else ''}",
+            )
+        reserved.append(it)
+    return reserved
+
+
+async def _release_stock_atomic(line_items: list) -> None:
+    """Rollback d'une réservation partielle. Ne notifie pas le restock
+    (la marchandise n'a jamais réellement quitté le stock)."""
+    for it in line_items:
+        if it.get("preorder"):
+            continue
+        qty = it["qty"]
+        vid = it.get("variant_id")
+        if vid in (None, "", "_default"):
+            await db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": qty}})
+        else:
+            await db.products.update_one(
+                {"id": it["product_id"], "variants.id": vid},
+                {"$inc": {"variants.$.stock": qty}},
+            )
+
+
 async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] = None):
     line_items = []
     subtotal = 0.0
     has_preorder = False
+
+    # Un seul aller-retour Mongo au lieu de N (le panier moyen faisait N find_one
+    # séquentiels, chacun un RTT réseau complet).
+    _ids = list({it.product_id for it in items})
+    _docs = await db.products.find({"id": {"$in": _ids}}, {"_id": 0}).to_list(len(_ids))
+    _by_id = {d["id"]: d for d in _docs}
+
     for it in items:
-        p = await db.products.find_one({"id": it.product_id}, {"_id": 0})
+        p = _by_id.get(it.product_id)
         if not p:
             raise HTTPException(400, f"Product {it.product_id} not found")
         if not p.get("active"):
@@ -913,12 +1370,12 @@ def _order_email_html(order: dict, body_intro: str) -> str:
     payment_block = ""
     if interac:
         payment_block = f"""
-        <div style="background:#fef2f2;border:2px solid #E51919;padding:20px;margin:24px 0">
-          <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#E51919;font-weight:bold;margin-bottom:12px">⚡ INTERAC E-TRANSFER INSTRUCTIONS</div>
+        <div style="background:#FDF3F2;border:2px solid #C20114;padding:20px;margin:24px 0">
+          <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#C20114;font-weight:bold;margin-bottom:12px">⚡ INTERAC E-TRANSFER INSTRUCTIONS</div>
           <table style="width:100%;font-family:monospace;font-size:13px">
             <tr><td style="padding:6px 0;color:#666">Send to:</td><td style="padding:6px 0;font-weight:bold">{interac["send_to"]}</td></tr>
             <tr><td style="padding:6px 0;color:#666">Amount:</td><td style="padding:6px 0;font-weight:bold">${interac["amount_cad"]:.2f} CAD</td></tr>
-            <tr><td style="padding:6px 0;color:#666">Reference (required):</td><td style="padding:6px 0;font-weight:bold;color:#E51919">{interac["reference"]}</td></tr>
+            <tr><td style="padding:6px 0;color:#666">Reference (required):</td><td style="padding:6px 0;font-weight:bold;color:#C20114">{interac["reference"]}</td></tr>
             <tr><td style="padding:6px 0;color:#666">Security question:</td><td style="padding:6px 0">{interac["security_question"]}</td></tr>
             <tr><td style="padding:6px 0;color:#666">Security answer:</td><td style="padding:6px 0;font-weight:bold">{interac["security_answer_hint"]}</td></tr>
           </table>
@@ -1138,6 +1595,54 @@ async def get_shipping_rates(payload: ShippingRateRequest):
     return {"source": "flat_rate_fallback", "weight_kg": weight_kg, "rates": rates}
 
 
+# ---------------------------------------------------------------------------
+# Confirmation de paiement — point d'entrée UNIQUE et idempotent.
+# Le filtre {"payment_status": {"$ne": "paid"}} dans le update_one garantit
+# qu'un seul appelant gagne, même si le webhook Stripe et le polling frontend
+# arrivent à la milliseconde près. Le coupon est décompté ici (et pas à la
+# création) : un panier abandonné ne doit jamais consommer un usage_limit.
+# ---------------------------------------------------------------------------
+async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Optional[dict]:
+    """Retourne l'order fraîche si CET appel a fait la transition, sinon None."""
+    paid_at = datetime.now(timezone.utc).isoformat()
+    update: dict = {
+        "$set": {
+            "payment_status": "paid",
+            "fulfillment_status": "processing",
+            "paid_at": paid_at,
+            "dispatch_batch": compute_dispatch_batch(paid_at),
+        }
+    }
+    if note_text:
+        update["$push"] = {"notes": {
+            "id": str(uuid.uuid4()),
+            "text": note_text,
+            "author": "system",
+            "created_at": paid_at,
+        }}
+
+    res = await db.orders.update_one(
+        {"id": order_id, "payment_status": {"$ne": "paid"}},
+        update,
+    )
+    if not res.modified_count:
+        return None  # déjà payée : un autre chemin a gagné la course
+
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        return None
+
+    # Décompte du coupon au paiement confirmé, une seule fois.
+    coupon = order.get("coupon")
+    if coupon and coupon.get("code") and not order.get("coupon_counted"):
+        await db.coupons.update_one({"code": coupon["code"]}, {"$inc": {"used_count": 1}})
+        await db.orders.update_one({"id": order_id}, {"$set": {"coupon_counted": True}})
+
+    if order.get("email"):
+        asyncio.create_task(send_payment_received(order))
+    return order
+
+
 @api.post("/checkout")
 async def checkout(payload: CheckoutIn, request: Request):
     if not (payload.accept_terms and payload.confirm_age and payload.confirm_research_use):
@@ -1153,6 +1658,10 @@ async def checkout(payload: CheckoutIn, request: Request):
 
     order_id = str(uuid.uuid4())
     order_number = f"NP-{datetime.now(timezone.utc).strftime('%y%m%d')}-{order_id[:6].upper()}"
+
+    # Réservation atomique AVANT tout appel réseau au PSP. Ferme la fenêtre
+    # check-then-act qui laissait deux clients acheter le même dernier flacon.
+    reserved = await _reserve_stock_atomic(line_items)
 
     payment_info: dict = {}
     if payload.payment_method == "interac":
@@ -1186,7 +1695,11 @@ async def checkout(payload: CheckoutIn, request: Request):
                           "user_id": user["id"] if user else "guest"},
             )
             session = await stripe_checkout.create_checkout_session(req)
+        except HTTPException:
+            await _release_stock_atomic(reserved)
+            raise
         except Exception as e:
+            await _release_stock_atomic(reserved)
             logging.error("Stripe checkout session error: %s", e)
             raise HTTPException(502, "Stripe checkout unavailable")
         await db.payment_transactions.insert_one({
@@ -1207,7 +1720,11 @@ async def checkout(payload: CheckoutIn, request: Request):
         }
         payment_status = "awaiting_stripe"
     else:
-        np = await _nowpayments_create(order_id, total, payload.pay_currency or "btc")
+        try:
+            np = await _nowpayments_create(order_id, total, payload.pay_currency or "btc")
+        except Exception:
+            await _release_stock_atomic(reserved)
+            raise
         payment_info = {"type": "nowpayments", "provider_response": np}
         payment_status = "awaiting_crypto"
 
@@ -1244,21 +1761,10 @@ async def checkout(payload: CheckoutIn, request: Request):
     await db.orders.insert_one(order_doc)
     order_doc.pop("_id", None)
 
-    # Decrement variant stock for available units (preorder items don't decrement below 0)
-    for it in line_items:
-        if it.get("preorder") or it.get("variant_id") == "_default":
-            # Legacy/synthetic — fall back to product-level stock decrement
-            if not it.get("preorder"):
-                await db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": -it["qty"]}})
-            continue
-        await db.products.update_one(
-            {"id": it["product_id"], "variants.id": it["variant_id"]},
-            {"$inc": {"variants.$.stock": -it["qty"]}},
-        )
-
-    # Track coupon usage
-    if applied_coupon:
-        await db.coupons.update_one({"code": applied_coupon["code"]}, {"$inc": {"used_count": 1}})
+    # Le stock est déjà réservé atomiquement plus haut (_reserve_stock_atomic),
+    # avant l'appel au PSP. Rien à faire ici.
+    # Le coupon n'est PAS décompté ici : il l'est à la confirmation de paiement
+    # (_mark_order_paid), sinon les paniers abandonnés épuisent l'usage_limit.
 
     # Fire-and-forget order confirmation + admin notification
     asyncio.create_task(send_order_confirmation(order_doc))
@@ -1419,26 +1925,42 @@ async def admin_confirm_payment(order_id: str, _admin: dict = Depends(get_admin_
         raise HTTPException(404, "Order not found")
     if existing.get("payment_status") == "paid":
         return existing  # idempotent
-    _paid_at = datetime.now(timezone.utc).isoformat()
-    await db.orders.update_one(
-        {"id": order_id},
-        {"$set": {
-            "payment_status": "paid",
-            "fulfillment_status": "processing",
-            "paid_at": _paid_at,
-            "dispatch_batch": existing.get("dispatch_batch") or compute_dispatch_batch(_paid_at),
-        }},
-    )
-    updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
-    if updated.get("email"):
-        asyncio.create_task(send_payment_received(updated))
-    return updated
+    updated = await _mark_order_paid(order_id, "Payment manually confirmed by admin")
+    return updated or existing
 
 
 @api.get("/admin/customers")
 async def admin_customers(_admin: dict = Depends(get_admin_user)):
-    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(500)
+    users = await db.users.find({}, {"_id": 0, "password_hash": 0, "token_version": 0}).sort("created_at", -1).to_list(500)
     return users
+
+
+@api.get("/admin/subscribers")
+async def admin_list_subscribers(status: Optional[str] = None, _admin: dict = Depends(get_admin_user)):
+    query = {"status": status} if status else {}
+    subs = await db.subscribers.find(
+        query, {"_id": 0, "unsubscribe_token": 0}
+    ).sort("created_at", -1).to_list(5000)
+    return subs
+
+
+@api.get("/admin/subscribers.csv")
+async def admin_subscribers_csv(status: Optional[str] = None, _admin: dict = Depends(get_admin_user)):
+    query = {"status": status} if status else {}
+    subs = await db.subscribers.find(query, {"_id": 0, "unsubscribe_token": 0}).to_list(5000)
+    rows = [
+        {
+            "email": s.get("email", ""),
+            "lang": s.get("lang", ""),
+            "source": s.get("source", ""),
+            "status": s.get("status", ""),
+            "consent_at": s.get("consent_at", ""),
+            "consent_ip": s.get("consent_ip", ""),
+            "unsubscribed_at": s.get("unsubscribed_at") or "",
+        }
+        for s in subs
+    ]
+    return _csv_response(rows, f"fironova-subscribers-{datetime.now().strftime('%Y%m%d')}.csv")
 
 
 @api.get("/admin/stats")
@@ -1895,7 +2417,7 @@ def _generate_invoice_pdf(order: dict) -> bytes:
     c.setFillColor(rl_colors.white)
     c.setFont("Helvetica-Bold", 22)
     c.drawString(20 * mm, h - 13 * mm, "FIRONOVA")
-    c.setFillColor(rl_colors.HexColor("#E51919"))
+    c.setFillColor(rl_colors.HexColor("#C20114"))
     c.circle(20 * mm + 41 * mm, h - 13 * mm + 1.5 * mm, 1.5 * mm, fill=1, stroke=0)
     c.setFillColor(rl_colors.white)
     c.setFont("Courier", 8)
@@ -2028,22 +2550,10 @@ async def stripe_status(session_id: str, request: Request):
         {"$set": {"payment_status": status_resp.payment_status, "status": status_resp.status,
                   "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
-    # If paid and our order is not yet paid, mark it paid + processing + send email (idempotent)
+    # If paid, mark it paid via the single idempotent entry point. Safe even if
+    # the Stripe webhook already did it concurrently — only one caller wins.
     if status_resp.payment_status == "paid":
-        order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
-        if order and order.get("payment_status") != "paid":
-            await db.orders.update_one(
-                {"id": txn["order_id"]},
-                {"$set": {
-                    "payment_status": "paid",
-                    "fulfillment_status": "processing",
-                    "paid_at": (_pa := datetime.now(timezone.utc).isoformat()),
-                    "dispatch_batch": compute_dispatch_batch(_pa),
-                }},
-            )
-            order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
-            if order.get("email"):
-                asyncio.create_task(send_payment_received(order))
+        await _mark_order_paid(txn["order_id"], "Payment confirmed via Stripe checkout status")
     # Expired Stripe session = active payment failure → "failed" (distinct from voluntary "cancelled")
     if status_resp.status == "expired":
         order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
@@ -2098,25 +2608,11 @@ async def nowpayments_ipn(request: Request):
         updates["payment_info.provider_response.pay_currency"] = payload["pay_currency"]
     await db.orders.update_one({"id": order_id}, {"$set": updates})
     if np_status == "finished":
-        res = await db.orders.update_one(
-            {"id": order_id, "payment_status": {"$ne": "paid"}},
-            {"$set": {
-                "payment_status": "paid",
-                "fulfillment_status": "processing",
-                "paid_at": (_pa := datetime.now(timezone.utc).isoformat()),
-                "dispatch_batch": compute_dispatch_batch(_pa),
-            },
-             "$push": {"notes": {
-                 "id": str(uuid.uuid4()),
-                 "text": f"Crypto payment confirmed via NOWPayments IPN (payment_id {payload.get('payment_id')})",
-                 "author": "system",
-                 "created_at": datetime.now(timezone.utc).isoformat(),
-             }}},
+        fresh = await _mark_order_paid(
+            order_id,
+            f"Crypto payment confirmed via NOWPayments IPN (payment_id {payload.get('payment_id')})",
         )
-        if res.modified_count:
-            fresh = await db.orders.find_one({"id": order_id}, {"_id": 0})
-            if fresh and fresh.get("email"):
-                asyncio.create_task(send_payment_received(fresh))
+        if fresh:
             logging.info("Order %s marked paid via NOWPayments IPN", order_id)
     return {"ok": True}
 
@@ -2198,17 +2694,10 @@ async def stripe_webhook(request: Request):
                 {"$set": {"payment_status": "paid", "status": "complete",
                           "updated_at": datetime.now(timezone.utc).isoformat()}},
             )
-            order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
-            if order and order.get("payment_status") != "paid":
-                await db.orders.update_one(
-                    {"id": txn["order_id"]},
-                    {"$set": {"payment_status": "paid", "fulfillment_status": "processing",
-                              "paid_at": (_pa := datetime.now(timezone.utc).isoformat()),
-                              "dispatch_batch": compute_dispatch_batch(_pa)}},
-                )
-                order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
-                if order.get("email"):
-                    asyncio.create_task(send_payment_received(order))
+            # Point d'entrée unique et idempotent : que ce webhook arrive avant,
+            # après, ou en même temps que le polling stripe_status, un seul des
+            # deux fera la transition (garde $ne "paid" dans _mark_order_paid).
+            await _mark_order_paid(txn["order_id"], "Payment confirmed via Stripe webhook")
     return {"ok": True}
 
 
@@ -2436,10 +2925,29 @@ SEED_PRODUCTS = [
 async def seed_admin_and_products():
     # Indexes
     await db.users.create_index("email", unique=True)
+    await db.users.create_index("id", unique=True)
     await db.products.create_index("slug", unique=True)
+    await db.products.create_index("id", unique=True)
+    await db.products.create_index([("active", 1), ("category", 1)])
+    await db.products.create_index([("active", 1), ("featured", 1)])
     await db.orders.create_index("order_number")
     await db.orders.create_index("user_id")
+    await db.orders.create_index("id", unique=True)
+    # Écrans admin & watchdog : sans ces index, chaque poll = COLLSCAN complet.
+    await db.orders.create_index([("payment_status", 1), ("created_at", -1)])
+    await db.orders.create_index([("fulfillment_status", 1), ("created_at", -1)])
+    await db.orders.create_index([("dispatch_batch", 1), ("payment_status", 1)])
+    await db.orders.create_index([("created_at", -1)])
+    await db.coupons.create_index("code", unique=True)
+    await db.payment_transactions.create_index("session_id", unique=True)
+    await db.payment_transactions.create_index("order_id")
     await db.stock_notifications.create_index([("product_id", 1), ("variant_id", 1), ("notified", 1)])
+    await db.subscribers.create_index("email", unique=True)
+    await db.subscribers.create_index("unsubscribe_token", unique=True)
+    await db.subscribers.create_index("status")
+    await db.addresses.create_index([("user_id", 1), ("created_at", -1)])
+    await db.email_change_requests.create_index("token", unique=True)
+    await db.email_change_requests.create_index("user_id")
 
     # Admin
     existing = await db.users.find_one({"email": ADMIN_EMAIL.lower()})
@@ -2451,11 +2959,18 @@ async def seed_admin_and_products():
             "name": "FIRONOVA Admin",
             "password_hash": hashed,
             "role": "admin",
+            "token_version": 0,
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
     elif not verify_password(ADMIN_PASSWORD, existing["password_hash"]):
-        await db.users.update_one({"email": ADMIN_EMAIL.lower()},
-                                  {"$set": {"password_hash": hashed, "role": "admin"}})
+        # Rotation de mot de passe détectée (ADMIN_PASSWORD changé côté env) :
+        # on incrémente token_version pour révoquer immédiatement toute
+        # session admin ouverte avec l'ancien mot de passe.
+        await db.users.update_one(
+            {"email": ADMIN_EMAIL.lower()},
+            {"$set": {"password_hash": hashed, "role": "admin"},
+             "$inc": {"token_version": 1}},
+        )
 
     # Products
     featured_slugs = {"bpc-157-5mg", "semaglutide-5mg", "tirzepatide-10mg", "ipamorelin-5mg", "ghk-cu-50mg", "epitalon-10mg"}
@@ -2591,6 +3106,17 @@ async def cancel_stale_unpaid_orders():
         )
         if res.modified_count:
             await _restock_order_items(order)
+            # Rendre l'usage du coupon s'il avait été décompté (garde de sécurité :
+            # avec le nouveau flux, le coupon n'est normalement compté qu'au
+            # paiement confirmé, donc coupon_counted ne devrait jamais être True
+            # ici — sauf commandes créées avant ce correctif).
+            c = order.get("coupon")
+            if c and c.get("code") and order.get("coupon_counted"):
+                await db.coupons.update_one(
+                    {"code": c["code"], "used_count": {"$gt": 0}},
+                    {"$inc": {"used_count": -1}},
+                )
+                await db.orders.update_one({"id": order["id"]}, {"$set": {"coupon_counted": False}})
             logging.info("Auto-cancelled unpaid order %s", order.get("order_number", order["id"]))
     return len(stale)
 
@@ -2605,10 +3131,28 @@ async def _unpaid_orders_watchdog():
 
 
 @app.on_event("startup")
+async def _acquire_worker_lock(name: str, ttl_seconds: int = 120) -> bool:
+    """Verrou coopératif Mongo : un seul worker exécute les tâches de fond.
+    Sans ça, N workers uvicorn lancent N boucles concurrentes sur les mêmes
+    commandes (auto-cancel, backfill)."""
+    now = datetime.now(timezone.utc)
+    try:
+        await db.locks.update_one(
+            {"_id": name, "expires_at": {"$lt": now.isoformat()}},
+            {"$set": {"expires_at": (now + timedelta(seconds=ttl_seconds)).isoformat(),
+                      "owner": str(uuid.uuid4())}},
+            upsert=True,
+        )
+        return True
+    except Exception:
+        return False  # duplicate key = un autre worker détient déjà le verrou
+
+
 async def startup_event():
     await seed_admin_and_products()
-    asyncio.create_task(_unpaid_orders_watchdog())
-    asyncio.create_task(_backfill_dispatch_batch())
+    if await _acquire_worker_lock("background_tasks"):
+        asyncio.create_task(_unpaid_orders_watchdog())
+        asyncio.create_task(_backfill_dispatch_batch())
 
 
 async def _backfill_dispatch_batch():
