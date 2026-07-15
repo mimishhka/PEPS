@@ -1,18 +1,33 @@
 /** @type {import('tailwindcss').Config} */
+// FIRONOVA — aligné sur tokens.json v1.0.0 « LE SIGNAL »
+// Changements vs version précédente :
+//  - signal dédupliqué (#C20114 uniquement — l'ancien doublon #E51919 créait
+//    un rouge hors-palette selon l'ordre des clés)
+//  - warning #FFCC00 → #B8860B (token functional.warning)
+//  - ajout: faint, garnet, inkmuted, success (tokens manquants)
+//  - radius 0 → 8/12/16px (tokens shape.*) : les 60+ usages existants de
+//    rounded-sm/md/lg prennent vie sans toucher aucun composant
+//  - TYPOGRAPHIE (règle « two rooms, one person ») :
+//      display → Space Grotesk 700 = voix boutique (le serif ne titre plus le store)
+//      social  → Instrument Serif  = voix feed/social uniquement
+//      sans    → Inter             = voix body
+//    ↩︎ POUR REVENIR au serif en boutique : remettre display sur Instrument Serif.
 module.exports = {
   darkMode: ["class"],
   content: ["./src/**/*.{js,jsx,ts,tsx}", "./public/index.html"],
   theme: {
     extend: {
       fontFamily: {
-        display: ["'Instrument Serif'", "'Fraunces'", "Georgia", "serif"],
-        sans: ["'Space Grotesk'", "'Satoshi'", "system-ui", "sans-serif"],
-        mono: ["'JetBrains Mono'", "ui-monospace", "SFMono-Regular", "monospace"],
+        display: ["'Space Grotesk'", "system-ui", "sans-serif"],      // voix boutique
+        social: ["'Instrument Serif'", "Georgia", "serif"],           // voix feed — jamais dans l'UI boutique
+        sans: ["'Inter'", "system-ui", "sans-serif"],                 // voix body
+        store: ["'Space Grotesk'", "system-ui", "sans-serif"],        // alias explicite
+        mono: ["'JetBrains Mono'", "ui-monospace", "SFMono-Regular", "monospace"], // voix data
       },
       borderRadius: {
-        lg: "0",
-        md: "0",
-        sm: "0",
+        sm: "8px",   /* --fn-radius-sm */
+        md: "12px",  /* --fn-radius-md */
+        lg: "16px",  /* --fn-radius-lg */
       },
       colors: {
         background: "hsl(var(--background))",
@@ -48,14 +63,22 @@ module.exports = {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
-        signal: "#E51919",
-        warning: "#FFCC00",
-        ink: "#3A0A08",          /* encre oxblood profonde — texte & structures */
-        paper: "#FFFAF6",        /* fond maison de luxe */
-        oxblood: "#6B0504",
-        signal: "#C20114",
-        copper: "#B06C49",
+
+        /* --- Palette FIRONOVA · LE SIGNAL (tokens.json) --- */
+        paper: "#FFFAF6",     /* ground — every surface */
+        ink: "#3A0A08",       /* oxblood — texte, wordmark */
+        garnet: "#6B0504",    /* deep sections, social tiles */
+        oxblood: "#6B0504",   /* alias rétro-compatible (code existant) */
+        copper: "#B06C49",    /* data voice, captions, badges compliance */
         copperlight: "#DCB49A",
+        signal: "#C20114",    /* LA LIGNE + CTA primaire — rationné */
+        faint: "#E9DED4",     /* filets, bordures, baselines */
+        inkmuted: "#8A6F63",  /* texte secondaire sur paper */
+
+        /* --- Fonctionnels (jamais brand) --- */
+        success: "#2E7D52",
+        warning: "#B8860B",
+        error: "#C20114",     /* contexte formulaire/système uniquement */
       },
       keyframes: {
         "accordion-down": { from: { height: "0" }, to: { height: "var(--radix-accordion-content-height)" } },
