@@ -31,7 +31,7 @@ export default function Footer() {
       </div>
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-16 grid grid-cols-2 md:grid-cols-4 gap-8">
         <div className="col-span-2">
-          <div className="font-display font-extrabold text-xl">FIRONOVA<span style={{ color: "#E51919" }}>.</span></div>
+          <div className="font-display font-extrabold text-xl">FIRONOVA<span style={{ color: "#C20114" }}>.</span></div>
           <p className="mt-4 text-sm text-foreground/70 max-w-sm">{t("footer.tagline")}</p>
         </div>
         <div>

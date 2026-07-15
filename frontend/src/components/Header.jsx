@@ -36,7 +36,7 @@ export default function Header() {
       <header className="sticky top-0 z-40 bg-white border-b border-ink/15">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 flex items-center justify-between h-16">
           <Link to="/" data-testid="header-logo" className="font-display font-extrabold text-xl tracking-tight">
-            FIRONOVA<span className="text-signal" style={{ color: "#E51919" }}>.</span>
+            FIRONOVA<span className="text-signal" style={{ color: "#C20114" }}>.</span>
           </Link>
           <nav className="hidden md:flex items-center gap-8">
             {navItems.map((n) => (
@@ -59,7 +59,7 @@ export default function Header() {
               data-testid="admin-quick-access"
               onClick={enterAdmin}
               className="hidden sm:inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.25em] bg-ink text-white px-3 py-1.5 hover:bg-signal transition-colors"
-              style={{ "--signal": "#E51919" }}
+              style={{ "--signal": "#C20114" }}
               aria-label="Admin dashboard"
             >
               <Lock size={11} strokeWidth={2} />
@@ -84,7 +84,7 @@ export default function Header() {
                   <span
                     data-testid="cart-count-badge"
                     className="absolute -top-2 -right-3 bg-signal text-white text-[10px] font-mono leading-none px-1.5 py-1 min-w-[18px] text-center"
-                    style={{ background: "#E51919" }}
+                    style={{ background: "#C20114" }}
                   >
                     {count}
                   </span>

@@ -29,7 +29,7 @@ export default function AgeGate() {
       <div className="relative w-full max-w-lg border border-ink bg-white">
         <div className="bg-ink px-6 py-3 font-mono text-[11px] uppercase tracking-[0.25em] text-white flex items-center justify-between">
           <span data-testid="age-gate-tag">// RESTRICTED · FIRONOVA</span>
-          <span className="text-signal" style={{ color: "#E51919" }}>19+</span>
+          <span className="text-signal" style={{ color: "#C20114" }}>19+</span>
         </div>
         <div className="p-8">
           <h2 className="font-display text-3xl sm:text-4xl font-bold uppercase tracking-tight" data-testid="age-gate-title">
