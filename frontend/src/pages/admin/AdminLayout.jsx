@@ -16,16 +16,16 @@ import AdminCoupons from "./sections/AdminCoupons";
 import AdminCustomers from "./sections/AdminCustomers";
 import AdminShipping from "./sections/AdminShipping";
 
-export default function AdminLayout() {
+export default function AdminLayout({ basePath = "/admin" }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const nav = [
-    { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
-    { to: "/admin/orders", label: "Orders", icon: ShoppingCart },
-    { to: "/admin/products", label: "Products", icon: Package },
-    { to: "/admin/coupons", label: "Coupons", icon: Ticket },
-    { to: "/admin/customers", label: "Customers", icon: Users },
-    { to: "/admin/shipping", label: "Shipping", icon: Truck },
+    { to: basePath, label: "Dashboard", icon: LayoutDashboard, end: true },
+    { to: `${basePath}/orders`, label: "Orders", icon: ShoppingCart },
+    { to: `${basePath}/products`, label: "Products", icon: Package },
+    { to: `${basePath}/coupons`, label: "Coupons", icon: Ticket },
+    { to: `${basePath}/customers`, label: "Customers", icon: Users },
+    { to: `${basePath}/shipping`, label: "Shipping", icon: Truck },
   ];
 
   return (
@@ -35,7 +35,7 @@ export default function AdminLayout() {
         <aside className="w-60 bg-white border-r border-ink/10 min-h-screen sticky top-0 hidden lg:flex flex-col" data-testid="admin-sidebar">
           <div className="px-6 py-6 border-b border-ink/10">
             <div className="font-display font-extrabold text-xl tracking-tight">
-              FIRONOVA<span style={{ color: "#E51919" }}>.</span>
+              FIRONOVA<span style={{ color: "#C20114" }}>.</span>
             </div>
             <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mt-1">// Admin</div>
           </div>
