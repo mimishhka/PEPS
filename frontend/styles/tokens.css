@@ -1,3 +1,6 @@
+/* NOTE: ce fichier a été déplacé depuis frontend/styles/ (hors de src/, donc
+   jamais compilé par CRA). Les var(--fn-*) utilisées dans index.css étaient
+   toutes non résolues. */
 /* ============================================================
    FIRONOVA — Design Tokens · LE SIGNAL
    Drop into frontend/src/styles/tokens.css and import once in index.css
