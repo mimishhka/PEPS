@@ -15,152 +15,131 @@ import uuid
 import logging
 import secrets
 import asyncio
-from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Literal
-
-import xml.etree.ElementTree as ET
-
-import bcrypt
-import jwt
-import httpx
-import resend
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File
-from fastapi.responses import StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo.errors import DuplicateKeyError
-from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator
-from reportlab.lib.pagesizes import LETTER
-from reportlab.lib import colors as rl_colors
-from reportlab.lib.units import mm
-from reportlab.pdfgen import canvas as rl_canvas
-
-
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-MONGO_URL = os.environ["MONGO_URL"]
-DB_NAME = os.environ["DB_NAME"]
-JWT_SECRET = os.environ["JWT_SECRET"]
-JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_MINUTES = 60 * 24 * 7  # 7 days for ecommerce UX
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@fironova.ca")
-# Aucun défaut : un mot de passe admin en dur dans le repo est un mot de passe public.
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
-if not ADMIN_PASSWORD:
-    raise RuntimeError(
-        "ADMIN_PASSWORD est obligatoire. Définissez-le dans l'environnement "
-        "avant de démarrer le serveur."
-    )
-INTERAC_EMAIL = os.environ.get("INTERAC_EMAIL", "orders@fironova.ca")
-
-# Code d'accès facultatif demandé AVANT même l'écran de login admin, côté SPA
-# publique. Ne remplace pas l'auth (JWT + rôle restent la vraie barrière sur
-# /api/admin/*) — sert seulement à ce qu'un visiteur qui tombe sur l'URL admin
-# obscure par hasard ne voie même pas d'écran de login. Si non défini, la
-# passerelle est désactivée (aucun blocage).
-ADMIN_GATE_CODE = os.environ.get("ADMIN_GATE_CODE")
-INTERAC_PASSWORD_HINT = os.environ.get("INTERAC_PASSWORD_HINT", "FIRONOVA")
-NOWPAYMENTS_API_KEY = os.environ.get("NOWPAYMENTS_API_KEY", "")
-NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "")
-PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
-NOWPAYMENTS_BASE_URL = "https://api.nowpayments.io/v1"
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@fironova.ca")
-ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@fironova.ca")
-STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
-SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
-FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))
-UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "24"))
-
-# Feature flags — toggle without deploying new code, just flip the env var and restart.
-COA_PAGE_ENABLED = os.environ.get("COA_PAGE_ENABLED", "false").strip().lower() == "true"
-
-# --- Prélancement (BLOC 3) --------------------------------------------------
-# Défaut sûr : la boutique reste OUVERTE si la variable est absente.
-PRELAUNCH_ENABLED = os.environ.get("PRELAUNCH_ENABLED", "false").strip().lower() == "true"
-PRELAUNCH_PREVIEW_TOKEN = os.environ.get("PRELAUNCH_PREVIEW_TOKEN", "")  # ?preview=<token> contourne la porte
-LAUNCH_COUPON_CODE = os.environ.get("LAUNCH_COUPON_CODE", "LAUNCH15").strip().upper()
-
-# File uploads (COA PDFs). Served statically at /uploads/coa/<file>.
-UPLOAD_DIR = ROOT_DIR / "uploads"
-COA_UPLOAD_DIR = UPLOAD_DIR / "coa"
-COA_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-MAX_COA_UPLOAD_MB = float(os.environ.get("MAX_COA_UPLOAD_MB", "10"))
-
-# Étiquettes d'expédition Postes Canada — servies à /uploads/labels/<file>.
-LABEL_UPLOAD_DIR = UPLOAD_DIR / "labels"
-LABEL_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-# Postes Canada (Canada Post) rating/tracking API — leave blank to keep using the flat-rate
-# shipping_zones/shipping_methods system already in place.
-CANADA_POST_API_KEY = os.environ.get("CANADA_POST_API_KEY", "")
-CANADA_POST_CUSTOMER_NUMBER = os.environ.get("CANADA_POST_CUSTOMER_NUMBER", "")
-CANADA_POST_CONTRACT_ID = os.environ.get("CANADA_POST_CONTRACT_ID", "")
-CANADA_POST_ORIGIN_POSTAL_CODE = os.environ.get("CANADA_POST_ORIGIN_POSTAL_CODE", "")
-# Expéditeur pour la création d'étiquettes. Emballage neutre : aucune mention
-# du contenu ne figure sur l'étiquette (politique d'emballage discret).
-CANADA_POST_SENDER_NAME = os.environ.get("CANADA_POST_SENDER_NAME", "FIRONOVA")
-CANADA_POST_SENDER_ADDRESS = os.environ.get("CANADA_POST_SENDER_ADDRESS", "")
-CANADA_POST_SENDER_CITY = os.environ.get("CANADA_POST_SENDER_CITY", "Montreal")
-CANADA_POST_SENDER_PROVINCE = os.environ.get("CANADA_POST_SENDER_PROVINCE", "QC")
-CANADA_POST_SENDER_PHONE = os.environ.get("CANADA_POST_SENDER_PHONE", "")
-CANADA_POST_ENVIRONMENT = os.environ.get("CANADA_POST_ENVIRONMENT", "dev")  # "dev" (soa-gw) or "prod" (soa-gw prod host)
-CANADA_POST_BASE_URL = (
-    "https://ct.soa-gw.canadapost.ca" if CANADA_POST_ENVIRONMENT == "dev"
-    else "https://soa-gw.canadapost.ca"
-)
-
-# ---------------------------------------------------------------------------
-# Dispatch batch (fenêtre de traitement des commandes)
-# Cutoff 13h heure de l'Est, jours ouvrables seulement (week-ends + fériés exclus).
-# ---------------------------------------------------------------------------
-from zoneinfo import ZoneInfo
-try:
-    import holidays as _holidays_lib
-    _CA_HOLIDAYS = _holidays_lib.Canada()  # fériés fédéraux canadiens
-except Exception:  # pragma: no cover - lib absente => aucun férié bloqué
-    _CA_HOLIDAYS = set()
-
-ORDER_CUTOFF_HOUR = int(os.environ.get("ORDER_CUTOFF_HOUR", "13"))
-ORDER_CUTOFF_TZ = os.environ.get("ORDER_CUTOFF_TZ", "America/Toronto")
+async def _seed_categories_from_products() -> None:
+    """Dérive les catégories réelles à partir des slugs déjà portés par les produits.
+    Idempotent ($setOnInsert) : une catégorie éditée ensuite par l'admin n'est
+    jamais réécrite au redéploiement. Aucun produit n'est touché."""
+    try:
+        slugs = [x for x in await db.products.distinct("category") if x and _SLUG_RE.match(str(x))]
+        # Libellés par défaut alignés sur les clés i18n existantes.
+        labels = {
+            "healing": ("Healing & Recovery", "Guérison et récupération"),
+            "weight-loss": ("Weight Management", "Gestion du poids"),
+            "gh-secretagogues": ("GH Secretagogues", "Sécrétagogues de GH"),
+            "cognitive": ("Cognitive", "Cognitif"),
+            "longevity": ("Longevity", "Longévité"),
+        }
+        for i, slug in enumerate(sorted(slugs)):
+            en, fr = labels.get(slug, (slug.replace("-", " ").title(), slug.replace("-", " ").title()))
+            await db.categories.update_one(
+                {"slug": slug},
+                {"$setOnInsert": {
+                    "id": str(uuid.uuid4()),
+                    "slug": slug,
+                    "name_en": en,
+                    "name_fr": fr,
+                    "published": True,
+                    "display_order": i,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=True,
+            )
+        if slugs:
+            logging.info("categories seed: %d slug(s) vérifié(s)", len(slugs))
+    except Exception as e:  # pragma: no cover
+        logging.error("categories seed failed: %s", e)
 
 
-def _is_business_day(d) -> bool:
-    """False les samedis, dimanches et jours fériés fédéraux canadiens."""
-    if d.weekday() >= 5:  # 5 = samedi, 6 = dimanche
-        return False
-    return d not in _CA_HOLIDAYS
+async def _seed_default_menus() -> None:
+    """Reproduit à l'identique la navigation actuellement codée en dur, pour que
+    rien ne bouge visuellement au premier déploiement. $setOnInsert uniquement."""
+    defaults = [
+        {
+            "slug": "main-navigation", "name_en": "Main navigation", "name_fr": "Navigation principale",
+            "location": "header", "display_order": 0,
+            "items": [
+                {"label_en": "Catalog", "label_fr": "Catalogue", "url": "/catalog", "display_order": 0},
+                {"label_en": "Lab", "label_fr": "Labo", "url": "/lab", "display_order": 1},
+                {"label_en": "About", "label_fr": "À propos", "url": "/about", "display_order": 2},
+            ],
+        },
+        {
+            "slug": "footer-shop", "name_en": "Shop", "name_fr": "Boutique",
+            "location": "footer", "display_order": 1,
+            "items": [
+                {"label_en": "Catalog", "label_fr": "Catalogue", "url": "/catalog", "display_order": 0},
+                {"label_en": "Healing & Recovery", "label_fr": "Guérison et récupération", "url": "/catalog?cat=healing", "display_order": 1},
+                {"label_en": "Weight Management", "label_fr": "Gestion du poids", "url": "/catalog?cat=weight-loss", "display_order": 2},
+                {"label_en": "Cognitive", "label_fr": "Cognitif", "url": "/catalog?cat=cognitive", "display_order": 3},
+            ],
+        },
+        {
+            "slug": "footer-legal", "name_en": "Legal", "name_fr": "Légal",
+            "location": "footer", "display_order": 2,
+            "items": [
+                {"label_en": "Terms", "label_fr": "Conditions", "url": "/compliance", "display_order": 0},
+                {"label_en": "Privacy", "label_fr": "Confidentialité", "url": "/privacy", "display_order": 1},
+                {"label_en": "Shipping", "label_fr": "Expédition", "url": "/compliance#shipping", "display_order": 2},
+                {"label_en": "FAQ", "label_fr": "FAQ", "url": "/faq", "display_order": 3},
+            ],
+        },
+    ]
+    try:
+        for m in defaults:
+            items = []
+            for it in m["items"]:
+                items.append({
+                    "id": str(uuid.uuid4()), "published": True, "open_new_tab": False, **it,
+                })
+            await db.menus.update_one(
+                {"slug": m["slug"]},
+                {"$setOnInsert": {
+                    "id": str(uuid.uuid4()),
+                    "slug": m["slug"], "name_en": m["name_en"], "name_fr": m["name_fr"],
+                    "location": m["location"], "published": True,
+                    "display_order": m["display_order"], "items": items,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=True,
+            )
+    except Exception as e:  # pragma: no cover
+        logging.error("menus seed failed: %s", e)
 
 
-def compute_dispatch_batch(paid_at) -> str:
-    """
-    Retourne la date du lot d'expédition (prochain jour ouvrable) au format
-    'YYYY-MM-DD' en date locale (ORDER_CUTOFF_TZ), à partir d'un horodatage de
-    paiement (datetime aware UTC, ou string ISO).
-    Règle : payé avant le cutoff un jour ouvrable => jour même, sinon jour
-    suivant ; puis on avance jusqu'au prochain jour ouvrable.
-    """
-    if isinstance(paid_at, str):
-        paid_at = datetime.fromisoformat(paid_at.replace("Z", "+00:00"))
-    if paid_at.tzinfo is None:
-        paid_at = paid_at.replace(tzinfo=timezone.utc)
-    local = paid_at.astimezone(ZoneInfo(ORDER_CUTOFF_TZ))
-    candidate = local.date()
-    if not (local.hour < ORDER_CUTOFF_HOUR and _is_business_day(candidate)):
-        candidate = candidate + timedelta(days=1)
-    while not _is_business_day(candidate):
-        candidate = candidate + timedelta(days=1)
-    return candidate.isoformat()
+async def _seed_launch_coupon() -> None:
+    """Provisionne le coupon de lancement 15 %. $setOnInsert : si tu l'édites
+    ensuite dans l'admin, le redéploiement ne l'écrase pas."""
+    try:
+        await db.coupons.update_one(
+            {"code": LAUNCH_COUPON_CODE},
+            {"$setOnInsert": {
+                "id": str(uuid.uuid4()),
+                "code": LAUNCH_COUPON_CODE,
+                "discount_type": "percent",
+                "value": 15.0,
+                "min_subtotal": 0.0,
+                "usage_limit": None,
+                "used_count": 0,
+                "active": True,
+                "expires_at": None,
+                "deleted_at": None,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+    except Exception as e:  # pragma: no cover
+        logging.error("launch coupon seed failed: %s", e)
 
-try:
-    from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
-    _STRIPE_AVAILABLE = True
-except Exception:
-    _STRIPE_AVAILABLE = False
-    StripeCheckout = None
-    CheckoutSessionRequest = None
+
+@app.on_event("startup")
+async def startup_event():
+    await seed_admin_and_products()
+    await _seed_categories_from_products()
+    await _seed_default_menus()
+    await _seed_launch_coupon()
+    if await _acquire_worker_lock("background_tasks"):
+        asyncio.create_task(_unpaid_orders_watchdog())
+        asyncio.create_task(_backfill_dispatch_batch())
 
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
@@ -4305,6 +4284,7 @@ async def _acquire_worker_lock(name: str, ttl_seconds: int = 120) -> bool:
         return False  # duplicate key = un autre worker détient déjà le verrou
 
 
+<<<<<<< HEAD
 async def _seed_categories_from_products() -> None:
     """Dérive les catégories réelles à partir des slugs déjà portés par les produits.
     Idempotent ($setOnInsert) : une catégorie éditée ensuite par l'admin n'est
@@ -4421,6 +4401,8 @@ async def _seed_launch_coupon() -> None:
         logging.error("launch coupon seed failed: %s", e)
 
 
+=======
+>>>>>>> eb14a6e (auto-commit for fc6fef14-8592-4896-896d-467d1bf4cd1a)
 @app.on_event("startup")
 async def startup_event():
     await seed_admin_and_products()
