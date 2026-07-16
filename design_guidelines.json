@@ -1,132 +1,134 @@
 {
-  "project_name": "NORDPEP",
+  "project_name": "FIRONOVA",
+  "_status": "SOURCE DE VÉRITÉ UI. Aligné sur frontend/src/styles/tokens.css (v1.0.0 « LE SIGNAL »), frontend/tailwind.config.js et frontend/src/index.css. Toute modification ici doit être répercutée dans ces trois fichiers — et inversement. Remplace l'ancienne spec NORDPEP / Archetype 4 (Swiss & High-Contrast), qui est OBSOLÈTE et ne doit plus être appliquée.",
   "theme_and_archetype": {
     "theme": "light",
-    "archetype": "Archetype 4 (Swiss & High-Contrast)",
-    "description": "Lab-grade pristine, authoritative, strictly functional. Blends Swiss Brutalism with Nordic minimalism. Emphasizes scientific credibility, transparency, and strict compliance through high-contrast typography, structural grids, and deliberate absence of decorative elements."
+    "archetype": "Maison de luxe editorial — « LE SIGNAL »",
+    "description": "Papier chaud, encre oxblood, filet copper, et un unique rouge signal qui trace LA LIGNE. Langage de formes DOUX et éditorial : cartes arrondies, boutons en pilule, ombres chaudes, panneaux grenat arrondis. Crédibilité scientifique exprimée par la donnée (chromatogramme HPLC, lots, pureté en mono) plutôt que par le brutalisme. Précision de laboratoire présentée comme un objet de maison de luxe.",
+    "explicitly_not": [
+      "PAS de brutalisme suisse monochrome (rounded-none, hard shadows, noir/blanc pur, bordures noires pleine largeur)",
+      "PAS de bleu ou navy pharma (#1E3A5F et dérivés) — c'est l'ancienne direction « Nordic Clinical », abandonnée",
+      "PAS de dégradés bleu/violet",
+      "PAS de Cabinet Grotesk / Satoshi (polices non licenciées, non chargées)",
+      "PAS de couleurs Tailwind par défaut (bg-red-600, bg-orange-500, text-white…) — uniquement les tokens FIRONOVA",
+      "PAS de photo glaciaire nordique en héros — le chromatogramme HPLC est la signature"
+    ]
   },
   "global_rules": [
-    "95% monochrome UI. Color is function only.",
-    "Use Signal Red strictly for compliance notices and destructive actions.",
-    "Grids must have exposed structural borders (The Technical Look). Container `border-collapse`, items `border-r border-b border-black/10`.",
-    "No soft shadows. Use sharp 1px borders or hard, flat shadows if absolutely necessary.",
-    "Buttons and cards must use sharp corners (`rounded-none`).",
-    "All interactive elements MUST have `data-testid` attributes (kebab-case, role-based).",
-    "Never use generic pharma blue or purple gradients.",
-    "Language toggle (FR/EN) must be universally accessible in the header."
+    "Le rouge signal #C20114 est réservé à LA LIGNE (trait HPLC) et au CTA primaire. Rien d'autre.",
+    "Toute surface est du papier #FFFAF6. Le blanc pur #FFFFFF n'est pas une couleur de la marque.",
+    "La donnée (lots, pureté, prix, séquences, dosages, SKU, n° de commande) est TOUJOURS en JetBrains Mono, tabular-nums, couleur copper.",
+    "Rayons via tokens : rounded-sm 8px (contrôles) / rounded-md 12px (chips, tuiles data) / rounded-lg 16px (cartes, panneaux, modales). Les CTA et badges sont en PILULE (rounded-full). Jamais rounded-none par défaut.",
+    "Ombres chaudes uniquement (.shadow-luxe / .shadow-luxe-lg / .card-hover). Aucune hard shadow brutaliste.",
+    "Bordures : 1px solid var(--fn-faint) (#E9DED4). Pas de border noir.",
+    "Règle « two rooms, one person » : .font-display = Space Grotesk (voix boutique). Instrument Serif = .font-social, voix feed/social UNIQUEMENT, jamais dans l'UI boutique.",
+    "Tout élément interactif DOIT porter un data-testid (kebab-case, orienté rôle). Les testIds existants dans frontend/src/constants/testIds/ sont contractuels : ne jamais les renommer ni les supprimer.",
+    "Bilingue FR/EN non négociable : toute chaîne visible passe par useLang()/t() et i18n.js. Le toggle FR/EN reste accessible dans le header et persiste en localStorage (fironova_lang).",
+    "Un seul mouvement signature : le tracé qui se dessine (.hplc-trace / .fn-line-draw). Tout est sous prefers-reduced-motion.",
+    "Mention RUO (« For Research Use Only / Usage recherche uniquement ») visible en pied de page sur chaque écran (.fn-ruo).",
+    "Surfaces claires = bg-paper. Surfaces profondes = bg-garnet avec texte text-paper. Ne jamais écrire bg-white / text-white : ce sont des couleurs hors marque.",
+    "Les couleurs Tailwind par défaut sont interdites. Tout passe par la palette étendue (paper, ink, garnet, copper, copperlight, signal, faint, inkmuted, success, warning)."
   ],
   "typography": {
     "fonts": {
-      "headings": "Cabinet Grotesk",
-      "body": "Satoshi",
-      "mono": "JetBrains Mono"
+      "display_store": "Space Grotesk (700) — voix boutique, titres et H1/H2",
+      "social": "Instrument Serif — voix feed/social uniquement",
+      "body": "Inter",
+      "data": "JetBrains Mono — lots, pureté, prix, séquences, IDs"
+    },
+    "scale": {
+      "t1": "12px — data, légal, captions (mono)",
+      "t2": "14px — UI, boutons",
+      "t3": "16px — body",
+      "t4": "21px — chapô",
+      "t5": "28px — H2 / titres de carte",
+      "t6": "42px — titres de section",
+      "t7": "76px — hero display"
     },
     "hierarchy": {
-      "h1": "text-5xl sm:text-6xl tracking-tighter font-bold uppercase",
-      "h2": "text-3xl sm:text-4xl tracking-tight font-bold",
-      "h3": "text-xl sm:text-2xl font-medium",
-      "body": "text-base leading-relaxed",
-      "labels_and_overline": "text-xs font-mono uppercase tracking-[0.2em]"
+      "h1": "font-display text-[clamp(2.5rem,6vw,76px)] font-bold tracking-[-0.01em] leading-[0.95]",
+      "h2": "font-display text-[42px] font-bold tracking-[-0.01em]",
+      "h3": "font-display text-[28px] font-medium",
+      "body": "font-sans text-base leading-relaxed",
+      "labels_and_overline": "font-mono text-[12px] uppercase tracking-[0.18em] text-[color:var(--fn-copper)]"
     },
-    "instructions": "Avoid Inter/Roboto. Use 'tracking-tight' for headings. Monospace is crucial for peptide sequences, dosages, and compliance tags to enforce the 'lab report' aesthetic."
+    "instructions": "Ne jamais utiliser Instrument Serif pour titrer la boutique. Les chiffres passent en font-mono avec font-variant-numeric: tabular-nums (classe utilitaire .fn-data)."
   },
   "colors": {
-    "tailwind_config_extension": {
-      "background": "#FFFFFF",
-      "foreground": "#050505",
-      "card": {
-        "DEFAULT": "#FFFFFF",
-        "foreground": "#050505"
-      },
-      "border": "rgba(5, 5, 5, 0.15)",
-      "primary": {
-        "DEFAULT": "#050505",
-        "foreground": "#FFFFFF"
-      },
-      "secondary": {
-        "DEFAULT": "#F5F5F5",
-        "foreground": "#050505"
-      },
-      "destructive": {
-        "DEFAULT": "#E51919",
-        "foreground": "#FFFFFF"
-      },
-      "muted": {
-        "DEFAULT": "#FAFAFA",
-        "foreground": "#737373"
-      },
-      "compliance": {
-        "warning": "#FFCC00",
-        "text": "#050505"
-      }
+    "tokens": {
+      "--fn-paper": "#FFFAF6",
+      "--fn-ink": "#3A0A08",
+      "--fn-garnet": "#6B0504",
+      "--fn-copper": "#B06C49",
+      "--fn-signal": "#C20114",
+      "--fn-faint": "#E9DED4",
+      "--fn-muted": "#8A6F63",
+      "--fn-success": "#2E7D52",
+      "--fn-warning": "#B8860B",
+      "--fn-error": "#C20114",
+      "--fn-compliance": "#B06C49"
+    },
+    "semantic_hsl_in_index_css": {
+      "background": "27 100% 98%  /* paper */",
+      "foreground": "4 76% 13%    /* oxblood ink */",
+      "primary": "1 93% 22%       /* garnet */",
+      "accent": "22 42% 55%       /* copper */",
+      "destructive": "358 98% 38% /* signal */",
+      "ring": "358 98% 38%",
+      "border": "20 35% 86%",
+      "radius": "12px"
+    },
+    "usage": {
+      "ink": "texte courant, wordmark, fonds inversés",
+      "garnet": "sections profondes, bandeau conformité, tuiles social",
+      "copper": "voix data, captions, filets, badges conformité (outline)",
+      "signal": "LA LIGNE + CTA primaire — nulle part ailleurs",
+      "warning": "#B8860B pour les avis fonctionnels — jamais un jaune vif brand"
     }
   },
   "spacing_and_layout": {
-    "philosophy": "Generous spacing. Strict grid adherence.",
-    "grid_system": "Bento-style or strict table grids. Items stretch to fill cells. No jagged bottoms. Override stretch with `align-items: start` when needed.",
-    "containers": "Max-width `max-w-7xl` centered, with `px-6` or `px-8`.",
-    "padding": "Use generous padding (`py-24`, `py-32`) between sections."
+    "philosophy": "Respiration éditoriale. Grille 8px stricte.",
+    "scale": "8 / 16 / 24 / 32 / 48 / 64 / 96 / 120px (--fn-s1..s8)",
+    "containers": "max-w-7xl centré, px-6 sm:px-8",
+    "sections": "py-24 à py-32. Séparation par un filet copper (.rule-copper), pas par une bordure noire."
   },
   "components": {
-    "buttons": "Square edges (`rounded-none`). Solid black for primary, bordered for secondary. Monospace text inside. Hover: invert colors or solid gray.",
-    "cards": "Square edges, pure white, 1px solid border. No drop shadow. Hover effect: slight translate up (`-translate-y-1`) with a hard `shadow-[4px_4px_0px_#050505]`.",
-    "inputs_and_forms": "Shadcn based. Sharp corners, thick 1px bottom border only (Material style) OR full 1px square border. Floating labels if possible.",
-    "modals_and_sheets": "Stark white surface, 1px border. Dark glass backdrop (`backdrop-blur-xl bg-black/60`).",
-    "badges": "Square edges, monospace font. Lab/COA badges should be bordered with black text. Compliance badges in warning yellow or red.",
-    "icons": "lucide-react. Keep stroke-width at 1.5 or 1 for a precise, technical feel."
+    "buttons": "PILULE (rounded-full). Primaire = bg-signal + text-paper + shadow-luxe (hover: shadow-luxe-lg). Secondaire = bg-paper + border-faint + text-ink (hover: border-copper). Tertiaire/neutre = bg-ink + text-paper (hover: bg-garnet). Label en font-mono uppercase tracking-[0.25em].",
+    "cards": "bg-paper, border border-faint, rounded-lg (16px), overflow-hidden. Hover via .card-hover (translateY(-4px) + ombre chaude). Aucune hard shadow.",
+    "inputs_and_forms": "Shadcn. rounded-sm, bordure faint, focus ring signal. Labels en font-mono uppercase tracking-[0.18em] copper.",
+    "modals_and_sheets": "Surface paper, rounded-lg, shadow-luxe-lg. Backdrop : backdrop-blur-xl bg-[#3A0A08]/60 (oxblood, pas noir).",
+    "badges": "PILULE (rounded-full), font-mono 10-12px uppercase tracking-[0.2em]. Data/dosage : bg-paper/90 backdrop-blur + border-faint + text-copper. COA vérifié : bg-garnet + text-paper. Promo : bg-signal + text-paper. Précommande : outline copper sur paper (JAMAIS un orange Tailwind). Conformité/RUO : .fn-ruo (outline copper).",
+    "status_badges_admin": "Pending = muted #8A6F63 · Paid = success #2E7D52 · Shipped = copper #B06C49 · Delivered = garnet #6B0504 · Cancelled = signal #C20114. Tous en font-mono uppercase.",
+    "icons": "lucide-react, stroke-width 1.5.",
+    "signature_elements": {
+      "hplc_trace": ".hplc-trace — tracé SVG signal qui se dessine (800ms, cubic-bezier(.6,0,.2,1)). Élément héros.",
+      "seal": ".animate-seal — sceau de certification SVG en rotation lente (24s).",
+      "grain": ".grain::before — texture bruit 4% en multiply, sur les grandes surfaces papier.",
+      "live_dot": ".fn-dot-live — pulsation d'un point (statut live / injection)."
+    },
+    "deep_panels": "Marquee de confiance, bloc newsletter, bandeau conformité du footer : bg-garnet, text-paper, rounded-lg, shadow-luxe, à l'intérieur du max-w-7xl (panneau flottant, pas de bande pleine largeur)."
   },
   "pages_and_flows": {
-    "global_header": {
-      "layout": "Sticky, solid white background with 1px bottom border. Left: NORDPEP bold logo. Center: Navigation. Right: [FR/EN] Toggle (monospace), Cart, Login.",
-      "behavior": "Language toggle persists to localStorage."
-    },
-    "age_verification_modal": {
-      "trigger": "On first visit.",
-      "design": "Brutalist block centered on screen. Headline: 'RESTRICTED ACCESS'. Body: 'You must be 19+ to enter. Products are for Research Use Only.' Big primary button 'I AM 19+', secondary 'EXIT'. Destructive red accents."
-    },
-    "homepage": {
-      "hero": "Split layout. Left: Massive typographic statement 'PRECISION PEPTIDES FOR CANADIAN RESEARCH'. Right: Grayscale abstract nordic ice or vial image. Strict borders between sections.",
-      "featured_products": "Technical grid (`border-collapse`). Each product card is a grid cell with right and bottom borders.",
-      "trust_bar": "Monospace scrolling marquee or grid showing: '3RD PARTY LAB TESTED', 'SHIPS FROM CANADA', '99.9% PURITY'."
-    },
-    "product_catalog": {
-      "layout": "Left sidebar for categories (Healing, Weight Loss, Cognitive, GH Secretagogues). Right side: Product Grid.",
-      "cards": "Image at top (vials), Monospace SKU/Sequence below, Name in Grotesk, Add to cart button filling the entire bottom of the card."
-    },
-    "product_detail": {
-      "layout": "2-column. Left: sticky image. Right: Data-heavy. Dosage/sequence info in table format. Prominent Red 'For Research Use Only - Not for Human Consumption' banner. COA/Lab report download link."
-    },
-    "cart_drawer": {
-      "layout": "Slide out from right. Sharp borders. Clear total. Checkout button locked to bottom."
-    },
-    "checkout": {
-      "flow": "Standard Shadcn forms. Must check 'I agree to Terms & Conditions and confirm I am 19+'.",
-      "payment_methods": "Shadcn Tabs to switch between 'Interac e-Transfer' and 'NOWPayments (Crypto)'. Interac shows manual instructions upon confirmation. Crypto redirects or shows QR."
-    },
-    "admin_dashboard": {
-      "layout": "Sidebar navigation. Main area uses Shadcn Tables. Heavy use of monospace for Order IDs, SKUs. Color-coded status badges (Pending = Gray, Paid = Blue, Shipped = Orange, Delivered = Green)."
-    },
-    "compliance_footer": {
-      "layout": "Massive padding (`py-24`). Top section: Large bold disclaimers 'HEALTH CANADA NOTICE: NOT FOR HUMAN CONSUMPTION'. Bottom: standard links."
-    }
+    "global_header": "Sticky, bg-paper/85 backdrop-blur, filet border-faint en bas. Gauche : wordmark FIRONOVA (font-display, ink, point signal). Centre : navigation. Droite : boutons pilule — toggle [FR/EN] (outline faint), panier (badge pilule signal), compte. AUCUN identifiant admin en dur, AUCUN auto-login : l'entrée admin redirige vers /login?next=ADMIN_PATH. Cette faille a été corrigée — ne jamais la réintroduire.",
+    "age_verification_modal": "Bloc centré, surface paper, rounded-lg, shadow-luxe-lg. Titre : « ACCÈS RESTREINT / RESTRICTED ACCESS ». Corps : 19+ requis, usage recherche uniquement. CTA primaire signal « J'AI 19 ANS OU PLUS », secondaire outline « QUITTER ». Persisté en localStorage (fironova_age_confirmed).",
+    "homepage": "Hero éditorial 2 colonnes. Gauche : pilule overline (point signal pulsé) + H1 font-display avec second membre en copper + CTA pilule signal + 3 chips data (lot / pureté / licence). Droite : carte COA rounded-lg shadow-luxe-lg contenant le chromatogramme HPLC animé (LA LIGNE) — PAS de photo d'archive. Sceau .animate-seal en surimpression. Puis : marquee grenat arrondi, produits vedettes, tuiles catégories (voile grenat), panneau newsletter grenat.",
+    "product_catalog": "Sidebar catégories à gauche, grille produits à droite. Cartes en .card-hover, séparées par des gouttières (pas de border-collapse brutaliste).",
+    "product_detail": "2 colonnes. Gauche : visuel sticky + COA téléchargeable. Droite : données en mono (lot, pureté, séquence, masse molaire). Bandeau conformité garnet « USAGE RECHERCHE UNIQUEMENT — NON DESTINÉ À LA CONSOMMATION HUMAINE ».",
+    "cart_drawer": "Sheet depuis la droite, surface paper, totaux en mono, CTA checkout ancré en bas.",
+    "checkout": "Formulaires Shadcn. Case obligatoire « J'accepte les conditions et je confirme avoir 19 ans ou plus ». Onglets moyens de paiement : Interac e-Transfer / Stripe / NOWPayments (crypto). Adresses enregistrées du compte proposées en un clic.",
+    "admin_dashboard": "Sidebar + tables Shadcn. Mono pour IDs de commande, SKU, lots. Badges statut selon la palette ci-dessus. Le lot d'expédition (dispatch batch, cut-off 13 h Est) est affiché sur chaque commande payée.",
+    "compliance_footer": "py-24, fond garnet, texte paper. Bandeau RUO bilingue (.fn-ruo). Avis Santé Canada. Liens légaux : Confidentialité (PIPEDA / Loi 25), CASL/LCAP, conditions.",
+    "newsletter": "Panneau grenat arrondi. Champ + CTA dans une pilule bg-paper. Consentement LCAP/CASL via case à cocher data-testid=\"newsletter-consent\", JAMAIS pré-cochée, avec texte de consentement explicite (i18n home.newsletterConsent). Soumission → POST /api/newsletter/subscribe {email, lang, source}. Retour via toast sonner. Lien de désabonnement obligatoire dans chaque envoi."
   },
   "media": {
-    "hero_abstract_ice": {
-      "url": "https://images.unsplash.com/photo-1721009140154-7bb3e2dce95d",
-      "description": "Abstract nordic glacier, high contrast. Use as hero background or graphical element."
-    },
-    "generic_product_vials": {
-      "url": "https://images.unsplash.com/photo-1576671081837-49000212a370",
-      "description": "Grayscale glass medical vials. Use for default product images to maintain the pristine aesthetic."
-    },
-    "lab_environment": {
-      "url": "https://images.unsplash.com/photo-1616996691748-3f5f78093ab0",
-      "description": "Clean, modern science lab. Use in 'About Us' or 'Quality/Lab Tested' sections."
-    }
+    "note": "Le chromatogramme HPLC et le sceau de certification sont des SVG inline — ce sont eux la signature visuelle, pas la photographie. Les photos de catégories restent des visuels labo/santé sous voile grenat (from-garnet/85). Pas de filtre grayscale (direction NORDPEP), pas de photo glaciaire nordique."
   },
   "tech_stack_instructions": {
-    "language_toggle": "Implement a simple React Context or Zustand store for `lang` ('en'|'fr'). Store in localStorage. Translate static strings via a simple dictionary object.",
-    "ui_library": "Use Shadcn UI primitives but override Tailwind classes heavily to remove radii (`rounded-none`) and enforce stark borders.",
-    "testing": "Add `data-testid` to all interactive elements."
+    "frontend": "React (CRA + craco), Tailwind, Shadcn UI, axios.",
+    "backend": "FastAPI + MongoDB (Motor), backend/server.py.",
+    "auth": "Cookie httpOnly `access_token` UNIQUEMENT. Ne jamais renvoyer le JWT dans le corps d'une réponse, ne jamais l'écrire dans localStorage. axios : withCredentials: true, aucun intercepteur Authorization. CORS : origines explicites via CORS_ORIGINS, allow_credentials=True, '*' interdit.",
+    "language_toggle": "LanguageContext + i18n.js, persistance localStorage (fironova_lang).",
+    "ui_library": "Shadcn, mais avec les tokens FIRONOVA — ne pas rétablir rounded-none ni les bordures noires.",
+    "testing": "data-testid sur tout élément interactif ; registres dans frontend/src/constants/testIds/."
   }
 }
