@@ -15,7 +15,10 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
   if (!user) {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
-  if (adminOnly && user.role !== "admin") {
+  // "staff" a un accès admin partiel — quelles sections il voit dépend de
+  // ses permissions, vérifiées à l'affichage de chaque section ET, surtout,
+  // par le backend sur chaque appel API (la vraie barrière de sécurité).
+  if (adminOnly && user.role !== "admin" && user.role !== "staff") {
     return <Navigate to="/" replace />;
   }
   return children;
