@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 import os
 import io
+import re
 import csv
 import json
 import hmac
@@ -28,7 +29,8 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from pymongo.errors import DuplicateKeyError
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib import colors as rl_colors
 from reportlab.lib.units import mm
@@ -51,7 +53,7 @@ if not ADMIN_PASSWORD:
         "ADMIN_PASSWORD est obligatoire. Définissez-le dans l'environnement "
         "avant de démarrer le serveur."
     )
-INTERAC_EMAIL = os.environ.get("INTERAC_EMAIL", "orders@nordpep.ca")
+INTERAC_EMAIL = os.environ.get("INTERAC_EMAIL", "orders@fironova.ca")
 
 # Code d'accès facultatif demandé AVANT même l'écran de login admin, côté SPA
 # publique. Ne remplace pas l'auth (JWT + rôle restent la vraie barrière sur
@@ -65,8 +67,8 @@ NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "")
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 NOWPAYMENTS_BASE_URL = "https://api.nowpayments.io/v1"
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@nordpep.ca")
-ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@nordpep.ca")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@fironova.ca")
+ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@fironova.ca")
 STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
 FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))
@@ -75,11 +77,21 @@ UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "24"))
 # Feature flags — toggle without deploying new code, just flip the env var and restart.
 COA_PAGE_ENABLED = os.environ.get("COA_PAGE_ENABLED", "false").strip().lower() == "true"
 
+# --- Prélancement (BLOC 3) --------------------------------------------------
+# Défaut sûr : la boutique reste OUVERTE si la variable est absente.
+PRELAUNCH_ENABLED = os.environ.get("PRELAUNCH_ENABLED", "false").strip().lower() == "true"
+PRELAUNCH_PREVIEW_TOKEN = os.environ.get("PRELAUNCH_PREVIEW_TOKEN", "")  # ?preview=<token> contourne la porte
+LAUNCH_COUPON_CODE = os.environ.get("LAUNCH_COUPON_CODE", "LAUNCH15").strip().upper()
+
 # File uploads (COA PDFs). Served statically at /uploads/coa/<file>.
 UPLOAD_DIR = ROOT_DIR / "uploads"
 COA_UPLOAD_DIR = UPLOAD_DIR / "coa"
 COA_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_COA_UPLOAD_MB = float(os.environ.get("MAX_COA_UPLOAD_MB", "10"))
+
+# Étiquettes d'expédition Postes Canada — servies à /uploads/labels/<file>.
+LABEL_UPLOAD_DIR = UPLOAD_DIR / "labels"
+LABEL_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Postes Canada (Canada Post) rating/tracking API — leave blank to keep using the flat-rate
 # shipping_zones/shipping_methods system already in place.
@@ -87,6 +99,13 @@ CANADA_POST_API_KEY = os.environ.get("CANADA_POST_API_KEY", "")
 CANADA_POST_CUSTOMER_NUMBER = os.environ.get("CANADA_POST_CUSTOMER_NUMBER", "")
 CANADA_POST_CONTRACT_ID = os.environ.get("CANADA_POST_CONTRACT_ID", "")
 CANADA_POST_ORIGIN_POSTAL_CODE = os.environ.get("CANADA_POST_ORIGIN_POSTAL_CODE", "")
+# Expéditeur pour la création d'étiquettes. Emballage neutre : aucune mention
+# du contenu ne figure sur l'étiquette (politique d'emballage discret).
+CANADA_POST_SENDER_NAME = os.environ.get("CANADA_POST_SENDER_NAME", "FIRONOVA")
+CANADA_POST_SENDER_ADDRESS = os.environ.get("CANADA_POST_SENDER_ADDRESS", "")
+CANADA_POST_SENDER_CITY = os.environ.get("CANADA_POST_SENDER_CITY", "Montreal")
+CANADA_POST_SENDER_PROVINCE = os.environ.get("CANADA_POST_SENDER_PROVINCE", "QC")
+CANADA_POST_SENDER_PHONE = os.environ.get("CANADA_POST_SENDER_PHONE", "")
 CANADA_POST_ENVIRONMENT = os.environ.get("CANADA_POST_ENVIRONMENT", "dev")  # "dev" (soa-gw) or "prod" (soa-gw prod host)
 CANADA_POST_BASE_URL = (
     "https://ct.soa-gw.canadapost.ca" if CANADA_POST_ENVIRONMENT == "dev"
@@ -404,6 +423,10 @@ class ShippingInfoIn(BaseModel):
     shipped_at: Optional[str] = None  # ISO; defaults to now() if not provided
 
 
+class CreateLabelIn(BaseModel):
+    service_code: str = Field(min_length=1, max_length=40)  # ex. "DOM.EP"
+
+
 class StockAdjustIn(BaseModel):
     delta: int  # positive to add, negative to subtract
 
@@ -412,6 +435,67 @@ class StockNotifyIn(BaseModel):
     email: EmailStr
     product_id: str
     variant_id: Optional[str] = None
+
+
+# --- Catégories (BLOC 1) ----------------------------------------------------
+# Les produits référencent une catégorie par SLUG (string), pas par id : aucune
+# migration de données sur les produits existants.
+_SLUG_RE = re.compile(r"^[a-z0-9-]+$")
+
+
+class CategoryIn(BaseModel):
+    slug: str = Field(min_length=1, max_length=60)
+    name_en: str = Field(min_length=1, max_length=120)
+    name_fr: str = Field(min_length=1, max_length=120)
+    published: bool = True
+    display_order: int = 0
+
+    @field_validator("slug")
+    @classmethod
+    def _check_slug(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not _SLUG_RE.match(v):
+            raise ValueError("slug must match ^[a-z0-9-]+$")
+        return v
+
+
+class CategoryOut(CategoryIn):
+    id: str
+    created_at: str
+
+
+# --- Menus (BLOC 2) ---------------------------------------------------------
+class MenuItemIn(BaseModel):
+    id: Optional[str] = None  # généré côté serveur si absent
+    label_en: str = Field(min_length=1, max_length=120)
+    label_fr: str = Field(min_length=1, max_length=120)
+    url: str = Field(min_length=1, max_length=500)
+    published: bool = True
+    display_order: int = 0
+    open_new_tab: bool = False
+
+
+class MenuIn(BaseModel):
+    slug: str = Field(min_length=1, max_length=60)
+    name_en: str = Field(min_length=1, max_length=120)
+    name_fr: str = Field(min_length=1, max_length=120)
+    location: Literal["header", "footer"]
+    published: bool = True
+    display_order: int = 0
+    items: List[MenuItemIn] = []
+
+    @field_validator("slug")
+    @classmethod
+    def _check_slug(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not _SLUG_RE.match(v):
+            raise ValueError("slug must match ^[a-z0-9-]+$")
+        return v
+
+
+class MenuOut(MenuIn):
+    id: str
+    created_at: str
 
 
 class NewsletterSubscribeIn(BaseModel):
@@ -497,6 +581,12 @@ async def register(payload: RegisterIn, response: Response, request: Request):
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(user_doc)
+    # Un abonné pré-lancement qui crée son compte : on marque la conversion.
+    # N'interrompt jamais l'inscription si ça échoue.
+    try:
+        await db.subscribers.update_one({"email": email}, {"$set": {"converted": True}})
+    except Exception as e:  # pragma: no cover
+        logging.warning("subscriber conversion flag failed for %s: %s", email, e)
     token = create_access_token(user_doc["id"], email, "user", token_version=0)
     set_auth_cookie(response, token)
     return {
@@ -505,7 +595,9 @@ async def register(payload: RegisterIn, response: Response, request: Request):
         "name": user_doc["name"],
         "role": "user",
         "created_at": user_doc["created_at"],
-        "token": token,
+        # NOTE: le token n'est volontairement PAS renvoyé dans le body —
+        # l'auth passe uniquement par le cookie httpOnly, donc une XSS
+        # future ne peut pas exfiltrer la session.
     }
 
 
@@ -721,7 +813,7 @@ async def login(payload: LoginIn, response: Response, request: Request):
         "name": user["name"],
         "role": user["role"],
         "created_at": user["created_at"],
-        "token": token,
+        # NOTE: auth cookie-only — pas de token dans le body.
     }
 
 
@@ -775,7 +867,8 @@ async def account_change_password(payload: PasswordChangeIn, response: Response,
     # de changer son mot de passe ne doit pas être déconnecté lui-même.
     token = create_access_token(doc["id"], doc["email"], doc["role"], token_version=new_tv)
     set_auth_cookie(response, token)
-    return {"ok": True, "token": token}
+    # Le cookie httpOnly frais suffit — pas de token dans le body.
+    return {"ok": True}
 
 
 def _email_change_html(confirm_url: str, lang: str = "fr") -> str:
@@ -978,10 +1071,13 @@ async def list_products(category: Optional[str] = None, q: Optional[str] = None,
     if featured is True:
         filt["featured"] = True
     if q:
+        # Neutralise les métacaractères regex : sans ça, un `q` du type
+        # "(a+)+$" est injecté tel quel dans MongoDB → ReDoS / scan complet.
+        q_safe = re.escape(q.strip())
         filt["$or"] = [
-            {"name_en": {"$regex": q, "$options": "i"}},
-            {"name_fr": {"$regex": q, "$options": "i"}},
-            {"slug": {"$regex": q, "$options": "i"}},
+            {"name_en": {"$regex": q_safe, "$options": "i"}},
+            {"name_fr": {"$regex": q_safe, "$options": "i"}},
+            {"slug": {"$regex": q_safe, "$options": "i"}},
         ]
     products = await db.products.find(filt, {"_id": 0}).sort("name_en", 1).to_list(500)
     return products
@@ -1020,6 +1116,157 @@ async def notify_stock_request(payload: StockNotifyIn, request: Request):
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
     return {"ok": True, "already_subscribed": False}
+
+
+# ---------------------------------------------------------------------------
+# BLOC 1 — Catégories : collection réelle + CRUD admin + publication.
+# Les produits continuent de référencer une catégorie par slug (string) : aucune
+# migration produit, aucune rupture des 12 produits seedés.
+# ---------------------------------------------------------------------------
+@api.get("/categories")
+async def list_categories():
+    """Vitrine : uniquement les catégories publiées."""
+    return await db.categories.find({"published": True}, {"_id": 0}).sort("display_order", 1).to_list(200)
+
+
+@api.get("/admin/categories")
+async def admin_list_categories(_admin: dict = Depends(get_admin_user)):
+    return await db.categories.find({}, {"_id": 0}).sort("display_order", 1).to_list(200)
+
+
+@api.post("/admin/categories")
+async def admin_create_category(payload: CategoryIn, _admin: dict = Depends(get_admin_user)):
+    doc = payload.model_dump()
+    doc["id"] = str(uuid.uuid4())
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        await db.categories.insert_one(dict(doc))
+    except DuplicateKeyError:
+        raise HTTPException(409, f"A category with slug '{doc['slug']}' already exists")
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/admin/categories/{cat_id}")
+async def admin_update_category(cat_id: str, payload: CategoryIn, _admin: dict = Depends(get_admin_user)):
+    existing = await db.categories.find_one({"id": cat_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Category not found")
+    new = payload.model_dump()
+    old_slug, new_slug = existing["slug"], new["slug"]
+
+    if new_slug != old_slug and await db.categories.find_one({"slug": new_slug, "id": {"$ne": cat_id}}):
+        raise HTTPException(409, f"A category with slug '{new_slug}' already exists")
+
+    await db.categories.update_one({"id": cat_id}, {"$set": new})
+
+    # Cascade : renommer un slug ne doit jamais orpheliner les produits.
+    migrated = 0
+    if new_slug != old_slug:
+        res = await db.products.update_many({"category": old_slug}, {"$set": {"category": new_slug}})
+        migrated = res.modified_count
+
+    out = {**existing, **new}
+    out["products_migrated"] = migrated
+    return out
+
+
+@api.delete("/admin/categories/{cat_id}")
+async def admin_delete_category(cat_id: str, _admin: dict = Depends(get_admin_user)):
+    cat = await db.categories.find_one({"id": cat_id}, {"_id": 0})
+    if not cat:
+        raise HTTPException(404, "Category not found")
+    in_use = await db.products.count_documents({"category": cat["slug"]})
+    if in_use:
+        # Même principe que le soft-delete produit lié à des commandes : on masque.
+        await db.categories.update_one({"id": cat_id}, {"$set": {"published": False}})
+        raise HTTPException(
+            409,
+            f"Category in use by {in_use} product(s); it has been hidden instead of deleted.",
+        )
+    await db.categories.delete_one({"id": cat_id})
+    return {"ok": True, "deleted": True}
+
+
+# ---------------------------------------------------------------------------
+# BLOC 2 — Menus : navigation header/footer pilotée depuis l'admin.
+# ---------------------------------------------------------------------------
+def _normalize_menu_items(items: list) -> list:
+    out = []
+    for it in items:
+        d = dict(it)
+        if not d.get("id"):
+            d["id"] = str(uuid.uuid4())
+        out.append(d)
+    return out
+
+
+@api.get("/menus")
+async def list_menus(location: Optional[str] = None):
+    """Vitrine : menus publiés, items non publiés retirés."""
+    filt: dict = {"published": True}
+    if location:
+        filt["location"] = location
+    menus = await db.menus.find(filt, {"_id": 0}).sort("display_order", 1).to_list(50)
+    for m in menus:
+        m["items"] = sorted(
+            [i for i in m.get("items", []) if i.get("published", True)],
+            key=lambda i: i.get("display_order", 0),
+        )
+    return menus
+
+
+@api.get("/admin/menus")
+async def admin_list_menus(_admin: dict = Depends(get_admin_user)):
+    return await db.menus.find({}, {"_id": 0}).sort("display_order", 1).to_list(50)
+
+
+@api.post("/admin/menus")
+async def admin_create_menu(payload: MenuIn, _admin: dict = Depends(get_admin_user)):
+    doc = payload.model_dump()
+    doc["items"] = _normalize_menu_items(doc.get("items") or [])
+    doc["id"] = str(uuid.uuid4())
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        await db.menus.insert_one(dict(doc))
+    except DuplicateKeyError:
+        raise HTTPException(409, f"A menu with slug '{doc['slug']}' already exists")
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/admin/menus/{menu_id}")
+async def admin_update_menu(menu_id: str, payload: MenuIn, _admin: dict = Depends(get_admin_user)):
+    existing = await db.menus.find_one({"id": menu_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Menu not found")
+    new = payload.model_dump()
+    if new["slug"] != existing["slug"] and await db.menus.find_one({"slug": new["slug"], "id": {"$ne": menu_id}}):
+        raise HTTPException(409, f"A menu with slug '{new['slug']}' already exists")
+    # Les ids d'items existants sont conservés ; seuls les nouveaux en reçoivent un.
+    new["items"] = _normalize_menu_items(new.get("items") or [])
+    await db.menus.update_one({"id": menu_id}, {"$set": new})
+    return {**existing, **new}
+
+
+@api.delete("/admin/menus/{menu_id}")
+async def admin_delete_menu(menu_id: str, _admin: dict = Depends(get_admin_user)):
+    res = await db.menus.delete_one({"id": menu_id})
+    if not res.deleted_count:
+        raise HTTPException(404, "Menu not found")
+    return {"ok": True, "deleted": True}
+
+
+# ---------------------------------------------------------------------------
+# BLOC 3 — Prélancement : vérification du jeton d'aperçu.
+# Le jeton n'est JAMAIS exposé via /meta — seule cette comparaison serveur existe.
+# ---------------------------------------------------------------------------
+@api.get("/prelaunch/preview")
+async def prelaunch_preview(token: str, request: Request):
+    _rate_limit("prelaunch_preview", _client_ip(request), 20, 3600, "Too many attempts. Try again later.")
+    if not PRELAUNCH_PREVIEW_TOKEN:
+        return {"ok": False}
+    return {"ok": hmac.compare_digest(token or "", PRELAUNCH_PREVIEW_TOKEN)}
 
 
 # ---------------------------------------------------------------------------
@@ -1063,7 +1310,12 @@ async def newsletter_subscribe(payload: NewsletterSubscribeIn, request: Request)
             "unsubscribe_token": str(uuid.uuid4()),
             "unsubscribed_at": None,
             "created_at": now,
+            "converted": False,  # bascule à True à la création de compte
         })
+    fresh = await db.subscribers.find_one({"email": email}, {"_id": 0})
+    asyncio.create_task(
+        send_prelaunch_welcome(email, payload.lang or "en", (fresh or {}).get("unsubscribe_token", ""))
+    )
     return {"ok": True, "already_subscribed": False}
 
 
@@ -1316,6 +1568,10 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
             "line_total": line_total,
             "image_url": p.get("image_url", ""),
             "preorder": is_preorder,
+            # Poids figé à l'achat : l'étiquette doit refléter ce qui a été vendu,
+            # même si la fiche produit change ensuite. Les commandes antérieures
+            # sans ce champ retombent sur 50 g/unité dans _order_weight_kg().
+            "weight_grams": float(v.get("weight_grams") or 50.0),
         })
         subtotal += line_total
     subtotal = round(subtotal, 2)
@@ -1402,6 +1658,9 @@ async def _nowpayments_create(order_id: str, total_cad: float, pay_currency: str
 # ---------------------------------------------------------------------------
 _CP_RATE_NS = {"cp": "http://www.canadapost.ca/ws/ship/rate-v4"}
 _CP_TRACK_NS = {"cp": "http://www.canadapost.ca/ws/track"}
+_CP_SHIP_NS = {"cp": "http://www.canadapost.ca/ws/ncshipment-v4"}
+_CP_CSHIP_NS = {"cp": "http://www.canadapost.ca/ws/shipment-v8"}
+_CP_MANIFEST_NS = {"cp": "http://www.canadapost.ca/ws/manifest-v8"}
 
 
 async def _estimate_parcel_weight_kg(items: Optional[List["CartItem"]]) -> float:
@@ -1506,6 +1765,214 @@ async def _canada_post_track(pin: str) -> Optional[dict]:
     except Exception as e:
         logging.error("Canada Post tracking request failed: %s", e)
         return None
+
+
+def is_canada_post_configured() -> bool:
+    """Vrai seulement si les trois éléments indispensables sont présents.
+    Sinon TOUT retombe proprement sur le tarif fixe / le suivi manuel."""
+    return bool(CANADA_POST_API_KEY and CANADA_POST_CUSTOMER_NUMBER and CANADA_POST_ORIGIN_POSTAL_CODE)
+
+
+def _cp_xml_escape(v: str) -> str:
+    """Une apostrophe dans un nom de rue casse le XML — et un chevron l'injecte."""
+    return (str(v or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace('"', "&quot;").replace("'", "&apos;"))
+
+
+async def _canada_post_create_shipment(order: dict, service_code: str, weight_kg: float) -> dict:
+    """Create Shipment (non-contractuel par défaut) → tracking PIN + lien étiquette.
+
+    Retourne {"pin", "label_href", "shipment_id", "group_id"} ou lève HTTPException.
+    """
+    if not is_canada_post_configured():
+        raise HTTPException(503, "Canada Post is not configured")
+
+    cust = CANADA_POST_CUSTOMER_NUMBER
+    contract = CANADA_POST_CONTRACT_ID.strip()
+    # Le groupe sert au manifeste : un groupe par jour d'expédition.
+    group_id = f"FN-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+
+    ship = order.get("shipping_address") or {}
+    weight_kg = max(0.1, round(weight_kg, 3))
+    e = _cp_xml_escape
+
+    dest_pc = str(ship.get("postal_code", "")).replace(" ", "").upper()
+    if contract:
+        ns = "http://www.canadapost.ca/ws/shipment-v8"
+        path = f"/rs/{cust}/{cust}/shipment"
+        ctype = "application/vnd.cpc.shipment-v8+xml"
+        root_tag = "shipment"
+        extra = f"<contract-id>{e(contract)}</contract-id>"
+    else:
+        ns = "http://www.canadapost.ca/ws/ncshipment-v4"
+        path = f"/rs/{cust}/ncshipment"
+        ctype = "application/vnd.cpc.ncshipment-v4+xml"
+        root_tag = "non-contract-shipment"
+        extra = ""
+
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        f'<{root_tag} xmlns="{ns}">'
+        f"<requested-shipping-point>{e(CANADA_POST_ORIGIN_POSTAL_CODE.replace(' ', '').upper())}</requested-shipping-point>"
+        f"<group-id>{e(group_id)}</group-id>"
+        f"{extra}"
+        "<delivery-spec>"
+        f"<service-code>{e(service_code)}</service-code>"
+        "<sender>"
+        f"<name>{e(CANADA_POST_SENDER_NAME)}</name>"
+        f"<company>{e(CANADA_POST_SENDER_NAME)}</company>"
+        f"<contact-phone>{e(CANADA_POST_SENDER_PHONE)}</contact-phone>"
+        "<address-details>"
+        f"<address-line-1>{e(CANADA_POST_SENDER_ADDRESS)}</address-line-1>"
+        f"<city>{e(CANADA_POST_SENDER_CITY)}</city>"
+        f"<prov-state>{e(CANADA_POST_SENDER_PROVINCE)}</prov-state>"
+        f"<postal-zip-code>{e(CANADA_POST_ORIGIN_POSTAL_CODE.replace(' ', '').upper())}</postal-zip-code>"
+        "</address-details>"
+        "</sender>"
+        "<destination>"
+        f"<name>{e(ship.get('full_name'))}</name>"
+        "<address-details>"
+        f"<address-line-1>{e(ship.get('address1'))}</address-line-1>"
+        f"<address-line-2>{e(ship.get('address2'))}</address-line-2>"
+        f"<city>{e(ship.get('city'))}</city>"
+        f"<prov-state>{e(ship.get('province'))}</prov-state>"
+        f"<country-code>{e(ship.get('country') or 'CA')}</country-code>"
+        f"<postal-zip-code>{e(dest_pc)}</postal-zip-code>"
+        "</address-details>"
+        "</destination>"
+        # Contenu volontairement non décrit : emballage neutre.
+        f"<parcel-characteristics><weight>{weight_kg}</weight></parcel-characteristics>"
+        "<preferences><show-packing-instructions>false</show-packing-instructions></preferences>"
+        "</delivery-spec>"
+        f"</{root_tag}>"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as cx:
+            r = await cx.post(
+                f"{CANADA_POST_BASE_URL}{path}",
+                content=body.encode("utf-8"),
+                auth=(CANADA_POST_API_KEY, ""),
+                headers={"Accept": ctype, "Content-Type": ctype, "Accept-language": "en-CA"},
+            )
+    except Exception as ex:
+        logging.error("Canada Post create-shipment request failed: %s", ex)
+        raise HTTPException(502, "Canada Post unreachable")
+
+    if r.status_code >= 400:
+        logging.error("Canada Post create-shipment %s: %s", r.status_code, r.text[:800])
+        raise HTTPException(502, f"Canada Post rejected the shipment ({r.status_code})")
+
+    root = ET.fromstring(r.text)
+
+    def _find(tag: str) -> str:
+        for ns_map in (_CP_SHIP_NS, _CP_CSHIP_NS):
+            v = root.findtext(f"cp:{tag}", default="", namespaces=ns_map)
+            if v:
+                return v
+        # Repli sans namespace
+        el = root.find(f".//{{*}}{tag}")
+        return el.text if el is not None and el.text else ""
+
+    pin = _find("tracking-pin")
+    shipment_id = _find("shipment-id") or _find("non-contract-shipment-id")
+
+    label_href = ""
+    for link in root.findall(".//{*}link"):
+        if link.get("rel") == "label":
+            label_href = link.get("href", "")
+            break
+
+    if not pin:
+        logging.error("Canada Post create-shipment: no tracking-pin in response: %s", r.text[:600])
+        raise HTTPException(502, "Canada Post returned no tracking number")
+
+    return {"pin": pin, "label_href": label_href, "shipment_id": shipment_id, "group_id": group_id}
+
+
+async def _canada_post_get_artifact(href: str, order_id: str) -> Optional[str]:
+    """Get Artifact → télécharge le PDF de l'étiquette, le stocke, renvoie son URL."""
+    if not href:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=30) as cx:
+            r = await cx.get(href, auth=(CANADA_POST_API_KEY, ""), headers={"Accept": "application/pdf"})
+            if r.status_code >= 400:
+                logging.error("Canada Post get-artifact %s: %s", r.status_code, r.text[:300])
+                return None
+            fname = f"{order_id}-{uuid.uuid4().hex[:8]}.pdf"
+            (LABEL_UPLOAD_DIR / fname).write_bytes(r.content)
+            return f"/uploads/labels/{fname}"
+    except Exception as ex:
+        logging.error("Canada Post get-artifact failed: %s", ex)
+        return None
+
+
+async def _canada_post_transmit(group_id: str) -> list:
+    """Transmit Shipments → manifeste(s). SANS CET APPEL, Postes Canada facture
+    tous les envois non payés AVEC une surcharge de 2 $/article et retire le
+    rabais d'automatisation. C'est l'étape la plus coûteuse à oublier."""
+    if not is_canada_post_configured():
+        raise HTTPException(503, "Canada Post is not configured")
+    cust = CANADA_POST_CUSTOMER_NUMBER
+    e = _cp_xml_escape
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<transmit-set xmlns="http://www.canadapost.ca/ws/manifest-v8">'
+        f"<group-ids><group-id>{e(group_id)}</group-id></group-ids>"
+        f"<cpc-pickup-indicator>true</cpc-pickup-indicator>"
+        f"<requested-shipping-point>{e(CANADA_POST_ORIGIN_POSTAL_CODE.replace(' ', '').upper())}</requested-shipping-point>"
+        "<detailed-manifests>true</detailed-manifests>"
+        "<method-of-payment>Account</method-of-payment>"
+        "<manifest-address>"
+        f"<manifest-company>{e(CANADA_POST_SENDER_NAME)}</manifest-company>"
+        f"<phone-number>{e(CANADA_POST_SENDER_PHONE)}</phone-number>"
+        "<address-details>"
+        f"<address-line-1>{e(CANADA_POST_SENDER_ADDRESS)}</address-line-1>"
+        f"<city>{e(CANADA_POST_SENDER_CITY)}</city>"
+        f"<prov-state>{e(CANADA_POST_SENDER_PROVINCE)}</prov-state>"
+        f"<postal-zip-code>{e(CANADA_POST_ORIGIN_POSTAL_CODE.replace(' ', '').upper())}</postal-zip-code>"
+        "</address-details>"
+        "</manifest-address>"
+        "</transmit-set>"
+    )
+    ctype = "application/vnd.cpc.manifest-v8+xml"
+    try:
+        async with httpx.AsyncClient(timeout=45) as cx:
+            r = await cx.post(
+                f"{CANADA_POST_BASE_URL}/rs/{cust}/{cust}/manifest",
+                content=body.encode("utf-8"),
+                auth=(CANADA_POST_API_KEY, ""),
+                headers={"Accept": ctype, "Content-Type": ctype, "Accept-language": "en-CA"},
+            )
+    except Exception as ex:
+        logging.error("Canada Post transmit request failed: %s", ex)
+        raise HTTPException(502, "Canada Post unreachable")
+
+    if r.status_code >= 400:
+        logging.error("Canada Post transmit %s: %s", r.status_code, r.text[:800])
+        raise HTTPException(502, f"Canada Post rejected the transmission ({r.status_code})")
+
+    root = ET.fromstring(r.text)
+    hrefs = [l.get("href") for l in root.findall(".//{*}link") if l.get("rel") == "manifest"]
+    return [h for h in hrefs if h]
+
+
+async def _canada_post_void(shipment_id: str) -> bool:
+    """Void Shipment — annule une étiquette gâchée NON transmise."""
+    if not (is_canada_post_configured() and shipment_id):
+        return False
+    cust = CANADA_POST_CUSTOMER_NUMBER
+    path = (f"/rs/{cust}/{cust}/shipment/{shipment_id}" if CANADA_POST_CONTRACT_ID.strip()
+            else f"/rs/{cust}/ncshipment/{shipment_id}")
+    try:
+        async with httpx.AsyncClient(timeout=20) as cx:
+            r = await cx.delete(f"{CANADA_POST_BASE_URL}{path}", auth=(CANADA_POST_API_KEY, ""),
+                                headers={"Accept": "application/vnd.cpc.shipment-v8+xml"})
+            return r.status_code < 400
+    except Exception as ex:
+        logging.error("Canada Post void failed: %s", ex)
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -1639,6 +2106,84 @@ def _simple_order_email_html(order: dict, heading: str, body_html: str) -> str:
     </td></tr>
   </table>
 </body></html>"""
+
+
+def _prelaunch_email_html(heading: str, body_html: str) -> str:
+    """Même gabarit que _simple_order_email_html, mais sans numéro de commande
+    (un abonné pré-lancement n'en a pas)."""
+    return f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#fafafa;font-family:'Helvetica Neue',Arial,sans-serif;color:#050505">
+  <table style="width:100%;max-width:640px;margin:0 auto;background:#fff;border:1px solid #050505">
+    <tr><td style="background:#050505;color:#fff;padding:20px 28px">
+      <div style="font-family:monospace;font-size:12px;letter-spacing:3px">FIRONOVA.</div>
+      <div style="font-size:20px;font-weight:800;letter-spacing:-0.5px;margin-top:6px">{heading}</div>
+    </td></tr>
+    <tr><td style="padding:28px"><div style="font-size:14px;line-height:1.7">{body_html}</div></td></tr>
+    <tr><td style="background:#f5f5f5;padding:16px 28px;font-family:monospace;font-size:10px;letter-spacing:1px;color:#888">
+      FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION · 19+ ONLY
+    </td></tr>
+  </table>
+</body></html>"""
+
+
+async def send_prelaunch_welcome(email: str, lang: str = "en", unsubscribe_token: str = "") -> None:
+    """CTA → création de compte, pour verrouiller les 15 % au lancement."""
+    base = PUBLIC_BASE_URL or ""
+    register_url = f"{base}/register?ref=launch"
+    unsub = f"{base}/api/newsletter/unsubscribe?token={unsubscribe_token}" if unsubscribe_token else ""
+    if lang == "fr":
+        heading = "Bienvenue sur la liste de lancement"
+        body = (
+            f"<p>Merci de vous être inscrit à la liste de prélancement FIRONOVA.</p>"
+            f"<p>Créez votre compte dès maintenant pour verrouiller <strong>15 % de rabais</strong> "
+            f"sur votre première commande au lancement, avec le code "
+            f"<strong style='font-family:monospace'>{LAUNCH_COUPON_CODE}</strong>.</p>"
+            f"<p style='margin-top:20px'><a href='{register_url}' style='display:inline-block;"
+            f"background:#C20114;color:#fff;font-family:monospace;font-size:12px;letter-spacing:2px;"
+            f"padding:14px 28px;text-decoration:none'>CRÉER MON COMPTE →</a></p>"
+        )
+        subject = "FIRONOVA — 15 % vous attendent au lancement"
+        unsub_txt = "Se désabonner"
+    else:
+        heading = "Welcome to the launch list"
+        body = (
+            f"<p>Thanks for joining the FIRONOVA pre-launch list.</p>"
+            f"<p>Create your account now to lock in <strong>15% off</strong> your first order "
+            f"at launch, with code <strong style='font-family:monospace'>{LAUNCH_COUPON_CODE}</strong>.</p>"
+            f"<p style='margin-top:20px'><a href='{register_url}' style='display:inline-block;"
+            f"background:#C20114;color:#fff;font-family:monospace;font-size:12px;letter-spacing:2px;"
+            f"padding:14px 28px;text-decoration:none'>CREATE MY ACCOUNT →</a></p>"
+        )
+        subject = "FIRONOVA — 15% off waiting at launch"
+        unsub_txt = "Unsubscribe"
+    if unsub:
+        # Lien de désabonnement obligatoire dans chaque envoi commercial (LCAP).
+        body += (f"<p style='margin-top:28px;font-size:11px;color:#888'>"
+                 f"<a href='{unsub}' style='color:#888'>{unsub_txt}</a></p>")
+    await _send_email(email, subject, _prelaunch_email_html(heading, body))
+
+
+async def send_shipping_notification(order: dict) -> None:
+    """Courriel de suivi bilingue. Aucune mention du contenu (emballage discret)."""
+    if not order.get("email"):
+        return
+    info = order.get("shipping_info") or {}
+    pin = info.get("tracking_number", "")
+    carrier = info.get("carrier", "Canada Post")
+    track_url = f"https://www.canadapost-postescanada.ca/track-reperage/en#/details/{pin}"
+    body = (
+        f"Your order has shipped via {carrier}. / Votre commande a été expédiée via {carrier}."
+        f"<div style='border-left:3px solid #050505;padding:10px 14px;margin-top:12px;background:#fafafa'>"
+        f"<div style='font-family:monospace;font-size:12px;letter-spacing:1px;color:#666'>"
+        f"TRACKING / SUIVI</div>"
+        f"<div style='font-family:monospace;font-size:15px;font-weight:bold;margin-top:4px'>{pin}</div>"
+        f"</div>"
+        f"<p style='margin-top:16px'><a href='{track_url}' "
+        f"style='display:inline-block;background:#050505;color:#fff;font-family:monospace;font-size:12px;"
+        f"letter-spacing:2px;padding:12px 24px;text-decoration:none'>TRACK PARCEL / SUIVRE →</a></p>"
+    )
+    html = _simple_order_email_html(order, "Your order has shipped / Votre commande est expédiée", body)
+    await _send_email(order["email"], f"FIRONOVA — Order {order['order_number']} shipped / expédiée", html)
 
 
 async def send_customer_note_email(order: dict, note_text: str) -> None:
@@ -2252,7 +2797,8 @@ async def staff_accept_invite(payload: StaffAcceptIn, response: Response):
     set_auth_cookie(response, token)
     return {
         "id": user_doc["id"], "email": user_doc["email"], "name": user_doc["name"],
-        "role": role, "permissions": user_doc.get("permissions"), "token": token,
+        "role": role, "permissions": user_doc.get("permissions"),
+        # NOTE: auth cookie-only — pas de token dans le body.
     }
 
 
@@ -2447,8 +2993,18 @@ async def admin_resend_order_email(order_id: str, _admin: dict = Depends(require
 
 @api.put("/admin/orders/{order_id}/shipping")
 async def admin_set_shipping_info(order_id: str, payload: ShippingInfoIn, _admin: dict = Depends(require_area("orders", "manage"))):
+    existing_order = await db.orders.find_one({"id": order_id}, {"_id": 0, "shipping_info": 1})
+    if not existing_order:
+        raise HTTPException(404, "Order not found")
+    prev = existing_order.get("shipping_info") or {}
+
     shipped_at = payload.shipped_at or (datetime.now(timezone.utc).isoformat() if payload.tracking_number else None)
+    # PIÈGE : ce PUT remplaçait shipping_info EN BLOC, ce qui effaçait label_url,
+    # cp_group_id et surtout cp_transmitted. La commande sortait alors de la
+    # requête du manifeste → surcharge de 2 $/article encourue en silence.
+    # On repart donc de l'état existant et on ne surcharge que les champs manuels.
     shipping_info = {
+        **prev,
         "carrier": payload.carrier or "",
         "tracking_number": payload.tracking_number or "",
         "shipped_at": shipped_at,
@@ -2460,6 +3016,172 @@ async def admin_set_shipping_info(order_id: str, payload: ShippingInfoIn, _admin
     if res.matched_count == 0:
         raise HTTPException(404, "Order not found")
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+
+# ---------------------------------------------------------------------------
+# BLOC 4 — Postes Canada : étiquettes, manifeste, annulation.
+# Le tarif live et le suivi existaient déjà. Ce qui manquait : générer
+# l'étiquette, et surtout TRANSMETTRE LE MANIFESTE. Sans manifeste, Postes
+# Canada facture chaque envoi non payé avec 2 $ de surcharge par article et
+# retire le rabais d'automatisation.
+# ---------------------------------------------------------------------------
+def _order_weight_kg(order: dict) -> float:
+    """Poids d'après les line_items figés sur la commande (pas de relecture produit :
+    le poids doit refléter ce qui a été vendu, même si la fiche a changé depuis)."""
+    total_g = 0.0
+    for it in order.get("line_items") or []:
+        total_g += float(it.get("weight_grams") or 50.0) * int(it.get("qty") or 1)
+    return max(0.1, round(total_g / 1000.0, 3)) if total_g else 0.5
+
+
+@api.get("/admin/orders/{order_id}/shipping-rates")
+async def admin_order_shipping_rates(order_id: str, _admin: dict = Depends(require_area("orders", "view"))):
+    """Services disponibles pour CETTE commande, afin de peupler le sélecteur admin."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if not is_canada_post_configured():
+        return {"configured": False, "rates": []}
+    ship = order.get("shipping_address") or {}
+    rates = await _canada_post_get_rates(
+        ship.get("postal_code", ""), ship.get("country") or "CA", _order_weight_kg(order)
+    )
+    return {"configured": True, "rates": rates}
+
+
+@api.post("/admin/orders/{order_id}/create-label")
+async def admin_create_label(order_id: str, payload: CreateLabelIn,
+                             _admin: dict = Depends(require_area("orders", "manage"))):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+
+    info = order.get("shipping_info") or {}
+    # Idempotence exigée : ne jamais recréer une étiquette déjà émise —
+    # sinon on paie deux fois le même colis.
+    if info.get("label_url") and info.get("tracking_number"):
+        return {"already_existed": True, "shipping_info": info}
+
+    if not is_canada_post_configured():
+        raise HTTPException(503, "Canada Post is not configured")
+
+    res = await _canada_post_create_shipment(order, payload.service_code, _order_weight_kg(order))
+    label_url = await _canada_post_get_artifact(res["label_href"], order_id)
+
+    now = datetime.now(timezone.utc).isoformat()
+    shipping_info = {
+        **info,
+        "carrier": "Canada Post",
+        "tracking_number": res["pin"],
+        "label_url": label_url,
+        "cp_shipment_id": res["shipment_id"],
+        "cp_group_id": res["group_id"],
+        "cp_transmitted": False,   # tant que False → surcharge de 2 $ encourue
+        "service_code": payload.service_code,
+        "shipped_at": now,
+    }
+    await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {"shipping_info": shipping_info, "fulfillment_status": "shipped"},
+         "$push": {"notes": {
+             "id": str(uuid.uuid4()),
+             "text": f"Étiquette Postes Canada créée — suivi {res['pin']} (lot {res['group_id']}).",
+             "author": "system",
+             "created_at": now,
+         }}},
+    )
+    fresh = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    asyncio.create_task(send_shipping_notification(fresh))
+    return {"already_existed": False, "shipping_info": shipping_info}
+
+
+@api.post("/admin/orders/{order_id}/void-label")
+async def admin_void_label(order_id: str, _admin: dict = Depends(require_area("orders", "manage"))):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    info = order.get("shipping_info") or {}
+    if info.get("cp_transmitted"):
+        raise HTTPException(400, "Label already transmitted to Canada Post — it can no longer be voided.")
+    ok = await _canada_post_void(info.get("cp_shipment_id", ""))
+    if not ok:
+        raise HTTPException(502, "Canada Post refused to void this label")
+    await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {"shipping_info": {"carrier": "", "tracking_number": "", "shipped_at": None},
+                  "fulfillment_status": "processing"},
+         "$push": {"notes": {
+             "id": str(uuid.uuid4()),
+             "text": "Étiquette Postes Canada annulée (void).",
+             "author": "system",
+             "created_at": datetime.now(timezone.utc).isoformat(),
+         }}},
+    )
+    return {"ok": True, "voided": True}
+
+
+@api.get("/admin/shipping/pending-manifest")
+async def admin_pending_manifest(_admin: dict = Depends(require_area("orders", "view"))):
+    """Alimente la bannière rouge de l'admin : combien d'étiquettes non transmises."""
+    cursor = db.orders.find(
+        {"shipping_info.cp_group_id": {"$nin": [None, ""]}, "shipping_info.cp_transmitted": False},
+        {"_id": 0, "id": 1, "order_number": 1, "shipping_info": 1},
+    )
+    pending = await cursor.to_list(2000)
+    groups: dict = {}
+    for o in pending:
+        gid = (o.get("shipping_info") or {}).get("cp_group_id")
+        groups.setdefault(gid, 0)
+        groups[gid] += 1
+    return {
+        "configured": is_canada_post_configured(),
+        "pending_count": len(pending),
+        "groups": [{"group_id": g, "count": c} for g, c in sorted(groups.items())],
+    }
+
+
+@api.post("/admin/shipping/transmit")
+async def admin_transmit_manifest(_admin: dict = Depends(require_area("orders", "manage"))):
+    """À faire CHAQUE JOUR. Oublier = 2 $/article de surcharge + perte du rabais."""
+    if not is_canada_post_configured():
+        raise HTTPException(503, "Canada Post is not configured")
+    pending = await db.orders.find(
+        {"shipping_info.cp_group_id": {"$nin": [None, ""]}, "shipping_info.cp_transmitted": False},
+        {"_id": 0, "id": 1, "shipping_info": 1},
+    ).to_list(2000)
+    if not pending:
+        return {"ok": True, "transmitted_groups": [], "manifests": [], "orders_marked": 0}
+
+    group_ids = sorted({(o["shipping_info"] or {}).get("cp_group_id") for o in pending if (o["shipping_info"] or {}).get("cp_group_id")})
+    manifests: list = []
+    done_groups: list = []
+    for gid in group_ids:
+        try:
+            hrefs = await _canada_post_transmit(gid)
+        except HTTPException:
+            logging.error("Transmission du manifeste échouée pour le lot %s", gid)
+            continue
+        manifests.extend(hrefs)
+        done_groups.append(gid)
+
+    marked = 0
+    if done_groups:
+        res = await db.orders.update_many(
+            {"shipping_info.cp_group_id": {"$in": done_groups}, "shipping_info.cp_transmitted": False},
+            {"$set": {"shipping_info.cp_transmitted": True,
+                      "shipping_info.cp_transmitted_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        marked = res.modified_count
+        await db.manifests.insert_one({
+            "id": str(uuid.uuid4()),
+            "group_ids": done_groups,
+            "manifest_links": manifests,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+    if not done_groups:
+        raise HTTPException(502, "No manifest could be transmitted — check the Canada Post logs.")
+    return {"ok": True, "transmitted_groups": done_groups, "manifests": manifests, "orders_marked": marked}
 
 
 @api.put("/admin/products/{product_id}/stock")
@@ -2989,6 +3711,35 @@ async def nowpayments_ipn(request: Request):
     np_status = payload.get("payment_status", "")
     if not order_id:
         return {"ok": True}
+
+    # Défense en profondeur au-delà du HMAC : on n'agit que sur une commande
+    # qui existe, qui utilise bien ce moyen de paiement, et dont le montant
+    # facturé correspond au nôtre. Un IPN "finished" avec un montant divergent
+    # n'est JAMAIS auto-confirmé — il est journalisé pour revue manuelle.
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order or order.get("payment_method") != "nowpayments":
+        logging.warning("NOWPayments IPN: commande inconnue/incohérente %s — ignorée", order_id)
+        return {"ok": True}
+    try:
+        ipn_amount = float(payload.get("price_amount") or 0)
+    except (TypeError, ValueError):
+        ipn_amount = 0.0
+    order_total = float(order.get("total", 0))
+    if np_status == "finished" and abs(ipn_amount - order_total) > 0.01:
+        logging.warning(
+            "NOWPayments IPN: montant divergent commande %s (ipn %.2f vs commande %.2f) — NON marquée payée",
+            order_id, ipn_amount, order_total,
+        )
+        await db.orders.update_one({"id": order_id}, {"$push": {"notes": {
+            "id": str(uuid.uuid4()),
+            "text": (f"IPN 'finished' reçu avec un montant divergent "
+                     f"(${ipn_amount:.2f} vs ${order_total:.2f}) — paiement NON auto-confirmé, "
+                     f"à vérifier manuellement."),
+            "author": "system",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }}})
+        return {"ok": True}
+
     updates = {"payment_info.provider_response.payment_status": np_status}
     if payload.get("payment_id"):
         updates["payment_info.provider_response.payment_id"] = str(payload["payment_id"])
@@ -3103,6 +3854,10 @@ async def meta():
         "interac_email": INTERAC_EMAIL,
         "coa_page_enabled": COA_PAGE_ENABLED,
         "canada_post_enabled": bool(CANADA_POST_API_KEY and CANADA_POST_CUSTOMER_NUMBER),
+        "prelaunch_enabled": PRELAUNCH_ENABLED,
+        "launch_coupon_code": LAUNCH_COUPON_CODE,
+        # PRELAUNCH_PREVIEW_TOKEN n'est JAMAIS exposé ici — il ne se vérifie que
+        # côté serveur via GET /prelaunch/preview.
     }
 
 
@@ -3334,6 +4089,12 @@ async def seed_admin_and_products():
     await db.subscribers.create_index("unsubscribe_token", unique=True)
     await db.subscribers.create_index("status")
     await db.addresses.create_index([("user_id", 1), ("created_at", -1)])
+    await db.categories.create_index("slug", unique=True)
+    await db.menus.create_index("slug", unique=True)
+    await db.menus.create_index([("location", 1), ("published", 1), ("display_order", 1)])
+    # Bannière « manifeste non transmis » : sans index, chaque chargement de
+    # l'admin scanne toute la collection orders.
+    await db.orders.create_index([("shipping_info.cp_transmitted", 1), ("shipping_info.cp_group_id", 1)])
     await db.email_change_requests.create_index("token", unique=True)
     await db.email_change_requests.create_index("user_id")
     await db.staff_invites.create_index("token", unique=True)
@@ -3527,7 +4288,6 @@ async def _unpaid_orders_watchdog():
         await asyncio.sleep(3600)
 
 
-@app.on_event("startup")
 async def _acquire_worker_lock(name: str, ttl_seconds: int = 120) -> bool:
     """Verrou coopératif Mongo : un seul worker exécute les tâches de fond.
     Sans ça, N workers uvicorn lancent N boucles concurrentes sur les mêmes
@@ -3545,8 +4305,128 @@ async def _acquire_worker_lock(name: str, ttl_seconds: int = 120) -> bool:
         return False  # duplicate key = un autre worker détient déjà le verrou
 
 
+async def _seed_categories_from_products() -> None:
+    """Dérive les catégories réelles à partir des slugs déjà portés par les produits.
+    Idempotent ($setOnInsert) : une catégorie éditée ensuite par l'admin n'est
+    jamais réécrite au redéploiement. Aucun produit n'est touché."""
+    try:
+        slugs = [x for x in await db.products.distinct("category") if x and _SLUG_RE.match(str(x))]
+        # Libellés par défaut alignés sur les clés i18n existantes.
+        labels = {
+            "healing": ("Healing & Recovery", "Guérison et récupération"),
+            "weight-loss": ("Weight Management", "Gestion du poids"),
+            "gh-secretagogues": ("GH Secretagogues", "Sécrétagogues de GH"),
+            "cognitive": ("Cognitive", "Cognitif"),
+            "longevity": ("Longevity", "Longévité"),
+        }
+        for i, slug in enumerate(sorted(slugs)):
+            en, fr = labels.get(slug, (slug.replace("-", " ").title(), slug.replace("-", " ").title()))
+            await db.categories.update_one(
+                {"slug": slug},
+                {"$setOnInsert": {
+                    "id": str(uuid.uuid4()),
+                    "slug": slug,
+                    "name_en": en,
+                    "name_fr": fr,
+                    "published": True,
+                    "display_order": i,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=True,
+            )
+        if slugs:
+            logging.info("categories seed: %d slug(s) vérifié(s)", len(slugs))
+    except Exception as e:  # pragma: no cover
+        logging.error("categories seed failed: %s", e)
+
+
+async def _seed_default_menus() -> None:
+    """Reproduit à l'identique la navigation actuellement codée en dur, pour que
+    rien ne bouge visuellement au premier déploiement. $setOnInsert uniquement."""
+    defaults = [
+        {
+            "slug": "main-navigation", "name_en": "Main navigation", "name_fr": "Navigation principale",
+            "location": "header", "display_order": 0,
+            "items": [
+                {"label_en": "Catalog", "label_fr": "Catalogue", "url": "/catalog", "display_order": 0},
+                {"label_en": "Lab", "label_fr": "Labo", "url": "/lab", "display_order": 1},
+                {"label_en": "About", "label_fr": "À propos", "url": "/about", "display_order": 2},
+            ],
+        },
+        {
+            "slug": "footer-shop", "name_en": "Shop", "name_fr": "Boutique",
+            "location": "footer", "display_order": 1,
+            "items": [
+                {"label_en": "Catalog", "label_fr": "Catalogue", "url": "/catalog", "display_order": 0},
+                {"label_en": "Healing & Recovery", "label_fr": "Guérison et récupération", "url": "/catalog?cat=healing", "display_order": 1},
+                {"label_en": "Weight Management", "label_fr": "Gestion du poids", "url": "/catalog?cat=weight-loss", "display_order": 2},
+                {"label_en": "Cognitive", "label_fr": "Cognitif", "url": "/catalog?cat=cognitive", "display_order": 3},
+            ],
+        },
+        {
+            "slug": "footer-legal", "name_en": "Legal", "name_fr": "Légal",
+            "location": "footer", "display_order": 2,
+            "items": [
+                {"label_en": "Terms", "label_fr": "Conditions", "url": "/compliance", "display_order": 0},
+                {"label_en": "Privacy", "label_fr": "Confidentialité", "url": "/privacy", "display_order": 1},
+                {"label_en": "Shipping", "label_fr": "Expédition", "url": "/compliance#shipping", "display_order": 2},
+                {"label_en": "FAQ", "label_fr": "FAQ", "url": "/faq", "display_order": 3},
+            ],
+        },
+    ]
+    try:
+        for m in defaults:
+            items = []
+            for it in m["items"]:
+                items.append({
+                    "id": str(uuid.uuid4()), "published": True, "open_new_tab": False, **it,
+                })
+            await db.menus.update_one(
+                {"slug": m["slug"]},
+                {"$setOnInsert": {
+                    "id": str(uuid.uuid4()),
+                    "slug": m["slug"], "name_en": m["name_en"], "name_fr": m["name_fr"],
+                    "location": m["location"], "published": True,
+                    "display_order": m["display_order"], "items": items,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=True,
+            )
+    except Exception as e:  # pragma: no cover
+        logging.error("menus seed failed: %s", e)
+
+
+async def _seed_launch_coupon() -> None:
+    """Provisionne le coupon de lancement 15 %. $setOnInsert : si tu l'édites
+    ensuite dans l'admin, le redéploiement ne l'écrase pas."""
+    try:
+        await db.coupons.update_one(
+            {"code": LAUNCH_COUPON_CODE},
+            {"$setOnInsert": {
+                "id": str(uuid.uuid4()),
+                "code": LAUNCH_COUPON_CODE,
+                "discount_type": "percent",
+                "value": 15.0,
+                "min_subtotal": 0.0,
+                "usage_limit": None,
+                "used_count": 0,
+                "active": True,
+                "expires_at": None,
+                "deleted_at": None,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+    except Exception as e:  # pragma: no cover
+        logging.error("launch coupon seed failed: %s", e)
+
+
+@app.on_event("startup")
 async def startup_event():
     await seed_admin_and_products()
+    await _seed_categories_from_products()
+    await _seed_default_menus()
+    await _seed_launch_coupon()
     if await _acquire_worker_lock("background_tasks"):
         asyncio.create_task(_unpaid_orders_watchdog())
         asyncio.create_task(_backfill_dispatch_batch())
@@ -3582,10 +4462,19 @@ async def shutdown_event():
 # ---------------------------------------------------------------------------
 app.include_router(api)
 
+# CORS crédentialé : le navigateur refuse Access-Control-Allow-Origin: * dès
+# que des cookies sont envoyés. On échoue vite en cas de mauvaise config.
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+if "*" in _cors_origins:
+    raise RuntimeError(
+        "CORS_ORIGINS doit lister des origines explicites (ex. https://app.fironova.ca) — "
+        "'*' est interdit avec une auth par cookie (credentialed)."
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
-    allow_credentials=False,  # Using Bearer token from frontend; cookies SameSite=None still set as backup
+    allow_origins=_cors_origins,
+    allow_credentials=True,  # Auth cookie-only : le cookie httpOnly access_token doit traverser
     allow_methods=["*"],
     allow_headers=["*"],
 )
