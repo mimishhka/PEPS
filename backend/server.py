@@ -240,6 +240,46 @@ async def get_admin_user(request: Request) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Rôles & permissions granulaires — inspiré du modèle de règles par entité
+# vu sur Base44 (Créateur uniquement / Tous les utilisateurs / etc.), adapté
+# à un admin e-commerce : trois rôles (user, staff, admin), et pour les
+# comptes "staff", un niveau d'accès par zone fonctionnelle.
+#   - "admin"  : accès complet à tout, y compris la gestion des autres
+#                membres staff (équivalent "Owner" chez Base44).
+#   - "staff"  : accès limité aux zones et niveaux qui lui sont accordés.
+#   - "user"   : client normal, aucun accès admin.
+# Niveaux par zone : none < view < manage (manage inclut view).
+# ---------------------------------------------------------------------------
+STAFF_AREAS = ["orders", "products", "coupons", "customers", "subscribers", "shipping", "dashboard"]
+_PERMISSION_ORDER = {"none": 0, "view": 1, "manage": 2}
+
+
+def require_area(area: str, level: str = "view"):
+    """Dépendance FastAPI paramétrée : autorise si role == admin (accès total),
+    ou si role == staff ET permissions[area] >= level demandé.
+    Journalise automatiquement toute action de niveau "manage" (= mutation) —
+    couvre les 35 endpoints admin existants sans qu'il faille les modifier
+    un par un."""
+    async def _dep(request: Request, user: dict = Depends(get_current_user)) -> dict:
+        allowed = False
+        if user.get("role") == "admin":
+            allowed = True
+        elif user.get("role") == "staff":
+            perms = user.get("permissions") or {}
+            have = _PERMISSION_ORDER.get(perms.get(area, "none"), 0)
+            need = _PERMISSION_ORDER.get(level, 1)
+            allowed = have >= need
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        if level == "manage":
+            asyncio.create_task(_log_action(
+                user, action=f"{request.method} {request.url.path}", area=area,
+            ))
+        return user
+    return _dep
+
+
+# ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
 class RegisterIn(BaseModel):
@@ -524,6 +564,130 @@ def _rate_limit(bucket: str, key: str, max_hits: int, window_seconds: int, detai
 
 class AdminGateIn(BaseModel):
     code: str
+
+
+class TrashIdsIn(BaseModel):
+    ids: List[str] = Field(min_length=1, max_length=200)
+
+
+# ---------------------------------------------------------------------------
+# Corbeille générique — même principe pour toutes les données supprimables :
+# suppression douce (deleted_at posé, rien n'est perdu), restauration en un
+# clic, purge automatique après 30 jours (SAUF les commandes — voir note).
+#
+# ⚠️ Les commandes ne sont PAS purgées automatiquement : une commande payée
+# est une pièce comptable. Elle reste en corbeille indéfiniment jusqu'à une
+# purge manuelle explicite par un owner. Tous les autres types (produits,
+# coupons, zones/méthodes de livraison) suivent la règle des 30 jours.
+# ---------------------------------------------------------------------------
+TRASH_RESOURCES = {
+    "products":         {"collection": "products",         "area": "products",  "has_active": True,  "auto_purge_days": 30},
+    "coupons":          {"collection": "coupons",           "area": "coupons",   "has_active": True,  "auto_purge_days": 30},
+    "shipping_zones":   {"collection": "shipping_zones",    "area": "shipping",  "has_active": False, "auto_purge_days": 30},
+    "shipping_methods": {"collection": "shipping_methods",  "area": "shipping",  "has_active": True,  "auto_purge_days": 30},
+    "orders":           {"collection": "orders",            "area": "orders",    "has_active": False, "auto_purge_days": None},
+}
+
+
+async def _soft_delete(resource: str, item_id: str, admin: dict) -> dict:
+    cfg = TRASH_RESOURCES[resource]
+    coll = getattr(db, cfg["collection"])
+    doc = await coll.find_one({"id": item_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"{resource[:-1].capitalize()} not found")
+    update = {"deleted_at": datetime.now(timezone.utc).isoformat(), "deleted_by": admin.get("id")}
+    if cfg["has_active"]:
+        update["_pre_delete_active"] = doc.get("active", True)
+        update["active"] = False
+    await coll.update_one({"id": item_id}, {"$set": update})
+    await _log_action(admin, f"{resource}.delete", area=cfg["area"], detail=f"Moved {resource[:-1]} {item_id} to trash")
+    return {"ok": True}
+
+
+@api.get("/admin/trash/{resource}")
+async def admin_list_trash(resource: str, admin: dict = Depends(get_admin_user)):
+    if resource not in TRASH_RESOURCES:
+        raise HTTPException(status_code=404, detail="Unknown resource")
+    coll = getattr(db, TRASH_RESOURCES[resource]["collection"])
+    items = await coll.find({"deleted_at": {"$ne": None}}, {"_id": 0}).sort("deleted_at", -1).to_list(500)
+    return items
+
+
+@api.post("/admin/trash/{resource}/restore")
+async def admin_restore_trash(resource: str, payload: TrashIdsIn, admin: dict = Depends(get_admin_user)):
+    if resource not in TRASH_RESOURCES:
+        raise HTTPException(status_code=404, detail="Unknown resource")
+    cfg = TRASH_RESOURCES[resource]
+    coll = getattr(db, cfg["collection"])
+    restored = 0
+    for item_id in payload.ids:
+        doc = await coll.find_one({"id": item_id, "deleted_at": {"$ne": None}})
+        if not doc:
+            continue
+        update = {}
+        if cfg["has_active"]:
+            update["active"] = doc.get("_pre_delete_active", True)
+        unset = {"deleted_at": "", "deleted_by": "", "_pre_delete_active": ""}
+        await coll.update_one({"id": item_id}, {"$set": update, "$unset": unset} if update else {"$unset": unset})
+        restored += 1
+    await _log_action(admin, f"{resource}.restore", area=cfg["area"], detail=f"Restored {restored} {resource}")
+    return {"ok": True, "restored": restored}
+
+
+@api.post("/admin/trash/{resource}/purge")
+async def admin_purge_trash(resource: str, payload: TrashIdsIn, admin: dict = Depends(get_admin_user)):
+    """Suppression DÉFINITIVE et immédiate des éléments sélectionnés — action
+    irréversible, y compris pour les commandes (purge manuelle uniquement)."""
+    if resource not in TRASH_RESOURCES:
+        raise HTTPException(status_code=404, detail="Unknown resource")
+    cfg = TRASH_RESOURCES[resource]
+    coll = getattr(db, cfg["collection"])
+    res = await coll.delete_many({"id": {"$in": payload.ids}, "deleted_at": {"$ne": None}})
+    await _log_action(admin, f"{resource}.purge", area=cfg["area"],
+                      detail=f"Permanently deleted {res.deleted_count} {resource}")
+    return {"ok": True, "purged": res.deleted_count}
+
+
+async def _trash_auto_purge_watchdog():
+    """Purge automatiquement après 30 jours — sauf les commandes (auto_purge_days=None).
+    Tourne dans le même worker verrouillé que les autres tâches de fond."""
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            for resource, cfg in TRASH_RESOURCES.items():
+                if cfg["auto_purge_days"] is None:
+                    continue
+                cutoff = (now - timedelta(days=cfg["auto_purge_days"])).isoformat()
+                coll = getattr(db, cfg["collection"])
+                res = await coll.delete_many({"deleted_at": {"$ne": None, "$lt": cutoff}})
+                if res.deleted_count:
+                    logging.info("[trash] auto-purged %d %s older than %d days",
+                                res.deleted_count, resource, cfg["auto_purge_days"])
+        except Exception as e:
+            logging.error("[trash] auto-purge watchdog error: %s", e)
+        await asyncio.sleep(6 * 3600)  # toutes les 6h
+
+
+class StaffPermissionsIn(BaseModel):
+    orders: Literal["none", "view", "manage"] = "none"
+    products: Literal["none", "view", "manage"] = "none"
+    coupons: Literal["none", "view", "manage"] = "none"
+    customers: Literal["none", "view", "manage"] = "none"
+    subscribers: Literal["none", "view", "manage"] = "none"
+    shipping: Literal["none", "view", "manage"] = "none"
+    dashboard: Literal["none", "view", "manage"] = "none"
+
+
+class StaffInviteIn(BaseModel):
+    email: EmailStr
+    name: str = Field(min_length=1, max_length=120)
+    permissions: StaffPermissionsIn
+    as_owner: bool = False  # invite directement comme admin (owner) — accès total
+
+
+class StaffAcceptIn(BaseModel):
+    token: str
+    password: str = Field(min_length=8)
 
 
 @api.post("/admin/gate/verify")
@@ -936,7 +1100,7 @@ def _ensure_variant_ids(payload_doc: dict) -> dict:
 
 
 @api.post("/admin/products")
-async def admin_create_product(payload: ProductIn, _admin: dict = Depends(get_admin_user)):
+async def admin_create_product(payload: ProductIn, _admin: dict = Depends(require_area("products", "manage"))):
     existing = await db.products.find_one({"slug": payload.slug})
     if existing:
         raise HTTPException(409, "Slug already exists")
@@ -950,7 +1114,7 @@ async def admin_create_product(payload: ProductIn, _admin: dict = Depends(get_ad
 
 
 @api.put("/admin/products/{product_id}")
-async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict = Depends(get_admin_user)):
+async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict = Depends(require_area("products", "manage"))):
     before = await db.products.find_one({"id": product_id}, {"_id": 0})
     update = payload.model_dump()
     update = _ensure_variant_ids(update)
@@ -973,15 +1137,12 @@ async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict
 
 
 @api.delete("/admin/products/{product_id}")
-async def admin_delete_product(product_id: str, _admin: dict = Depends(get_admin_user)):
-    res = await db.products.delete_one({"id": product_id})
-    if res.deleted_count == 0:
-        raise HTTPException(404, "Product not found")
-    return {"ok": True}
+async def admin_delete_product(product_id: str, admin: dict = Depends(require_area("products", "manage"))):
+    return await _soft_delete("products", product_id, admin)
 
 
 @api.post("/admin/upload/coa")
-async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(get_admin_user)):
+async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
     """Uploads a Certificate of Analysis PDF and returns a URL to paste into a
     product's or variant's coa_url field. Storage is local disk under UPLOAD_DIR,
     served statically at /uploads/coa/<file>."""
@@ -1577,14 +1738,14 @@ async def get_shipping_rates(payload: ShippingRateRequest):
     if live_rates:
         return {"source": "canada_post_live", "weight_kg": weight_kg, "rates": live_rates}
 
-    zones = await db.shipping_zones.find({}, {"_id": 0}).to_list(50)
+    zones = await db.shipping_zones.find({"deleted_at": None}, {"_id": 0}).to_list(50)
     zone = next((z for z in zones if payload.country in z.get("countries", [])), None)
     if not zone:
         zone = next((z for z in zones if "INTL" in z.get("countries", [])), None)
     methods = []
     if zone:
         methods = await db.shipping_methods.find(
-            {"zone_id": zone["id"], "active": True}, {"_id": 0}
+            {"zone_id": zone["id"], "active": True, "deleted_at": None}, {"_id": 0}
         ).to_list(50)
     rates = [
         {"carrier": m["name"], "service_code": None, "service_name": m["name"],
@@ -1774,7 +1935,9 @@ async def checkout(payload: CheckoutIn, request: Request):
 
 @api.get("/orders/mine")
 async def my_orders(user: dict = Depends(get_current_user)):
-    items = await db.orders.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    items = await db.orders.find(
+        {"user_id": user["id"], "deleted_at": None}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
     return items
 
 
@@ -1826,12 +1989,22 @@ def _status_group_filter(status_group: Optional[str]) -> dict:
 
 
 @api.get("/admin/orders")
-async def admin_orders(status_group: Optional[str] = None, _admin: dict = Depends(get_admin_user)):
-    return await db.orders.find(_status_group_filter(status_group), {"_id": 0}).sort("created_at", -1).to_list(500)
+async def admin_orders(status_group: Optional[str] = None, _admin: dict = Depends(require_area("orders", "view"))):
+    filt = _status_group_filter(status_group)
+    filt["deleted_at"] = None
+    return await db.orders.find(filt, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+@api.delete("/admin/orders/{order_id}")
+async def admin_delete_order(order_id: str, admin: dict = Depends(require_area("orders", "manage"))):
+    """Suppression douce — la commande va en corbeille, restaurable, et n'est
+    PAS purgée automatiquement (contrairement aux autres types de données),
+    car une commande payée est une pièce comptable."""
+    return await _soft_delete("orders", order_id, admin)
 
 
 @api.get("/admin/orders/counts")
-async def admin_order_counts(_admin: dict = Depends(get_admin_user)):
+async def admin_order_counts(_admin: dict = Depends(require_area("orders", "view"))):
     out = {}
     for group, filt in _ORDER_STATUS_GROUPS.items():
         out[group] = await db.orders.count_documents(filt)
@@ -1841,7 +2014,7 @@ async def admin_order_counts(_admin: dict = Depends(get_admin_user)):
 
 @api.get("/admin/orders/dispatch-batch")
 async def admin_dispatch_batch(
-    date: Optional[str] = None, _admin: dict = Depends(get_admin_user)
+    date: Optional[str] = None, _admin: dict = Depends(require_area("orders", "view"))
 ):
     """
     Commandes du lot d'expédition d'un jour donné (défaut : prochain jour
@@ -1865,7 +2038,7 @@ async def admin_update_order(
     order_id: str,
     payment_status: Optional[str] = None,
     fulfillment_status: Optional[str] = None,
-    _admin: dict = Depends(get_admin_user),
+    _admin: dict = Depends(require_area("orders", "manage")),
 ):
     update: dict = {}
     if payment_status:
@@ -1918,7 +2091,7 @@ async def admin_update_order(
 
 
 @api.post("/admin/orders/{order_id}/confirm-payment")
-async def admin_confirm_payment(order_id: str, _admin: dict = Depends(get_admin_user)):
+async def admin_confirm_payment(order_id: str, _admin: dict = Depends(require_area("orders", "manage"))):
     """One-click 'Mark as Paid' — atomically marks order as paid + processing + sends email."""
     existing = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not existing:
@@ -1929,14 +2102,234 @@ async def admin_confirm_payment(order_id: str, _admin: dict = Depends(get_admin_
     return updated or existing
 
 
+# ---------------------------------------------------------------------------
+# Gestion des membres staff — réservé au rôle "admin" (owner). Un staff ne
+# peut jamais modifier ses propres permissions ni celles d'un autre membre.
+# ---------------------------------------------------------------------------
+STAFF_INVITE_TTL_HOURS = 72
+
+
+# ---------------------------------------------------------------------------
+# Journal d'audit — qui a fait quoi, quand. Deux sources d'entrées :
+#  1. Automatique : toute action "manage" (mutation) passée par require_area()
+#     est journalisée génériquement (méthode + route + zone + auteur).
+#  2. Explicite : les actions sensibles sur les membres (invite, promotion,
+#     permissions, révocation) sont journalisées avec un détail lisible,
+#     puisqu'elles ne passent pas par require_area() (réservées owner-only).
+# ---------------------------------------------------------------------------
+async def _log_action(user: dict, action: str, detail: str = "", area: str = "") -> None:
+    try:
+        await db.admin_audit_log.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user.get("id"),
+            "user_email": user.get("email"),
+            "user_name": user.get("name"),
+            "role": user.get("role"),
+            "area": area,
+            "action": action,
+            "detail": detail,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as e:
+        logging.error("[audit] failed to log action=%s: %s", action, e)
+
+
+def _staff_invite_html(accept_url: str, inviter_name: str, lang: str = "fr") -> str:
+    if lang == "fr":
+        heading = "Vous êtes invité·e à rejoindre l'équipe FIRONOVA"
+        body = (f"{inviter_name} vous invite à accéder au panneau d'administration FIRONOVA. "
+                f"Cliquez ci-dessous pour créer votre mot de passe et activer votre accès. "
+                f"Ce lien expire dans {STAFF_INVITE_TTL_HOURS} heures.")
+        btn = "Activer mon accès"
+    else:
+        heading = "You've been invited to the FIRONOVA team"
+        body = (f"{inviter_name} invited you to access the FIRONOVA admin panel. "
+                f"Click below to set your password and activate your access. "
+                f"This link expires in {STAFF_INVITE_TTL_HOURS} hours.")
+        btn = "Activate my access"
+    return f"""
+    <div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;padding:32px;color:#3A0A08;background:#FFFAF6">
+      <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px">FIRONOVA<span style="color:#C20114">.</span></div>
+      <h2 style="margin-top:24px">{heading}</h2>
+      <p style="line-height:1.6">{body}</p>
+      <a href="{accept_url}" style="display:inline-block;margin-top:16px;background:#3A0A08;color:#fff;
+         padding:14px 28px;text-decoration:none;font-family:monospace;font-size:12px;
+         letter-spacing:0.2em;text-transform:uppercase">{btn} →</a>
+      <p style="margin-top:24px;font-size:12px;color:#6B0504">{accept_url}</p>
+    </div>
+    """
+
+
+@api.get("/admin/staff")
+async def admin_list_staff(_admin: dict = Depends(get_admin_user)):
+    """Membres actifs (admin + staff) — les clients normaux (role=user) sont exclus."""
+    staff = await db.users.find(
+        {"role": {"$in": ["admin", "staff"]}},
+        {"_id": 0, "password_hash": 0, "token_version": 0},
+    ).sort("created_at", -1).to_list(200)
+    return staff
+
+
+@api.get("/admin/staff/invites")
+async def admin_list_staff_invites(_admin: dict = Depends(get_admin_user)):
+    """Invitations en attente — équivalent de l'onglet 'Demandes en attente'."""
+    now = datetime.now(timezone.utc).isoformat()
+    invites = await db.staff_invites.find(
+        {"used": False, "expires_at": {"$gt": now}}, {"_id": 0, "token": 0}
+    ).sort("created_at", -1).to_list(100)
+    return invites
+
+
+@api.post("/admin/staff/invite")
+async def admin_invite_staff(payload: StaffInviteIn, request: Request, admin: dict = Depends(get_admin_user)):
+    email = payload.email.lower().strip()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=409, detail="A user with this email already exists")
+    _rate_limit("staff_invite", admin["id"], 20, 3600, "Too many invitations sent. Try again later.")
+
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    await db.staff_invites.insert_one({
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "name": payload.name.strip(),
+        "permissions": payload.permissions.model_dump(),
+        "as_owner": payload.as_owner,
+        "invited_by": admin["id"],
+        "token": token,
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(hours=STAFF_INVITE_TTL_HOURS)).isoformat(),
+        "used": False,
+    })
+    base = PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
+    accept_url = f"{base}/staff-accept?token={token}"
+    asyncio.create_task(_send_email(
+        email, "FIRONOVA — Invitation à rejoindre l'équipe",
+        _staff_invite_html(accept_url, admin.get("name", "L'équipe FIRONOVA")),
+    ))
+    await _log_action(admin, "staff.invite", detail=f"Invited {email} as {'owner' if payload.as_owner else 'staff'}")
+    return {"ok": True, "sent_to": email}
+
+
+@api.delete("/admin/staff/invites/{invite_id}")
+async def admin_cancel_staff_invite(invite_id: str, admin: dict = Depends(get_admin_user)):
+    res = await db.staff_invites.delete_one({"id": invite_id, "used": False})
+    if not res.deleted_count:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    await _log_action(admin, "staff.invite_cancel", detail=f"Cancelled invite {invite_id}")
+    return {"ok": True}
+
+
+@api.post("/staff/accept")
+async def staff_accept_invite(payload: StaffAcceptIn, response: Response):
+    """Lien cliqué depuis l'email — pas d'authentification préalable, le
+    token à usage unique + TTL sert de preuve. Crée le compte staff (ou
+    owner, si l'invitation le précisait)."""
+    now = datetime.now(timezone.utc).isoformat()
+    invite = await db.staff_invites.find_one({"token": payload.token, "used": False})
+    if not invite or invite["expires_at"] < now:
+        raise HTTPException(status_code=400, detail="Invalid or expired invitation")
+    if await db.users.find_one({"email": invite["email"]}):
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+
+    as_owner = invite.get("as_owner", False)
+    user_doc = {
+        "id": str(uuid.uuid4()),
+        "email": invite["email"],
+        "name": invite["name"],
+        "password_hash": hash_password(payload.password),
+        "role": "admin" if as_owner else "staff",
+        "token_version": 0,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if not as_owner:
+        user_doc["permissions"] = invite["permissions"]
+    await db.users.insert_one(user_doc)
+    await db.staff_invites.update_one({"token": payload.token}, {"$set": {"used": True, "used_at": now}})
+
+    role = user_doc["role"]
+    token = create_access_token(user_doc["id"], user_doc["email"], role, token_version=0)
+    set_auth_cookie(response, token)
+    return {
+        "id": user_doc["id"], "email": user_doc["email"], "name": user_doc["name"],
+        "role": role, "permissions": user_doc.get("permissions"), "token": token,
+    }
+
+
+@api.put("/admin/staff/{user_id}/permissions")
+async def admin_update_staff_permissions(user_id: str, payload: StaffPermissionsIn,
+                                         admin: dict = Depends(get_admin_user)):
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Cannot restrict another admin's access this way")
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"role": "staff", "permissions": payload.model_dump()},
+         "$inc": {"token_version": 1}},  # les changements de droits prennent effet immédiatement
+    )
+    await _log_action(admin, "staff.permissions_update",
+                      detail=f"Updated permissions for {target.get('email')}: {payload.model_dump()}")
+    return {"ok": True}
+
+
+@api.post("/admin/staff/{user_id}/promote")
+async def admin_promote_to_owner(user_id: str, admin: dict = Depends(get_admin_user)):
+    """Fait passer un membre staff au rang de owner (accès total, y compris
+    la gestion des autres membres). Réversible uniquement en révoquant puis
+    ré-invitant — il n'y a volontairement pas de 'rétrograder un owner' pour
+    éviter qu'un owner en soit accidentellement privé de son propre accès."""
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="This user is already an owner")
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"role": "admin"}, "$unset": {"permissions": ""}, "$inc": {"token_version": 1}},
+    )
+    await _log_action(admin, "staff.promote_to_owner", detail=f"Promoted {target.get('email')} to owner")
+    return {"ok": True}
+
+
+@api.delete("/admin/staff/{user_id}")
+async def admin_revoke_staff(user_id: str, admin: dict = Depends(get_admin_user)):
+    """Révoque l'accès admin — le compte redevient un compte client normal,
+    n'est PAS supprimé (historique de commandes éventuel préservé)."""
+    if user_id == admin["id"]:
+        raise HTTPException(status_code=400, detail="You cannot revoke your own access")
+    target = await db.users.find_one({"id": user_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Cannot revoke another admin this way")
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"role": "user"}, "$unset": {"permissions": ""}, "$inc": {"token_version": 1}},
+    )
+    await _log_action(admin, "staff.revoke", detail=f"Revoked access for {target.get('email')}")
+    return {"ok": True}
+
+
+@api.get("/admin/audit-log")
+async def admin_audit_log(limit: int = 200, admin: dict = Depends(get_admin_user)):
+    """Journal d'audit — owner only. Couvre automatiquement toute action
+    'manage' (mutation) sur les 35 endpoints admin, plus les actions
+    explicites de gestion d'équipe (invite/promotion/permissions/révocation)."""
+    limit = max(1, min(limit, 1000))
+    entries = await db.admin_audit_log.find({}, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    return entries
+
+
 @api.get("/admin/customers")
-async def admin_customers(_admin: dict = Depends(get_admin_user)):
+async def admin_customers(_admin: dict = Depends(require_area("customers", "view"))):
     users = await db.users.find({}, {"_id": 0, "password_hash": 0, "token_version": 0}).sort("created_at", -1).to_list(500)
     return users
 
 
 @api.get("/admin/subscribers")
-async def admin_list_subscribers(status: Optional[str] = None, _admin: dict = Depends(get_admin_user)):
+async def admin_list_subscribers(status: Optional[str] = None, _admin: dict = Depends(require_area("subscribers", "view"))):
     query = {"status": status} if status else {}
     subs = await db.subscribers.find(
         query, {"_id": 0, "unsubscribe_token": 0}
@@ -1945,7 +2338,7 @@ async def admin_list_subscribers(status: Optional[str] = None, _admin: dict = De
 
 
 @api.get("/admin/subscribers.csv")
-async def admin_subscribers_csv(status: Optional[str] = None, _admin: dict = Depends(get_admin_user)):
+async def admin_subscribers_csv(status: Optional[str] = None, _admin: dict = Depends(require_area("subscribers", "view"))):
     query = {"status": status} if status else {}
     subs = await db.subscribers.find(query, {"_id": 0, "unsubscribe_token": 0}).to_list(5000)
     rows = [
@@ -1964,7 +2357,7 @@ async def admin_subscribers_csv(status: Optional[str] = None, _admin: dict = Dep
 
 
 @api.get("/admin/stats")
-async def admin_stats(_admin: dict = Depends(get_admin_user)):
+async def admin_stats(_admin: dict = Depends(require_area("dashboard", "view"))):
     total_orders = await db.orders.count_documents({})
     pending = await db.orders.count_documents({"fulfillment_status": "pending"})
     paid = await db.orders.count_documents({"payment_status": "paid"})
@@ -1994,7 +2387,7 @@ async def admin_stats(_admin: dict = Depends(get_admin_user)):
 # Admin — order notes & shipping & stock
 # ---------------------------------------------------------------------------
 @api.post("/admin/orders/{order_id}/notes")
-async def admin_add_order_note(order_id: str, payload: OrderNoteIn, admin: dict = Depends(get_admin_user)):
+async def admin_add_order_note(order_id: str, payload: OrderNoteIn, admin: dict = Depends(require_area("orders", "manage"))):
     note = {
         "text": payload.text,
         "admin_email": admin["email"],
@@ -2011,7 +2404,7 @@ async def admin_add_order_note(order_id: str, payload: OrderNoteIn, admin: dict 
 
 
 @api.post("/admin/orders/{order_id}/refund")
-async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Depends(get_admin_user)):
+async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Depends(require_area("orders", "manage"))):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(404, "Order not found")
@@ -2039,7 +2432,7 @@ async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Dep
 
 
 @api.post("/admin/orders/{order_id}/resend-email")
-async def admin_resend_order_email(order_id: str, _admin: dict = Depends(get_admin_user)):
+async def admin_resend_order_email(order_id: str, _admin: dict = Depends(require_area("orders", "manage"))):
     """Re-sends the order details / payment-instructions email to the customer."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
@@ -2053,7 +2446,7 @@ async def admin_resend_order_email(order_id: str, _admin: dict = Depends(get_adm
 
 
 @api.put("/admin/orders/{order_id}/shipping")
-async def admin_set_shipping_info(order_id: str, payload: ShippingInfoIn, _admin: dict = Depends(get_admin_user)):
+async def admin_set_shipping_info(order_id: str, payload: ShippingInfoIn, _admin: dict = Depends(require_area("orders", "manage"))):
     shipped_at = payload.shipped_at or (datetime.now(timezone.utc).isoformat() if payload.tracking_number else None)
     shipping_info = {
         "carrier": payload.carrier or "",
@@ -2070,7 +2463,7 @@ async def admin_set_shipping_info(order_id: str, payload: ShippingInfoIn, _admin
 
 
 @api.put("/admin/products/{product_id}/stock")
-async def admin_adjust_stock(product_id: str, payload: StockAdjustIn, _admin: dict = Depends(get_admin_user)):
+async def admin_adjust_stock(product_id: str, payload: StockAdjustIn, _admin: dict = Depends(require_area("products", "manage"))):
     res = await db.products.update_one({"id": product_id}, {"$inc": {"stock": payload.delta}})
     if res.matched_count == 0:
         raise HTTPException(404, "Product not found")
@@ -2080,7 +2473,7 @@ async def admin_adjust_stock(product_id: str, payload: StockAdjustIn, _admin: di
 
 
 @api.get("/admin/stock-notifications")
-async def admin_list_stock_notifications(_admin: dict = Depends(get_admin_user)):
+async def admin_list_stock_notifications(_admin: dict = Depends(require_area("products", "view"))):
     """Overview of pending back-in-stock subscriptions, grouped implicitly by product/variant."""
     pending = await db.stock_notifications.find({"notified": False}, {"_id": 0}).sort("created_at", -1).to_list(2000)
     return pending
@@ -2090,12 +2483,12 @@ async def admin_list_stock_notifications(_admin: dict = Depends(get_admin_user))
 # Admin — coupons
 # ---------------------------------------------------------------------------
 @api.get("/admin/coupons")
-async def admin_list_coupons(_admin: dict = Depends(get_admin_user)):
-    return await db.coupons.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+async def admin_list_coupons(_admin: dict = Depends(require_area("coupons", "view"))):
+    return await db.coupons.find({"deleted_at": None}, {"_id": 0}).sort("created_at", -1).to_list(500)
 
 
 @api.post("/admin/coupons")
-async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(get_admin_user)):
+async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_area("coupons", "manage"))):
     code = payload.code.upper().strip()
     if await db.coupons.find_one({"code": code}):
         raise HTTPException(409, "Coupon code already exists")
@@ -2117,7 +2510,7 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(get_admi
 
 
 @api.put("/admin/coupons/{coupon_id}")
-async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = Depends(get_admin_user)):
+async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = Depends(require_area("coupons", "manage"))):
     update = payload.model_dump()
     update["code"] = update["code"].upper().strip()
     res = await db.coupons.update_one({"id": coupon_id}, {"$set": update})
@@ -2127,11 +2520,8 @@ async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = 
 
 
 @api.delete("/admin/coupons/{coupon_id}")
-async def admin_delete_coupon(coupon_id: str, _admin: dict = Depends(get_admin_user)):
-    res = await db.coupons.delete_one({"id": coupon_id})
-    if res.deleted_count == 0:
-        raise HTTPException(404, "Coupon not found")
-    return {"ok": True}
+async def admin_delete_coupon(coupon_id: str, admin: dict = Depends(require_area("coupons", "manage"))):
+    return await _soft_delete("coupons", coupon_id, admin)
 
 
 @api.post("/coupons/validate")
@@ -2161,19 +2551,19 @@ async def validate_coupon(code: str, subtotal: float):
 # Admin — shipping zones & methods
 # ---------------------------------------------------------------------------
 @api.get("/admin/shipping/zones")
-async def admin_list_zones(_admin: dict = Depends(get_admin_user)):
-    zones = await db.shipping_zones.find({}, {"_id": 0}).sort("name", 1).to_list(200)
+async def admin_list_zones(_admin: dict = Depends(require_area("shipping", "view"))):
+    zones = await db.shipping_zones.find({"deleted_at": None}, {"_id": 0}).sort("name", 1).to_list(200)
     # attach methods
     out = []
     for z in zones:
-        methods = await db.shipping_methods.find({"zone_id": z["id"]}, {"_id": 0}).to_list(200)
+        methods = await db.shipping_methods.find({"zone_id": z["id"], "deleted_at": None}, {"_id": 0}).to_list(200)
         z["methods"] = methods
         out.append(z)
     return out
 
 
 @api.post("/admin/shipping/zones")
-async def admin_create_zone(payload: ShippingZoneIn, _admin: dict = Depends(get_admin_user)):
+async def admin_create_zone(payload: ShippingZoneIn, _admin: dict = Depends(require_area("shipping", "manage"))):
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
@@ -2183,7 +2573,7 @@ async def admin_create_zone(payload: ShippingZoneIn, _admin: dict = Depends(get_
 
 
 @api.put("/admin/shipping/zones/{zone_id}")
-async def admin_update_zone(zone_id: str, payload: ShippingZoneIn, _admin: dict = Depends(get_admin_user)):
+async def admin_update_zone(zone_id: str, payload: ShippingZoneIn, _admin: dict = Depends(require_area("shipping", "manage"))):
     res = await db.shipping_zones.update_one({"id": zone_id}, {"$set": payload.model_dump()})
     if res.matched_count == 0:
         raise HTTPException(404, "Zone not found")
@@ -2191,16 +2581,17 @@ async def admin_update_zone(zone_id: str, payload: ShippingZoneIn, _admin: dict 
 
 
 @api.delete("/admin/shipping/zones/{zone_id}")
-async def admin_delete_zone(zone_id: str, _admin: dict = Depends(get_admin_user)):
-    await db.shipping_methods.delete_many({"zone_id": zone_id})
-    res = await db.shipping_zones.delete_one({"id": zone_id})
-    if res.deleted_count == 0:
-        raise HTTPException(404, "Zone not found")
-    return {"ok": True}
+async def admin_delete_zone(zone_id: str, admin: dict = Depends(require_area("shipping", "manage"))):
+    # Cascade : les méthodes de cette zone vont aussi en corbeille, pour
+    # pouvoir tout restaurer ensemble si la suppression était une erreur.
+    methods = await db.shipping_methods.find({"zone_id": zone_id, "deleted_at": None}, {"_id": 0}).to_list(200)
+    for m in methods:
+        await _soft_delete("shipping_methods", m["id"], admin)
+    return await _soft_delete("shipping_zones", zone_id, admin)
 
 
 @api.post("/admin/shipping/methods")
-async def admin_create_method(payload: ShippingMethodIn, _admin: dict = Depends(get_admin_user)):
+async def admin_create_method(payload: ShippingMethodIn, _admin: dict = Depends(require_area("shipping", "manage"))):
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
@@ -2210,7 +2601,7 @@ async def admin_create_method(payload: ShippingMethodIn, _admin: dict = Depends(
 
 
 @api.put("/admin/shipping/methods/{method_id}")
-async def admin_update_method(method_id: str, payload: ShippingMethodIn, _admin: dict = Depends(get_admin_user)):
+async def admin_update_method(method_id: str, payload: ShippingMethodIn, _admin: dict = Depends(require_area("shipping", "manage"))):
     res = await db.shipping_methods.update_one({"id": method_id}, {"$set": payload.model_dump()})
     if res.matched_count == 0:
         raise HTTPException(404, "Method not found")
@@ -2218,18 +2609,15 @@ async def admin_update_method(method_id: str, payload: ShippingMethodIn, _admin:
 
 
 @api.delete("/admin/shipping/methods/{method_id}")
-async def admin_delete_method(method_id: str, _admin: dict = Depends(get_admin_user)):
-    res = await db.shipping_methods.delete_one({"id": method_id})
-    if res.deleted_count == 0:
-        raise HTTPException(404, "Method not found")
-    return {"ok": True}
+async def admin_delete_method(method_id: str, admin: dict = Depends(require_area("shipping", "manage"))):
+    return await _soft_delete("shipping_methods", method_id, admin)
 
 
 # ---------------------------------------------------------------------------
 # Admin — Analytics
 # ---------------------------------------------------------------------------
 @api.get("/admin/analytics")
-async def admin_analytics(_admin: dict = Depends(get_admin_user)):
+async def admin_analytics(_admin: dict = Depends(require_area("dashboard", "view"))):
     # Revenue per day (last 30 days)
     since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     daily_cursor = db.orders.aggregate([
@@ -2286,7 +2674,7 @@ def _csv_response(rows: list, filename: str) -> StreamingResponse:
 
 
 @api.get("/admin/orders.csv")
-async def admin_orders_csv(status_group: Optional[str] = None, _admin: dict = Depends(get_admin_user)):
+async def admin_orders_csv(status_group: Optional[str] = None, _admin: dict = Depends(require_area("orders", "view"))):
     orders = await db.orders.find(_status_group_filter(status_group), {"_id": 0}).sort("created_at", -1).to_list(5000)
     return _csv_response(_orders_export_rows(orders), f"fironova-orders-{datetime.now().strftime('%Y%m%d')}.csv")
 
@@ -2346,13 +2734,13 @@ def _xlsx_response(rows: list, filename: str) -> Response:
 
 
 @api.get("/admin/orders.xlsx")
-async def admin_orders_xlsx(status_group: Optional[str] = None, _admin: dict = Depends(get_admin_user)):
+async def admin_orders_xlsx(status_group: Optional[str] = None, _admin: dict = Depends(require_area("orders", "view"))):
     orders = await db.orders.find(_status_group_filter(status_group), {"_id": 0}).sort("created_at", -1).to_list(5000)
     return _xlsx_response(_orders_export_rows(orders), f"fironova-orders-{datetime.now().strftime('%Y%m%d')}.xlsx")
 
 
 @api.get("/admin/products.csv")
-async def admin_products_csv(_admin: dict = Depends(get_admin_user)):
+async def admin_products_csv(_admin: dict = Depends(require_area("products", "view"))):
     products = await db.products.find({}, {"_id": 0}).sort("name_en", 1).to_list(2000)
     rows = []
     for p in products:
@@ -2379,7 +2767,7 @@ async def admin_products_csv(_admin: dict = Depends(get_admin_user)):
 
 
 @api.get("/admin/products.xlsx")
-async def admin_products_xlsx(_admin: dict = Depends(get_admin_user)):
+async def admin_products_xlsx(_admin: dict = Depends(require_area("products", "view"))):
     products = await db.products.find({}, {"_id": 0}).sort("name_en", 1).to_list(2000)
     rows = []
     for p in products:
@@ -2948,6 +3336,15 @@ async def seed_admin_and_products():
     await db.addresses.create_index([("user_id", 1), ("created_at", -1)])
     await db.email_change_requests.create_index("token", unique=True)
     await db.email_change_requests.create_index("user_id")
+    await db.staff_invites.create_index("token", unique=True)
+    await db.staff_invites.create_index("email")
+    await db.admin_audit_log.create_index([("created_at", -1)])
+    await db.admin_audit_log.create_index("user_id")
+    await db.products.create_index("deleted_at")
+    await db.coupons.create_index("deleted_at")
+    await db.shipping_zones.create_index("deleted_at")
+    await db.shipping_methods.create_index("deleted_at")
+    await db.orders.create_index("deleted_at")
 
     # Admin
     existing = await db.users.find_one({"email": ADMIN_EMAIL.lower()})
@@ -3153,6 +3550,7 @@ async def startup_event():
     if await _acquire_worker_lock("background_tasks"):
         asyncio.create_task(_unpaid_orders_watchdog())
         asyncio.create_task(_backfill_dispatch_batch())
+        asyncio.create_task(_trash_auto_purge_watchdog())
 
 
 async def _backfill_dispatch_batch():
