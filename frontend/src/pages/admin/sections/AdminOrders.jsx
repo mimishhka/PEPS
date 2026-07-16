@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, Search, X, FileText, CheckCircle2, Save, Truck, MessageSquarePlus, Mail, Undo2, Trash2 } from "lucide-react";
+import { Download, Search, X, FileText, CheckCircle2, Save, Truck, MessageSquarePlus, Mail, Undo2, Trash2, AlertTriangle, Send, Tag } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
@@ -21,6 +21,35 @@ export default function AdminOrders() {
   const [selected, setSelected] = useState(null);
   const [tab, setTab] = useState("active");
   const [counts, setCounts] = useState({});
+  const [manifest, setManifest] = useState(null);   // {configured, pending_count, groups}
+  const [txBusy, setTxBusy] = useState(false);
+
+  // Étiquettes créées mais non transmises = 2 $/article de surcharge et perte
+  // du rabais d'automatisation. On le met sous les yeux, en haut de l'écran.
+  const loadManifest = () => {
+    api.get("/admin/shipping/pending-manifest")
+      .then((r) => setManifest(r.data))
+      .catch(() => setManifest(null));
+  };
+  useEffect(() => { loadManifest(); }, []);
+
+  const transmitManifest = async () => {
+    if (!window.confirm("Transmit today's manifest to Canada Post? This closes the shipments for billing.")) return;
+    setTxBusy(true);
+    try {
+      const { data } = await api.post("/admin/shipping/transmit");
+      toast.success(`Manifest transmitted — ${data.orders_marked} shipment(s) closed.`);
+      if (data.manifests?.length) {
+        toast.info(`${data.manifests.length} manifest document(s) available from Canada Post.`);
+      }
+      loadManifest();
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail));
+    } finally {
+      setTxBusy(false);
+    }
+  };
 
   const load = () => {
     const qs = tab === "all" ? "" : `?status_group=${tab}`;
@@ -44,6 +73,33 @@ export default function AdminOrders() {
 
   return (
     <div className="p-8" data-testid="admin-orders">
+      {manifest?.configured && manifest.pending_count > 0 && (
+        <div
+          className="mb-6 border-2 border-red-600 bg-red-50 px-5 py-4 flex flex-wrap items-center justify-between gap-4"
+          data-testid="manifest-warning"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={20} className="text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-red-700 font-bold">
+                {manifest.pending_count} label(s) created but not transmitted
+              </div>
+              <div className="text-sm text-red-800 mt-1">
+                Transmit the manifest before end of day. Canada Post bills untransmitted shipments
+                with a <strong>$2 surcharge per item</strong> and removes the automation discount.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={transmitManifest}
+            disabled={txBusy}
+            data-testid="transmit-manifest-btn"
+            className="bg-red-600 text-white font-mono text-xs uppercase tracking-[0.2em] px-5 py-2.5 flex items-center gap-2 disabled:opacity-50 shrink-0"
+          >
+            <Send size={14} /> {txBusy ? "Transmitting…" : "Transmit manifest"}
+          </button>
+        </div>
+      )}
       <div className="flex items-end justify-between mb-6">
         <div>
           <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// ORDERS</div>
@@ -178,6 +234,60 @@ function OrderDetail({ order, onClose, onUpdate }) {
   };
   const [tracking, setTracking] = useState(order.shipping_info?.tracking_number || "");
   const [carrier, setCarrier] = useState(order.shipping_info?.carrier || "Canada Post");
+  const [cpRates, setCpRates] = useState(null);       // null = pas chargé, [] = non configuré
+  const [cpService, setCpService] = useState("");
+  const [cpBusy, setCpBusy] = useState(false);
+  const [shipInfo, setShipInfo] = useState(order.shipping_info || {});
+
+  useEffect(() => { setShipInfo(order.shipping_info || {}); }, [order.shipping_info]);
+
+  // Services disponibles pour CETTE destination.
+  useEffect(() => {
+    let cancelled = false;
+    api.get(`/admin/orders/${order.id}/shipping-rates`)
+      .then((r) => {
+        if (cancelled) return;
+        const list = r.data?.rates || [];
+        setCpRates(r.data?.configured ? list : []);
+        if (list.length) setCpService((v) => v || list[0].service_code);
+      })
+      .catch(() => { if (!cancelled) setCpRates([]); });
+    return () => { cancelled = true; };
+  }, [order.id]);
+
+  const createLabel = async () => {
+    if (!cpService) { toast.error("Select a shipping service first."); return; }
+    setCpBusy(true);
+    try {
+      const { data } = await api.post(`/admin/orders/${order.id}/create-label`, { service_code: cpService });
+      setShipInfo(data.shipping_info);
+      setTracking(data.shipping_info.tracking_number || "");
+      setCarrier(data.shipping_info.carrier || "Canada Post");
+      // Idempotent côté serveur : un 2e clic ne facture pas un 2e colis.
+      toast.success(data.already_existed
+        ? "A label already exists for this order — reusing it."
+        : `Label created — tracking ${data.shipping_info.tracking_number}`);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail));
+    } finally {
+      setCpBusy(false);
+    }
+  };
+
+  const voidLabel = async () => {
+    if (!window.confirm("Void this Canada Post label? Only possible before the manifest is transmitted.")) return;
+    setCpBusy(true);
+    try {
+      await api.post(`/admin/orders/${order.id}/void-label`);
+      setShipInfo({});
+      setTracking("");
+      toast.success("Label voided.");
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail));
+    } finally {
+      setCpBusy(false);
+    }
+  };
   const [noteText, setNoteText] = useState("");
   const [noteVisible, setNoteVisible] = useState(false);
   const [refundAmount, setRefundAmount] = useState("");
@@ -354,16 +464,76 @@ function OrderDetail({ order, onClose, onUpdate }) {
               <button onClick={saveShipping} data-testid="save-shipping-btn" className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-foreground/80">
                 <Save size={14} /> Save & Mark Shipped
               </button>
-              <button
-                onClick={() => toast.info("Connect a Canada Post merchant account to print labels (placeholder).")}
-                className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:bg-ink hover:text-white"
-              >
-                Print Label
-              </button>
             </div>
             {order.shipping_info?.shipped_at && (
               <div className="font-mono text-[10px] text-foreground/50 mt-2">Shipped at: {order.shipping_info.shipped_at}</div>
             )}
+
+            {/* Postes Canada — le champ manuel ci-dessus reste le repli si
+                l'API n'est pas configurée. */}
+            <div className="mt-4 pt-4 border-t border-ink/10">
+              {cpRates === null && (
+                <div className="font-mono text-[10px] text-foreground/50">Checking Canada Post…</div>
+              )}
+              {cpRates !== null && cpRates.length === 0 && (
+                <div className="font-mono text-[10px] text-foreground/50">
+                  Canada Post not configured — use the manual tracking field above.
+                </div>
+              )}
+              {cpRates !== null && cpRates.length > 0 && (
+                <>
+                  {shipInfo?.label_url ? (
+                    <div className="flex flex-wrap items-center gap-3">
+                      <a
+                        href={`${API_BASE.replace(/\/api$/, "")}${shipInfo.label_url}`}
+                        target="_blank" rel="noopener noreferrer"
+                        data-testid="download-label-btn"
+                        className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 inline-flex items-center gap-2"
+                      >
+                        <Download size={14} /> Download label PDF
+                      </a>
+                      <span className={`font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 border ${
+                        shipInfo.cp_transmitted ? "border-green-600 text-green-700" : "border-red-600 text-red-700"}`}>
+                        {shipInfo.cp_transmitted ? "Manifest transmitted" : "Not transmitted"}
+                      </span>
+                      {!shipInfo.cp_transmitted && (
+                        <button onClick={voidLabel} disabled={cpBusy} data-testid="void-label-btn"
+                          className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-50">
+                          Void label
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div className="flex-1 min-w-[220px]">
+                        <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Canada Post service</label>
+                        <select
+                          value={cpService}
+                          onChange={(e) => setCpService(e.target.value)}
+                          data-testid="cp-service-select"
+                          className="w-full border border-ink/20 px-3 py-2 text-sm bg-white"
+                        >
+                          {cpRates.map((r) => (
+                            <option key={r.service_code} value={r.service_code}>
+                              {r.service_name} — ${Number(r.cost_cad).toFixed(2)}
+                              {r.eta_days ? ` (${r.eta_days}d)` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <button
+                        onClick={createLabel}
+                        disabled={cpBusy}
+                        data-testid="create-label-btn"
+                        className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 inline-flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <Tag size={14} /> {cpBusy ? "Working…" : "Generate label"}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
           {/* Status quick switches */}
