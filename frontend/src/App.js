@@ -1,11 +1,12 @@
-import { Suspense, lazy } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Suspense, lazy, useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 
 import { LanguageProvider } from "./contexts/LanguageContext";
-import { AuthProvider } from "./contexts/AuthContext";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { CartProvider } from "./contexts/CartContext";
 import { SiteConfigProvider, useSiteConfig } from "./contexts/SiteConfigContext";
+import api from "./lib/api";
 
 import Header from "./components/Header";
 import Footer from "./components/Footer";
@@ -15,6 +16,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import AdminGate from "./components/AdminGate";
 
 import Home from "./pages/Home";
+import ComingSoon from "./pages/ComingSoon";
 import Catalog from "./pages/Catalog";
 import ProductDetail from "./pages/ProductDetail";
 import Checkout from "./pages/Checkout";
@@ -53,6 +55,40 @@ function Shell({ children }) {
       <Toaster position="bottom-right" />
     </div>
   );
+}
+
+// La page d'attente se suffit à elle-même : ni header boutique, ni panier,
+// ni footer — sinon le prélancement laisse fuiter toute la navigation.
+function GatedApp() {
+  const { loaded, prelaunchEnabled } = useSiteConfig();
+  const { user, checking: authLoading } = useAuth();
+  const location = useLocation();
+  const [previewOk, setPreviewOk] = useState(false);
+  const [previewChecked, setPreviewChecked] = useState(false);
+  const token = new URLSearchParams(location.search).get("preview");
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!token) { setPreviewChecked(true); return; }
+    api.get("/prelaunch/preview", { params: { token } })
+      .then((r) => { if (!cancelled) setPreviewOk(!!r.data.ok); })
+      .catch(() => { if (!cancelled) setPreviewOk(false); })
+      .finally(() => { if (!cancelled) setPreviewChecked(true); });
+    return () => { cancelled = true; };
+  }, [token]);
+
+  if (!loaded || authLoading || !previewChecked) return null;
+
+  const bypass =
+    !prelaunchEnabled ||
+    user?.role === "admin" ||
+    user?.role === "staff" ||
+    previewOk ||
+    ["/login", "/register", "/account"].some((p) => location.pathname.startsWith(p)) ||
+    location.pathname.startsWith(ADMIN_PATH);
+
+  if (!bypass) return <><ComingSoon /><Toaster position="bottom-right" /></>;
+  return <Shell><AppRoutes /></Shell>;
 }
 
 // The COA/Lab page is hidden until the backend flag COA_PAGE_ENABLED is turned on
@@ -107,9 +143,7 @@ export default function App() {
         <LanguageProvider>
           <AuthProvider>
             <CartProvider>
-              <Shell>
-                <AppRoutes />
-              </Shell>
+              <GatedApp />
             </CartProvider>
           </AuthProvider>
         </LanguageProvider>
