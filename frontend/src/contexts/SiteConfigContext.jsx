@@ -13,6 +13,10 @@ const DEFAULTS = {
   interacEmail: "",
   coaPageEnabled: false, // hidden by default until explicitly enabled server-side
   canadaPostEnabled: false,
+  // Défaut sûr : si /meta échoue, la boutique reste OUVERTE. Un défaut à true
+  // mettrait tout le site derrière la page d'attente au moindre hoquet réseau.
+  prelaunchEnabled: false,
+  launchCouponCode: "LAUNCH15",
 };
 
 export function SiteConfigProvider({ children }) {
@@ -34,6 +38,8 @@ export function SiteConfigProvider({ children }) {
           interacEmail: r.data.interac_email,
           coaPageEnabled: !!r.data.coa_page_enabled,
           canadaPostEnabled: !!r.data.canada_post_enabled,
+          prelaunchEnabled: !!r.data.prelaunch_enabled,
+          launchCouponCode: r.data.launch_coupon_code || "LAUNCH15",
         });
       })
       .catch(() => {
