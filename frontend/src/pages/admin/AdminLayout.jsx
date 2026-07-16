@@ -3,7 +3,7 @@ import { NavLink, Routes, Route, Navigate, useNavigate } from "react-router-dom"
 import {
   LayoutDashboard, ShoppingCart, Package, Ticket, Users, Truck, Settings as Cog,
   LogOut, Download, Search, X, Plus, Edit, Trash2, FileText, CheckCircle2, AlertCircle, Clock, UserCog,
-  History,
+  History, FolderTree, ListTree, Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../lib/api";
@@ -19,6 +19,9 @@ import AdminShipping from "./sections/AdminShipping";
 import AdminStaff from "./sections/AdminStaff";
 import AdminTrash from "./sections/AdminTrash";
 import AdminAuditLog from "./sections/AdminAuditLog";
+import AdminCategories from "./sections/AdminCategories";
+import AdminMenus from "./sections/AdminMenus";
+import AdminSubscribers from "./sections/AdminSubscribers";
 
 // Un membre "staff" ne voit dans le menu que les sections où il a au moins
 // un accès "view". Le rôle "admin" (owner) voit tout, sans exception. Cette
@@ -43,12 +46,15 @@ export default function AdminLayout({ basePath = "/admin" }) {
       { to: `${basePath}/coupons`, label: "Coupons", icon: Ticket, area: "coupons" },
       { to: `${basePath}/customers`, label: "Customers", icon: Users, area: "customers" },
       { to: `${basePath}/shipping`, label: "Shipping", icon: Truck, area: "shipping" },
+      { to: `${basePath}/subscribers`, label: "Subscribers", icon: Mail, area: "subscribers" },
     ];
     const filtered = all.filter((n) => hasAccess(user, n.area));
     // Gestion des membres, corbeille et journal d'audit sont réservés aux
     // "admin" (owner) — actions à fort impact ou de gouvernance, jamais
     // déléguées à un staff même avec accès "manage" complet.
     if (user?.role === "admin") {
+      filtered.push({ to: `${basePath}/categories`, label: "Categories", icon: FolderTree, area: "categories" });
+      filtered.push({ to: `${basePath}/menus`, label: "Menus", icon: ListTree, area: "menus" });
       filtered.push({ to: `${basePath}/staff`, label: "Team", icon: UserCog, area: "staff" });
       filtered.push({ to: `${basePath}/trash`, label: "Trash", icon: Trash2, area: "trash" });
       filtered.push({ to: `${basePath}/audit-log`, label: "Activity log", icon: History, area: "audit" });
@@ -121,6 +127,9 @@ export default function AdminLayout({ basePath = "/admin" }) {
             <Route path="coupons" element={hasAccess(user, "coupons") ? <AdminCoupons /> : <Navigate to={landingPath} replace />} />
             <Route path="customers" element={hasAccess(user, "customers") ? <AdminCustomers /> : <Navigate to={landingPath} replace />} />
             <Route path="shipping" element={hasAccess(user, "shipping") ? <AdminShipping /> : <Navigate to={landingPath} replace />} />
+            <Route path="subscribers" element={hasAccess(user, "subscribers") ? <AdminSubscribers /> : <Navigate to={landingPath} replace />} />
+            <Route path="categories" element={user?.role === "admin" ? <AdminCategories /> : <Navigate to={landingPath} replace />} />
+            <Route path="menus" element={user?.role === "admin" ? <AdminMenus /> : <Navigate to={landingPath} replace />} />
             <Route path="staff" element={user?.role === "admin" ? <AdminStaff /> : <Navigate to={landingPath} replace />} />
             <Route path="trash" element={user?.role === "admin" ? <AdminTrash /> : <Navigate to={landingPath} replace />} />
             <Route path="audit-log" element={user?.role === "admin" ? <AdminAuditLog /> : <Navigate to={landingPath} replace />} />
