@@ -52,6 +52,11 @@ export const dict = {
       newsletterSub: "New COAs, restocks and research notes. No spam.",
       newsletterPlaceholder: "your@email.com",
       subscribe: "Subscribe",
+      newsletterConsent: "I agree to receive research notes, COA releases and restock alerts from FIRONOVA by email. I can withdraw my consent at any time via the unsubscribe link.",
+      newsletterConsentRequired: "Please confirm your consent before subscribing.",
+      newsletterOk: "Confirmed — you're on the list.",
+      newsletterAlready: "This address is already subscribed.",
+      newsletterError: "Subscription failed. Please try again.",
     },
     age: {
       title: "Restricted Access",
@@ -67,6 +72,13 @@ export const dict = {
       sortPriceAsc: "Price · Low → High",
       sortPriceDesc: "Price · High → Low",
       empty: "No products match your filters.",
+    },
+    prelaunch: {
+      title: "Something measurable is coming.",
+      body: "FIRONOVA is preparing its first release of research peptides — third-party tested, shipped from Canada. Join the list and lock in 15% off your first order at launch.",
+      cta: "Join",
+      confirmedTag: "// CONFIRMED",
+      confirmed: "Check your inbox — create your account from the email to lock in 15% off at launch with code:",
     },
     categories: {
       all: "All categories",
@@ -278,6 +290,11 @@ export const dict = {
       newsletterSub: "Nouveaux COA, réapprovisionnements et notes de recherche. Pas de spam.",
       newsletterPlaceholder: "votre@email.com",
       subscribe: "S'abonner",
+      newsletterConsent: "J'accepte de recevoir par courriel les notes de recherche, les nouveaux COA et les avis de réapprovisionnement de FIRONOVA. Je peux retirer mon consentement à tout moment via le lien de désabonnement.",
+      newsletterConsentRequired: "Veuillez confirmer votre consentement avant de vous abonner.",
+      newsletterOk: "Confirmé — vous êtes inscrit.",
+      newsletterAlready: "Cette adresse est déjà abonnée.",
+      newsletterError: "L'inscription a échoué. Veuillez réessayer.",
     },
     age: {
       title: "Accès restreint",
@@ -293,6 +310,13 @@ export const dict = {
       sortPriceAsc: "Prix · Bas → Haut",
       sortPriceDesc: "Prix · Haut → Bas",
       empty: "Aucun produit ne correspond à vos filtres.",
+    },
+    prelaunch: {
+      title: "Un changement mesurable approche.",
+      body: "FIRONOVA prépare sa première série de peptides de recherche — analysés en laboratoire tiers, expédiés du Canada. Inscrivez-vous et verrouillez 15 % de rabais sur votre première commande au lancement.",
+      cta: "S'inscrire",
+      confirmedTag: "// CONFIRMÉ",
+      confirmed: "Vérifiez votre boîte de réception — créez votre compte depuis le courriel pour verrouiller 15 % de rabais au lancement avec le code :",
     },
     categories: {
       all: "Toutes les catégories",

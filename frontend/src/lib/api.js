@@ -5,16 +5,9 @@ export const API_BASE = `${BACKEND_URL}/api`;
 
 const api = axios.create({
   baseURL: API_BASE,
+  // Auth = cookie httpOnly `access_token` uniquement. Aucun token ne transite
+  // par un stockage accessible au JS, donc une XSS ne peut pas voler la session.
   withCredentials: true,
-});
-
-// Add Bearer token if stored (fallback to cookie)
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("fironova_token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
 });
 
 export function formatApiError(detail) {
