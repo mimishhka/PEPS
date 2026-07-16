@@ -407,13 +407,12 @@ function SecurityTab({ t, logout, navigate }) {
     }
     setPwBusy(true);
     try {
-      const { data } = await api.put("/account/password", {
+      await api.put("/account/password", {
         current_password: pw.current_password,
         new_password: pw.new_password,
       });
-      // Le backend révoque toutes les autres sessions et renvoie un token frais
-      // pour cet appareil — on le stocke pour rester connecté ici.
-      if (data.token) localStorage.setItem("fironova_token", data.token);
+      // Le backend révoque toutes les autres sessions et repose un cookie
+      // httpOnly frais pour CET appareil — rien à stocker côté JS.
       setPw({ current_password: "", new_password: "", confirm: "" });
       toast.success(t("account.passwordChanged"));
     } catch (err) {

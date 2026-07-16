@@ -1,21 +1,82 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, ShieldCheck, MapPin, FlaskConical, Package } from "lucide-react";
-import api from "../lib/api";
+import { toast } from "sonner";
+import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
-import useDocumentHead from "../hooks/useDocumentHead";
 import { useSiteConfig } from "../contexts/SiteConfigContext";
 import ProductCard from "../components/ProductCard";
 
+/* Chromatogramme HPLC — LA LIGNE. Signature visuelle FIRONOVA : c'est la
+   donnee elle-meme qui fait l'image de marque, pas une photo d'archive. */
+function Chromatogram() {
+  return (
+    <svg viewBox="0 0 520 400" className="absolute inset-0 w-full h-full" role="img" aria-label="HPLC chromatogram">
+      <defs>
+        <linearGradient id="fn-hero-wash" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#6B0504" stopOpacity="0.06" />
+          <stop offset="100%" stopColor="#3A0A08" stopOpacity="0.16" />
+        </linearGradient>
+      </defs>
+      <rect width="520" height="400" fill="url(#fn-hero-wash)" />
+      {[80, 140, 200, 260, 320].map((y) => (
+        <line key={y} x1="40" y1={y} x2="480" y2={y} stroke="#E9DED4" strokeWidth="1" />
+      ))}
+      <line x1="40" y1="320" x2="480" y2="320" stroke="#B06C49" strokeWidth="1.5" />
+      <path
+        className="hplc-trace"
+        d="M40 318 L120 316 L150 314 L168 300 L180 96 L196 306 L214 314 L262 312 L280 232 L296 310 L340 313 L356 268 L372 312 L440 315 L480 316"
+        fill="none"
+        stroke="#C20114"
+        strokeWidth="2"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <circle cx="180" cy="96" r="3.5" fill="#C20114" className="fn-dot-live" />
+      <text x="192" y="92" fontFamily="'JetBrains Mono', monospace" fontSize="11" fill="#B06C49">99.4%</text>
+      <text x="40" y="344" fontFamily="'JetBrains Mono', monospace" fontSize="10" fill="#B06C49" letterSpacing="1.6">RT 0.0</text>
+      <text x="428" y="344" fontFamily="'JetBrains Mono', monospace" fontSize="10" fill="#B06C49" letterSpacing="1.6">12.0 MIN</text>
+    </svg>
+  );
+}
+
 export default function Home() {
-  useDocumentHead({ title: "Research Peptides", description: "Research-grade peptides for laboratory use, with certificate-of-analysis documentation. For Research Use Only.", path: "/" });
   const { t, lang } = useLang();
   const { coaPageEnabled } = useSiteConfig();
   const [products, setProducts] = useState([]);
+  const [email, setEmail] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [subBusy, setSubBusy] = useState(false);
 
   useEffect(() => {
-    api.get("/products", { params: { featured: true } }).then((r) => setProducts(r.data.slice(0, 6))).catch(() => {});
+    api.get("/products", { params: { featured: true } })
+      .then((r) => setProducts(r.data.slice(0, 6)))
+      .catch(() => {});
   }, []);
+
+  /* LCAP/CASL : consentement expres obligatoire, case jamais pre-cochee. */
+  const subscribe = async (e) => {
+    e.preventDefault();
+    if (!consent) {
+      toast.error(t("home.newsletterConsentRequired"));
+      return;
+    }
+    setSubBusy(true);
+    try {
+      const { data } = await api.post("/newsletter/subscribe", {
+        email: email.trim(),
+        lang,
+        source: "home",
+      });
+      toast.success(data.already_subscribed ? t("home.newsletterAlready") : t("home.newsletterOk"));
+      setEmail("");
+      setConsent(false);
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail) || t("home.newsletterError"));
+    } finally {
+      setSubBusy(false);
+    }
+  };
 
   const trustItems = [
     { icon: FlaskConical, label: t("home.trustTested") },
@@ -35,104 +96,125 @@ export default function Home() {
   return (
     <div data-testid="home-page">
       {/* HERO */}
-      <section className="relative border-b border-ink" data-testid="hero-section">
-        <div className="grid lg:grid-cols-[1.1fr_1fr]">
-          <div className="px-6 lg:px-12 py-20 lg:py-28 flex flex-col justify-between min-h-[640px]">
-            <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/60">
+      <section className="relative overflow-hidden grain" data-testid="hero-section">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8 pt-14 lg:pt-20 pb-16 grid lg:grid-cols-[1.05fr_1fr] gap-12 items-center">
+          <div className="animate-fade-up">
+            <div className="inline-flex items-center gap-2 rounded-full border border-faint bg-paper px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.25em] text-copper">
+              <span className="w-1.5 h-1.5 rounded-full bg-signal fn-dot-live" />
               {t("home.heroOverline")}
             </div>
-            <div className="mt-12">
-              <h1 className="font-display text-5xl sm:text-7xl lg:text-[8rem] font-extrabold uppercase tracking-[-0.04em] leading-[0.88]" data-testid="hero-title">
-                {lang === "fr" ? (
-                  <>Peptides<br/>de précision<br/><span className="text-foreground/50">pour la recherche.</span></>
-                ) : (
-                  <>Precision<br/>peptides<br/><span className="text-foreground/50">for research.</span></>
-                )}
-              </h1>
-              <p className="mt-8 text-base sm:text-lg max-w-md text-foreground/75 leading-relaxed">
-                {t("home.heroSub")}
-              </p>
-              <div className="mt-10 flex flex-wrap gap-3">
+            <h1
+              className="mt-8 font-display text-5xl sm:text-6xl lg:text-7xl font-bold tracking-[-0.02em] leading-[1.02] text-ink"
+              data-testid="hero-title"
+            >
+              {lang === "fr" ? (
+                <>Peptides de précision <span className="text-copper">pour la recherche.</span></>
+              ) : (
+                <>Precision peptides <span className="text-copper">for research.</span></>
+              )}
+            </h1>
+            <p className="mt-6 text-base sm:text-lg max-w-md text-inkmuted leading-relaxed">
+              {t("home.heroSub")}
+            </p>
+            <div className="mt-10 flex flex-wrap gap-3">
+              <Link
+                to="/catalog"
+                data-testid="hero-cta-catalog"
+                className="rounded-full bg-signal text-paper font-mono text-xs uppercase tracking-[0.25em] px-7 py-4 inline-flex items-center gap-3 shadow-luxe hover:shadow-luxe-lg transition-shadow"
+              >
+                {t("home.heroCta")} <ArrowRight size={14} strokeWidth={1.5} />
+              </Link>
+              {coaPageEnabled && (
                 <Link
-                  to="/catalog"
-                  data-testid="hero-cta-catalog"
-                  className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-6 py-4 inline-flex items-center gap-3 hover:bg-foreground/85"
+                  to="/lab"
+                  data-testid="hero-cta-lab"
+                  className="rounded-full border border-faint bg-paper font-mono text-xs uppercase tracking-[0.25em] px-7 py-4 inline-flex items-center gap-3 text-ink hover:border-copper transition-colors"
                 >
-                  {t("home.heroCta")} <ArrowRight size={14} />
+                  {t("home.heroCta2")}
                 </Link>
-                {coaPageEnabled && (
-                  <Link
-                    to="/lab"
-                    data-testid="hero-cta-lab"
-                    className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-6 py-4 inline-flex items-center gap-3 hover:bg-ink hover:text-white"
-                  >
-                    {t("home.heroCta2")}
-                  </Link>
-                )}
-              </div>
+              )}
             </div>
-            <div className="mt-12 font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 grid grid-cols-3 gap-4">
-              <div>LOT · 2026Q1</div>
-              <div>≥ 99% PURITY</div>
-              <div>BIO-RX-CA</div>
+            <div className="mt-12 grid grid-cols-3 gap-3 max-w-md">
+              {["LOT · 2026Q1", "≥ 99% PURITY", "BIO-RX-CA"].map((s) => (
+                <div
+                  key={s}
+                  className="rounded-md border border-faint bg-paper px-3 py-3 font-mono text-[10px] uppercase tracking-[0.2em] text-copper text-center"
+                >
+                  {s}
+                </div>
+              ))}
             </div>
           </div>
-          <div className="relative bg-secondary border-l border-ink min-h-[500px]">
-            <img
-              src="https://images.unsplash.com/photo-1721009140154-7bb3e2dce95d?auto=format&fit=crop&w=1200&q=80"
-              alt="Nordic glacier"
-              className="absolute inset-0 w-full h-full object-cover"
-              style={{ filter: "grayscale(0.8) contrast(1.1)" }}
-            />
-            <div className="absolute inset-0 bg-ink/10" />
-            <div className="absolute top-6 left-6 font-mono text-[10px] uppercase tracking-[0.25em] bg-white px-3 py-1.5 border border-ink">
-              N 49° 16′ · W 123° 06′
-            </div>
-            <div className="absolute bottom-6 right-6 font-mono text-[10px] uppercase tracking-[0.25em] bg-ink text-white px-3 py-1.5">
-              MADE IN CANADA
+
+          {/* Le COA est la piece hero — pas une note de bas de page. */}
+          <div className="relative animate-fade-up-delay-1">
+            <div className="relative rounded-lg overflow-hidden aspect-[4/5] lg:aspect-[5/6] bg-paper border border-faint shadow-luxe-lg">
+              <Chromatogram />
+              <div className="absolute top-5 left-5 rounded-full font-mono text-[10px] uppercase tracking-[0.25em] bg-paper/90 backdrop-blur border border-faint px-4 py-2 text-copper">
+                HPLC · LOT 2026Q1-004
+              </div>
+              <div className="absolute bottom-5 right-5 rounded-full font-mono text-[10px] uppercase tracking-[0.25em] bg-garnet text-paper px-4 py-2">
+                MADE IN CANADA
+              </div>
+              <svg viewBox="0 0 120 120" className="absolute bottom-5 left-5 w-16 h-16 animate-seal" aria-hidden="true">
+                <defs>
+                  <path id="fn-seal-path" d="M60,60 m-44,0 a44,44 0 1,1 88,0 a44,44 0 1,1 -88,0" />
+                </defs>
+                <circle cx="60" cy="60" r="52" fill="none" stroke="#B06C49" strokeWidth="1" opacity="0.5" />
+                <text fontFamily="'JetBrains Mono', monospace" fontSize="11" fill="#B06C49" letterSpacing="2.4">
+                  <textPath href="#fn-seal-path">THIRD-PARTY VERIFIED · ANALYSÉ EN LABO TIERS · </textPath>
+                </text>
+              </svg>
             </div>
           </div>
         </div>
       </section>
 
       {/* TRUST MARQUEE */}
-      <section className="border-b border-ink overflow-hidden bg-ink text-white" data-testid="trust-marquee">
-        <div className="marquee-track py-5">
-          {Array.from({ length: 2 }).map((_, k) => (
-            <div key={k} className="flex items-center gap-16 pr-16 font-mono text-xs uppercase tracking-[0.3em]">
-              {trustItems.map((it, i) => (
-                <span key={i} className="flex items-center gap-3 whitespace-nowrap">
-                  <it.icon size={14} strokeWidth={1.5} /> {it.label}
-                  <span className="text-white/30">/</span>
-                </span>
-              ))}
-              {trustItems.map((it, i) => (
-                <span key={`b-${i}`} className="flex items-center gap-3 whitespace-nowrap">
-                  <it.icon size={14} strokeWidth={1.5} /> {it.label}
-                  <span className="text-white/30">/</span>
-                </span>
-              ))}
-            </div>
-          ))}
+      <section className="max-w-7xl mx-auto px-6 lg:px-8" data-testid="trust-marquee">
+        <div className="rounded-lg bg-garnet text-paper overflow-hidden shadow-luxe">
+          <div className="marquee-track py-5">
+            {Array.from({ length: 2 }).map((_, k) => (
+              <div key={k} className="flex items-center gap-16 pr-16 font-mono text-xs uppercase tracking-[0.3em]">
+                {trustItems.map((it, i) => (
+                  <span key={i} className="flex items-center gap-3 whitespace-nowrap">
+                    <it.icon size={14} strokeWidth={1.5} /> {it.label}
+                    <span className="text-copperlight/50">/</span>
+                  </span>
+                ))}
+                {trustItems.map((it, i) => (
+                  <span key={`b-${i}`} className="flex items-center gap-3 whitespace-nowrap">
+                    <it.icon size={14} strokeWidth={1.5} /> {it.label}
+                    <span className="text-copperlight/50">/</span>
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* FEATURED PRODUCTS */}
-      <section className="border-b border-ink" data-testid="featured-products">
-        <div className="px-6 lg:px-16 pt-24 pb-12 flex items-end justify-between gap-6 flex-wrap">
+      <section className="max-w-7xl mx-auto px-6 lg:px-8" data-testid="featured-products">
+        <div className="pt-24 pb-12 flex items-end justify-between gap-6 flex-wrap">
           <div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">02 — FEATURED</div>
-            <h2 className="font-display text-4xl sm:text-5xl font-extrabold uppercase tracking-tight mt-3">
+            <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-copper">02 — FEATURED</div>
+            <h2 className="font-display text-4xl sm:text-5xl font-bold tracking-[-0.01em] mt-3 text-ink">
               {t("home.featuredTitle")}
             </h2>
-            <p className="mt-3 max-w-xl text-foreground/70">{t("home.featuredSub")}</p>
+            <div className="rule-copper mt-5 w-24" />
+            <p className="mt-4 max-w-xl text-inkmuted">{t("home.featuredSub")}</p>
           </div>
-          <Link to="/catalog" data-testid="view-all-catalog" className="font-mono text-xs uppercase tracking-[0.25em] link-underline">
+          <Link
+            to="/catalog"
+            data-testid="view-all-catalog"
+            className="font-mono text-xs uppercase tracking-[0.25em] link-underline text-ink"
+          >
             {t("common.viewAll")} →
           </Link>
         </div>
-        <div className="px-6 lg:px-16 pb-24">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-12">
+        <div className="pb-24">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
             {products.map((p, i) => (
               <ProductCard product={p} key={p.id} index={i} />
             ))}
@@ -141,28 +223,36 @@ export default function Home() {
       </section>
 
       {/* CATEGORIES */}
-      <section className="border-b border-ink" data-testid="categories-section">
-        <div className="px-6 lg:px-12 pt-20 pb-10">
-          <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">03 — CATEGORIES</div>
-          <h2 className="font-display text-4xl sm:text-5xl font-extrabold uppercase tracking-tight mt-3">
+      <section className="max-w-7xl mx-auto px-6 lg:px-8" data-testid="categories-section">
+        <div className="pb-10">
+          <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-copper">03 — CATEGORIES</div>
+          <h2 className="font-display text-4xl sm:text-5xl font-bold tracking-[-0.01em] mt-3 text-ink">
             {t("home.categoriesTitle")}
           </h2>
+          <div className="rule-copper mt-5 w-24" />
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-5 border-t border-l border-ink/15">
-          {categories.map((c) => (
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          {categories.map((c, idx) => (
             <Link
               key={c.key}
               to={`/catalog?cat=${c.key}`}
               data-testid={`category-${c.key}`}
-              className="relative aspect-[3/4] border-r border-b border-ink/15 group overflow-hidden"
+              className="relative aspect-[3/4] rounded-lg group overflow-hidden card-hover border border-faint"
             >
-              <img src={c.img} alt={c.label} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" style={{ filter: "grayscale(0.8) contrast(1.1)" }} />
-              <div className="absolute inset-0 bg-ink/40 group-hover:bg-ink/20 transition-colors" />
-              <div className="relative h-full p-5 flex flex-col justify-between text-white">
-                <div className="font-mono text-[10px] uppercase tracking-[0.25em]">0{categories.indexOf(c) + 1}</div>
+              <img
+                src={c.img}
+                alt={c.label}
+                loading="lazy"
+                className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-garnet/85 via-garnet/35 to-garnet/10 group-hover:from-garnet/75 transition-colors" />
+              <div className="relative h-full p-5 flex flex-col justify-between text-paper">
+                <div className="font-mono text-[10px] uppercase tracking-[0.25em] bg-paper/15 backdrop-blur rounded-full w-fit px-3 py-1">
+                  0{idx + 1}
+                </div>
                 <div>
-                  <div className="font-display text-2xl font-bold uppercase tracking-tight leading-tight">{c.label}</div>
-                  <div className="font-mono text-[10px] uppercase tracking-[0.25em] mt-2 opacity-80">EXPLORE →</div>
+                  <div className="font-display text-xl sm:text-2xl font-bold tracking-[-0.01em] leading-tight">{c.label}</div>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.25em] mt-2 text-copperlight">EXPLORE →</div>
                 </div>
               </div>
             </Link>
@@ -170,35 +260,50 @@ export default function Home() {
         </div>
       </section>
 
-      {/* NEWSLETTER */}
-      <section className="px-6 lg:px-12 py-24 grid lg:grid-cols-2 gap-12 items-end border-b border-ink" data-testid="newsletter-section">
-        <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">04 — RESEARCH NOTES</div>
-          <h2 className="font-display text-4xl sm:text-5xl font-extrabold uppercase tracking-tight mt-3">
-            {t("home.newsletterTitle")}
-          </h2>
-          <p className="mt-3 max-w-md text-foreground/70">{t("home.newsletterSub")}</p>
+      {/* NEWSLETTER — LCAP/CASL */}
+      <section className="max-w-7xl mx-auto px-6 lg:px-8 py-24" data-testid="newsletter-section">
+        <div className="rounded-lg bg-garnet text-paper px-8 lg:px-14 py-14 grid lg:grid-cols-2 gap-12 items-start overflow-hidden relative shadow-luxe-lg">
+          <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-paper/5 pointer-events-none" />
+          <div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-copperlight">04 — RESEARCH NOTES</div>
+            <h2 className="font-display text-4xl sm:text-5xl font-bold tracking-[-0.01em] mt-3">
+              {t("home.newsletterTitle")}
+            </h2>
+            <p className="mt-4 max-w-md text-paper/70">{t("home.newsletterSub")}</p>
+          </div>
+          <form onSubmit={subscribe} className="relative" data-testid="newsletter-form">
+            <div className="flex rounded-full bg-paper p-1.5 shadow-luxe">
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={t("home.newsletterPlaceholder")}
+                className="flex-1 px-5 py-3 bg-transparent font-mono text-sm text-ink focus:outline-none min-w-0 rounded-full"
+                data-testid="newsletter-input"
+              />
+              <button
+                type="submit"
+                disabled={subBusy}
+                className="rounded-full bg-signal text-paper font-mono text-xs uppercase tracking-[0.25em] px-6 py-3 disabled:opacity-60 whitespace-nowrap"
+                data-testid="newsletter-submit"
+              >
+                {t("home.subscribe")} →
+              </button>
+            </div>
+            {/* Case JAMAIS pre-cochee — exigence LCAP (consentement expres). */}
+            <label className="mt-4 flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                data-testid="newsletter-consent"
+                className="mt-0.5 w-4 h-4 shrink-0 accent-[#C20114]"
+              />
+              <span className="text-[11px] leading-relaxed text-paper/70">{t("home.newsletterConsent")}</span>
+            </label>
+          </form>
         </div>
-        <form
-          onSubmit={(e) => { e.preventDefault(); }}
-          className="flex border border-ink"
-          data-testid="newsletter-form"
-        >
-          <input
-            type="email"
-            required
-            placeholder={t("home.newsletterPlaceholder")}
-            className="flex-1 px-5 py-4 bg-transparent font-mono text-sm focus:outline-none"
-            data-testid="newsletter-input"
-          />
-          <button
-            type="submit"
-            className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-6 hover:bg-foreground/85"
-            data-testid="newsletter-submit"
-          >
-            {t("home.subscribe")} →
-          </button>
-        </form>
       </section>
     </div>
   );

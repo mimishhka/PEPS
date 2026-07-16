@@ -5,17 +5,47 @@ import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import ProductCard from "../components/ProductCard";
 
-const CATEGORIES = ["all", "healing", "gh-secretagogues", "weight-loss", "cognitive", "longevity"];
+// Repli : si GET /categories échoue ou ne renvoie rien, on garde exactement
+// la liste historique — le catalogue ne doit jamais perdre ses filtres.
+const FALLBACK_CATEGORIES = ["all", "healing", "gh-secretagogues", "weight-loss", "cognitive", "longevity"];
+
+// Libellé : nom stocké en base d'abord, puis clé i18n historique en repli
+// (on ne supprime pas les clés i18n : elles servent aux slugs d'origine).
+function catLabel(c, lang, t) {
+  const stored = lang === "fr" ? c.name_fr : c.name_en;
+  if (stored) return stored;
+  const key = `categories.${c.slug}`;
+  const translated = t(key);
+  return translated === key ? c.slug.replace(/-/g, " ") : translated;
+}
 
 export default function Catalog() {
   useDocumentHead({ title: "Catalog", description: "Browse Fironova research peptides. Certificate-of-analysis documentation. For Research Use Only.", path: "/catalog" });
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [params, setParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState("name");
+  const [cats, setCats] = useState(null); // null = pas encore chargé
 
   const active = params.get("cat") || "all";
+
+  // Catégories pilotées par l'admin. Masquer une catégorie la retire d'ici.
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/categories")
+      .then((r) => { if (!cancelled) setCats(Array.isArray(r.data) && r.data.length ? r.data : []); })
+      .catch(() => { if (!cancelled) setCats([]); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Chips affichés : "all" synthétique + catégories publiées, ou repli.
+  const chips = useMemo(() => {
+    if (cats && cats.length) {
+      return [{ slug: "all", name_en: null, name_fr: null }, ...cats];
+    }
+    return FALLBACK_CATEGORIES.map((c) => ({ slug: c, name_en: null, name_fr: null }));
+  }, [cats]);
 
   useEffect(() => {
     setLoading(true);
@@ -48,16 +78,16 @@ export default function Catalog() {
             {t("common.filter")}
           </div>
           <ul className="space-y-2">
-            {CATEGORIES.map((c) => (
-              <li key={c}>
+            {chips.map((c) => (
+              <li key={c.slug}>
                 <button
-                  onClick={() => setParams(c === "all" ? {} : { cat: c })}
-                  data-testid={`filter-${c}`}
+                  onClick={() => setParams(c.slug === "all" ? {} : { cat: c.slug })}
+                  data-testid={`filter-${c.slug}`}
                   className={`text-left w-full font-mono text-xs uppercase tracking-[0.2em] py-2 border-b border-transparent ${
-                    active === c ? "border-ink font-bold" : "text-foreground/70 hover:text-ink"
+                    active === c.slug ? "border-ink font-bold" : "text-foreground/70 hover:text-ink"
                   }`}
                 >
-                  {t(`categories.${c}`)}
+                  {catLabel(c, lang, t)}
                 </button>
               </li>
             ))}

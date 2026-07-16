@@ -31,8 +31,8 @@ export default function StaffAccept() {
     }
     setBusy(true);
     try {
-      const { data } = await api.post("/staff/accept", { token, password });
-      if (data.token) localStorage.setItem("fironova_token", data.token);
+      await api.post("/staff/accept", { token, password });
+      // Session posée par le cookie httpOnly renvoyé par /staff/accept.
       setDone(true);
       await refresh();
       setTimeout(() => navigate("/", { replace: true }), 1200);
