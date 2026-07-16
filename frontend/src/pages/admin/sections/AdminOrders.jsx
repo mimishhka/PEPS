@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, Search, X, FileText, CheckCircle2, Save, Truck, MessageSquarePlus, Mail, Undo2 } from "lucide-react";
+import { Download, Search, X, FileText, CheckCircle2, Save, Truck, MessageSquarePlus, Mail, Undo2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
@@ -166,6 +166,16 @@ export default function AdminOrders() {
 }
 
 function OrderDetail({ order, onClose, onUpdate }) {
+  const deleteOrder = async () => {
+    if (!window.confirm(`Move order ${order.order_number} to trash? It stays recoverable there — nothing is lost.`)) return;
+    try {
+      await api.delete(`/admin/orders/${order.id}`);
+      toast.success("Order moved to trash");
+      onUpdate();
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail) || err.message);
+    }
+  };
   const [tracking, setTracking] = useState(order.shipping_info?.tracking_number || "");
   const [carrier, setCarrier] = useState(order.shipping_info?.carrier || "Canada Post");
   const [noteText, setNoteText] = useState("");
@@ -242,7 +252,13 @@ function OrderDetail({ order, onClose, onUpdate }) {
               </div>
             )}
           </div>
-          <button onClick={onClose} aria-label="Close" data-testid="close-order-detail"><X size={20} /></button>
+          <div className="flex items-center gap-4">
+            <button onClick={deleteOrder} data-testid="delete-order-btn" title="Move to trash"
+              className="text-white/60 hover:text-white">
+              <Trash2 size={18} />
+            </button>
+            <button onClick={onClose} aria-label="Close" data-testid="close-order-detail"><X size={20} /></button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6">
