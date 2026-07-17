@@ -15,6 +15,13 @@ import uuid
 import logging
 import secrets
 import asyncio
+from fastapi.responses import RedirectResponse
+from urllib.parse import urlencode
+
+# Google OAuth env placeholders
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "")
 async def _seed_categories_from_products() -> None:
     """Dérive les catégories réelles à partir des slugs déjà portés par les produits.
     Idempotent ($setOnInsert) : une catégorie éditée ensuite par l'admin n'est
@@ -161,319 +168,7 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
-def verify_password(plain: str, hashed: str) -> bool:
-    try:
-        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
-    except Exception:
-        return False
 
-
-def create_access_token(user_id: str, email: str, role: str, token_version: int = 0) -> str:
-    payload = {
-        "sub": user_id,
-        "email": email,
-        "role": role,
-        "tv": token_version,  # doit correspondre à users.token_version — sinon token révoqué
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_MINUTES),
-        "type": "access",
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-
-def set_auth_cookie(response: Response, token: str) -> None:
-    response.set_cookie(
-        key="access_token",
-        value=token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=ACCESS_TOKEN_MINUTES * 60,
-        path="/",
-    )
-
-
-def clear_auth_cookie(response: Response) -> None:
-    response.delete_cookie(key="access_token", path="/")
-
-
-async def _resolve_user(request: Request) -> Optional[dict]:
-    token = request.cookies.get("access_token")
-    if not token:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            token = auth[7:]
-    if not token:
-        return None
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        if payload.get("type") != "access":
-            return None
-        user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
-        if not user:
-            return None
-        # Révocation : si le token_version du JWT ne correspond plus à celui
-        # stocké sur l'utilisateur (changement de mot de passe, changement
-        # d'email confirmé, déconnexion globale, suppression de compte),
-        # le token est considéré invalide même s'il n'a pas expiré.
-        if payload.get("tv", 0) != user.get("token_version", 0):
-            return None
-        user.pop("token_version", None)  # détail interne, pas exposé à l'API
-        return user
-    except jwt.PyJWTError:
-        return None
-
-
-async def get_current_user(request: Request) -> dict:
-    user = await _resolve_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return user
-
-
-async def get_admin_user(request: Request) -> dict:
-    user = await get_current_user(request)
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
-    return user
-
-
-# ---------------------------------------------------------------------------
-# Rôles & permissions granulaires — inspiré du modèle de règles par entité
-# vu sur Base44 (Créateur uniquement / Tous les utilisateurs / etc.), adapté
-# à un admin e-commerce : trois rôles (user, staff, admin), et pour les
-# comptes "staff", un niveau d'accès par zone fonctionnelle.
-#   - "admin"  : accès complet à tout, y compris la gestion des autres
-#                membres staff (équivalent "Owner" chez Base44).
-#   - "staff"  : accès limité aux zones et niveaux qui lui sont accordés.
-#   - "user"   : client normal, aucun accès admin.
-# Niveaux par zone : none < view < manage (manage inclut view).
-# ---------------------------------------------------------------------------
-STAFF_AREAS = ["orders", "products", "coupons", "customers", "subscribers", "shipping", "dashboard"]
-_PERMISSION_ORDER = {"none": 0, "view": 1, "manage": 2}
-
-
-def require_area(area: str, level: str = "view"):
-    """Dépendance FastAPI paramétrée : autorise si role == admin (accès total),
-    ou si role == staff ET permissions[area] >= level demandé.
-    Journalise automatiquement toute action de niveau "manage" (= mutation) —
-    couvre les 35 endpoints admin existants sans qu'il faille les modifier
-    un par un."""
-    async def _dep(request: Request, user: dict = Depends(get_current_user)) -> dict:
-        allowed = False
-        if user.get("role") == "admin":
-            allowed = True
-        elif user.get("role") == "staff":
-            perms = user.get("permissions") or {}
-            have = _PERMISSION_ORDER.get(perms.get(area, "none"), 0)
-            need = _PERMISSION_ORDER.get(level, 1)
-            allowed = have >= need
-        if not allowed:
-            raise HTTPException(status_code=403, detail="Insufficient permissions")
-        if level == "manage":
-            asyncio.create_task(_log_action(
-                user, action=f"{request.method} {request.url.path}", area=area,
-            ))
-        return user
-    return _dep
-
-
-# ---------------------------------------------------------------------------
-# Models
-# ---------------------------------------------------------------------------
-class RegisterIn(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8)
-    name: str = Field(min_length=1)
-
-
-class LoginIn(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class UserOut(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str
-    email: str
-    name: str
-    role: str
-    created_at: str
-
-
-class ProductVariant(BaseModel):
-    id: Optional[str] = None  # generated server-side if missing
-    name: str  # "5mg", "10mg", "500mcg"
-    price: float
-    stock: int = 0
-    sku: str = ""
-    badge_coa_available: bool = False
-    badge_coa_pending: bool = False
-    badge_coming_soon: bool = False
-    coa_url: str = ""
-    sale_price: Optional[float] = None  # special/discount price (must be < price to apply)
-    preorder_enabled: bool = False
-    preorder_delay_message: str = ""
-    preorder_price: Optional[float] = None
-    preorder_note: str = ""
-    weight_grams: float = 50.0  # used to estimate parcel weight for live Canada Post rating
-
-
-class ProductIn(BaseModel):
-    slug: str
-    name_en: str
-    name_fr: str
-    category: str  # healing | gh-secretagogues | weight-loss | cognitive | longevity
-    sequence: Optional[str] = ""
-    purity: str = "≥ 99%"
-    dosage_mg: float = 0.0  # informational only — variants drive actual pricing/stock
-    description_en: str
-    description_fr: str
-    price_cad: float = 0.0  # legacy/fallback (= price of first variant)
-    stock: int = 0  # legacy/fallback (= total across variants)
-    low_stock_threshold: int = 10
-    image_url: str = ""
-    lab_tested: bool = True
-    active: bool = True
-    featured: bool = False
-    preorder_allowed: bool = False  # legacy product-level (variants override)
-    coa_url: Optional[str] = ""
-    coa_lot: Optional[str] = ""
-    coa_date: Optional[str] = ""
-    variants: List[ProductVariant] = []
-
-
-class ProductOut(ProductIn):
-    id: str
-    created_at: str
-
-
-class CartItem(BaseModel):
-    product_id: str
-    variant_id: Optional[str] = None
-    qty: int = Field(ge=1)
-
-
-class ShippingAddress(BaseModel):
-    full_name: str
-    address1: str
-    address2: Optional[str] = ""
-    city: str
-    province: str  # QC, ON, BC, AB, ...
-    postal_code: str
-    country: str = "CA"
-    phone: Optional[str] = ""
-
-
-class CheckoutIn(BaseModel):
-    items: List[CartItem]
-    shipping: ShippingAddress
-    email: Optional[EmailStr] = None  # guest email; auth user's email is used if logged in
-    payment_method: Literal["interac", "nowpayments", "stripe"]
-    pay_currency: Optional[str] = "btc"  # used only for nowpayments
-    coupon_code: Optional[str] = None
-    origin_url: Optional[str] = None  # used by stripe to build success/cancel URLs
-    accept_terms: bool
-    confirm_age: bool
-    confirm_research_use: bool
-
-
-class CouponIn(BaseModel):
-    code: str
-    discount_type: Literal["percent", "fixed"]
-    value: float = Field(gt=0)  # percent 1-100 or absolute CAD
-    min_subtotal: float = 0.0
-    usage_limit: Optional[int] = None  # None = unlimited
-    active: bool = True
-    expires_at: Optional[str] = None  # ISO string
-
-
-class OrderNoteIn(BaseModel):
-    text: str = Field(min_length=1)
-    visible_to_customer: bool = False
-
-
-class RefundIn(BaseModel):
-    amount: float = Field(gt=0)
-
-
-class ShippingInfoIn(BaseModel):
-    carrier: Optional[str] = ""
-    tracking_number: Optional[str] = ""
-    shipped_at: Optional[str] = None  # ISO; defaults to now() if not provided
-
-
-class CreateLabelIn(BaseModel):
-    service_code: str = Field(min_length=1, max_length=40)  # ex. "DOM.EP"
-
-
-class StockAdjustIn(BaseModel):
-    delta: int  # positive to add, negative to subtract
-
-
-class StockNotifyIn(BaseModel):
-    email: EmailStr
-    product_id: str
-    variant_id: Optional[str] = None
-
-
-# --- Catégories (BLOC 1) ----------------------------------------------------
-# Les produits référencent une catégorie par SLUG (string), pas par id : aucune
-# migration de données sur les produits existants.
-_SLUG_RE = re.compile(r"^[a-z0-9-]+$")
-
-
-class CategoryIn(BaseModel):
-    slug: str = Field(min_length=1, max_length=60)
-    name_en: str = Field(min_length=1, max_length=120)
-    name_fr: str = Field(min_length=1, max_length=120)
-    published: bool = True
-    display_order: int = 0
-
-    @field_validator("slug")
-    @classmethod
-    def _check_slug(cls, v: str) -> str:
-        v = v.strip().lower()
-        if not _SLUG_RE.match(v):
-            raise ValueError("slug must match ^[a-z0-9-]+$")
-        return v
-
-
-class CategoryOut(CategoryIn):
-    id: str
-    created_at: str
-
-
-# --- Menus (BLOC 2) ---------------------------------------------------------
-class MenuItemIn(BaseModel):
-    id: Optional[str] = None  # généré côté serveur si absent
-    label_en: str = Field(min_length=1, max_length=120)
-    label_fr: str = Field(min_length=1, max_length=120)
-    url: str = Field(min_length=1, max_length=500)
-    published: bool = True
-    display_order: int = 0
-    open_new_tab: bool = False
-
-
-class MenuIn(BaseModel):
-    slug: str = Field(min_length=1, max_length=60)
-    name_en: str = Field(min_length=1, max_length=120)
-    name_fr: str = Field(min_length=1, max_length=120)
-    location: Literal["header", "footer"]
-    published: bool = True
-    display_order: int = 0
-    items: List[MenuItemIn] = []
-
-    @field_validator("slug")
-    @classmethod
-    def _check_slug(cls, v: str) -> str:
-        v = v.strip().lower()
-        if not _SLUG_RE.match(v):
-            raise ValueError("slug must match ^[a-z0-9-]+$")
-        return v
-
-
-class MenuOut(MenuIn):
-    id: str
     created_at: str
 
 
@@ -794,6 +489,104 @@ async def login(payload: LoginIn, response: Response, request: Request):
         "created_at": user["created_at"],
         # NOTE: auth cookie-only — pas de token dans le body.
     }
+
+
+# ---------------------------------------------------------------------------
+# Google OAuth2 integration (Authorization Code)
+# ---------------------------------------------------------------------------
+@api.get("/auth/google/start")
+def auth_google_start(next: str = "/"):
+    if not (GOOGLE_CLIENT_ID and GOOGLE_REDIRECT_URI):
+        raise HTTPException(503, "Google OAuth is not configured")
+    state = secrets.token_urlsafe(16)
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "state": state,
+        "prompt": "select_account",
+    }
+    url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+    resp = RedirectResponse(url)
+    resp.set_cookie("oauth_state", state, httponly=True, secure=True, samesite="none", max_age=300, path="/")
+    resp.set_cookie("oauth_next", next, httponly=True, secure=True, samesite="none", max_age=300, path="/")
+    return resp
+
+
+@api.get("/auth/google/callback")
+async def auth_google_callback(request: Request, code: str | None = None, state: str | None = None):
+    if not (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and GOOGLE_REDIRECT_URI):
+        raise HTTPException(503, "Google OAuth is not configured")
+    cookie_state = request.cookies.get("oauth_state")
+    next_path = request.cookies.get("oauth_next") or "/"
+    if not code or not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
+        raise HTTPException(400, "Invalid OAuth state or missing code")
+
+    # Exchange code for tokens
+    try:
+        async with httpx.AsyncClient(timeout=15) as cx:
+            r = await cx.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "code": code,
+                    "client_id": GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "redirect_uri": GOOGLE_REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                },
+            )
+            r.raise_for_status()
+            token_data = r.json()
+    except Exception as e:
+        logging.error("Google token exchange failed: %s", e)
+        raise HTTPException(502, "Google token exchange failed")
+
+    access_token = token_data.get("access_token")
+    if not access_token:
+        logging.error("Google token response missing access_token: %s", token_data)
+        raise HTTPException(502, "Google token response invalid")
+
+    # Fetch userinfo
+    try:
+        async with httpx.AsyncClient(timeout=15) as cx:
+            r = await cx.get("https://www.googleapis.com/oauth2/v3/userinfo", headers={"Authorization": f"Bearer {access_token}"})
+            r.raise_for_status()
+            info = r.json()
+    except Exception as e:
+        logging.error("Google userinfo failed: %s", e)
+        raise HTTPException(502, "Google userinfo failed")
+
+    email = (info.get("email") or "").lower()
+    if not email:
+        raise HTTPException(400, "Google account has no email")
+
+    # Find or create user
+    user = await db.users.find_one({"email": email})
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if not user:
+        user_doc = {
+            "id": str(uuid.uuid4()),
+            "email": email,
+            "name": info.get("name") or email.split("@")[0],
+            "password_hash": hash_password(secrets.token_urlsafe(32)),
+            "role": "user",
+            "token_version": 0,
+            "created_at": now_iso,
+            "google": {"id": info.get("sub"), "picture": info.get("picture")},
+        }
+        await db.users.insert_one(user_doc)
+        user = user_doc
+    else:
+        if not user.get("google"):
+            await db.users.update_one({"id": user["id"]}, {"$set": {"google": {"id": info.get("sub"), "picture": info.get("picture")}}})
+
+    token = create_access_token(user["id"], user["email"], user.get("role", "user"), token_version=user.get("token_version", 0))
+    resp = RedirectResponse(url=(PUBLIC_BASE_URL or "") + next_path)
+    set_auth_cookie(resp, token)
+    resp.delete_cookie("oauth_state", path="/")
+    resp.delete_cookie("oauth_next", path="/")
+    return resp
 
 
 @api.post("/auth/logout")
@@ -4284,7 +4077,6 @@ async def _acquire_worker_lock(name: str, ttl_seconds: int = 120) -> bool:
         return False  # duplicate key = un autre worker détient déjà le verrou
 
 
-<<<<<<< HEAD
 async def _seed_categories_from_products() -> None:
     """Dérive les catégories réelles à partir des slugs déjà portés par les produits.
     Idempotent ($setOnInsert) : une catégorie éditée ensuite par l'admin n'est
@@ -4401,18 +4193,6 @@ async def _seed_launch_coupon() -> None:
         logging.error("launch coupon seed failed: %s", e)
 
 
-=======
->>>>>>> eb14a6e (auto-commit for fc6fef14-8592-4896-896d-467d1bf4cd1a)
-@app.on_event("startup")
-async def startup_event():
-    await seed_admin_and_products()
-    await _seed_categories_from_products()
-    await _seed_default_menus()
-    await _seed_launch_coupon()
-    if await _acquire_worker_lock("background_tasks"):
-        asyncio.create_task(_unpaid_orders_watchdog())
-        asyncio.create_task(_backfill_dispatch_batch())
-        asyncio.create_task(_trash_auto_purge_watchdog())
 
 
 async def _backfill_dispatch_batch():

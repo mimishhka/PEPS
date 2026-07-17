@@ -60,6 +60,12 @@ export default function Login() {
           <button type="submit" disabled={busy} data-testid="login-submit" className="w-full bg-ink text-white font-mono text-xs uppercase tracking-[0.3em] py-4 hover:bg-foreground/85 disabled:opacity-50">
             {busy ? t("common.loading") : `${t("auth.signin")} →`}
           </button>
+          <button type="button" onClick={() => {
+              const next = new URLSearchParams(location.search).get("next") || location.state?.from || "/account";
+              window.location.href = `/api/auth/google/start?next=${encodeURIComponent(next)}`;
+            }} className="w-full border border-ink text-foreground bg-transparent font-mono text-xs uppercase tracking-[0.3em] py-3 hover:bg-ink/5">
+            {t("auth.signinWithGoogle") || "Sign in with Google"}
+          </button>
           <p className="text-xs text-foreground/60 pt-4 border-t border-ink/15">
             {t("auth.noAccount")} <Link to="/register" className="font-bold underline" data-testid="link-register">{t("auth.signup")} →</Link>
           </p>
