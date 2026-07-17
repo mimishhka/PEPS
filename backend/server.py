@@ -462,11 +462,34 @@ async def admin_gate_verify(payload: AdminGateIn, request: Request):
     Rate-limit distinct et plus strict que le login (pas de compte à protéger
     ici, juste dissuader le brute-force du code lui-même)."""
     if not ADMIN_GATE_CODE:
-        return {"ok": True}  # passerelle désactivée si aucun code configuré
+        return {"ok": True}  # passerelle désactivée si aucun code configuré (dev/pre-prod mode)
     _rate_limit("admin_gate", _client_ip(request), 5, 3600, "Too many attempts. Try again later.")
     if not secrets.compare_digest(payload.code, ADMIN_GATE_CODE):
         raise HTTPException(status_code=403, detail="Invalid code")
     return {"ok": True}
+
+
+@api.get("/admin/autologin")
+async def admin_autologin(response: Response):
+    """Pre-prod auto-login: creates or logs in the admin user without password.
+    Only works if ADMIN_GATE_CODE is not set (dev/testing mode)."""
+    if ADMIN_GATE_CODE:
+        raise HTTPException(status_code=403, detail="Auto-login only available in dev mode")
+    doc = await db.users.find_one({"email": ADMIN_EMAIL.lower()})
+    if not doc:
+        doc = {
+            "id": str(uuid.uuid4()),
+            "email": ADMIN_EMAIL.lower(),
+            "name": "Admin",
+            "password_hash": hash_password(secrets.token_urlsafe(32)),
+            "role": "admin",
+            "token_version": 0,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.users.insert_one(doc)
+    token = create_access_token(doc["id"], doc["email"], doc.get("role", "admin"), token_version=doc.get("token_version", 0))
+    set_auth_cookie(response, token)
+    return {"ok": True, "user": {"id": doc["id"], "email": doc["email"], "name": doc["name"], "role": doc.get("role", "admin")}}
 
 
 @api.post("/auth/login")

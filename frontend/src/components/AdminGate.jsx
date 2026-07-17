@@ -5,7 +5,7 @@
 // La vraie barrière de sécurité reste le JWT + rôle admin côté backend sur
 // /api/admin/* ; ceci n'est qu'une couche de dissuasion/obscurité en plus,
 // utile tant qu'il n'y a pas de sous-domaine séparé.
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import api from "../lib/api";
 
 const GATE_KEY = "fironova_admin_gate_ok";
@@ -15,7 +15,29 @@ export default function AdminGate({ children }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [checking, setChecking] = useState(true);
 
+  useEffect(() => {
+    if (ok) {
+      setChecking(false);
+      return;
+    }
+    let cancelled = false;
+    api.get("/admin/autologin")
+      .then(() => {
+        if (!cancelled) {
+          sessionStorage.setItem(GATE_KEY, "1");
+          setOk(true);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setChecking(false);
+      });
+    return () => { cancelled = true; };
+  }, [ok]);
+
+  if (checking) return null;
   if (ok) return children;
 
   const submit = async (e) => {
