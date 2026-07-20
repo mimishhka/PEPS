@@ -2,6 +2,13 @@ import { X, Plus, Minus, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
+import { VialArt } from "./brand";
+
+function hueFor(slug = "") {
+  let h = 0;
+  for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) % 360;
+  return 190 + (h % 40);
+}
 
 export default function CartDrawer() {
   const { lang, t } = useLang();
@@ -13,24 +20,30 @@ export default function CartDrawer() {
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+        className="fixed inset-0 z-40 bg-nordfjord/40 backdrop-blur-sm"
         onClick={() => setOpen(false)}
         data-testid="cart-overlay"
       />
       <aside
-        className="fixed right-0 top-0 bottom-0 z-50 w-full sm:w-[440px] bg-white border-l border-ink flex flex-col"
+        className="fixed right-0 top-0 bottom-0 z-50 w-full sm:w-[440px] bg-clinical border-l border-ash flex flex-col"
         data-testid="cart-drawer"
       >
-        <div className="flex items-center justify-between px-6 h-16 border-b border-ink">
-          <h3 className="font-display text-lg font-bold uppercase tracking-tight">{t("cart.title")}</h3>
-          <button onClick={() => setOpen(false)} data-testid="cart-close" aria-label="Close cart">
+        <div className="flex items-center justify-between px-6 h-16 border-b border-ash">
+          <h3 className="font-display text-lg font-bold text-nordfjord">{t("cart.title")}</h3>
+          <button onClick={() => setOpen(false)} data-testid="cart-close" aria-label="Close cart" className="text-nordfjord hover:text-nova transition-colors">
             <X size={20} strokeWidth={1.5} />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto">
           {items.length === 0 ? (
-            <div className="p-8 text-center text-sm text-foreground/60" data-testid="cart-empty">
-              {t("cart.empty")}
+            <div className="h-full flex flex-col items-center justify-center gap-6 p-8 text-center" data-testid="cart-empty">
+              <p className="text-glacier">{lang === "fr" ? "Votre panier est vide." : "Your cart is empty."}</p>
+              <button
+                onClick={() => { setOpen(false); navigate("/catalog"); }}
+                className="btn-pill btn-nova"
+              >
+                {lang === "fr" ? "Parcourir les composés" : "Browse compounds"}
+              </button>
             </div>
           ) : (
             <ul>
@@ -39,28 +52,28 @@ export default function CartDrawer() {
                 return (
                   <li
                     key={`${it.product_id}-${it.variant_id || "default"}`}
-                    className="grid grid-cols-[80px_1fr_auto] gap-4 p-4 border-b border-ink/10"
+                    className="grid grid-cols-[80px_1fr_auto] gap-4 p-4 border-b border-ash"
                     data-testid={`cart-item-${it.slug}`}
                   >
-                    <div className="aspect-square bg-secondary overflow-hidden">
-                      <img src={it.image_url} alt={name} className="w-full h-full object-cover" style={{ filter: "grayscale(0.4)" }} />
+                    <div className="aspect-square rounded-xl overflow-hidden">
+                      <VialArt hue={hueFor(it.slug)} className="w-full h-full" />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">{it.slug}</div>
-                      <div className="font-display font-bold text-sm">{name}</div>
-                      <div className="font-mono text-[10px] text-foreground/60">{it.variant_name || `${it.dosage_mg}MG`}</div>
+                      <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">{it.slug}</div>
+                      <div className="font-display font-bold text-sm text-nordfjord">{name}</div>
+                      <div className="font-data text-[10px] text-glacier">{it.variant_name || `${it.dosage_mg} mg`}</div>
                       <div className="flex items-center gap-2 mt-2">
                         <button
                           onClick={() => setQty(it.product_id, it.variant_id, Math.max(1, it.qty - 1))}
-                          className="w-6 h-6 border border-ink flex items-center justify-center hover:bg-ink hover:text-white"
+                          className="w-6 h-6 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova"
                           data-testid={`cart-qty-dec-${it.slug}`}
                         >
                           <Minus size={12} />
                         </button>
-                        <span className="font-mono text-xs w-6 text-center" data-testid={`cart-qty-${it.slug}`}>{it.qty}</span>
+                        <span className="font-data text-xs w-6 text-center text-nordfjord" data-testid={`cart-qty-${it.slug}`}>{it.qty}</span>
                         <button
                           onClick={() => setQty(it.product_id, it.variant_id, it.qty + 1)}
-                          className="w-6 h-6 border border-ink flex items-center justify-center hover:bg-ink hover:text-white"
+                          className="w-6 h-6 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova"
                           data-testid={`cart-qty-inc-${it.slug}`}
                         >
                           <Plus size={12} />
@@ -68,10 +81,10 @@ export default function CartDrawer() {
                       </div>
                     </div>
                     <div className="flex flex-col items-end justify-between">
-                      <button onClick={() => remove(it.product_id, it.variant_id)} data-testid={`cart-remove-${it.slug}`} aria-label="Remove">
+                      <button onClick={() => remove(it.product_id, it.variant_id)} data-testid={`cart-remove-${it.slug}`} aria-label="Remove" className="text-glacier hover:text-error transition-colors">
                         <Trash2 size={14} strokeWidth={1.5} />
                       </button>
-                      <div className="font-display font-bold">${(it.price_cad * it.qty).toFixed(2)}</div>
+                      <div className="font-data font-bold text-nordfjord">${(it.price_cad * it.qty).toFixed(2)}</div>
                     </div>
                   </li>
                 );
@@ -80,18 +93,18 @@ export default function CartDrawer() {
           )}
         </div>
         {items.length > 0 && (
-          <div className="border-t border-ink p-6 space-y-4">
-            <div className="flex justify-between">
-              <span className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60">{t("common.subtotal")}</span>
-              <span className="font-display font-bold text-xl" data-testid="cart-subtotal">${subtotal.toFixed(2)} CAD</span>
+          <div className="border-t border-ash p-6 space-y-4">
+            <div className="flex justify-between items-baseline">
+              <span className="font-data text-xs uppercase tracking-[0.16em] text-glacier">{t("common.subtotal")}</span>
+              <span className="font-display font-bold text-xl text-nordfjord" data-testid="cart-subtotal">${subtotal.toFixed(2)} CAD</span>
             </div>
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">
-              TAXES &amp; SHIPPING CALCULATED AT CHECKOUT
+            <p className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">
+              {lang === "fr" ? "TAXES ET LIVRAISON CALCULÉES AU PAIEMENT" : "TAXES & SHIPPING CALCULATED AT CHECKOUT"}
             </p>
             <button
               data-testid="cart-checkout-btn"
               onClick={() => { setOpen(false); navigate("/checkout"); }}
-              className="w-full bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] py-4 hover:bg-foreground/85"
+              className="w-full btn-pill btn-nova"
             >
               {t("cart.proceed")} →
             </button>
