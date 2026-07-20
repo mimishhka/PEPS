@@ -286,7 +286,7 @@ export default function Faq() {
               ? "Écrivez-nous et nous ferons de notre mieux pour répondre dans les 24 heures (délai maximal de 2 jours ouvrables)."
               : "Email us and we will do our best to reply within 24 hours (maximum 2 business days)."}
           </p>
-          
+          <a
             href="mailto:info@fironova.ca"
             className="inline-block mt-4 btn-pill btn-nova"
             data-testid="faq-contact-email"
