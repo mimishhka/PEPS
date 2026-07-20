@@ -237,62 +237,64 @@ export default function Faq() {
   const { lang } = useLang();
   const isFr = lang === "fr";
   return (
-    <div className="max-w-4xl mx-auto px-6 py-16 space-y-16" data-testid="faq-page">
-      <header className="border-b border-ink pb-6">
-        <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// FIRONOVA</div>
-        <h1 className="font-display text-5xl sm:text-6xl font-extrabold uppercase tracking-tight mt-2">FAQ</h1>
-        <p className="mt-4 text-sm text-foreground/60">
-          {isFr
-            ? "Les réponses ci-dessous reflètent nos Conditions Générales, notre Politique d'expédition et notre Politique de confidentialité. En cas de divergence, ces documents prévalent."
-            : "The answers below reflect our Terms & Conditions, Shipping Policy and Privacy Policy. In the event of a discrepancy, those documents prevail."}
-        </p>
-      </header>
+    <div className="bg-clinical min-h-screen">
+      <div className="max-w-4xl mx-auto px-6 py-16 space-y-16" data-testid="faq-page">
+        <header className="border-b border-ash pb-6">
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">FIRONOVA</p>
+          <h1 className="font-display text-[42px] sm:text-[52px] font-bold text-nordfjord tracking-[-0.01em]">FAQ</h1>
+          <p className="mt-4 text-sm text-glacier">
+            {isFr
+              ? "Les réponses ci-dessous reflètent nos Conditions Générales, notre Politique d'expédition et notre Politique de confidentialité. En cas de divergence, ces documents prévalent."
+              : "The answers below reflect our Terms & Conditions, Shipping Policy and Privacy Policy. In the event of a discrepancy, those documents prevail."}
+          </p>
+        </header>
 
-      {GROUPS.map((g) => (
-        <section key={g.id} id={g.id} data-testid={`faq-group-${g.id}`}>
-          <h2 className="font-display text-2xl sm:text-3xl font-bold uppercase tracking-tight">
-            {isFr ? g.fr : g.en}
+        {GROUPS.map((g) => (
+          <section key={g.id} id={g.id} data-testid={`faq-group-${g.id}`}>
+            <h2 className="font-display text-2xl sm:text-3xl font-bold text-nordfjord">
+              {isFr ? g.fr : g.en}
+            </h2>
+            <Accordion type="single" collapsible className="mt-4">
+              {g.items.map((item) => (
+                <AccordionItem key={item.id} value={item.id} data-testid={`faq-item-${item.id}`} className="border-ash">
+                  <AccordionTrigger className="text-left font-bold text-nordfjord" data-testid={`faq-trigger-${item.id}`}>
+                    {isFr ? item.q.fr : item.q.en}
+                  </AccordionTrigger>
+                  <AccordionContent className="text-glacier leading-relaxed">
+                    {isFr ? item.a.fr : item.a.en}
+                    {item.termsLink && (
+                      <>
+                        {" "}
+                        <Link to="/compliance" className="text-nova underline font-medium" data-testid={`faq-terms-link-${item.id}`}>
+                          {isFr ? "Voir les Conditions Générales →" : "See the Terms & Conditions →"}
+                        </Link>
+                      </>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </section>
+        ))}
+
+        <section className="border-t border-ash pt-10" data-testid="faq-contact">
+          <h2 className="font-display text-2xl font-bold text-nordfjord">
+            {isFr ? "Une autre question ?" : "Still have a question?"}
           </h2>
-          <Accordion type="single" collapsible className="mt-4">
-            {g.items.map((item) => (
-              <AccordionItem key={item.id} value={item.id} data-testid={`faq-item-${item.id}`}>
-                <AccordionTrigger className="text-left font-bold" data-testid={`faq-trigger-${item.id}`}>
-                  {isFr ? item.q.fr : item.q.en}
-                </AccordionTrigger>
-                <AccordionContent className="text-foreground/80 leading-relaxed">
-                  {isFr ? item.a.fr : item.a.en}
-                  {item.termsLink && (
-                    <>
-                      {" "}
-                      <Link to="/compliance" className="underline font-medium" data-testid={`faq-terms-link-${item.id}`}>
-                        {isFr ? "Voir les Conditions Générales →" : "See the Terms & Conditions →"}
-                      </Link>
-                    </>
-                  )}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+          <p className="mt-3 text-glacier leading-relaxed">
+            {isFr
+              ? "Écrivez-nous et nous ferons de notre mieux pour répondre dans les 24 heures (délai maximal de 2 jours ouvrables)."
+              : "Email us and we will do our best to reply within 24 hours (maximum 2 business days)."}
+          </p>
+          
+            href="mailto:info@fironova.ca"
+            className="inline-block mt-4 btn-pill btn-nova"
+            data-testid="faq-contact-email"
+          >
+            info@fironova.ca
+          </a>
         </section>
-      ))}
-
-      <section className="border-t border-ink pt-10" data-testid="faq-contact">
-        <h2 className="font-display text-2xl font-bold uppercase tracking-tight">
-          {isFr ? "Une autre question ?" : "Still have a question?"}
-        </h2>
-        <p className="mt-3 text-foreground/80 leading-relaxed">
-          {isFr
-            ? "Écrivez-nous et nous ferons de notre mieux pour répondre dans les 24 heures (délai maximal de 2 jours ouvrables)."
-            : "Email us and we will do our best to reply within 24 hours (maximum 2 business days)."}
-        </p>
-        <a
-          href="mailto:info@fironova.ca"
-          className="inline-block mt-4 bg-ink text-white font-mono text-xs uppercase tracking-[0.2em] px-6 py-3 hover:bg-signal transition-colors"
-          data-testid="faq-contact-email"
-        >
-          info@fironova.ca
-        </a>
-      </section>
+      </div>
     </div>
   );
 }
