@@ -1,6 +1,13 @@
 import { Link } from "react-router-dom";
 import { useLang } from "../contexts/LanguageContext";
 import { useCart } from "../contexts/CartContext";
+import { VialArt } from "./brand";
+
+function hueFor(slug = "") {
+  let h = 0;
+  for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) % 360;
+  return 190 + (h % 40); // teal→blue band
+}
 
 export default function ProductCard({ product, index = 0 }) {
   const { lang, t } = useLang();
@@ -21,93 +28,80 @@ export default function ProductCard({ product, index = 0 }) {
   const anyPreorder = priced.some((v) => v.isPre);
   const anySale = priced.some((v) => v.sale && !v.isPre);
 
+  const stockN = cheapest ? (cheapest.stock ?? 0) : (product.stock ?? 0);
+  const inStock = stockN > 0;
+
+  const specLine = [
+    product.dosage_mg ? `${product.dosage_mg} mg` : null,
+    "Lyophilized",
+    "COA included",
+  ].filter(Boolean).join(" · ");
+
   return (
     <div
-      className="group bg-paper border border-faint rounded-lg overflow-hidden flex flex-col card-hover"
+      className="group bg-white border border-ash rounded-2xl overflow-hidden flex flex-col card-hover"
       data-testid={`product-card-${product.slug}`}
     >
-      <Link to={`/product/${product.slug}`} className="block relative bg-secondary aspect-[4/5] overflow-hidden">
-        <img
-          src={product.image_url}
-          alt={name}
-          loading={index < 4 ? "eager" : "lazy"}
-          className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-        />
-        <div className="absolute top-3 left-3 rounded-full font-mono text-[10px] uppercase tracking-[0.2em] bg-paper/90 backdrop-blur border border-faint px-3 py-1.5 text-copper">
-          {product.dosage_mg}MG
-        </div>
-        {product.lab_tested && (
-          <div className="absolute top-3 right-3 rounded-full font-mono text-[10px] uppercase tracking-[0.2em] bg-garnet text-paper px-3 py-1.5">
-            COA ✓
-          </div>
-        )}
+      <Link to={`/product/${product.slug}`} className="block relative aspect-[4/3] overflow-hidden">
+        <VialArt hue={hueFor(product.slug)} className="w-full h-full" />
         <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
           {anySale && (
-            <span
-              className="rounded-full font-mono text-[10px] uppercase tracking-[0.2em] bg-signal text-paper px-3 py-1.5"
-              data-testid={`sale-badge-${product.slug}`}
-            >
+            <span className="rounded-full font-data text-[10px] font-semibold uppercase tracking-[0.18em] bg-nova text-nordfjord px-3 py-1" data-testid={`sale-badge-${product.slug}`}>
               {lang === "fr" ? "PROMO" : "SALE"}
             </span>
           )}
           {anyPreorder && (
-            <span
-              className="rounded-full font-mono text-[10px] uppercase tracking-[0.2em] bg-paper/90 backdrop-blur border border-copper text-copper px-3 py-1.5"
-              data-testid={`preorder-badge-${product.slug}`}
-            >
+            <span className="rounded-full font-data text-[10px] font-semibold uppercase tracking-[0.18em] bg-white/90 backdrop-blur border border-nova text-nova px-3 py-1" data-testid={`preorder-badge-${product.slug}`}>
               {lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"}
             </span>
           )}
         </div>
       </Link>
-      <div className="p-5 flex flex-col gap-2.5 flex-1">
-        <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-copper">
-          {product.slug}
+
+      <div className="p-5 flex flex-col gap-1.5 flex-1">
+        <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">
+          {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT" : "FOR RESEARCH USE ONLY"}
         </div>
-        <Link
-          to={`/product/${product.slug}`}
-          className="font-display text-xl font-bold tracking-[-0.01em] text-ink hover:text-garnet transition-colors"
-        >
+        <Link to={`/product/${product.slug}`} className="font-display text-lg font-bold text-nordfjord hover:text-nova transition-colors">
           {name}
         </Link>
-        {product.sequence && (
-          <div className="font-mono text-[10px] text-inkmuted line-clamp-1">{product.sequence}</div>
-        )}
-        <div className="flex items-end justify-between pt-2 mt-auto">
-          <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-inkmuted">
-              {variants.length > 1 ? (lang === "fr" ? "DÈS · CAD" : "FROM · CAD") : "CAD"}
-            </div>
-            <div className="flex items-baseline gap-2">
-              {displayOriginal && (
-                <span
-                  className="font-mono text-sm line-through text-inkmuted"
-                  data-testid={`card-original-price-${product.slug}`}
-                >
-                  ${displayOriginal.toFixed(2)}
-                </span>
-              )}
-              <span
-                className={`font-mono text-2xl font-bold tabular-nums ${displayOriginal ? "text-signal" : "text-ink"}`}
-                data-testid={`card-price-${product.slug}`}
-              >
-                ${(displayPrice ?? 0).toFixed(2)}
+        <div className="font-data text-[11px] text-glacier">{specLine}</div>
+
+        <div className="flex items-center justify-between pt-3 mt-auto">
+          <div className="flex items-baseline gap-2">
+            {displayOriginal && (
+              <span className="font-data text-sm line-through text-glacier" data-testid={`card-original-price-${product.slug}`}>
+                ${displayOriginal.toFixed(2)}
               </span>
-            </div>
+            )}
+            <span className={`font-data text-xl font-bold tabular-nums ${displayOriginal ? "text-nova" : "text-nordfjord"}`} data-testid={`card-price-${product.slug}`}>
+              ${(displayPrice ?? 0).toFixed(2)}
+            </span>
+            {variants.length > 1 && (
+              <span className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{lang === "fr" ? "dès" : "from"}</span>
+            )}
           </div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-copper">
-            {product.purity}
-          </div>
+          <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock ? "text-success" : "text-warning"}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${inStock ? "bg-success" : "bg-warning"}`} />
+            {anyPreorder && !inStock ? (lang === "fr" ? "Précommande" : "Pre-order") : inStock ? (lang === "fr" ? "En stock" : "In stock") : (lang === "fr" ? "Rupture" : "Out")}
+          </span>
         </div>
       </div>
-      <div className="p-4 pt-0">
+
+      <div className="p-4 pt-0 flex flex-col gap-2">
         <button
           data-testid={`add-to-cart-${product.slug}`}
           onClick={() => add(product)}
-          className="w-full rounded-full bg-ink text-paper font-mono text-xs uppercase tracking-[0.25em] py-3.5 hover:bg-garnet transition-colors"
+          className="w-full btn-pill btn-nova"
         >
-          {t("common.addToCart")} +
+          {lang === "fr" ? "Ajouter à la commande" : "Add to order"}
         </button>
+        <Link
+          to={`/product/${product.slug}`}
+          className="w-full btn-pill btn-outline"
+        >
+          {lang === "fr" ? "Voir la documentation" : "View documentation"}
+        </Link>
       </div>
     </div>
   );
