@@ -235,4 +235,134 @@ export default function Checkout() {
                 data-testid="checkout-pay-currency"
               >
                 <option value="btc">Bitcoin (BTC)</option>
-                <option
+                <option value="eth">Ethereum (ETH)</option>
+                <option value="usdttrc20">Tether (USDT · TRC-20)</option>
+                <option value="usdterc20">Tether (USDT · ERC-20)</option>
+                <option value="ltc">Litecoin (LTC)</option>
+                <option value="sol">Solana (SOL)</option>
+              </select>
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-4 bg-nordfjord text-clinical p-6 rounded-2xl">
+          <div className="font-data text-[11px] uppercase tracking-[0.2em] text-nova">04 · COMPLIANCE — REQUIRED</div>
+          <Checkbox checked={ack.a1} onChange={(c) => setAck({ ...ack, a1: c })} label={t("checkout.ack1")} testId="ack-age" />
+          <Checkbox checked={ack.a2} onChange={(c) => setAck({ ...ack, a2: c })} label={t("checkout.ack2")} testId="ack-research" />
+          <Checkbox checked={ack.a3} onChange={(c) => setAck({ ...ack, a3: c })} label={t("checkout.ack3")} testId="ack-terms" />
+        </section>
+
+        <button
+          type="submit"
+          disabled={submitting}
+          data-testid="place-order-btn"
+          className="w-full btn-pill btn-nova disabled:opacity-50"
+        >
+          {submitting ? t("checkout.processing") : `${t("checkout.placeOrder")} · $${total.toFixed(2)} CAD →`}
+        </button>
+      </form>
+
+      <aside className="p-8 lg:p-12 bg-white border-l border-ash" data-testid="checkout-summary">
+        <h3 className="font-display text-xl font-bold text-nordfjord">{t("common.total")}</h3>
+        <ul className="mt-6 divide-y divide-ash">
+          {items.map((i) => {
+            const name = lang === "fr" ? i.name_fr : i.name_en;
+            return (
+              <li key={i.product_id} className="grid grid-cols-[60px_1fr_auto] gap-3 py-3 items-center" data-testid={`summary-item-${i.slug}`}>
+                <div className="aspect-square rounded-lg overflow-hidden"><VialArt hue={hueFor(i.slug)} className="w-full h-full" /></div>
+                <div>
+                  <div className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">{i.qty}× · {i.slug}</div>
+                  <div className="font-bold text-sm text-nordfjord">{name}</div>
+                </div>
+                <div className="font-data font-bold text-sm text-nordfjord">${(i.price_cad * i.qty).toFixed(2)}</div>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="mt-6 border-t border-ash pt-4 space-y-2 font-data text-sm">
+          <div className="flex justify-between"><span className="text-glacier uppercase tracking-[0.14em] text-xs">{t("common.subtotal")}</span><span className="text-nordfjord" data-testid="summary-subtotal">${subtotal.toFixed(2)}</span></div>
+          {discount > 0 && (
+            <div className="flex justify-between text-success" data-testid="summary-discount">
+              <span className="uppercase tracking-[0.14em] text-xs">DISCOUNT ({coupon.applied.code})</span>
+              <span>-${discount.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between">
+            <span className="text-glacier uppercase tracking-[0.14em] text-xs">{t("common.shipping")}</span>
+            <span className="text-nordfjord" data-testid="summary-shipping">{shipping === 0 ? (lang === "fr" ? "GRATUIT" : "FREE") : `$${shipping.toFixed(2)}`}</span>
+          </div>
+          {shipping > 0 && (
+            <div className="font-data text-[10px] uppercase tracking-[0.14em] text-compliance" data-testid="free-shipping-hint">
+              {lang === "fr"
+                ? `Livraison gratuite dès ${FREE_SHIPPING_THRESHOLD.toFixed(0)} $ — plus que $${(FREE_SHIPPING_THRESHOLD - Math.max(0, subtotal - discount)).toFixed(2)}`
+                : `Free shipping at $${FREE_SHIPPING_THRESHOLD.toFixed(0)} — only $${(FREE_SHIPPING_THRESHOLD - Math.max(0, subtotal - discount)).toFixed(2)} to go`}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-ash" data-testid="coupon-section">
+          {!coupon.applied ? (
+            <div className="space-y-2">
+              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance">Coupon code</label>
+              <div className="flex gap-2">
+                <input
+                  value={coupon.code}
+                  onChange={(e) => setCoupon({ ...coupon, code: e.target.value.toUpperCase(), error: "" })}
+                  placeholder="FIRONOVA10"
+                  data-testid="coupon-input"
+                  className="flex-1 rounded-full border border-ash px-4 py-2 text-sm font-data uppercase text-nordfjord outline-none focus:border-nova"
+                />
+                <button type="button" onClick={applyCoupon} data-testid="apply-coupon" className="btn-pill btn-outline">
+                  Apply
+                </button>
+              </div>
+              {coupon.error && <div className="font-data text-[11px] text-error" data-testid="coupon-error">{coupon.error}</div>}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between rounded-xl bg-success/10 border border-success px-3 py-2" data-testid="coupon-applied">
+              <div className="text-sm text-nordfjord">
+                <span className="font-data font-bold">{coupon.applied.code}</span> applied · ${discount.toFixed(2)} off
+              </div>
+              <button type="button" onClick={removeCoupon} className="font-data text-xs uppercase tracking-[0.16em] text-success">Remove</button>
+            </div>
+          )}
+        </div>
+        <div className="mt-4 border-t-2 border-nordfjord pt-4 flex justify-between items-end">
+          <span className="font-data uppercase tracking-[0.16em] text-xs text-glacier">{t("common.total")} CAD</span>
+          <span className="font-display text-3xl font-bold text-nordfjord" data-testid="summary-total">${total.toFixed(2)}</span>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function Input({ label, value, onChange, type = "text", required = false, testId }) {
+  return (
+    <div>
+      <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{label}{required && " *"}</label>
+      <input
+        type={type}
+        value={value}
+        required={required}
+        onChange={(e) => onChange(e.target.value)}
+        data-testid={testId}
+        className="w-full rounded-full border border-ash px-5 py-3 bg-white text-sm text-nordfjord outline-none focus:border-nova"
+      />
+    </div>
+  );
+}
+
+function Checkbox({ checked, onChange, label, testId }) {
+  return (
+    <label className="flex items-start gap-3 cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        data-testid={testId}
+        className="mt-0.5 w-4 h-4 accent-[#00B8D4]"
+      />
+      <span className="text-xs leading-relaxed text-[#B7CADD]">{label}</span>
+    </label>
+  );
+}
