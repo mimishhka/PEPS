@@ -1,11 +1,18 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { Plus, Minus, AlertTriangle, BellRing, Check } from "lucide-react";
+import { Plus, Minus, BellRing, Check, FileText } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { useCart } from "../contexts/CartContext";
+import { VialArt, Seal } from "../components/brand";
+
+function hueFor(slug = "") {
+  let h = 0;
+  for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) % 360;
+  return 190 + (h % 40);
+}
 
 export default function ProductDetail() {
   const { slug } = useParams();
@@ -36,21 +43,19 @@ export default function ProductDetail() {
       .finally(() => setLoading(false));
   }, [slug]);
 
-  useEffect(() => {
-    setNotifyDone(false);
-    setNotifyEmail("");
-  }, [variantId, slug]);
+  useEffect(() => { setNotifyDone(false); setNotifyEmail(""); }, [variantId, slug]);
 
   if (loading) {
-    return <div className="p-16 font-mono text-xs uppercase tracking-[0.25em]">{t("common.loading")}</div>;
+    return <div className="p-16 font-data text-xs uppercase tracking-[0.2em] text-glacier">{t("common.loading")}</div>;
   }
   if (!product) {
     return (
-      <div className="p-16 font-mono text-xs uppercase tracking-[0.25em]">
-        Product not found. <Link to="/catalog" className="underline">Back to catalog</Link>
+      <div className="p-16 font-data text-xs uppercase tracking-[0.2em] text-glacier">
+        Product not found. <Link to="/catalog" className="text-nova underline">Back to catalog</Link>
       </div>
     );
   }
+
   const name = lang === "fr" ? product.name_fr : product.name_en;
   const desc = lang === "fr" ? product.description_fr : product.description_en;
   const variants = product.variants || [];
@@ -59,13 +64,12 @@ export default function ProductDetail() {
   const isVariantPreorder = !!(selectedVariant && selectedVariant.preorder_enabled && (selectedVariant.stock <= 0 || coaComing));
   const hasSale = !!(selectedVariant && selectedVariant.sale_price && selectedVariant.sale_price < selectedVariant.price);
   const effectivePrice = selectedVariant
-    ? (isVariantPreorder && selectedVariant.preorder_price
-        ? selectedVariant.preorder_price
-        : hasSale ? selectedVariant.sale_price : selectedVariant.price)
+    ? (isVariantPreorder && selectedVariant.preorder_price ? selectedVariant.preorder_price : hasSale ? selectedVariant.sale_price : selectedVariant.price)
     : product.price_cad;
   const showOriginal = !!(selectedVariant && effectivePrice < selectedVariant.price);
   const isComingSoon = !!(selectedVariant && selectedVariant.badge_coming_soon && !selectedVariant.preorder_enabled);
   const isOutOfStock = !!(selectedVariant && selectedVariant.stock <= 0 && !selectedVariant.preorder_enabled && !coaComing);
+  const stockN = selectedVariant?.stock ?? product.stock ?? 0;
 
   const submitNotify = async () => {
     if (!/^\S+@\S+\.\S+$/.test(notifyEmail)) {
@@ -87,219 +91,173 @@ export default function ProductDetail() {
     }
   };
 
+  const coaUrl = selectedVariant?.coa_url || product.coa_url;
+
+  const specs = [
+    { k: lang === "fr" ? "PURETÉ (HPLC)" : "PURITY (HPLC)", v: product.purity },
+    { k: lang === "fr" ? "LOT ACTUEL" : "CURRENT LOT", v: product.coa_lot || "—" },
+    { k: lang === "fr" ? "MASSE MOLAIRE" : "MOLAR MASS", v: product.molecular_weight ? `${product.molecular_weight} g/mol` : "—" },
+    { k: "SKU", v: selectedVariant?.sku || product.slug.toUpperCase() },
+    { k: lang === "fr" ? "FORME" : "FORM", v: "Lyophilized" },
+    { k: "CAS", v: product.cas_number || "—" },
+  ];
+
   return (
-    <div data-testid="product-detail-page" className="grid lg:grid-cols-2 border-b border-ink">
-      <div className="lg:sticky lg:top-32 self-start aspect-square bg-secondary border-r border-ink relative">
-        <img src={product.image_url} alt={name} className="absolute inset-0 w-full h-full object-cover" style={{ filter: "grayscale(0.4) contrast(1.05)" }} />
-        <div className="absolute top-5 left-5 font-mono text-[10px] uppercase tracking-[0.25em] bg-white px-3 py-1.5 border border-ink">
-          {product.dosage_mg}MG · VIAL
-        </div>
-        {product.coa_url ? (
-          <a href={product.coa_url} target="_blank" rel="noopener noreferrer" data-testid="coa-badge-verified" className="absolute bottom-5 left-5 font-mono text-[10px] uppercase tracking-[0.25em] bg-emerald-600 text-white px-3 py-1.5 hover:bg-emerald-700">
-            COA · VERIFIED ✓
-          </a>
-        ) : (
-          <div data-testid="coa-badge-pending" className="absolute bottom-5 left-5 font-mono text-[10px] uppercase tracking-[0.25em] bg-orange-500 text-white px-3 py-1.5">
-            COA · PENDING
-          </div>
-        )}
-        {product.stock <= 0 && product.preorder_allowed && (
-          <div data-testid="preorder-badge" className="absolute top-5 right-5 font-mono text-[10px] uppercase tracking-[0.25em] bg-orange-500 text-white px-3 py-1.5">
-            PRE-ORDER
-          </div>
-        )}
-      </div>
-      <div className="p-8 lg:p-12 space-y-8">
-        <div>
-          <Link to="/catalog" data-testid="back-to-catalog" className="font-mono text-[11px] uppercase tracking-[0.25em] link-underline text-foreground/60">
-            ← {t("common.back")}
-          </Link>
-          <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50 mt-6">
-            {t("categories." + product.category)} · {product.slug}
-          </div>
-          <h1 className="font-display text-5xl sm:text-6xl font-extrabold uppercase tracking-tight mt-3" data-testid="product-name">
-            {name}
-          </h1>
-        </div>
+    <div data-testid="product-detail-page" className="bg-clinical min-h-screen">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8 py-12">
+        <Link to="/catalog" data-testid="back-to-catalog" className="inline-flex items-center gap-2 font-data text-[12px] uppercase tracking-[0.16em] text-glacier hover:text-nordfjord transition-colors mb-8">
+          ← {lang === "fr" ? "Retour au catalogue" : "Back to catalog"}
+        </Link>
 
-        <div className="border border-signal text-signal p-4 flex items-start gap-3" style={{ borderColor: "#C20114", color: "#C20114" }} data-testid="research-only-banner">
-          <AlertTriangle size={18} strokeWidth={1.5} className="mt-0.5 shrink-0" />
-          <p className="font-mono text-[11px] uppercase tracking-[0.2em] leading-relaxed">
-            {t("product.researchOnly")}
-          </p>
-        </div>
-
-        <p className="text-base leading-relaxed text-foreground/80">{desc}</p>
-
-        <table className="w-full border-collapse">
-          <tbody className="font-mono text-xs">
-            <tr className="border-t border-b border-ink/20">
-              <td className="py-3 uppercase tracking-[0.2em] text-foreground/60 w-1/3">{t("product.sku")}</td>
-              <td className="py-3">{selectedVariant?.sku || product.slug.toUpperCase()}</td>
-            </tr>
-            {product.sequence && (
-              <tr className="border-b border-ink/20">
-                <td className="py-3 uppercase tracking-[0.2em] text-foreground/60">{t("product.sequence")}</td>
-                <td className="py-3 break-all">{product.sequence}</td>
-              </tr>
-            )}
-            <tr className="border-b border-ink/20">
-              <td className="py-3 uppercase tracking-[0.2em] text-foreground/60">{t("product.purity")}</td>
-              <td className="py-3">{product.purity}</td>
-            </tr>
-            <tr className="border-b border-ink/20">
-              <td className="py-3 uppercase tracking-[0.2em] text-foreground/60">{t("product.dosage")}</td>
-              <td className="py-3">{selectedVariant?.name || `${product.dosage_mg} mg`} · single vial</td>
-            </tr>
-            <tr className="border-b border-ink/20">
-              <td className="py-3 uppercase tracking-[0.2em] text-foreground/60">{t("product.stock")}</td>
-              <td className="py-3">
-                {isComingSoon ? "Coming soon"
-                  : isVariantPreorder ? (selectedVariant.preorder_delay_message || "Pre-order available")
-                  : (selectedVariant?.stock ?? 0) > 0 ? `${selectedVariant.stock} units`
-                  : t("product.outOfStock")}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        {variants.length > 1 && (
-          <div data-testid="variant-selector">
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-2">Choose a size / dosage</div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {variants.map((v) => {
-                const active = v.id === variantId;
-                const vCoaComing = v.badge_coa_pending || v.badge_coming_soon;
-                const vPre = v.preorder_enabled && (v.stock <= 0 || vCoaComing);
-                const vSale = v.sale_price && v.sale_price < v.price;
-                const vPrice = vPre && v.preorder_price ? v.preorder_price : vSale ? v.sale_price : v.price;
-                const outNoPre = v.stock <= 0 && !v.preorder_enabled && !v.badge_coming_soon;
-                return (
-                  <button
-                    key={v.id}
-                    type="button"
-                    onClick={() => setVariantId(v.id)}
-                    disabled={(v.badge_coming_soon && !v.preorder_enabled) || outNoPre}
-                    data-testid={`variant-${v.name}`}
-                    className={`p-3 border text-left transition-colors ${active ? "border-ink bg-ink text-white" : "border-ink/30 hover:border-ink"} disabled:opacity-40 disabled:cursor-not-allowed`}
-                  >
-                    <div className="font-display font-bold">{v.name}</div>
-                    <div className="font-mono text-[10px] mt-0.5 opacity-80">
-                      {vPrice < v.price && <span className="line-through mr-1 opacity-60">${v.price?.toFixed(2)}</span>}
-                      <span className={vPrice < v.price ? "text-red-500 font-bold" : ""}>${vPrice?.toFixed(2)} CAD</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {v.badge_coa_available && <span className="text-[9px] font-mono bg-emerald-600 text-white px-1.5 py-0.5">COA</span>}
-                      {v.badge_coa_pending && <span className="text-[9px] font-mono bg-orange-500 text-white px-1.5 py-0.5">COA…</span>}
-                      {v.badge_coming_soon && <span className="text-[9px] font-mono bg-blue-600 text-white px-1.5 py-0.5">SOON</span>}
-                      {vPre && <span className="text-[9px] font-mono bg-orange-500 text-white px-1.5 py-0.5">PRE</span>}
-                      {vSale && !vPre && <span className="text-[9px] font-mono bg-red-600 text-white px-1.5 py-0.5">SALE</span>}
-                    </div>
-                  </button>
-                );
-              })}
+        <div className="grid lg:grid-cols-2 gap-12">
+          <div className="relative">
+            <div className="rounded-2xl overflow-hidden aspect-square relative">
+              <VialArt hue={hueFor(product.slug)} className="w-full h-full" />
+              <div className="absolute bottom-5 right-5"><Seal size={92} /></div>
             </div>
-          </div>
-        )}
-
-        <div className="border-t border-ink pt-8 flex items-end justify-between gap-6 flex-wrap">
-          <div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50">CAD</div>
-            <div className="flex items-baseline gap-3 flex-wrap">
-              {showOriginal && (
-                <span className="font-display text-2xl font-bold line-through text-foreground/40" data-testid="product-original-price">
-                  ${selectedVariant.price.toFixed(2)}
-                </span>
-              )}
-              <span className={`font-display text-5xl font-extrabold ${showOriginal ? "text-red-600" : ""}`} data-testid="product-price">
-                ${effectivePrice.toFixed(2)}
-              </span>
-              {showOriginal && (
-                <span className="font-mono text-[11px] uppercase tracking-[0.2em] bg-red-600 text-white px-2 py-1" data-testid="product-discount-badge">
-                  {isVariantPreorder && selectedVariant.preorder_price
-                    ? (lang === "fr" ? "PRIX PRÉCOMMANDE" : "PRE-ORDER PRICE")
-                    : (lang === "fr" ? "PRIX SPÉCIAL" : "SPECIAL PRICE")}
-                  {" "}−{Math.round((1 - effectivePrice / selectedVariant.price) * 100)}%
-                </span>
-              )}
-            </div>
-            {isVariantPreorder && selectedVariant.preorder_note && (
-              <div className="font-mono text-[11px] text-orange-600 mt-1" data-testid="preorder-note">{selectedVariant.preorder_note}</div>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="w-10 h-10 border border-ink flex items-center justify-center hover:bg-ink hover:text-white" data-testid="product-qty-dec"><Minus size={14} /></button>
-            <span className="font-mono font-bold w-8 text-center" data-testid="product-qty">{qty}</span>
-            <button onClick={() => setQty((q) => q + 1)} className="w-10 h-10 border border-ink flex items-center justify-center hover:bg-ink hover:text-white" data-testid="product-qty-inc"><Plus size={14} /></button>
-          </div>
-        </div>
-
-        <button
-          onClick={() => add(product, qty, selectedVariant)}
-          data-testid="product-add-to-cart"
-          disabled={isOutOfStock || isComingSoon}
-          className="w-full bg-ink text-white font-mono text-sm uppercase tracking-[0.3em] py-5 hover:bg-foreground/85 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {isComingSoon ? "COMING SOON"
-            : isVariantPreorder ? `PRE-ORDER · $${(effectivePrice * qty).toFixed(2)} CAD`
-            : isOutOfStock ? "OUT OF STOCK"
-            : `${t("common.addToCart")} — $${(effectivePrice * qty).toFixed(2)} CAD`}
-        </button>
-
-        {isOutOfStock && (
-          <div className="border border-ink/20 bg-secondary/40 p-4" data-testid="notify-stock-block">
-            {notifyDone ? (
-              <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.2em] text-emerald-700">
-                <Check size={14} />
-                {lang === "fr" ? "Nous vous écrirons dès le retour en stock." : "We'll email you when it's back."}
-              </div>
+            {coaUrl ? (
+              <a href={coaUrl} target="_blank" rel="noopener noreferrer" data-testid="coa-badge-verified"
+                className="mt-4 inline-flex items-center gap-2 rounded-full border border-ash bg-white px-4 py-2 font-data text-[11px] uppercase tracking-[0.16em] text-nordfjord hover:border-nova hover:text-nova transition-colors">
+                <FileText size={13} /> {lang === "fr" ? "Certificat d'analyse" : "Certificate of Analysis"}{product.coa_lot ? ` · ${product.coa_lot}` : ""}
+              </a>
             ) : (
-              <>
-                <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.2em] mb-2">
-                  <BellRing size={14} />
-                  {lang === "fr" ? "M'avertir du retour en stock" : "Notify me when back in stock"}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="email"
-                    value={notifyEmail}
-                    onChange={(e) => setNotifyEmail(e.target.value)}
-                    placeholder={lang === "fr" ? "votre@courriel.com" : "you@email.com"}
-                    data-testid="notify-stock-email"
-                    className="flex-1 border border-ink/20 px-3 py-2 text-sm bg-white"
-                  />
-                  <button
-                    onClick={submitNotify}
-                    disabled={notifySubmitting}
-                    data-testid="notify-stock-submit"
-                    className="border border-ink font-mono text-xs uppercase tracking-[0.2em] px-4 py-2 hover:bg-ink hover:text-white disabled:opacity-40"
-                  >
-                    {notifySubmitting ? "…" : lang === "fr" ? "M'avertir" : "Notify me"}
-                  </button>
-                </div>
-              </>
+              <div data-testid="coa-badge-pending" className="mt-4 inline-flex items-center gap-2 rounded-full border border-ash bg-white px-4 py-2 font-data text-[11px] uppercase tracking-[0.16em] text-warning">
+                <FileText size={13} /> COA · {lang === "fr" ? "À VENIR" : "PENDING"}
+              </div>
             )}
           </div>
-        )}
 
-        {(selectedVariant?.coa_url || product.coa_url) ? (
-          <a
-            href={selectedVariant?.coa_url || product.coa_url}
-            target="_blank" rel="noopener noreferrer"
-            data-testid="download-coa"
-            className="block text-center border border-emerald-600 text-emerald-700 font-mono text-xs uppercase tracking-[0.25em] py-4 hover:bg-emerald-600 hover:text-white"
-          >
-            {t("product.labReport")}{selectedVariant?.coa_url && selectedVariant?.name ? ` · ${selectedVariant.name}` : ` · Lot ${product.coa_lot || "—"}`} ↓
-          </a>
-        ) : (
-          <button
-            data-testid="download-coa"
-            disabled
-            className="w-full border border-orange-400 text-orange-700 font-mono text-xs uppercase tracking-[0.25em] py-4 opacity-70"
-          >
-            COA PENDING — {t("product.labReport")}
-          </button>
-        )}
+          <div>
+            <p className="font-data text-[11px] uppercase tracking-[0.22em] text-compliance mb-3">
+              {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT" : "FOR RESEARCH USE ONLY"}
+            </p>
+            <h1 className="font-display text-[44px] font-bold text-nordfjord leading-none mb-5" data-testid="product-name">{name}</h1>
+            <p className="text-base leading-relaxed text-glacier mb-7">{desc}</p>
+
+            {variants.length > 1 && (
+              <div data-testid="variant-selector" className="mb-6">
+                <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{lang === "fr" ? "DOSAGE" : "DOSAGE"}</div>
+                <div className="flex flex-wrap gap-2">
+                  {variants.map((v) => {
+                    const isActive = v.id === variantId;
+                    const vCoaComing = v.badge_coa_pending || v.badge_coming_soon;
+                    const vPre = v.preorder_enabled && (v.stock <= 0 || vCoaComing);
+                    const vSale = v.sale_price && v.sale_price < v.price;
+                    const vPrice = vPre && v.preorder_price ? v.preorder_price : vSale ? v.sale_price : v.price;
+                    const outNoPre = v.stock <= 0 && !v.preorder_enabled && !v.badge_coming_soon;
+                    return (
+                      <button key={v.id} type="button" onClick={() => setVariantId(v.id)}
+                        disabled={(v.badge_coming_soon && !v.preorder_enabled) || outNoPre}
+                        data-testid={`variant-${v.name}`}
+                        className={`rounded-xl border-[1.5px] px-4 py-2.5 text-left transition-colors ${isActive ? "border-nova bg-nova/5" : "border-ash hover:border-nova"} disabled:opacity-40 disabled:cursor-not-allowed`}>
+                        <span className="font-display font-bold text-nordfjord">{v.name}</span>
+                        <span className="font-data text-[11px] text-glacier ml-2">${vPrice?.toFixed(2)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {product.sequence && (
+              <div className="rounded-xl border border-ash bg-white px-5 py-4 mb-4">
+                <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-1.5">{lang === "fr" ? "SÉQUENCE" : "SEQUENCE"}</div>
+                <div className="font-data text-sm text-nordfjord break-all">{product.sequence}</div>
+              </div>
+            )}
+
+            <div className="rounded-xl border border-ash bg-white overflow-hidden grid grid-cols-2 sm:grid-cols-3 divide-x divide-y divide-ash mb-8">
+              {specs.map((s) => (
+                <div key={s.k} className="p-4">
+                  <div className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance mb-1">{s.k}</div>
+                  <div className="font-data text-sm text-nordfjord break-all">{s.v}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-end justify-between gap-6 flex-wrap mb-6">
+              <div>
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  {showOriginal && (
+                    <span className="font-display text-2xl font-bold line-through text-glacier" data-testid="product-original-price">
+                      ${selectedVariant.price.toFixed(2)}
+                    </span>
+                  )}
+                  <span className={`font-display text-[40px] font-bold leading-none ${showOriginal ? "text-nova" : "text-nordfjord"}`} data-testid="product-price">
+                    ${effectivePrice.toFixed(2)}
+                  </span>
+                  <span className="font-data text-sm text-glacier">CAD</span>
+                </div>
+                {isVariantPreorder && selectedVariant.preorder_note && (
+                  <div className="font-data text-[11px] text-warning mt-1" data-testid="preorder-note">{selectedVariant.preorder_note}</div>
+                )}
+              </div>
+              <span className={`font-data text-[12px] uppercase tracking-[0.14em] flex items-center gap-2 ${stockN > 0 ? "text-success" : "text-warning"}`}>
+                <span className={`w-2 h-2 rounded-full ${stockN > 0 ? "bg-success" : "bg-warning"}`} />
+                {isComingSoon ? (lang === "fr" ? "À venir" : "Coming soon")
+                  : isVariantPreorder ? (lang === "fr" ? "Précommande" : "Pre-order")
+                  : stockN > 0 ? `${lang === "fr" ? "En stock" : "In stock"} · ${stockN}`
+                  : (lang === "fr" ? "Rupture" : "Out of stock")}
+              </span>
+            </div>
+
+            <div className="flex items-stretch gap-3 mb-4">
+              <div className="flex items-center gap-1 rounded-full border border-ash bg-white px-2">
+                <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="w-9 h-9 flex items-center justify-center text-nordfjord hover:text-nova" data-testid="product-qty-dec"><Minus size={15} /></button>
+                <span className="font-data font-semibold w-8 text-center text-nordfjord" data-testid="product-qty">{qty}</span>
+                <button onClick={() => setQty((q) => q + 1)} className="w-9 h-9 flex items-center justify-center text-nordfjord hover:text-nova" data-testid="product-qty-inc"><Plus size={15} /></button>
+              </div>
+              <button
+                onClick={() => add(product, qty, selectedVariant)}
+                data-testid="product-add-to-cart"
+                disabled={isOutOfStock || isComingSoon}
+                className="flex-1 btn-pill btn-nova disabled:opacity-40 disabled:pointer-events-none"
+              >
+                {isComingSoon ? (lang === "fr" ? "À VENIR" : "COMING SOON")
+                  : isVariantPreorder ? `${lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"} · $${(effectivePrice * qty).toFixed(2)}`
+                  : isOutOfStock ? (lang === "fr" ? "RUPTURE" : "OUT OF STOCK")
+                  : `${lang === "fr" ? "Ajouter à la commande" : "Add to order"} · $${(effectivePrice * qty).toFixed(2)}`}
+              </button>
+            </div>
+
+            <div className="rounded-xl bg-nordfjord text-clinical px-5 py-4 font-data text-[11px] uppercase tracking-[0.16em] leading-relaxed" data-testid="research-only-banner">
+              {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT — NON DESTINÉ À LA CONSOMMATION HUMAINE" : "FOR RESEARCH USE ONLY — NOT INTENDED FOR HUMAN CONSUMPTION"}
+            </div>
+
+            {isOutOfStock && (
+              <div className="mt-6 rounded-xl border border-ash bg-white p-4" data-testid="notify-stock-block">
+                {notifyDone ? (
+                  <div className="flex items-center gap-2 font-data text-xs uppercase tracking-[0.16em] text-success">
+                    <Check size={14} /> {lang === "fr" ? "Nous vous écrirons dès le retour en stock." : "We'll email you when it's back."}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 font-data text-xs uppercase tracking-[0.16em] text-nordfjord mb-2">
+                      <BellRing size={14} /> {lang === "fr" ? "M'avertir du retour en stock" : "Notify me when back in stock"}
+                    </div>
+                    <div className="flex gap-2">
+                      <input type="email" value={notifyEmail} onChange={(e) => setNotifyEmail(e.target.value)}
+                        placeholder={lang === "fr" ? "votre@courriel.com" : "you@email.com"}
+                        data-testid="notify-stock-email"
+                        className="flex-1 rounded-full border border-ash px-4 py-2 text-sm bg-white outline-none focus:border-nova" />
+                      <button onClick={submitNotify} disabled={notifySubmitting} data-testid="notify-stock-submit"
+                        className="btn-pill btn-outline disabled:opacity-40">
+                        {notifySubmitting ? "…" : lang === "fr" ? "M'avertir" : "Notify me"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {coaUrl && (
+              <a href={coaUrl} target="_blank" rel="noopener noreferrer" data-testid="download-coa"
+                className="mt-4 block text-center btn-pill btn-outline w-full">
+                {t("product.labReport")} ↓
+              </a>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
