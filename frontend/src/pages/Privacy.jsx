@@ -158,34 +158,36 @@ export default function Privacy() {
   const { lang } = useLang();
   const isFr = lang === "fr";
   return (
-    <div className="max-w-4xl mx-auto px-6 py-16 space-y-16" data-testid="privacy-page">
-      <header className="border-b border-ink pb-6">
-        <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// FIRONOVA</div>
-        <h1 className="font-display text-5xl sm:text-6xl font-extrabold uppercase tracking-tight mt-2">
-          {isFr ? "Politique de confidentialité" : "Privacy Policy"}
-        </h1>
-        <p className="mt-4 text-sm text-foreground/60">
-          {isFr
-            ? "Cette page décrit nos pratiques concernant la collecte, l'utilisation et la divulgation des Renseignements personnels lorsque vous utilisez FIRONOVA. En utilisant le service, vous consentez à la collecte et à l'utilisation de vos renseignements conformément à la présente politique."
-            : "This page describes our practices regarding the collection, use and disclosure of Personal Information when you use FIRONOVA. By using the service, you consent to the collection and use of your information in accordance with this policy."}
-        </p>
-      </header>
+    <div className="bg-clinical min-h-screen">
+      <div className="max-w-4xl mx-auto px-6 py-16 space-y-16" data-testid="privacy-page">
+        <header className="border-b border-ash pb-6">
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">FIRONOVA</p>
+          <h1 className="font-display text-[42px] sm:text-[52px] font-bold text-nordfjord tracking-[-0.01em]">
+            {isFr ? "Politique de confidentialité" : "Privacy Policy"}
+          </h1>
+          <p className="mt-4 text-sm text-glacier">
+            {isFr
+              ? "Cette page décrit nos pratiques concernant la collecte, l'utilisation et la divulgation des Renseignements personnels lorsque vous utilisez FIRONOVA. En utilisant le service, vous consentez à la collecte et à l'utilisation de vos renseignements conformément à la présente politique."
+              : "This page describes our practices regarding the collection, use and disclosure of Personal Information when you use FIRONOVA. By using the service, you consent to the collection and use of your information in accordance with this policy."}
+          </p>
+        </header>
 
-      <section className="space-y-12" data-testid="privacy-sections">
-        {SECTIONS.map((s, i) => (
-          <div key={s.id} id={s.id} data-testid={`privacy-section-${s.id}`}>
-            <h2 className="font-display text-2xl sm:text-3xl font-bold uppercase tracking-tight">
-              <span className="font-mono text-sm text-foreground/40 mr-3">{String(i + 1).padStart(2, "0")}</span>
-              {isFr ? s.fr.title : s.en.title}
-            </h2>
-            <div className="mt-4 space-y-4 text-foreground/80 leading-relaxed">
-              {s.paras.map((p, j) => (
-                <p key={j}>{isFr ? p.fr : p.en}</p>
-              ))}
+        <section className="space-y-12" data-testid="privacy-sections">
+          {SECTIONS.map((s, i) => (
+            <div key={s.id} id={s.id} data-testid={`privacy-section-${s.id}`}>
+              <h2 className="font-display text-2xl sm:text-3xl font-bold text-nordfjord">
+                <span className="font-data text-sm text-nova mr-3">{String(i + 1).padStart(2, "0")}</span>
+                {isFr ? s.fr.title : s.en.title}
+              </h2>
+              <div className="mt-4 space-y-4 text-glacier leading-relaxed">
+                {s.paras.map((p, j) => (
+                  <p key={j}>{isFr ? p.fr : p.en}</p>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </section>
+          ))}
+        </section>
+      </div>
     </div>
   );
 }
