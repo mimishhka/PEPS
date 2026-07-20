@@ -1,6 +1,4 @@
-// frontend/src/pages/Account.jsx — Mon Compte étendu.
-// Onglets : Commandes / Profil / Adresses / Sécurité.
-// Remplace ENTIÈREMENT l'ancien Account.jsx.
+// frontend/src/pages/Account.jsx — Mon Compte étendu (identité Fironova).
 import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -10,12 +8,12 @@ import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 
 const statusColor = {
-  awaiting_etransfer: "bg-secondary",
-  awaiting_crypto: "bg-secondary",
-  paid: "bg-ink text-white",
-  shipped: "bg-warning",
-  delivered: "bg-ink text-white",
-  pending: "bg-secondary",
+  awaiting_etransfer: "bg-ash/40 text-nordfjord",
+  awaiting_crypto: "bg-ash/40 text-nordfjord",
+  paid: "bg-nordfjord text-white",
+  shipped: "bg-warning text-white",
+  delivered: "bg-success text-white",
+  pending: "bg-ash/40 text-nordfjord",
 };
 
 const PROVINCES = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"];
@@ -33,94 +31,91 @@ export default function Account() {
   const [tab, setTab] = useState("orders");
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-16" data-testid="account-page">
-      <div className="flex items-end justify-between border-b border-ink pb-6 mb-8">
-        <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// ACCOUNT</div>
-          <h1 className="font-display text-5xl font-extrabold uppercase tracking-tight mt-2" data-testid="account-name">
-            {user?.name}
-          </h1>
-          <p className="font-mono text-xs text-foreground/60 mt-1">{user?.email}</p>
-        </div>
-        <button onClick={logout} data-testid="account-logout" className="font-mono text-xs uppercase tracking-[0.25em] link-underline">
-          {t("nav.logout")} →
-        </button>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1 border-b border-ink/20 mb-10" data-testid="account-tabs">
-        {[
-          ["orders", t("account.orders")],
-          ["profile", t("account.profile")],
-          ["addresses", t("account.addresses")],
-          ["security", t("account.security")],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            data-testid={`account-tab-${key}`}
-            className={`font-mono text-xs uppercase tracking-[0.2em] px-5 py-3 -mb-px border-b-2 transition-colors ${
-              tab === key ? "border-ink font-bold" : "border-transparent text-foreground/60 hover:text-ink"
-            }`}
-          >
-            {label}
+    <div className="bg-clinical min-h-screen">
+      <div className="max-w-6xl mx-auto px-6 py-16" data-testid="account-page">
+        <div className="flex items-end justify-between border-b border-ash pb-6 mb-8">
+          <div>
+            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">ACCOUNT</p>
+            <h1 className="font-display text-[40px] font-bold text-nordfjord" data-testid="account-name">{user?.name}</h1>
+            <p className="font-data text-xs text-glacier mt-1">{user?.email}</p>
+          </div>
+          <button onClick={logout} data-testid="account-logout" className="font-data text-xs uppercase tracking-[0.2em] text-glacier hover:text-nordfjord transition-colors">
+            {t("nav.logout")} →
           </button>
-        ))}
-      </div>
+        </div>
 
-      {tab === "orders" && <OrdersTab t={t} />}
-      {tab === "profile" && <ProfileTab t={t} user={user} refresh={refresh} />}
-      {tab === "addresses" && <AddressesTab t={t} />}
-      {tab === "security" && <SecurityTab t={t} logout={logout} navigate={navigate} />}
+        <div className="flex flex-wrap gap-1 border-b border-ash mb-10" data-testid="account-tabs">
+          {[
+            ["orders", t("account.orders")],
+            ["profile", t("account.profile")],
+            ["addresses", t("account.addresses")],
+            ["security", t("account.security")],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              data-testid={`account-tab-${key}`}
+              className={`font-data text-xs uppercase tracking-[0.18em] px-5 py-3 -mb-px border-b-2 transition-colors ${
+                tab === key ? "border-nova text-nordfjord font-bold" : "border-transparent text-glacier hover:text-nordfjord"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "orders" && <OrdersTab t={t} />}
+        {tab === "profile" && <ProfileTab t={t} user={user} refresh={refresh} />}
+        {tab === "addresses" && <AddressesTab t={t} />}
+        {tab === "security" && <SecurityTab t={t} logout={logout} navigate={navigate} />}
+      </div>
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ Orders */
+/* Orders */
 function OrdersTab({ t }) {
   const [orders, setOrders] = useState(null);
   useEffect(() => {
     api.get("/orders/mine").then((r) => setOrders(r.data)).catch(() => setOrders([]));
   }, []);
   if (orders === null) {
-    return <p className="font-mono text-xs uppercase tracking-[0.25em] text-foreground/50">{t("common.loading")}</p>;
+    return <p className="font-data text-xs uppercase tracking-[0.2em] text-glacier">{t("common.loading")}</p>;
   }
   if (orders.length === 0) {
     return (
-      <div className="border border-ink p-8 text-center" data-testid="account-no-orders">
-        <p className="text-foreground/70">{t("account.noOrders")}</p>
-        <Link to="/catalog" className="inline-block mt-4 bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-6 py-3">
-          {t("nav.catalog")} →
-        </Link>
+      <div className="rounded-2xl border border-ash bg-white p-8 text-center" data-testid="account-no-orders">
+        <p className="text-glacier">{t("account.noOrders")}</p>
+        <Link to="/catalog" className="inline-block mt-4 btn-pill btn-nova">{t("nav.catalog")} →</Link>
       </div>
     );
   }
   return (
-    <div className="border border-ink overflow-x-auto">
-      <table className="w-full font-mono text-xs">
-        <thead className="bg-ink text-white">
+    <div className="rounded-2xl border border-ash bg-white overflow-x-auto">
+      <table className="w-full font-data text-xs">
+        <thead className="bg-nordfjord text-white">
           <tr>
-            <th className="px-4 py-3 text-left uppercase tracking-[0.2em]">{t("account.orderNumber")}</th>
-            <th className="px-4 py-3 text-left uppercase tracking-[0.2em]">{t("account.date")}</th>
-            <th className="px-4 py-3 text-left uppercase tracking-[0.2em]">Items</th>
-            <th className="px-4 py-3 text-left uppercase tracking-[0.2em]">{t("account.status")}</th>
-            <th className="px-4 py-3 text-right uppercase tracking-[0.2em]">{t("account.total")}</th>
+            <th className="px-4 py-3 text-left uppercase tracking-[0.16em]">{t("account.orderNumber")}</th>
+            <th className="px-4 py-3 text-left uppercase tracking-[0.16em]">{t("account.date")}</th>
+            <th className="px-4 py-3 text-left uppercase tracking-[0.16em]">Items</th>
+            <th className="px-4 py-3 text-left uppercase tracking-[0.16em]">{t("account.status")}</th>
+            <th className="px-4 py-3 text-right uppercase tracking-[0.16em]">{t("account.total")}</th>
           </tr>
         </thead>
         <tbody>
           {orders.map((o) => (
-            <tr key={o.id} className="border-t border-ink/15 hover:bg-secondary" data-testid={`order-row-${o.order_number}`}>
+            <tr key={o.id} className="border-t border-ash hover:bg-clinical" data-testid={`order-row-${o.order_number}`}>
               <td className="px-4 py-4">
-                <Link to={`/order/${o.id}`} className="font-bold link-underline">{o.order_number}</Link>
+                <Link to={`/order/${o.id}`} className="font-bold text-nordfjord hover:text-nova">{o.order_number}</Link>
               </td>
-              <td className="px-4 py-4 text-foreground/70">{new Date(o.created_at).toLocaleDateString()}</td>
-              <td className="px-4 py-4">{o.items.length}</td>
+              <td className="px-4 py-4 text-glacier">{new Date(o.created_at).toLocaleDateString()}</td>
+              <td className="px-4 py-4 text-nordfjord">{o.items.length}</td>
               <td className="px-4 py-4">
-                <span className={`px-2 py-1 uppercase tracking-[0.15em] text-[10px] ${statusColor[o.payment_status] || "bg-secondary"}`}>
+                <span className={`rounded-full px-2.5 py-1 uppercase tracking-[0.12em] text-[10px] ${statusColor[o.payment_status] || "bg-ash/40 text-nordfjord"}`}>
                   {o.payment_status}
                 </span>
               </td>
-              <td className="px-4 py-4 text-right font-bold">${o.total.toFixed(2)}</td>
+              <td className="px-4 py-4 text-right font-bold text-nordfjord">${o.total.toFixed(2)}</td>
             </tr>
           ))}
         </tbody>
@@ -129,7 +124,7 @@ function OrdersTab({ t }) {
   );
 }
 
-/* ----------------------------------------------------------------- Profile */
+/* Profile */
 function ProfileTab({ t, user, refresh }) {
   const [name, setName] = useState(user?.name || "");
   const [busy, setBusy] = useState(false);
@@ -168,61 +163,42 @@ function ProfileTab({ t, user, refresh }) {
   return (
     <div className="grid lg:grid-cols-2 gap-12 max-w-4xl">
       <form onSubmit={saveName} className="space-y-5" data-testid="profile-form">
-        <h2 className="font-display text-2xl font-bold uppercase tracking-tight">{t("account.profile")}</h2>
+        <h2 className="font-display text-2xl font-bold text-nordfjord">{t("account.profile")}</h2>
         <div>
-          <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">
-            {t("account.fullName")}
-          </label>
-          <input
-            required value={name} onChange={(e) => setName(e.target.value)}
-            data-testid="profile-name"
-            className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal"
-          />
+          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.fullName")}</label>
+          <input required value={name} onChange={(e) => setName(e.target.value)} data-testid="profile-name"
+            className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
         </div>
-        <button type="submit" disabled={busy} data-testid="profile-save"
-          className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-6 py-3 disabled:opacity-50">
+        <button type="submit" disabled={busy} data-testid="profile-save" className="btn-pill btn-nova disabled:opacity-50">
           {busy ? "…" : t("common.save")}
         </button>
       </form>
 
       <form onSubmit={requestEmailChange} className="space-y-5" data-testid="email-change-form">
-        <h2 className="font-display text-2xl font-bold uppercase tracking-tight">{t("account.changeEmail")}</h2>
+        <h2 className="font-display text-2xl font-bold text-nordfjord">{t("account.changeEmail")}</h2>
         {emailSentTo ? (
-          <div className="border border-ink p-5 text-sm" data-testid="email-change-sent">
-            <p className="font-bold">{t("account.emailSentTitle")}</p>
-            <p className="text-foreground/70 mt-1">
-              {t("account.emailSentBody")} <span className="font-mono">{emailSentTo}</span>
-            </p>
+          <div className="rounded-2xl border border-ash bg-white p-5 text-sm" data-testid="email-change-sent">
+            <p className="font-bold text-nordfjord">{t("account.emailSentTitle")}</p>
+            <p className="text-glacier mt-1">{t("account.emailSentBody")} <span className="font-data text-nordfjord">{emailSentTo}</span></p>
           </div>
         ) : (
           <>
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">
-                {t("account.newEmail")}
-              </label>
-              <input
-                type="email" required value={emailForm.new_email}
-                onChange={(e) => setEmailForm({ ...emailForm, new_email: e.target.value })}
-                data-testid="email-change-new"
-                className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal"
-              />
+              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.newEmail")}</label>
+              <input type="email" required value={emailForm.new_email}
+                onChange={(e) => setEmailForm({ ...emailForm, new_email: e.target.value })} data-testid="email-change-new"
+                className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
             </div>
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">
-                {t("account.currentPassword")}
-              </label>
-              <input
-                type="password" required value={emailForm.current_password}
-                onChange={(e) => setEmailForm({ ...emailForm, current_password: e.target.value })}
-                data-testid="email-change-password"
-                className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal"
-              />
+              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
+              <input type="password" required value={emailForm.current_password}
+                onChange={(e) => setEmailForm({ ...emailForm, current_password: e.target.value })} data-testid="email-change-password"
+                className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
             </div>
-            <button type="submit" disabled={emailBusy} data-testid="email-change-submit"
-              className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-6 py-3 hover:bg-ink hover:text-white disabled:opacity-50">
+            <button type="submit" disabled={emailBusy} data-testid="email-change-submit" className="btn-pill btn-outline disabled:opacity-50">
               {emailBusy ? "…" : t("account.sendConfirmation")}
             </button>
-            <p className="text-xs text-foreground/60">{t("account.emailChangeHint")}</p>
+            <p className="text-xs text-glacier">{t("account.emailChangeHint")}</p>
           </>
         )}
       </form>
@@ -230,10 +206,10 @@ function ProfileTab({ t, user, refresh }) {
   );
 }
 
-/* --------------------------------------------------------------- Addresses */
+/* Addresses */
 function AddressesTab({ t }) {
   const [addresses, setAddresses] = useState(null);
-  const [editing, setEditing] = useState(null); // null | {…EMPTY_ADDRESS} | existing
+  const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
@@ -277,59 +253,47 @@ function AddressesTab({ t }) {
   };
 
   if (addresses === null) {
-    return <p className="font-mono text-xs uppercase tracking-[0.25em] text-foreground/50">{t("common.loading")}</p>;
+    return <p className="font-data text-xs uppercase tracking-[0.2em] text-glacier">{t("common.loading")}</p>;
   }
 
   return (
     <div className="max-w-4xl">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="font-display text-2xl font-bold uppercase tracking-tight">{t("account.addresses")}</h2>
+        <h2 className="font-display text-2xl font-bold text-nordfjord">{t("account.addresses")}</h2>
         {!editing && (
-          <button onClick={() => setEditing({ ...EMPTY_ADDRESS })} data-testid="address-add"
-            className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-5 py-3">
+          <button onClick={() => setEditing({ ...EMPTY_ADDRESS })} data-testid="address-add" className="btn-pill btn-nova">
             + {t("account.addAddress")}
           </button>
         )}
       </div>
 
       {editing && (
-        <form onSubmit={save} className="border border-ink p-6 mb-8 grid sm:grid-cols-2 gap-4" data-testid="address-form">
-          <Field label={t("account.addressLabel")} value={editing.label}
-                 onChange={(v) => setEditing({ ...editing, label: v })} testid="address-label" />
-          <Field label={t("checkout.fullName")} value={editing.full_name} required
-                 onChange={(v) => setEditing({ ...editing, full_name: v })} testid="address-fullname" />
-          <Field label={t("checkout.address1")} value={editing.address1} required className="sm:col-span-2"
-                 onChange={(v) => setEditing({ ...editing, address1: v })} testid="address-address1" />
-          <Field label={t("checkout.address2")} value={editing.address2} className="sm:col-span-2"
-                 onChange={(v) => setEditing({ ...editing, address2: v })} testid="address-address2" />
-          <Field label={t("checkout.city")} value={editing.city} required
-                 onChange={(v) => setEditing({ ...editing, city: v })} testid="address-city" />
+        <form onSubmit={save} className="rounded-2xl border border-ash bg-white p-6 mb-8 grid sm:grid-cols-2 gap-4" data-testid="address-form">
+          <Field label={t("account.addressLabel")} value={editing.label} onChange={(v) => setEditing({ ...editing, label: v })} testid="address-label" />
+          <Field label={t("checkout.fullName")} value={editing.full_name} required onChange={(v) => setEditing({ ...editing, full_name: v })} testid="address-fullname" />
+          <Field label={t("checkout.address1")} value={editing.address1} required className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address1: v })} testid="address-address1" />
+          <Field label={t("checkout.address2")} value={editing.address2} className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address2: v })} testid="address-address2" />
+          <Field label={t("checkout.city")} value={editing.city} required onChange={(v) => setEditing({ ...editing, city: v })} testid="address-city" />
           <div>
-            <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">
-              {t("checkout.province")}
-            </label>
+            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("checkout.province")}</label>
             <select value={editing.province} data-testid="address-province"
               onChange={(e) => setEditing({ ...editing, province: e.target.value })}
-              className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none">
+              className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord focus:outline-none focus:border-nova">
               {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
-          <Field label={t("checkout.postal")} value={editing.postal_code} required
-                 onChange={(v) => setEditing({ ...editing, postal_code: v })} testid="address-postal" />
-          <Field label={t("checkout.phone")} value={editing.phone}
-                 onChange={(v) => setEditing({ ...editing, phone: v })} testid="address-phone" />
-          <label className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.15em] sm:col-span-2">
+          <Field label={t("checkout.postal")} value={editing.postal_code} required onChange={(v) => setEditing({ ...editing, postal_code: v })} testid="address-postal" />
+          <Field label={t("checkout.phone")} value={editing.phone} onChange={(v) => setEditing({ ...editing, phone: v })} testid="address-phone" />
+          <label className="flex items-center gap-2 font-data text-xs uppercase tracking-[0.14em] text-nordfjord sm:col-span-2">
             <input type="checkbox" checked={editing.is_default} data-testid="address-default"
-              onChange={(e) => setEditing({ ...editing, is_default: e.target.checked })} />
+              onChange={(e) => setEditing({ ...editing, is_default: e.target.checked })} className="accent-[#00B8D4]" />
             {t("account.defaultAddress")}
           </label>
           <div className="flex gap-3 sm:col-span-2">
-            <button type="submit" disabled={busy} data-testid="address-save"
-              className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-6 py-3 disabled:opacity-50">
+            <button type="submit" disabled={busy} data-testid="address-save" className="btn-pill btn-nova disabled:opacity-50">
               {busy ? "…" : t("common.save")}
             </button>
-            <button type="button" onClick={() => setEditing(null)} data-testid="address-cancel"
-              className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-6 py-3">
+            <button type="button" onClick={() => setEditing(null)} data-testid="address-cancel" className="btn-pill btn-outline">
               {t("common.cancel")}
             </button>
           </div>
@@ -337,36 +301,35 @@ function AddressesTab({ t }) {
       )}
 
       {addresses.length === 0 && !editing ? (
-        <div className="border border-ink p-8 text-center text-foreground/70" data-testid="addresses-empty">
+        <div className="rounded-2xl border border-ash bg-white p-8 text-center text-glacier" data-testid="addresses-empty">
           {t("account.noAddresses")}
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 gap-4">
           {addresses.map((a) => (
-            <div key={a.id} className={`border p-5 ${a.is_default ? "border-ink" : "border-ink/30"}`}
-                 data-testid={`address-card-${a.id}`}>
+            <div key={a.id} className={`rounded-2xl border bg-white p-5 ${a.is_default ? "border-nova" : "border-ash"}`} data-testid={`address-card-${a.id}`}>
               <div className="flex items-start justify-between">
-                <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">
+                <div className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">
                   {a.label || t("account.addressLabel")}
-                  {a.is_default && <span className="ml-2 bg-ink text-white px-1.5 py-0.5">{t("account.default")}</span>}
+                  {a.is_default && <span className="ml-2 rounded-full bg-nordfjord text-white px-2 py-0.5">{t("account.default")}</span>}
                 </div>
               </div>
-              <div className="mt-2 text-sm">
+              <div className="mt-2 text-sm text-nordfjord">
                 <div className="font-bold">{a.full_name}</div>
                 <div>{a.address1}{a.address2 ? `, ${a.address2}` : ""}</div>
                 <div>{a.city}, {a.province} {a.postal_code}</div>
-                {a.phone && <div className="text-foreground/60">{a.phone}</div>}
+                {a.phone && <div className="text-glacier">{a.phone}</div>}
               </div>
-              <div className="flex gap-4 mt-4 font-mono text-[10px] uppercase tracking-[0.2em]">
-                <button onClick={() => setEditing(a)} className="link-underline" data-testid={`address-edit-${a.id}`}>
+              <div className="flex gap-4 mt-4 font-data text-[10px] uppercase tracking-[0.16em]">
+                <button onClick={() => setEditing(a)} className="text-glacier hover:text-nordfjord" data-testid={`address-edit-${a.id}`}>
                   {t("common.edit")}
                 </button>
                 {!a.is_default && (
-                  <button onClick={() => setDefault(a)} className="link-underline" data-testid={`address-setdefault-${a.id}`}>
+                  <button onClick={() => setDefault(a)} className="text-glacier hover:text-nordfjord" data-testid={`address-setdefault-${a.id}`}>
                     {t("account.makeDefault")}
                   </button>
                 )}
-                <button onClick={() => remove(a.id)} className="link-underline text-signal" data-testid={`address-delete-${a.id}`}>
+                <button onClick={() => remove(a.id)} className="text-error hover:opacity-70" data-testid={`address-delete-${a.id}`}>
                   {t("common.delete")}
                 </button>
               </div>
@@ -381,17 +344,14 @@ function AddressesTab({ t }) {
 function Field({ label, value, onChange, required = false, className = "", testid }) {
   return (
     <div className={className}>
-      <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">{label}</label>
-      <input
-        required={required} value={value || ""} onChange={(e) => onChange(e.target.value)}
-        data-testid={testid}
-        className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal"
-      />
+      <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{label}</label>
+      <input required={required} value={value || ""} onChange={(e) => onChange(e.target.value)} data-testid={testid}
+        className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
     </div>
   );
 }
 
-/* ---------------------------------------------------------------- Security */
+/* Security */
 function SecurityTab({ t, logout, navigate }) {
   const [pw, setPw] = useState({ current_password: "", new_password: "", confirm: "" });
   const [pwBusy, setPwBusy] = useState(false);
@@ -411,8 +371,6 @@ function SecurityTab({ t, logout, navigate }) {
         current_password: pw.current_password,
         new_password: pw.new_password,
       });
-      // Le backend révoque toutes les autres sessions et repose un cookie
-      // httpOnly frais pour CET appareil — rien à stocker côté JS.
       setPw({ current_password: "", new_password: "", confirm: "" });
       toast.success(t("account.passwordChanged"));
     } catch (err) {
@@ -451,74 +409,61 @@ function SecurityTab({ t, logout, navigate }) {
   return (
     <div className="max-w-4xl space-y-14">
       <form onSubmit={changePassword} className="space-y-5 max-w-md" data-testid="password-form">
-        <h2 className="font-display text-2xl font-bold uppercase tracking-tight">{t("account.changePassword")}</h2>
+        <h2 className="font-display text-2xl font-bold text-nordfjord">{t("account.changePassword")}</h2>
         <div>
-          <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">
-            {t("account.currentPassword")}
-          </label>
+          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
           <input type="password" required value={pw.current_password} data-testid="password-current"
             onChange={(e) => setPw({ ...pw, current_password: e.target.value })}
-            className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal" />
+            className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
         </div>
         <div>
-          <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">
-            {t("account.newPassword")}
-          </label>
+          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.newPassword")}</label>
           <input type="password" required minLength={8} value={pw.new_password} data-testid="password-new"
             onChange={(e) => setPw({ ...pw, new_password: e.target.value })}
-            className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal" />
+            className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
         </div>
         <div>
-          <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">
-            {t("account.confirmPassword")}
-          </label>
+          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.confirmPassword")}</label>
           <input type="password" required minLength={8} value={pw.confirm} data-testid="password-confirm"
             onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
-            className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal" />
+            className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
         </div>
-        <button type="submit" disabled={pwBusy} data-testid="password-save"
-          className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-6 py-3 disabled:opacity-50">
+        <button type="submit" disabled={pwBusy} data-testid="password-save" className="btn-pill btn-nova disabled:opacity-50">
           {pwBusy ? "…" : t("account.changePassword")}
         </button>
-        <p className="text-xs text-foreground/60">{t("account.passwordHint")}</p>
+        <p className="text-xs text-glacier">{t("account.passwordHint")}</p>
       </form>
 
       <div className="max-w-md">
-        <h2 className="font-display text-2xl font-bold uppercase tracking-tight mb-3">{t("account.sessions")}</h2>
-        <p className="text-sm text-foreground/70 mb-4">{t("account.sessionsHint")}</p>
-        <button onClick={logoutAll} data-testid="logout-all"
-          className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-6 py-3 hover:bg-ink hover:text-white">
+        <h2 className="font-display text-2xl font-bold text-nordfjord mb-3">{t("account.sessions")}</h2>
+        <p className="text-sm text-glacier mb-4">{t("account.sessionsHint")}</p>
+        <button onClick={logoutAll} data-testid="logout-all" className="btn-pill btn-outline">
           {t("account.logoutAll")}
         </button>
       </div>
 
-      <div className="max-w-md border-t border-signal/40 pt-10">
-        <h2 className="font-display text-2xl font-bold uppercase tracking-tight text-signal mb-3">
-          {t("account.dangerZone")}
-        </h2>
-        <p className="text-sm text-foreground/70 mb-4">{t("account.deleteHint")}</p>
+      <div className="max-w-md border-t border-error/40 pt-10">
+        <h2 className="font-display text-2xl font-bold text-error mb-3">{t("account.dangerZone")}</h2>
+        <p className="text-sm text-glacier mb-4">{t("account.deleteHint")}</p>
         {!showDelete ? (
           <button onClick={() => setShowDelete(true)} data-testid="delete-account-reveal"
-            className="border border-signal text-signal font-mono text-xs uppercase tracking-[0.25em] px-6 py-3 hover:bg-signal hover:text-white">
+            className="rounded-full border-[1.5px] border-error text-error font-data text-xs uppercase tracking-[0.2em] px-6 py-3 hover:bg-error hover:text-white transition-colors">
             {t("account.deleteAccount")}
           </button>
         ) : (
           <form onSubmit={deleteAccount} className="space-y-4" data-testid="delete-account-form">
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">
-                {t("account.currentPassword")}
-              </label>
+              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
               <input type="password" required value={delPassword} data-testid="delete-account-password"
                 onChange={(e) => setDelPassword(e.target.value)}
-                className="w-full border-b border-signal px-1 py-3 bg-transparent focus:outline-none" />
+                className="w-full rounded-full border border-error px-5 py-3 bg-white text-nordfjord outline-none" />
             </div>
             <div className="flex gap-3">
               <button type="submit" disabled={delBusy} data-testid="delete-account-confirm"
-                className="bg-signal text-white font-mono text-xs uppercase tracking-[0.25em] px-6 py-3 disabled:opacity-50">
+                className="rounded-full bg-error text-white font-data text-xs uppercase tracking-[0.2em] px-6 py-3 disabled:opacity-50">
                 {delBusy ? "…" : t("account.deleteForever")}
               </button>
-              <button type="button" onClick={() => { setShowDelete(false); setDelPassword(""); }}
-                className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-6 py-3">
+              <button type="button" onClick={() => { setShowDelete(false); setDelPassword(""); }} className="btn-pill btn-outline">
                 {t("common.cancel")}
               </button>
             </div>
