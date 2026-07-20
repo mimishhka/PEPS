@@ -6,6 +6,13 @@ import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { useAuth } from "../contexts/AuthContext";
+import { VialArt } from "../components/brand";
+
+function hueFor(slug = "") {
+  let h = 0;
+  for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) % 360;
+  return 190 + (h % 40);
+}
 
 const PROVINCES = [
   { code: "AB", name: "Alberta" },
@@ -49,8 +56,6 @@ export default function Checkout() {
   const [submitting, setSubmitting] = useState(false);
   const [coupon, setCoupon] = useState({ code: "", applied: null, error: "" });
 
-  // Adresses sauvegardées : chargées seulement si connecté ; l'adresse par
-  // défaut pré-remplit le formulaire automatiquement au premier rendu.
   const [savedAddresses, setSavedAddresses] = useState([]);
   const applySavedAddress = (a) => {
     setForm((f) => ({
@@ -95,9 +100,9 @@ export default function Checkout() {
 
   if (items.length === 0) {
     return (
-      <div className="p-16 text-center" data-testid="checkout-empty">
-        <p className="font-mono text-xs uppercase tracking-[0.25em] text-foreground/60">{t("cart.empty")}</p>
-        <button onClick={() => navigate("/catalog")} className="mt-6 bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-6 py-4">
+      <div className="bg-clinical min-h-[70vh] flex flex-col items-center justify-center gap-6 p-16 text-center" data-testid="checkout-empty">
+        <p className="text-glacier">{t("cart.empty")}</p>
+        <button onClick={() => navigate("/catalog")} className="btn-pill btn-nova">
           {t("cart.keepShopping")} →
         </button>
       </div>
@@ -134,7 +139,6 @@ export default function Checkout() {
         confirm_research_use: ack.a2,
       });
       clear();
-      // Stripe: redirect to hosted checkout
       if (paymentMethod === "stripe" && data.payment_info?.checkout_url) {
         window.location.href = data.payment_info.checkout_url;
         return;
@@ -147,28 +151,37 @@ export default function Checkout() {
     }
   };
 
+  const payCard = (id, title, desc, testId) => (
+    <button
+      type="button"
+      onClick={() => setPaymentMethod(id)}
+      data-testid={testId}
+      className={`p-5 text-left rounded-xl border-[1.5px] transition-colors ${paymentMethod === id ? "border-nova bg-nova/5" : "border-ash hover:border-nova"}`}
+    >
+      <div className="font-data text-[10px] uppercase tracking-[0.2em] text-nova">{paymentMethod === id ? "✓ SELECTED" : "SELECT"}</div>
+      <div className="font-display text-lg font-bold mt-2 text-nordfjord">{title}</div>
+      <div className="text-xs mt-1 text-glacier">{desc}</div>
+    </button>
+  );
+
   return (
-    <div className="grid lg:grid-cols-[1.4fr_1fr] border-b border-ink" data-testid="checkout-page">
-      <form onSubmit={onSubmit} className="p-8 lg:p-12 space-y-12 border-r border-ink/15">
+    <div className="bg-clinical min-h-screen grid lg:grid-cols-[1.4fr_1fr]" data-testid="checkout-page">
+      <form onSubmit={onSubmit} className="p-8 lg:p-12 space-y-12">
         <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// CHECKOUT</div>
-          <h1 className="font-display text-5xl font-extrabold uppercase tracking-tight mt-3">{t("checkout.title")}</h1>
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">CHECKOUT</p>
+          <h1 className="font-display text-[40px] font-bold text-nordfjord">{t("checkout.title")}</h1>
         </div>
 
-        {/* Contact */}
         <section className="space-y-4">
-          <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50">01 · {t("checkout.contact")}</div>
+          <div className="font-data text-[11px] uppercase tracking-[0.2em] text-compliance">01 · {t("checkout.contact")}</div>
           <Input label={t("checkout.email")} required type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} testId="checkout-email" />
         </section>
 
-        {/* Shipping */}
         <section className="space-y-4">
-          <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50">02 · {t("checkout.shipping")}</div>
+          <div className="font-data text-[11px] uppercase tracking-[0.2em] text-compliance">02 · {t("checkout.shipping")}</div>
           {savedAddresses.length > 0 && (
             <div data-testid="saved-address-picker">
-              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-2">
-                {t("checkout.savedAddresses")}
-              </div>
+              <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("checkout.savedAddresses")}</div>
               <div className="flex flex-wrap gap-2">
                 {savedAddresses.map((a) => (
                   <button
@@ -176,10 +189,9 @@ export default function Checkout() {
                     type="button"
                     onClick={() => applySavedAddress(a)}
                     data-testid={`saved-address-${a.id}`}
-                    className="border border-ink px-4 py-2 font-mono text-[10px] uppercase tracking-[0.15em] hover:bg-ink hover:text-white rounded-sm"
+                    className="rounded-full border border-ash px-4 py-2 font-data text-[10px] uppercase tracking-[0.14em] text-nordfjord hover:border-nova hover:text-nova"
                   >
-                    {a.label || a.address1}
-                    {a.is_default ? " ★" : ""}
+                    {a.label || a.address1}{a.is_default ? " ★" : ""}
                   </button>
                 ))}
               </div>
@@ -194,11 +206,11 @@ export default function Checkout() {
             <Input label={t("checkout.postal")} required value={form.postal_code} onChange={(v) => setForm({ ...form, postal_code: v })} testId="checkout-postal" />
           </div>
           <div>
-            <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">{t("checkout.province")}</label>
+            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("checkout.province")}</label>
             <select
               value={form.province}
               onChange={(e) => setForm({ ...form, province: e.target.value })}
-              className="w-full border-b border-ink px-1 py-3 bg-transparent font-mono text-sm focus:outline-none"
+              className="w-full rounded-full border border-ash px-5 py-3 bg-white font-data text-sm text-nordfjord focus:outline-none focus:border-nova"
               data-testid="checkout-province"
             >
               {PROVINCES.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
@@ -206,48 +218,20 @@ export default function Checkout() {
           </div>
         </section>
 
-        {/* Payment */}
         <section className="space-y-4">
-          <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50">03 · {t("checkout.payment")}</div>
-          <div className="grid sm:grid-cols-3 gap-0 border border-ink">
-            <button
-              type="button"
-              onClick={() => setPaymentMethod("interac")}
-              data-testid="payment-interac"
-              className={`p-5 text-left border-r border-ink ${paymentMethod === "interac" ? "bg-ink text-white" : "bg-white"}`}
-            >
-              <div className="font-mono text-[10px] uppercase tracking-[0.25em]">{paymentMethod === "interac" ? "✓ SELECTED" : "SELECT"}</div>
-              <div className="font-display text-lg font-bold mt-2">{t("checkout.interac")}</div>
-              <div className="text-xs mt-1 opacity-80">{t("checkout.interacDesc")}</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaymentMethod("stripe")}
-              data-testid="payment-stripe"
-              className={`p-5 text-left border-r border-ink ${paymentMethod === "stripe" ? "bg-ink text-white" : "bg-white"}`}
-            >
-              <div className="font-mono text-[10px] uppercase tracking-[0.25em]">{paymentMethod === "stripe" ? "✓ SELECTED" : "SELECT"}</div>
-              <div className="font-display text-lg font-bold mt-2">Card · Stripe</div>
-              <div className="text-xs mt-1 opacity-80">Visa, Mastercard, Amex. Secure 3-D Secure checkout.</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaymentMethod("nowpayments")}
-              data-testid="payment-crypto"
-              className={`p-5 text-left ${paymentMethod === "nowpayments" ? "bg-ink text-white" : "bg-white"}`}
-            >
-              <div className="font-mono text-[10px] uppercase tracking-[0.25em]">{paymentMethod === "nowpayments" ? "✓ SELECTED" : "SELECT"}</div>
-              <div className="font-display text-lg font-bold mt-2">{t("checkout.crypto")}</div>
-              <div className="text-xs mt-1 opacity-80">{t("checkout.cryptoDesc")}</div>
-            </button>
+          <div className="font-data text-[11px] uppercase tracking-[0.2em] text-compliance">03 · {t("checkout.payment")}</div>
+          <div className="grid sm:grid-cols-3 gap-3">
+            {payCard("interac", t("checkout.interac"), t("checkout.interacDesc"), "payment-interac")}
+            {payCard("stripe", "Card · Stripe", "Visa, Mastercard, Amex. Secure 3-D Secure checkout.", "payment-stripe")}
+            {payCard("nowpayments", t("checkout.crypto"), t("checkout.cryptoDesc"), "payment-crypto")}
           </div>
           {paymentMethod === "nowpayments" && (
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">{t("checkout.payCurrency")}</label>
+              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("checkout.payCurrency")}</label>
               <select
                 value={payCurrency}
                 onChange={(e) => setPayCurrency(e.target.value)}
-                className="w-full border-b border-ink px-1 py-3 bg-transparent font-mono text-sm focus:outline-none"
+                className="w-full rounded-full border border-ash px-5 py-3 bg-white font-data text-sm text-nordfjord focus:outline-none focus:border-nova"
                 data-testid="checkout-pay-currency"
               >
                 <option value="btc">Bitcoin (BTC)</option>
@@ -261,9 +245,8 @@ export default function Checkout() {
           )}
         </section>
 
-        {/* Compliance */}
-        <section className="space-y-4 bg-secondary p-6 border border-ink/20">
-          <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-signal" style={{ color: "#C20114" }}>04 · COMPLIANCE — REQUIRED</div>
+        <section className="space-y-4 bg-nordfjord text-clinical p-6 rounded-2xl">
+          <div className="font-data text-[11px] uppercase tracking-[0.2em] text-nova">04 · COMPLIANCE — REQUIRED</div>
           <Checkbox checked={ack.a1} onChange={(c) => setAck({ ...ack, a1: c })} label={t("checkout.ack1")} testId="ack-age" />
           <Checkbox checked={ack.a2} onChange={(c) => setAck({ ...ack, a2: c })} label={t("checkout.ack2")} testId="ack-research" />
           <Checkbox checked={ack.a3} onChange={(c) => setAck({ ...ack, a3: c })} label={t("checkout.ack3")} testId="ack-terms" />
@@ -273,44 +256,43 @@ export default function Checkout() {
           type="submit"
           disabled={submitting}
           data-testid="place-order-btn"
-          className="w-full bg-ink text-white font-mono text-sm uppercase tracking-[0.3em] py-5 hover:bg-foreground/85 disabled:opacity-50"
+          className="w-full btn-pill btn-nova disabled:opacity-50"
         >
           {submitting ? t("checkout.processing") : `${t("checkout.placeOrder")} · $${total.toFixed(2)} CAD →`}
         </button>
       </form>
 
-      {/* SUMMARY */}
-      <aside className="p-8 lg:p-12 bg-secondary" data-testid="checkout-summary">
-        <h3 className="font-display text-xl font-bold uppercase tracking-tight">{t("common.total")}</h3>
-        <ul className="mt-6 divide-y divide-ink/15">
+      <aside className="p-8 lg:p-12 bg-white border-l border-ash" data-testid="checkout-summary">
+        <h3 className="font-display text-xl font-bold text-nordfjord">{t("common.total")}</h3>
+        <ul className="mt-6 divide-y divide-ash">
           {items.map((i) => {
             const name = lang === "fr" ? i.name_fr : i.name_en;
             return (
-              <li key={i.product_id} className="grid grid-cols-[60px_1fr_auto] gap-3 py-3" data-testid={`summary-item-${i.slug}`}>
-                <img src={i.image_url} alt={name} className="aspect-square object-cover bg-white" style={{ filter: "grayscale(0.4)" }} />
+              <li key={i.product_id} className="grid grid-cols-[60px_1fr_auto] gap-3 py-3 items-center" data-testid={`summary-item-${i.slug}`}>
+                <div className="aspect-square rounded-lg overflow-hidden"><VialArt hue={hueFor(i.slug)} className="w-full h-full" /></div>
                 <div>
-                  <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">{i.qty}× · {i.slug}</div>
-                  <div className="font-bold text-sm">{name}</div>
+                  <div className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">{i.qty}× · {i.slug}</div>
+                  <div className="font-bold text-sm text-nordfjord">{name}</div>
                 </div>
-                <div className="font-bold text-sm">${(i.price_cad * i.qty).toFixed(2)}</div>
+                <div className="font-data font-bold text-sm text-nordfjord">${(i.price_cad * i.qty).toFixed(2)}</div>
               </li>
             );
           })}
         </ul>
-        <div className="mt-6 border-t border-ink/20 pt-4 space-y-2 font-mono text-sm">
-          <div className="flex justify-between"><span className="text-foreground/60 uppercase tracking-[0.15em] text-xs">{t("common.subtotal")}</span><span data-testid="summary-subtotal">${subtotal.toFixed(2)}</span></div>
+        <div className="mt-6 border-t border-ash pt-4 space-y-2 font-data text-sm">
+          <div className="flex justify-between"><span className="text-glacier uppercase tracking-[0.14em] text-xs">{t("common.subtotal")}</span><span className="text-nordfjord" data-testid="summary-subtotal">${subtotal.toFixed(2)}</span></div>
           {discount > 0 && (
-            <div className="flex justify-between text-emerald-700" data-testid="summary-discount">
-              <span className="uppercase tracking-[0.15em] text-xs">DISCOUNT ({coupon.applied.code})</span>
+            <div className="flex justify-between text-success" data-testid="summary-discount">
+              <span className="uppercase tracking-[0.14em] text-xs">DISCOUNT ({coupon.applied.code})</span>
               <span>-${discount.toFixed(2)}</span>
             </div>
           )}
           <div className="flex justify-between">
-            <span className="text-foreground/60 uppercase tracking-[0.15em] text-xs">{t("common.shipping")}</span>
-            <span data-testid="summary-shipping">{shipping === 0 ? (lang === "fr" ? "GRATUIT" : "FREE") : `$${shipping.toFixed(2)}`}</span>
+            <span className="text-glacier uppercase tracking-[0.14em] text-xs">{t("common.shipping")}</span>
+            <span className="text-nordfjord" data-testid="summary-shipping">{shipping === 0 ? (lang === "fr" ? "GRATUIT" : "FREE") : `$${shipping.toFixed(2)}`}</span>
           </div>
           {shipping > 0 && (
-            <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-foreground/50" data-testid="free-shipping-hint">
+            <div className="font-data text-[10px] uppercase tracking-[0.14em] text-compliance" data-testid="free-shipping-hint">
               {lang === "fr"
                 ? `Livraison gratuite dès ${FREE_SHIPPING_THRESHOLD.toFixed(0)} $ — plus que $${(FREE_SHIPPING_THRESHOLD - Math.max(0, subtotal - discount)).toFixed(2)}`
                 : `Free shipping at $${FREE_SHIPPING_THRESHOLD.toFixed(0)} — only $${(FREE_SHIPPING_THRESHOLD - Math.max(0, subtotal - discount)).toFixed(2)} to go`}
@@ -318,70 +300,16 @@ export default function Checkout() {
           )}
         </div>
 
-        {/* Coupon */}
-        <div className="mt-4 pt-4 border-t border-ink/10" data-testid="coupon-section">
+        <div className="mt-4 pt-4 border-t border-ash" data-testid="coupon-section">
           {!coupon.applied ? (
             <div className="space-y-2">
-              <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60">Coupon code</label>
+              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance">Coupon code</label>
               <div className="flex gap-2">
                 <input
                   value={coupon.code}
                   onChange={(e) => setCoupon({ ...coupon, code: e.target.value.toUpperCase(), error: "" })}
                   placeholder="FIRONOVA10"
                   data-testid="coupon-input"
-                  className="flex-1 border border-ink/20 px-3 py-2 text-sm font-mono uppercase"
+                  className="flex-1 rounded-full border border-ash px-4 py-2 text-sm font-data uppercase text-nordfjord outline-none focus:border-nova"
                 />
-                <button type="button" onClick={applyCoupon} data-testid="apply-coupon" className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 hover:bg-foreground/80">
-                  Apply
-                </button>
-              </div>
-              {coupon.error && <div className="font-mono text-[11px] text-red-600" data-testid="coupon-error">{coupon.error}</div>}
-            </div>
-          ) : (
-            <div className="flex items-center justify-between bg-emerald-50 border border-emerald-600 px-3 py-2" data-testid="coupon-applied">
-              <div className="text-sm">
-                <span className="font-mono font-bold">{coupon.applied.code}</span> applied · ${discount.toFixed(2)} off
-              </div>
-              <button type="button" onClick={removeCoupon} className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-700">Remove</button>
-            </div>
-          )}
-        </div>
-        <div className="mt-4 border-t-2 border-ink pt-4 flex justify-between items-end">
-          <span className="font-mono uppercase tracking-[0.2em] text-xs">{t("common.total")} CAD</span>
-          <span className="font-display text-3xl font-extrabold" data-testid="summary-total">${total.toFixed(2)}</span>
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-function Input({ label, value, onChange, type = "text", required = false, testId }) {
-  return (
-    <div>
-      <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">{label}{required && " *"}</label>
-      <input
-        type={type}
-        value={value}
-        required={required}
-        onChange={(e) => onChange(e.target.value)}
-        data-testid={testId}
-        className="w-full border-b border-ink px-1 py-3 bg-transparent text-sm focus:outline-none focus:border-signal"
-      />
-    </div>
-  );
-}
-
-function Checkbox({ checked, onChange, label, testId }) {
-  return (
-    <label className="flex items-start gap-3 cursor-pointer">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        data-testid={testId}
-        className="mt-1 w-4 h-4 accent-ink"
-      />
-      <span className="text-xs leading-relaxed">{label}</span>
-    </label>
-  );
-}
+                <button type="button" onClick={applyCoupon} data-testid="apply-coupon" className="btn-pill btn-outline">
