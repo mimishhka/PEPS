@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import { useSiteConfig } from "../contexts/SiteConfigContext";
-import ProductCard from "../components/ProductCard";
+import ProductCard from "../components/ProductCard.jsx";
 
 /* Chromatogramme HPLC — LA LIGNE. Signature visuelle FIRONOVA : c'est la
    donnee elle-meme qui fait l'image de marque, pas une photo d'archive. */

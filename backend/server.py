@@ -15,138 +15,158 @@ import uuid
 import logging
 import secrets
 import asyncio
-from fastapi.responses import RedirectResponse
-from urllib.parse import urlencode
+from datetime import datetime, timezone, timedelta
+from typing import List, Optional, Literal
 
-# Google OAuth env placeholders
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "")
-async def _seed_categories_from_products() -> None:
-    """Dérive les catégories réelles à partir des slugs déjà portés par les produits.
-    Idempotent ($setOnInsert) : une catégorie éditée ensuite par l'admin n'est
-    jamais réécrite au redéploiement. Aucun produit n'est touché."""
-    try:
-        slugs = [x for x in await db.products.distinct("category") if x and _SLUG_RE.match(str(x))]
-        # Libellés par défaut alignés sur les clés i18n existantes.
-        labels = {
-            "healing": ("Healing & Recovery", "Guérison et récupération"),
-            "weight-loss": ("Weight Management", "Gestion du poids"),
-            "gh-secretagogues": ("GH Secretagogues", "Sécrétagogues de GH"),
-            "cognitive": ("Cognitive", "Cognitif"),
-            "longevity": ("Longevity", "Longévité"),
-        }
-        for i, slug in enumerate(sorted(slugs)):
-            en, fr = labels.get(slug, (slug.replace("-", " ").title(), slug.replace("-", " ").title()))
-            await db.categories.update_one(
-                {"slug": slug},
-                {"$setOnInsert": {
-                    "id": str(uuid.uuid4()),
-                    "slug": slug,
-                    "name_en": en,
-                    "name_fr": fr,
-                    "published": True,
-                    "display_order": i,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }},
-                upsert=True,
-            )
-        if slugs:
-            logging.info("categories seed: %d slug(s) vérifié(s)", len(slugs))
-    except Exception as e:  # pragma: no cover
-        logging.error("categories seed failed: %s", e)
+import xml.etree.ElementTree as ET
+
+import bcrypt
+import jwt
+import httpx
+import resend
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File
+from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import DuplicateKeyError
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator
+from reportlab.lib.pagesizes import LETTER
+from reportlab.lib import colors as rl_colors
+from reportlab.lib.units import mm
+from reportlab.pdfgen import canvas as rl_canvas
 
 
-async def _seed_default_menus() -> None:
-    """Reproduit à l'identique la navigation actuellement codée en dur, pour que
-    rien ne bouge visuellement au premier déploiement. $setOnInsert uniquement."""
-    defaults = [
-        {
-            "slug": "main-navigation", "name_en": "Main navigation", "name_fr": "Navigation principale",
-            "location": "header", "display_order": 0,
-            "items": [
-                {"label_en": "Catalog", "label_fr": "Catalogue", "url": "/catalog", "display_order": 0},
-                {"label_en": "Lab", "label_fr": "Labo", "url": "/lab", "display_order": 1},
-                {"label_en": "About", "label_fr": "À propos", "url": "/about", "display_order": 2},
-            ],
-        },
-        {
-            "slug": "footer-shop", "name_en": "Shop", "name_fr": "Boutique",
-            "location": "footer", "display_order": 1,
-            "items": [
-                {"label_en": "Catalog", "label_fr": "Catalogue", "url": "/catalog", "display_order": 0},
-                {"label_en": "Healing & Recovery", "label_fr": "Guérison et récupération", "url": "/catalog?cat=healing", "display_order": 1},
-                {"label_en": "Weight Management", "label_fr": "Gestion du poids", "url": "/catalog?cat=weight-loss", "display_order": 2},
-                {"label_en": "Cognitive", "label_fr": "Cognitif", "url": "/catalog?cat=cognitive", "display_order": 3},
-            ],
-        },
-        {
-            "slug": "footer-legal", "name_en": "Legal", "name_fr": "Légal",
-            "location": "footer", "display_order": 2,
-            "items": [
-                {"label_en": "Terms", "label_fr": "Conditions", "url": "/compliance", "display_order": 0},
-                {"label_en": "Privacy", "label_fr": "Confidentialité", "url": "/privacy", "display_order": 1},
-                {"label_en": "Shipping", "label_fr": "Expédition", "url": "/compliance#shipping", "display_order": 2},
-                {"label_en": "FAQ", "label_fr": "FAQ", "url": "/faq", "display_order": 3},
-            ],
-        },
-    ]
-    try:
-        for m in defaults:
-            items = []
-            for it in m["items"]:
-                items.append({
-                    "id": str(uuid.uuid4()), "published": True, "open_new_tab": False, **it,
-                })
-            await db.menus.update_one(
-                {"slug": m["slug"]},
-                {"$setOnInsert": {
-                    "id": str(uuid.uuid4()),
-                    "slug": m["slug"], "name_en": m["name_en"], "name_fr": m["name_fr"],
-                    "location": m["location"], "published": True,
-                    "display_order": m["display_order"], "items": items,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }},
-                upsert=True,
-            )
-    except Exception as e:  # pragma: no cover
-        logging.error("menus seed failed: %s", e)
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+MONGO_URL = os.environ["MONGO_URL"]
+DB_NAME = os.environ["DB_NAME"]
+JWT_SECRET = os.environ["JWT_SECRET"]
+JWT_ALGORITHM = "HS256"
+ACCESS_TOKEN_MINUTES = 60 * 24 * 7  # 7 days for ecommerce UX
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@fironova.ca")
+# Aucun défaut : un mot de passe admin en dur dans le repo est un mot de passe public.
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+if not ADMIN_PASSWORD:
+    raise RuntimeError(
+        "ADMIN_PASSWORD est obligatoire. Définissez-le dans l'environnement "
+        "avant de démarrer le serveur."
+    )
+INTERAC_EMAIL = os.environ.get("INTERAC_EMAIL", "orders@fironova.ca")
+
+# Code d'accès facultatif demandé AVANT même l'écran de login admin, côté SPA
+# publique. Ne remplace pas l'auth (JWT + rôle restent la vraie barrière sur
+# /api/admin/*) — sert seulement à ce qu'un visiteur qui tombe sur l'URL admin
+# obscure par hasard ne voie même pas d'écran de login. Si non défini, la
+# passerelle est désactivée (aucun blocage).
+ADMIN_GATE_CODE = os.environ.get("ADMIN_GATE_CODE")
+INTERAC_PASSWORD_HINT = os.environ.get("INTERAC_PASSWORD_HINT", "FIRONOVA")
+NOWPAYMENTS_API_KEY = os.environ.get("NOWPAYMENTS_API_KEY", "")
+NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "")
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+NOWPAYMENTS_BASE_URL = "https://api.nowpayments.io/v1"
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@fironova.ca")
+ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@fironova.ca")
+STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
+SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
+FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))
+UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "24"))
+
+# Feature flags — toggle without deploying new code, just flip the env var and restart.
+COA_PAGE_ENABLED = os.environ.get("COA_PAGE_ENABLED", "false").strip().lower() == "true"
+
+# --- Prélancement (BLOC 3) --------------------------------------------------
+# Défaut sûr : la boutique reste OUVERTE si la variable est absente.
+PRELAUNCH_ENABLED = os.environ.get("PRELAUNCH_ENABLED", "false").strip().lower() == "true"
+PRELAUNCH_PREVIEW_TOKEN = os.environ.get("PRELAUNCH_PREVIEW_TOKEN", "")  # ?preview=<token> contourne la porte
+LAUNCH_COUPON_CODE = os.environ.get("LAUNCH_COUPON_CODE", "LAUNCH15").strip().upper()
+
+# File uploads (COA PDFs). Served statically at /uploads/coa/<file>.
+UPLOAD_DIR = ROOT_DIR / "uploads"
+COA_UPLOAD_DIR = UPLOAD_DIR / "coa"
+COA_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+MAX_COA_UPLOAD_MB = float(os.environ.get("MAX_COA_UPLOAD_MB", "10"))
+
+# Product images. Served statically at /uploads/images/<file>.
+IMAGE_UPLOAD_DIR = UPLOAD_DIR / "images"
+IMAGE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+MAX_IMAGE_UPLOAD_MB = float(os.environ.get("MAX_IMAGE_UPLOAD_MB", "5"))
+ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+
+# Étiquettes d'expédition Postes Canada — servies à /uploads/labels/<file>.
+LABEL_UPLOAD_DIR = UPLOAD_DIR / "labels"
+LABEL_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Postes Canada (Canada Post) rating/tracking API — leave blank to keep using the flat-rate
+# shipping_zones/shipping_methods system already in place.
+CANADA_POST_API_KEY = os.environ.get("CANADA_POST_API_KEY", "")
+CANADA_POST_CUSTOMER_NUMBER = os.environ.get("CANADA_POST_CUSTOMER_NUMBER", "")
+CANADA_POST_CONTRACT_ID = os.environ.get("CANADA_POST_CONTRACT_ID", "")
+CANADA_POST_ORIGIN_POSTAL_CODE = os.environ.get("CANADA_POST_ORIGIN_POSTAL_CODE", "")
+# Expéditeur pour la création d'étiquettes. Emballage neutre : aucune mention
+# du contenu ne figure sur l'étiquette (politique d'emballage discret).
+CANADA_POST_SENDER_NAME = os.environ.get("CANADA_POST_SENDER_NAME", "FIRONOVA")
+CANADA_POST_SENDER_ADDRESS = os.environ.get("CANADA_POST_SENDER_ADDRESS", "")
+CANADA_POST_SENDER_CITY = os.environ.get("CANADA_POST_SENDER_CITY", "Montreal")
+CANADA_POST_SENDER_PROVINCE = os.environ.get("CANADA_POST_SENDER_PROVINCE", "QC")
+CANADA_POST_SENDER_PHONE = os.environ.get("CANADA_POST_SENDER_PHONE", "")
+CANADA_POST_ENVIRONMENT = os.environ.get("CANADA_POST_ENVIRONMENT", "dev")  # "dev" (soa-gw) or "prod" (soa-gw prod host)
+CANADA_POST_BASE_URL = (
+    "https://ct.soa-gw.canadapost.ca" if CANADA_POST_ENVIRONMENT == "dev"
+    else "https://soa-gw.canadapost.ca"
+)
+
+# ---------------------------------------------------------------------------
+# Dispatch batch (fenêtre de traitement des commandes)
+# Cutoff 13h heure de l'Est, jours ouvrables seulement (week-ends + fériés exclus).
+# ---------------------------------------------------------------------------
+from zoneinfo import ZoneInfo
+try:
+    import holidays as _holidays_lib
+    _CA_HOLIDAYS = _holidays_lib.Canada()  # fériés fédéraux canadiens
+except Exception:  # pragma: no cover - lib absente => aucun férié bloqué
+    _CA_HOLIDAYS = set()
+
+ORDER_CUTOFF_HOUR = int(os.environ.get("ORDER_CUTOFF_HOUR", "13"))
+ORDER_CUTOFF_TZ = os.environ.get("ORDER_CUTOFF_TZ", "America/Toronto")
 
 
-async def _seed_launch_coupon() -> None:
-    """Provisionne le coupon de lancement 15 %. $setOnInsert : si tu l'édites
-    ensuite dans l'admin, le redéploiement ne l'écrase pas."""
-    try:
-        await db.coupons.update_one(
-            {"code": LAUNCH_COUPON_CODE},
-            {"$setOnInsert": {
-                "id": str(uuid.uuid4()),
-                "code": LAUNCH_COUPON_CODE,
-                "discount_type": "percent",
-                "value": 15.0,
-                "min_subtotal": 0.0,
-                "usage_limit": None,
-                "used_count": 0,
-                "active": True,
-                "expires_at": None,
-                "deleted_at": None,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }},
-            upsert=True,
-        )
-    except Exception as e:  # pragma: no cover
-        logging.error("launch coupon seed failed: %s", e)
+def _is_business_day(d) -> bool:
+    """False les samedis, dimanches et jours fériés fédéraux canadiens."""
+    if d.weekday() >= 5:  # 5 = samedi, 6 = dimanche
+        return False
+    return d not in _CA_HOLIDAYS
 
 
-@app.on_event("startup")
-async def startup_event():
-    await seed_admin_and_products()
-    await _seed_categories_from_products()
-    await _seed_default_menus()
-    await _seed_launch_coupon()
-    if await _acquire_worker_lock("background_tasks"):
-        asyncio.create_task(_unpaid_orders_watchdog())
-        asyncio.create_task(_backfill_dispatch_batch())
+def compute_dispatch_batch(paid_at) -> str:
+    """
+    Retourne la date du lot d'expédition (prochain jour ouvrable) au format
+    'YYYY-MM-DD' en date locale (ORDER_CUTOFF_TZ), à partir d'un horodatage de
+    paiement (datetime aware UTC, ou string ISO).
+    Règle : payé avant le cutoff un jour ouvrable => jour même, sinon jour
+    suivant ; puis on avance jusqu'au prochain jour ouvrable.
+    """
+    if isinstance(paid_at, str):
+        paid_at = datetime.fromisoformat(paid_at.replace("Z", "+00:00"))
+    if paid_at.tzinfo is None:
+        paid_at = paid_at.replace(tzinfo=timezone.utc)
+    local = paid_at.astimezone(ZoneInfo(ORDER_CUTOFF_TZ))
+    candidate = local.date()
+    if not (local.hour < ORDER_CUTOFF_HOUR and _is_business_day(candidate)):
+        candidate = candidate + timedelta(days=1)
+    while not _is_business_day(candidate):
+        candidate = candidate + timedelta(days=1)
+    return candidate.isoformat()
+
+try:
+    from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
+    _STRIPE_AVAILABLE = True
+except Exception:
+    _STRIPE_AVAILABLE = False
+    StripeCheckout = None
+    CheckoutSessionRequest = None
 
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
@@ -168,7 +188,330 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
+def verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
 
+
+def create_access_token(user_id: str, email: str, role: str, token_version: int = 0) -> str:
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "role": role,
+        "tv": token_version,  # doit correspondre à users.token_version — sinon token révoqué
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_MINUTES),
+        "type": "access",
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def set_auth_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        max_age=ACCESS_TOKEN_MINUTES * 60,
+        path="/",
+    )
+
+
+def clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(key="access_token", path="/")
+
+
+async def _resolve_user(request: Request) -> Optional[dict]:
+    token = request.cookies.get("access_token")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "access":
+            return None
+        user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+        if not user:
+            return None
+        # Révocation : si le token_version du JWT ne correspond plus à celui
+        # stocké sur l'utilisateur (changement de mot de passe, changement
+        # d'email confirmé, déconnexion globale, suppression de compte),
+        # le token est considéré invalide même s'il n'a pas expiré.
+        if payload.get("tv", 0) != user.get("token_version", 0):
+            return None
+        user.pop("token_version", None)  # détail interne, pas exposé à l'API
+        return user
+    except jwt.PyJWTError:
+        return None
+
+
+async def get_current_user(request: Request) -> dict:
+    user = await _resolve_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+async def get_admin_user(request: Request) -> dict:
+    user = await get_current_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    return user
+
+
+# ---------------------------------------------------------------------------
+# Rôles & permissions granulaires — inspiré du modèle de règles par entité
+# vu sur Base44 (Créateur uniquement / Tous les utilisateurs / etc.), adapté
+# à un admin e-commerce : trois rôles (user, staff, admin), et pour les
+# comptes "staff", un niveau d'accès par zone fonctionnelle.
+#   - "admin"  : accès complet à tout, y compris la gestion des autres
+#                membres staff (équivalent "Owner" chez Base44).
+#   - "staff"  : accès limité aux zones et niveaux qui lui sont accordés.
+#   - "user"   : client normal, aucun accès admin.
+# Niveaux par zone : none < view < manage (manage inclut view).
+# ---------------------------------------------------------------------------
+STAFF_AREAS = ["orders", "products", "coupons", "customers", "subscribers", "shipping", "dashboard"]
+_PERMISSION_ORDER = {"none": 0, "view": 1, "manage": 2}
+
+
+def require_area(area: str, level: str = "view"):
+    """Dépendance FastAPI paramétrée : autorise si role == admin (accès total),
+    ou si role == staff ET permissions[area] >= level demandé.
+    Journalise automatiquement toute action de niveau "manage" (= mutation) —
+    couvre les 35 endpoints admin existants sans qu'il faille les modifier
+    un par un."""
+    async def _dep(request: Request, user: dict = Depends(get_current_user)) -> dict:
+        allowed = False
+        if user.get("role") == "admin":
+            allowed = True
+        elif user.get("role") == "staff":
+            perms = user.get("permissions") or {}
+            have = _PERMISSION_ORDER.get(perms.get(area, "none"), 0)
+            need = _PERMISSION_ORDER.get(level, 1)
+            allowed = have >= need
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        if level == "manage":
+            asyncio.create_task(_log_action(
+                user, action=f"{request.method} {request.url.path}", area=area,
+            ))
+        return user
+    return _dep
+
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+class RegisterIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    name: str = Field(min_length=1)
+
+
+class LoginIn(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    email: str
+    name: str
+    role: str
+    created_at: str
+
+
+class ProductVariant(BaseModel):
+    id: Optional[str] = None  # generated server-side if missing
+    name: str  # "5mg", "10mg", "500mcg"
+    price: float
+    stock: int = 0
+    sku: str = ""
+    badge_coa_available: bool = False
+    badge_coa_pending: bool = False
+    badge_coming_soon: bool = False
+    coa_url: str = ""
+    sale_price: Optional[float] = None  # special/discount price (must be < price to apply)
+    preorder_enabled: bool = False
+    preorder_delay_message: str = ""
+    preorder_price: Optional[float] = None
+    preorder_note: str = ""
+    weight_grams: float = 50.0  # used to estimate parcel weight for live Canada Post rating
+
+
+class ProductIn(BaseModel):
+    slug: str
+    name_en: str
+    name_fr: str
+    category: str  # healing | gh-secretagogues | weight-loss | cognitive | longevity
+    sequence: Optional[str] = ""
+    purity: str = "≥ 99%"
+    dosage_mg: float = 0.0  # informational only — variants drive actual pricing/stock
+    description_en: str
+    description_fr: str
+    price_cad: float = 0.0  # legacy/fallback (= price of first variant)
+    stock: int = 0  # legacy/fallback (= total across variants)
+    low_stock_threshold: int = 10
+    image_url: str = ""
+    lab_tested: bool = True
+    active: bool = True
+    featured: bool = False
+    preorder_allowed: bool = False  # legacy product-level (variants override)
+    coa_url: Optional[str] = ""
+    coa_lot: Optional[str] = ""
+    coa_date: Optional[str] = ""
+    # --- SCIENTIFIC DATA (10 new fields) ---
+    molecular_formula: str = ""        # ex. "C62H98N16O22"
+    molecular_weight: Optional[float] = None   # ex. 1419.5 (Da)
+    cas_number: str = ""               # ex. "137525-51-0"
+    sequence_length: Optional[int] = None # ex. 31 (derivable from sequence but explicit here)
+    storage: str = ""                  # ex. "-20°C, à l'abri de la lumière"
+    solubility: str = ""               # ex. "Soluble dans l'eau, acide acétique 0,1%"
+    appearance: str = ""               # ex. "Poudre lyophilisée blanche"
+    mechanism: str = ""                # ex. "Potentialise la libération d'hormone de croissance"
+    research_areas: List[str] = []     # ex. ["Réparation tissulaire", "Anti-inflammatoire"]
+    synonyms: List[str] = []           # ex. ["Sermorelin", "GRF 1-29"]
+    variants: List[ProductVariant] = []
+
+
+class ProductOut(ProductIn):
+    id: str
+    created_at: str
+
+
+class CartItem(BaseModel):
+    product_id: str
+    variant_id: Optional[str] = None
+    qty: int = Field(ge=1)
+
+
+class ShippingAddress(BaseModel):
+    full_name: str
+    address1: str
+    address2: Optional[str] = ""
+    city: str
+    province: str  # QC, ON, BC, AB, ...
+    postal_code: str
+    country: str = "CA"
+    phone: Optional[str] = ""
+
+
+class CheckoutIn(BaseModel):
+    items: List[CartItem]
+    shipping: ShippingAddress
+    email: Optional[EmailStr] = None  # guest email; auth user's email is used if logged in
+    payment_method: Literal["interac", "nowpayments", "stripe"]
+    pay_currency: Optional[str] = "btc"  # used only for nowpayments
+    coupon_code: Optional[str] = None
+    origin_url: Optional[str] = None  # used by stripe to build success/cancel URLs
+    accept_terms: bool
+    confirm_age: bool
+    confirm_research_use: bool
+
+
+class CouponIn(BaseModel):
+    code: str
+    discount_type: Literal["percent", "fixed"]
+    value: float = Field(gt=0)  # percent 1-100 or absolute CAD
+    min_subtotal: float = 0.0
+    usage_limit: Optional[int] = None  # None = unlimited
+    active: bool = True
+    expires_at: Optional[str] = None  # ISO string
+
+
+class OrderNoteIn(BaseModel):
+    text: str = Field(min_length=1)
+    visible_to_customer: bool = False
+
+
+class RefundIn(BaseModel):
+    amount: float = Field(gt=0)
+
+
+class ShippingInfoIn(BaseModel):
+    carrier: Optional[str] = ""
+    tracking_number: Optional[str] = ""
+    shipped_at: Optional[str] = None  # ISO; defaults to now() if not provided
+
+
+class CreateLabelIn(BaseModel):
+    service_code: str = Field(min_length=1, max_length=40)  # ex. "DOM.EP"
+
+
+class StockAdjustIn(BaseModel):
+    delta: int  # positive to add, negative to subtract
+
+
+class StockNotifyIn(BaseModel):
+    email: EmailStr
+    product_id: str
+    variant_id: Optional[str] = None
+
+
+# --- Catégories (BLOC 1) ----------------------------------------------------
+# Les produits référencent une catégorie par SLUG (string), pas par id : aucune
+# migration de données sur les produits existants.
+_SLUG_RE = re.compile(r"^[a-z0-9-]+$")
+
+
+class CategoryIn(BaseModel):
+    slug: str = Field(min_length=1, max_length=60)
+    name_en: str = Field(min_length=1, max_length=120)
+    name_fr: str = Field(min_length=1, max_length=120)
+    published: bool = True
+    display_order: int = 0
+
+    @field_validator("slug")
+    @classmethod
+    def _check_slug(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not _SLUG_RE.match(v):
+            raise ValueError("slug must match ^[a-z0-9-]+$")
+        return v
+
+
+class CategoryOut(CategoryIn):
+    id: str
+    created_at: str
+
+
+# --- Menus (BLOC 2) ---------------------------------------------------------
+class MenuItemIn(BaseModel):
+    id: Optional[str] = None  # généré côté serveur si absent
+    label_en: str = Field(min_length=1, max_length=120)
+    label_fr: str = Field(min_length=1, max_length=120)
+    url: str = Field(min_length=1, max_length=500)
+    published: bool = True
+    display_order: int = 0
+    open_new_tab: bool = False
+
+
+class MenuIn(BaseModel):
+    slug: str = Field(min_length=1, max_length=60)
+    name_en: str = Field(min_length=1, max_length=120)
+    name_fr: str = Field(min_length=1, max_length=120)
+    location: Literal["header", "footer"]
+    published: bool = True
+    display_order: int = 0
+    items: List[MenuItemIn] = []
+
+    @field_validator("slug")
+    @classmethod
+    def _check_slug(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not _SLUG_RE.match(v):
+            raise ValueError("slug must match ^[a-z0-9-]+$")
+        return v
+
+
+class MenuOut(MenuIn):
+    id: str
     created_at: str
 
 
@@ -462,34 +805,11 @@ async def admin_gate_verify(payload: AdminGateIn, request: Request):
     Rate-limit distinct et plus strict que le login (pas de compte à protéger
     ici, juste dissuader le brute-force du code lui-même)."""
     if not ADMIN_GATE_CODE:
-        return {"ok": True}  # passerelle désactivée si aucun code configuré (dev/pre-prod mode)
+        return {"ok": True}  # passerelle désactivée si aucun code configuré
     _rate_limit("admin_gate", _client_ip(request), 5, 3600, "Too many attempts. Try again later.")
     if not secrets.compare_digest(payload.code, ADMIN_GATE_CODE):
         raise HTTPException(status_code=403, detail="Invalid code")
     return {"ok": True}
-
-
-@api.get("/admin/autologin")
-async def admin_autologin(response: Response):
-    """Pre-prod auto-login: creates or logs in the admin user without password.
-    Only works if ADMIN_GATE_CODE is not set (dev/testing mode)."""
-    if ADMIN_GATE_CODE:
-        raise HTTPException(status_code=403, detail="Auto-login only available in dev mode")
-    doc = await db.users.find_one({"email": ADMIN_EMAIL.lower()})
-    if not doc:
-        doc = {
-            "id": str(uuid.uuid4()),
-            "email": ADMIN_EMAIL.lower(),
-            "name": "Admin",
-            "password_hash": hash_password(secrets.token_urlsafe(32)),
-            "role": "admin",
-            "token_version": 0,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await db.users.insert_one(doc)
-    token = create_access_token(doc["id"], doc["email"], doc.get("role", "admin"), token_version=doc.get("token_version", 0))
-    set_auth_cookie(response, token)
-    return {"ok": True, "user": {"id": doc["id"], "email": doc["email"], "name": doc["name"], "role": doc.get("role", "admin")}}
 
 
 @api.post("/auth/login")
@@ -512,104 +832,6 @@ async def login(payload: LoginIn, response: Response, request: Request):
         "created_at": user["created_at"],
         # NOTE: auth cookie-only — pas de token dans le body.
     }
-
-
-# ---------------------------------------------------------------------------
-# Google OAuth2 integration (Authorization Code)
-# ---------------------------------------------------------------------------
-@api.get("/auth/google/start")
-def auth_google_start(next: str = "/"):
-    if not (GOOGLE_CLIENT_ID and GOOGLE_REDIRECT_URI):
-        raise HTTPException(503, "Google OAuth is not configured")
-    state = secrets.token_urlsafe(16)
-    params = {
-        "client_id": GOOGLE_CLIENT_ID,
-        "response_type": "code",
-        "scope": "openid email profile",
-        "redirect_uri": GOOGLE_REDIRECT_URI,
-        "state": state,
-        "prompt": "select_account",
-    }
-    url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
-    resp = RedirectResponse(url)
-    resp.set_cookie("oauth_state", state, httponly=True, secure=True, samesite="none", max_age=300, path="/")
-    resp.set_cookie("oauth_next", next, httponly=True, secure=True, samesite="none", max_age=300, path="/")
-    return resp
-
-
-@api.get("/auth/google/callback")
-async def auth_google_callback(request: Request, code: str | None = None, state: str | None = None):
-    if not (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and GOOGLE_REDIRECT_URI):
-        raise HTTPException(503, "Google OAuth is not configured")
-    cookie_state = request.cookies.get("oauth_state")
-    next_path = request.cookies.get("oauth_next") or "/"
-    if not code or not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
-        raise HTTPException(400, "Invalid OAuth state or missing code")
-
-    # Exchange code for tokens
-    try:
-        async with httpx.AsyncClient(timeout=15) as cx:
-            r = await cx.post(
-                "https://oauth2.googleapis.com/token",
-                data={
-                    "code": code,
-                    "client_id": GOOGLE_CLIENT_ID,
-                    "client_secret": GOOGLE_CLIENT_SECRET,
-                    "redirect_uri": GOOGLE_REDIRECT_URI,
-                    "grant_type": "authorization_code",
-                },
-            )
-            r.raise_for_status()
-            token_data = r.json()
-    except Exception as e:
-        logging.error("Google token exchange failed: %s", e)
-        raise HTTPException(502, "Google token exchange failed")
-
-    access_token = token_data.get("access_token")
-    if not access_token:
-        logging.error("Google token response missing access_token: %s", token_data)
-        raise HTTPException(502, "Google token response invalid")
-
-    # Fetch userinfo
-    try:
-        async with httpx.AsyncClient(timeout=15) as cx:
-            r = await cx.get("https://www.googleapis.com/oauth2/v3/userinfo", headers={"Authorization": f"Bearer {access_token}"})
-            r.raise_for_status()
-            info = r.json()
-    except Exception as e:
-        logging.error("Google userinfo failed: %s", e)
-        raise HTTPException(502, "Google userinfo failed")
-
-    email = (info.get("email") or "").lower()
-    if not email:
-        raise HTTPException(400, "Google account has no email")
-
-    # Find or create user
-    user = await db.users.find_one({"email": email})
-    now_iso = datetime.now(timezone.utc).isoformat()
-    if not user:
-        user_doc = {
-            "id": str(uuid.uuid4()),
-            "email": email,
-            "name": info.get("name") or email.split("@")[0],
-            "password_hash": hash_password(secrets.token_urlsafe(32)),
-            "role": "user",
-            "token_version": 0,
-            "created_at": now_iso,
-            "google": {"id": info.get("sub"), "picture": info.get("picture")},
-        }
-        await db.users.insert_one(user_doc)
-        user = user_doc
-    else:
-        if not user.get("google"):
-            await db.users.update_one({"id": user["id"]}, {"$set": {"google": {"id": info.get("sub"), "picture": info.get("picture")}}})
-
-    token = create_access_token(user["id"], user["email"], user.get("role", "user"), token_version=user.get("token_version", 0))
-    resp = RedirectResponse(url=(PUBLIC_BASE_URL or "") + next_path)
-    set_auth_cookie(resp, token)
-    resp.delete_cookie("oauth_state", path="/")
-    resp.delete_cookie("oauth_next", path="/")
-    return resp
 
 
 @api.post("/auth/logout")
@@ -1211,6 +1433,48 @@ async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(
         f.write(contents)
 
     rel_path = f"/uploads/coa/{safe_name}"
+    url = f"{PUBLIC_BASE_URL}{rel_path}" if PUBLIC_BASE_URL else rel_path
+    return {"url": url, "original_filename": filename, "size_bytes": len(contents)}
+
+
+@api.post("/admin/upload/image")
+async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
+    """Uploads a product image (PNG, JPEG, WebP, GIF) and returns a URL to use in 
+    the image_url field. Storage is local disk under UPLOAD_DIR/images, served 
+    statically at /uploads/images/<file>."""
+    filename = file.filename or ""
+    
+    # Determine file extension from filename
+    ext = None
+    if "." in filename:
+        ext = filename.rsplit(".", 1)[1].lower()
+    
+    # Validate by content type first
+    content_type = file.content_type or ""
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(400, "Only PNG, JPEG, WebP, and GIF images are allowed")
+    
+    contents = await file.read()
+    size_mb = len(contents) / (1024 * 1024)
+    if size_mb > MAX_IMAGE_UPLOAD_MB:
+        raise HTTPException(400, f"File too large — max {MAX_IMAGE_UPLOAD_MB:.0f} MB")
+    
+    # Map content type to extension if not provided
+    if not ext:
+        ext_map = {
+            "image/png": "png",
+            "image/jpeg": "jpg",
+            "image/webp": "webp",
+            "image/gif": "gif",
+        }
+        ext = ext_map.get(content_type, "jpg")
+    
+    safe_name = f"{uuid.uuid4().hex}.{ext}"
+    dest = IMAGE_UPLOAD_DIR / safe_name
+    with open(dest, "wb") as f:
+        f.write(contents)
+
+    rel_path = f"/uploads/images/{safe_name}"
     url = f"{PUBLIC_BASE_URL}{rel_path}" if PUBLIC_BASE_URL else rel_path
     return {"url": url, "original_filename": filename, "size_bytes": len(contents)}
 
@@ -3279,6 +3543,17 @@ async def admin_products_csv(_admin: dict = Depends(require_area("products", "vi
             "coa_lot": p.get("coa_lot", ""),
             "coa_date": p.get("coa_date", ""),
             "active": p.get("active", True),
+            # Scientific data fields (new)
+            "molecular_formula": p.get("molecular_formula", ""),
+            "molecular_weight": p.get("molecular_weight", ""),
+            "cas_number": p.get("cas_number", ""),
+            "sequence_length": p.get("sequence_length", ""),
+            "storage": p.get("storage", ""),
+            "solubility": p.get("solubility", ""),
+            "appearance": p.get("appearance", ""),
+            "mechanism": p.get("mechanism", ""),
+            "research_areas": "; ".join(p.get("research_areas", [])),
+            "synonyms": "; ".join(p.get("synonyms", [])),
         })
     return _csv_response(rows, f"fironova-products-{datetime.now().strftime('%Y%m%d')}.csv")
 
@@ -3304,6 +3579,17 @@ async def admin_products_xlsx(_admin: dict = Depends(require_area("products", "v
             "featured": p.get("featured", False),
             "lab_tested": p.get("lab_tested", False),
             "active": p.get("active", True),
+            # Scientific data fields (new)
+            "molecular_formula": p.get("molecular_formula", ""),
+            "molecular_weight": p.get("molecular_weight", ""),
+            "cas_number": p.get("cas_number", ""),
+            "sequence_length": p.get("sequence_length", ""),
+            "storage": p.get("storage", ""),
+            "solubility": p.get("solubility", ""),
+            "appearance": p.get("appearance", ""),
+            "mechanism": p.get("mechanism", ""),
+            "research_areas": "; ".join(p.get("research_areas", [])),
+            "synonyms": "; ".join(p.get("synonyms", [])),
         })
     return _xlsx_response(rows, f"fironova-products-{datetime.now().strftime('%Y%m%d')}.xlsx")
 
@@ -4216,6 +4502,16 @@ async def _seed_launch_coupon() -> None:
         logging.error("launch coupon seed failed: %s", e)
 
 
+@app.on_event("startup")
+async def startup_event():
+    await seed_admin_and_products()
+    await _seed_categories_from_products()
+    await _seed_default_menus()
+    await _seed_launch_coupon()
+    if await _acquire_worker_lock("background_tasks"):
+        asyncio.create_task(_unpaid_orders_watchdog())
+        asyncio.create_task(_backfill_dispatch_batch())
+        asyncio.create_task(_trash_auto_purge_watchdog())
 
 
 async def _backfill_dispatch_batch():

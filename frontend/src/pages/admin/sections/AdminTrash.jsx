@@ -3,7 +3,7 @@
 // définitive. Réservé aux "admin" (owner) : la restauration/purge est une
 // action à fort impact, volontairement non déléguée à un staff même avec
 // accès "manage" sur la zone correspondante.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { RotateCcw, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
@@ -33,11 +33,11 @@ export default function AdminTrash() {
   const [selected, setSelected] = useState(new Set());
   const [busy, setBusy] = useState(false);
 
-  const load = () => {
+  const load = useCallback(() => {
     setSelected(new Set());
     api.get(`/admin/trash/${resource}`).then((r) => setItems(r.data)).catch(() => setItems([]));
-  };
-  useEffect(() => { load(); }, [resource]);
+  }, [resource]);
+  useEffect(() => { load(); }, [load]);
 
   const toggle = (id) => {
     const next = new Set(selected);

@@ -153,7 +153,7 @@ function ProductEditor({ product, setProduct, onSave, onCancel }) {
               <F label="Sequence" value={product.sequence} onChange={(v) => setProduct({ ...product, sequence: v })} test="f-sequence" />
               <F label="Purity" value={product.purity} onChange={(v) => setProduct({ ...product, purity: v })} test="f-purity" />
             </Grid2>
-            <F label="Main Image URL" value={product.image_url} onChange={(v) => setProduct({ ...product, image_url: v })} test="f-image" />
+            <ImageUploader value={product.image_url} onChange={(v) => setProduct({ ...product, image_url: v })} test="f-image" />
             <TA label="Description EN (rich text)" value={product.description_en} onChange={(v) => setProduct({ ...product, description_en: v })} test="f-desc-en" />
             <TA label="Description FR (texte enrichi)" value={product.description_fr} onChange={(v) => setProduct({ ...product, description_fr: v })} test="f-desc-fr" />
           </Section>
@@ -332,6 +332,77 @@ function CoaUploader({ value, onChange, test }) {
            className="mt-1 inline-block font-mono text-[10px] text-foreground/50 underline">
           View current PDF ↗
         </a>
+      )}
+    </div>
+  );
+}
+
+function ImageUploader({ value, onChange, test }) {
+  const [uploading, setUploading] = useState(false);
+  const inputId = `image-upload-${test}`;
+  const imageSrc = value
+    ? (value.startsWith("http") ? value : `${API_BASE.replace(/\/api$/, "")}${value}`)
+    : "";
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    const allowed = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+    if (!allowed.includes(file.type)) {
+      toast.error("Only PNG, JPEG, WebP, and GIF images are allowed");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await api.post("/admin/upload/image", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      onChange(res.data.url);
+      toast.success("Product image uploaded");
+    } catch (err) {
+      toast.error(formatApiError(err?.response?.data?.detail));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">Main image</label>
+      <div className="flex items-center gap-2">
+        <label
+          htmlFor={inputId}
+          data-testid={`${test}-upload-btn`}
+          className={`shrink-0 border border-ink font-mono text-[10px] uppercase tracking-[0.15em] px-3 py-2 cursor-pointer hover:bg-ink hover:text-white ${uploading ? "opacity-50 pointer-events-none" : ""}`}
+        >
+          {uploading ? "Uploading..." : "Upload image"}
+        </label>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="border border-ink/30 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.15em] hover:bg-secondary"
+            data-testid={`${test}-clear-btn`}
+          >
+            Clear
+          </button>
+        )}
+        <input id={inputId} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={handleFile} />
+      </div>
+      {imageSrc && (
+        <div className="mt-2">
+          <img
+            src={imageSrc}
+            alt="Product preview"
+            className="w-24 h-24 object-cover border border-ink/20"
+            data-testid={`${test}-preview`}
+          />
+        </div>
       )}
     </div>
   );

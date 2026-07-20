@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
-import ProductCard from "../components/ProductCard";
+import ProductCard from "../components/ProductCard.jsx";
 
 // Repli : si GET /categories échoue ou ne renvoie rien, on garde exactement
 // la liste historique — le catalogue ne doit jamais perdre ses filtres.
