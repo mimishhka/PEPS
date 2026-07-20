@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
+import { MolecularMesh, Wordmark, FnMark } from "../components/brand";
 
 export default function Register() {
   useDocumentHead({ title: "Register", path: "/register", noindex: true });
@@ -27,40 +28,47 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-[80vh] grid lg:grid-cols-2" data-testid="register-page">
-      <div className="hidden lg:block relative bg-ink overflow-hidden">
-        <img src="https://images.unsplash.com/photo-1616996691748-3f5f78093ab0?auto=format&fit=crop&w=1200&q=80" alt="Lab" className="absolute inset-0 w-full h-full object-cover opacity-60" style={{ filter: "grayscale(1) contrast(1.2)" }} />
-        <div className="relative h-full p-12 flex flex-col justify-between text-white">
-          <div className="font-mono text-[11px] uppercase tracking-[0.3em]">// AUTH · FIRONOVA</div>
+    <div className="min-h-[85vh] grid lg:grid-cols-2 bg-clinical" data-testid="register-page">
+      <div className="hidden lg:block relative bg-nordfjord overflow-hidden">
+        <MolecularMesh opacity={0.3} />
+        <div className="relative h-full p-12 flex flex-col justify-between text-clinical">
+          <div className="flex items-center gap-3">
+            <FnMark size={28} frame="#00B8D4" spark="#00B8D4" />
+            <Wordmark size={17} color="#F7FAFC" />
+          </div>
           <div>
-            <h2 className="font-display text-5xl font-extrabold uppercase tracking-tight leading-[0.95]">
-              Join the<br/>research<br/>network.
+            <h2 className="font-display text-[44px] font-bold tracking-[-0.02em] leading-[1.05]">
+              {t("auth.signup") || "Join the network."}
             </h2>
-            <p className="mt-4 text-white/70 max-w-md text-sm">{t("auth.registerSub")}</p>
+            <p className="mt-4 text-[#B7CADD] max-w-md">{t("auth.registerSub")}</p>
           </div>
         </div>
       </div>
+
       <form onSubmit={onSubmit} className="p-8 lg:p-16 flex flex-col justify-center">
-        <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">02 · {t("auth.signup")}</div>
-        <h1 className="font-display text-5xl font-extrabold uppercase tracking-tight mt-3">{t("auth.signup")}</h1>
-        <div className="mt-10 space-y-5 max-w-md">
+        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">02 · {t("auth.signup")}</p>
+        <h1 className="font-display text-[40px] font-bold text-nordfjord mb-10">{t("auth.signup")}</h1>
+        <div className="space-y-5 max-w-md">
           <div>
-            <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">{t("auth.name")}</label>
-            <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="register-name" className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal" />
+            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.name")}</label>
+            <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="register-name"
+              className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
           </div>
           <div>
-            <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">{t("auth.email")}</label>
-            <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-email" className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal" />
+            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
+            <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-email"
+              className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
           </div>
           <div>
-            <label className="block font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">{t("auth.password")} (≥ 8)</label>
-            <input type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="register-password" className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal" />
+            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.password")} (≥ 8)</label>
+            <input type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="register-password"
+              className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
           </div>
-          <button type="submit" disabled={busy} data-testid="register-submit" className="w-full bg-ink text-white font-mono text-xs uppercase tracking-[0.3em] py-4 hover:bg-foreground/85 disabled:opacity-50">
+          <button type="submit" disabled={busy} data-testid="register-submit" className="w-full btn-pill btn-nova disabled:opacity-50">
             {busy ? t("common.loading") : `${t("auth.signup")} →`}
           </button>
-          <p className="text-xs text-foreground/60 pt-4 border-t border-ink/15">
-            {t("auth.hasAccount")} <Link to="/login" className="font-bold underline" data-testid="link-login">{t("auth.signin")} →</Link>
+          <p className="text-sm text-glacier pt-4 border-t border-ash">
+            {t("auth.hasAccount")} <Link to="/login" className="font-semibold text-nordfjord hover:text-nova" data-testid="link-login">{t("auth.signin")} →</Link>
           </p>
         </div>
       </form>
