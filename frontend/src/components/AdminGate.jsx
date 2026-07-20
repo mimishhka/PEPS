@@ -1,12 +1,7 @@
-// frontend/src/components/AdminGate.jsx — NOUVEAU fichier.
-// Passerelle affichée AVANT le login admin. Un visiteur qui tombe sur l'URL
-// admin obscure sans connaître le code ne voit même pas d'écran de login —
-// juste ce petit formulaire neutre, indiscernable d'une page d'erreur.
-// La vraie barrière de sécurité reste le JWT + rôle admin côté backend sur
-// /api/admin/* ; ceci n'est qu'une couche de dissuasion/obscurité en plus,
-// utile tant qu'il n'y a pas de sous-domaine séparé.
+// frontend/src/components/AdminGate.jsx
 import { useState, useEffect } from "react";
 import api from "../lib/api";
+import { FnMark } from "./brand";
 
 const GATE_KEY = "fironova_admin_gate_ok";
 
@@ -18,10 +13,7 @@ export default function AdminGate({ children }) {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    if (ok) {
-      setChecking(false);
-      return;
-    }
+    if (ok) { setChecking(false); return; }
     let cancelled = false;
     api.get("/admin/autologin")
       .then(() => {
@@ -31,9 +23,7 @@ export default function AdminGate({ children }) {
         }
       })
       .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setChecking(false);
-      });
+      .finally(() => { if (!cancelled) setChecking(false); });
     return () => { cancelled = true; };
   }, [ok]);
 
@@ -49,8 +39,6 @@ export default function AdminGate({ children }) {
       sessionStorage.setItem(GATE_KEY, "1");
       setOk(true);
     } catch {
-      // Message volontairement vague — ne pas confirmer qu'un système
-      // d'authentification existe derrière ce formulaire.
       setError("Not found.");
     } finally {
       setBusy(false);
@@ -58,19 +46,30 @@ export default function AdminGate({ children }) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background" data-testid="admin-gate-page">
-      <form onSubmit={submit} className="w-full max-w-xs" data-testid="admin-gate-form">
+    <div className="min-h-screen flex items-center justify-center bg-nordfjord px-6" data-testid="admin-gate-page">
+      <form onSubmit={submit} className="w-full max-w-sm bg-clinical rounded-2xl p-10 shadow-[0_40px_80px_-30px_rgba(0,0,0,.5)]" data-testid="admin-gate-form">
+        <div className="flex justify-center mb-5">
+          <FnMark size={44} frame="#0B2E4F" spark="#00B8D4" />
+        </div>
+        <h1 className="text-center font-display text-xl font-bold text-nordfjord tracking-[0.08em]">FIRONOVA OPS</h1>
+        <p className="text-center font-data text-[11px] uppercase tracking-[0.24em] text-nova mt-2 mb-8">Restricted · Restreint</p>
         <input
           type="password"
           value={code}
           onChange={(e) => setCode(e.target.value)}
           autoFocus
-          placeholder="····"
+          placeholder="Password"
           data-testid="admin-gate-code"
-          className="w-full border-b border-ink/30 px-1 py-3 bg-transparent text-center tracking-[0.3em] focus:outline-none focus:border-ink"
+          className="w-full rounded-full border-[1.5px] border-nova/60 px-5 py-3.5 bg-white text-center text-nordfjord tracking-[0.2em] focus:outline-none focus:border-nova"
         />
-        <button type="submit" disabled={busy} className="sr-only">Submit</button>
-        {error && <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/40">{error}</p>}
+        <button
+          type="submit"
+          disabled={busy}
+          className="w-full btn-pill btn-nova mt-4 disabled:opacity-40"
+        >
+          {busy ? "…" : "Enter"}
+        </button>
+        {error && <p className="mt-4 text-center font-data text-[10px] uppercase tracking-[0.2em] text-glacier">{error}</p>}
       </form>
     </div>
   );
