@@ -16,6 +16,7 @@ import AdminProducts from "./sections/AdminProducts";
 import AdminCoupons from "./sections/AdminCoupons";
 import AdminCustomers from "./sections/AdminCustomers";
 import AdminShipping from "./sections/AdminShipping";
+import AdminDispatch from "./sections/AdminDispatch";
 import AdminStaff from "./sections/AdminStaff";
 import AdminTrash from "./sections/AdminTrash";
 import AdminAuditLog from "./sections/AdminAuditLog";
@@ -46,6 +47,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
       { to: `${basePath}/coupons`, label: "Coupons", icon: Ticket, area: "coupons" },
       { to: `${basePath}/customers`, label: "Customers", icon: Users, area: "customers" },
       { to: `${basePath}/shipping`, label: "Shipping", icon: Truck, area: "shipping" },
+      { to: `${basePath}/dispatch`, label: "Dispatch", icon: Package, area: "orders" },
       { to: `${basePath}/subscribers`, label: "Subscribers", icon: Mail, area: "subscribers" },
     ];
     const filtered = all.filter((n) => hasAccess(user, n.area));
@@ -127,6 +129,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
             <Route path="coupons" element={hasAccess(user, "coupons") ? <AdminCoupons /> : <Navigate to={landingPath} replace />} />
             <Route path="customers" element={hasAccess(user, "customers") ? <AdminCustomers /> : <Navigate to={landingPath} replace />} />
             <Route path="shipping" element={hasAccess(user, "shipping") ? <AdminShipping /> : <Navigate to={landingPath} replace />} />
+            <Route path="dispatch" element={hasAccess(user, "orders") ? <AdminDispatch /> : <Navigate to={landingPath} replace />} />
             <Route path="subscribers" element={hasAccess(user, "subscribers") ? <AdminSubscribers /> : <Navigate to={landingPath} replace />} />
             <Route path="categories" element={user?.role === "admin" ? <AdminCategories /> : <Navigate to={landingPath} replace />} />
             <Route path="menus" element={user?.role === "admin" ? <AdminMenus /> : <Navigate to={landingPath} replace />} />
