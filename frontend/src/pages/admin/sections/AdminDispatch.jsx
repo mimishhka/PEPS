@@ -50,10 +50,11 @@ export default function AdminDispatch() {
     }
   };
 
-  const printAll = () => {
-    const urls = [...(data?.labeled || []).map((o) => o.label_url)].filter(Boolean);
-    if (!urls.length) { toast.error("Aucune étiquette à imprimer."); return; }
-    urls.forEach((u) => window.open(labelHref(u), "_blank", "noopener"));
+  const openMerged = (kind) => {
+    if ((counts.labeled || 0) === 0) { toast.error("Aucune étiquette générée pour ce lot."); return; }
+    const root = API_BASE.replace(/\/api$/, "");
+    const path = kind === "labels" ? "labels.pdf" : "packing-slips.pdf";
+    window.open(`${root}/api/admin/dispatch/${date}/${path}`, "_blank", "noopener");
   };
 
   const transmit = async () => {
@@ -137,9 +138,13 @@ export default function AdminDispatch() {
           className="bg-ink text-white font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/80 disabled:opacity-40 flex items-center gap-2">
           <Package size={14} /> {labelBusy ? "Génération…" : `Générer les étiquettes (${counts.to_label})`}
         </button>
-        <button onClick={printAll} disabled={counts.labeled === 0} data-testid="dispatch-print"
+        <button onClick={() => openMerged("labels")} disabled={counts.labeled === 0} data-testid="dispatch-print-labels"
           className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/5 disabled:opacity-40 flex items-center gap-2">
-          <Printer size={14} /> Imprimer ({counts.labeled})
+          <Printer size={14} /> Imprimer étiquettes ({counts.labeled})
+        </button>
+        <button onClick={() => openMerged("slips")} disabled={counts.labeled === 0} data-testid="dispatch-print-slips"
+          className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/5 disabled:opacity-40 flex items-center gap-2">
+          <Printer size={14} /> Imprimer bons ({counts.labeled})
         </button>
       </div>
 

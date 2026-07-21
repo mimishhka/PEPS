@@ -136,6 +136,8 @@ CANADA_POST_PLATFORM_ID = os.environ.get("CANADA_POST_PLATFORM_ID", "").strip()
 CANADA_POST_MAILED_BY = os.environ.get("CANADA_POST_MAILED_BY", CANADA_POST_CUSTOMER_NUMBER).strip()
 CANADA_POST_MOBO = os.environ.get("CANADA_POST_MOBO", CANADA_POST_CUSTOMER_NUMBER).strip()
 CANADA_POST_INTENDED_METHOD = os.environ.get("CANADA_POST_INTENDED_METHOD", "").strip()
+CANADA_POST_DEFAULT_SERVICE_CODE = os.environ.get("CANADA_POST_DEFAULT_SERVICE_CODE", "DOM.EP").strip() or "DOM.EP"
+CANADA_POST_AUTO_LABEL_INTERVAL_SECONDS = int(os.environ.get("CANADA_POST_AUTO_LABEL_INTERVAL_SECONDS", "60"))
 
 # ---------------------------------------------------------------------------
 # Dispatch batch (fenêtre de traitement des commandes)
@@ -2034,7 +2036,7 @@ async def _canada_post_create_shipment_openapi(order: dict, service_code: str, w
                 "weight": max(0.1, round(weight_kg, 3)),
             },
             "printPreferences": {
-                "outputFormat": "8.5x11",
+                "outputFormat": os.environ.get("CANADA_POST_LABEL_FORMAT", "4x6"),
                 "encoding": "PDF",
             },
             "preferences": {
@@ -2336,6 +2338,81 @@ async def _canada_post_void(shipment_id: str) -> bool:
     except Exception as ex:
         logging.error("Canada Post void failed: %s", ex)
         return False
+
+
+async def _auto_create_dispatch_label(order_id: str, service_code: Optional[str] = None) -> Optional[dict]:
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        return None
+    if order.get("payment_status") != "paid":
+        return None
+    info = order.get("shipping_info") or {}
+    if info.get("label_url") and info.get("tracking_number"):
+        return info
+    if not is_canada_post_configured():
+        return None
+
+    svc = (service_code or info.get("service_code") or CANADA_POST_DEFAULT_SERVICE_CODE or "DOM.EP").strip()
+    try:
+        res = await _canada_post_create_shipment(order, svc, _order_weight_kg(order))
+        label_url = await _canada_post_get_artifact(res["label_href"], order["id"])
+        now = datetime.now(timezone.utc).isoformat()
+        shipping_info = {
+            **info,
+            "carrier": "Canada Post",
+            "tracking_number": res["pin"],
+            "label_url": label_url,
+            "cp_shipment_id": res["shipment_id"],
+            "cp_group_id": res["group_id"],
+            "cp_transmitted": False,
+            "service_code": svc,
+            "shipped_at": now,
+        }
+        await db.orders.update_one(
+            {"id": order["id"]},
+            {"$set": {"shipping_info": shipping_info, "fulfillment_status": "shipped"},
+             "$push": {"notes": {
+                 "id": str(uuid.uuid4()),
+                 "text": f"Étiquette Postes Canada créée automatiquement — suivi {res['pin']}.",
+                 "author": "system",
+                 "created_at": now,
+             }}},
+        )
+        fresh = await db.orders.find_one({"id": order["id"]}, {"_id": 0})
+        asyncio.create_task(send_shipping_notification(fresh))
+        return shipping_info
+    except Exception as ex:
+        logging.error("auto label failed for %s: %s", order["order_number"], ex)
+        return None
+
+
+async def _auto_label_paid_orders_once() -> int:
+    cursor = db.orders.find(
+        {
+            "payment_status": "paid",
+            "fulfillment_status": {"$in": ["processing", "pending"]},
+            "shipping_info.label_url": {"$in": [None, ""]},
+            "shipping_info.tracking_number": {"$in": [None, ""]},
+        },
+        {"_id": 0, "id": 1},
+    ).sort("paid_at", 1)
+    n = 0
+    async for order in cursor:
+        result = await _auto_create_dispatch_label(order["id"])
+        if result:
+            n += 1
+    return n
+
+
+async def _auto_label_paid_orders_watchdog() -> None:
+    while True:
+        try:
+            count = await _auto_label_paid_orders_once()
+            if count:
+                logging.info("auto label watchdog: %d label(s) created", count)
+        except Exception as ex:  # pragma: no cover
+            logging.error("auto label watchdog failed: %s", ex)
+        await asyncio.sleep(max(15, CANADA_POST_AUTO_LABEL_INTERVAL_SECONDS))
 
 
 # ---------------------------------------------------------------------------
@@ -2709,6 +2786,7 @@ async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Op
 
     if order.get("email"):
         asyncio.create_task(send_payment_received(order))
+    asyncio.create_task(_auto_create_dispatch_label(order_id))
     return order
 
 
@@ -3571,7 +3649,7 @@ async def admin_dispatch_today(date: Optional[str] = None,
     cursor = db.orders.find(
         {
             "payment_status": "paid",
-            "dispatch_batch": day,
+            "dispatch_batch": {"$lte": day},
             "fulfillment_status": {"$in": ["processing", "pending"]},
         },
         {"_id": 0},
@@ -3623,7 +3701,7 @@ async def admin_dispatch_labels(date: str, payload: DispatchLabelsIn,
     orders = await db.orders.find(
         {
             "payment_status": "paid",
-            "dispatch_batch": date,
+            "dispatch_batch": {"$lte": date},
             "fulfillment_status": {"$in": ["processing", "pending"]},
         },
         {"_id": 0},
@@ -3682,6 +3760,71 @@ async def admin_dispatch_labels(date: str, payload: DispatchLabelsIn,
         "label_urls": all_labels,
         "counts": {"created": len(created), "skipped": len(skipped), "failed": len(failed)},
     }
+
+
+def _merge_pdfs(pdf_bytes_list: list) -> bytes:
+    """Fusionne plusieurs PDF en un seul. Requiert pypdf."""
+    from pypdf import PdfWriter, PdfReader
+    import io
+    writer = PdfWriter()
+    for b in pdf_bytes_list:
+        if not b:
+            continue
+        reader = PdfReader(io.BytesIO(b))
+        for page in reader.pages:
+            writer.add_page(page)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+async def _dispatch_labeled_orders(date: str) -> list:
+    """Commandes du lot <date> déjà étiquetées (label_url présent), triées."""
+    return await db.orders.find(
+        {
+            "payment_status": "paid",
+            "dispatch_batch": date,
+            "shipping_info.label_url": {"$nin": [None, ""]},
+        },
+        {"_id": 0},
+    ).sort("created_at", 1).to_list(2000)
+
+
+@api.get("/admin/dispatch/{date}/labels.pdf")
+async def admin_dispatch_labels_pdf(date: str, _admin: dict = Depends(require_area("orders", "view"))):
+    """Toutes les étiquettes du lot fusionnées en UN pdf 4x6 (imprimante thermique)."""
+    orders = await _dispatch_labeled_orders(date)
+    pdfs = []
+    for o in orders:
+        url = (o.get("shipping_info") or {}).get("label_url") or ""
+        if url.startswith("/uploads/labels/"):
+            fpath = LABEL_UPLOAD_DIR / url.split("/")[-1]
+            if fpath.exists():
+                pdfs.append(fpath.read_bytes())
+    if not pdfs:
+        raise HTTPException(404, "Aucune étiquette pour ce lot.")
+    merged = _merge_pdfs(pdfs)
+    return Response(
+        content=merged,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="etiquettes-{date}.pdf"'},
+    )
+
+
+@api.get("/admin/dispatch/{date}/packing-slips.pdf")
+async def admin_dispatch_slips_pdf(date: str, _admin: dict = Depends(require_area("orders", "view"))):
+    """Tous les bons de commande du lot fusionnés en UN pdf (imprimante papier)."""
+    orders = await _dispatch_labeled_orders(date)
+    pdfs = [_generate_invoice_pdf(o) for o in orders]
+    pdfs = [p for p in pdfs if p]
+    if not pdfs:
+        raise HTTPException(404, "Aucun bon de commande pour ce lot.")
+    merged = _merge_pdfs(pdfs)
+    return Response(
+        content=merged,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="bons-{date}.pdf"'},
+    )
 
 
 @api.put("/admin/products/{product_id}/stock")
@@ -5152,6 +5295,7 @@ async def startup_event():
     if await _acquire_worker_lock("background_tasks"):
         asyncio.create_task(_unpaid_orders_watchdog())
         asyncio.create_task(_backfill_dispatch_batch())
+        asyncio.create_task(_auto_label_paid_orders_watchdog())
         asyncio.create_task(_trash_auto_purge_watchdog())
 
 
