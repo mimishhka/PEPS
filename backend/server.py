@@ -3786,7 +3786,7 @@ async def _dispatch_labeled_orders(date: str) -> list:
     return await db.orders.find(
         {
             "payment_status": "paid",
-            "dispatch_batch": date,
+            "dispatch_batch": {"$lte": date},
             "shipping_info.label_url": {"$nin": [None, ""]},
         },
         {"_id": 0},
