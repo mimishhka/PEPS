@@ -16,7 +16,7 @@ import logging
 import secrets
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Any
 
 import xml.etree.ElementTree as ET
 
@@ -117,6 +117,25 @@ CANADA_POST_BASE_URL = (
     "https://ct.soa-gw.canadapost.ca" if CANADA_POST_ENVIRONMENT == "dev"
     else "https://soa-gw.canadapost.ca"
 )
+# New Shipping OpenAPI (OAuth2) support. Modes:
+# - legacy: existing XML/basic-auth flow
+# - openapi: OAuth2 + JSON flow from the shipping v1 OpenAPI spec
+# - auto: openapi if OAuth creds are present, otherwise legacy
+CANADA_POST_API_MODE = os.environ.get("CANADA_POST_API_MODE", "auto").strip().lower()
+CANADA_POST_OPENAPI_BASE_URL = os.environ.get(
+    "CANADA_POST_OPENAPI_BASE_URL",
+    "https://api.canadapost-postescanada.ca/prod/devportal-portaildesdeveloppeurs/shipping/v1",
+).rstrip("/")
+CANADA_POST_OAUTH_TOKEN_URL = os.environ.get(
+    "CANADA_POST_OAUTH_TOKEN_URL",
+    "https://api.canadapost-postescanada.ca/prod/devportal-portaildesdeveloppeurs/cpc-api-native-oauth-provider/oauth2/token",
+).strip()
+CANADA_POST_OAUTH_CLIENT_ID = os.environ.get("CANADA_POST_OAUTH_CLIENT_ID", "").strip()
+CANADA_POST_OAUTH_CLIENT_SECRET = os.environ.get("CANADA_POST_OAUTH_CLIENT_SECRET", "").strip()
+CANADA_POST_PLATFORM_ID = os.environ.get("CANADA_POST_PLATFORM_ID", "").strip()
+CANADA_POST_MAILED_BY = os.environ.get("CANADA_POST_MAILED_BY", CANADA_POST_CUSTOMER_NUMBER).strip()
+CANADA_POST_MOBO = os.environ.get("CANADA_POST_MOBO", CANADA_POST_CUSTOMER_NUMBER).strip()
+CANADA_POST_INTENDED_METHOD = os.environ.get("CANADA_POST_INTENDED_METHOD", "").strip()
 
 # ---------------------------------------------------------------------------
 # Dispatch batch (fenêtre de traitement des commandes)
@@ -1721,6 +1740,111 @@ _CP_SHIP_NS = {"cp": "http://www.canadapost.ca/ws/ncshipment-v4"}
 _CP_CSHIP_NS = {"cp": "http://www.canadapost.ca/ws/shipment-v8"}
 _CP_MANIFEST_NS = {"cp": "http://www.canadapost.ca/ws/manifest-v8"}
 
+_CP_OAUTH_TOKEN: str = ""
+_CP_OAUTH_EXPIRES_AT: Optional[datetime] = None
+
+
+def _cp_use_openapi() -> bool:
+    mode = CANADA_POST_API_MODE
+    if mode == "openapi":
+        return True
+    if mode == "legacy":
+        return False
+    return bool(CANADA_POST_OAUTH_CLIENT_ID and CANADA_POST_OAUTH_CLIENT_SECRET)
+
+
+def _cp_path_customers() -> tuple[str, str]:
+    mailed_by = (CANADA_POST_MAILED_BY or CANADA_POST_CUSTOMER_NUMBER or "").strip()
+    mobo = (CANADA_POST_MOBO or CANADA_POST_CUSTOMER_NUMBER or "").strip()
+    return mailed_by, mobo
+
+
+def _cp_openapi_headers(token: str, accept: str = "application/json") -> dict:
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": accept,
+        "Accept-Language": "en-CA",
+    }
+    if CANADA_POST_PLATFORM_ID:
+        headers["platform-id"] = CANADA_POST_PLATFORM_ID
+    return headers
+
+
+def _cp_safe_json(response: httpx.Response) -> dict:
+    try:
+        data = response.json()
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _cp_error_detail(response: httpx.Response) -> str:
+    payload = _cp_safe_json(response)
+    title = str(payload.get("title") or "").strip()
+    detail = str(payload.get("detail") or "").strip()
+    errors = payload.get("errors") if isinstance(payload.get("errors"), list) else []
+    first = errors[0] if errors else {}
+    code = str(first.get("errorCode") or "").strip()
+    msg = str(first.get("message") or first.get("description") or "").strip()
+    parts = [p for p in [title, detail, f"{code} {msg}".strip()] if p]
+    if parts:
+        return " | ".join(parts)
+    return (response.text or "").strip()[:500]
+
+
+async def _cp_get_oauth_token(force_refresh: bool = False) -> str:
+    global _CP_OAUTH_TOKEN, _CP_OAUTH_EXPIRES_AT
+    now = datetime.now(timezone.utc)
+    if (not force_refresh and _CP_OAUTH_TOKEN and _CP_OAUTH_EXPIRES_AT
+            and _CP_OAUTH_EXPIRES_AT > now + timedelta(seconds=30)):
+        return _CP_OAUTH_TOKEN
+
+    data = {"grant_type": "client_credentials", "scope": "merchant"}
+    try:
+        async with httpx.AsyncClient(timeout=20) as cx:
+            r = await cx.post(
+                CANADA_POST_OAUTH_TOKEN_URL,
+                data=data,
+                auth=(CANADA_POST_OAUTH_CLIENT_ID, CANADA_POST_OAUTH_CLIENT_SECRET),
+                headers={"Accept": "application/json"},
+            )
+    except Exception as ex:
+        logging.error("Canada Post OAuth token request failed: %s", ex)
+        raise HTTPException(502, "Canada Post OAuth token endpoint unreachable")
+
+    if r.status_code >= 400:
+        logging.error("Canada Post OAuth token %s: %s", r.status_code, r.text[:800])
+        raise HTTPException(502, f"Canada Post OAuth rejected credentials ({r.status_code})")
+
+    payload = _cp_safe_json(r)
+    token = str(payload.get("access_token") or "")
+    expires_in = int(payload.get("expires_in") or 300)
+    if not token:
+        raise HTTPException(502, "Canada Post OAuth returned no access token")
+
+    _CP_OAUTH_TOKEN = token
+    _CP_OAUTH_EXPIRES_AT = now + timedelta(seconds=max(30, expires_in))
+    return _CP_OAUTH_TOKEN
+
+
+async def _cp_openapi_call(method: str, url_or_path: str, *, json_body: Optional[dict] = None,
+                           accept: str = "application/json") -> httpx.Response:
+    token = await _cp_get_oauth_token()
+    url = url_or_path if url_or_path.startswith("http") else f"{CANADA_POST_OPENAPI_BASE_URL}{url_or_path}"
+    headers = _cp_openapi_headers(token, accept=accept)
+    if json_body is not None:
+        headers["Content-Type"] = "application/json"
+
+    async with httpx.AsyncClient(timeout=45) as cx:
+        r = await cx.request(method, url, json=json_body, headers=headers)
+        if r.status_code == 401:
+            token = await _cp_get_oauth_token(force_refresh=True)
+            headers = _cp_openapi_headers(token, accept=accept)
+            if json_body is not None:
+                headers["Content-Type"] = "application/json"
+            r = await cx.request(method, url, json=json_body, headers=headers)
+    return r
+
 
 async def _estimate_parcel_weight_kg(items: Optional[List["CartItem"]]) -> float:
     if not items:
@@ -1768,7 +1892,7 @@ async def _canada_post_get_rates(destination_postal_code: str, destination_count
             r = await cx.post(
                 f"{CANADA_POST_BASE_URL}/rs/ship/price",
                 content=body.encode("utf-8"),
-                auth=(CANADA_POST_API_KEY, ""),
+                auth=_cp_auth_tuple(),
                 headers={
                     "Accept": "application/vnd.cpc.ship.rate-v4+xml",
                     "Content-Type": "application/vnd.cpc.ship.rate-v4+xml",
@@ -1804,7 +1928,7 @@ async def _canada_post_track(pin: str) -> Optional[dict]:
         async with httpx.AsyncClient(timeout=15) as cx:
             r = await cx.get(
                 f"{CANADA_POST_BASE_URL}/vis/track/pin/{pin}/detail",
-                auth=(CANADA_POST_API_KEY, ""),
+                auth=_cp_auth_tuple(),
                 headers={"Accept": "application/vnd.cpc.track+xml"},
             )
             if r.status_code >= 400:
@@ -1829,13 +1953,185 @@ async def _canada_post_track(pin: str) -> Optional[dict]:
 def is_canada_post_configured() -> bool:
     """Vrai seulement si les trois éléments indispensables sont présents.
     Sinon TOUT retombe proprement sur le tarif fixe / le suivi manuel."""
+    if _cp_use_openapi():
+        mailed_by, mobo = _cp_path_customers()
+        return bool(
+            mailed_by
+            and mobo
+            and CANADA_POST_ORIGIN_POSTAL_CODE
+            and CANADA_POST_OAUTH_CLIENT_ID
+            and CANADA_POST_OAUTH_CLIENT_SECRET
+        )
     return bool(CANADA_POST_API_KEY and CANADA_POST_CUSTOMER_NUMBER and CANADA_POST_ORIGIN_POSTAL_CODE)
+
+
+def _cp_auth_tuple() -> tuple[str, str]:
+    """Supporte "user:password" (recommandé CP) et token seul (legacy)."""
+    raw = (CANADA_POST_API_KEY or "").strip()
+    if ":" in raw:
+        user, pwd = raw.split(":", 1)
+        return user.strip(), pwd.strip()
+    return raw, ""
 
 
 def _cp_xml_escape(v: str) -> str:
     """Une apostrophe dans un nom de rue casse le XML — et un chevron l'injecte."""
     return (str(v or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             .replace('"', "&quot;").replace("'", "&apos;"))
+
+
+def _cp_intended_method() -> str:
+    if CANADA_POST_INTENDED_METHOD:
+        return CANADA_POST_INTENDED_METHOD
+    return "Account" if CANADA_POST_CONTRACT_ID.strip() else "CreditCard"
+
+
+async def _canada_post_create_shipment_openapi(order: dict, service_code: str, weight_kg: float) -> dict:
+    ship = order.get("shipping_address") or {}
+    dest_pc = str(ship.get("postal_code", "")).replace(" ", "").upper()
+    origin_pc = CANADA_POST_ORIGIN_POSTAL_CODE.replace(" ", "").upper()
+    mailed_by, mobo = _cp_path_customers()
+    group_id = f"FN-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+
+    settlement = {
+        "paidByCustomer": mobo,
+        "intendedMethodOfPayment": _cp_intended_method(),
+    }
+    contract = CANADA_POST_CONTRACT_ID.strip()
+    if contract:
+        settlement["contractId"] = contract
+
+    payload: dict[str, Any] = {
+        "groupId": group_id,
+        "requestedShippingPoint": origin_pc,
+        "cpcPickupIndicator": True,
+        "deliverySpec": {
+            "serviceCode": service_code,
+            "sender": {
+                "name": CANADA_POST_SENDER_NAME,
+                "company": CANADA_POST_SENDER_NAME,
+                "contactPhone": CANADA_POST_SENDER_PHONE,
+                "addressDetails": {
+                    "addressLine1": CANADA_POST_SENDER_ADDRESS,
+                    "city": CANADA_POST_SENDER_CITY,
+                    "provState": CANADA_POST_SENDER_PROVINCE,
+                    "countryCode": "CA",
+                    "postalZipCode": origin_pc,
+                },
+            },
+            "destination": {
+                "name": str(ship.get("full_name") or "").strip()[:44],
+                "addressDetails": {
+                    "addressLine1": ship.get("address1") or "",
+                    "addressLine2": ship.get("address2") or "",
+                    "city": ship.get("city") or "",
+                    "provState": ship.get("province") or "",
+                    "countryCode": ship.get("country") or "CA",
+                    "postalZipCode": dest_pc,
+                },
+            },
+            "parcelCharacteristics": {
+                "weight": max(0.1, round(weight_kg, 3)),
+            },
+            "printPreferences": {
+                "outputFormat": "8.5x11",
+                "encoding": "PDF",
+            },
+            "preferences": {
+                "showPackingInstructions": False,
+                "showPostageRate": False,
+                "showInsuredValue": False,
+            },
+            "settlementInfo": settlement,
+        },
+    }
+
+    r = await _cp_openapi_call("POST", f"/{mailed_by}/{mobo}/shipments", json_body=payload)
+    if r.status_code >= 400:
+        detail = _cp_error_detail(r)
+        logging.error("Canada Post OpenAPI create-shipment %s: %s", r.status_code, detail)
+        raise HTTPException(502, f"Canada Post rejected the shipment ({r.status_code})")
+
+    data = _cp_safe_json(r)
+    links = data.get("links") if isinstance(data.get("links"), list) else []
+    label_href = ""
+    for link in links:
+        if isinstance(link, dict) and link.get("rel") == "label" and link.get("href"):
+            label_href = str(link.get("href"))
+            break
+    return {
+        "pin": str(data.get("trackingPin") or ""),
+        "label_href": label_href,
+        "shipment_id": str(data.get("shipmentId") or ""),
+        "group_id": group_id,
+    }
+
+
+async def _canada_post_get_artifact_openapi(href: str, order_id: str) -> Optional[str]:
+    if not href:
+        return None
+    try:
+        r = await _cp_openapi_call("GET", href, accept="application/pdf")
+    except HTTPException:
+        return None
+    except Exception as ex:
+        logging.error("Canada Post OpenAPI get-artifact failed: %s", ex)
+        return None
+    if r.status_code >= 400:
+        logging.error("Canada Post OpenAPI get-artifact %s: %s", r.status_code, _cp_error_detail(r))
+        return None
+    fname = f"{order_id}-{uuid.uuid4().hex[:8]}.pdf"
+    (LABEL_UPLOAD_DIR / fname).write_bytes(r.content)
+    return f"/uploads/labels/{fname}"
+
+
+async def _canada_post_transmit_openapi(group_id: str) -> list:
+    mailed_by, mobo = _cp_path_customers()
+    origin_pc = CANADA_POST_ORIGIN_POSTAL_CODE.replace(" ", "").upper()
+    payload = {
+        "groupIds": [group_id],
+        "requestedShippingPoint": origin_pc,
+        "cpcPickupIndicator": True,
+        "detailedManifests": True,
+        "methodOfPayment": _cp_intended_method(),
+        "manifestAddress": {
+            "manifestCompany": CANADA_POST_SENDER_NAME,
+            "manifestName": CANADA_POST_SENDER_NAME,
+            "phoneNumber": CANADA_POST_SENDER_PHONE,
+            "addressDetails": {
+                "addressLine1": CANADA_POST_SENDER_ADDRESS,
+                "city": CANADA_POST_SENDER_CITY,
+                "provState": CANADA_POST_SENDER_PROVINCE,
+                "countryCode": "CA",
+                "postalZipCode": origin_pc,
+            },
+        },
+    }
+    r = await _cp_openapi_call("POST", f"/{mailed_by}/{mobo}/manifests", json_body=payload)
+    if r.status_code >= 400:
+        detail = _cp_error_detail(r)
+        logging.error("Canada Post OpenAPI transmit %s: %s", r.status_code, detail)
+        raise HTTPException(502, f"Canada Post rejected the transmission ({r.status_code})")
+
+    data = r.json() if r.headers.get("content-type", "").startswith("application/json") else []
+    hrefs = []
+    if isinstance(data, list):
+        for link in data:
+            if isinstance(link, dict) and link.get("rel") == "manifest" and link.get("href"):
+                hrefs.append(str(link.get("href")))
+    return hrefs
+
+
+async def _canada_post_void_openapi(shipment_id: str) -> bool:
+    if not shipment_id:
+        return False
+    mailed_by, mobo = _cp_path_customers()
+    try:
+        r = await _cp_openapi_call("DELETE", f"/{mailed_by}/{mobo}/shipments/{shipment_id}")
+        return r.status_code < 400
+    except Exception as ex:
+        logging.error("Canada Post OpenAPI void failed: %s", ex)
+        return False
 
 
 async def _canada_post_create_shipment(order: dict, service_code: str, weight_kg: float) -> dict:
@@ -1845,6 +2141,8 @@ async def _canada_post_create_shipment(order: dict, service_code: str, weight_kg
     """
     if not is_canada_post_configured():
         raise HTTPException(503, "Canada Post is not configured")
+    if _cp_use_openapi():
+        return await _canada_post_create_shipment_openapi(order, service_code, weight_kg)
 
     cust = CANADA_POST_CUSTOMER_NUMBER
     contract = CANADA_POST_CONTRACT_ID.strip()
@@ -1911,7 +2209,7 @@ async def _canada_post_create_shipment(order: dict, service_code: str, weight_kg
             r = await cx.post(
                 f"{CANADA_POST_BASE_URL}{path}",
                 content=body.encode("utf-8"),
-                auth=(CANADA_POST_API_KEY, ""),
+                auth=_cp_auth_tuple(),
                 headers={"Accept": ctype, "Content-Type": ctype, "Accept-language": "en-CA"},
             )
     except Exception as ex:
@@ -1953,9 +2251,11 @@ async def _canada_post_get_artifact(href: str, order_id: str) -> Optional[str]:
     """Get Artifact → télécharge le PDF de l'étiquette, le stocke, renvoie son URL."""
     if not href:
         return None
+    if _cp_use_openapi():
+        return await _canada_post_get_artifact_openapi(href, order_id)
     try:
         async with httpx.AsyncClient(timeout=30) as cx:
-            r = await cx.get(href, auth=(CANADA_POST_API_KEY, ""), headers={"Accept": "application/pdf"})
+            r = await cx.get(href, auth=_cp_auth_tuple(), headers={"Accept": "application/pdf"})
             if r.status_code >= 400:
                 logging.error("Canada Post get-artifact %s: %s", r.status_code, r.text[:300])
                 return None
@@ -1973,6 +2273,8 @@ async def _canada_post_transmit(group_id: str) -> list:
     rabais d'automatisation. C'est l'étape la plus coûteuse à oublier."""
     if not is_canada_post_configured():
         raise HTTPException(503, "Canada Post is not configured")
+    if _cp_use_openapi():
+        return await _canada_post_transmit_openapi(group_id)
     cust = CANADA_POST_CUSTOMER_NUMBER
     e = _cp_xml_escape
     body = (
@@ -2001,7 +2303,7 @@ async def _canada_post_transmit(group_id: str) -> list:
             r = await cx.post(
                 f"{CANADA_POST_BASE_URL}/rs/{cust}/{cust}/manifest",
                 content=body.encode("utf-8"),
-                auth=(CANADA_POST_API_KEY, ""),
+                auth=_cp_auth_tuple(),
                 headers={"Accept": ctype, "Content-Type": ctype, "Accept-language": "en-CA"},
             )
     except Exception as ex:
@@ -2021,12 +2323,14 @@ async def _canada_post_void(shipment_id: str) -> bool:
     """Void Shipment — annule une étiquette gâchée NON transmise."""
     if not (is_canada_post_configured() and shipment_id):
         return False
+    if _cp_use_openapi():
+        return await _canada_post_void_openapi(shipment_id)
     cust = CANADA_POST_CUSTOMER_NUMBER
     path = (f"/rs/{cust}/{cust}/shipment/{shipment_id}" if CANADA_POST_CONTRACT_ID.strip()
             else f"/rs/{cust}/ncshipment/{shipment_id}")
     try:
         async with httpx.AsyncClient(timeout=20) as cx:
-            r = await cx.delete(f"{CANADA_POST_BASE_URL}{path}", auth=(CANADA_POST_API_KEY, ""),
+            r = await cx.delete(f"{CANADA_POST_BASE_URL}{path}", auth=_cp_auth_tuple(),
                                 headers={"Accept": "application/vnd.cpc.shipment-v8+xml"})
             return r.status_code < 400
     except Exception as ex:
@@ -4071,7 +4375,7 @@ async def meta():
         "min_age": 19,
         "interac_email": INTERAC_EMAIL,
         "coa_page_enabled": COA_PAGE_ENABLED,
-        "canada_post_enabled": bool(CANADA_POST_API_KEY and CANADA_POST_CUSTOMER_NUMBER),
+        "canada_post_enabled": is_canada_post_configured(),
         "prelaunch_enabled": PRELAUNCH_ENABLED,
         "launch_coupon_code": LAUNCH_COUPON_CODE,
         # PRELAUNCH_PREVIEW_TOKEN n'est JAMAIS exposé ici — il ne se vérifie que
