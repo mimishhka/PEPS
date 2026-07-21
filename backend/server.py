@@ -2786,7 +2786,10 @@ async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Op
 
     if order.get("email"):
         asyncio.create_task(send_payment_received(order))
-    asyncio.create_task(_auto_create_dispatch_label(order_id))
+    # Dispatch manuel : l'etiquette n'est PLUS creee automatiquement au paiement.
+    # La commande attend dans "A etiqueter" et l'admin genere l'etiquette
+    # depuis l'ecran Dispatch.
+    # asyncio.create_task(_auto_create_dispatch_label(order_id))
     return order
 
 
@@ -3650,7 +3653,7 @@ async def admin_dispatch_today(date: Optional[str] = None,
         {
             "payment_status": "paid",
             "dispatch_batch": {"$lte": day},
-            "fulfillment_status": {"$in": ["processing", "pending"]},
+            "fulfillment_status": {"$in": ["processing", "pending", "shipped"]},
         },
         {"_id": 0},
     ).sort("created_at", 1)
@@ -3679,7 +3682,7 @@ async def admin_dispatch_today(date: Optional[str] = None,
     overdue = await db.orders.count_documents({
         "payment_status": "paid",
         "dispatch_batch": {"$lt": day},
-        "fulfillment_status": {"$in": ["processing", "pending"]},
+        "fulfillment_status": {"$in": ["processing", "pending", "shipped"]},
     })
     return {
         "date": day,
@@ -5295,7 +5298,8 @@ async def startup_event():
     if await _acquire_worker_lock("background_tasks"):
         asyncio.create_task(_unpaid_orders_watchdog())
         asyncio.create_task(_backfill_dispatch_batch())
-        asyncio.create_task(_auto_label_paid_orders_watchdog())
+        # Dispatch manuel : watchdog d'auto-etiquetage desactive.
+        # asyncio.create_task(_auto_label_paid_orders_watchdog())
         asyncio.create_task(_trash_auto_purge_watchdog())
 
 
