@@ -3702,7 +3702,7 @@ async def admin_dispatch_labels(date: str, payload: DispatchLabelsIn,
         {
             "payment_status": "paid",
             "dispatch_batch": {"$lte": date},
-            "fulfillment_status": {"$in": ["processing", "pending"]},
+            "fulfillment_status": {"$in": ["processing", "pending", "shipped"]},
         },
         {"_id": 0},
     ).sort("created_at", 1).to_list(2000)
