@@ -715,6 +715,7 @@ TRASH_RESOURCES = {
     "coupons":          {"collection": "coupons",           "area": "coupons",   "has_active": True,  "auto_purge_days": 30},
     "shipping_zones":   {"collection": "shipping_zones",    "area": "shipping",  "has_active": False, "auto_purge_days": 30},
     "shipping_methods": {"collection": "shipping_methods",  "area": "shipping",  "has_active": True,  "auto_purge_days": 30},
+    "shipping_boxes":   {"collection": "shipping_boxes",    "area": "shipping",  "has_active": True,  "auto_purge_days": 30},
     "orders":           {"collection": "orders",            "area": "orders",    "has_active": False, "auto_purge_days": None},
 }
 
@@ -1837,7 +1838,10 @@ async def _cp_openapi_call(method: str, url_or_path: str, *, json_body: Optional
     if json_body is not None:
         headers["Content-Type"] = "application/json"
 
-    async with httpx.AsyncClient(timeout=45) as cx:
+    # follow_redirects=True est INDISPENSABLE : Canada Post renvoie l'artifact
+    # (le PDF de l'étiquette) via une redirection 302 vers l'URL réelle. Sans
+    # suivre la redirection, on écrit la réponse 302 vide -> étiquette blanche.
+    async with httpx.AsyncClient(timeout=45, follow_redirects=True) as cx:
         r = await cx.request(method, url, json=json_body, headers=headers)
         if r.status_code == 401:
             token = await _cp_get_oauth_token(force_refresh=True)
@@ -1990,6 +1994,16 @@ def _cp_intended_method() -> str:
 
 async def _canada_post_create_shipment_openapi(order: dict, service_code: str, weight_kg: float) -> dict:
     ship = order.get("shipping_address") or {}
+    # Contenant configuré (tare + dimensions) — améliore la justesse du tarif.
+    box = await _select_box_for_order(order)
+    box_dims = None
+    if box:
+        weight_kg = round(weight_kg + float(box.get("tare_grams") or 0) / 1000.0, 3)
+        box_dims = {
+            "length": round(float(box["length_cm"]), 1),
+            "width": round(float(box["width_cm"]), 1),
+            "height": round(float(box["height_cm"]), 1),
+        }
     dest_pc = str(ship.get("postal_code", "")).replace(" ", "").upper()
     origin_pc = CANADA_POST_ORIGIN_POSTAL_CODE.replace(" ", "").upper()
     mailed_by, mobo = _cp_path_customers()
@@ -2034,6 +2048,7 @@ async def _canada_post_create_shipment_openapi(order: dict, service_code: str, w
             },
             "parcelCharacteristics": {
                 "weight": max(0.1, round(weight_kg, 3)),
+                **({"dimensions": box_dims} if box_dims else {}),
             },
             "printPreferences": {
                 "outputFormat": os.environ.get("CANADA_POST_LABEL_FORMAT", "4x6"),
@@ -2786,9 +2801,9 @@ async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Op
 
     if order.get("email"):
         asyncio.create_task(send_payment_received(order))
-    # Dispatch manuel : l'etiquette n'est PLUS creee automatiquement au paiement.
-    # La commande attend dans "A etiqueter" et l'admin genere l'etiquette
-    # depuis l'ecran Dispatch.
+    # Dispatch manuel : l'étiquette n'est PLUS créée automatiquement au paiement.
+    # La commande attend dans « À étiqueter » et l'admin génère l'étiquette
+    # depuis l'écran Dispatch.
     # asyncio.create_task(_auto_create_dispatch_label(order_id))
     return order
 
@@ -3682,7 +3697,7 @@ async def admin_dispatch_today(date: Optional[str] = None,
     overdue = await db.orders.count_documents({
         "payment_status": "paid",
         "dispatch_batch": {"$lt": day},
-        "fulfillment_status": {"$in": ["processing", "pending", "shipped"]},
+        "fulfillment_status": {"$in": ["processing", "pending"]},
     })
     return {
         "date": day,
@@ -3705,7 +3720,7 @@ async def admin_dispatch_labels(date: str, payload: DispatchLabelsIn,
         {
             "payment_status": "paid",
             "dispatch_batch": {"$lte": date},
-            "fulfillment_status": {"$in": ["processing", "pending", "shipped"]},
+            "fulfillment_status": {"$in": ["processing", "pending"]},
         },
         {"_id": 0},
     ).sort("created_at", 1).to_list(2000)
@@ -3979,6 +3994,69 @@ async def admin_update_method(method_id: str, payload: ShippingMethodIn, _admin:
 @api.delete("/admin/shipping/methods/{method_id}")
 async def admin_delete_method(method_id: str, admin: dict = Depends(require_area("shipping", "manage"))):
     return await _soft_delete("shipping_methods", method_id, admin)
+
+
+# ---------------------------------------------------------------------------
+# Contenants d'expédition (enveloppes / boîtes) configurables depuis l'admin.
+# Chaque contenant a des dimensions (cm), un poids à vide (tare, g) et une
+# capacité max en nombre d'unités. Le calcul de colis choisit le plus petit
+# contenant dont la capacité >= nombre total d'unités de la commande, ajoute
+# sa tare au poids des produits, et transmet ses dimensions à Canada Post
+# (nécessaire pour le poids volumétrique).
+# ---------------------------------------------------------------------------
+class ShippingBoxIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)      # ex. "Enveloppe à bulles"
+    length_cm: float = Field(gt=0)
+    width_cm: float = Field(gt=0)
+    height_cm: float = Field(default=2.0, gt=0)          # épaisseur (enveloppe ~2 cm)
+    tare_grams: float = Field(default=20.0, ge=0)        # poids à vide du contenant
+    max_units: int = Field(default=10, ge=1)             # capacité en nombre d'articles
+    active: bool = True
+
+
+@api.get("/admin/shipping/boxes")
+async def admin_list_boxes(_admin: dict = Depends(require_area("shipping", "view"))):
+    return await db.shipping_boxes.find({"deleted_at": None}, {"_id": 0}).sort("max_units", 1).to_list(200)
+
+
+@api.post("/admin/shipping/boxes")
+async def admin_create_box(payload: ShippingBoxIn, _admin: dict = Depends(require_area("shipping", "manage"))):
+    doc = payload.model_dump()
+    doc["id"] = str(uuid.uuid4())
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    doc["deleted_at"] = None
+    await db.shipping_boxes.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/admin/shipping/boxes/{box_id}")
+async def admin_update_box(box_id: str, payload: ShippingBoxIn, _admin: dict = Depends(require_area("shipping", "manage"))):
+    res = await db.shipping_boxes.update_one({"id": box_id}, {"$set": payload.model_dump()})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Box not found")
+    return await db.shipping_boxes.find_one({"id": box_id}, {"_id": 0})
+
+
+@api.delete("/admin/shipping/boxes/{box_id}")
+async def admin_delete_box(box_id: str, admin: dict = Depends(require_area("shipping", "manage"))):
+    return await _soft_delete("shipping_boxes", box_id, admin)
+
+
+async def _select_box_for_order(order: dict) -> Optional[dict]:
+    """Plus petit contenant actif dont la capacité >= nb total d'unités."""
+    units = 0
+    for it in order.get("line_items") or []:
+        units += int(it.get("qty") or 1)
+    units = max(1, units)
+    boxes = await db.shipping_boxes.find(
+        {"deleted_at": None, "active": True}, {"_id": 0}
+    ).sort("max_units", 1).to_list(200)
+    for b in boxes:
+        if int(b.get("max_units") or 0) >= units:
+            return b
+    # aucune assez grande -> on prend la plus grande dispo (fallback)
+    return boxes[-1] if boxes else None
 
 
 # ---------------------------------------------------------------------------
@@ -5298,7 +5376,7 @@ async def startup_event():
     if await _acquire_worker_lock("background_tasks"):
         asyncio.create_task(_unpaid_orders_watchdog())
         asyncio.create_task(_backfill_dispatch_batch())
-        # Dispatch manuel : watchdog d'auto-etiquetage desactive.
+        # Dispatch manuel : watchdog d'auto-étiquetage désactivé.
         # asyncio.create_task(_auto_label_paid_orders_watchdog())
         asyncio.create_task(_trash_auto_purge_watchdog())
 
