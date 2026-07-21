@@ -3243,6 +3243,143 @@ async def admin_transmit_manifest(_admin: dict = Depends(require_area("orders", 
     return {"ok": True, "transmitted_groups": done_groups, "manifests": manifests, "orders_marked": marked}
 
 
+# ---------------------------------------------------------------------------
+# Dispatch batch — traitement des commandes payées par fenêtre journalière
+# (cutoff 13h ET). Modèle ShipStation : on regroupe par dispatch_batch, on
+# génère toutes les étiquettes d'un lot en une passe, puis on transmet le
+# manifeste une fois par jour (voir /admin/shipping/transmit).
+# ---------------------------------------------------------------------------
+def _local_today_iso() -> str:
+    """Date locale (ORDER_CUTOFF_TZ) au format YYYY-MM-DD."""
+    return datetime.now(ZoneInfo(ORDER_CUTOFF_TZ)).date().isoformat()
+
+
+class DispatchLabelsIn(BaseModel):
+    service_code: str = Field(default="DOM.EP", min_length=1, max_length=40)
+
+
+@api.get("/admin/dispatch/today")
+async def admin_dispatch_today(date: Optional[str] = None,
+                               _admin: dict = Depends(require_area("orders", "view"))):
+    """File d'expédition du jour : commandes payées dont le dispatch_batch
+    tombe le <date> (défaut = aujourd'hui, TZ cutoff)."""
+    day = date or _local_today_iso()
+    cursor = db.orders.find(
+        {
+            "payment_status": "paid",
+            "dispatch_batch": day,
+            "fulfillment_status": {"$in": ["processing", "pending"]},
+        },
+        {"_id": 0},
+    ).sort("created_at", 1)
+    orders = await cursor.to_list(2000)
+
+    to_label, labeled = [], []
+    for o in orders:
+        info = o.get("shipping_info") or {}
+        row = {
+            "id": o["id"],
+            "order_number": o.get("order_number"),
+            "email": o.get("email"),
+            "items": len(o.get("items", [])),
+            "total": o.get("total"),
+            "city": (o.get("shipping_address") or {}).get("city"),
+            "province": (o.get("shipping_address") or {}).get("province"),
+            "tracking_number": info.get("tracking_number") or "",
+            "label_url": info.get("label_url") or "",
+            "cp_transmitted": bool(info.get("cp_transmitted")),
+        }
+        if row["label_url"] and row["tracking_number"]:
+            labeled.append(row)
+        else:
+            to_label.append(row)
+
+    overdue = await db.orders.count_documents({
+        "payment_status": "paid",
+        "dispatch_batch": {"$lt": day},
+        "fulfillment_status": {"$in": ["processing", "pending"]},
+    })
+    return {
+        "date": day,
+        "configured": is_canada_post_configured(),
+        "counts": {"to_label": len(to_label), "labeled": len(labeled), "overdue": overdue},
+        "to_label": to_label,
+        "labeled": labeled,
+    }
+
+
+@api.post("/admin/dispatch/{date}/labels")
+async def admin_dispatch_labels(date: str, payload: DispatchLabelsIn,
+                                _admin: dict = Depends(require_area("orders", "manage"))):
+    """Génère en une passe les étiquettes des commandes payées du lot <date>
+    qui n'en ont pas encore. Idempotent : commande déjà étiquetée = sautée."""
+    if not is_canada_post_configured():
+        raise HTTPException(503, "Canada Post is not configured")
+
+    orders = await db.orders.find(
+        {
+            "payment_status": "paid",
+            "dispatch_batch": date,
+            "fulfillment_status": {"$in": ["processing", "pending"]},
+        },
+        {"_id": 0},
+    ).sort("created_at", 1).to_list(2000)
+
+    created, skipped, failed = [], [], []
+    for order in orders:
+        info = order.get("shipping_info") or {}
+        if info.get("label_url") and info.get("tracking_number"):
+            skipped.append({"order_number": order.get("order_number"),
+                            "tracking_number": info["tracking_number"],
+                            "label_url": info["label_url"]})
+            continue
+        try:
+            res = await _canada_post_create_shipment(order, payload.service_code, _order_weight_kg(order))
+            label_url = await _canada_post_get_artifact(res["label_href"], order["id"])
+            now = datetime.now(timezone.utc).isoformat()
+            shipping_info = {
+                **info,
+                "carrier": "Canada Post",
+                "tracking_number": res["pin"],
+                "label_url": label_url,
+                "cp_shipment_id": res["shipment_id"],
+                "cp_group_id": res["group_id"],
+                "cp_transmitted": False,
+                "service_code": payload.service_code,
+                "shipped_at": now,
+            }
+            await db.orders.update_one(
+                {"id": order["id"]},
+                {"$set": {"shipping_info": shipping_info, "fulfillment_status": "shipped"},
+                 "$push": {"notes": {
+                     "id": str(uuid.uuid4()),
+                     "text": f"Étiquette Postes Canada créée (lot {date}) — suivi {res['pin']}.",
+                     "author": "system",
+                     "created_at": now,
+                 }}},
+            )
+            fresh = await db.orders.find_one({"id": order["id"]}, {"_id": 0})
+            asyncio.create_task(send_shipping_notification(fresh))
+            created.append({"order_number": order.get("order_number"),
+                            "tracking_number": res["pin"],
+                            "label_url": label_url})
+        except HTTPException as ex:
+            failed.append({"order_number": order.get("order_number"), "error": ex.detail})
+        except Exception as ex:
+            logging.error("[dispatch] label failed for %s: %s", order.get("order_number"), ex)
+            failed.append({"order_number": order.get("order_number"), "error": str(ex)})
+
+    all_labels = [c["label_url"] for c in created] + [s["label_url"] for s in skipped]
+    return {
+        "date": date,
+        "created": created,
+        "skipped": skipped,
+        "failed": failed,
+        "label_urls": all_labels,
+        "counts": {"created": len(created), "skipped": len(skipped), "failed": len(failed)},
+    }
+
+
 @api.put("/admin/products/{product_id}/stock")
 async def admin_adjust_stock(product_id: str, payload: StockAdjustIn, _admin: dict = Depends(require_area("products", "manage"))):
     res = await db.products.update_one({"id": product_id}, {"$inc": {"stock": payload.delta}})
