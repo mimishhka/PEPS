@@ -16,6 +16,7 @@ import AdminProducts from "./sections/AdminProducts";
 import AdminCoupons from "./sections/AdminCoupons";
 import AdminCustomers from "./sections/AdminCustomers";
 import AdminShipping from "./sections/AdminShipping";
+import AdminFulfillment from "./sections/AdminFulfillment";
 import AdminDispatch from "./sections/AdminDispatch";
 import AdminBoxes from "./sections/AdminBoxes";
 import AdminStaff from "./sections/AdminStaff";
@@ -25,10 +26,6 @@ import AdminCategories from "./sections/AdminCategories";
 import AdminMenus from "./sections/AdminMenus";
 import AdminSubscribers from "./sections/AdminSubscribers";
 
-// Un membre "staff" ne voit dans le menu que les sections où il a au moins
-// un accès "view". Le rôle "admin" (owner) voit tout, sans exception. Cette
-// liste côté UI n'est qu'un confort d'affichage — la vraie barrière reste
-// le contrôle serveur (require_area) sur chaque appel API.
 function hasAccess(user, area) {
   if (!user) return false;
   if (user.role === "admin") return true;
@@ -48,14 +45,12 @@ export default function AdminLayout({ basePath = "/admin" }) {
       { to: `${basePath}/coupons`, label: "Coupons", icon: Ticket, area: "coupons" },
       { to: `${basePath}/customers`, label: "Customers", icon: Users, area: "customers" },
       { to: `${basePath}/shipping`, label: "Shipping", icon: Truck, area: "shipping" },
+      { to: `${basePath}/fulfillment`, label: "Journée", icon: Package, area: "orders" },
       { to: `${basePath}/dispatch`, label: "Dispatch", icon: Package, area: "orders" },
       { to: `${basePath}/boxes`, label: "Contenants", icon: Package, area: "shipping" },
       { to: `${basePath}/subscribers`, label: "Subscribers", icon: Mail, area: "subscribers" },
     ];
     const filtered = all.filter((n) => hasAccess(user, n.area));
-    // Gestion des membres, corbeille et journal d'audit sont réservés aux
-    // "admin" (owner) — actions à fort impact ou de gouvernance, jamais
-    // déléguées à un staff même avec accès "manage" complet.
     if (user?.role === "admin") {
       filtered.push({ to: `${basePath}/categories`, label: "Categories", icon: FolderTree, area: "categories" });
       filtered.push({ to: `${basePath}/menus`, label: "Menus", icon: ListTree, area: "menus" });
@@ -66,14 +61,11 @@ export default function AdminLayout({ basePath = "/admin" }) {
     return filtered;
   }, [user, basePath]);
 
-  // Première section accessible — sert de redirection si l'utilisateur
-  // n'a pas accès au dashboard (ex. staff avec uniquement "orders").
   const landingPath = nav[0]?.to || basePath;
 
   return (
     <div className="min-h-screen bg-[#f7f7f7] -mt-px" data-testid="admin-shell">
       <div className="flex">
-        {/* Sidebar */}
         <aside className="w-60 bg-white border-r border-ink/10 min-h-screen sticky top-0 hidden lg:flex flex-col" data-testid="admin-sidebar">
           <div className="px-6 py-6 border-b border-ink/10">
             <div className="font-display font-extrabold text-xl tracking-tight">
@@ -113,7 +105,6 @@ export default function AdminLayout({ basePath = "/admin" }) {
           </div>
         </aside>
 
-        {/* Main */}
         <main className="flex-1 min-w-0">
           <div className="bg-white border-b border-ink/10 px-8 py-4 flex items-center justify-between" data-testid="admin-topbar">
             <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/60">
@@ -131,6 +122,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
             <Route path="coupons" element={hasAccess(user, "coupons") ? <AdminCoupons /> : <Navigate to={landingPath} replace />} />
             <Route path="customers" element={hasAccess(user, "customers") ? <AdminCustomers /> : <Navigate to={landingPath} replace />} />
             <Route path="shipping" element={hasAccess(user, "shipping") ? <AdminShipping /> : <Navigate to={landingPath} replace />} />
+            <Route path="fulfillment" element={hasAccess(user, "orders") ? <AdminFulfillment /> : <Navigate to={landingPath} replace />} />
             <Route path="dispatch" element={hasAccess(user, "orders") ? <AdminDispatch /> : <Navigate to={landingPath} replace />} />
             <Route path="boxes" element={hasAccess(user, "shipping") ? <AdminBoxes /> : <Navigate to={landingPath} replace />} />
             <Route path="subscribers" element={hasAccess(user, "subscribers") ? <AdminSubscribers /> : <Navigate to={landingPath} replace />} />
@@ -146,7 +138,6 @@ export default function AdminLayout({ basePath = "/admin" }) {
   );
 }
 
-// Shared utilities for sections to import
 export const StatusBadge = ({ status }) => {
   const map = {
     paid: { bg: "#0d9d57", color: "#fff", icon: CheckCircle2 },
