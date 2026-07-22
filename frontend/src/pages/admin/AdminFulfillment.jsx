@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
-import { ClipboardList, Package, PackageCheck, Printer, RefreshCw, ChevronRight, AlertTriangle, MapPin } from "lucide-react";
+import { ClipboardList, Package, PackageCheck, Printer, RefreshCw, ChevronRight, ChevronsRight, AlertTriangle, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 
-// Écran « Journée » — poste d'expédition Fironova (Phase 1).
+// Écran « Journée » — poste d'expédition Fironova (Phase 1, v2).
 const STEP_ORDER = ["processing", "packing", "packed", "shipped"];
 const STEP_ICON = { processing: ClipboardList, packing: Package, packed: PackageCheck, shipped: Printer };
 const NEXT = { processing: "packing", packing: "packed" };
@@ -15,6 +15,7 @@ export default function AdminFulfillment() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [bulkBusy, setBulkBusy] = useState(null);
   const [openId, setOpenId] = useState(null);
 
   const load = useCallback(() => {
@@ -39,12 +40,25 @@ export default function AdminFulfillment() {
     }
   };
 
+  const bulkAdvance = async (fromStatus, to) => {
+    setBulkBusy(fromStatus);
+    try {
+      const { data: res } = await api.post("/admin/fulfillment/bulk-advance", { date, from_status: fromStatus, to });
+      toast.success(`${res.advanced} commande(s) → ${to === "packing" ? "en préparation" : "empaquetées"}`);
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setBulkBusy(null);
+    }
+  };
+
   const openPicking = () => {
     const root = API_BASE.replace(/\/api$/, "");
     window.open(`${root}/api/admin/fulfillment/${date}/picking-list.pdf`, "_blank", "noopener");
   };
 
-  const counts = data?.counts || { processing: 0, packing: 0, packed: 0, shipped: 0, total: 0 };
+  const counts = data?.counts || { processing: 0, packing: 0, packed: 0, shipped: 0, total: 0, overdue: 0 };
   const labels = data?.labels || {};
   const buckets = data?.buckets || {};
 
@@ -72,6 +86,12 @@ export default function AdminFulfillment() {
         </div>
       </div>
 
+      {counts.overdue > 0 && (
+        <div className="mt-6 flex items-center gap-2 bg-red-50 border border-red-300 text-red-900 px-4 py-3 font-mono text-xs" data-testid="fulfil-overdue-banner">
+          <AlertTriangle size={15} /> {counts.overdue} commande(s) en retard — lot antérieur non expédié. Traiter en priorité.
+        </div>
+      )}
+
       <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
         {STEP_ORDER.map((step) => {
           const Icon = STEP_ICON[step];
@@ -90,11 +110,20 @@ export default function AdminFulfillment() {
         {["processing", "packing", "packed"].map((step) => {
           const Icon = STEP_ICON[step];
           const rows = buckets[step] || [];
+          const bulkTo = NEXT[step];
           return (
             <div key={step} data-testid={`fulfil-col-${step}`}>
-              <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 mb-3 flex items-center gap-2">
-                <Icon size={14} /> {labels[step]?.fr || step} <span className="text-foreground/30">({rows.length})</span>
-              </h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 flex items-center gap-2">
+                  <Icon size={14} /> {labels[step]?.fr || step} <span className="text-foreground/30">({rows.length})</span>
+                </h2>
+                {bulkTo && rows.length > 0 && (
+                  <button onClick={() => bulkAdvance(step, bulkTo)} disabled={bulkBusy === step} data-testid={`fulfil-bulk-${step}`}
+                    className="font-mono text-[10px] uppercase tracking-wider text-ink/70 hover:text-ink flex items-center gap-1 disabled:opacity-40">
+                    {bulkBusy === step ? "…" : <>Tout avancer <ChevronsRight size={12} /></>}
+                  </button>
+                )}
+              </div>
               <div className="space-y-3">
                 {rows.length === 0 ? (
                   <div className="bg-white border border-ink/10 px-4 py-8 text-center font-mono text-[11px] text-foreground/40">
