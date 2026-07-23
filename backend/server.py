@@ -3750,7 +3750,17 @@ async def admin_dispatch_today(date: Optional[str] = None,
         # « Étiquetées » = étiquettes émises CE JOUR (shipped_at), pas les
         # reports de lots précédents qui restent à traiter.
         shipped_at = info.get("shipped_at") or ""
-        labeled_today = shipped_at.startswith(day)
+        labeled_today = False
+        if shipped_at:
+            try:
+                shipped_dt = datetime.fromisoformat(shipped_at.replace("Z", "+00:00"))
+                if shipped_dt.tzinfo is None:
+                    shipped_dt = shipped_dt.replace(tzinfo=timezone.utc)
+                labeled_today = shipped_dt.astimezone(ZoneInfo(ORDER_CUTOFF_TZ)).date().isoformat() == day
+            except Exception:
+                # Fallback compatible pour d'anciens formats : au pire, conserve
+                # le comportement historique basé sur le préfixe de date.
+                labeled_today = shipped_at.startswith(day)
         if row["label_url"] and row["tracking_number"]:
             if labeled_today:
                 labeled.append(row)
