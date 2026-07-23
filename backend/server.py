@@ -3644,12 +3644,59 @@ async def admin_transmit_manifest(_admin: dict = Depends(require_area("orders", 
             "id": str(uuid.uuid4()),
             "group_ids": done_groups,
             "manifest_links": manifests,
+            # Date du lot (TZ cutoff) : permet de retrouver le manifeste du jour.
+            "dispatch_date": _local_today_iso(),
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
     if not done_groups:
         raise HTTPException(502, "No manifest could be transmitted — check the Canada Post logs.")
     return {"ok": True, "transmitted_groups": done_groups, "manifests": manifests, "orders_marked": marked}
+
+
+@api.get("/admin/dispatch/{date}/manifest.pdf")
+async def admin_dispatch_manifest_pdf(date: str,
+                                      _admin: dict = Depends(require_area("orders", "view"))):
+    """Manifeste(s) transmis pour la date donnée, fusionné(s) en un seul PDF.
+    Disponible dès que « Transmettre le manifeste » a été fait ce jour-là."""
+    docs = await db.manifests.find({"dispatch_date": date}, {"_id": 0}).sort("created_at", 1).to_list(50)
+    if not docs:
+        raise HTTPException(404, "Aucun manifeste transmis pour cette date.")
+
+    hrefs = []
+    for d in docs:
+        for h in (d.get("manifest_links") or []):
+            if h and h not in hrefs:
+                hrefs.append(h)
+    if not hrefs:
+        raise HTTPException(404, "Manifeste sans document téléchargeable.")
+
+    pdfs = []
+    for href in hrefs:
+        try:
+            r = await _cp_openapi_call("GET", href, accept="application/pdf")
+            if r.status_code < 400 and r.content:
+                pdfs.append(r.content)
+        except Exception as ex:  # pragma: no cover
+            logging.error("manifest artifact failed (%s): %s", href, ex)
+    if not pdfs:
+        raise HTTPException(502, "Impossible de récupérer le manifeste auprès de Postes Canada.")
+
+    merged = _merge_pdfs(pdfs) if len(pdfs) > 1 else pdfs[0]
+    return Response(
+        content=merged,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="manifeste-{date}.pdf"'},
+    )
+
+
+@api.get("/admin/dispatch/{date}/manifest-status")
+async def admin_dispatch_manifest_status(date: str,
+                                         _admin: dict = Depends(require_area("orders", "view"))):
+    """Indique si un manifeste a été transmis pour cette date (pilote le bouton
+    de téléchargement dans l'écran Dispatch)."""
+    count = await db.manifests.count_documents({"dispatch_date": date})
+    return {"date": date, "transmitted": count > 0, "manifests": count}
 
 
 # ---------------------------------------------------------------------------
@@ -3700,8 +3747,13 @@ async def admin_dispatch_today(date: Optional[str] = None,
             "label_url": info.get("label_url") or "",
             "cp_transmitted": bool(info.get("cp_transmitted")),
         }
+        # « Étiquetées » = étiquettes émises CE JOUR (shipped_at), pas les
+        # reports de lots précédents qui restent à traiter.
+        shipped_at = info.get("shipped_at") or ""
+        labeled_today = shipped_at.startswith(day)
         if row["label_url"] and row["tracking_number"]:
-            labeled.append(row)
+            if labeled_today:
+                labeled.append(row)
         else:
             to_label.append(row)
 
@@ -3936,28 +3988,36 @@ async def admin_fulfillment_day(date: Optional[str] = None,
     # Étapes en cours : on inclut les retards (<= jour) pour ne rien perdre.
     # « Étiquetée » : uniquement le jour sélectionné — c'est un indicateur de
     # production quotidienne, pas un cumul historique.
+    day_start = f"{day}T00:00:00"
+    day_end = f"{day}T23:59:59.999999"
     orders = await db.orders.find(
         {
             "payment_status": "paid",
             "$or": [
                 {
+                    # À préparer / en préparation : retards inclus pour qu'une
+                    # commande oubliée ne disparaisse jamais de l'écran.
                     "dispatch_batch": {"$lte": day},
-                    "fulfillment_status": {"$in": ["processing", "packing", "packed"]},
+                    "fulfillment_status": {"$in": ["processing", "packing"]},
                 },
                 {
-                    # Historique : on garde visibles les commandes étiquetées
-                    # des lots précédents (traçabilité de ce qui a été traité).
-                    "dispatch_batch": {"$lte": day},
-                    "fulfillment_status": "shipped",
+                    # Empaquetée : historique du jour. On se base sur packed_at
+                    # (et non sur le statut) pour que la commande RESTE visible
+                    # même après l'émission de son étiquette dans Dispatch.
+                    "packed_at": {"$gte": day_start, "$lte": day_end},
                 },
             ],
         },
         {"_id": 0},
     ).sort("created_at", 1).to_list(3000)
 
-    buckets = {"processing": [], "packing": [], "packed": [], "shipped": []}
+    buckets = {"processing": [], "packing": [], "packed": []}
     for o in orders:
         st = o.get("fulfillment_status")
+        # Une commande empaquetée aujourd'hui reste dans « Empaquetée » même
+        # une fois étiquetée (shipped) : c'est l'historique de la journée.
+        if o.get("packed_at") and day_start <= o["packed_at"] <= day_end:
+            st = "packed"
         if st not in buckets:
             continue
         info = o.get("shipping_info") or {}
