@@ -3776,6 +3776,15 @@ async def admin_dispatch_manifest_status(date: str,
 # génère toutes les étiquettes d'un lot en une passe, puis on transmet le
 # manifeste une fois par jour (voir /admin/shipping/transmit).
 # ---------------------------------------------------------------------------
+def _iso_day_shift(day: str, delta: int) -> str:
+    """Renvoie la date ISO décalée de <delta> jours (bornes de recherche UTC)."""
+    try:
+        d = datetime.strptime(day, "%Y-%m-%d").date() + timedelta(days=delta)
+        return d.isoformat()
+    except Exception:
+        return day
+
+
 def _local_today_iso() -> str:
     """Date locale (ORDER_CUTOFF_TZ) au format YYYY-MM-DD."""
     return datetime.now(ZoneInfo(ORDER_CUTOFF_TZ)).date().isoformat()
@@ -3794,10 +3803,22 @@ async def admin_dispatch_today(date: Optional[str] = None,
     cursor = db.orders.find(
         {
             "payment_status": "paid",
-            # Le lot est celui du jour : une étiquette non imprimée est reportée
-            # au lendemain par le watchdog de minuit (dispatch_batch avancé).
-            "dispatch_batch": day,
-            "fulfillment_status": {"$in": ["processing", "pending", "packed", "shipped"]},
+            "$or": [
+                {
+                    # File de travail : ce qui reste à traiter pour ce lot.
+                    "dispatch_batch": day,
+                    "fulfillment_status": {"$in": ["processing", "pending", "packed", "shipped"]},
+                },
+                {
+                    # HISTORIQUE : étiquettes réellement émises ce jour-là.
+                    # Indispensable car le report de minuit modifie
+                    # dispatch_batch, alors que shipped_at ne bouge jamais.
+                    # Fenêtre élargie (J-1 → J+1) car shipped_at est en UTC :
+                    # le tri fin par heure locale est fait plus bas.
+                    "shipping_info.shipped_at": {"$gte": _iso_day_shift(day, -1),
+                                                 "$lte": _iso_day_shift(day, 1) + "T23:59:59"},
+                },
+            ],
         },
         {"_id": 0},
     ).sort("created_at", 1)
