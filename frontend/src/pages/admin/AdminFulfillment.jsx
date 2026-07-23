@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
-import { ClipboardList, Package, PackageCheck, Printer, RefreshCw, ChevronRight, ChevronDown, ChevronsRight, AlertTriangle, MapPin } from "lucide-react";
+import { ClipboardList, Package, PackageCheck, Printer, RefreshCw, ChevronRight, AlertTriangle, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 
 // Écran « Journée » — poste d'expédition Fironova.
-const STEP_ORDER = ["processing", "packing", "packed", "shipped"];
+const STEP_ORDER = ["processing", "packing", "packed"];
 const STEP_ICON = { processing: ClipboardList, packing: Package, packed: PackageCheck, shipped: Printer };
 const NEXT = { processing: "packing", packing: "packed" };
 const NEXT_LABEL = { processing: "Démarrer", packing: "Empaquetée" };
@@ -44,7 +44,7 @@ export default function AdminFulfillment() {
     window.open(`${root}/api/admin/fulfillment/${date}/picking-list.pdf`, "_blank", "noopener");
   };
 
-  const counts = data?.counts || { processing: 0, packing: 0, packed: 0, shipped: 0, total: 0, overdue: 0 };
+  const counts = data?.counts || { processing: 0, packing: 0, packed: 0, total: 0 };
   const labels = data?.labels || {};
   const buckets = data?.buckets || {};
 
@@ -78,7 +78,7 @@ export default function AdminFulfillment() {
         </div>
       )}
 
-      <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="mt-6 grid grid-cols-3 gap-4">
         {STEP_ORDER.map((step) => {
           const Icon = STEP_ICON[step];
           return (
@@ -116,8 +116,7 @@ export default function AdminFulfillment() {
                       <div className="font-mono text-[11px] text-foreground/50 mt-1 flex items-center gap-1">
                         <MapPin size={10} /> {o.city || "—"}, {o.province || ""} · {o.units} u. · {o.items} art.
                       </div>
-                      <div className="font-mono text-[10px] uppercase tracking-wider text-ink/60 mt-2 flex items-center gap-1">
-                        {openId === o.id ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                      <div className="font-mono text-[10px] uppercase tracking-wider text-ink/60 mt-2">
                         {openId === o.id ? "Masquer" : "Voir les produits"}
                       </div>
                     </button>
