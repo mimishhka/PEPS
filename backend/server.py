@@ -4000,6 +4000,12 @@ async def admin_dispatch_today(date: Optional[str] = None,
     to_label, labeled = [], []
     selected_service = (service_code or CANADA_POST_DEFAULT_SERVICE_CODE or "DOM.EP").strip().upper()
     rate_cache: dict[tuple, Any] = {}
+
+    # Charger les emballages actifs une seule fois pour tout le lot.
+    available_boxes = await db.shipping_boxes.find(
+        {"deleted_at": None, "active": True}, {"_id": 0}
+    ).sort("max_units", 1).to_list(200)
+
     for o in orders:
         info = o.get("shipping_info") or {}
         cost_due = (info.get("cost") or {}).get("due_amount")
@@ -4084,6 +4090,10 @@ async def admin_dispatch_today(date: Optional[str] = None,
                             if chosen_code == selected_service
                             else "estimated_cp_alt"
                         )
+            # Emballage sélectionné (auto ou override) pour cette commande.
+            chosen_box = await _select_box_for_order(o, all_boxes=available_boxes)
+            row["box_id"] = chosen_box.get("id") if chosen_box else None
+            row["box_name"] = chosen_box.get("name") if chosen_box else None
             to_label.append(row)
 
     overdue = await db.orders.count_documents({
@@ -4111,7 +4121,39 @@ async def admin_dispatch_today(date: Optional[str] = None,
         "counts": {"to_label": len(to_label), "labeled": len(labeled), "overdue": overdue},
         "to_label": to_label,
         "labeled": labeled,
+        "available_boxes": [
+            {"id": b.get("id"), "name": b.get("name"), "max_units": b.get("max_units"),
+             "tare_grams": b.get("tare_grams"), "length_cm": b.get("length_cm"),
+             "width_cm": b.get("width_cm"), "height_cm": b.get("height_cm")}
+            for b in available_boxes
+        ],
     }
+
+
+class OrderShippingBoxIn(BaseModel):
+    box_id: Optional[str] = None  # None = réinitialiser à la sélection automatique
+
+
+@api.patch("/admin/orders/{order_id}/shipping-box")
+async def admin_order_set_shipping_box(
+    order_id: str,
+    payload: OrderShippingBoxIn,
+    _admin: dict = Depends(require_area("orders", "manage")),
+):
+    """Définit (ou réinitialise) l'emballage d'une commande en vue de l'étiquetage."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+
+    if payload.box_id:
+        box = await db.shipping_boxes.find_one({"id": payload.box_id, "active": True, "deleted_at": None}, {"_id": 0})
+        if not box:
+            raise HTTPException(404, "Packaging not found or inactive")
+        await db.orders.update_one({"id": order_id}, {"$set": {"shipping_box_override_id": payload.box_id}})
+        return {"order_id": order_id, "box_id": payload.box_id, "box_name": box.get("name")}
+    else:
+        await db.orders.update_one({"id": order_id}, {"$unset": {"shipping_box_override_id": ""}})
+        return {"order_id": order_id, "box_id": None, "box_name": None}
 
 
 @api.post("/admin/dispatch/{date}/labels")
@@ -4848,19 +4890,28 @@ async def admin_delete_box(box_id: str, admin: dict = Depends(require_area("ship
     return await _soft_delete("shipping_boxes", box_id, admin)
 
 
-async def _select_box_for_order(order: dict) -> Optional[dict]:
-    """Plus petit contenant actif dont la capacité >= nb total d'unités."""
+async def _select_box_for_order(order: dict, all_boxes: Optional[list] = None) -> Optional[dict]:
+    """Plus petit contenant actif dont la capacité >= nb total d'unités.
+    Si shipping_box_override_id est défini sur la commande, on l'utilise en priorité."""
+    boxes = all_boxes
+    if boxes is None:
+        boxes = await db.shipping_boxes.find(
+            {"deleted_at": None, "active": True}, {"_id": 0}
+        ).sort("max_units", 1).to_list(200)
+
+    override_id = order.get("shipping_box_override_id")
+    if override_id:
+        for b in boxes:
+            if b.get("id") == override_id:
+                return b
+
     units = 0
     for it in _order_items(order):
         units += int(it.get("qty") or 1)
     units = max(1, units)
-    boxes = await db.shipping_boxes.find(
-        {"deleted_at": None, "active": True}, {"_id": 0}
-    ).sort("max_units", 1).to_list(200)
-    for b in boxes:
+    for b in sorted(boxes, key=lambda b: int(b.get("max_units") or 0)):
         if int(b.get("max_units") or 0) >= units:
             return b
-    # aucune assez grande -> on prend la plus grande dispo (fallback)
     return boxes[-1] if boxes else None
 
 

@@ -22,6 +22,7 @@ export default function AdminDispatch() {
   const [cpConfig, setCpConfig] = useState(null);
   const [txBusy, setTxBusy] = useState(false);
   const [voidBusy, setVoidBusy] = useState(null);
+  const [boxOverrides, setBoxOverrides] = useState({});
 
   const load = useCallback(() => {
     setLoading(true);
@@ -101,6 +102,15 @@ export default function AdminDispatch() {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
       setVoidBusy(null);
+    }
+  };
+
+  const changeBox = async (orderId, boxId) => {
+    setBoxOverrides((prev) => ({ ...prev, [orderId]: boxId || null }));
+    try {
+      await api.patch(`/admin/orders/${orderId}/shipping-box`, { box_id: boxId || null });
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
     }
   };
 
@@ -224,19 +234,36 @@ export default function AdminDispatch() {
       </div>
 
       <Section title="À étiqueter" empty="Aucune commande payée en attente pour ce lot." rows={data?.to_label} testid="table-tolabel"
-        render={(o) => (
-          <tr key={o.id} className="border-t border-ink/10" data-testid={`dispatch-row-${o.order_number}`}>
-            <td className="px-4 py-3 font-mono text-xs font-bold">{o.order_number}</td>
-            <td className="px-4 py-3 text-sm">{o.city}, {o.province}</td>
-            <td className="px-4 py-3 font-mono text-xs">{o.items} art.</td>
-            <td className="px-4 py-3 font-mono text-xs text-right">
-              {o.line_label_cost != null ? `$${Number(o.line_label_cost).toFixed(2)}` : "—"}
-              {o.line_label_cost_source === "estimated_cp" ? <span className="block text-[10px] text-foreground/40">estimé CP {o.estimated_eta_days ? `· ${o.estimated_eta_days} j` : ""}</span> : null}
-              {o.line_label_cost_source === "estimated_cp_alt" ? <span className="block text-[10px] text-foreground/40">estimé CP</span> : null}
-            </td>
-            <td className="px-4 py-3 text-right font-mono text-[11px] text-foreground/50">en attente</td>
-          </tr>
-        )}
+        headers={["Commande", "Destination", "Articles", "Emballage", "Coût estimé", "Statut"]}
+        render={(o) => {
+          const currentBoxId = (o.id in boxOverrides) ? boxOverrides[o.id] : o.box_id;
+          return (
+            <tr key={o.id} className="border-t border-ink/10" data-testid={`dispatch-row-${o.order_number}`}>
+              <td className="px-4 py-3 font-mono text-xs font-bold">{o.order_number}</td>
+              <td className="px-4 py-3 text-sm">{o.city}, {o.province}</td>
+              <td className="px-4 py-3 font-mono text-xs">{o.items} art.</td>
+              <td className="px-4 py-2">
+                <select
+                  value={currentBoxId || ""}
+                  onChange={(e) => changeBox(o.id, e.target.value || null)}
+                  className="border border-ink/20 px-2 py-1 font-mono text-[11px] bg-white w-full max-w-[180px]"
+                  title="Changer l'emballage pour cette commande"
+                >
+                  <option value="">— auto —</option>
+                  {(data?.available_boxes || []).map((b) => (
+                    <option key={b.id} value={b.id}>{b.name} (max {b.max_units})</option>
+                  ))}
+                </select>
+              </td>
+              <td className="px-4 py-3 font-mono text-xs text-right">
+                {o.line_label_cost != null ? `$${Number(o.line_label_cost).toFixed(2)}` : "—"}
+                {o.line_label_cost_source === "estimated_cp" ? <span className="block text-[10px] text-foreground/40">estimé CP {o.estimated_eta_days ? `· ${o.estimated_eta_days} j` : ""}</span> : null}
+                {o.line_label_cost_source === "estimated_cp_alt" ? <span className="block text-[10px] text-foreground/40">estimé CP</span> : null}
+              </td>
+              <td className="px-4 py-3 text-right font-mono text-[11px] text-foreground/50">en attente</td>
+            </tr>
+          );
+        }}
       />
 
       <Section title="Étiquetées — prêtes à imprimer" empty="Aucune étiquette générée pour ce lot." rows={data?.labeled} testid="table-labeled"
@@ -298,13 +325,22 @@ function Stat({ label, value, accent, testid }) {
   );
 }
 
-function Section({ title, rows, render, empty, testid }) {
+function Section({ title, rows, render, empty, testid, headers }) {
   return (
     <div className="mt-8">
       <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 mb-3">{title}</h2>
       <div className="bg-white border border-ink/10 overflow-x-auto" data-testid={testid}>
         {rows && rows.length ? (
           <table className="w-full">
+            {headers && (
+              <thead>
+                <tr className="border-b border-ink/10 bg-ink/[0.02]">
+                  {headers.map((h) => (
+                    <th key={h} className="px-4 py-2 font-mono text-[10px] uppercase tracking-wider text-foreground/40 text-left">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+            )}
             <tbody>{rows.map(render)}</tbody>
           </table>
         ) : (
