@@ -16,7 +16,7 @@ export default function AdminDispatch() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [labelBusy, setLabelBusy] = useState(false);
-  const [serviceCode, setServiceCode] = useState("DOM.EP");
+  const [serviceCode, setServiceCode] = useState("DOM.XP");
   const [manifest, setManifest] = useState(null);
   const [txBusy, setTxBusy] = useState(false);
 
@@ -136,9 +136,9 @@ export default function AdminDispatch() {
         <label className="font-mono text-xs text-foreground/60">Service</label>
         <select value={serviceCode} onChange={(e) => setServiceCode(e.target.value)} data-testid="dispatch-service"
           className="border border-ink/20 px-3 py-2 font-mono text-sm">
+          <option value="DOM.XP">DOM.XP — Xpresspost</option>
           <option value="DOM.EP">DOM.EP — Expedited Parcel</option>
           <option value="DOM.RP">DOM.RP — Regular Parcel</option>
-          <option value="DOM.XP">DOM.XP — Xpresspost</option>
           <option value="DOM.PC">DOM.PC — Priority</option>
         </select>
         <button onClick={generateLabels} disabled={labelBusy || !configured || counts.to_label === 0}

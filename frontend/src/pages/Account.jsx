@@ -26,7 +26,7 @@ const EMPTY_ADDRESS = {
 export default function Account() {
   useDocumentHead({ title: "My Account", path: "/account", noindex: true });
   const { user, logout, refresh } = useAuth();
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const navigate = useNavigate();
   const [tab, setTab] = useState("orders");
 
@@ -64,7 +64,7 @@ export default function Account() {
           ))}
         </div>
 
-        {tab === "orders" && <OrdersTab t={t} />}
+        {tab === "orders" && <OrdersTab t={t} lang={lang} />}
         {tab === "profile" && <ProfileTab t={t} user={user} refresh={refresh} />}
         {tab === "addresses" && <AddressesTab t={t} />}
         {tab === "security" && <SecurityTab t={t} logout={logout} navigate={navigate} />}
@@ -74,7 +74,7 @@ export default function Account() {
 }
 
 /* Orders */
-function OrdersTab({ t }) {
+function OrdersTab({ t, lang }) {
   const [orders, setOrders] = useState(null);
   useEffect(() => {
     api.get("/orders/mine").then((r) => setOrders(r.data)).catch(() => setOrders([]));
@@ -99,6 +99,7 @@ function OrdersTab({ t }) {
             <th className="px-4 py-3 text-left uppercase tracking-[0.16em]">{t("account.date")}</th>
             <th className="px-4 py-3 text-left uppercase tracking-[0.16em]">Items</th>
             <th className="px-4 py-3 text-left uppercase tracking-[0.16em]">{t("account.status")}</th>
+            <th className="px-4 py-3 text-left uppercase tracking-[0.16em]">{t("account.shipping") || "Expédition"}</th>
             <th className="px-4 py-3 text-right uppercase tracking-[0.16em]">{t("account.total")}</th>
           </tr>
         </thead>
@@ -114,6 +115,34 @@ function OrdersTab({ t }) {
                 <span className={`rounded-full px-2.5 py-1 uppercase tracking-[0.12em] text-[10px] ${statusColor[o.payment_status] || "bg-ash/40 text-nordfjord"}`}>
                   {o.payment_status}
                 </span>
+              </td>
+              <td className="px-4 py-4">
+                {(() => {
+                  const info = o.shipping_info || {};
+                  const pin = info.tracking_number;
+                  const fs = o.fulfillment_status;
+                  if (pin) {
+                    return (
+                      <a
+                        href={`https://www.canadapost-postescanada.ca/track-reperage/${lang === "fr" ? "fr" : "en"}#/resultList?searchFor=${pin}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-nova underline font-medium"
+                        data-testid={`order-tracking-${o.order_number}`}
+                      >
+                        {pin}
+                      </a>
+                    );
+                  }
+                  const map = {
+                    processing: lang === "fr" ? "En traitement" : "Processing",
+                    packing: lang === "fr" ? "En préparation" : "Preparing",
+                    packed: lang === "fr" ? "Prête à expédier" : "Ready to ship",
+                    shipped: lang === "fr" ? "Expédiée" : "Shipped",
+                    delivered: lang === "fr" ? "Livrée" : "Delivered",
+                  };
+                  return <span className="text-glacier">{map[fs] || "—"}</span>;
+                })()}
               </td>
               <td className="px-4 py-4 text-right font-bold text-nordfjord">${o.total.toFixed(2)}</td>
             </tr>
