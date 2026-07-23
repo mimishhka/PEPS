@@ -4156,6 +4156,63 @@ async def admin_order_set_shipping_box(
         return {"order_id": order_id, "box_id": None, "box_name": None}
 
 
+@api.post("/admin/orders/{order_id}/dispatch/refresh-estimate")
+async def admin_order_refresh_dispatch_estimate(
+    order_id: str,
+    service_code: Optional[str] = None,
+    _admin: dict = Depends(require_area("orders", "view")),
+):
+    """Recalcule l'estimation CP d'une ligne Dispatch avec le poids produits + tare emballage."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+
+    selected_service = (service_code or CANADA_POST_DEFAULT_SERVICE_CODE or "DOM.EP").strip().upper()
+    chosen_box = await _select_box_for_order(order)
+    products_weight_kg = _order_weight_kg(order)
+    box_tare_kg = round(float((chosen_box or {}).get("tare_grams") or 0.0) / 1000.0, 3)
+    total_weight_kg = max(0.1, round(products_weight_kg + box_tare_kg, 3))
+
+    out = {
+        "order_id": order_id,
+        "service_requested": selected_service,
+        "line_label_cost": None,
+        "line_label_cost_source": None,
+        "estimated_cost_due": None,
+        "estimated_eta_days": None,
+        "box_id": (chosen_box or {}).get("id"),
+        "box_name": (chosen_box or {}).get("name"),
+        "products_weight_kg": products_weight_kg,
+        "box_tare_kg": box_tare_kg,
+        "packaged_weight_kg": total_weight_kg,
+    }
+
+    if not is_canada_post_configured():
+        return out
+
+    ship = order.get("shipping_address") or {}
+    dest_pc = str(ship.get("postal_code") or "").replace(" ", "").upper()
+    dest_country = str(ship.get("country") or "CA").upper()
+
+    if _cp_use_openapi():
+        chosen = await _canada_post_estimate_openapi(order, selected_service, products_weight_kg)
+    else:
+        rates = await _canada_post_get_rates(dest_pc, dest_country, total_weight_kg)
+        chosen = next((r for r in rates if str(r.get("service_code") or "").upper() == selected_service), None)
+        if chosen is None and rates:
+            chosen = rates[0]
+
+    if chosen is None:
+        return out
+
+    out["estimated_cost_due"] = chosen.get("cost_cad")
+    out["estimated_eta_days"] = chosen.get("eta_days")
+    out["line_label_cost"] = chosen.get("cost_cad")
+    chosen_code = str(chosen.get("service_code") or "").upper()
+    out["line_label_cost_source"] = "estimated_cp" if (not chosen_code) or (chosen_code == selected_service) else "estimated_cp_alt"
+    return out
+
+
 @api.post("/admin/dispatch/{date}/labels")
 async def admin_dispatch_labels(date: str, payload: DispatchLabelsIn,
                                 _admin: dict = Depends(require_area("orders", "manage"))):

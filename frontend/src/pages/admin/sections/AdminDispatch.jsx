@@ -23,6 +23,7 @@ export default function AdminDispatch() {
   const [txBusy, setTxBusy] = useState(false);
   const [voidBusy, setVoidBusy] = useState(null);
   const [boxOverrides, setBoxOverrides] = useState({});
+  const [priceBusy, setPriceBusy] = useState({});
 
   const load = useCallback(() => {
     setLoading(true);
@@ -109,8 +110,29 @@ export default function AdminDispatch() {
     setBoxOverrides((prev) => ({ ...prev, [orderId]: boxId || null }));
     try {
       await api.patch(`/admin/orders/${orderId}/shipping-box`, { box_id: boxId || null });
+      await refreshLinePrice(orderId);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
+  };
+
+  const refreshLinePrice = async (orderId) => {
+    setPriceBusy((prev) => ({ ...prev, [orderId]: true }));
+    try {
+      const { data: row } = await api.post(`/admin/orders/${orderId}/dispatch/refresh-estimate`, {}, {
+        params: { service_code: serviceCode },
+      });
+      setData((prev) => {
+        if (!prev?.to_label) return prev;
+        return {
+          ...prev,
+          to_label: prev.to_label.map((r) => (r.id === orderId ? { ...r, ...row } : r)),
+        };
+      });
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setPriceBusy((prev) => ({ ...prev, [orderId]: false }));
     }
   };
 
@@ -256,9 +278,25 @@ export default function AdminDispatch() {
                 </select>
               </td>
               <td className="px-4 py-3 font-mono text-xs text-right">
-                {o.line_label_cost != null ? `$${Number(o.line_label_cost).toFixed(2)}` : "—"}
+                <div className="inline-flex items-center gap-2">
+                  <span>{o.line_label_cost != null ? `$${Number(o.line_label_cost).toFixed(2)}` : "—"}</span>
+                  <button
+                    onClick={() => refreshLinePrice(o.id)}
+                    disabled={priceBusy[o.id] || !configured}
+                    data-testid={`dispatch-refresh-line-${o.order_number}`}
+                    title="Rafraîchir le prix CP de cette ligne"
+                    className="border border-ink/20 p-1 hover:bg-ink/5 disabled:opacity-40"
+                  >
+                    <RefreshCw size={11} className={priceBusy[o.id] ? "animate-spin" : ""} />
+                  </button>
+                </div>
                 {o.line_label_cost_source === "estimated_cp" ? <span className="block text-[10px] text-foreground/40">estimé CP {o.estimated_eta_days ? `· ${o.estimated_eta_days} j` : ""}</span> : null}
                 {o.line_label_cost_source === "estimated_cp_alt" ? <span className="block text-[10px] text-foreground/40">estimé CP</span> : null}
+                {(o.packaged_weight_kg || o.box_name) ? (
+                  <span className="block text-[10px] text-foreground/40">
+                    {o.packaged_weight_kg ? `${o.packaged_weight_kg} kg` : ""}{o.packaged_weight_kg && o.box_name ? " · " : ""}{o.box_name || ""}
+                  </span>
+                ) : null}
               </td>
               <td className="px-4 py-3 text-right font-mono text-[11px] text-foreground/50">en attente</td>
             </tr>
