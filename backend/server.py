@@ -2109,6 +2109,68 @@ async def _canada_post_get_artifact_openapi(href: str, order_id: str) -> Optiona
     return f"/uploads/labels/{fname}"
 
 
+async def _canada_post_shipment_price(shipment_id: str) -> Optional[dict]:
+    """Coût réel facturé par Postes Canada pour un envoi (Get Shipment Price).
+    C'est ce qui permet de comparer ce qu'on PAIE à ce qu'on FACTURE au client."""
+    if not shipment_id or not _cp_use_openapi():
+        return None
+    mailed_by, mobo = _cp_path_customers()
+    try:
+        r = await _cp_openapi_call("GET", f"/{mailed_by}/{mobo}/shipments/{shipment_id}/price")
+    except Exception as ex:
+        logging.error("Canada Post get-price failed (%s): %s", shipment_id, ex)
+        return None
+    if r.status_code >= 400:
+        logging.error("Canada Post get-price %s: %s", r.status_code, _cp_error_detail(r))
+        return None
+    d = _cp_safe_json(r) or {}
+    std = d.get("serviceStandard") or {}
+    return {
+        "service_code": d.get("serviceCode"),
+        "base_amount": d.get("baseAmount"),
+        "pre_tax_amount": d.get("preTaxAmount"),
+        "gst": d.get("gstAmount"),
+        "pst": d.get("pstAmount"),
+        "hst": d.get("hstAmount"),
+        "due_amount": d.get("dueAmount"),
+        "rated_weight_kg": d.get("ratedWeight"),
+        "expected_delivery": std.get("expectedDeliveryDate"),
+        "expected_transit_days": std.get("expectedTransitTime"),
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+async def _canada_post_manifest_details(manifest_href: str) -> Optional[dict]:
+    """Détails de coût d'un manifeste (Get Manifest Details) : total réellement
+    facturé pour la journée, pour le rapprochement comptable."""
+    if not manifest_href:
+        return None
+    href = manifest_href.rstrip("/")
+    if not href.endswith("/details"):
+        href = f"{href}/details"
+    try:
+        r = await _cp_openapi_call("GET", href)
+    except Exception as ex:
+        logging.error("Canada Post manifest-details failed: %s", ex)
+        return None
+    if r.status_code >= 400:
+        logging.error("Canada Post manifest-details %s: %s", r.status_code, _cp_error_detail(r))
+        return None
+    d = _cp_safe_json(r) or {}
+    p = d.get("manifestPricingInfo") or {}
+    return {
+        "po_number": d.get("poNumber"),
+        "manifest_date": d.get("manifestDate"),
+        "manifest_time": d.get("manifestTime"),
+        "base_cost": p.get("baseCost"),
+        "options_and_surcharges": p.get("optionsAndSurcharges"),
+        "gst": p.get("gst"),
+        "pst": p.get("pst"),
+        "hst": p.get("hst"),
+        "total_due": p.get("totalDueCpc"),
+    }
+
+
 async def _canada_post_transmit_openapi(group_id: str) -> list:
     mailed_by, mobo = _cp_path_customers()
     origin_pc = CANADA_POST_ORIGIN_POSTAL_CODE.replace(" ", "").upper()
@@ -2385,6 +2447,7 @@ async def _auto_create_dispatch_label(order_id: str, service_code: Optional[str]
             "tracking_number": res["pin"],
             "label_url": label_url,
             "cp_shipment_id": res["shipment_id"],
+            "cost": await _canada_post_shipment_price(res["shipment_id"]),
             "cp_group_id": res["group_id"],
             "cp_transmitted": False,
             "service_code": svc,
@@ -3640,10 +3703,18 @@ async def admin_transmit_manifest(_admin: dict = Depends(require_area("orders", 
                       "shipping_info.cp_transmitted_at": datetime.now(timezone.utc).isoformat()}},
         )
         marked = res.modified_count
+        # Détails de coût du manifeste : total réellement facturé par Postes
+        # Canada pour la journée (rapprochement comptable).
+        cost_details = None
+        for href in manifests:
+            cost_details = await _canada_post_manifest_details(href)
+            if cost_details:
+                break
         await db.manifests.insert_one({
             "id": str(uuid.uuid4()),
             "group_ids": done_groups,
             "manifest_links": manifests,
+            "cost": cost_details,
             # Date du lot (TZ cutoff) : permet de retrouver le manifeste du jour.
             "dispatch_date": _local_today_iso(),
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -3746,6 +3817,9 @@ async def admin_dispatch_today(date: Optional[str] = None,
             "tracking_number": info.get("tracking_number") or "",
             "label_url": info.get("label_url") or "",
             "cp_transmitted": bool(info.get("cp_transmitted")),
+            # Coût réel facturé par Postes Canada pour cette étiquette.
+            "cost_due": (info.get("cost") or {}).get("due_amount"),
+            "rated_weight_kg": (info.get("cost") or {}).get("rated_weight_kg"),
         }
         # « Étiquetées » = étiquettes émises CE JOUR (shipped_at), pas les
         # reports de lots précédents qui restent à traiter.
@@ -3772,9 +3846,20 @@ async def admin_dispatch_today(date: Optional[str] = None,
         "dispatch_batch": {"$lt": day},
         "fulfillment_status": {"$in": ["processing", "pending"]},
     })
+    # Bilan financier du jour : ce qu'on PAIE vs ce qu'on FACTURE au client.
+    cost_total = round(sum(float(r.get("cost_due") or 0) for r in labeled), 2)
+    charged_total = round(sum(float(o.get("shipping") or 0) for o in orders
+                              if (o.get("shipping_info") or {}).get("label_url")), 2)
+    manifest_doc = await db.manifests.find_one({"dispatch_date": day}, {"_id": 0}, sort=[("created_at", -1)])
     return {
         "date": day,
         "configured": is_canada_post_configured(),
+        "totals": {
+            "labels_cost": cost_total,
+            "shipping_charged": charged_total,
+            "margin": round(charged_total - cost_total, 2),
+            "manifest": (manifest_doc or {}).get("cost"),
+        },
         "counts": {"to_label": len(to_label), "labeled": len(labeled), "overdue": overdue},
         "to_label": to_label,
         "labeled": labeled,
@@ -3816,6 +3901,7 @@ async def admin_dispatch_labels(date: str, payload: DispatchLabelsIn,
                 "tracking_number": res["pin"],
                 "label_url": label_url,
                 "cp_shipment_id": res["shipment_id"],
+                "cost": await _canada_post_shipment_price(res["shipment_id"]),
                 "cp_group_id": res["group_id"],
                 "cp_transmitted": False,
                 "service_code": payload.service_code,
