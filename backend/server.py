@@ -3488,7 +3488,7 @@ def _order_weight_kg(order: dict) -> float:
     """Poids d'après les line_items figés sur la commande (pas de relecture produit :
     le poids doit refléter ce qui a été vendu, même si la fiche a changé depuis)."""
     total_g = 0.0
-    for it in order.get("line_items") or []:
+    for it in _order_items(order):
         total_g += float(it.get("weight_grams") or 50.0) * int(it.get("qty") or 1)
     return max(0.1, round(total_g / 1000.0, 3)) if total_g else 0.5
 
@@ -3668,7 +3668,7 @@ async def admin_dispatch_today(date: Optional[str] = None,
         {
             "payment_status": "paid",
             "dispatch_batch": {"$lte": day},
-            "fulfillment_status": {"$in": ["processing", "pending", "shipped"]},
+            "fulfillment_status": {"$in": ["processing", "pending", "packed", "shipped"]},
         },
         {"_id": 0},
     ).sort("created_at", 1)
@@ -3720,7 +3720,7 @@ async def admin_dispatch_labels(date: str, payload: DispatchLabelsIn,
         {
             "payment_status": "paid",
             "dispatch_batch": {"$lte": date},
-            "fulfillment_status": {"$in": ["processing", "pending"]},
+            "fulfillment_status": {"$in": ["processing", "pending", "packed"]},
         },
         {"_id": 0},
     ).sort("created_at", 1).to_list(2000)
@@ -3874,9 +3874,15 @@ class FulfillmentBulkIn(BaseModel):
     to: str = Field(min_length=1)
 
 
+def _order_items(order: dict) -> list:
+    """Articles d'une commande. Les commandes sont stockées avec la clé
+    "items" ; on accepte aussi "line_items" par compatibilité."""
+    return order.get("items") or order.get("line_items") or []
+
+
 def _picking_lines(order: dict) -> list:
     out = []
-    for it in order.get("line_items") or []:
+    for it in _order_items(order):
         out.append({
             "sku": it.get("sku") or "",
             "slug": it.get("slug") or "",
@@ -3916,11 +3922,22 @@ async def admin_fulfillment_day(date: Optional[str] = None,
     day = date or _local_today_iso()
     await _fulfillment_backfill_batches(day)
 
+    # Étapes en cours : on inclut les retards (<= jour) pour ne rien perdre.
+    # « Étiquetée » : uniquement le jour sélectionné — c'est un indicateur de
+    # production quotidienne, pas un cumul historique.
     orders = await db.orders.find(
         {
             "payment_status": "paid",
-            "dispatch_batch": {"$lte": day},
-            "fulfillment_status": {"$in": ["processing", "packing", "packed", "shipped"]},
+            "$or": [
+                {
+                    "dispatch_batch": {"$lte": day},
+                    "fulfillment_status": {"$in": ["processing", "packing", "packed"]},
+                },
+                {
+                    "dispatch_batch": day,
+                    "fulfillment_status": "shipped",
+                },
+            ],
         },
         {"_id": 0},
     ).sort("created_at", 1).to_list(3000)
@@ -3938,8 +3955,8 @@ async def admin_fulfillment_day(date: Optional[str] = None,
             "email": o.get("email"),
             "created_at": o.get("created_at"),
             "dispatch_batch": o.get("dispatch_batch"),
-            "units": sum(int(i.get("qty") or 1) for i in (o.get("line_items") or [])),
-            "items": len(o.get("line_items") or []),
+            "units": sum(int(i.get("qty") or 1) for i in _order_items(o)),
+            "items": len(_order_items(o)),
             "total": o.get("total"),
             "city": addr.get("city"),
             "province": addr.get("province"),
@@ -4034,7 +4051,7 @@ async def admin_fulfillment_picking_pdf(date: str,
 
     totals: dict = {}
     for o in orders:
-        for it in o.get("line_items") or []:
+        for it in _order_items(o):
             key = (it.get("sku") or it.get("slug") or "?", it.get("variant_name") or "")
             if key not in totals:
                 totals[key] = {"sku": it.get("sku") or "",
@@ -4270,7 +4287,7 @@ async def admin_delete_box(box_id: str, admin: dict = Depends(require_area("ship
 async def _select_box_for_order(order: dict) -> Optional[dict]:
     """Plus petit contenant actif dont la capacité >= nb total d'unités."""
     units = 0
-    for it in order.get("line_items") or []:
+    for it in _order_items(order):
         units += int(it.get("qty") or 1)
     units = max(1, units)
     boxes = await db.shipping_boxes.find(
