@@ -3606,6 +3606,8 @@ async def admin_create_label(order_id: str, payload: CreateLabelIn,
         "tracking_number": res["pin"],
         "label_url": label_url,
         "cp_shipment_id": res["shipment_id"],
+        # Coût réel de l'étiquette côté transporteur (pas le montant client).
+        "cost": await _canada_post_shipment_price(res["shipment_id"]),
         "cp_group_id": res["group_id"],
         "cp_transmitted": False,   # tant que False → surcharge de 2 $ encourue
         "service_code": payload.service_code,
@@ -3712,6 +3714,74 @@ async def admin_shipping_config_status(_admin: dict = Depends(require_area("ship
         "has_mailed_by": bool(mailed_by),
         "has_mobo": bool(mobo),
         "missing_required": missing_required,
+    }
+
+
+@api.post("/admin/shipping/backfill-label-costs")
+async def admin_backfill_label_costs(limit: int = 300,
+                                     force: bool = False,
+                                     _admin: dict = Depends(require_area("shipping", "manage"))):
+    """Récupère le coût réel des étiquettes existantes via shipment_id.
+
+    - force=False: ne traite que les commandes sans shipping_info.cost
+    - force=True: recalcule même si un coût est déjà présent
+    """
+    if not _cp_use_openapi():
+        raise HTTPException(400, "Label cost backfill requires Canada Post OpenAPI mode")
+
+    safe_limit = max(1, min(int(limit or 1), 2000))
+    base_filter = {
+        "shipping_info.cp_shipment_id": {"$nin": [None, ""]},
+    }
+    if not force:
+        base_filter["$or"] = [
+            {"shipping_info.cost": {"$exists": False}},
+            {"shipping_info.cost": None},
+            {"shipping_info.cost": {}},
+        ]
+
+    rows = await db.orders.find(
+        base_filter,
+        {"_id": 0, "id": 1, "order_number": 1, "shipping_info": 1},
+    ).sort("created_at", -1).to_list(safe_limit)
+
+    updated = 0
+    unchanged = 0
+    failed = []
+    for o in rows:
+        info = o.get("shipping_info") or {}
+        shipment_id = info.get("cp_shipment_id")
+        if not shipment_id:
+            unchanged += 1
+            continue
+
+        try:
+            price = await _canada_post_shipment_price(str(shipment_id))
+            if not price:
+                unchanged += 1
+                continue
+
+            await db.orders.update_one(
+                {"id": o["id"]},
+                {"$set": {"shipping_info.cost": price,
+                          "shipping_info.cost_refreshed_at": datetime.now(timezone.utc).isoformat()}},
+            )
+            updated += 1
+        except Exception as ex:
+            failed.append({
+                "order_id": o.get("id"),
+                "order_number": o.get("order_number"),
+                "error": str(ex),
+            })
+
+    return {
+        "ok": True,
+        "processed": len(rows),
+        "updated": updated,
+        "unchanged": unchanged,
+        "failed": failed,
+        "limit": safe_limit,
+        "force": force,
     }
 
 

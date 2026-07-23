@@ -228,7 +228,7 @@ export default function AdminDispatch() {
             <td className="px-4 py-3 font-mono text-xs font-bold">{o.order_number}</td>
             <td className="px-4 py-3 text-sm">{o.city}, {o.province}</td>
             <td className="px-4 py-3 font-mono text-xs">{o.items} art.</td>
-            <td className="px-4 py-3 font-mono text-xs text-right">${(o.total ?? 0).toFixed(2)}</td>
+            <td className="px-4 py-3 font-mono text-xs text-right text-foreground/50">—</td>
             <td className="px-4 py-3 text-right font-mono text-[11px] text-foreground/50">en attente</td>
           </tr>
         )}
