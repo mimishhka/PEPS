@@ -50,11 +50,19 @@ export default function AdminDispatch() {
     }
   };
 
-  const openMerged = (kind) => {
+  const openMerged = async (kind) => {
     if ((counts.labeled || 0) === 0) { toast.error("Aucune étiquette générée pour ce lot."); return; }
     const root = API_BASE.replace(/\/api$/, "");
     const path = kind === "labels" ? "labels.pdf" : "packing-slips.pdf";
     window.open(`${root}/api/admin/dispatch/${date}/${path}`, "_blank", "noopener");
+    // Imprimer les étiquettes marque le lot comme imprimé : il ne sera plus
+    // reporté au lendemain par le report automatique de minuit.
+    if (kind === "labels") {
+      try {
+        await api.post(`/admin/dispatch/${date}/mark-printed`);
+        load();
+      } catch { /* non bloquant */ }
+    }
   };
 
   const transmit = async () => {
