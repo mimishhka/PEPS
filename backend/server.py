@@ -3992,6 +3992,17 @@ async def _fulfillment_backfill_batches(day: str) -> None:
 async def admin_fulfillment_day(date: Optional[str] = None,
                                 _admin: dict = Depends(require_area("orders", "view"))):
     """Tableau de bord « Journée » : lot du jour ventilé par étape physique."""
+    def _is_local_day(ts: str, target_day: str) -> bool:
+        if not ts:
+            return False
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(ZoneInfo(ORDER_CUTOFF_TZ)).date().isoformat() == target_day
+        except Exception:
+            return ts.startswith(target_day)
+
     day = date or _local_today_iso()
     await _fulfillment_backfill_batches(day)
 
@@ -4016,6 +4027,15 @@ async def admin_fulfillment_day(date: Optional[str] = None,
                     # même après l'émission de son étiquette dans Dispatch.
                     "packed_at": {"$gte": day_start, "$lte": day_end},
                 },
+                {
+                    # Commandes étiquetées ce jour dans Dispatch (même logique
+                    # métier que l'écran Dispatch pour éviter les écarts de
+                    # comptage entre les deux vues).
+                    "dispatch_batch": day,
+                    "fulfillment_status": "shipped",
+                    "shipping_info.label_url": {"$nin": [None, ""]},
+                    "shipping_info.tracking_number": {"$nin": [None, ""]},
+                },
             ],
         },
         {"_id": 0},
@@ -4024,13 +4044,16 @@ async def admin_fulfillment_day(date: Optional[str] = None,
     buckets = {"processing": [], "packing": [], "packed": []}
     for o in orders:
         st = o.get("fulfillment_status")
+        info = o.get("shipping_info") or {}
+        has_label = bool(info.get("label_url") and info.get("tracking_number"))
+        packed_today = _is_local_day(o.get("packed_at") or "", day)
+        labeled_today = has_label and _is_local_day(info.get("shipped_at") or "", day)
         # Une commande empaquetée aujourd'hui reste dans « Empaquetée » même
         # une fois étiquetée (shipped) : c'est l'historique de la journée.
-        if o.get("packed_at") and day_start <= o["packed_at"] <= day_end:
+        if packed_today or labeled_today:
             st = "packed"
         if st not in buckets:
             continue
-        info = o.get("shipping_info") or {}
         addr = o.get("shipping_address") or {}
         buckets[st].append({
             "id": o["id"],
