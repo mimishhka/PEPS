@@ -4001,18 +4001,21 @@ async def admin_dispatch_today(date: Optional[str] = None,
         "dispatch_batch": {"$lt": day},
         "fulfillment_status": {"$in": ["processing", "pending"]},
     })
-    # Bilan financier du jour : ce qu'on PAIE vs ce qu'on FACTURE au client.
-    cost_total = round(sum(float(r.get("cost_due") or 0) for r in labeled), 2)
-    charged_total = round(sum(float(o.get("shipping") or 0) for o in orders
-                              if (o.get("shipping_info") or {}).get("label_url")), 2)
+    # Bilan financier du jour :
+    # - cp_billed_total : montant transporteur (Postes Canada)
+    # - customer_charged_total : montant facturé au client au checkout
+    cp_billed_total = round(sum(float(r.get("cost_due") or 0) for r in labeled), 2)
+    customer_charged_total = round(sum(float(o.get("shipping") or 0) for o in orders
+                                       if (o.get("shipping_info") or {}).get("label_url")), 2)
     manifest_doc = await db.manifests.find_one({"dispatch_date": day}, {"_id": 0}, sort=[("created_at", -1)])
     return {
         "date": day,
         "configured": is_canada_post_configured(),
         "totals": {
-            "labels_cost": cost_total,
-            "shipping_charged": charged_total,
-            "margin": round(charged_total - cost_total, 2),
+            "labels_cost": cp_billed_total,
+            "shipping_charged": cp_billed_total,
+            "customer_shipping_charged": customer_charged_total,
+            "margin": round(customer_charged_total - cp_billed_total, 2),
             "manifest": (manifest_doc or {}).get("cost"),
         },
         "counts": {"to_label": len(to_label), "labeled": len(labeled), "overdue": overdue},

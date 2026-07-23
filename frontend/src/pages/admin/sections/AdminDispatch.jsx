@@ -180,10 +180,11 @@ export default function AdminDispatch() {
         <Stat label="En retard" value={counts.overdue} accent={counts.overdue > 0} testid="stat-overdue" />
       </div>
 
-      {totals && (totals.labels_cost > 0 || totals.shipping_charged > 0) && (
-        <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-4" data-testid="dispatch-financials">
+      {totals && (totals.labels_cost > 0 || totals.shipping_charged > 0 || totals.customer_shipping_charged > 0) && (
+        <div className="mt-4 grid grid-cols-2 lg:grid-cols-5 gap-4" data-testid="dispatch-financials">
           <Money label="Coût étiquettes" value={totals.labels_cost} />
-          <Money label="Frais facturés" value={totals.shipping_charged} />
+          <Money label="Facturé par Postes Canada" value={totals.shipping_charged} />
+          <Money label="Facturé au client" value={totals.customer_shipping_charged} />
           <Money label="Écart" value={totals.margin} accent={totals.margin < 0} />
           <Money label="Manifeste (total dû)" value={totals.manifest?.total_due} muted />
         </div>
