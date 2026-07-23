@@ -95,7 +95,15 @@ export default function AdminFulfillment() {
       <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
         {["processing", "packing", "packed"].map((step) => {
           const Icon = STEP_ICON[step];
-          const rows = buckets[step] || [];
+          const baseRows = buckets[step] || [];
+          const rows = step === "packed"
+            ? [
+              ...baseRows,
+              ...(buckets.shipped || [])
+                .filter((o) => !baseRows.some((r) => r.id === o.id))
+                .map((o) => ({ ...o, __historyShipped: true })),
+            ]
+            : baseRows;
           return (
             <div key={step} data-testid={`fulfil-col-${step}`}>
               <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 mb-3 flex items-center gap-2">
@@ -106,7 +114,14 @@ export default function AdminFulfillment() {
                   <div className="bg-white border border-ink/10 px-4 py-8 text-center font-mono text-[11px] text-foreground/40">
                     Vide
                   </div>
-                ) : rows.map((o) => (
+                ) : rows.map((o) => {
+                  const isShippedHistory = Boolean(
+                    o.__historyShipped ||
+                    o.fulfillment_status === "shipped" ||
+                    o.label_url ||
+                    o.tracking_number
+                  );
+                  return (
                   <div key={o.id} className={`bg-white border ${o.is_overdue ? "border-red-300" : "border-ink/10"}`} data-testid={`fulfil-card-${o.order_number}`}>
                     <button onClick={() => setOpenId(openId === o.id ? null : o.id)} className="w-full text-left px-4 py-3 hover:bg-ink/[0.02]" data-testid={`fulfil-open-${o.order_number}`}>
                       <div className="flex items-center justify-between">
@@ -144,7 +159,7 @@ export default function AdminFulfillment() {
                       </div>
                     )}
 
-                    {NEXT[step] && (
+                    {NEXT[step] && !isShippedHistory && (
                       <div className="px-4 pb-3">
                         <button onClick={() => advance(o, NEXT[step])} disabled={busyId === o.id} data-testid={`fulfil-advance-${o.order_number}`}
                           className="w-full bg-ink text-white font-mono text-[11px] uppercase tracking-wider px-3 py-2 hover:bg-ink/80 disabled:opacity-40 flex items-center justify-center gap-1">
@@ -154,11 +169,11 @@ export default function AdminFulfillment() {
                     )}
                     {step === "packed" && (
                       <div className="px-4 pb-3 font-mono text-[10px] text-foreground/50 text-center">
-                        Prête pour étiquetage → onglet Dispatch
+                        {isShippedHistory ? "Étiquetée" : "Prête pour étiquetage"}
                       </div>
                     )}
                   </div>
-                ))}
+                );})}
               </div>
             </div>
           );
