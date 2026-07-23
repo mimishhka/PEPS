@@ -2140,6 +2140,119 @@ async def _canada_post_shipment_price(shipment_id: str) -> Optional[dict]:
     }
 
 
+async def _canada_post_estimate_openapi(order: dict, service_code: str, weight_kg: float) -> Optional[dict]:
+    """Estimation du coût via OpenAPI sans transmission:
+    on crée un envoi temporaire, on lit son prix, puis on l'annule (void)."""
+    if not (_cp_use_openapi() and is_canada_post_configured()):
+        return None
+
+    ship = order.get("shipping_address") or {}
+    box = await _select_box_for_order(order)
+    if box:
+        weight_kg = round(weight_kg + float(box.get("tare_grams") or 0) / 1000.0, 3)
+        box_dims = {
+            "length": round(float(box["length_cm"]), 1),
+            "width": round(float(box["width_cm"]), 1),
+            "height": round(float(box["height_cm"]), 1),
+        }
+    else:
+        box_dims = None
+
+    dest_pc = str(ship.get("postal_code", "")).replace(" ", "").upper()
+    origin_pc = CANADA_POST_ORIGIN_POSTAL_CODE.replace(" ", "").upper()
+    mailed_by, mobo = _cp_path_customers()
+    group_id = f"FN-QUOTE-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+    req_id = f"Q-{order.get('id', 'x')}-{uuid.uuid4().hex[:10]}"
+
+    settlement = {
+        "paidByCustomer": mobo,
+        "intendedMethodOfPayment": _cp_intended_method(),
+    }
+    contract = CANADA_POST_CONTRACT_ID.strip()
+    if contract:
+        settlement["contractId"] = contract
+
+    payload: dict[str, Any] = {
+        "customerRequestId": req_id,
+        "groupId": group_id,
+        "requestedShippingPoint": origin_pc,
+        "cpcPickupIndicator": True,
+        "deliverySpec": {
+            "serviceCode": service_code,
+            "sender": {
+                "name": CANADA_POST_SENDER_NAME,
+                "company": CANADA_POST_SENDER_NAME,
+                "contactPhone": CANADA_POST_SENDER_PHONE,
+                "addressDetails": {
+                    "addressLine1": CANADA_POST_SENDER_ADDRESS,
+                    "city": CANADA_POST_SENDER_CITY,
+                    "provState": CANADA_POST_SENDER_PROVINCE,
+                    "countryCode": "CA",
+                    "postalZipCode": origin_pc,
+                },
+            },
+            "destination": {
+                "name": str(ship.get("full_name") or "").strip()[:44],
+                "addressDetails": {
+                    "addressLine1": ship.get("address1") or "",
+                    "addressLine2": ship.get("address2") or "",
+                    "city": ship.get("city") or "",
+                    "provState": ship.get("province") or "",
+                    "countryCode": ship.get("country") or "CA",
+                    "postalZipCode": dest_pc,
+                },
+            },
+            "parcelCharacteristics": {
+                "weight": max(0.1, round(weight_kg, 3)),
+                **({"dimensions": box_dims} if box_dims else {}),
+            },
+            "preferences": {
+                "showPackingInstructions": False,
+                "showPostageRate": True,
+                "showInsuredValue": False,
+            },
+            "settlementInfo": settlement,
+        },
+    }
+
+    shipment_id = ""
+    try:
+        r = await _cp_openapi_call("POST", f"/{mailed_by}/{mobo}/shipments", json_body=payload)
+        if r.status_code >= 400:
+            logging.error("Canada Post OpenAPI estimate create %s: %s", r.status_code, _cp_error_detail(r))
+            return None
+        data = _cp_safe_json(r) or {}
+        shipment_id = str(data.get("shipmentId") or "")
+
+        price = data.get("shipmentPrice") if isinstance(data, dict) else None
+        if not price and shipment_id:
+            price = await _canada_post_shipment_price(shipment_id)
+
+        if not price:
+            return None
+
+        if isinstance(price, dict) and "dueAmount" in price:
+            due = price.get("dueAmount")
+            eta = ((price.get("serviceStandard") or {}).get("expectedTransitTime"))
+            svc = price.get("serviceCode")
+        else:
+            due = price.get("due_amount")
+            eta = price.get("expected_transit_days")
+            svc = price.get("service_code")
+
+        return {
+            "service_code": svc,
+            "cost_cad": float(due) if due is not None else None,
+            "eta_days": eta,
+        }
+    except Exception as ex:
+        logging.error("Canada Post OpenAPI estimate failed: %s", ex)
+        return None
+    finally:
+        if shipment_id:
+            await _canada_post_void_openapi(shipment_id)
+
+
 async def _canada_post_manifest_details(manifest_href: str) -> Optional[dict]:
     """Détails de coût d'un manifeste (Get Manifest Details) : total réellement
     facturé pour la journée, pour le rapprochement comptable."""
@@ -3941,7 +4054,7 @@ async def admin_dispatch_today(date: Optional[str] = None,
 
     to_label, labeled = [], []
     selected_service = (service_code or CANADA_POST_DEFAULT_SERVICE_CODE or "DOM.EP").strip().upper()
-    rate_cache: dict[tuple[str, str, float], list] = {}
+    rate_cache: dict[tuple, Any] = {}
     for o in orders:
         info = o.get("shipping_info") or {}
         cost_due = (info.get("cost") or {}).get("due_amount")
@@ -3991,20 +4104,41 @@ async def admin_dispatch_today(date: Optional[str] = None,
                 dest_pc = str(ship.get("postal_code") or "").replace(" ", "").upper()
                 dest_country = str(ship.get("country") or "CA").upper()
                 weight_kg = _order_weight_kg(o)
-                cache_key = (dest_pc, dest_country, weight_kg)
-                if cache_key not in rate_cache:
-                    rate_cache[cache_key] = await _canada_post_get_rates(dest_pc, dest_country, weight_kg)
-                rates = rate_cache.get(cache_key) or []
-                chosen = next((r for r in rates if str(r.get("service_code") or "").upper() == selected_service), None)
-                if chosen is not None:
-                    row["estimated_cost_due"] = chosen.get("cost_cad")
-                    row["estimated_eta_days"] = chosen.get("eta_days")
-                    row["line_label_cost"] = chosen.get("cost_cad")
-                    row["line_label_cost_source"] = "estimated_cp"
-            if row.get("line_label_cost") is None and row.get("shipping_charged") is not None:
-                # Fallback visible quand le tarif live CP n'est pas disponible.
-                row["line_label_cost"] = row.get("shipping_charged")
-                row["line_label_cost_source"] = "checkout_system"
+                if _cp_use_openapi():
+                    cache_key = ("openapi", o.get("id"), selected_service)
+                    if cache_key not in rate_cache:
+                        rate_cache[cache_key] = await _canada_post_estimate_openapi(o, selected_service, weight_kg)
+                    chosen = rate_cache.get(cache_key)
+                    if chosen is not None:
+                        row["estimated_cost_due"] = chosen.get("cost_cad")
+                        row["estimated_eta_days"] = chosen.get("eta_days")
+                        row["line_label_cost"] = chosen.get("cost_cad")
+                        chosen_code = str(chosen.get("service_code") or "").upper()
+                        row["line_label_cost_source"] = (
+                            "estimated_cp"
+                            if chosen_code == selected_service
+                            else "estimated_cp_alt"
+                        )
+                else:
+                    cache_key = (dest_pc, dest_country, weight_kg)
+                    if cache_key not in rate_cache:
+                        rate_cache[cache_key] = await _canada_post_get_rates(dest_pc, dest_country, weight_kg)
+                    rates = rate_cache.get(cache_key) or []
+                    chosen = next((r for r in rates if str(r.get("service_code") or "").upper() == selected_service), None)
+                    # Si le service exact n'est pas renvoyé, on prend un devis CP
+                    # alternatif plutôt qu'un montant checkout interne.
+                    if chosen is None and rates:
+                        chosen = rates[0]
+                    if chosen is not None:
+                        row["estimated_cost_due"] = chosen.get("cost_cad")
+                        row["estimated_eta_days"] = chosen.get("eta_days")
+                        row["line_label_cost"] = chosen.get("cost_cad")
+                        chosen_code = str(chosen.get("service_code") or "").upper()
+                        row["line_label_cost_source"] = (
+                            "estimated_cp"
+                            if chosen_code == selected_service
+                            else "estimated_cp_alt"
+                        )
             to_label.append(row)
 
     overdue = await db.orders.count_documents({
