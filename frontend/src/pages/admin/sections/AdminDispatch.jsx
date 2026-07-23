@@ -18,7 +18,6 @@ export default function AdminDispatch() {
   const [labelBusy, setLabelBusy] = useState(false);
   const [serviceCode, setServiceCode] = useState("DOM.XP");
   const [manifest, setManifest] = useState(null);
-  const [manifestReady, setManifestReady] = useState(false);
   const [txBusy, setTxBusy] = useState(false);
 
   const load = useCallback(() => {
@@ -30,9 +29,6 @@ export default function AdminDispatch() {
     api.get("/admin/shipping/pending-manifest")
       .then((r) => setManifest(r.data))
       .catch(() => {});
-    api.get(`/admin/dispatch/${date}/manifest-status`)
-      .then((r) => setManifestReady(!!r.data?.transmitted))
-      .catch(() => setManifestReady(false));
   }, [date]);
 
   useEffect(() => { load(); }, [load]);
@@ -75,7 +71,6 @@ export default function AdminDispatch() {
     try {
       const { data: res } = await api.post("/admin/shipping/transmit");
       toast.success(`Manifeste transmis · ${res.orders_marked} commande(s) · ${res.transmitted_groups?.length || 0} lot(s)`);
-      setManifestReady(true);
       load();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
@@ -132,4 +127,94 @@ export default function AdminDispatch() {
       )}
 
       <div className="mt-6 grid grid-cols-3 gap-4">
-        <Stat label="À étiqueter" value={counts.to_label}
+        <Stat label="À étiqueter" value={counts.to_label} testid="stat-tolabel" />
+        <Stat label="Étiquetées" value={counts.labeled} testid="stat-labeled" />
+        <Stat label="En retard" value={counts.overdue} accent={counts.overdue > 0} testid="stat-overdue" />
+      </div>
+
+      <div className="mt-6 flex flex-wrap items-center gap-3 bg-white border border-ink/10 p-4">
+        <label className="font-mono text-xs text-foreground/60">Service</label>
+        <select value={serviceCode} onChange={(e) => setServiceCode(e.target.value)} data-testid="dispatch-service"
+          className="border border-ink/20 px-3 py-2 font-mono text-sm">
+          <option value="DOM.XP">DOM.XP — Xpresspost</option>
+          <option value="DOM.EP">DOM.EP — Expedited Parcel</option>
+          <option value="DOM.RP">DOM.RP — Regular Parcel</option>
+          <option value="DOM.PC">DOM.PC — Priority</option>
+        </select>
+        <button onClick={generateLabels} disabled={labelBusy || !configured || counts.to_label === 0}
+          data-testid="dispatch-generate"
+          className="bg-ink text-white font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/80 disabled:opacity-40 flex items-center gap-2">
+          <Package size={14} /> {labelBusy ? "Génération…" : `Générer les étiquettes (${counts.to_label})`}
+        </button>
+        <button onClick={() => openMerged("labels")} disabled={counts.labeled === 0} data-testid="dispatch-print-labels"
+          className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/5 disabled:opacity-40 flex items-center gap-2">
+          <Printer size={14} /> Imprimer étiquettes ({counts.labeled})
+        </button>
+        <button onClick={() => openMerged("slips")} disabled={counts.labeled === 0} data-testid="dispatch-print-slips"
+          className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/5 disabled:opacity-40 flex items-center gap-2">
+          <Printer size={14} /> Imprimer bons ({counts.labeled})
+        </button>
+      </div>
+
+      <Section title="À étiqueter" empty="Aucune commande payée en attente pour ce lot." rows={data?.to_label} testid="table-tolabel"
+        render={(o) => (
+          <tr key={o.id} className="border-t border-ink/10" data-testid={`dispatch-row-${o.order_number}`}>
+            <td className="px-4 py-3 font-mono text-xs font-bold">{o.order_number}</td>
+            <td className="px-4 py-3 text-sm">{o.city}, {o.province}</td>
+            <td className="px-4 py-3 font-mono text-xs">{o.items} art.</td>
+            <td className="px-4 py-3 font-mono text-xs text-right">${(o.total ?? 0).toFixed(2)}</td>
+            <td className="px-4 py-3 text-right font-mono text-[11px] text-foreground/50">en attente</td>
+          </tr>
+        )}
+      />
+
+      <Section title="Étiquetées — prêtes à imprimer" empty="Aucune étiquette générée pour ce lot." rows={data?.labeled} testid="table-labeled"
+        render={(o) => (
+          <tr key={o.id} className="border-t border-ink/10" data-testid={`dispatch-labeled-${o.order_number}`}>
+            <td className="px-4 py-3 font-mono text-xs font-bold">{o.order_number}</td>
+            <td className="px-4 py-3 text-sm">{o.city}, {o.province}</td>
+            <td className="px-4 py-3 font-mono text-xs">{o.tracking_number}</td>
+            <td className="px-4 py-3 font-mono text-[11px]">
+              {o.cp_transmitted
+                ? <span className="text-green-700 flex items-center gap-1"><CheckCircle2 size={12} /> transmis</span>
+                : <span className="text-yellow-700">non transmis</span>}
+            </td>
+            <td className="px-4 py-3 text-right">
+              <a href={labelHref(o.label_url)} target="_blank" rel="noopener noreferrer"
+                data-testid={`dispatch-label-link-${o.order_number}`}
+                className="inline-flex items-center gap-1 font-mono text-xs text-ink underline hover:text-ink/70">
+                Étiquette <ExternalLink size={12} />
+              </a>
+            </td>
+          </tr>
+        )}
+      />
+    </div>
+  );
+}
+
+function Stat({ label, value, accent, testid }) {
+  return (
+    <div className={`bg-white border p-5 ${accent ? "border-red-300" : "border-ink/10"}`} data-testid={testid}>
+      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">{label}</div>
+      <div className={`font-display text-4xl font-extrabold mt-1 ${accent ? "text-red-600" : ""}`}>{value}</div>
+    </div>
+  );
+}
+
+function Section({ title, rows, render, empty, testid }) {
+  return (
+    <div className="mt-8">
+      <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 mb-3">{title}</h2>
+      <div className="bg-white border border-ink/10 overflow-x-auto" data-testid={testid}>
+        {rows && rows.length ? (
+          <table className="w-full">
+            <tbody>{rows.map(render)}</tbody>
+          </table>
+        ) : (
+          <div className="px-6 py-10 text-center font-mono text-xs text-foreground/50">{empty}</div>
+        )}
+      </div>
+    </div>
+  );
+}
