@@ -4007,10 +4007,13 @@ async def admin_fulfillment_day(date: Optional[str] = None,
     await _fulfillment_backfill_batches(day)
 
     # Étapes en cours : on inclut les retards (<= jour) pour ne rien perdre.
-    # « Étiquetée » : uniquement le jour sélectionné — c'est un indicateur de
-    # production quotidienne, pas un cumul historique.
-    day_start = f"{day}T00:00:00"
-    day_end = f"{day}T23:59:59.999999"
+    # Historique journalier : bornes calculées dans le fuseau local métier,
+    # puis converties en UTC pour interroger les timestamps stockés.
+    local_tz = ZoneInfo(ORDER_CUTOFF_TZ)
+    day_local_start = datetime.fromisoformat(day).replace(tzinfo=local_tz)
+    day_local_end = day_local_start + timedelta(days=1)
+    day_start_utc = day_local_start.astimezone(timezone.utc).isoformat()
+    day_end_utc = day_local_end.astimezone(timezone.utc).isoformat()
     orders = await db.orders.find(
         {
             "payment_status": "paid",
@@ -4025,7 +4028,7 @@ async def admin_fulfillment_day(date: Optional[str] = None,
                     # Empaquetée : historique du jour. On se base sur packed_at
                     # (et non sur le statut) pour que la commande RESTE visible
                     # même après l'émission de son étiquette dans Dispatch.
-                    "packed_at": {"$gte": day_start, "$lte": day_end},
+                    "packed_at": {"$gte": day_start_utc, "$lt": day_end_utc},
                 },
                 {
                     # Commandes étiquetées ce jour dans Dispatch (même logique
@@ -4035,6 +4038,7 @@ async def admin_fulfillment_day(date: Optional[str] = None,
                     "fulfillment_status": "shipped",
                     "shipping_info.label_url": {"$nin": [None, ""]},
                     "shipping_info.tracking_number": {"$nin": [None, ""]},
+                    "shipping_info.shipped_at": {"$gte": day_start_utc, "$lt": day_end_utc},
                 },
             ],
         },
