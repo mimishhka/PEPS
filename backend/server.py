@@ -4039,7 +4039,7 @@ async def admin_dispatch_today(date: Optional[str] = None,
                         chosen_code = str(chosen.get("service_code") or "").upper()
                         row["line_label_cost_source"] = (
                             "estimated_cp"
-                            if chosen_code == selected_service
+                            if (not chosen_code) or (chosen_code == selected_service)
                             else "estimated_cp_alt"
                         )
                 else:

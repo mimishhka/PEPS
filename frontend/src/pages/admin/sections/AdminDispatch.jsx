@@ -232,7 +232,7 @@ export default function AdminDispatch() {
             <td className="px-4 py-3 font-mono text-xs text-right">
               {o.line_label_cost != null ? `$${Number(o.line_label_cost).toFixed(2)}` : "—"}
               {o.line_label_cost_source === "estimated_cp" ? <span className="block text-[10px] text-foreground/40">estimé CP {o.estimated_eta_days ? `· ${o.estimated_eta_days} j` : ""}</span> : null}
-              {o.line_label_cost_source === "checkout_system" ? <span className="block text-[10px] text-foreground/40">fallback checkout</span> : null}
+              {o.line_label_cost_source === "estimated_cp_alt" ? <span className="block text-[10px] text-foreground/40">estimé CP</span> : null}
             </td>
             <td className="px-4 py-3 text-right font-mono text-[11px] text-foreground/50">en attente</td>
           </tr>
