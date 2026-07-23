@@ -3910,6 +3910,7 @@ class DispatchLabelsIn(BaseModel):
 
 @api.get("/admin/dispatch/today")
 async def admin_dispatch_today(date: Optional[str] = None,
+                               service_code: Optional[str] = None,
                                _admin: dict = Depends(require_area("orders", "view"))):
     """File d'expédition du jour : commandes payées dont le dispatch_batch
     tombe le <date> (défaut = aujourd'hui, TZ cutoff)."""
@@ -3939,6 +3940,8 @@ async def admin_dispatch_today(date: Optional[str] = None,
     orders = await cursor.to_list(2000)
 
     to_label, labeled = [], []
+    selected_service = (service_code or CANADA_POST_DEFAULT_SERVICE_CODE or "DOM.EP").strip().upper()
+    rate_cache: dict[tuple[str, str, float], list] = {}
     for o in orders:
         info = o.get("shipping_info") or {}
         row = {
@@ -3974,6 +3977,23 @@ async def admin_dispatch_today(date: Optional[str] = None,
             if labeled_today:
                 labeled.append(row)
         else:
+            # Estimation du prix Canada Post (avant création réelle d'étiquette)
+            # selon le service sélectionné dans l'écran Dispatch.
+            row["estimated_cost_due"] = None
+            row["estimated_eta_days"] = None
+            if is_canada_post_configured():
+                ship = o.get("shipping_address") or {}
+                dest_pc = str(ship.get("postal_code") or "").replace(" ", "").upper()
+                dest_country = str(ship.get("country") or "CA").upper()
+                weight_kg = _order_weight_kg(o)
+                cache_key = (dest_pc, dest_country, weight_kg)
+                if cache_key not in rate_cache:
+                    rate_cache[cache_key] = await _canada_post_get_rates(dest_pc, dest_country, weight_kg)
+                rates = rate_cache.get(cache_key) or []
+                chosen = next((r for r in rates if str(r.get("service_code") or "").upper() == selected_service), None)
+                if chosen is not None:
+                    row["estimated_cost_due"] = chosen.get("cost_cad")
+                    row["estimated_eta_days"] = chosen.get("eta_days")
             to_label.append(row)
 
     overdue = await db.orders.count_documents({

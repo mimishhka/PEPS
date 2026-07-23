@@ -25,7 +25,7 @@ export default function AdminDispatch() {
 
   const load = useCallback(() => {
     setLoading(true);
-    api.get("/admin/dispatch/today", { params: { date } })
+    api.get("/admin/dispatch/today", { params: { date, service_code: serviceCode } })
       .then((r) => setData(r.data))
       .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message))
       .finally(() => setLoading(false));
@@ -38,7 +38,7 @@ export default function AdminDispatch() {
     api.get("/admin/shipping/config-status")
       .then((r) => setCpConfig(r.data))
       .catch(() => setCpConfig(null));
-  }, [date]);
+  }, [date, serviceCode]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -228,7 +228,10 @@ export default function AdminDispatch() {
             <td className="px-4 py-3 font-mono text-xs font-bold">{o.order_number}</td>
             <td className="px-4 py-3 text-sm">{o.city}, {o.province}</td>
             <td className="px-4 py-3 font-mono text-xs">{o.items} art.</td>
-            <td className="px-4 py-3 font-mono text-xs text-right text-foreground/50">—</td>
+            <td className="px-4 py-3 font-mono text-xs text-right">
+              {o.estimated_cost_due != null ? `$${Number(o.estimated_cost_due).toFixed(2)}` : "—"}
+              {o.estimated_eta_days ? <span className="block text-[10px] text-foreground/40">estimé · {o.estimated_eta_days} j</span> : null}
+            </td>
             <td className="px-4 py-3 text-right font-mono text-[11px] text-foreground/50">en attente</td>
           </tr>
         )}
