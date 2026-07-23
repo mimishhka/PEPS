@@ -20,6 +20,7 @@ export default function AdminDispatch() {
   const [manifest, setManifest] = useState(null);
   const [manifestStatus, setManifestStatus] = useState(null);
   const [txBusy, setTxBusy] = useState(false);
+  const [voidBusy, setVoidBusy] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -59,8 +60,6 @@ export default function AdminDispatch() {
     const root = API_BASE.replace(/\/api$/, "");
     const path = kind === "labels" ? "labels.pdf" : "packing-slips.pdf";
     window.open(`${root}/api/admin/dispatch/${date}/${path}`, "_blank", "noopener");
-    // Imprimer les étiquettes marque le lot comme imprimé : il ne sera plus
-    // reporté au lendemain par le report automatique de minuit.
     if (kind === "labels") {
       try {
         await api.post(`/admin/dispatch/${date}/mark-printed`);
@@ -80,6 +79,24 @@ export default function AdminDispatch() {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
       setTxBusy(false);
+    }
+  };
+
+  const voidLabel = async (o) => {
+    if (o.cp_transmitted) {
+      toast.error("Étiquette déjà transmise — utilisez le remboursement.");
+      return;
+    }
+    if (!window.confirm(`Annuler l'étiquette de ${o.order_number} ? La commande retourne « à étiqueter ».`)) return;
+    setVoidBusy(o.id);
+    try {
+      await api.post(`/admin/orders/${o.id}/void-label`);
+      toast.success(`Étiquette annulée — ${o.order_number}`);
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setVoidBusy(null);
     }
   };
 
@@ -216,11 +233,21 @@ export default function AdminDispatch() {
                 : <span className="text-yellow-700">non transmis</span>}
             </td>
             <td className="px-4 py-3 text-right">
-              <a href={labelHref(o.label_url)} target="_blank" rel="noopener noreferrer"
-                data-testid={`dispatch-label-link-${o.order_number}`}
-                className="inline-flex items-center gap-1 font-mono text-xs text-ink underline hover:text-ink/70">
-                Étiquette <ExternalLink size={12} />
-              </a>
+              <div className="inline-flex items-center gap-3">
+                <a href={labelHref(o.label_url)} target="_blank" rel="noopener noreferrer"
+                  data-testid={`dispatch-label-link-${o.order_number}`}
+                  className="inline-flex items-center gap-1 font-mono text-xs text-ink underline hover:text-ink/70">
+                  Étiquette <ExternalLink size={12} />
+                </a>
+                {!o.cp_transmitted && (
+                  <button onClick={() => voidLabel(o)} disabled={voidBusy === o.id}
+                    data-testid={`dispatch-void-${o.order_number}`}
+                    title="Annuler cette étiquette (gratuit tant qu'elle n'est pas transmise)"
+                    className="font-mono text-xs text-red-600 underline hover:opacity-70 disabled:opacity-40">
+                    {voidBusy === o.id ? "…" : "Annuler"}
+                  </button>
+                )}
+              </div>
             </td>
           </tr>
         )}
