@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
-import { ClipboardList, Package, PackageCheck, Printer, RefreshCw, ChevronRight, ChevronsRight, AlertTriangle, MapPin } from "lucide-react";
+import { ClipboardList, Package, PackageCheck, Printer, RefreshCw, ChevronRight, ChevronDown, ChevronsRight, AlertTriangle, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 
-// Écran « Journée » — poste d'expédition Fironova (Phase 1, v2).
+// Écran « Journée » — poste d'expédition Fironova.
 const STEP_ORDER = ["processing", "packing", "packed", "shipped"];
 const STEP_ICON = { processing: ClipboardList, packing: Package, packed: PackageCheck, shipped: Printer };
 const NEXT = { processing: "packing", packing: "packed" };
@@ -15,7 +15,6 @@ export default function AdminFulfillment() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState(null);
-  const [bulkBusy, setBulkBusy] = useState(null);
   const [openId, setOpenId] = useState(null);
 
   const load = useCallback(() => {
@@ -37,19 +36,6 @@ export default function AdminFulfillment() {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
       setBusyId(null);
-    }
-  };
-
-  const bulkAdvance = async (fromStatus, to) => {
-    setBulkBusy(fromStatus);
-    try {
-      const { data: res } = await api.post("/admin/fulfillment/bulk-advance", { date, from_status: fromStatus, to });
-      toast.success(`${res.advanced} commande(s) → ${to === "packing" ? "en préparation" : "empaquetées"}`);
-      load();
-    } catch (e) {
-      toast.error(formatApiError(e.response?.data?.detail) || e.message);
-    } finally {
-      setBulkBusy(null);
     }
   };
 
@@ -110,20 +96,11 @@ export default function AdminFulfillment() {
         {["processing", "packing", "packed"].map((step) => {
           const Icon = STEP_ICON[step];
           const rows = buckets[step] || [];
-          const bulkTo = NEXT[step];
           return (
             <div key={step} data-testid={`fulfil-col-${step}`}>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 flex items-center gap-2">
-                  <Icon size={14} /> {labels[step]?.fr || step} <span className="text-foreground/30">({rows.length})</span>
-                </h2>
-                {bulkTo && rows.length > 0 && (
-                  <button onClick={() => bulkAdvance(step, bulkTo)} disabled={bulkBusy === step} data-testid={`fulfil-bulk-${step}`}
-                    className="font-mono text-[10px] uppercase tracking-wider text-ink/70 hover:text-ink flex items-center gap-1 disabled:opacity-40">
-                    {bulkBusy === step ? "…" : <>Tout avancer <ChevronsRight size={12} /></>}
-                  </button>
-                )}
-              </div>
+              <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 mb-3 flex items-center gap-2">
+                <Icon size={14} /> {labels[step]?.fr || step} <span className="text-foreground/30">({rows.length})</span>
+              </h2>
               <div className="space-y-3">
                 {rows.length === 0 ? (
                   <div className="bg-white border border-ink/10 px-4 py-8 text-center font-mono text-[11px] text-foreground/40">
@@ -131,27 +108,40 @@ export default function AdminFulfillment() {
                   </div>
                 ) : rows.map((o) => (
                   <div key={o.id} className={`bg-white border ${o.is_overdue ? "border-red-300" : "border-ink/10"}`} data-testid={`fulfil-card-${o.order_number}`}>
-                    <button onClick={() => setOpenId(openId === o.id ? null : o.id)} className="w-full text-left px-4 py-3">
+                    <button onClick={() => setOpenId(openId === o.id ? null : o.id)} className="w-full text-left px-4 py-3 hover:bg-ink/[0.02]" data-testid={`fulfil-open-${o.order_number}`}>
                       <div className="flex items-center justify-between">
                         <span className="font-mono text-xs font-bold">{o.order_number}</span>
                         {o.is_overdue && <span className="font-mono text-[9px] uppercase text-red-600 flex items-center gap-1"><AlertTriangle size={10} /> retard</span>}
                       </div>
                       <div className="font-mono text-[11px] text-foreground/50 mt-1 flex items-center gap-1">
-                        <MapPin size={10} /> {o.city || "—"}, {o.province || ""} · {o.units} u.
+                        <MapPin size={10} /> {o.city || "—"}, {o.province || ""} · {o.units} u. · {o.items} art.
+                      </div>
+                      <div className="font-mono text-[10px] uppercase tracking-wider text-ink/60 mt-2 flex items-center gap-1">
+                        {openId === o.id ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                        {openId === o.id ? "Masquer" : "Voir les produits"}
                       </div>
                     </button>
 
                     {openId === o.id && (
                       <div className="px-4 pb-3 border-t border-ink/10 pt-3" data-testid={`fulfil-picking-${o.order_number}`}>
                         <div className="font-mono text-[9px] uppercase tracking-wider text-foreground/40 mb-2">Prélever</div>
-                        <ul className="space-y-1">
-                          {o.picking.map((p, i) => (
-                            <li key={i} className="font-mono text-[11px] flex justify-between">
-                              <span>{p.name_fr || p.name_en} {p.variant_name && <span className="text-foreground/50">· {p.variant_name}</span>}</span>
-                              <span className="font-bold">{p.qty}×</span>
-                            </li>
-                          ))}
-                        </ul>
+                        {o.picking.length === 0 ? (
+                          <div className="font-mono text-[11px] text-foreground/40">Aucun article.</div>
+                        ) : (
+                          <ul className="space-y-2">
+                            {o.picking.map((p, i) => (
+                              <li key={i} className="font-mono text-[11px] flex justify-between gap-2 border-b border-ink/5 pb-1">
+                                <span className="min-w-0">
+                                  <span className="block truncate">{p.name_fr || p.name_en}</span>
+                                  <span className="block text-foreground/40 text-[10px]">
+                                    {p.sku}{p.variant_name ? ` · ${p.variant_name}` : ""}
+                                  </span>
+                                </span>
+                                <span className="font-bold whitespace-nowrap">{p.qty}×</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
                     )}
 
