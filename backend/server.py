@@ -3944,20 +3944,25 @@ async def admin_dispatch_today(date: Optional[str] = None,
     rate_cache: dict[tuple[str, str, float], list] = {}
     for o in orders:
         info = o.get("shipping_info") or {}
+        cost_due = (info.get("cost") or {}).get("due_amount")
         row = {
             "id": o["id"],
             "order_number": o.get("order_number"),
             "email": o.get("email"),
             "items": len(o.get("items", [])),
             "total": o.get("total"),
+            "shipping_charged": o.get("shipping"),
             "city": (o.get("shipping_address") or {}).get("city"),
             "province": (o.get("shipping_address") or {}).get("province"),
             "tracking_number": info.get("tracking_number") or "",
             "label_url": info.get("label_url") or "",
             "cp_transmitted": bool(info.get("cp_transmitted")),
             # Coût réel facturé par Postes Canada pour cette étiquette.
-            "cost_due": (info.get("cost") or {}).get("due_amount"),
+            "cost_due": cost_due,
             "rated_weight_kg": (info.get("cost") or {}).get("rated_weight_kg"),
+            # Champ unifié pour affichage ligne par ligne dans Dispatch.
+            "line_label_cost": cost_due,
+            "line_label_cost_source": "actual_cp" if cost_due is not None else None,
         }
         # « Étiquetées » = étiquettes émises CE JOUR (shipped_at), pas les
         # reports de lots précédents qui restent à traiter.
@@ -3994,6 +3999,12 @@ async def admin_dispatch_today(date: Optional[str] = None,
                 if chosen is not None:
                     row["estimated_cost_due"] = chosen.get("cost_cad")
                     row["estimated_eta_days"] = chosen.get("eta_days")
+                    row["line_label_cost"] = chosen.get("cost_cad")
+                    row["line_label_cost_source"] = "estimated_cp"
+            if row.get("line_label_cost") is None and row.get("shipping_charged") is not None:
+                # Fallback visible quand le tarif live CP n'est pas disponible.
+                row["line_label_cost"] = row.get("shipping_charged")
+                row["line_label_cost_source"] = "checkout_system"
             to_label.append(row)
 
     overdue = await db.orders.count_documents({

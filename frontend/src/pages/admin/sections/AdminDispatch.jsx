@@ -230,8 +230,9 @@ export default function AdminDispatch() {
             <td className="px-4 py-3 text-sm">{o.city}, {o.province}</td>
             <td className="px-4 py-3 font-mono text-xs">{o.items} art.</td>
             <td className="px-4 py-3 font-mono text-xs text-right">
-              {o.estimated_cost_due != null ? `$${Number(o.estimated_cost_due).toFixed(2)}` : "—"}
-              {o.estimated_eta_days ? <span className="block text-[10px] text-foreground/40">estimé · {o.estimated_eta_days} j</span> : null}
+              {o.line_label_cost != null ? `$${Number(o.line_label_cost).toFixed(2)}` : "—"}
+              {o.line_label_cost_source === "estimated_cp" ? <span className="block text-[10px] text-foreground/40">estimé CP {o.estimated_eta_days ? `· ${o.estimated_eta_days} j` : ""}</span> : null}
+              {o.line_label_cost_source === "checkout_system" ? <span className="block text-[10px] text-foreground/40">fallback checkout</span> : null}
             </td>
             <td className="px-4 py-3 text-right font-mono text-[11px] text-foreground/50">en attente</td>
           </tr>
@@ -245,7 +246,8 @@ export default function AdminDispatch() {
             <td className="px-4 py-3 text-sm">{o.city}, {o.province}</td>
             <td className="px-4 py-3 font-mono text-xs">{o.tracking_number}</td>
             <td className="px-4 py-3 font-mono text-xs text-right">
-              {o.cost_due != null ? `$${Number(o.cost_due).toFixed(2)}` : "—"}
+              {o.line_label_cost != null ? `$${Number(o.line_label_cost).toFixed(2)}` : "—"}
+              {o.line_label_cost_source === "actual_cp" ? <span className="block text-[10px] text-foreground/40">réel CP</span> : null}
               {o.rated_weight_kg ? <span className="block text-[10px] text-foreground/40">{o.rated_weight_kg} kg</span> : null}
             </td>
             <td className="px-4 py-3 font-mono text-[11px]">
