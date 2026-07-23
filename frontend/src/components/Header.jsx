@@ -122,15 +122,6 @@ export default function Header() {
             </button>
             {user ? (
               <div className="hidden md:flex items-center gap-3">
-                {user.role === "admin" && (
-                  <Link
-                    to={ADMIN_PATH}
-                    data-testid="nav-admin"
-                    className="rounded-full font-data text-[11px] font-semibold uppercase tracking-[0.18em] bg-nordfjord text-white px-3.5 py-1.5"
-                  >
-                    {t("nav.admin")}
-                  </Link>
-                )}
                 <Link to="/account" data-testid="nav-account" className="font-data text-xs font-semibold uppercase tracking-[0.18em] flex items-center gap-1.5 text-nordfjord hover:text-nova transition-colors">
                   <User size={16} strokeWidth={1.5} /> {user.name?.split(" ")[0] || t("nav.account")}
                 </Link>
@@ -183,11 +174,6 @@ export default function Header() {
               </button>
               {user ? (
                 <>
-                  {user.role === "admin" && (
-                    <Link to={ADMIN_PATH} onClick={() => setMobileOpen(false)} className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-2 text-nordfjord">
-                      {t("nav.admin")}
-                    </Link>
-                  )}
                   <Link to="/account" onClick={() => setMobileOpen(false)} className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-2 text-nordfjord">
                     {t("nav.account")}
                   </Link>
