@@ -18,6 +18,7 @@ export default function AdminDispatch() {
   const [labelBusy, setLabelBusy] = useState(false);
   const [serviceCode, setServiceCode] = useState("DOM.XP");
   const [manifest, setManifest] = useState(null);
+  const [manifestStatus, setManifestStatus] = useState(null);
   const [txBusy, setTxBusy] = useState(false);
 
   const load = useCallback(() => {
@@ -29,6 +30,9 @@ export default function AdminDispatch() {
     api.get("/admin/shipping/pending-manifest")
       .then((r) => setManifest(r.data))
       .catch(() => {});
+    api.get(`/admin/dispatch/${date}/manifest-status`)
+      .then((r) => setManifestStatus(r.data))
+      .catch(() => setManifestStatus({ transmitted: false, manifests: 0 }));
   }, [date]);
 
   useEffect(() => { load(); }, [load]);
@@ -77,6 +81,15 @@ export default function AdminDispatch() {
     } finally {
       setTxBusy(false);
     }
+  };
+
+  const openManifest = () => {
+    if (!manifestStatus?.transmitted) {
+      toast.error("Aucun manifeste transmis pour cette date.");
+      return;
+    }
+    const root = API_BASE.replace(/\/api$/, "");
+    window.open(`${root}/api/admin/dispatch/${date}/manifest.pdf`, "_blank", "noopener");
   };
 
   const counts = data?.counts || { to_label: 0, labeled: 0, overdue: 0 };
@@ -153,6 +166,15 @@ export default function AdminDispatch() {
         <button onClick={() => openMerged("slips")} disabled={counts.labeled === 0} data-testid="dispatch-print-slips"
           className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/5 disabled:opacity-40 flex items-center gap-2">
           <Printer size={14} /> Imprimer bons ({counts.labeled})
+        </button>
+        <button
+          onClick={openManifest}
+          disabled={!manifestStatus?.transmitted}
+          data-testid="dispatch-view-manifest"
+          className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/5 disabled:opacity-40 flex items-center gap-2"
+          title={manifestStatus?.transmitted ? "Voir et imprimer le manifeste" : "Aucun manifeste transmis pour cette date"}
+        >
+          <Printer size={14} /> Manifeste ({manifestStatus?.manifests || 0})
         </button>
       </div>
 
