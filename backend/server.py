@@ -3719,24 +3719,7 @@ async def admin_dispatch_today(date: Optional[str] = None,
                                _admin: dict = Depends(require_area("orders", "view"))):
     """File d'expédition du jour : commandes payées dont le dispatch_batch
     tombe le <date> (défaut = aujourd'hui, TZ cutoff)."""
-    def _is_local_day(ts: str, target_day: str) -> bool:
-        if not ts:
-            return False
-        try:
-            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt.astimezone(ZoneInfo(ORDER_CUTOFF_TZ)).date().isoformat() == target_day
-        except Exception:
-            return ts.startswith(target_day)
-
-    local_tz = ZoneInfo(ORDER_CUTOFF_TZ)
     day = date or _local_today_iso()
-    day_local_start = datetime.fromisoformat(day).replace(tzinfo=local_tz)
-    day_local_end = day_local_start + timedelta(days=1)
-    day_start_utc = day_local_start.astimezone(timezone.utc).isoformat()
-    day_end_utc = day_local_end.astimezone(timezone.utc).isoformat()
-
     cursor = db.orders.find(
         {
             "payment_status": "paid",
@@ -3749,16 +3732,7 @@ async def admin_dispatch_today(date: Optional[str] = None,
     ).sort("created_at", 1)
     orders = await cursor.to_list(2000)
 
-    packed_orders = await db.orders.find(
-        {
-            "payment_status": "paid",
-            "packed_at": {"$gte": day_start_utc, "$lt": day_end_utc},
-        },
-        {"_id": 0},
-    ).sort("packed_at", 1).to_list(3000)
-
-    to_label, labeled, packed_history = [], [], []
-    packed_seen = set()
+    to_label, labeled = [], []
     for o in orders:
         info = o.get("shipping_info") or {}
         row = {
@@ -3776,30 +3750,22 @@ async def admin_dispatch_today(date: Optional[str] = None,
         # « Étiquetées » = étiquettes émises CE JOUR (shipped_at), pas les
         # reports de lots précédents qui restent à traiter.
         shipped_at = info.get("shipped_at") or ""
-        labeled_today = _is_local_day(shipped_at, day)
+        labeled_today = False
+        if shipped_at:
+            try:
+                shipped_dt = datetime.fromisoformat(shipped_at.replace("Z", "+00:00"))
+                if shipped_dt.tzinfo is None:
+                    shipped_dt = shipped_dt.replace(tzinfo=timezone.utc)
+                labeled_today = shipped_dt.astimezone(ZoneInfo(ORDER_CUTOFF_TZ)).date().isoformat() == day
+            except Exception:
+                # Fallback compatible pour d'anciens formats : au pire, conserve
+                # le comportement historique basé sur le préfixe de date.
+                labeled_today = shipped_at.startswith(day)
         if row["label_url"] and row["tracking_number"]:
             if labeled_today:
                 labeled.append(row)
         else:
             to_label.append(row)
-
-    for o in packed_orders:
-        info = o.get("shipping_info") or {}
-        addr = o.get("shipping_address") or {}
-        packed_row = {
-            "id": o["id"],
-            "order_number": o.get("order_number"),
-            "items": len(o.get("items", [])),
-            "city": addr.get("city"),
-            "province": addr.get("province"),
-            "tracking_number": info.get("tracking_number") or "",
-            "label_url": info.get("label_url") or "",
-            "labeled_today": _is_local_day(info.get("shipped_at") or "", day),
-        }
-        if packed_row["id"] in packed_seen:
-            continue
-        packed_seen.add(packed_row["id"])
-        packed_history.append(packed_row)
 
     overdue = await db.orders.count_documents({
         "payment_status": "paid",
@@ -3809,15 +3775,9 @@ async def admin_dispatch_today(date: Optional[str] = None,
     return {
         "date": day,
         "configured": is_canada_post_configured(),
-        "counts": {
-            "to_label": len(to_label),
-            "labeled": len(labeled),
-            "packed_history": len(packed_history),
-            "overdue": overdue,
-        },
+        "counts": {"to_label": len(to_label), "labeled": len(labeled), "overdue": overdue},
         "to_label": to_label,
         "labeled": labeled,
-        "packed_history": packed_history,
     }
 
 

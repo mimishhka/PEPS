@@ -79,7 +79,7 @@ export default function AdminDispatch() {
     }
   };
 
-  const counts = data?.counts || { to_label: 0, labeled: 0, packed_history: 0, overdue: 0 };
+  const counts = data?.counts || { to_label: 0, labeled: 0, overdue: 0 };
   const configured = data?.configured;
 
   return (
@@ -127,7 +127,7 @@ export default function AdminDispatch() {
       )}
 
       <div className="mt-6 grid grid-cols-3 gap-4">
-        <Stat label="Empaquetées (jour)" value={counts.packed_history || 0} testid="stat-packed-history" />
+        <Stat label="À étiqueter" value={counts.to_label} testid="stat-tolabel" />
         <Stat label="Étiquetées" value={counts.labeled} testid="stat-labeled" />
         <Stat label="En retard" value={counts.overdue} accent={counts.overdue > 0} testid="stat-overdue" />
       </div>
@@ -155,28 +155,6 @@ export default function AdminDispatch() {
           <Printer size={14} /> Imprimer bons ({counts.labeled})
         </button>
       </div>
-
-      <Section title="Empaquetées — historique du jour" empty="Aucune commande empaquetée pour ce jour." rows={data?.packed_history} testid="table-packed-history"
-        render={(o) => (
-          <tr key={o.id} className="border-t border-ink/10" data-testid={`dispatch-packed-${o.order_number}`}>
-            <td className="px-4 py-3 font-mono text-xs font-bold">{o.order_number}</td>
-            <td className="px-4 py-3 text-sm">{o.city}, {o.province}</td>
-            <td className="px-4 py-3 font-mono text-xs">{o.items} art.</td>
-            <td className="px-4 py-3 font-mono text-[11px] text-right">
-              {o.label_url || o.tracking_number ? "étiquetée" : "à étiqueter"}
-            </td>
-            <td className="px-4 py-3 text-right">
-              {o.label_url ? (
-                <a href={labelHref(o.label_url)} target="_blank" rel="noopener noreferrer"
-                  data-testid={`dispatch-packed-label-link-${o.order_number}`}
-                  className="inline-flex items-center gap-1 font-mono text-xs text-ink underline hover:text-ink/70">
-                  Étiquette <ExternalLink size={12} />
-                </a>
-              ) : <span className="font-mono text-[11px] text-foreground/40">—</span>}
-            </td>
-          </tr>
-        )}
-      />
 
       <Section title="À étiqueter" empty="Aucune commande payée en attente pour ce lot." rows={data?.to_label} testid="table-tolabel"
         render={(o) => (
