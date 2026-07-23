@@ -2109,7 +2109,7 @@ async def _canada_post_get_artifact_openapi(href: str, order_id: str) -> Optiona
     return f"/uploads/labels/{fname}"
 
 
-async def _canada_post_shipment_price(shipment_id: str) -> Optional[dict]:
+async def _canada_post_shipment_price(shipment_id: str, preferred_service_code: Optional[str] = None) -> Optional[dict]:
     """Coût réel facturé par Postes Canada pour un envoi (Get Shipment Price).
     C'est ce qui permet de comparer ce qu'on PAIE à ce qu'on FACTURE au client."""
     if not shipment_id or not _cp_use_openapi():
@@ -2123,17 +2123,39 @@ async def _canada_post_shipment_price(shipment_id: str) -> Optional[dict]:
     if r.status_code >= 400:
         logging.error("Canada Post get-price %s: %s", r.status_code, _cp_error_detail(r))
         return None
-    d = _cp_safe_json(r) or {}
-    std = d.get("serviceStandard") or {}
+    # L'endpoint /price retourne une LISTE de devis, pas un objet unique.
+    # _cp_safe_json() ne gère que les dicts; on parse directement ici.
+    try:
+        raw = r.json()
+    except Exception:
+        logging.error("Canada Post get-price: JSON parse failed for %s", shipment_id)
+        return None
+    quotes: list[dict] = []
+    if isinstance(raw, list):
+        quotes = [q for q in raw if isinstance(q, dict)]
+    elif isinstance(raw, dict):
+        quotes = [raw]
+    if not quotes:
+        logging.error("Canada Post get-price: unexpected payload for %s: %s", shipment_id, str(raw)[:200])
+        return None
+
+    selected = None
+    preferred = str(preferred_service_code or "").strip().upper()
+    if preferred:
+        selected = next((q for q in quotes if str(q.get("serviceCode") or "").upper() == preferred), None)
+    if selected is None:
+        selected = quotes[0]
+
+    std = selected.get("serviceStandard") or {}
     return {
-        "service_code": d.get("serviceCode"),
-        "base_amount": d.get("baseAmount"),
-        "pre_tax_amount": d.get("preTaxAmount"),
-        "gst": d.get("gstAmount"),
-        "pst": d.get("pstAmount"),
-        "hst": d.get("hstAmount"),
-        "due_amount": d.get("dueAmount"),
-        "rated_weight_kg": d.get("ratedWeight"),
+        "service_code": selected.get("serviceCode"),
+        "base_amount": selected.get("baseAmount"),
+        "pre_tax_amount": selected.get("preTaxAmount"),
+        "gst": selected.get("gstAmount"),
+        "pst": selected.get("pstAmount"),
+        "hst": selected.get("hstAmount"),
+        "due_amount": selected.get("dueAmount"),
+        "rated_weight_kg": selected.get("ratedWeight"),
         "expected_delivery": std.get("expectedDeliveryDate"),
         "expected_transit_days": std.get("expectedTransitTime"),
         "fetched_at": datetime.now(timezone.utc).isoformat(),
@@ -2154,7 +2176,7 @@ async def _canada_post_estimate_openapi(order: dict, service_code: str, weight_k
         if not shipment_id:
             return None
 
-        price = await _canada_post_shipment_price(shipment_id)
+        price = await _canada_post_shipment_price(shipment_id, preferred_service_code=service_code)
 
         if not price:
             return None
@@ -2483,7 +2505,7 @@ async def _auto_create_dispatch_label(order_id: str, service_code: Optional[str]
             "tracking_number": res["pin"],
             "label_url": label_url,
             "cp_shipment_id": res["shipment_id"],
-            "cost": await _canada_post_shipment_price(res["shipment_id"]),
+            "cost": await _canada_post_shipment_price(res["shipment_id"], preferred_service_code=svc),
             "cp_group_id": res["group_id"],
             "cp_transmitted": False,
             "service_code": svc,
@@ -3643,7 +3665,7 @@ async def admin_create_label(order_id: str, payload: CreateLabelIn,
         "label_url": label_url,
         "cp_shipment_id": res["shipment_id"],
         # Coût réel de l'étiquette côté transporteur (pas le montant client).
-        "cost": await _canada_post_shipment_price(res["shipment_id"]),
+        "cost": await _canada_post_shipment_price(res["shipment_id"], preferred_service_code=payload.service_code),
         "cp_group_id": res["group_id"],
         "cp_transmitted": False,   # tant que False → surcharge de 2 $ encourue
         "service_code": payload.service_code,
@@ -4127,7 +4149,7 @@ async def admin_dispatch_labels(date: str, payload: DispatchLabelsIn,
                 "tracking_number": res["pin"],
                 "label_url": label_url,
                 "cp_shipment_id": res["shipment_id"],
-                "cost": await _canada_post_shipment_price(res["shipment_id"]),
+                "cost": await _canada_post_shipment_price(res["shipment_id"], preferred_service_code=payload.service_code),
                 "cp_group_id": res["group_id"],
                 "cp_transmitted": False,
                 "service_code": payload.service_code,
