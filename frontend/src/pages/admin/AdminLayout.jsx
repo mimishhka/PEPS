@@ -36,30 +36,44 @@ function hasAccess(user, area) {
 export default function AdminLayout({ basePath = "/admin" }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { lang } = useLang();
+  const L = (fr, en) => (lang === "fr" ? fr : en);
+  // Pastilles de nav : nombre d'éléments non traités (Journée / Dispatch)
+  // + alerte manifeste. Rafraîchi toutes les 60 s.
+  const [signals, setSignals] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const pull = () => api.get("/admin/ops/signals")
+      .then((r) => { if (alive) setSignals(r.data); })
+      .catch(() => {});
+    pull();
+    const t = setInterval(pull, 60000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
 
   const nav = useMemo(() => {
     const all = [
-      { to: basePath, label: "Dashboard", icon: LayoutDashboard, end: true, area: "dashboard" },
-      { to: `${basePath}/orders`, label: "Orders", icon: ShoppingCart, area: "orders" },
-      { to: `${basePath}/products`, label: "Products", icon: Package, area: "products" },
-      { to: `${basePath}/coupons`, label: "Coupons", icon: Ticket, area: "coupons" },
-      { to: `${basePath}/customers`, label: "Customers", icon: Users, area: "customers" },
-      { to: `${basePath}/shipping`, label: "Shipping", icon: Truck, area: "shipping" },
-      { to: `${basePath}/fulfillment`, label: "Journée", icon: Package, area: "orders" },
-      { to: `${basePath}/dispatch`, label: "Dispatch", icon: Package, area: "orders" },
-      { to: `${basePath}/boxes`, label: "Contenants", icon: Package, area: "shipping" },
-      { to: `${basePath}/subscribers`, label: "Subscribers", icon: Mail, area: "subscribers" },
+      { to: basePath, label: L("Tableau de bord", "Dashboard"), icon: LayoutDashboard, end: true, area: "dashboard" },
+      { to: `${basePath}/orders`, label: L("Commandes", "Orders"), icon: ShoppingCart, area: "orders" },
+      { to: `${basePath}/products`, label: L("Produits", "Products"), icon: Package, area: "products" },
+      { to: `${basePath}/coupons`, label: L("Coupons", "Coupons"), icon: Ticket, area: "coupons" },
+      { to: `${basePath}/customers`, label: L("Clients", "Customers"), icon: Users, area: "customers" },
+      { to: `${basePath}/shipping`, label: L("Expédition", "Shipping"), icon: Truck, area: "shipping" },
+      { to: `${basePath}/fulfillment`, label: L("Journée", "Today"), icon: Package, area: "orders" },
+      { to: `${basePath}/dispatch`, label: L("Dispatch", "Dispatch"), icon: Package, area: "orders" },
+      { to: `${basePath}/boxes`, label: L("Contenants", "Packaging"), icon: Package, area: "shipping" },
+      { to: `${basePath}/subscribers`, label: L("Abonnés", "Subscribers"), icon: Mail, area: "subscribers" },
     ];
     const filtered = all.filter((n) => hasAccess(user, n.area));
     if (user?.role === "admin") {
-      filtered.push({ to: `${basePath}/categories`, label: "Categories", icon: FolderTree, area: "categories" });
-      filtered.push({ to: `${basePath}/menus`, label: "Menus", icon: ListTree, area: "menus" });
-      filtered.push({ to: `${basePath}/staff`, label: "Team", icon: UserCog, area: "staff" });
-      filtered.push({ to: `${basePath}/trash`, label: "Trash", icon: Trash2, area: "trash" });
-      filtered.push({ to: `${basePath}/audit-log`, label: "Activity log", icon: History, area: "audit" });
+      filtered.push({ to: `${basePath}/categories`, label: L("Catégories", "Categories"), icon: FolderTree, area: "categories" });
+      filtered.push({ to: `${basePath}/menus`, label: L("Menus", "Menus"), icon: ListTree, area: "menus" });
+      filtered.push({ to: `${basePath}/staff`, label: L("Équipe", "Team"), icon: UserCog, area: "staff" });
+      filtered.push({ to: `${basePath}/trash`, label: L("Corbeille", "Trash"), icon: Trash2, area: "trash" });
+      filtered.push({ to: `${basePath}/audit-log`, label: L("Journal", "Activity log"), icon: History, area: "audit" });
     }
     return filtered;
-  }, [user, basePath]);
+  }, [user, basePath, lang]);
 
   const landingPath = nav[0]?.to || basePath;
 
@@ -87,7 +101,17 @@ export default function AdminLayout({ basePath = "/admin" }) {
                 }
               >
                 <n.icon size={16} strokeWidth={1.6} />
-                {n.label}
+                <span className="flex-1">{n.label}</span>
+                {signals && n.to === `${basePath}/fulfillment` && signals.fulfillment > 0 && (
+                  <span className="bg-red-600 text-white font-mono text-[10px] px-1.5 py-0.5 rounded-full" data-testid="nav-badge-fulfillment">
+                    {signals.fulfillment}
+                  </span>
+                )}
+                {signals && n.to === `${basePath}/dispatch` && signals.dispatch > 0 && (
+                  <span className="bg-red-600 text-white font-mono text-[10px] px-1.5 py-0.5 rounded-full" data-testid="nav-badge-dispatch">
+                    {signals.dispatch}
+                  </span>
+                )}
               </NavLink>
             ))}
           </nav>
@@ -100,7 +124,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
               className="w-full flex items-center justify-center gap-2 border border-ink py-2 text-xs font-mono uppercase tracking-[0.2em] hover:bg-ink hover:text-white"
               data-testid="admin-logout"
             >
-              <LogOut size={12} /> Logout
+              <LogOut size={12} /> {L("Déconnexion", "Logout")}
             </button>
           </div>
         </aside>
@@ -108,12 +132,26 @@ export default function AdminLayout({ basePath = "/admin" }) {
         <main className="flex-1 min-w-0">
           <div className="bg-white border-b border-ink/10 px-8 py-4 flex items-center justify-between" data-testid="admin-topbar">
             <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/60">
-              FOR LABORATORY RESEARCH USE ONLY · 19+
+              {L("USAGE EN LABORATOIRE UNIQUEMENT · 19+", "FOR LABORATORY RESEARCH USE ONLY · 19+")}
             </div>
             <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/60">
-              {new Date().toLocaleDateString("en-CA", { weekday: "short", year: "numeric", month: "short", day: "numeric" })}
+              {new Date().toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { weekday: "short", year: "numeric", month: "short", day: "numeric" })}
             </div>
           </div>
+          {signals && signals.pending_manifest > 0 && (
+            <div className="bg-red-50 border-b border-red-300 text-red-900 px-8 py-3 font-mono text-xs flex items-center justify-between gap-3" data-testid="manifest-alert">
+              <span className="flex items-center gap-2">
+                <AlertCircle size={14} />
+                {L(
+                  `${signals.pending_manifest} étiquette(s) non transmise(s) — surcharge de 2 $/article tant que le manifeste n'est pas envoyé.`,
+                  `${signals.pending_manifest} label(s) not transmitted — $2/item surcharge until the manifest is sent.`
+                )}
+              </span>
+              <NavLink to={`${basePath}/dispatch`} className="underline whitespace-nowrap hover:opacity-70">
+                {L("Aller au Dispatch", "Go to Dispatch")} →
+              </NavLink>
+            </div>
+          )}
           <Routes>
             <Route index element={hasAccess(user, "dashboard") ? <AdminDashboard /> : <Navigate to={landingPath} replace />} />
             <Route path="orders" element={hasAccess(user, "orders") ? <AdminOrders /> : <Navigate to={landingPath} replace />} />
@@ -146,6 +184,8 @@ export const StatusBadge = ({ status }) => {
     refunded: { bg: "#6b7280", color: "#fff", icon: AlertCircle },
     pending: { bg: "#f3f4f6", color: "#111", icon: Clock },
     processing: { bg: "#3b82f6", color: "#fff", icon: Package },
+    packing: { bg: "#6366f1", color: "#fff", icon: Package },
+    packed: { bg: "#8b5cf6", color: "#fff", icon: CheckCircle2 },
     shipped: { bg: "#7c3aed", color: "#fff", icon: Truck },
     delivered: { bg: "#10b981", color: "#fff", icon: CheckCircle2 },
     cancelled: { bg: "#ef4444", color: "#fff", icon: X },
