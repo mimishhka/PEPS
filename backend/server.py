@@ -3667,7 +3667,9 @@ async def admin_dispatch_today(date: Optional[str] = None,
     cursor = db.orders.find(
         {
             "payment_status": "paid",
-            "dispatch_batch": {"$lte": day},
+            # Le lot est celui du jour : une étiquette non imprimée est reportée
+            # au lendemain par le watchdog de minuit (dispatch_batch avancé).
+            "dispatch_batch": day,
             "fulfillment_status": {"$in": ["processing", "pending", "packed", "shipped"]},
         },
         {"_id": 0},
@@ -3719,7 +3721,7 @@ async def admin_dispatch_labels(date: str, payload: DispatchLabelsIn,
     orders = await db.orders.find(
         {
             "payment_status": "paid",
-            "dispatch_batch": {"$lte": date},
+            "dispatch_batch": date,
             "fulfillment_status": {"$in": ["processing", "pending", "packed"]},
         },
         {"_id": 0},
@@ -3801,7 +3803,7 @@ async def _dispatch_labeled_orders(date: str) -> list:
     return await db.orders.find(
         {
             "payment_status": "paid",
-            "dispatch_batch": {"$lte": date},
+            "dispatch_batch": date,
             "shipping_info.label_url": {"$nin": [None, ""]},
         },
         {"_id": 0},
@@ -4084,6 +4086,117 @@ async def admin_fulfillment_picking_pdf(date: str,
     c.showPage(); c.save(); buf.seek(0)
     return Response(content=buf.getvalue(), media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="prelevement-{date}.pdf"'})
+
+
+# ---------------------------------------------------------------------------
+# Report des étiquettes non imprimées + signaux de navigation
+# ---------------------------------------------------------------------------
+@api.post("/admin/dispatch/{date}/mark-printed")
+async def admin_dispatch_mark_printed(date: str,
+                                      _admin: dict = Depends(require_area("orders", "manage"))):
+    """Marque les étiquettes du lot comme imprimées. Une étiquette imprimée
+    n'est plus reportée au lendemain par le report de minuit."""
+    now = datetime.now(timezone.utc).isoformat()
+    res = await db.orders.update_many(
+        {
+            "payment_status": "paid",
+            "dispatch_batch": date,
+            "shipping_info.label_url": {"$nin": [None, ""]},
+        },
+        {"$set": {"shipping_info.label_printed_at": now}},
+    )
+    return {"ok": True, "marked": res.modified_count, "date": date}
+
+
+async def _rollover_unprinted_labels() -> int:
+    """Reporte au prochain jour ouvrable les commandes d'un lot passé dont
+    l'étiquette n'a pas été imprimée. Évite qu'un lot oublié disparaisse."""
+    today = _local_today_iso()
+    cursor = db.orders.find(
+        {
+            "payment_status": "paid",
+            "dispatch_batch": {"$lt": today},
+            "fulfillment_status": {"$in": ["processing", "pending", "packing", "packed", "shipped"]},
+            "$or": [
+                {"shipping_info.label_printed_at": {"$in": [None, ""]}},
+                {"shipping_info.label_printed_at": {"$exists": False}},
+            ],
+        },
+        {"_id": 0, "id": 1, "order_number": 1},
+    )
+    moved = 0
+    async for o in cursor:
+        await db.orders.update_one(
+            {"id": o["id"]},
+            {"$set": {"dispatch_batch": today},
+             "$push": {"notes": {
+                 "id": str(uuid.uuid4()),
+                 "text": f"Reportée au lot {today} — étiquette non imprimée.",
+                 "author": "system",
+                 "created_at": datetime.now(timezone.utc).isoformat(),
+             }}},
+        )
+        moved += 1
+    if moved:
+        logging.info("[rollover] %d commande(s) reportée(s) au lot %s", moved, today)
+    return moved
+
+
+async def _rollover_watchdog() -> None:
+    """Passe une fois par heure : à la première exécution après minuit, les
+    lots non imprimés de la veille basculent sur le jour courant."""
+    last_day = None
+    while True:
+        try:
+            today = _local_today_iso()
+            if last_day != today:
+                await _rollover_unprinted_labels()
+                last_day = today
+        except Exception as ex:  # pragma: no cover
+            logging.error("rollover watchdog failed: %s", ex)
+        await asyncio.sleep(3600)
+
+
+@api.get("/admin/ops/signals")
+async def admin_ops_signals(_admin: dict = Depends(require_area("orders", "view"))):
+    """Compteurs pour les pastilles de navigation (Journée / Dispatch) et
+    l'alerte manifeste du tableau de bord."""
+    day = _local_today_iso()
+    to_prepare = await db.orders.count_documents({
+        "payment_status": "paid",
+        "dispatch_batch": {"$lte": day},
+        "fulfillment_status": {"$in": ["processing", "packing"]},
+    })
+    to_label = await db.orders.count_documents({
+        "payment_status": "paid",
+        "dispatch_batch": day,
+        "fulfillment_status": {"$in": ["processing", "pending", "packed"]},
+        "$or": [
+            {"shipping_info.label_url": {"$in": [None, ""]}},
+            {"shipping_info.label_url": {"$exists": False}},
+        ],
+    })
+    to_print = await db.orders.count_documents({
+        "payment_status": "paid",
+        "dispatch_batch": day,
+        "shipping_info.label_url": {"$nin": [None, ""]},
+        "$or": [
+            {"shipping_info.label_printed_at": {"$in": [None, ""]}},
+            {"shipping_info.label_printed_at": {"$exists": False}},
+        ],
+    })
+    pending_manifest = await db.orders.count_documents({
+        "shipping_info.label_url": {"$nin": [None, ""]},
+        "shipping_info.cp_transmitted": {"$ne": True},
+    })
+    return {
+        "date": day,
+        "fulfillment": to_prepare,
+        "dispatch": to_label + to_print,
+        "to_label": to_label,
+        "to_print": to_print,
+        "pending_manifest": pending_manifest,
+    }
 
 
 @api.put("/admin/products/{product_id}/stock")
@@ -5620,6 +5733,7 @@ async def startup_event():
         # Dispatch manuel : watchdog d'auto-étiquetage désactivé.
         # asyncio.create_task(_auto_label_paid_orders_watchdog())
         asyncio.create_task(_trash_auto_purge_watchdog())
+        asyncio.create_task(_rollover_watchdog())
 
 
 async def _backfill_dispatch_batch():
