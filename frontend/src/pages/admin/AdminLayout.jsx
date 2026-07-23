@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { NavLink, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, ShoppingCart, Package, Ticket, Users, Truck, Settings as Cog,
   LogOut, Download, Search, X, Plus, Edit, Trash2, FileText, CheckCircle2, AlertCircle, Clock, UserCog,
@@ -36,10 +36,9 @@ function hasAccess(user, area) {
 export default function AdminLayout({ basePath = "/admin" }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
-  // Pastilles de nav : nombre d'éléments non traités (Journée / Dispatch)
-  // + alerte manifeste. Rafraîchi toutes les 60 s.
   const [signals, setSignals] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -138,7 +137,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
               {new Date().toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { weekday: "short", year: "numeric", month: "short", day: "numeric" })}
             </div>
           </div>
-          {signals && signals.pending_manifest > 0 && (
+          {signals && signals.pending_manifest > 0 && !location.pathname.includes("/dispatch") && (
             <div className="bg-red-50 border-b border-red-300 text-red-900 px-8 py-3 font-mono text-xs flex items-center justify-between gap-3" data-testid="manifest-alert">
               <span className="flex items-center gap-2">
                 <AlertCircle size={14} />
