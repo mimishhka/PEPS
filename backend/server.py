@@ -2822,7 +2822,9 @@ async def checkout(payload: CheckoutIn, request: Request):
     )
 
     order_id = str(uuid.uuid4())
-    order_number = f"NP-{datetime.now(timezone.utc).strftime('%y%m%d')}-{order_id[:6].upper()}"
+    # Numérotation Fironova : FN-AAMMJJ-XXXXXX (l'ancien préfixe NP- venait
+    # de NORDPEP ; les commandes existantes gardent leur numéro).
+    order_number = f"FN-{datetime.now(timezone.utc).strftime('%y%m%d')}-{order_id[:6].upper()}"
 
     # Réservation atomique AVANT tout appel réseau au PSP. Ferme la fenêtre
     # check-then-act qui laissait deux clients acheter le même dernier flacon.
@@ -3936,7 +3938,9 @@ async def admin_fulfillment_day(date: Optional[str] = None,
                     "fulfillment_status": {"$in": ["processing", "packing", "packed"]},
                 },
                 {
-                    "dispatch_batch": day,
+                    # Historique : on garde visibles les commandes étiquetées
+                    # des lots précédents (traçabilité de ce qui a été traité).
+                    "dispatch_batch": {"$lte": day},
                     "fulfillment_status": "shipped",
                 },
             ],
@@ -4189,10 +4193,19 @@ async def admin_ops_signals(_admin: dict = Depends(require_area("orders", "view"
         "shipping_info.label_url": {"$nin": [None, ""]},
         "shipping_info.cp_transmitted": {"$ne": True},
     })
+    # Retards : lots antérieurs encore non expédiés.
+    overdue = await db.orders.count_documents({
+        "payment_status": "paid",
+        "dispatch_batch": {"$lt": day},
+        "fulfillment_status": {"$in": ["processing", "pending", "packing", "packed"]},
+    })
     return {
         "date": day,
         "fulfillment": to_prepare,
-        "dispatch": to_label + to_print,
+        # Le badge Dispatch signale ce qui reste À ÉTIQUETER (+ retards),
+        # pas les étiquettes déjà créées en attente d'impression.
+        "dispatch": to_label + overdue,
+        "overdue": overdue,
         "to_label": to_label,
         "to_print": to_print,
         "pending_manifest": pending_manifest,
