@@ -93,6 +93,7 @@ export default function AdminDispatch() {
   };
 
   const counts = data?.counts || { to_label: 0, labeled: 0, overdue: 0 };
+  const totals = data?.totals;
   const configured = data?.configured;
 
   return (
@@ -145,6 +146,15 @@ export default function AdminDispatch() {
         <Stat label="En retard" value={counts.overdue} accent={counts.overdue > 0} testid="stat-overdue" />
       </div>
 
+      {totals && (totals.labels_cost > 0 || totals.shipping_charged > 0) && (
+        <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-4" data-testid="dispatch-financials">
+          <Money label="Coût étiquettes" value={totals.labels_cost} />
+          <Money label="Frais facturés" value={totals.shipping_charged} />
+          <Money label="Écart" value={totals.margin} accent={totals.margin < 0} />
+          <Money label="Manifeste (total dû)" value={totals.manifest?.total_due} muted />
+        </div>
+      )}
+
       <div className="mt-6 flex flex-wrap items-center gap-3 bg-white border border-ink/10 p-4">
         <label className="font-mono text-xs text-foreground/60">Service</label>
         <select value={serviceCode} onChange={(e) => setServiceCode(e.target.value)} data-testid="dispatch-service"
@@ -196,6 +206,10 @@ export default function AdminDispatch() {
             <td className="px-4 py-3 font-mono text-xs font-bold">{o.order_number}</td>
             <td className="px-4 py-3 text-sm">{o.city}, {o.province}</td>
             <td className="px-4 py-3 font-mono text-xs">{o.tracking_number}</td>
+            <td className="px-4 py-3 font-mono text-xs text-right">
+              {o.cost_due != null ? `$${Number(o.cost_due).toFixed(2)}` : "—"}
+              {o.rated_weight_kg ? <span className="block text-[10px] text-foreground/40">{o.rated_weight_kg} kg</span> : null}
+            </td>
             <td className="px-4 py-3 font-mono text-[11px]">
               {o.cp_transmitted
                 ? <span className="text-green-700 flex items-center gap-1"><CheckCircle2 size={12} /> transmis</span>
@@ -211,6 +225,18 @@ export default function AdminDispatch() {
           </tr>
         )}
       />
+    </div>
+  );
+}
+
+function Money({ label, value, accent, muted }) {
+  const v = value == null ? null : Number(value);
+  return (
+    <div className={`bg-white border p-4 ${accent ? "border-red-300" : "border-ink/10"}`}>
+      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">{label}</div>
+      <div className={`font-display text-2xl font-extrabold mt-1 ${accent ? "text-red-600" : muted ? "text-foreground/50" : ""}`}>
+        {v == null ? "—" : `$${v.toFixed(2)}`}
+      </div>
     </div>
   );
 }
