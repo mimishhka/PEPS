@@ -98,9 +98,15 @@ export default function AdminFulfillment() {
           const rows = buckets[step] || [];
           return (
             <div key={step} data-testid={`fulfil-col-${step}`}>
-                    Vide
-                  </div>
-                ) : rows.map((o) => (
+                <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 mb-3 flex items-center gap-2">
+                  <Icon size={14} /> {labels[step]?.fr || step} <span className="text-foreground/30">({rows.length})</span>
+                </h2>
+                <div className="space-y-3">
+                  {rows.length === 0 ? (
+                    <div className="bg-white border border-ink/10 px-4 py-8 text-center font-mono text-[11px] text-foreground/40">
+                      Vide
+                    </div>
+                  ) : rows.map((o) => (
                   <div key={o.id} className={`bg-white border ${o.is_overdue ? "border-red-300" : "border-ink/10"}`} data-testid={`fulfil-card-${o.order_number}`}>
                     <button onClick={() => setOpenId(openId === o.id ? null : o.id)} className="w-full text-left px-4 py-3">
                       <div className="flex items-center justify-between">
