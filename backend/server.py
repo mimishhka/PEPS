@@ -2145,100 +2145,23 @@ async def _canada_post_estimate_openapi(order: dict, service_code: str, weight_k
     on crée un envoi temporaire, on lit son prix, puis on l'annule (void)."""
     if not (_cp_use_openapi() and is_canada_post_configured()):
         return None
-
-    ship = order.get("shipping_address") or {}
-    box = await _select_box_for_order(order)
-    if box:
-        weight_kg = round(weight_kg + float(box.get("tare_grams") or 0) / 1000.0, 3)
-        box_dims = {
-            "length": round(float(box["length_cm"]), 1),
-            "width": round(float(box["width_cm"]), 1),
-            "height": round(float(box["height_cm"]), 1),
-        }
-    else:
-        box_dims = None
-
-    dest_pc = str(ship.get("postal_code", "")).replace(" ", "").upper()
-    origin_pc = CANADA_POST_ORIGIN_POSTAL_CODE.replace(" ", "").upper()
-    mailed_by, mobo = _cp_path_customers()
-    group_id = f"FN-QUOTE-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
-    req_id = f"Q-{order.get('id', 'x')}-{uuid.uuid4().hex[:10]}"
-
-    settlement = {
-        "paidByCustomer": mobo,
-        "intendedMethodOfPayment": _cp_intended_method(),
-    }
-    contract = CANADA_POST_CONTRACT_ID.strip()
-    if contract:
-        settlement["contractId"] = contract
-
-    payload: dict[str, Any] = {
-        "customerRequestId": req_id,
-        "groupId": group_id,
-        "requestedShippingPoint": origin_pc,
-        "cpcPickupIndicator": True,
-        "deliverySpec": {
-            "serviceCode": service_code,
-            "sender": {
-                "name": CANADA_POST_SENDER_NAME,
-                "company": CANADA_POST_SENDER_NAME,
-                "contactPhone": CANADA_POST_SENDER_PHONE,
-                "addressDetails": {
-                    "addressLine1": CANADA_POST_SENDER_ADDRESS,
-                    "city": CANADA_POST_SENDER_CITY,
-                    "provState": CANADA_POST_SENDER_PROVINCE,
-                    "countryCode": "CA",
-                    "postalZipCode": origin_pc,
-                },
-            },
-            "destination": {
-                "name": str(ship.get("full_name") or "").strip()[:44],
-                "addressDetails": {
-                    "addressLine1": ship.get("address1") or "",
-                    "addressLine2": ship.get("address2") or "",
-                    "city": ship.get("city") or "",
-                    "provState": ship.get("province") or "",
-                    "countryCode": ship.get("country") or "CA",
-                    "postalZipCode": dest_pc,
-                },
-            },
-            "parcelCharacteristics": {
-                "weight": max(0.1, round(weight_kg, 3)),
-                **({"dimensions": box_dims} if box_dims else {}),
-            },
-            "preferences": {
-                "showPackingInstructions": False,
-                "showPostageRate": True,
-                "showInsuredValue": False,
-            },
-            "settlementInfo": settlement,
-        },
-    }
-
     shipment_id = ""
     try:
-        r = await _cp_openapi_call("POST", f"/{mailed_by}/{mobo}/shipments", json_body=payload)
-        if r.status_code >= 400:
-            logging.error("Canada Post OpenAPI estimate create %s: %s", r.status_code, _cp_error_detail(r))
+        # Réutilise le payload officiel déjà accepté en prod par la création
+        # d'étiquette normale pour éviter les erreurs de schéma.
+        created = await _canada_post_create_shipment_openapi(order, service_code, weight_kg)
+        shipment_id = str(created.get("shipment_id") or "")
+        if not shipment_id:
             return None
-        data = _cp_safe_json(r) or {}
-        shipment_id = str(data.get("shipmentId") or "")
 
-        price = data.get("shipmentPrice") if isinstance(data, dict) else None
-        if not price and shipment_id:
-            price = await _canada_post_shipment_price(shipment_id)
+        price = await _canada_post_shipment_price(shipment_id)
 
         if not price:
             return None
 
-        if isinstance(price, dict) and "dueAmount" in price:
-            due = price.get("dueAmount")
-            eta = ((price.get("serviceStandard") or {}).get("expectedTransitTime"))
-            svc = price.get("serviceCode")
-        else:
-            due = price.get("due_amount")
-            eta = price.get("expected_transit_days")
-            svc = price.get("service_code")
+        due = price.get("due_amount")
+        eta = price.get("expected_transit_days")
+        svc = price.get("service_code")
 
         return {
             "service_code": svc,
