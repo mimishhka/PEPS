@@ -19,6 +19,7 @@ export default function AdminDispatch() {
   const [serviceCode, setServiceCode] = useState("DOM.XP");
   const [manifest, setManifest] = useState(null);
   const [manifestStatus, setManifestStatus] = useState(null);
+  const [cpConfig, setCpConfig] = useState(null);
   const [txBusy, setTxBusy] = useState(false);
   const [voidBusy, setVoidBusy] = useState(null);
 
@@ -34,6 +35,9 @@ export default function AdminDispatch() {
     api.get(`/admin/dispatch/${date}/manifest-status`)
       .then((r) => setManifestStatus(r.data))
       .catch(() => setManifestStatus({ transmitted: false, manifests: 0 }));
+    api.get("/admin/shipping/config-status")
+      .then((r) => setCpConfig(r.data))
+      .catch(() => setCpConfig(null));
   }, [date]);
 
   useEffect(() => { load(); }, [load]);
@@ -144,6 +148,19 @@ export default function AdminDispatch() {
         </div>
       )}
 
+      {cpConfig && (
+        <div className="mt-3 bg-white border border-ink/10 px-4 py-3 font-mono text-[11px] text-foreground/70" data-testid="dispatch-cp-config">
+          <div>
+            Mode: <span className="font-bold">{cpConfig.using_openapi ? "openapi" : "legacy"}</span> ·
+            Env: <span className="font-bold">{cpConfig.environment || "n/a"}</span> ·
+            Config: <span className={cpConfig.configured ? "text-green-700 font-bold" : "text-red-700 font-bold"}>{cpConfig.configured ? "ok" : "incomplète"}</span>
+          </div>
+          {!cpConfig.configured && cpConfig.missing_required?.length > 0 && (
+            <div className="mt-1 text-red-700">Manquants: {cpConfig.missing_required.join(", ")}</div>
+          )}
+        </div>
+      )}
+
       {manifest && manifest.pending_count > 0 && (
         <div className="mt-6 flex items-center justify-between bg-red-50 border border-red-300 text-red-900 px-4 py-3" data-testid="dispatch-manifest-banner">
           <div className="font-mono text-xs flex items-center gap-2">
@@ -239,14 +256,12 @@ export default function AdminDispatch() {
                   className="inline-flex items-center gap-1 font-mono text-xs text-ink underline hover:text-ink/70">
                   Étiquette <ExternalLink size={12} />
                 </a>
-                {!o.cp_transmitted && (
-                  <button onClick={() => voidLabel(o)} disabled={voidBusy === o.id}
-                    data-testid={`dispatch-void-${o.order_number}`}
-                    title="Annuler cette étiquette (gratuit tant qu'elle n'est pas transmise)"
-                    className="font-mono text-xs text-red-600 underline hover:opacity-70 disabled:opacity-40">
-                    {voidBusy === o.id ? "…" : "Annuler"}
-                  </button>
-                )}
+                <button onClick={() => voidLabel(o)} disabled={voidBusy === o.id || o.cp_transmitted}
+                  data-testid={`dispatch-void-${o.order_number}`}
+                  title={o.cp_transmitted ? "Déjà transmise: annulation impossible" : "Annuler cette étiquette (gratuit tant qu'elle n'est pas transmise)"}
+                  className="font-mono text-xs text-red-600 underline hover:opacity-70 disabled:opacity-40">
+                  {voidBusy === o.id ? "…" : (o.cp_transmitted ? "Annuler (bloqué)" : "Annuler")}
+                </button>
               </div>
             </td>
           </tr>

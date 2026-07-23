@@ -3671,6 +3671,50 @@ async def admin_pending_manifest(_admin: dict = Depends(require_area("orders", "
     }
 
 
+@api.get("/admin/shipping/config-status")
+async def admin_shipping_config_status(_admin: dict = Depends(require_area("shipping", "view"))):
+    """Expose un état lisible de la config Postes Canada (sans secrets)
+    pour faciliter le diagnostic côté interface admin."""
+    using_openapi = _cp_use_openapi()
+    mailed_by, mobo = _cp_path_customers()
+    missing_required = []
+    if using_openapi:
+        if not mailed_by:
+            missing_required.append("CANADA_POST_MAILED_BY/CANADA_POST_CUSTOMER_NUMBER")
+        if not mobo:
+            missing_required.append("CANADA_POST_MOBO/CANADA_POST_CUSTOMER_NUMBER")
+        if not CANADA_POST_ORIGIN_POSTAL_CODE:
+            missing_required.append("CANADA_POST_ORIGIN_POSTAL_CODE")
+        if not CANADA_POST_OAUTH_CLIENT_ID:
+            missing_required.append("CANADA_POST_OAUTH_CLIENT_ID")
+        if not CANADA_POST_OAUTH_CLIENT_SECRET:
+            missing_required.append("CANADA_POST_OAUTH_CLIENT_SECRET")
+    else:
+        if not CANADA_POST_API_KEY:
+            missing_required.append("CANADA_POST_API_KEY")
+        if not CANADA_POST_CUSTOMER_NUMBER:
+            missing_required.append("CANADA_POST_CUSTOMER_NUMBER")
+        if not CANADA_POST_ORIGIN_POSTAL_CODE:
+            missing_required.append("CANADA_POST_ORIGIN_POSTAL_CODE")
+
+    return {
+        "configured": is_canada_post_configured(),
+        "api_mode": CANADA_POST_API_MODE,
+        "using_openapi": using_openapi,
+        "environment": CANADA_POST_ENVIRONMENT,
+        "base_url": CANADA_POST_OPENAPI_BASE_URL if using_openapi else CANADA_POST_BASE_URL,
+        "has_legacy_api_key": bool(CANADA_POST_API_KEY),
+        "has_customer_number": bool(CANADA_POST_CUSTOMER_NUMBER),
+        "has_origin_postal_code": bool(CANADA_POST_ORIGIN_POSTAL_CODE),
+        "has_oauth_client_id": bool(CANADA_POST_OAUTH_CLIENT_ID),
+        "has_oauth_client_secret": bool(CANADA_POST_OAUTH_CLIENT_SECRET),
+        "has_platform_id": bool(CANADA_POST_PLATFORM_ID),
+        "has_mailed_by": bool(mailed_by),
+        "has_mobo": bool(mobo),
+        "missing_required": missing_required,
+    }
+
+
 @api.post("/admin/shipping/transmit")
 async def admin_transmit_manifest(_admin: dict = Depends(require_area("orders", "manage"))):
     """À faire CHAQUE JOUR. Oublier = 2 $/article de surcharge + perte du rabais."""
