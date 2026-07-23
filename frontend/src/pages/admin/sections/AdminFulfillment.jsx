@@ -146,6 +146,58 @@ export default function AdminFulfillment() {
           );
         })}
       </div>
+
+      {/* Historique du jour : ce qui a déjà été étiqueté (consultation). */}
+      <div className="mt-10" data-testid="fulfil-shipped-section">
+        <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 mb-3 flex items-center gap-2">
+          <Printer size={14} /> {labels.shipped?.fr || "Étiquetée"}
+          <span className="text-foreground/30">({(buckets.shipped || []).length})</span>
+        </h2>
+        <div className="bg-white border border-ink/10 overflow-x-auto">
+          {(buckets.shipped || []).length === 0 ? (
+            <div className="px-6 py-10 text-center font-mono text-xs text-foreground/40">
+              Aucune commande étiquetée pour cette date.
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-ink/5">
+                <tr className="font-mono text-[10px] uppercase tracking-wider text-foreground/60 text-left">
+                  <th className="px-4 py-3">Commande</th>
+                  <th className="px-4 py-3">Destination</th>
+                  <th className="px-4 py-3">Lot</th>
+                  <th className="px-4 py-3">Suivi</th>
+                  <th className="px-4 py-3 text-right">Étiquette</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(buckets.shipped || []).map((o) => (
+                  <tr key={o.id} className="border-t border-ink/10 font-mono text-xs" data-testid={`fulfil-shipped-${o.order_number}`}>
+                    <td className="px-4 py-3 font-bold">{o.order_number}</td>
+                    <td className="px-4 py-3">{o.city || "—"}, {o.province || ""}</td>
+                    <td className="px-4 py-3 text-foreground/50">{o.dispatch_batch || "—"}</td>
+                    <td className="px-4 py-3">{o.tracking_number || "—"}</td>
+                    <td className="px-4 py-3 text-right">
+                      {o.label_url ? (
+                        <a href={labelHref(o.label_url)} target="_blank" rel="noopener noreferrer"
+                          className="underline hover:text-ink/70" data-testid={`fulfil-label-${o.order_number}`}>
+                          Voir
+                        </a>
+                      ) : <span className="text-foreground/30">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
     </div>
   );
+}
+
+function labelHref(url) {
+  if (!url) return "#";
+  if (/^https?:\/\//.test(url)) return url;
+  const root = API_BASE.replace(/\/api$/, "");
+  return `${root}${url.startsWith("/") ? "" : "/"}${url}`;
 }

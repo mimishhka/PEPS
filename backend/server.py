@@ -73,6 +73,13 @@ STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
 FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))
 UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "24"))
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").strip().lower() == "true"
+COOKIE_SAMESITE = os.environ.get("COOKIE_SAMESITE", "none").strip().lower()
+if COOKIE_SAMESITE not in {"lax", "strict", "none"}:
+    COOKIE_SAMESITE = "none"
+# Browsers reject SameSite=None when Secure=false. Fallback keeps local HTTP usable.
+if not COOKIE_SECURE and COOKIE_SAMESITE == "none":
+    COOKIE_SAMESITE = "lax"
 
 # Feature flags — toggle without deploying new code, just flip the env var and restart.
 COA_PAGE_ENABLED = os.environ.get("COA_PAGE_ENABLED", "false").strip().lower() == "true"
@@ -233,8 +240,8 @@ def set_auth_cookie(response: Response, token: str) -> None:
         key="access_token",
         value=token,
         httponly=True,
-        secure=True,
-        samesite="none",
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,
         max_age=ACCESS_TOKEN_MINUTES * 60,
         path="/",
     )
