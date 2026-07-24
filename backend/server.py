@@ -2109,6 +2109,25 @@ async def _canada_post_get_artifact_openapi(href: str, order_id: str) -> Optiona
     return f"/uploads/labels/{fname}"
 
 
+async def _canada_post_get_manifest_artifact_openapi(href: str, date_str: str) -> Optional[str]:
+    """Telecharge le PDF du manifeste (artifact) a partir du href retourne par /manifests."""
+    if not href:
+        return None
+    try:
+        r = await _cp_openapi_call("GET", href, accept="application/pdf")
+    except HTTPException:
+        return None
+    except Exception as ex:
+        logging.error("Canada Post OpenAPI get-manifest-artifact failed: %s", ex)
+        return None
+    if r.status_code >= 400:
+        logging.error("Canada Post OpenAPI get-manifest-artifact %s: %s", r.status_code, _cp_error_detail(r))
+        return None
+    fname = f"manifest-{date_str}-{uuid.uuid4().hex[:8]}.pdf"
+    (LABEL_UPLOAD_DIR / fname).write_bytes(r.content)
+    return f"/uploads/labels/{fname}"
+
+
 async def _canada_post_shipment_price(shipment_id: str, preferred_service_code: Optional[str] = None) -> Optional[dict]:
     """Coût réel facturé par Postes Canada pour un envoi (Get Shipment Price).
     C'est ce qui permet de comparer ce qu'on PAIE à ce qu'on FACTURE au client."""
@@ -2193,6 +2212,7 @@ async def _canada_post_estimate_openapi(order: dict, service_code: str, weight_k
     except Exception as ex:
         logging.error("Canada Post OpenAPI estimate failed: %s", ex)
         return None
+
     finally:
         if shipment_id:
             await _canada_post_void_openapi(shipment_id)
@@ -2594,6 +2614,7 @@ def _order_email_html(order: dict, body_intro: str) -> str:
     elif np_info:
         mock_warning = ""
         if np_info.get("mock"):
+
             mock_warning = '<div style="background:#fffbe6;border:1px solid #FFCC00;padding:10px;margin-bottom:12px;font-size:12px">⚠ DEMO MODE — Configure NOWPAYMENTS_API_KEY for live crypto payments.</div>'
         if np_info.get("invoice_url"):
             payment_block = f"""
@@ -3900,8 +3921,10 @@ async def admin_transmit_manifest(_admin: dict = Depends(require_area("orders", 
 @api.get("/admin/dispatch/{date}/manifest.pdf")
 async def admin_dispatch_manifest_pdf(date: str,
                                       _admin: dict = Depends(require_area("orders", "view"))):
-    """Manifeste(s) transmis pour la date donnée, fusionné(s) en un seul PDF.
-    Disponible dès que « Transmettre le manifeste » a été fait ce jour-là."""
+    """Manifeste(s) transmis pour la date donnée.
+    Essaie d'abord de récupérer le PDF officiel Postes Canada via les hrefs
+    stockés. Si aucun href valide n'est disponible (sandbox, lien expiré, etc.),
+    génère un récapitulatif interne des commandes du lot."""
     docs = await db.manifests.find({"dispatch_date": date}, {"_id": 0}).sort("created_at", 1).to_list(50)
     if not docs:
         raise HTTPException(404, "Aucun manifeste transmis pour cette date.")
@@ -3911,8 +3934,6 @@ async def admin_dispatch_manifest_pdf(date: str,
         for h in (d.get("manifest_links") or []):
             if h and h not in hrefs:
                 hrefs.append(h)
-    if not hrefs:
-        raise HTTPException(404, "Manifeste sans document téléchargeable.")
 
     pdfs = []
     for href in hrefs:
@@ -3922,12 +3943,70 @@ async def admin_dispatch_manifest_pdf(date: str,
                 pdfs.append(r.content)
         except Exception as ex:  # pragma: no cover
             logging.error("manifest artifact failed (%s): %s", href, ex)
-    if not pdfs:
-        raise HTTPException(502, "Impossible de récupérer le manifeste auprès de Postes Canada.")
 
-    merged = _merge_pdfs(pdfs) if len(pdfs) > 1 else pdfs[0]
+    if pdfs:
+        merged = _merge_pdfs(pdfs) if len(pdfs) > 1 else pdfs[0]
+        return Response(
+            content=merged,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="manifeste-{date}.pdf"'},
+        )
+
+    # Fallback : générer un récapitulatif interne des commandes du lot.
+    orders = await db.orders.find(
+        {"payment_status": "paid", "dispatch_batch": date,
+         "shipping_info.label_url": {"$nin": [None, ""]}},
+        {"_id": 0, "order_number": 1, "shipping_info": 1, "shipping_address": 1, "total": 1},
+    ).sort("created_at", 1).to_list(500)
+    if not orders:
+        raise HTTPException(404, "Aucune commande étiquetée pour cette date.")
+
+    lines = [
+        f"<h1>Manifeste — lot du {date}</h1>",
+        f"<p style='font-size:11px;color:#888'>Généré localement — document de référence interne</p>",
+        "<table style='width:100%;border-collapse:collapse;font-family:monospace;font-size:11px'>",
+        "<tr style='background:#f0f0f0'><th style='padding:4px;border:1px solid #ccc'>Commande</th>"
+        "<th style='padding:4px;border:1px solid #ccc'>Destinataire</th>"
+        "<th style='padding:4px;border:1px solid #ccc'>Suivi</th>"
+        "<th style='padding:4px;border:1px solid #ccc'>Total</th></tr>",
+    ]
+    total_sum = 0.0
+    for o in orders:
+        info = o.get("shipping_info") or {}
+        addr = o.get("shipping_address") or {}
+        dest = f"{addr.get('full_name', '')} — {addr.get('city', '')}, {addr.get('province', '')}"
+        pin = info.get("tracking_number", "")
+        total = o.get("total") or 0
+        total_sum += float(total)
+        lines.append(
+            f"<tr><td style='padding:4px;border:1px solid #ccc'>{o.get('order_number','')}</td>"
+            f"<td style='padding:4px;border:1px solid #ccc'>{dest}</td>"
+            f"<td style='padding:4px;border:1px solid #ccc'>{pin}</td>"
+            f"<td style='padding:4px;border:1px solid #ccc;text-align:right'>${float(total):.2f}</td></tr>"
+        )
+    lines += [
+        f"<tr style='font-weight:bold'><td colspan='3' style='padding:4px;border:1px solid #ccc;text-align:right'>Total</td>"
+        f"<td style='padding:4px;border:1px solid #ccc;text-align:right'>${total_sum:.2f}</td></tr>",
+        "</table>",
+        f"<p style='font-size:10px;margin-top:12px'>{len(orders)} envoi(s) · Postes Canada — transmis le {date}</p>",
+    ]
+    html = (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+        "<style>body{font-family:sans-serif;margin:24px;color:#111}</style></head>"
+        f"<body>{''.join(lines)}</body></html>"
+    )
+    from weasyprint import HTML as WP
+    try:
+        pdf_bytes = WP(string=html).write_pdf()
+    except Exception:
+        # weasyprint non installé — retourner le HTML directement
+        return Response(
+            content=html.encode("utf-8"),
+            media_type="text/html",
+            headers={"Content-Disposition": f'inline; filename="manifeste-{date}.html"'},
+        )
     return Response(
-        content=merged,
+        content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="manifeste-{date}.pdf"'},
     )
@@ -4029,18 +4108,19 @@ async def admin_dispatch_today(date: Optional[str] = None,
             "line_label_cost_source": "actual_cp" if cost_due is not None else None,
         }
         # « Étiquetées » = étiquettes émises CE JOUR (shipped_at), pas les
-        # reports de lots précédents qui restent à traiter.
+        # Critère principal : dispatch_batch == day (lot commandé ce jour).
+        # Critère secondaire : shipped_at tombe ce jour en heure locale.
+        # Les deux sont valides — évite la perte silencieuse des commandes dont
+        # shipped_at est en UTC (ex. 00h32 UTC = veille en heure locale).
         shipped_at = info.get("shipped_at") or ""
-        labeled_today = False
-        if shipped_at:
+        labeled_today = o.get("dispatch_batch") == day  # critère primaire
+        if not labeled_today and shipped_at:
             try:
                 shipped_dt = datetime.fromisoformat(shipped_at.replace("Z", "+00:00"))
                 if shipped_dt.tzinfo is None:
                     shipped_dt = shipped_dt.replace(tzinfo=timezone.utc)
                 labeled_today = shipped_dt.astimezone(ZoneInfo(ORDER_CUTOFF_TZ)).date().isoformat() == day
             except Exception:
-                # Fallback compatible pour d'anciens formats : au pire, conserve
-                # le comportement historique basé sur le préfixe de date.
                 labeled_today = shipped_at.startswith(day)
         if row["label_url"] and row["tracking_number"]:
             if labeled_today:

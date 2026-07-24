@@ -145,6 +145,10 @@ export default function AdminDispatch() {
     window.open(`${root}/api/admin/dispatch/${date}/manifest.pdf`, "_blank", "noopener");
   };
 
+  const manifestUrl = manifestStatus?.transmitted
+    ? `${API_BASE.replace(/\/api$/, "")}/api/admin/dispatch/${date}/manifest.pdf`
+    : "";
+
   const counts = data?.counts || { to_label: 0, labeled: 0, overdue: 0 };
   const totals = data?.totals;
   const configured = data?.configured;
@@ -209,6 +213,15 @@ export default function AdminDispatch() {
             className="bg-red-600 text-white font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-red-700 disabled:opacity-50 flex items-center gap-2">
             <Send size={14} /> {txBusy ? "…" : "Transmettre le manifeste"}
           </button>
+        </div>
+      )}
+
+      {manifestStatus?.transmitted && manifestUrl && (
+        <div className="mt-3 flex flex-wrap items-center gap-3 bg-white border border-ink/10 px-4 py-3 font-mono text-[11px] text-foreground/70" data-testid="dispatch-manifest-link">
+          <span>Manifeste transmis pour ce lot.</span>
+          <a href={manifestUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-ink">
+            Télécharger le PDF du manifeste
+          </a>
         </div>
       )}
 

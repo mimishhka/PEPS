@@ -238,6 +238,9 @@ function OrderDetail({ order, onClose, onUpdate }) {
   const [cpService, setCpService] = useState("");
   const [cpBusy, setCpBusy] = useState(false);
   const [shipInfo, setShipInfo] = useState(order.shipping_info || {});
+  const manifestUrl = shipInfo.cp_transmitted && order.dispatch_batch
+    ? `${API_BASE.replace(/\/api$/, "")}/api/admin/dispatch/${order.dispatch_batch}/manifest.pdf`
+    : "";
 
   useEffect(() => { setShipInfo(order.shipping_info || {}); }, [order.shipping_info]);
 
@@ -472,6 +475,39 @@ function OrderDetail({ order, onClose, onUpdate }) {
             {/* Postes Canada — le champ manuel ci-dessus reste le repli si
                 l'API n'est pas configurée. */}
             <div className="mt-4 pt-4 border-t border-ink/10">
+              {shipInfo?.label_url && (
+                <div className="flex flex-wrap items-center gap-3 mb-3">
+                  <a
+                    href={`${API_BASE.replace(/\/api$/, "")}${shipInfo.label_url}`}
+                    target="_blank" rel="noopener noreferrer"
+                    data-testid="download-label-btn"
+                    className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 inline-flex items-center gap-2"
+                  >
+                    <Download size={14} /> Download label PDF
+                  </a>
+                  <span className={`font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 border ${
+                    shipInfo.cp_transmitted ? "border-green-600 text-green-700" : "border-red-600 text-red-700"}`}>
+                    {shipInfo.cp_transmitted ? "Manifest transmitted" : "Not transmitted"}
+                  </span>
+                  {manifestUrl && (
+                    <a
+                      href={manifestUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="download-manifest-btn"
+                      className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
+                    >
+                      <Download size={14} /> Download manifest PDF
+                    </a>
+                  )}
+                  {!shipInfo.cp_transmitted && (
+                    <button onClick={voidLabel} disabled={cpBusy} data-testid="void-label-btn"
+                      className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-50">
+                      Void label
+                    </button>
+                  )}
+                </div>
+              )}
               {cpRates === null && (
                 <div className="font-mono text-[10px] text-foreground/50">Checking Canada Post…</div>
               )}
@@ -496,6 +532,17 @@ function OrderDetail({ order, onClose, onUpdate }) {
                         shipInfo.cp_transmitted ? "border-green-600 text-green-700" : "border-red-600 text-red-700"}`}>
                         {shipInfo.cp_transmitted ? "Manifest transmitted" : "Not transmitted"}
                       </span>
+                      {manifestUrl && (
+                        <a
+                          href={manifestUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          data-testid="download-manifest-btn"
+                          className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
+                        >
+                          <Download size={14} /> Download manifest PDF
+                        </a>
+                      )}
                       {!shipInfo.cp_transmitted && (
                         <button onClick={voidLabel} disabled={cpBusy} data-testid="void-label-btn"
                           className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-50">
