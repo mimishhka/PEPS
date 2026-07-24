@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Printer, Send, RefreshCw, Package, AlertTriangle, ExternalLink, CheckCircle2 } from "lucide-react";
+import { Printer, Send, RefreshCw, Package, AlertTriangle, ExternalLink, CheckCircle2, Download } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 
@@ -145,6 +145,28 @@ export default function AdminDispatch() {
     window.open(`${root}/api/admin/dispatch/${date}/manifest.pdf`, "_blank", "noopener");
   };
 
+  const [retryBusy, setRetryBusy] = useState(false);
+
+  const retryManifest = async () => {
+    setRetryBusy(true);
+    try {
+      const { data: res } = await api.post(`/admin/dispatch/${date}/retry-manifest`);
+      if (res.pdf_source === "cp") {
+        toast.success("Manifeste Postes Canada officiel récupéré !");
+      } else {
+        toast.success("Manifeste généré (récapitulatif interne — PDF CP non disponible en devportal).");
+      }
+      load();
+      // Ouvrir le PDF (CP officiel ou fallback interne)
+      const root = API_BASE.replace(/\/api$/, "");
+      window.open(`${root}/api/admin/dispatch/${date}/manifest.pdf`, "_blank", "noopener");
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setRetryBusy(false);
+    }
+  };
+
   const manifestUrl = manifestStatus?.transmitted
     ? `${API_BASE.replace(/\/api$/, "")}/api/admin/dispatch/${date}/manifest.pdf`
     : "";
@@ -264,13 +286,22 @@ export default function AdminDispatch() {
           <Printer size={14} /> Imprimer bons ({counts.labeled})
         </button>
         <button
+          onClick={retryManifest}
+          disabled={retryBusy || !manifestStatus?.transmitted}
+          data-testid="dispatch-fetch-manifest"
+          className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/5 disabled:opacity-40 flex items-center gap-2"
+          title="Récupérer le manifeste officiel auprès de Postes Canada"
+        >
+          <Download size={14} /> {retryBusy ? "Récupération…" : "Manifeste CP"}
+        </button>
+        <button
           onClick={openManifest}
           disabled={!manifestStatus?.transmitted}
           data-testid="dispatch-view-manifest"
           className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/5 disabled:opacity-40 flex items-center gap-2"
           title={manifestStatus?.transmitted ? "Voir et imprimer le manifeste" : "Aucun manifeste transmis pour cette date"}
         >
-          <Printer size={14} /> Manifeste ({manifestStatus?.manifests || 0})
+          <Printer size={14} /> Imprimer manifeste
         </button>
       </div>
 

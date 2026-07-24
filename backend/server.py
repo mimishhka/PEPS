@@ -2110,22 +2110,46 @@ async def _canada_post_get_artifact_openapi(href: str, order_id: str) -> Optiona
 
 
 async def _canada_post_get_manifest_artifact_openapi(href: str, date_str: str) -> Optional[str]:
-    """Telecharge le PDF du manifeste (artifact) a partir du href retourne par /manifests."""
+    """Télécharge le PDF du manifeste via le flux en 2 étapes du devportal CP:
+    1) GET {manifest_href} Accept:application/json  → obtient le lien "artifact"
+    2) GET {artifact_href} Accept:application/pdf   → télécharge le PDF réel.
+    """
     if not href:
         return None
     try:
-        r = await _cp_openapi_call("GET", href, accept="application/pdf")
+        # Étape 1: récupérer le JSON du manifeste pour trouver le lien artifact
+        r_json = await _cp_openapi_call("GET", href, accept="application/json")
+        if r_json.status_code >= 400:
+            logging.error("CP manifest-artifact step1 %s: %s", r_json.status_code, _cp_error_detail(r_json))
+            return None
+        manifest_data = _cp_safe_json(r_json)
+        links = manifest_data.get("links") or []
+        artifact_href = next(
+            (l.get("href") for l in links
+             if isinstance(l, dict) and l.get("rel") == "artifact" and l.get("href")),
+            None,
+        )
+        if not artifact_href:
+            logging.error("CP manifest-artifact: no artifact link found in manifest %s", href)
+            return None
+
+        # Étape 2: télécharger le PDF via le lien artifact
+        r_pdf = await _cp_openapi_call("GET", artifact_href, accept="application/pdf")
+        if r_pdf.status_code >= 400:
+            logging.error("CP manifest-artifact step2 %s: %s", r_pdf.status_code, _cp_error_detail(r_pdf))
+            return None
+        if r_pdf.content[:4] != b"%PDF":
+            logging.error("CP manifest-artifact: response is not a PDF (%d bytes)", len(r_pdf.content))
+            return None
+        fname = f"manifest-{date_str}-{uuid.uuid4().hex[:8]}.pdf"
+        (LABEL_UPLOAD_DIR / fname).write_bytes(r_pdf.content)
+        logging.info("CP manifest PDF saved: %s", fname)
+        return f"/uploads/labels/{fname}"
     except HTTPException:
         return None
     except Exception as ex:
         logging.error("Canada Post OpenAPI get-manifest-artifact failed: %s", ex)
         return None
-    if r.status_code >= 400:
-        logging.error("Canada Post OpenAPI get-manifest-artifact %s: %s", r.status_code, _cp_error_detail(r))
-        return None
-    fname = f"manifest-{date_str}-{uuid.uuid4().hex[:8]}.pdf"
-    (LABEL_UPLOAD_DIR / fname).write_bytes(r.content)
-    return f"/uploads/labels/{fname}"
 
 
 async def _canada_post_shipment_price(shipment_id: str, preferred_service_code: Optional[str] = None) -> Optional[dict]:
@@ -3922,13 +3946,24 @@ async def admin_transmit_manifest(_admin: dict = Depends(require_area("orders", 
 async def admin_dispatch_manifest_pdf(date: str,
                                       _admin: dict = Depends(require_area("orders", "view"))):
     """Manifeste(s) transmis pour la date donnée.
-    Essaie d'abord de récupérer le PDF officiel Postes Canada via les hrefs
-    stockés. Si aucun href valide n'est disponible (sandbox, lien expiré, etc.),
-    génère un récapitulatif interne des commandes du lot."""
+    Priorité: 1) PDF local sauvegardé, 2) hrefs CP en direct, 3) récapitulatif interne."""
     docs = await db.manifests.find({"dispatch_date": date}, {"_id": 0}).sort("created_at", 1).to_list(50)
     if not docs:
         raise HTTPException(404, "Aucun manifeste transmis pour cette date.")
 
+    # 1) PDF déjà téléchargé localement (par retry-manifest)
+    for d in docs:
+        local_url = d.get("local_pdf_url") or ""
+        if local_url and local_url.startswith("/uploads/labels/"):
+            fpath = LABEL_UPLOAD_DIR / local_url.split("/")[-1]
+            if fpath.exists():
+                return Response(
+                    content=fpath.read_bytes(),
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="manifeste-{date}.pdf"'},
+                )
+
+    # 2) Hrefs CP disponibles — tentative de téléchargement direct
     hrefs = []
     for d in docs:
         for h in (d.get("manifest_links") or []):
@@ -3952,7 +3987,7 @@ async def admin_dispatch_manifest_pdf(date: str,
             headers={"Content-Disposition": f'inline; filename="manifeste-{date}.pdf"'},
         )
 
-    # Fallback : générer un récapitulatif interne des commandes du lot.
+    # 3) Fallback : récapitulatif interne des commandes du lot
     orders = await db.orders.find(
         {"payment_status": "paid", "dispatch_batch": date,
          "shipping_info.label_url": {"$nin": [None, ""]}},
@@ -3963,7 +3998,7 @@ async def admin_dispatch_manifest_pdf(date: str,
 
     lines = [
         f"<h1>Manifeste — lot du {date}</h1>",
-        f"<p style='font-size:11px;color:#888'>Généré localement — document de référence interne</p>",
+        f"<p style='font-size:11px;color:#888'>Récapitulatif interne — utilisez « Récupérer manifeste CP » pour le document officiel</p>",
         "<table style='width:100%;border-collapse:collapse;font-family:monospace;font-size:11px'>",
         "<tr style='background:#f0f0f0'><th style='padding:4px;border:1px solid #ccc'>Commande</th>"
         "<th style='padding:4px;border:1px solid #ccc'>Destinataire</th>"
@@ -3999,7 +4034,6 @@ async def admin_dispatch_manifest_pdf(date: str,
     try:
         pdf_bytes = WP(string=html).write_pdf()
     except Exception:
-        # weasyprint non installé — retourner le HTML directement
         return Response(
             content=html.encode("utf-8"),
             media_type="text/html",
@@ -4012,13 +4046,89 @@ async def admin_dispatch_manifest_pdf(date: str,
     )
 
 
+@api.post("/admin/dispatch/{date}/retry-manifest")
+async def admin_retry_manifest(date: str,
+                               _admin: dict = Depends(require_area("orders", "manage"))):
+    """Récupère le manifeste officiel Postes Canada pour la date donnée.
+    Appelle GET /manifests pour lister les vrais hrefs existants, puis
+    télécharge le PDF via le flux en 2 étapes (JSON → artifact → PDF).
+    N'essaie pas de re-transmettre les lots déjà transmis."""
+    if not is_canada_post_configured():
+        raise HTTPException(503, "Canada Post is not configured")
+    if not _cp_use_openapi():
+        raise HTTPException(400, "retry-manifest nécessite le mode OpenAPI")
+
+    mailed_by, mobo = _cp_path_customers()
+
+    # Étape 1: lister les manifests existants via GET /manifests
+    try:
+        r = await _cp_openapi_call("GET", f"/{mailed_by}/{mobo}/manifests")
+    except Exception as ex:
+        raise HTTPException(502, f"Impossible de contacter Canada Post: {ex}")
+    if r.status_code >= 400:
+        raise HTTPException(502, f"Canada Post GET /manifests {r.status_code}: {_cp_error_detail(r)}")
+
+    raw = r.json() if r.headers.get("content-type","").startswith("application/json") else []
+    if not isinstance(raw, list):
+        raw = []
+    manifest_hrefs = [l.get("href") for l in raw
+                      if isinstance(l, dict) and l.get("rel") == "manifest" and l.get("href")]
+    if not manifest_hrefs:
+        # Fallback: essayer aussi les hrefs stockés en base pour cette date
+        manifest_doc = await db.manifests.find_one({"dispatch_date": date}, {"_id": 0})
+        stored_hrefs = [h for h in (manifest_doc or {}).get("manifest_links", [])
+                        if h and "workgroup1" not in h and "0000000001" not in h]
+        manifest_hrefs = stored_hrefs
+
+    if not manifest_hrefs:
+        raise HTTPException(404, "Aucun manifeste trouvé auprès de Canada Post pour cette date.")
+
+    # Étape 2: télécharger le PDF de chaque manifest et sauvegarder le premier valide
+    local_pdf_url: Optional[str] = None
+    for href in manifest_hrefs:
+        pdf_url = await _canada_post_get_manifest_artifact_openapi(href, date)
+        if pdf_url:
+            local_pdf_url = pdf_url
+            logging.info("Manifest PDF saved for %s: %s", date, pdf_url)
+            break
+
+    # Mettre à jour le document manifeste en base
+    now = datetime.now(timezone.utc).isoformat()
+    group_ids = await db.orders.distinct(
+        "shipping_info.cp_group_id",
+        {"payment_status": "paid", "dispatch_batch": date,
+         "shipping_info.cp_group_id": {"$nin": [None, ""]}}
+    )
+    await db.manifests.update_one(
+        {"dispatch_date": date},
+        {"$set": {
+            "manifest_links": manifest_hrefs,
+            "local_pdf_url": local_pdf_url,
+            "refreshed_at": now,
+            **({"group_ids": group_ids} if group_ids else {}),
+        }},
+        upsert=True,
+    )
+
+    return {
+        "ok": True,
+        "date": date,
+        "manifest_hrefs": manifest_hrefs,
+        "local_pdf_url": local_pdf_url,
+        "pdf_source": "cp" if local_pdf_url else "fallback",
+    }
+
+
 @api.get("/admin/dispatch/{date}/manifest-status")
 async def admin_dispatch_manifest_status(date: str,
                                          _admin: dict = Depends(require_area("orders", "view"))):
     """Indique si un manifeste a été transmis pour cette date (pilote le bouton
     de téléchargement dans l'écran Dispatch)."""
     count = await db.manifests.count_documents({"dispatch_date": date})
-    return {"date": date, "transmitted": count > 0, "manifests": count}
+    # Vérifie aussi si le PDF manifeste est déjà sauvegardé localement
+    doc = await db.manifests.find_one({"dispatch_date": date}, {"_id": 0})
+    local_pdf = (doc or {}).get("local_pdf_url")
+    return {"date": date, "transmitted": count > 0, "manifests": count, "local_pdf_url": local_pdf}
 
 
 # ---------------------------------------------------------------------------
