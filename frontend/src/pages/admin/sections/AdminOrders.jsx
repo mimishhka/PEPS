@@ -237,6 +237,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
   const [cpRates, setCpRates] = useState(null);       // null = pas chargé, [] = non configuré
   const [cpService, setCpService] = useState("");
   const [cpBusy, setCpBusy] = useState(false);
+  const [deliverySyncBusy, setDeliverySyncBusy] = useState(false);
   const [shipInfo, setShipInfo] = useState(order.shipping_info || {});
   const manifestUrl = shipInfo.cp_transmitted && order.dispatch_batch
     ? `${API_BASE.replace(/\/api$/, "")}/api/admin/dispatch/${order.dispatch_batch}/manifest.pdf`
@@ -322,6 +323,29 @@ function OrderDetail({ order, onClose, onUpdate }) {
       toast.success("Tracking saved — order marked as shipped");
       onUpdate();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+
+  const syncDeliveredFromTracking = async () => {
+    setDeliverySyncBusy(true);
+    try {
+      const { data } = await api.post(`/admin/orders/${order.id}/sync-delivery`);
+      if (!data?.tracked) {
+        toast.error("Repérage Canada Post indisponible pour le moment.");
+        return;
+      }
+      if (data?.updated) {
+        toast.success("Livraison confirmée: statut mis à jour à delivered.");
+      } else if (data?.delivered) {
+        toast.success("Commande déjà marquée delivered.");
+      } else {
+        toast("Colis pas encore livré selon le repérage.");
+      }
+      onUpdate();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setDeliverySyncBusy(false);
+    }
   };
 
   const addNote = async () => {
@@ -467,6 +491,17 @@ function OrderDetail({ order, onClose, onUpdate }) {
               <button onClick={saveShipping} data-testid="save-shipping-btn" className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-foreground/80">
                 <Save size={14} /> Save & Mark Shipped
               </button>
+              {tracking && order.fulfillment_status !== "delivered" && (
+                <button
+                  onClick={syncDeliveredFromTracking}
+                  disabled={deliverySyncBusy}
+                  data-testid="sync-delivery-btn"
+                  className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:bg-ink hover:text-white disabled:opacity-50"
+                  title="Vérifier le repérage Canada Post et passer la commande en livré"
+                >
+                  <Truck size={14} /> {deliverySyncBusy ? "Vérification…" : "Vérifier livraison"}
+                </button>
+              )}
             </div>
             {order.shipping_info?.shipped_at && (
               <div className="font-mono text-[10px] text-foreground/50 mt-2">Shipped at: {order.shipping_info.shipped_at}</div>

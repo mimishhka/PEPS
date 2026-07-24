@@ -145,6 +145,9 @@ CANADA_POST_MOBO = os.environ.get("CANADA_POST_MOBO", CANADA_POST_CUSTOMER_NUMBE
 CANADA_POST_INTENDED_METHOD = os.environ.get("CANADA_POST_INTENDED_METHOD", "").strip()
 CANADA_POST_DEFAULT_SERVICE_CODE = os.environ.get("CANADA_POST_DEFAULT_SERVICE_CODE", "DOM.EP").strip() or "DOM.EP"
 CANADA_POST_AUTO_LABEL_INTERVAL_SECONDS = int(os.environ.get("CANADA_POST_AUTO_LABEL_INTERVAL_SECONDS", "60"))
+CANADA_POST_AUTO_DELIVERY_SYNC_SECONDS = int(os.environ.get("CANADA_POST_AUTO_DELIVERY_SYNC_SECONDS", "900"))
+CANADA_POST_SANDBOX_DELIVERY_FALLBACK = os.environ.get("CANADA_POST_SANDBOX_DELIVERY_FALLBACK", "false").strip().lower() == "true"
+CANADA_POST_SANDBOX_DELIVER_AFTER_HOURS = int(os.environ.get("CANADA_POST_SANDBOX_DELIVER_AFTER_HOURS", "24"))
 
 # ---------------------------------------------------------------------------
 # Dispatch batch (fenêtre de traitement des commandes)
@@ -1963,6 +1966,51 @@ async def _canada_post_track(pin: str) -> Optional[dict]:
         return None
 
 
+def _cp_tracking_indicates_delivered(track_data: Optional[dict]) -> tuple[bool, str]:
+    """Heuristique prudente pour détecter une livraison confirmée via repérage CP.
+    Retourne (is_delivered, evidence_text)."""
+    if not isinstance(track_data, dict):
+        return False, ""
+    texts: list[str] = []
+    summary = str(track_data.get("summary") or "").strip()
+    if summary:
+        texts.append(summary)
+    events = track_data.get("events") if isinstance(track_data.get("events"), list) else []
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        desc = str(ev.get("description") or "").strip()
+        if desc:
+            texts.append(desc)
+
+    # Mots-clés de livraison finale (évite "out for delivery" / "en cours de livraison").
+    delivered_re = re.compile(
+        r"\b(delivered|item delivered|successfully delivered|livr[ée]e?|colis livr[ée]|livraison effectu[ée])\b",
+        re.IGNORECASE,
+    )
+    for txt in texts:
+        if delivered_re.search(txt):
+            return True, txt
+    return False, ""
+
+
+def _sandbox_fallback_ready(shipped_at_iso: str) -> bool:
+    """En sandbox uniquement: autorise un passage auto à delivered après délai,
+    si le tracking CP est indisponible."""
+    if not (CANADA_POST_ENVIRONMENT == "dev" and CANADA_POST_SANDBOX_DELIVERY_FALLBACK):
+        return False
+    if not shipped_at_iso:
+        return False
+    try:
+        dt = datetime.fromisoformat(shipped_at_iso.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - dt.astimezone(timezone.utc)
+        return age >= timedelta(hours=max(1, CANADA_POST_SANDBOX_DELIVER_AFTER_HOURS))
+    except Exception:
+        return False
+
+
 def is_canada_post_configured() -> bool:
     """Vrai seulement si les trois éléments indispensables sont présents.
     Sinon TOUT retombe proprement sur le tarif fixe / le suivi manuel."""
@@ -2602,6 +2650,73 @@ async def _auto_label_paid_orders_watchdog() -> None:
         await asyncio.sleep(max(15, CANADA_POST_AUTO_LABEL_INTERVAL_SECONDS))
 
 
+async def _auto_sync_delivered_orders_once(limit: int = 200) -> int:
+    """Passe automatiquement en 'delivered' les commandes expédiées dont le
+    repérage Canada Post confirme la livraison."""
+    if not CANADA_POST_API_KEY:
+        return 0
+    rows = await db.orders.find(
+        {
+            "fulfillment_status": "shipped",
+            "shipping_info.tracking_number": {"$nin": [None, ""]},
+        },
+        {"_id": 0, "id": 1, "order_number": 1, "shipping_info": 1},
+    ).sort("shipping_info.shipped_at", 1).to_list(max(1, min(limit, 1000)))
+
+    updated = 0
+    for order in rows:
+        info = order.get("shipping_info") or {}
+        pin = str(info.get("tracking_number") or "").strip()
+        if not pin:
+            continue
+
+        live = await _canada_post_track(pin)
+        delivered, evidence = _cp_tracking_indicates_delivered(live)
+        source = "canada_post_tracking_auto"
+        if not delivered:
+            shipped_at = str(info.get("shipped_at") or "")
+            if _sandbox_fallback_ready(shipped_at):
+                delivered = True
+                evidence = "sandbox fallback after delay"
+                source = "sandbox_time_fallback_auto"
+        if not delivered:
+            continue
+
+        now = datetime.now(timezone.utc).isoformat()
+        res = await db.orders.update_one(
+            {"id": order["id"], "fulfillment_status": "shipped"},
+            {
+                "$set": {
+                    "fulfillment_status": "delivered",
+                    "shipping_info.delivered_at": now,
+                    "shipping_info.delivery_source": source,
+                },
+                "$push": {
+                    "notes": {
+                        "id": str(uuid.uuid4()),
+                        "text": f"Statut livré auto-confirmé par repérage Canada Post ({pin}) — {evidence or 'delivered'}.",
+                        "author": "system",
+                        "created_at": now,
+                    }
+                },
+            },
+        )
+        if res.modified_count:
+            updated += 1
+    return updated
+
+
+async def _auto_sync_delivered_orders_watchdog() -> None:
+    while True:
+        try:
+            count = await _auto_sync_delivered_orders_once()
+            if count:
+                logging.info("auto delivery watchdog: %d order(s) marked delivered", count)
+        except Exception as ex:  # pragma: no cover
+            logging.error("auto delivery watchdog failed: %s", ex)
+        await asyncio.sleep(max(60, CANADA_POST_AUTO_DELIVERY_SYNC_SECONDS))
+
+
 # ---------------------------------------------------------------------------
 # Email helpers (Resend)
 # ---------------------------------------------------------------------------
@@ -3154,6 +3269,118 @@ async def order_tracking(order_id: str, request: Request):
     if live:
         return {"tracked": True, "source": "canada_post_live", **live}
     return {"tracked": False, "reason": "unavailable_or_not_configured", "pin": pin}
+
+
+@api.post("/admin/orders/{order_id}/sync-delivery")
+async def admin_sync_delivery_status(order_id: str,
+                                     _admin: dict = Depends(require_area("orders", "manage"))):
+    """Vérifie le repérage CP et passe la commande à 'delivered' si la livraison
+    est confirmée par le transporteur."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+
+    info = order.get("shipping_info") or {}
+    pin = str(info.get("tracking_number") or "").strip()
+    if not pin:
+        raise HTTPException(400, "No tracking number on this order")
+
+    live = await _canada_post_track(pin)
+    if not live:
+        # Sandbox: fallback temporel pour permettre les tests E2E malgré
+        # l'auth tracking CP indisponible.
+        shipped_at = str(info.get("shipped_at") or "")
+        if _sandbox_fallback_ready(shipped_at):
+            now = datetime.now(timezone.utc).isoformat()
+            await db.orders.update_one(
+                {"id": order_id, "fulfillment_status": "shipped"},
+                {
+                    "$set": {
+                        "fulfillment_status": "delivered",
+                        "shipping_info.delivered_at": now,
+                        "shipping_info.delivery_source": "sandbox_time_fallback_manual",
+                    },
+                    "$push": {
+                        "notes": {
+                            "id": str(uuid.uuid4()),
+                            "text": f"Statut livré (fallback sandbox après délai) — {pin}.",
+                            "author": "system",
+                            "created_at": now,
+                        }
+                    },
+                },
+            )
+            updated = await db.orders.find_one({"id": order_id}, {"_id": 0, "fulfillment_status": 1, "shipping_info": 1})
+            return {
+                "ok": True,
+                "tracked": False,
+                "delivered": True,
+                "updated": True,
+                "reason": "sandbox_fallback",
+                "fulfillment_status": (updated or {}).get("fulfillment_status"),
+                "shipping_info": (updated or {}).get("shipping_info") or {},
+            }
+        return {
+            "ok": True,
+            "tracked": False,
+            "updated": False,
+            "reason": "tracking_unavailable",
+            "fulfillment_status": order.get("fulfillment_status"),
+        }
+
+    delivered, evidence = _cp_tracking_indicates_delivered(live)
+    if not delivered:
+        return {
+            "ok": True,
+            "tracked": True,
+            "delivered": False,
+            "updated": False,
+            "reason": "not_delivered_yet",
+            "fulfillment_status": order.get("fulfillment_status"),
+            "summary": live.get("summary"),
+        }
+
+    # Déjà livré -> rien à changer.
+    if str(order.get("fulfillment_status") or "").lower() == "delivered":
+        return {
+            "ok": True,
+            "tracked": True,
+            "delivered": True,
+            "updated": False,
+            "reason": "already_delivered",
+            "fulfillment_status": "delivered",
+            "summary": live.get("summary"),
+        }
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.orders.update_one(
+        {"id": order_id},
+        {
+            "$set": {
+                "fulfillment_status": "delivered",
+                "shipping_info.delivered_at": now,
+                "shipping_info.delivery_source": "canada_post_tracking",
+            },
+            "$push": {
+                "notes": {
+                    "id": str(uuid.uuid4()),
+                    "text": f"Statut livré confirmé par repérage Canada Post ({pin}) — {evidence or 'delivered'}.",
+                    "author": "system",
+                    "created_at": now,
+                }
+            },
+        },
+    )
+    updated = await db.orders.find_one({"id": order_id}, {"_id": 0, "fulfillment_status": 1, "shipping_info": 1})
+    return {
+        "ok": True,
+        "tracked": True,
+        "delivered": True,
+        "updated": True,
+        "fulfillment_status": (updated or {}).get("fulfillment_status"),
+        "shipping_info": (updated or {}).get("shipping_info") or {},
+        "summary": live.get("summary"),
+    }
 
 
 _ORDER_STATUS_GROUPS = {
@@ -4291,21 +4518,33 @@ async def admin_dispatch_today(date: Optional[str] = None,
         "dispatch_batch": {"$lt": day},
         "fulfillment_status": {"$in": ["processing", "pending"]},
     })
-    # Bilan financier du jour :
-    # - cp_billed_total : montant transporteur (Postes Canada)
-    # - customer_charged_total : montant facturé au client au checkout
-    cp_billed_total = round(sum(float(r.get("cost_due") or 0) for r in labeled), 2)
-    customer_charged_total = round(sum(float(o.get("shipping") or 0) for o in orders
-                                       if (o.get("shipping_info") or {}).get("label_url")), 2)
+    # Bilan financier du jour (règle métier Dispatch) :
+    # - estimated_labels_total: somme des coûts par ligne de commande affichée
+    #   dans Dispatch ("à étiqueter" + "étiquetées").
+    # - customer_charged_total: somme des frais facturés aux clients (champ shipping de la facture)
+    # - gap_total: écart = manifeste total dû - facturé aux clients
+    dispatch_lines = [*to_label, *labeled]
+    estimated_labels_total = round(
+        sum(float(r.get("line_label_cost") or 0) for r in dispatch_lines if r.get("line_label_cost") is not None),
+        2,
+    )
+    customer_charged_total = round(sum(float(r.get("shipping_charged") or 0) for r in labeled), 2)
     manifest_doc = await db.manifests.find_one({"dispatch_date": day}, {"_id": 0}, sort=[("created_at", -1)])
+    manifest_total_due = None
+    try:
+        manifest_total_due = float(((manifest_doc or {}).get("cost") or {}).get("total_due"))
+    except Exception:
+        manifest_total_due = None
+    gap_total = (round(manifest_total_due - customer_charged_total, 2)
+                 if manifest_total_due is not None else None)
     return {
         "date": day,
         "configured": is_canada_post_configured(),
         "totals": {
-            "labels_cost": cp_billed_total,
-            "shipping_charged": cp_billed_total,
+            "labels_cost": estimated_labels_total,
+            "shipping_charged": round(sum(float(r.get("cost_due") or 0) for r in labeled), 2),
             "customer_shipping_charged": customer_charged_total,
-            "margin": round(customer_charged_total - cp_billed_total, 2),
+            "margin": gap_total,
             "manifest": (manifest_doc or {}).get("cost"),
         },
         "counts": {"to_label": len(to_label), "labeled": len(labeled), "overdue": overdue},
@@ -6481,6 +6720,7 @@ async def startup_event():
         asyncio.create_task(_backfill_dispatch_batch())
         # Dispatch manuel : watchdog d'auto-étiquetage désactivé.
         # asyncio.create_task(_auto_label_paid_orders_watchdog())
+        asyncio.create_task(_auto_sync_delivered_orders_watchdog())
         asyncio.create_task(_trash_auto_purge_watchdog())
         asyncio.create_task(_rollover_watchdog())
 
