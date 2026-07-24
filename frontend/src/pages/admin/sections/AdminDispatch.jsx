@@ -148,6 +148,7 @@ export default function AdminDispatch() {
   const counts = data?.counts || { to_label: 0, labeled: 0, overdue: 0 };
   const totals = data?.totals;
   const configured = data?.configured;
+  const isCpDevportal = Boolean(cpConfig?.base_url?.includes("devportal-portaildesdeveloppeurs"));
 
   return (
     <div data-testid="admin-dispatch">
@@ -187,6 +188,11 @@ export default function AdminDispatch() {
             Env: <span className="font-bold">{cpConfig.environment || "n/a"}</span> ·
             Config: <span className={cpConfig.configured ? "text-green-700 font-bold" : "text-red-700 font-bold"}>{cpConfig.configured ? "ok" : "incomplète"}</span>
           </div>
+          {isCpDevportal && (
+            <div className="mt-2 text-amber-700">
+              Devportal CP actif: les prix et identifiants retournés peuvent rester non représentatifs et ne correspondent pas a un vrai rating live contractuel.
+            </div>
+          )}
           {!cpConfig.configured && cpConfig.missing_required?.length > 0 && (
             <div className="mt-1 text-red-700">Manquants: {cpConfig.missing_required.join(", ")}</div>
           )}
