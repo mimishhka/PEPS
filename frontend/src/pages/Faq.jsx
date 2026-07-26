@@ -287,11 +287,11 @@ export default function Faq() {
               : "Email us and we will do our best to reply within 24 hours (maximum 2 business days)."}
           </p>
           <a
-            href="mailto:info@fironova.ca"
+            href="mailto:info@fironova.com"
             className="inline-block mt-4 btn-pill btn-nova"
             data-testid="faq-contact-email"
           >
-            info@fironova.ca
+            info@fironova.com
           </a>
         </section>
       </div>

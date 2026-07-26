@@ -14,4 +14,4 @@ Disallow: /register
 Disallow: /staff-accept
 Disallow: /lab
 
-Sitemap: https://fironova.ca/sitemap.xml
+Sitemap: https://fironova.com/sitemap.xml

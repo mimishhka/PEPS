@@ -5,6 +5,7 @@
 MAGIC_TOKEN_TTL_MINUTES = 15
 MAGIC_REQUEST_MAX = 5
 MAGIC_REQUEST_WINDOW = 3600
+MAGIC_SENDER_EMAIL = os.environ.get("MAGIC_SENDER_EMAIL", "").strip()
 
 
 class MagicRequestIn(BaseModel):
@@ -52,7 +53,7 @@ async def _send_magic_email(email: str, link: str, lang: str, is_signup: bool) -
     <p style="color:#94A3B8;font-size:11px;line-height:1.5;margin:0;">Produits destin&eacute;s &agrave; la recherche uniquement (RUO). R&eacute;serv&eacute; aux 18 ans et plus.<br>For Research Use Only. 18+ only.</p>
   </div>
 </div>"""
-    await _send_email(email, subject, html)
+    await _send_email(email, subject, html, from_email=MAGIC_SENDER_EMAIL or SENDER_EMAIL)
 
 
 @api.post("/auth/magic/request")

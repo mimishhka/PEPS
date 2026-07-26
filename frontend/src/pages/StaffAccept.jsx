@@ -86,7 +86,7 @@ export default function StaffAccept() {
           </div>
         )}
         <Link to="/" className="block mt-8 font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/40 link-underline">
-          ← Back to fironova.ca
+          ← Back to fironova.com
         </Link>
       </form>
     </div>

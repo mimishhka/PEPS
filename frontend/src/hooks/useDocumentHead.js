@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 const SITE = "Fironova";
-const ORIGIN = "https://fironova.ca";
+const ORIGIN = "https://fironova.com";
 
 function setMetaByName(name, content) {
   if (content == null) return () => {};

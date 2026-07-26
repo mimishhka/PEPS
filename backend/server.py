@@ -45,7 +45,7 @@ DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_MINUTES = 60 * 24 * 7  # 7 days for ecommerce UX
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@fironova.ca")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@fironova.com")
 # Aucun défaut : un mot de passe admin en dur dans le repo est un mot de passe public.
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 if not ADMIN_PASSWORD:
@@ -53,7 +53,7 @@ if not ADMIN_PASSWORD:
         "ADMIN_PASSWORD est obligatoire. Définissez-le dans l'environnement "
         "avant de démarrer le serveur."
     )
-INTERAC_EMAIL = os.environ.get("INTERAC_EMAIL", "orders@fironova.ca")
+INTERAC_EMAIL = os.environ.get("INTERAC_EMAIL", "orders@fironova.com")
 
 # Code d'accès facultatif demandé AVANT même l'écran de login admin, côté SPA
 # publique. Ne remplace pas l'auth (JWT + rôle restent la vraie barrière sur
@@ -67,8 +67,9 @@ NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "")
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 NOWPAYMENTS_BASE_URL = "https://api.nowpayments.io/v1"
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@fironova.ca")
-ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@fironova.ca")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@fironova.com")
+MAGIC_SENDER_EMAIL = os.environ.get("MAGIC_SENDER_EMAIL", "")
+ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@fironova.com")
 STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
 FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))
@@ -940,7 +941,8 @@ async def _send_magic_email(email: str, link: str, lang: str, is_signup: bool) -
     <p style="color:#94A3B8;font-size:11px;line-height:1.5;margin:0;">Produits destin&eacute;s &agrave; la recherche uniquement (RUO). R&eacute;serv&eacute; aux 18 ans et plus.<br>For Research Use Only. 18+ only.</p>
   </div>
 </div>"""
-    await _send_email(email, subject, html)
+    from_addr = MAGIC_SENDER_EMAIL or SENDER_EMAIL
+    await _send_email(email, subject, html, from_email=from_addr)
 
 
 @api.post("/auth/magic/request")
@@ -2943,14 +2945,15 @@ def _order_email_html(order: dict, body_intro: str) -> str:
 </body></html>"""
 
 
-async def _send_email(to: str | list, subject: str, html: str) -> None:
-    """Sends via Resend; logs and continues silently on any failure (no API key, send error, etc.)."""
+async def _send_email(to: str | list, subject: str, html: str, from_email: str | None = None) -> None:
+    """Sends via Resend; logs and continues silently on any failure (no API key, send error, etc.).
+    from_email permet de surcharger l'expéditeur (ex. auth vs commandes). Défaut : SENDER_EMAIL."""
     to_list = to if isinstance(to, list) else [to]
     if not RESEND_API_KEY:
         logging.info("[email-log] would send to %s subj=%r (no RESEND_API_KEY configured)", to_list, subject)
         return
     try:
-        params = {"from": SENDER_EMAIL, "to": to_list, "subject": subject, "html": html}
+        params = {"from": from_email or SENDER_EMAIL, "to": to_list, "subject": subject, "html": html}
         result = await asyncio.to_thread(resend.Emails.send, params)
         logging.info("[email] sent id=%s to=%s", result.get("id") if isinstance(result, dict) else result, to_list)
     except Exception as e:
@@ -6909,7 +6912,7 @@ app.include_router(api)
 _cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
 if "*" in _cors_origins:
     raise RuntimeError(
-        "CORS_ORIGINS doit lister des origines explicites (ex. https://app.fironova.ca) — "
+        "CORS_ORIGINS doit lister des origines explicites (ex. https://app.fironova.com) — "
         "'*' est interdit avec une auth par cookie (credentialed)."
     )
 

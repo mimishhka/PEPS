@@ -16,8 +16,8 @@ Puis `sudo supervisorctl restart all` → `git add -A && git commit && git push`
 
 **Obligatoires** (`backend/.env`) :
 ```
-CORS_ORIGINS=https://peptide-ca.preview.emergentagent.com,https://fironova.ca
-PUBLIC_BASE_URL=https://fironova.ca
+CORS_ORIGINS=https://peptide-ca.preview.emergentagent.com,https://fironova.com
+PUBLIC_BASE_URL=https://fironova.com
 ```
 
 **Prélancement** (optionnel) :
