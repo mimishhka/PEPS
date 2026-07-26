@@ -13,7 +13,9 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [mode, setMode] = useState("magic"); // magic | password
+  const nextParam = new URLSearchParams(location.search).get("next") || "";
+  const isAdminLogin = nextParam.includes("ops-portal");
+  const [mode, setMode] = useState(isAdminLogin ? "password" : "magic"); // magic | password
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
