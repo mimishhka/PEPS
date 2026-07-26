@@ -17,6 +17,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [magicBusy, setMagicBusy] = useState(false);
+  const magicEnabled = !!supabase;
 
   useEffect(() => {
     if (!supabase) return;
@@ -56,10 +57,7 @@ export default function Login() {
   };
 
   async function sendMagicLink(targetEmail) {
-    if (!supabase) {
-      toast.error("Supabase non configure sur cet environnement.");
-      return;
-    }
+    if (!supabase) return;
     const normalized = (targetEmail || "").trim().toLowerCase();
     if (!normalized) {
       toast.error(t("auth.email") || "Email required");
@@ -98,24 +96,28 @@ export default function Login() {
         <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">01 · {t("auth.signin")}</p>
         <h1 className="font-display text-[40px] font-bold text-nordfjord mb-10">{t("auth.welcome")}</h1>
         <div className="space-y-5 max-w-md">
-          <div className="rounded-3xl border border-ash bg-white/80 p-5">
-            <p className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">Fironova · Magic Link</p>
-            <p className="text-sm text-glacier mb-4">{t("auth.magicLinkSub") || "Quick passwordless sign-in for Fironova clients."}</p>
-            <button
-              type="button"
-              disabled={magicBusy || busy}
-              onClick={() => sendMagicLink(email)}
-              className="w-full btn-pill btn-outline disabled:opacity-50"
-            >
-              {magicBusy ? (t("common.loading") || "Loading") : "Envoyer un lien magique"}
-            </button>
-          </div>
+          {magicEnabled && (
+            <>
+              <div className="rounded-3xl border border-ash bg-white/80 p-5">
+                <p className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">Fironova · Magic Link</p>
+                <p className="text-sm text-glacier mb-4">{t("auth.magicLinkSub") || "Quick passwordless sign-in for Fironova clients."}</p>
+                <button
+                  type="button"
+                  disabled={magicBusy || busy}
+                  onClick={() => sendMagicLink(email)}
+                  className="w-full btn-pill btn-outline disabled:opacity-50"
+                >
+                  {magicBusy ? (t("common.loading") || "Loading") : "Envoyer un lien magique"}
+                </button>
+              </div>
 
-          <div className="flex items-center gap-3">
-            <hr className="flex-1 border-ash" />
-            <span className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">ou mot de passe</span>
-            <hr className="flex-1 border-ash" />
-          </div>
+              <div className="flex items-center gap-3">
+                <hr className="flex-1 border-ash" />
+                <span className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">ou mot de passe</span>
+                <hr className="flex-1 border-ash" />
+              </div>
+            </>
+          )}
 
           <div>
             <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
