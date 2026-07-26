@@ -1,78 +1,50 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { MolecularMesh, Wordmark, FnMark } from "../components/brand";
-import { supabase } from "../lib/supabaseClient";
 
 export default function Login() {
   useDocumentHead({ title: "Sign in", path: "/login", noindex: true });
-  const { t } = useLang();
-  const { login } = useAuth();
+  const { t, lang } = useLang();
+  const { login, requestMagic } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const [mode, setMode] = useState("magic"); // magic | password
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [magicBusy, setMagicBusy] = useState(false);
-  const magicEnabled = !!supabase;
+  const [magicSent, setMagicSent] = useState(false);
 
-  useEffect(() => {
-    if (!supabase) return;
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("Session:", session);
-      if (event === "SIGNED_IN" && session) {
-        toast.success("Connexion reussie.");
-        const next =
-          new URLSearchParams(location.search).get("next") ||
-          location.state?.from ||
-          "/account";
-        navigate(next, { replace: true });
-      }
-    });
+  const nextUrl = () =>
+    new URLSearchParams(location.search).get("next") || location.state?.from || "/account";
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [location.search, location.state?.from, navigate]);
-
-  const onSubmit = async (e) => {
+  const onPasswordSubmit = async (e) => {
     e.preventDefault();
     setBusy(true);
     const res = await login(email, password);
     setBusy(false);
+    if (res.ok) navigate(nextUrl(), { replace: true });
+    else toast.error(res.error);
+  };
+
+  const onMagicSubmit = async (e) => {
+    e.preventDefault();
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) { toast.error(t("auth.email") || "Email requis"); return; }
+    setBusy(true);
+    const res = await requestMagic({ email: normalized, create: false, lang });
+    setBusy(false);
     if (res.ok) {
-      const next =
-        new URLSearchParams(location.search).get("next") ||
-        location.state?.from ||
-        "/account";
-      navigate(next, { replace: true });
+      setMagicSent(true);
+      toast.success(t("auth.magicSent") || "Lien envoyé ! Vérifiez votre email.");
     } else {
       toast.error(res.error);
     }
   };
-
-  async function sendMagicLink(targetEmail) {
-    if (!supabase) return;
-    const normalized = (targetEmail || "").trim().toLowerCase();
-    if (!normalized) {
-      toast.error(t("auth.email") || "Email required");
-      return;
-    }
-    setMagicBusy(true);
-    const { error } = await supabase.auth.signInWithOtp({ email: normalized });
-    setMagicBusy(false);
-
-    if (error) {
-      toast.error("Erreur : " + error.message);
-    } else {
-      toast.success("Lien envoyé ! Vérifie ton email.");
-    }
-  }
 
   return (
     <div className="min-h-[85vh] grid lg:grid-cols-2 bg-clinical" data-testid="login-page">
@@ -92,51 +64,87 @@ export default function Login() {
         </div>
       </div>
 
-      <form onSubmit={onSubmit} className="p-8 lg:p-16 flex flex-col justify-center">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">01 · {t("auth.signin")}</p>
-        <h1 className="font-display text-[40px] font-bold text-nordfjord mb-10">{t("auth.welcome")}</h1>
-        <div className="space-y-5 max-w-md">
-          {magicEnabled && (
-            <>
-              <div className="rounded-3xl border border-ash bg-white/80 p-5">
-                <p className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">Fironova · Magic Link</p>
-                <p className="text-sm text-glacier mb-4">{t("auth.magicLinkSub") || "Quick passwordless sign-in for Fironova clients."}</p>
-                <button
-                  type="button"
-                  disabled={magicBusy || busy}
-                  onClick={() => sendMagicLink(email)}
-                  className="w-full btn-pill btn-outline disabled:opacity-50"
-                >
-                  {magicBusy ? (t("common.loading") || "Loading") : "Envoyer un lien magique"}
+      <div className="p-8 lg:p-16 flex flex-col justify-center">
+        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
+          01 · {t("auth.signin")}
+        </p>
+        <h1 className="font-display text-[40px] font-bold text-nordfjord mb-8">{t("auth.welcome")}</h1>
+
+        <div className="max-w-md">
+          <div className="inline-flex rounded-full border border-ash bg-white p-1 mb-8" role="tablist">
+            <button
+              type="button"
+              onClick={() => { setMode("magic"); setMagicSent(false); }}
+              data-testid="login-tab-magic"
+              className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "magic" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}
+            >
+              {t("auth.magicTab") || "Lien magique"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("password")}
+              data-testid="login-tab-password"
+              className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "password" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}
+            >
+              {t("auth.passwordTab") || "Mot de passe"}
+            </button>
+          </div>
+
+          {mode === "magic" ? (
+            magicSent ? (
+              <div className="rounded-3xl border border-nova/40 bg-nova/5 p-6" data-testid="magic-sent">
+                <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-2">Fironova · Magic Link</p>
+                <h3 className="font-display text-[20px] font-bold text-nordfjord mb-2">
+                  {t("auth.magicCheckTitle") || "Vérifiez votre boîte mail"}
+                </h3>
+                <p className="text-sm text-glacier mb-4">
+                  {(t("auth.magicCheckSub") || "Un lien de connexion a été envoyé à {email}.").replace("{email}", email)}
+                </p>
+                <button type="button" onClick={() => setMagicSent(false)} className="text-sm font-semibold text-nordfjord hover:text-nova">
+                  {t("auth.magicResend") || "Renvoyer ou changer d'email"}
                 </button>
               </div>
-
-              <div className="flex items-center gap-3">
-                <hr className="flex-1 border-ash" />
-                <span className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">ou mot de passe</span>
-                <hr className="flex-1 border-ash" />
+            ) : (
+              <form onSubmit={onMagicSubmit} className="space-y-5">
+                <p className="text-sm text-glacier">
+                  {t("auth.magicLinkSub") || "Connexion rapide et sans mot de passe pour clients Fironova."}
+                </p>
+                <div>
+                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
+                  <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-magic-email"
+                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                </div>
+                <button type="submit" disabled={busy} data-testid="login-magic-submit" className="w-full btn-pill btn-nova disabled:opacity-50">
+                  {busy ? t("common.loading") : `${t("auth.magicSend") || "Envoyer le lien"} →`}
+                </button>
+              </form>
+            )
+          ) : (
+            <form onSubmit={onPasswordSubmit} className="space-y-5">
+              <div>
+                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
+                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-email"
+                  className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
               </div>
-            </>
+              <div>
+                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.password")}</label>
+                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} data-testid="login-password"
+                  className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+              </div>
+              <button type="submit" disabled={busy} data-testid="login-submit" className="w-full btn-pill btn-nova disabled:opacity-50">
+                {busy ? t("common.loading") : `${t("auth.signin")} →`}
+              </button>
+            </form>
           )}
 
-          <div>
-            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-email"
-              className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
-          </div>
-          <div>
-            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.password")}</label>
-            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} data-testid="login-password"
-              className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
-          </div>
-          <button type="submit" disabled={busy} data-testid="login-submit" className="w-full btn-pill btn-nova disabled:opacity-50">
-            {busy ? t("common.loading") : `${t("auth.signin")} →`}
-          </button>
-          <p className="text-sm text-glacier pt-4 border-t border-ash">
-            {t("auth.noAccount")} <Link to="/register" className="font-semibold text-nordfjord hover:text-nova" data-testid="link-register">{t("auth.signup")} →</Link>
+          <p className="text-sm text-glacier pt-6 mt-6 border-t border-ash">
+            {t("auth.noAccount")}{" "}
+            <Link to="/register" className="font-semibold text-nordfjord hover:text-nova" data-testid="link-register">
+              {t("auth.signup")} →
+            </Link>
           </p>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

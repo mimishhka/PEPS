@@ -42,15 +42,37 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  // Magic link — envoie l'email (create=true pour l'inscription passwordless).
+  const requestMagic = useCallback(async ({ email, name, create, lang }) => {
+    try {
+      await api.post("/auth/magic/request", { email, name, create: !!create, lang: lang || "fr" });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: formatApiError(e.response?.data?.detail) || e.message };
+    }
+  }, []);
+
+  // Magic link — échange le token du lien contre une session (cookie posé côté backend).
+  const verifyMagic = useCallback(async (token) => {
+    try {
+      const { data } = await api.post("/auth/magic/verify", { token });
+      setUser({ id: data.id, email: data.email, name: data.name, role: data.role, created_at: data.created_at });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: formatApiError(e.response?.data?.detail) || e.message };
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch { /* ignore */ }
-    // Nettoie un éventuel token résiduel des builds pré-auth-cookie.
     localStorage.removeItem("fironova_token");
     setUser(null);
   }, []);
 
-  const value = useMemo(() => ({ user, checking, login, register, logout, refresh }),
-                        [user, checking, login, register, logout, refresh]);
+  const value = useMemo(
+    () => ({ user, checking, login, register, requestMagic, verifyMagic, logout, refresh }),
+    [user, checking, login, register, requestMagic, verifyMagic, logout, refresh]
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

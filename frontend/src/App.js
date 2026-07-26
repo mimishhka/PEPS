@@ -23,6 +23,7 @@ import Checkout from "./pages/Checkout";
 import OrderConfirmation from "./pages/OrderConfirmation";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import AuthCallback from "./pages/AuthCallback";
 import Account from "./pages/Account";
 import About from "./pages/About";
 import Lab from "./pages/Lab";
@@ -110,6 +111,7 @@ function AppRoutes() {
       <Route path="/order/:id" element={<OrderConfirmation />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
       <Route path="/about" element={<About />} />
       <Route path="/lab" element={<LabRoute />} />
