@@ -40,7 +40,8 @@ async def _send_magic_email(email: str, link: str, lang: str, is_signup: bool) -
     html = f"""\
 <div style="font-family:Inter,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;background:#F7FAFC;padding:40px 24px;">
   <div style="background:#0B2E4F;border-radius:20px 20px 0 0;padding:28px 32px;">
-        <img src="{PUBLIC_BASE_URL}/uploads/images/logo-email-header.png" alt="FIRONOVA" width="180" height="48" style="display:block;border:0;outline:none;text-decoration:none;height:48px;width:auto;max-width:180px;" />
+    <span style="font-family:'Space Grotesk',sans-serif;color:#F7FAFC;font-size:20px;font-weight:700;letter-spacing:-0.02em;">FIRONOVA</span>
+    <span style="color:#00B8D4;font-size:20px;font-weight:700;"> ·</span>
   </div>
   <div style="background:#ffffff;border-radius:0 0 20px 20px;padding:36px 32px;border:1px solid #E2E8F0;border-top:none;">
     <h1 style="font-family:'Space Grotesk',sans-serif;color:#0B2E4F;font-size:24px;font-weight:700;margin:0 0 12px;">{heading}</h1>
