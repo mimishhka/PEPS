@@ -19,7 +19,7 @@ function PurityTrace() {
         fill="none" stroke="#00B8D4" strokeWidth="2.5" strokeLinecap="round"
       />
       <circle cx="372" cy="20" r="4" fill="#00B8D4" />
-      <text x="404" y="30" fill="#00B8D4" fontSize="12" fontFamily="'JetBrains Mono', monospace" letterSpacing="1">99.42%</text>
+      <text x="404" y="30" fill="#00B8D4" fontSize="12" fontFamily="'JetBrains Mono', monospace" letterSpacing="1">99%</text>
       <text x="12" y="172" fill="#5B7A9E" fontSize="10" fontFamily="'JetBrains Mono', monospace" letterSpacing="1.5">RETENTION TIME →</text>
       <text x="420" y="60" fill="#5B7A9E" fontSize="10" fontFamily="'JetBrains Mono', monospace" letterSpacing="1.5">HPLC · λ 214nm</text>
     </svg>
@@ -78,7 +78,7 @@ export default function Home() {
   const heroTitle = lang === "fr"
     ? { a: "Des peptides de recherche,", b: "documentés jusqu'à la molécule." }
     : { a: "Research-grade peptides,", b: "documented to the molecule." };
-  const heroEyebrow = lang === "fr" ? "PEPTIDES DE RECHERCHE CANADIENS · EST. MONTRÉAL" : "CANADIAN RESEARCH PEPTIDES · EST. MONTRÉAL";
+  const heroEyebrow = lang === "fr" ? "PEPTIDES DE RECHERCHE CANADIENS" : "CANADIAN RESEARCH PEPTIDES";
   const heroLede = lang === "fr"
     ? "Chaque lot est vérifié par HPLC dans un laboratoire indépendant et expédié avec son certificat d'analyse. Précision clinique, sobriété nordique, conformité bilingue complète."
     : "Every lot is HPLC-verified by an independent lab and ships with its certificate of analysis. Clinical precision, Nordic restraint, full bilingual compliance.";
@@ -130,7 +130,7 @@ export default function Home() {
             <Reveal delay={340}>
               <div className="flex flex-wrap gap-x-10 gap-y-4 font-data text-[12px] uppercase tracking-[0.16em] text-[#8FB3C9]">
                 <span><span className="text-nova">{chip.lot}</span> FN-26005</span>
-                <span><span className="text-nova">{chip.purity}</span> ≥ 99.0%</span>
+                <span><span className="text-nova">{chip.purity}</span> ≥ 99%</span>
 
               </div>
             </Reveal>
