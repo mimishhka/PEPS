@@ -36,7 +36,7 @@ export default function Login() {
     const normalized = email.trim().toLowerCase();
     if (!normalized) { toast.error(t("auth.email") || "Email requis"); return; }
     setBusy(true);
-    const res = await requestMagic({ email: normalized, create: false, lang });
+    const res = await requestMagic({ email: normalized, create: true, lang });
     setBusy(false);
     if (res.ok) {
       setMagicSent(true);
