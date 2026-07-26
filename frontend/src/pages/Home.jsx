@@ -74,13 +74,6 @@ export default function Home() {
   };
 
   const trustItems = [t("home.trustTested"), t("home.trustCanada"), t("home.trustPurity"), t("home.trustDiscreet")];
-  const trustRow = [...trustItems, ...trustItems, ...trustItems, ...trustItems];
-  const [trustIdx, setTrustIdx] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTrustIdx(i => (i + 1) % trustItems.length), 2800);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const categories = [
     { key: "healing", label: t("categories.healing") },
@@ -176,33 +169,21 @@ export default function Home() {
         </div>
       </section>
 
-      {/* TRUST CAROUSEL */}
+      {/* TRUST TICKER */}
       <section className="max-w-7xl mx-auto px-6 lg:px-8 -mt-10 relative z-10" data-testid="trust-marquee">
-        <div className="rounded-2xl bg-nordfjord py-6 px-8 shadow-[0_24px_48px_-24px_rgba(11,46,79,.5)] flex flex-col items-center gap-4">
-          <div className="relative w-full overflow-hidden h-10 flex items-center justify-center">
-            {trustItems.map((item, i) => (
-              <span
-                key={i}
-                className={`absolute flex items-center gap-3 text-[13px] font-semibold uppercase tracking-[0.18em] text-clinical whitespace-nowrap transition-all duration-500 ${
-                  i === trustIdx ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
-                }`}
-              >
-                <NovaSpark size={13} /> {item}
+        <div className="rounded-2xl bg-nordfjord py-5 overflow-hidden shadow-[0_24px_48px_-24px_rgba(11,46,79,.5)]">
+          <div style={{
+            display: "flex",
+            width: "max-content",
+            animation: "trust-scroll 22s linear infinite",
+          }}>
+            {[...trustItems, ...trustItems, ...trustItems, ...trustItems, ...trustItems, ...trustItems].map((it, i) => (
+              <span key={i} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "0 40px", fontSize: "12px", fontWeight: 600, letterSpacing: "0.18em", textTransform: "uppercase", color: "#F7FAFC", whiteSpace: "nowrap" }}>
+                <NovaSpark size={13} /> {it}
               </span>
             ))}
           </div>
-          <div className="flex items-center gap-2">
-            {trustItems.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setTrustIdx(i)}
-                aria-label={trustItems[i]}
-                className={`h-1.5 rounded-full transition-all duration-300 ${
-                  i === trustIdx ? "w-6 bg-nova" : "w-1.5 bg-clinical/30"
-                }`}
-              />
-            ))}
-          </div>
+          <style>{`@keyframes trust-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
         </div>
       </section>
 
