@@ -1,127 +1,101 @@
 import { Link } from "react-router-dom";
-import { useLang } from "@/lib/i18n";
-import { useCart, fmtCAD } from "@/lib/cart";
+import { useLang } from "../contexts/LanguageContext";
+import { useCart } from "../contexts/CartContext";
 import { VialArt } from "./brand";
 
-/* ============================================================================
- * ProductCard — FIRONOVA
- * Expects a `p` (product) shaped like:
- *   {
- *     id, slug, sku, nameEn, nameFr, dosage, form, hue, status, stock, priceCents,
- *     variants: [{ id, name, sku, priceCents, effectivePriceCents, onSale }]
- *   }
- * `status` is "active" | "preorder" | "archived". Map your REST payload to this
- * shape at the fetch boundary so the component stays presentation-only.
- * ==========================================================================*/
-
-export function firstVariant(p) {
-  return p.variants?.[0];
+function hueFor(slug = "") {
+  let h = 0;
+  for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) % 360;
+  return 190 + (h % 40); // teal→blue band
 }
 
-export function stockState(p) {
-  if (p.status === "preorder") return "preorder";
-  if (p.stock <= 0) return "out";
-  if (p.stock < 10) return "low";
-  return "in";
-}
-
-export default function ProductCard({ p }) {
+export default function ProductCard({ product, index = 0 }) {
   const { lang, t } = useLang();
   const { add } = useCart();
-  const st = stockState(p);
-  const canBuy = st === "in" || st === "low" || st === "preorder";
-  const v = firstVariant(p);
-  const price = v?.effectivePriceCents ?? p.priceCents;
-  const was = v?.onSale ? v.priceCents : null;
-  const multi = (p.variants?.length ?? 0) > 1;
+  const name = lang === "fr" ? product.name_fr : product.name_en;
 
-  const dotClass =
-    st === "in" ? "bg-success" : st === "low" ? "bg-warning" : st === "preorder" ? "bg-compliance" : "bg-error";
-  const textClass =
-    st === "in" ? "text-success" : st === "low" ? "text-warning" : st === "preorder" ? "text-compliance" : "text-error";
+  const variants = product.variants || [];
+  const priced = variants.map((v) => {
+    const coaComing = v.badge_coa_pending || v.badge_coming_soon;
+    const isPre = v.preorder_enabled && (v.stock <= 0 || coaComing);
+    const sale = v.sale_price && v.sale_price < v.price;
+    const eff = isPre && v.preorder_price ? v.preorder_price : sale ? v.sale_price : v.price;
+    return { ...v, eff, isPre, sale };
+  });
+  const cheapest = priced.length ? priced.reduce((m, v) => (v.eff < m.eff ? v : m), priced[0]) : null;
+  const displayPrice = cheapest ? cheapest.eff : product.price_cad;
+  const displayOriginal = cheapest && cheapest.eff < cheapest.price ? cheapest.price : null;
+  const anyPreorder = priced.some((v) => v.isPre);
+  const anySale = priced.some((v) => v.sale && !v.isPre);
+
+  const stockN = cheapest ? (cheapest.stock ?? 0) : (product.stock ?? 0);
+  const inStock = stockN > 0;
+
+  const specLine = [
+    product.dosage_mg ? `${product.dosage_mg} mg` : null,
+    "Lyophilized",
+    "COA included",
+  ].filter(Boolean).join(" · ");
 
   return (
     <div
-      data-testid={`product-card-${p.slug}`}
-      className="group bg-white border border-ash rounded-2xl overflow-hidden card-hover flex flex-col"
+      className="group bg-white border border-ash rounded-2xl overflow-hidden flex flex-col card-hover"
+      data-testid={`product-card-${product.slug}`}
     >
-      <Link to={`/product/${p.slug}`} aria-label={lang === "fr" ? p.nameFr : p.nameEn}>
-        <VialArt hue={p.hue} className="h-48" />
+      <Link to={`/product/${product.slug}`} className="block relative aspect-[4/3] overflow-hidden">
+        <VialArt hue={hueFor(product.slug)} className="w-full h-full" />
+        <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
+          {anySale && (
+            <span className="rounded-full font-data text-[10px] font-semibold uppercase tracking-[0.18em] bg-nova text-nordfjord px-3 py-1" data-testid={`sale-badge-${product.slug}`}>
+              {lang === "fr" ? "PROMO" : "SALE"}
+            </span>
+          )}
+          {anyPreorder && (
+            <span className="rounded-full font-data text-[10px] font-semibold uppercase tracking-[0.18em] bg-white/90 backdrop-blur border border-nova text-nova px-3 py-1" data-testid={`preorder-badge-${product.slug}`}>
+              {lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"}
+            </span>
+          )}
+        </div>
       </Link>
 
-      <div className="p-5 flex flex-col flex-1">
-        <div className="flex items-center justify-between mb-2">
-          <span className="font-data text-[10px] font-semibold uppercase tracking-[0.14em] text-compliance">
-            {t("card.ruo")}
-          </span>
-          {v?.onSale && (
-            <span className="rounded-full bg-nova/10 text-nova text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">
-              {t("card.sale")}
-            </span>
-          )}
-          {st === "preorder" && (
-            <span className="rounded-full bg-compliance/10 text-compliance text-[10px] font-bold uppercase tracking-wide px-2 py-0.5">
-              {t("card.preorder")}
-            </span>
-          )}
+      <div className="p-5 flex flex-col gap-1.5 flex-1">
+        <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">
+          {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT" : "FOR RESEARCH USE ONLY"}
         </div>
-
-        <Link to={`/product/${p.slug}`} className="hover:text-nova transition-colors">
-          <h4 className="font-display text-xl font-semibold text-nordfjord">
-            {lang === "fr" ? p.nameFr : p.nameEn}
-          </h4>
+        <Link to={`/product/${product.slug}`} className="font-display text-lg font-bold text-nordfjord hover:text-nova transition-colors">
+          {name}
         </Link>
+        <div className="font-data text-[11px] text-glacier">{specLine}</div>
 
-        <div className="text-[13px] text-glacier mt-1 mb-4">
-          {v?.name}
-          {multi ? ` · +${p.variants.length - 1}` : ""} · {p.form} · {t("card.coa")}
-        </div>
-
-        <div className="mt-auto">
-          <div className="flex items-baseline gap-2.5 mb-4">
-            <span className="font-display text-[22px] font-bold text-nordfjord">{fmtCAD(price)}</span>
-            {was && <span className="font-data text-sm text-glacier line-through">{fmtCAD(was)}</span>}
-            {multi && <span className="font-data text-[11px] text-glacier">{t("card.from")}</span>}
-            <span className={`ml-auto text-xs font-semibold inline-flex items-center gap-1.5 ${textClass}`}>
-              <span className={`w-[7px] h-[7px] rounded-full ${dotClass}`} />
-              {st === "in"
-                ? t("card.instock")
-                : st === "low"
-                ? t("card.low")
-                : st === "preorder"
-                ? t("card.preorder")
-                : t("card.out")}
+        <div className="flex items-center justify-between pt-3 mt-auto">
+          <div className="flex items-baseline gap-2">
+            {displayOriginal && (
+              <span className="font-data text-sm line-through text-glacier" data-testid={`card-original-price-${product.slug}`}>
+                ${displayOriginal.toFixed(2)}
+              </span>
+            )}
+            <span className={`font-data text-xl font-bold tabular-nums ${displayOriginal ? "text-nova" : "text-nordfjord"}`} data-testid={`card-price-${product.slug}`}>
+              ${(displayPrice ?? 0).toFixed(2)}
             </span>
+            {variants.length > 1 && (
+              <span className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{lang === "fr" ? "dès" : "from"}</span>
+            )}
           </div>
-
-          <button
-            data-testid={`add-to-cart-${p.slug}`}
-            disabled={!canBuy}
-            onClick={() =>
-              add({
-                productId: p.id,
-                variantId: v?.id,
-                sku: v?.sku ?? p.sku,
-                slug: p.slug,
-                nameEn: p.nameEn,
-                nameFr: p.nameFr,
-                dosage: v?.name ?? p.dosage,
-                priceCents: price,
-                hue: p.hue,
-              })
-            }
-            className="btn-pill btn-nova w-full !py-3 disabled:opacity-40 disabled:pointer-events-none"
-          >
-            {t("card.add")}
-          </button>
-
-          <Link
-            to={`/product/${p.slug}`}
-            className="btn-pill btn-outline w-full !py-3 !px-3 mt-2.5 whitespace-nowrap !text-[12px]"
-          >
-            {t("card.docs")}
-          </Link>
+          <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock ? "text-success" : "text-warning"}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${inStock ? "bg-success" : "bg-warning"}`} />
+            {anyPreorder && !inStock ? (lang === "fr" ? "Précommande" : "Pre-order") : inStock ? (lang === "fr" ? "En stock" : "In stock") : (lang === "fr" ? "Rupture" : "Out")}
+          </span>
         </div>
+      </div>
+
+      <div className="p-4 pt-0">
+        <button
+          data-testid={`add-to-cart-${product.slug}`}
+          onClick={() => add(product)}
+          className="w-full btn-pill btn-nova"
+        >
+          {lang === "fr" ? "Ajouter à la commande" : "Add to order"}
+        </button>
       </div>
     </div>
   );
