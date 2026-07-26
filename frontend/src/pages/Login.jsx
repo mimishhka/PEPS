@@ -35,6 +35,10 @@ export default function Login() {
   };
 
   async function sendMagicLink(targetEmail) {
+    if (!supabase) {
+      toast.error("Supabase non configure sur cet environnement.");
+      return;
+    }
     const normalized = (targetEmail || "").trim().toLowerCase();
     if (!normalized) {
       toast.error(t("auth.email") || "Email required");
@@ -75,7 +79,7 @@ export default function Login() {
         <div className="space-y-5 max-w-md">
           <div className="rounded-3xl border border-ash bg-white/80 p-5">
             <p className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">Fironova · Magic Link</p>
-            <p className="text-sm text-glacier mb-4">Connexion rapide et sans mot de passe pour clients Fironova.</p>
+            <p className="text-sm text-glacier mb-4">{t("auth.magicLinkSub") || "Quick passwordless sign-in for Fironova clients."}</p>
             <button
               type="button"
               disabled={magicBusy || busy}

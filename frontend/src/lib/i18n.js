@@ -162,6 +162,7 @@ export const dict = {
       hasAccount: "Already have an account?",
       welcome: "Welcome to FIRONOVA",
       welcomeSub: "Sign in to track orders and access lab reports.",
+      magicLinkSub: "Quick passwordless sign-in for Fironova clients.",
       registerSub: "Create an account to checkout faster and view order history.",
     },
     account: {
@@ -400,6 +401,7 @@ export const dict = {
       hasAccount: "Vous avez un compte ?",
       welcome: "Bienvenue chez FIRONOVA",
       welcomeSub: "Connectez-vous pour suivre vos commandes et accéder aux rapports.",
+      magicLinkSub: "Connexion rapide et sans mot de passe pour clients Fironova.",
       registerSub: "Créez un compte pour acheter plus rapidement et voir l'historique.",
     },
     account: {
