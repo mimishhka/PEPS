@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../contexts/AuthContext";
@@ -17,6 +17,27 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [magicBusy, setMagicBusy] = useState(false);
+
+  useEffect(() => {
+    if (!supabase) return;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Session:", session);
+      if (event === "SIGNED_IN" && session) {
+        toast.success("Connexion reussie.");
+        const next =
+          new URLSearchParams(location.search).get("next") ||
+          location.state?.from ||
+          "/account";
+        navigate(next, { replace: true });
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [location.search, location.state?.from, navigate]);
 
   const onSubmit = async (e) => {
     e.preventDefault();
