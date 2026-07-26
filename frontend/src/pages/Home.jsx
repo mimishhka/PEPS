@@ -26,14 +26,6 @@ function PurityTrace() {
   );
 }
 
-const PRINCIPLES = [
-  { n: "01", h: { en: "Clinical clarity", fr: "Clarté clinique" }, p: { en: "Whitespace is a feature. The catalog reads like a well-organized lab, never a busy storefront.", fr: "L'espace blanc est une fonctionnalité. Le catalogue se lit comme un labo bien organisé." } },
-  { n: "02", h: { en: "Trust before persuasion", fr: "La confiance d'abord" }, p: { en: "Compliance and RUO signals are designed-in, visible, and calm — never alarmist.", fr: "Les signaux de conformité sont intégrés, visibles et posés — jamais alarmistes." } },
-  { n: "03", h: { en: "One decisive accent", fr: "Un seul accent décisif" }, p: { en: "Nova Cyan does the persuading. Everything else stays restrained and cool.", fr: "Le cyan Nova convainc. Tout le reste reste sobre et froid." } },
-  { n: "04", h: { en: "Precision in detail", fr: "La précision du détail" }, p: { en: "8px grid, aligned baselines, exact tracking. The details carry the credibility.", fr: "Grille 8px, lignes de base alignées, crénage exact. Les détails portent la crédibilité." } },
-  { n: "05", h: { en: "Bilingual parity", fr: "Parité bilingue" }, p: { en: "FR and EN are equal citizens. No layout ever assumes English length.", fr: "FR et EN sont égaux. Aucune mise en page ne présume la longueur anglaise." } },
-];
-
 export default function Home() {
   const { t, lang } = useLang();
   const { coaPageEnabled } = useSiteConfig();
@@ -101,8 +93,6 @@ export default function Home() {
   const catsEyebrow = lang === "fr" ? "02 — DOMAINES DE RECHERCHE" : "02 — RESEARCH AREAS";
   const catsTitle = lang === "fr" ? "Cinq domaines, un seul standard" : "Five fields, one standard";
   const catsProducts = lang === "fr" ? "composés" : "compounds";
-  const prinEyebrow = lang === "fr" ? "03 — LE STANDARD" : "03 — THE STANDARD";
-  const prinTitle = lang === "fr" ? "Cinq règles qui tiennent le tout" : "Five rules that hold it together";
   const newsTitle = lang === "fr" ? "Sorties de lots & notes de recherche" : "Lot releases & research notes";
   const newsLede = lang === "fr" ? "Un courriel précis par mois. Nouveaux lots, rapports de pureté, réassorts. Conforme à la LCAP, désabonnement en tout temps." : "One precise email per month. New lots, purity reports, restocks. CASL-compliant, unsubscribe anytime.";
   const newsDone = lang === "fr" ? "Confirmé — vous êtes inscrit." : "Confirmed — you're on the list.";
@@ -235,29 +225,6 @@ export default function Home() {
                     </p>
                   </div>
                 </Link>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* PRINCIPLES */}
-      <section className="py-24 lg:py-32 bg-nordfjord text-clinical relative overflow-hidden" data-testid="principles-section">
-        <svg viewBox="0 0 1200 400" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 w-full h-full opacity-[.08]" aria-hidden="true">
-          <g stroke="#00B8D4" strokeWidth="1" fill="none"><line x1="100" y1="100" x2="400" y2="200" /><line x1="400" y1="200" x2="700" y2="80" /><line x1="700" y1="80" x2="1000" y2="220" /><line x1="400" y1="200" x2="600" y2="340" /></g>
-          <g fill="#00B8D4"><circle cx="100" cy="100" r="4" /><circle cx="400" cy="200" r="5" /><circle cx="700" cy="80" r="4" /><circle cx="1000" cy="220" r="4" /><circle cx="600" cy="340" r="4" /></g>
-        </svg>
-        <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
-          <Reveal><p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">{prinEyebrow}</p></Reveal>
-          <Reveal delay={60}><h2 className="font-display text-[42px] font-semibold text-white mb-14">{prinTitle}</h2></Reveal>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-px bg-white/10 rounded-2xl overflow-hidden border border-white/10">
-            {PRINCIPLES.map((p, i) => (
-              <Reveal key={p.n} delay={i * 70} className="bg-nordfjord">
-                <div className="p-7 h-full transition-colors duration-300 hover:bg-[#0E3862]">
-                  <div className="font-data text-sm font-semibold text-nova mb-5">{p.n}</div>
-                  <h4 className="font-display text-lg font-semibold text-white mb-2.5">{p.h[lang]}</h4>
-                  <p className="text-[13px] text-[#9FB6CC] leading-relaxed">{p.p[lang]}</p>
-                </div>
               </Reveal>
             ))}
           </div>
