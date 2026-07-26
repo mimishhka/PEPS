@@ -5,6 +5,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { MolecularMesh, Wordmark, FnMark } from "../components/brand";
+import { supabase } from "../lib/supabaseClient";
 
 export default function Login() {
   useDocumentHead({ title: "Sign in", path: "/login", noindex: true });
@@ -15,6 +16,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [magicBusy, setMagicBusy] = useState(false);
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -31,6 +33,23 @@ export default function Login() {
       toast.error(res.error);
     }
   };
+
+  async function sendMagicLink(targetEmail) {
+    const normalized = (targetEmail || "").trim().toLowerCase();
+    if (!normalized) {
+      toast.error(t("auth.email") || "Email required");
+      return;
+    }
+    setMagicBusy(true);
+    const { error } = await supabase.auth.signInWithOtp({ email: normalized });
+    setMagicBusy(false);
+
+    if (error) {
+      toast.error("Erreur : " + error.message);
+    } else {
+      toast.success("Lien envoyé ! Vérifie ton email.");
+    }
+  }
 
   return (
     <div className="min-h-[85vh] grid lg:grid-cols-2 bg-clinical" data-testid="login-page">
@@ -54,6 +73,25 @@ export default function Login() {
         <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">01 · {t("auth.signin")}</p>
         <h1 className="font-display text-[40px] font-bold text-nordfjord mb-10">{t("auth.welcome")}</h1>
         <div className="space-y-5 max-w-md">
+          <div className="rounded-3xl border border-ash bg-white/80 p-5">
+            <p className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">Fironova · Magic Link</p>
+            <p className="text-sm text-glacier mb-4">Connexion rapide et sans mot de passe pour clients Fironova.</p>
+            <button
+              type="button"
+              disabled={magicBusy || busy}
+              onClick={() => sendMagicLink(email)}
+              className="w-full btn-pill btn-outline disabled:opacity-50"
+            >
+              {magicBusy ? (t("common.loading") || "Loading") : "Envoyer un lien magique"}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <hr className="flex-1 border-ash" />
+            <span className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">ou mot de passe</span>
+            <hr className="flex-1 border-ash" />
+          </div>
+
           <div>
             <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-email"
@@ -66,12 +104,6 @@ export default function Login() {
           </div>
           <button type="submit" disabled={busy} data-testid="login-submit" className="w-full btn-pill btn-nova disabled:opacity-50">
             {busy ? t("common.loading") : `${t("auth.signin")} →`}
-          </button>
-          <button type="button" onClick={() => {
-              const next = new URLSearchParams(location.search).get("next") || location.state?.from || "/account";
-              window.location.href = `/api/auth/google/start?next=${encodeURIComponent(next)}`;
-            }} className="w-full btn-pill btn-outline">
-            {t("auth.signinWithGoogle") || "Sign in with Google"}
           </button>
           <p className="text-sm text-glacier pt-4 border-t border-ash">
             {t("auth.noAccount")} <Link to="/register" className="font-semibold text-nordfjord hover:text-nova" data-testid="link-register">{t("auth.signup")} →</Link>
