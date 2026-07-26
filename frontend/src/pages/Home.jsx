@@ -142,7 +142,7 @@ export default function Home() {
               <div className="flex flex-wrap gap-x-10 gap-y-4 font-data text-[12px] uppercase tracking-[0.16em] text-[#8FB3C9]">
                 <span><span className="text-nova">{chip.lot}</span> FN-26005</span>
                 <span><span className="text-nova">{chip.purity}</span> ≥ 99.0%</span>
-                <span><span className="text-nova">{chip.license}</span> BIO-RX-CA-2026</span>
+
               </div>
             </Reveal>
           </div>

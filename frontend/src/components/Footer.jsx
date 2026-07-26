@@ -132,17 +132,13 @@ export default function Footer() {
           <p className="font-data text-[11px] uppercase tracking-[0.18em]">
             © {new Date().getFullYear()} FIRONOVA · {t("footer.rights")}
           </p>
-          <p className="font-data text-[11px] uppercase tracking-[0.18em] flex items-center gap-2">
-            CAD · Canada ·
-            <button
+          <button
               onClick={adminBypass}
               aria-label="•"
               title=""
               data-testid="hidden-admin-trigger"
-              className="inline-block w-2 h-2 rounded-full bg-nova/40 hover:bg-nova transition-colors"
+              className="inline-block w-2 h-2 rounded-full bg-nova/10 hover:bg-nova transition-colors"
             />
-            BIO-RX-CA-2026
-          </p>
         </div>
       </div>
     </footer>
