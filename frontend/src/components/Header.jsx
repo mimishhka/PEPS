@@ -20,9 +20,11 @@ export default function Header() {
   const ADMIN_PATH = "/ops-portal-fn7k2q";
 
   const enterAdmin = async () => {
-    // OPS mène directement à la porte admin dédiée (AdminGate, mot de passe).
-    // Les admins ne passent jamais par le magic link réservé aux clients.
-    navigate(ADMIN_PATH);
+    if (user?.role === "admin") {
+      navigate(ADMIN_PATH);
+      return;
+    }
+    navigate(`/login?next=${encodeURIComponent(ADMIN_PATH)}`);
   };
 
   const fallbackNav = [

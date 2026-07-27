@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
+import { Lock } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
@@ -38,7 +39,7 @@ export default function Login() {
     const normalized = email.trim().toLowerCase();
     if (!normalized) { toast.error(t("auth.email") || "Email requis"); return; }
     setBusy(true);
-    const res = await requestMagic({ email: normalized, create: true, lang });
+    const res = await requestMagic({ email: normalized, create: false, lang });
     setBusy(false);
     if (res.ok) {
       setMagicSent(true);
@@ -59,40 +60,49 @@ export default function Login() {
           </div>
           <div>
             <h2 className="font-display text-[44px] font-bold tracking-[-0.02em] leading-[1.05]">
-              {t("auth.welcome") || "Welcome back."}
+              {isAdminLogin ? (lang === "fr" ? "Espace OPS." : "OPS access.") : (t("auth.welcome") || "Welcome back.")}
             </h2>
-            <p className="mt-4 text-[#B7CADD] max-w-md">{t("auth.welcomeSub")}</p>
+            <p className="mt-4 text-[#B7CADD] max-w-md">
+              {isAdminLogin
+                ? (lang === "fr" ? "Console d'administration réservée au personnel Fironova." : "Fironova staff administration console.")
+                : t("auth.welcomeSub")}
+            </p>
           </div>
         </div>
       </div>
 
       <div className="p-8 lg:p-16 flex flex-col justify-center">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
-          01 · {t("auth.signin")}
+        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4 flex items-center gap-2">
+          {isAdminLogin && <Lock size={12} strokeWidth={2.2} />}
+          {isAdminLogin ? (lang === "fr" ? "ACCÈS OPS" : "OPS ACCESS") : `01 · ${t("auth.signin")}`}
         </p>
-        <h1 className="font-display text-[40px] font-bold text-nordfjord mb-8">{t("auth.welcome")}</h1>
+        <h1 className="font-display text-[40px] font-bold text-nordfjord mb-8">
+          {isAdminLogin ? "FIRONOVA OPS" : t("auth.welcome")}
+        </h1>
 
         <div className="max-w-md">
-          <div className="inline-flex rounded-full border border-ash bg-white p-1 mb-8" role="tablist">
-            <button
-              type="button"
-              onClick={() => { setMode("magic"); setMagicSent(false); }}
-              data-testid="login-tab-magic"
-              className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "magic" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}
-            >
-              {t("auth.magicTab") || "Lien magique"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("password")}
-              data-testid="login-tab-password"
-              className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "password" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}
-            >
-              {t("auth.passwordTab") || "Mot de passe"}
-            </button>
-          </div>
+          {!isAdminLogin && (
+            <div className="inline-flex rounded-full border border-ash bg-white p-1 mb-8" role="tablist">
+              <button
+                type="button"
+                onClick={() => { setMode("magic"); setMagicSent(false); }}
+                data-testid="login-tab-magic"
+                className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "magic" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}
+              >
+                {t("auth.magicTab") || "Lien magique"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("password")}
+                data-testid="login-tab-password"
+                className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "password" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}
+              >
+                {t("auth.passwordTab") || "Mot de passe"}
+              </button>
+            </div>
+          )}
 
-          {mode === "magic" ? (
+          {!isAdminLogin && mode === "magic" ? (
             magicSent ? (
               <div className="rounded-3xl border border-nova/40 bg-nova/5 p-6" data-testid="magic-sent">
                 <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-2">Fironova · Magic Link</p>
@@ -123,6 +133,13 @@ export default function Login() {
             )
           ) : (
             <form onSubmit={onPasswordSubmit} className="space-y-5">
+              {isAdminLogin && (
+                <p className="text-sm text-glacier">
+                  {lang === "fr"
+                    ? "Connectez-vous avec vos identifiants administrateur."
+                    : "Sign in with your administrator credentials."}
+                </p>
+              )}
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
                 <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-email"
@@ -139,12 +156,14 @@ export default function Login() {
             </form>
           )}
 
-          <p className="text-sm text-glacier pt-6 mt-6 border-t border-ash">
-            {t("auth.noAccount")}{" "}
-            <Link to="/register" className="font-semibold text-nordfjord hover:text-nova" data-testid="link-register">
-              {t("auth.signup")} →
-            </Link>
-          </p>
+          {!isAdminLogin && (
+            <p className="text-sm text-glacier pt-6 mt-6 border-t border-ash">
+              {t("auth.noAccount")}{" "}
+              <Link to="/register" className="font-semibold text-nordfjord hover:text-nova" data-testid="link-register">
+                {t("auth.signup")} →
+              </Link>
+            </p>
+          )}
         </div>
       </div>
     </div>
