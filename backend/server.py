@@ -211,6 +211,9 @@ api = APIRouter(prefix="/api")
 
 # Serve uploaded files (COA PDFs, etc.) at /uploads/...
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+# Also serve under /api/uploads so assets pass the platform ingress (only /api is
+# routed to the backend on Emergent). Product/COA URLs use the /api/uploads form.
+app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads-api")
 
 
 # ---------------------------------------------------------------------------
@@ -1623,7 +1626,7 @@ async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(
     with open(dest, "wb") as f:
         f.write(contents)
 
-    rel_path = f"/uploads/coa/{safe_name}"
+    rel_path = f"/api/uploads/coa/{safe_name}"
     url = f"{PUBLIC_BASE_URL}{rel_path}" if PUBLIC_BASE_URL else rel_path
     return {"url": url, "original_filename": filename, "size_bytes": len(contents)}
 
@@ -1665,7 +1668,7 @@ async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depend
     with open(dest, "wb") as f:
         f.write(contents)
 
-    rel_path = f"/uploads/images/{safe_name}"
+    rel_path = f"/api/uploads/images/{safe_name}"
     url = f"{PUBLIC_BASE_URL}{rel_path}" if PUBLIC_BASE_URL else rel_path
     return {"url": url, "original_filename": filename, "size_bytes": len(contents)}
 
