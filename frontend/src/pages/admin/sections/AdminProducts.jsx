@@ -179,13 +179,9 @@ function ProductEditor({ product, setProduct, onSave, onCancel }) {
             </div>
           </div>
 
-          <Section title="COA · Lab (product-level)">
-            <Grid2>
-              <CoaUploader value={product.coa_url} onChange={(v) => setProduct({ ...product, coa_url: v })} test="f-coa_url" />
-              <F label="COA Lot" value={product.coa_lot} onChange={(v) => setProduct({ ...product, coa_lot: v })} test="f-coa_lot" />
-            </Grid2>
-            <F label="COA Date" value={product.coa_date} onChange={(v) => setProduct({ ...product, coa_date: v })} placeholder="2026-01-12" test="f-coa_date" />
+          <Section title="Lab">
             <Toggle checked={product.lab_tested} onChange={(c) => setProduct({ ...product, lab_tested: c })} label="Mark as Lab Tested" test="f-lab-tested" />
+            <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-foreground/50 mt-2">COA files are managed per variant below — each dosage carries its own certificate.</p>
           </Section>
 
           <Section title="Visibility & Stock">

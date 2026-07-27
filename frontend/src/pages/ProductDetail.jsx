@@ -91,11 +91,13 @@ export default function ProductDetail() {
     }
   };
 
-  const coaUrl = selectedVariant?.coa_url || product.coa_url;
+  // COA strictement au niveau variante — aucun repli sur le COA produit.
+  // Chaque dosage a son propre certificat (ou aucun).
+  const coaUrl = selectedVariant?.coa_url || "";
 
   const specs = [
     { k: lang === "fr" ? "PURETÉ (HPLC)" : "PURITY (HPLC)", v: product.purity },
-    { k: lang === "fr" ? "LOT ACTUEL" : "CURRENT LOT", v: product.coa_lot || "—" },
+    { k: lang === "fr" ? "LOT ACTUEL" : "CURRENT LOT", v: selectedVariant?.coa_lot || product.coa_lot || "—" },
     { k: lang === "fr" ? "MASSE MOLAIRE" : "MOLAR MASS", v: product.molecular_weight ? `${product.molecular_weight} g/mol` : "—" },
     { k: "SKU", v: selectedVariant?.sku || product.slug.toUpperCase() },
     { k: lang === "fr" ? "FORME" : "FORM", v: "Lyophilized" },
@@ -116,10 +118,9 @@ export default function ProductDetail() {
               <div className="absolute bottom-5 right-5"><Seal size={92} /></div>
             </div>
             {coaUrl ? (
-              <a href={coaUrl} target="_blank" rel="noopener noreferrer" data-testid="coa-badge-verified"
-                className="mt-4 inline-flex items-center gap-2 rounded-full border border-ash bg-white px-4 py-2 font-data text-[11px] uppercase tracking-[0.16em] text-nordfjord hover:border-nova hover:text-nova transition-colors">
-                <FileText size={13} /> {lang === "fr" ? "Certificat d'analyse" : "Certificate of Analysis"}{product.coa_lot ? ` · ${product.coa_lot}` : ""}
-              </a>
+              <div data-testid="coa-badge-verified" className="mt-4 inline-flex items-center gap-2 rounded-full border border-ash bg-white px-4 py-2 font-data text-[11px] uppercase tracking-[0.16em] text-nordfjord">
+                <FileText size={13} /> {lang === "fr" ? "Certificat d'analyse disponible" : "Certificate of Analysis available"}
+              </div>
             ) : (
               <div data-testid="coa-badge-pending" className="mt-4 inline-flex items-center gap-2 rounded-full border border-ash bg-white px-4 py-2 font-data text-[11px] uppercase tracking-[0.16em] text-warning">
                 <FileText size={13} /> COA · {lang === "fr" ? "À VENIR" : "PENDING"}
@@ -224,6 +225,13 @@ export default function ProductDetail() {
               {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT — NON DESTINÉ À LA CONSOMMATION HUMAINE" : "FOR RESEARCH USE ONLY — NOT INTENDED FOR HUMAN CONSUMPTION"}
             </div>
 
+            {coaUrl && (
+              <a href={coaUrl} target="_blank" rel="noopener noreferrer" data-testid="download-coa"
+                className="mt-4 flex items-center justify-center gap-2 btn-pill btn-outline w-full">
+                <FileText size={14} /> {t("product.labReport")} ↓
+              </a>
+            )}
+
             {isOutOfStock && (
               <div className="mt-6 rounded-xl border border-ash bg-white p-4" data-testid="notify-stock-block">
                 {notifyDone ? (
@@ -248,13 +256,6 @@ export default function ProductDetail() {
                   </>
                 )}
               </div>
-            )}
-
-            {coaUrl && (
-              <a href={coaUrl} target="_blank" rel="noopener noreferrer" data-testid="download-coa"
-                className="mt-4 block text-center btn-pill btn-outline w-full">
-                {t("product.labReport")} ↓
-              </a>
             )}
           </div>
         </div>
