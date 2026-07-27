@@ -119,7 +119,8 @@ export default function AdminProducts() {
 function newVariant(name = "") {
   return {
     name, price: 0, sale_price: null, stock: 0, sku: "", coa_url: "", weight_grams: 50,
-    badge_coa_available: false, badge_coa_pending: false, badge_coming_soon: false,
+    coa_status: "none", badge_coming_soon: false,
+    badge_coa_available: false, badge_coa_pending: false,
     preorder_enabled: false, preorder_delay_message: "", preorder_price: null, preorder_note: "",
   };
 }
@@ -236,13 +237,18 @@ function VariantRow({ index, variant, onChange, onRemove }) {
         <div className="font-mono text-[10px] text-red-600 uppercase tracking-[0.15em]">⚠ Special price must be lower than the regular price to apply.</div>
       )}
 
-      <div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 mb-2">Badges (independent toggles)</div>
-        <div className="flex flex-wrap gap-4">
-          <Toggle compact checked={variant.badge_coa_available} onChange={(c) => onChange({ badge_coa_available: c })} label="COA Available" test={`v-badge-coa-available-${index}`} />
-          <Toggle compact checked={variant.badge_coa_pending} onChange={(c) => onChange({ badge_coa_pending: c })} label="COA Pending" test={`v-badge-coa-pending-${index}`} />
-          <Toggle compact checked={variant.badge_coming_soon} onChange={(c) => onChange({ badge_coming_soon: c })} label="Coming Soon" test={`v-badge-coming-soon-${index}`} />
-        </div>
+      <div className="space-y-3">
+        <CoaStatusField
+          value={variant.coa_status || "none"}
+          hasFile={!!variant.coa_url}
+          onChange={(v) => onChange({
+            coa_status: v,
+            badge_coa_available: v === "available",
+            badge_coa_pending: v === "pending",
+          })}
+          test={`v-coa-status-${index}`}
+        />
+        <Toggle compact checked={variant.badge_coming_soon} onChange={(c) => onChange({ badge_coming_soon: c })} label="Coming Soon (not yet launched)" test={`v-badge-coming-soon-${index}`} />
       </div>
 
       <div className="bg-secondary/40 border border-ink/10 p-3 space-y-2">
@@ -413,6 +419,25 @@ function Section({ title, children }) {
   );
 }
 const Grid2 = ({ children }) => <div className="grid sm:grid-cols-2 gap-3">{children}</div>;
+function CoaStatusField({ value, hasFile, onChange, test }) {
+  const opts = [
+    { v: "none", label: "No COA / not shown" },
+    { v: "pending", label: "COA pending — coming soon (still purchasable)" },
+    { v: "available", label: "COA available (file required)" },
+  ];
+  const warnNoFile = value === "available" && !hasFile;
+  return (
+    <div>
+      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">COA Status</label>
+      <select value={value} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm bg-white">
+        {opts.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+      </select>
+      {warnNoFile && (
+        <p className="font-mono text-[10px] text-red-600 uppercase tracking-[0.15em] mt-1">⚠ Upload a COA PDF above, or set status to Pending.</p>
+      )}
+    </div>
+  );
+}
 function F({ label, value, onChange, type = "text", select, test, placeholder }) {
   return (
     <div>
