@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useLang } from "../contexts/LanguageContext";
 import { useCart } from "../contexts/CartContext";
 import { VialArt } from "./brand";
+import { resolveAssetUrl } from "../lib/api";
 
 function hueFor(slug = "") {
   let h = 0;
@@ -30,6 +31,7 @@ export default function ProductCard({ product, index = 0 }) {
 
   const stockN = cheapest ? (cheapest.stock ?? 0) : (product.stock ?? 0);
   const inStock = stockN > 0;
+  const imageSrc = resolveAssetUrl(product.image_url);
 
   const specLine = [
     product.dosage_mg ? `${product.dosage_mg} mg` : null,
@@ -43,7 +45,11 @@ export default function ProductCard({ product, index = 0 }) {
       data-testid={`product-card-${product.slug}`}
     >
       <Link to={`/product/${product.slug}`} className="block relative aspect-[4/3] overflow-hidden">
-        <VialArt hue={hueFor(product.slug)} className="w-full h-full" />
+        {imageSrc ? (
+          <img src={imageSrc} alt={name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+        ) : (
+          <VialArt hue={hueFor(product.slug)} className="w-full h-full" />
+        )}
         <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
           {anySale && (
             <span className="rounded-full font-data text-[10px] font-semibold uppercase tracking-[0.18em] bg-nova text-nordfjord px-3 py-1" data-testid={`sale-badge-${product.slug}`}>

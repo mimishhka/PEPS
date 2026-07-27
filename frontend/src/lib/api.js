@@ -2,6 +2,7 @@ import axios from "axios";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API_BASE = `${BACKEND_URL}/api`;
+export const ASSET_BASE = API_BASE.replace(/\/api$/, "");
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -20,6 +21,21 @@ export function formatApiError(detail) {
       .join(" ");
   if (detail && typeof detail.msg === "string") return detail.msg;
   return String(detail);
+}
+
+export function resolveAssetUrl(value) {
+  if (!value) return "";
+  if (value.startsWith("/")) return `${ASSET_BASE}${value}`;
+  if (!value.startsWith("http")) return `${ASSET_BASE}/${value.replace(/^\/+/, "")}`;
+  try {
+    const parsed = new URL(value);
+    if (parsed.pathname.startsWith("/uploads/")) {
+      return `${ASSET_BASE}${parsed.pathname}`;
+    }
+    return value;
+  } catch {
+    return value;
+  }
 }
 
 export default api;

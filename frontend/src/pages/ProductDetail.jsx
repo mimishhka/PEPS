@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Plus, Minus, BellRing, Check, FileText } from "lucide-react";
 import { toast } from "sonner";
-import api, { formatApiError } from "../lib/api";
+import api, { formatApiError, resolveAssetUrl } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { useCart } from "../contexts/CartContext";
@@ -96,6 +96,7 @@ export default function ProductDetail() {
   const coaUrl = selectedVariant?.coa_url || "";
   const coaAvailable = coaStatus === "available" && !!coaUrl;
   const coaPending = coaStatus === "pending";
+  const imageSrc = resolveAssetUrl(product.image_url);
 
   const specs = [
     { k: lang === "fr" ? "PURETÉ (HPLC)" : "PURITY (HPLC)", v: product.purity },
@@ -116,7 +117,11 @@ export default function ProductDetail() {
         <div className="grid lg:grid-cols-2 gap-12">
           <div className="relative">
             <div className="rounded-2xl overflow-hidden aspect-square relative">
-              <VialArt hue={hueFor(product.slug)} className="w-full h-full" />
+              {imageSrc ? (
+                <img src={imageSrc} alt={name} className="w-full h-full object-cover" />
+              ) : (
+                <VialArt hue={hueFor(product.slug)} className="w-full h-full" />
+              )}
               <div className="absolute bottom-5 right-5"><Seal size={92} /></div>
             </div>
             {coaAvailable ? (

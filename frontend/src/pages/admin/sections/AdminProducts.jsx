@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Download, Plus, Edit, Trash2, Star, X, Save, AlertTriangle, CheckCircle2, GripVertical } from "lucide-react";
 import { toast } from "sonner";
-import api, { API_BASE, formatApiError } from "../../../lib/api";
+import api, { API_BASE, formatApiError, resolveAssetUrl } from "../../../lib/api";
 
 const CATEGORIES = ["healing", "gh-secretagogues", "weight-loss", "cognitive", "longevity"];
 
@@ -80,7 +80,7 @@ export default function AdminProducts() {
                 <tr key={p.id} className="border-t border-ink/5" data-testid={`product-row-${p.slug}`}>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-3">
-                      <img src={p.image_url} alt={p.name_en} className="w-10 h-10 object-cover" style={{ filter: "grayscale(0.4)" }} />
+                      <img src={resolveAssetUrl(p.image_url)} alt={p.name_en} className="w-10 h-10 object-cover" style={{ filter: "grayscale(0.4)" }} />
                       <div>
                         <div className="font-bold">{p.name_en}</div>
                         <div className="font-mono text-[10px] text-foreground/50">{p.slug} · from ${(lowest === Infinity ? 0 : lowest).toFixed(2)}</div>
@@ -342,9 +342,7 @@ function CoaUploader({ value, onChange, test }) {
 function ImageUploader({ value, onChange, test }) {
   const [uploading, setUploading] = useState(false);
   const inputId = `image-upload-${test}`;
-  const imageSrc = value
-    ? (value.startsWith("http") ? value : `${API_BASE.replace(/\/api$/, "")}${value}`)
-    : "";
+  const imageSrc = resolveAssetUrl(value);
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
