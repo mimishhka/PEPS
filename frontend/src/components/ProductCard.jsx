@@ -88,7 +88,7 @@ export default function ProductCard({ product, index = 0 }) {
         </div>
       </div>
 
-      <div className="p-4 pt-0 flex flex-col gap-2">
+      <div className="p-4 pt-0">
         <button
           data-testid={`add-to-cart-${product.slug}`}
           onClick={() => add(product)}
@@ -96,12 +96,6 @@ export default function ProductCard({ product, index = 0 }) {
         >
           {lang === "fr" ? "Ajouter à la commande" : "Add to order"}
         </button>
-        <Link
-          to={`/product/${product.slug}`}
-          className="w-full btn-pill btn-outline"
-        >
-          {lang === "fr" ? "Voir la documentation" : "View documentation"}
-        </Link>
       </div>
     </div>
   );
