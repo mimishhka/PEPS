@@ -91,9 +91,11 @@ export default function ProductDetail() {
     }
   };
 
-  // COA strictement au niveau variante — aucun repli sur le COA produit.
-  // Chaque dosage a son propre certificat (ou aucun).
+  // COA strictement au niveau variante — source de vérité unique : coa_status.
+  const coaStatus = selectedVariant?.coa_status || "none";
   const coaUrl = selectedVariant?.coa_url || "";
+  const coaAvailable = coaStatus === "available" && !!coaUrl;
+  const coaPending = coaStatus === "pending";
 
   const specs = [
     { k: lang === "fr" ? "PURETÉ (HPLC)" : "PURITY (HPLC)", v: product.purity },
@@ -117,15 +119,15 @@ export default function ProductDetail() {
               <VialArt hue={hueFor(product.slug)} className="w-full h-full" />
               <div className="absolute bottom-5 right-5"><Seal size={92} /></div>
             </div>
-            {coaUrl ? (
+            {coaAvailable ? (
               <div data-testid="coa-badge-verified" className="mt-4 inline-flex items-center gap-2 rounded-full border border-ash bg-white px-4 py-2 font-data text-[11px] uppercase tracking-[0.16em] text-nordfjord">
                 <FileText size={13} /> {lang === "fr" ? "Certificat d'analyse disponible" : "Certificate of Analysis available"}
               </div>
-            ) : (
+            ) : coaPending ? (
               <div data-testid="coa-badge-pending" className="mt-4 inline-flex items-center gap-2 rounded-full border border-ash bg-white px-4 py-2 font-data text-[11px] uppercase tracking-[0.16em] text-warning">
                 <FileText size={13} /> COA · {lang === "fr" ? "À VENIR" : "PENDING"}
               </div>
-            )}
+            ) : null}
           </div>
 
           <div>
@@ -153,6 +155,9 @@ export default function ProductDetail() {
                         className={`rounded-xl border-[1.5px] px-4 py-2.5 text-left transition-colors ${isActive ? "border-nova bg-nova/5" : "border-ash hover:border-nova"} disabled:opacity-40 disabled:cursor-not-allowed`}>
                         <span className="font-display font-bold text-nordfjord">{v.name}</span>
                         <span className="font-data text-[11px] text-glacier ml-2">${vPrice?.toFixed(2)}</span>
+                        {v.coa_status === "pending" && (
+                          <span className="block font-data text-[9px] uppercase tracking-[0.14em] text-warning mt-0.5">{lang === "fr" ? "COA à venir" : "COA pending"}</span>
+                        )}
                       </button>
                     );
                   })}
@@ -225,7 +230,18 @@ export default function ProductDetail() {
               {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT — NON DESTINÉ À LA CONSOMMATION HUMAINE" : "FOR RESEARCH USE ONLY — NOT INTENDED FOR HUMAN CONSUMPTION"}
             </div>
 
-            {coaUrl && (
+            {coaPending && (
+              <div data-testid="coa-pending-warning" className="mt-4 flex items-start gap-2.5 rounded-xl border border-warning/40 bg-warning/5 px-4 py-3">
+                <FileText size={15} className="text-warning mt-0.5 shrink-0" />
+                <p className="font-data text-[11px] uppercase tracking-[0.14em] text-nordfjord leading-relaxed">
+                  {lang === "fr"
+                    ? "Le certificat d'analyse de ce lot est à venir. Vous pouvez commander dès maintenant — le COA sera publié dès sa réception."
+                    : "The certificate of analysis for this lot is coming. You can order now — the COA will be published as soon as it's received."}
+                </p>
+              </div>
+            )}
+
+            {coaAvailable && (
               <a href={coaUrl} target="_blank" rel="noopener noreferrer" data-testid="download-coa"
                 className="mt-4 flex items-center justify-center gap-2 btn-pill btn-outline w-full">
                 <FileText size={14} /> {t("product.labReport")} ↓

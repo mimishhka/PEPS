@@ -365,6 +365,14 @@ class ProductVariant(BaseModel):
     price: float
     stock: int = 0
     sku: str = ""
+    # COA status — single source of truth per variant (replaces the two legacy
+    # booleans badge_coa_available / badge_coa_pending which could contradict).
+    #   "available" : a COA exists for this lot (coa_url should be set).
+    #   "pending"   : COA not ready yet but coming — shown for transparency.
+    #                 The variant stays purchasable, with a visible warning.
+    #   "none"      : nothing shown.
+    coa_status: str = "none"  # "available" | "pending" | "none"
+    # Legacy booleans kept for backward-compat / rollback; no longer read for display.
     badge_coa_available: bool = False
     badge_coa_pending: bool = False
     badge_coming_soon: bool = False
@@ -1686,6 +1694,7 @@ def _resolve_variant(p: dict, variant_id: Optional[str]) -> dict:
         "preorder_delay_message": "",
         "preorder_price": None,
         "preorder_note": "",
+        "coa_status": "available" if p.get("coa_url") else "none",
         "badge_coa_available": bool(p.get("coa_url")),
         "badge_coa_pending": not bool(p.get("coa_url")),
         "badge_coming_soon": False,
@@ -1784,7 +1793,10 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
 
         v = _resolve_variant(p, it.variant_id)
         is_preorder = False
-        coa_coming = bool(v.get("badge_coa_pending") or v.get("badge_coming_soon"))
+        # coa_status "pending" no longer blocks or forces preorder on its own
+        # (variant stays purchasable with a warning). Only badge_coming_soon
+        # (product not yet launched) drives the "coming" preorder path here.
+        coa_coming = bool(v.get("badge_coming_soon"))
         if v.get("preorder_enabled") and (coa_coming or v.get("stock", 0) < it.qty):
             is_preorder = True
             has_preorder = True
@@ -6574,6 +6586,7 @@ async def seed_admin_and_products():
             "price": p["price_cad"],
             "stock": p["stock"],
             "sku": p["slug"].upper(),
+            "coa_status": "available",
             "badge_coa_available": True,
             "badge_coa_pending": False,
             "badge_coming_soon": False,
@@ -6664,6 +6677,31 @@ async def seed_admin_and_products():
                 "created_at": datetime.now(timezone.utc).isoformat(),
             },
         ])
+
+    # ------------------------------------------------------------------
+    # MIGRATION — variant.coa_status (single source of truth)
+    # Converts legacy per-variant booleans to the new coa_status field, once,
+    # only on variants that don't yet have it. Non-destructive: legacy booleans
+    # are left in place for rollback. Mapping:
+    #   coa_url present OR badge_coa_available  -> "available"
+    #   else badge_coa_pending                  -> "pending"
+    #   else                                    -> "none"
+    # ------------------------------------------------------------------
+    async for prod in db.products.find({"variants": {"$exists": True, "$ne": []}}, {"variants": 1}):
+        vs = prod.get("variants") or []
+        changed = False
+        for v in vs:
+            if "coa_status" in v and v["coa_status"] in ("available", "pending", "none"):
+                continue
+            if v.get("coa_url") or v.get("badge_coa_available"):
+                v["coa_status"] = "available"
+            elif v.get("badge_coa_pending"):
+                v["coa_status"] = "pending"
+            else:
+                v["coa_status"] = "none"
+            changed = True
+        if changed:
+            await db.products.update_one({"_id": prod["_id"]}, {"$set": {"variants": vs}})
 
 
 async def _restock_order_items(order: dict):
