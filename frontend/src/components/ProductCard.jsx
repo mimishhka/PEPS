@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useLang } from "../contexts/LanguageContext";
 import { useCart } from "../contexts/CartContext";
@@ -14,6 +15,7 @@ export default function ProductCard({ product, index = 0 }) {
   const { lang, t } = useLang();
   const { add } = useCart();
   const name = lang === "fr" ? product.name_fr : product.name_en;
+  const [imageFailed, setImageFailed] = useState(false);
 
   const variants = product.variants || [];
   const priced = variants.map((v) => {
@@ -31,7 +33,7 @@ export default function ProductCard({ product, index = 0 }) {
 
   const stockN = cheapest ? (cheapest.stock ?? 0) : (product.stock ?? 0);
   const inStock = stockN > 0;
-  const imageSrc = resolveAssetUrl(product.image_url);
+  const imageSrc = imageFailed ? "" : resolveAssetUrl(product.image_url);
 
   const specLine = [
     product.dosage_mg ? `${product.dosage_mg} mg` : null,
@@ -46,7 +48,7 @@ export default function ProductCard({ product, index = 0 }) {
     >
       <Link to={`/product/${product.slug}`} className="block relative aspect-[4/3] overflow-hidden">
         {imageSrc ? (
-          <img src={imageSrc} alt={name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+          <img src={imageSrc} alt={name} onError={() => setImageFailed(true)} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
         ) : (
           <VialArt hue={hueFor(product.slug)} className="w-full h-full" />
         )}

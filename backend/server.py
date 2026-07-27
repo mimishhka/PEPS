@@ -1605,7 +1605,7 @@ async def admin_delete_product(product_id: str, admin: dict = Depends(require_ar
 
 
 @api.post("/admin/upload/coa")
-async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
+async def admin_upload_coa(request: Request, file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
     """Uploads a Certificate of Analysis PDF and returns a URL to paste into a
     product's or variant's coa_url field. Storage is local disk under UPLOAD_DIR,
     served statically at /uploads/coa/<file>."""
@@ -1627,12 +1627,12 @@ async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(
         f.write(contents)
 
     rel_path = f"/api/uploads/coa/{safe_name}"
-    url = f"{PUBLIC_BASE_URL}{rel_path}" if PUBLIC_BASE_URL else rel_path
+    url = f"{str(request.base_url).rstrip('/')}{rel_path}"
     return {"url": url, "original_filename": filename, "size_bytes": len(contents)}
 
 
 @api.post("/admin/upload/image")
-async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
+async def admin_upload_image(request: Request, file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
     """Uploads a product image (PNG, JPEG, WebP, GIF) and returns a URL to use in 
     the image_url field. Storage is local disk under UPLOAD_DIR/images, served 
     statically at /uploads/images/<file>."""
@@ -1669,7 +1669,7 @@ async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depend
         f.write(contents)
 
     rel_path = f"/api/uploads/images/{safe_name}"
-    url = f"{PUBLIC_BASE_URL}{rel_path}" if PUBLIC_BASE_URL else rel_path
+    url = f"{str(request.base_url).rstrip('/')}{rel_path}"
     return {"url": url, "original_filename": filename, "size_bytes": len(contents)}
 
 
