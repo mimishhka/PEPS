@@ -90,6 +90,7 @@ COA_PAGE_ENABLED = os.environ.get("COA_PAGE_ENABLED", "false").strip().lower() =
 PRELAUNCH_ENABLED = os.environ.get("PRELAUNCH_ENABLED", "false").strip().lower() == "true"
 PRELAUNCH_PREVIEW_TOKEN = os.environ.get("PRELAUNCH_PREVIEW_TOKEN", "")  # ?preview=<token> contourne la porte
 LAUNCH_COUPON_CODE = os.environ.get("LAUNCH_COUPON_CODE", "LAUNCH15").strip().upper()
+COUPON_SECTION_ENABLED = os.environ.get("COUPON_SECTION_ENABLED", "true").strip().lower() == "true"
 
 # File uploads (COA PDFs). Served statically at /uploads/coa/<file>.
 UPLOAD_DIR = ROOT_DIR / "uploads"
@@ -6111,6 +6112,7 @@ async def meta():
         "canada_post_enabled": is_canada_post_configured(),
         "prelaunch_enabled": PRELAUNCH_ENABLED,
         "launch_coupon_code": LAUNCH_COUPON_CODE,
+        "coupon_section_enabled": COUPON_SECTION_ENABLED,
         # PRELAUNCH_PREVIEW_TOKEN n'est JAMAIS exposé ici — il ne se vérifie que
         # côté serveur via GET /prelaunch/preview.
     }

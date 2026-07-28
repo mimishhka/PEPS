@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { X, Plus, Minus, Trash2, ShieldCheck, PackageOpen } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import api from "../lib/api";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
 import { VialArt } from "./brand";
@@ -14,10 +13,9 @@ function hueFor(slug = "") {
 
 export default function CartDrawer() {
   const { lang, t } = useLang();
-  const { items, add, remove, setQty, subtotal, open, setOpen } = useCart();
+  const { items, remove, setQty, subtotal, open, setOpen } = useCart();
   const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
 
   // Mount/animate: keep in DOM briefly for slide-out.
   const [render, setRender] = useState(open);
@@ -31,20 +29,6 @@ export default function CartDrawer() {
     const to = setTimeout(() => setRender(false), 260);
     return () => clearTimeout(to);
   }, [open]);
-
-  // Cross-sell: featured products not already in the cart.
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    api.get("/products", { params: { featured: true } })
-      .then((r) => {
-        if (cancelled) return;
-        const inCart = new Set(items.map((i) => i.product_id));
-        setSuggestions((r.data || []).filter((p) => !inCart.has(p.id)).slice(0, 3));
-      })
-      .catch(() => { if (!cancelled) setSuggestions([]); });
-    return () => { cancelled = true; };
-  }, [open, items]);
 
   if (!render) return null;
 
@@ -137,45 +121,6 @@ export default function CartDrawer() {
                 })}
               </ul>
 
-              {suggestions.length > 0 && (
-                <div className="p-4 border-t border-ash bg-white/50" data-testid="cart-cross-sell">
-                  <p className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-3">
-                    {lang === "fr" ? "Pourrait aussi vous intéresser" : "You might also like"}
-                  </p>
-                  <div className="space-y-2">
-                    {suggestions.map((p) => {
-                      const pname = lang === "fr" ? p.name_fr : p.name_en;
-                      const price = cheapestVariantPrice(p);
-                      return (
-                        <div key={p.id} className="flex items-center gap-3" data-testid={`cross-sell-${p.slug}`}>
-                          <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0">
-                            <VialArt hue={hueFor(p.slug)} className="w-full h-full" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <button
-                              onClick={() => { setOpen(false); navigate(`/product/${p.slug}`); }}
-                              className="font-display font-bold text-sm text-nordfjord hover:text-nova transition-colors truncate block text-left w-full"
-                            >
-                              {pname}
-                            </button>
-                            <div className="font-data text-[11px] text-glacier">
-                              {lang === "fr" ? "dès" : "from"} ${price.toFixed(2)}
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => add(p)}
-                            data-testid={`cross-sell-add-${p.slug}`}
-                            className="shrink-0 rounded-full border border-ash w-11 h-11 flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova transition-colors"
-                            aria-label={lang === "fr" ? "Ajouter" : "Add"}
-                          >
-                            <Plus size={16} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
             </>
           )}
         </div>

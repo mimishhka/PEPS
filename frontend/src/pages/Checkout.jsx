@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { useAuth } from "../contexts/AuthContext";
+import { useSiteConfig } from "../contexts/SiteConfigContext";
 import { VialArt } from "../components/brand";
+import { Plus } from "lucide-react";
 
 function hueFor(slug = "") {
   let h = 0;
@@ -38,6 +40,8 @@ export default function Checkout() {
   const { lang, t } = useLang();
   const { user } = useAuth();
   const { items, subtotal, clear } = useCart();
+  const { couponSectionEnabled } = useSiteConfig();
+  const [suggestions, setSuggestions] = useState([]);
 
   const [form, setForm] = useState({
     email: user?.email || "",
@@ -81,6 +85,28 @@ export default function Checkout() {
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // Cross-sell: fetch featured products not already in the cart
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/products", { params: { featured: true } })
+      .then((r) => {
+        if (cancelled) return;
+        const inCart = new Set(items.map((i) => i.product_id));
+        setSuggestions((r.data || []).filter((p) => !inCart.has(p.id)).slice(0, 3));
+      })
+      .catch(() => { if (!cancelled) setSuggestions([]); });
+    return () => { cancelled = true; };
+  }, [items]);
+
+  const cheapestVariantPrice = (p) => {
+    const vs = p.variants || [];
+    if (!vs.length) return p.price_cad ?? 0;
+    return vs.reduce((m, v) => {
+      const sale = v.sale_price && v.sale_price < v.price ? v.sale_price : v.price;
+      return sale < m ? sale : m;
+    }, Infinity);
+  };
 
   const discount = coupon.applied?.discount_amount || 0;
   const shipping = useMemo(() => (Math.max(0, subtotal - discount) >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FLAT), [subtotal, discount]);
@@ -150,7 +176,30 @@ export default function Checkout() {
       setSubmitting(false);
     }
   };
+{!user && (
+          <section className="space-y-4 bg-nova/5 border border-nova/20 rounded-2xl p-6">
+            <div className="font-data text-[11px] uppercase tracking-[0.2em] text-nova">00 · SIGN IN OR CREATE ACCOUNT</div>
+            <p className="text-sm text-glacier">{lang === "fr" ? "Créer un compte pour suivre vos commandes et activer les adresses enregistrées." : "Create an account to track your orders and enable saved addresses."}</p>
+            <div className="flex gap-3">
+              <Link
+                to="/login"
+                data-testid="checkout-login-link"
+                className="flex-1 rounded-full border border-ash px-4 py-3 font-data text-[11px] font-semibold uppercase tracking-[0.16em] text-nordfjord hover:border-nova hover:text-nova text-center transition-colors"
+              >
+                {lang === "fr" ? "Se connecter" : "Sign In"}
+              </Link>
+              <Link
+                to="/register"
+                data-testid="checkout-register-link"
+                className="flex-1 rounded-full bg-nova text-nordfjord px-4 py-3 font-data text-[11px] font-semibold uppercase tracking-[0.16em] hover:bg-[#00A3BC] text-center transition-colors"
+              >
+                {lang === "fr" ? "Créer un compte" : "Create Account"}
+              </Link>
+            </div>
+          </section>
+        )}
 
+        
   const payCard = (id, title, desc, testId) => (
     <button
       type="button"
@@ -255,10 +304,11 @@ export default function Checkout() {
         <button
           type="submit"
           disabled={submitting}
-          data-testid="place-order-btn"
-          className="w-full btn-pill btn-nova disabled:opacity-50"
-        >
-          {submitting ? t("checkout.processing") : `${t("checkout.placeOrder")} · $${total.toFixed(2)} CAD →`}
+        {couponSectionEnabled && (
+          <div className="mt-4 pt-4 border-t border-ash" data-testid="coupon-section">
+            {!coupon.applied ? (
+              <div className="space-y-2">
+            {submitting ? t("checkout.processing") : `${t("checkout.placeOrder")} · $${total.toFixed(2)} CAD →`}
         </button>
       </form>
 
@@ -280,7 +330,49 @@ export default function Checkout() {
           })}
         </ul>
         <div className="mt-6 border-t border-ash pt-4 space-y-2 font-data text-sm">
-          <div className="flex justify-between"><span className="text-glacier uppercase tracking-[0.14em] text-xs">{t("common.subtotal")}</span><span className="text-nordfjord" data-testid="summary-subtotal">${subtotal.toFixed(2)}</span></div>
+          </div>
+        
+        {suggestions.length > 0 && (
+          <div className="mt-6 pt-6 border-t border-ash" data-testid="checkout-cross-sell">
+            <p className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-4">
+              {lang === "fr" ? "Pourrait aussi vous intéresser" : "You might also like"}
+            </p>
+            <div className="space-y-3">
+              {suggestions.map((p) => {
+                const pname = lang === "fr" ? p.name_fr : p.name_en;
+                const price = cheapestVariantPrice(p);
+                return (
+                  <div key={p.id} className="flex items-center gap-3 p-3 rounded-lg bg-clinical hover:bg-ash/20 transition-colors" data-testid={`checkout-cross-sell-${p.slug}`}>
+                    <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0">
+                      <VialArt hue={hueFor(p.slug)} className="w-full h-full" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <Link
+                        to={`/product/${p.slug}`}
+                        className="font-display font-bold text-xs text-nordfjord hover:text-nova transition-colors truncate block"
+                      >
+                        {pname}
+                      </Link>
+                      <div className="font-data text-[10px] text-glacier">
+                        {lang === "fr" ? "dès" : "from"} ${price.toFixed(2)}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setSuggestions((prev) => prev.filter((s) => s.id !== p.id)); navigate(`/product/${p.slug}`); }}
+                      className="shrink-0 rounded-full border border-ash w-9 h-9 flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova hover:bg-nova/5 transition-colors"
+                      aria-label={lang === "fr" ? "Voir le produit" : "View product"}
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-6 border-t-2 border-nordfjord pt-6text-glacier uppercase tracking-[0.14em] text-xs">{t("common.subtotal")}</span><span className="text-nordfjord" data-testid="summary-subtotal">${subtotal.toFixed(2)}</span></div>
           {discount > 0 && (
             <div className="flex justify-between text-success" data-testid="summary-discount">
               <span className="uppercase tracking-[0.14em] text-xs">DISCOUNT ({coupon.applied.code})</span>
