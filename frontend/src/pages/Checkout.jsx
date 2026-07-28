@@ -59,6 +59,8 @@ export default function Checkout() {
   const [ack, setAck] = useState({ a1: false, a2: false, a3: false });
   const [submitting, setSubmitting] = useState(false);
   const [coupon, setCoupon] = useState({ code: "", applied: null, error: "" });
+  const [publicCoupons, setPublicCoupons] = useState([]);
+  const [couponsOpen, setCouponsOpen] = useState(false);
 
   const [savedAddresses, setSavedAddresses] = useState([]);
   const applySavedAddress = (a) => {
@@ -99,6 +101,15 @@ export default function Checkout() {
     return () => { cancelled = true; };
   }, [items]);
 
+  // Public coupons advertised at checkout (admin-flagged only).
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/coupons/public")
+      .then((r) => { if (!cancelled) setPublicCoupons(r.data || []); })
+      .catch(() => { if (!cancelled) setPublicCoupons([]); });
+    return () => { cancelled = true; };
+  }, []);
+
   const cheapestVariantPrice = (p) => {
     const vs = p.variants || [];
     if (!vs.length) return p.price_cad ?? 0;
@@ -111,6 +122,16 @@ export default function Checkout() {
   const discount = coupon.applied?.discount_amount || 0;
   const shipping = useMemo(() => (Math.max(0, subtotal - discount) >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FLAT), [subtotal, discount]);
   const total = useMemo(() => +(Math.max(0, subtotal - discount) + shipping).toFixed(2), [subtotal, discount, shipping]);
+
+  const applyCode = async (rawCode) => {
+    try {
+      const { data } = await api.post(`/coupons/validate?code=${encodeURIComponent(rawCode.trim())}&subtotal=${subtotal}`);
+      setCoupon({ code: data.code, applied: data, error: "" });
+      toast.success(`${data.code} ${lang === "fr" ? "applique" : "applied"} — ${data.discount_type === "percent" ? data.value + "%" : "$" + data.value}`);
+    } catch (e) {
+      setCoupon((c) => ({ ...c, applied: null, error: formatApiError(e.response?.data?.detail) }));
+    }
+  };
 
   const applyCoupon = async () => {
     if (!coupon.code.trim()) return;
@@ -299,6 +320,50 @@ export default function Checkout() {
 
         {couponSectionEnabled && (
           <div className="mt-4 pt-4 border-t border-ash" data-testid="coupon-section">
+            {!coupon.applied && publicCoupons.length > 0 && (
+              <div className="mb-4 rounded-xl border border-ash overflow-hidden" data-testid="available-coupons">
+                <button
+                  type="button"
+                  onClick={() => setCouponsOpen((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-white hover:bg-clinical transition-colors"
+                  data-testid="available-coupons-toggle"
+                >
+                  <span className="font-data text-[11px] uppercase tracking-[0.18em] text-nordfjord">
+                    {lang === "fr" ? "Coupons disponibles" : "Available coupons"} ({publicCoupons.length})
+                  </span>
+                  <span className={`text-nova transition-transform ${couponsOpen ? "rotate-180" : ""}`}>▾</span>
+                </button>
+                {couponsOpen && (
+                  <div className="divide-y divide-ash border-t border-ash">
+                    {publicCoupons.map((pc) => {
+                      const label = pc.discount_type === "percent" ? `${pc.value}%` : `$${pc.value}`;
+                      const belowMin = pc.min_subtotal && subtotal < pc.min_subtotal;
+                      return (
+                        <div key={pc.code} className="flex items-center justify-between gap-3 px-4 py-3" data-testid={`public-coupon-${pc.code}`}>
+                          <div className="min-w-0">
+                            <div className="font-data text-sm font-bold text-nordfjord">{pc.code} · {label} {lang === "fr" ? "de rabais" : "off"}</div>
+                            {pc.min_subtotal > 0 && (
+                              <div className="font-data text-[10px] uppercase tracking-[0.14em] text-glacier">
+                                {lang === "fr" ? "Min." : "Min."} ${pc.min_subtotal.toFixed(2)}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => applyCode(pc.code)}
+                            disabled={belowMin}
+                            data-testid={`apply-public-coupon-${pc.code}`}
+                            className="shrink-0 rounded-full border border-ash px-4 py-1.5 font-data text-[10px] font-semibold uppercase tracking-[0.14em] text-nordfjord hover:border-nova hover:text-nova disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                          >
+                            {belowMin ? (lang === "fr" ? "Min. requis" : "Min. required") : (lang === "fr" ? "Appliquer" : "Apply")}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
             {!coupon.applied ? (
               <div className="space-y-2">
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance">Coupon code</label>
