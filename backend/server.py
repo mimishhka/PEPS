@@ -450,7 +450,10 @@ class CheckoutIn(BaseModel):
     items: List[CartItem]
     shipping: ShippingAddress
     email: Optional[EmailStr] = None  # guest email; auth user's email is used if logged in
-    payment_method: Literal["interac", "nowpayments", "stripe"]
+    # Stripe retire de l'offre publique. Le code Stripe reste dormant plus bas
+    # (webhook, StripeCheckout) pour une reactivation future, mais l'API n'accepte
+    # plus "stripe" en entree.
+    payment_method: Literal["interac", "nowpayments"]
     pay_currency: Optional[str] = "btc"  # used only for nowpayments
     coupon_code: Optional[str] = None
     origin_url: Optional[str] = None  # used by stripe to build success/cancel URLs
@@ -467,6 +470,7 @@ class CouponIn(BaseModel):
     usage_limit: Optional[int] = None  # None = unlimited
     active: bool = True
     expires_at: Optional[str] = None  # ISO string
+    public: bool = False  # if True, shown in the public "available coupons" list at checkout
 
 
 class OrderNoteIn(BaseModel):
@@ -5386,6 +5390,7 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_
         "used_count": 0,
         "active": payload.active,
         "expires_at": payload.expires_at,
+        "public": payload.public,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.coupons.insert_one(doc)
@@ -5406,6 +5411,34 @@ async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = 
 @api.delete("/admin/coupons/{coupon_id}")
 async def admin_delete_coupon(coupon_id: str, admin: dict = Depends(require_area("coupons", "manage"))):
     return await _soft_delete("coupons", coupon_id, admin)
+
+
+@api.get("/coupons/public")
+async def public_coupons():
+    """Coupons the shop chooses to advertise publicly (checkout "available coupons").
+    Only returns active, non-expired, public coupons — private/targeted codes never
+    appear here. No usage counts or internal fields are exposed."""
+    now = datetime.now(timezone.utc)
+    out = []
+    cursor = db.coupons.find({"deleted_at": None, "active": True, "public": True}, {"_id": 0})
+    async for c in cursor:
+        exp = c.get("expires_at")
+        if exp:
+            try:
+                if datetime.fromisoformat(exp.replace("Z", "+00:00")) < now:
+                    continue
+            except ValueError:
+                pass
+        if c.get("usage_limit") and c.get("used_count", 0) >= c["usage_limit"]:
+            continue
+        out.append({
+            "code": c["code"],
+            "discount_type": c["discount_type"],
+            "value": c["value"],
+            "min_subtotal": c.get("min_subtotal", 0),
+            "expires_at": c.get("expires_at"),
+        })
+    return out
 
 
 @api.post("/coupons/validate")

@@ -165,10 +165,7 @@ export default function Checkout() {
         confirm_research_use: ack.a2,
       });
       clear();
-      if (paymentMethod === "stripe" && data.payment_info?.checkout_url) {
-        window.location.href = data.payment_info.checkout_url;
-        return;
-      }
+      // (Stripe retire — paiement par Interac ou crypto uniquement)
       navigate(`/order/${data.id}`, { state: { order: data } });
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || err.message);
@@ -271,7 +268,6 @@ export default function Checkout() {
           <div className="font-data text-[11px] uppercase tracking-[0.2em] text-compliance">03 · {t("checkout.payment")}</div>
           <div className="grid sm:grid-cols-3 gap-3">
             {payCard("interac", t("checkout.interac"), t("checkout.interacDesc"), "payment-interac")}
-            {payCard("stripe", "Card · Stripe", "Visa, Mastercard, Amex. Secure 3-D Secure checkout.", "payment-stripe")}
             {payCard("nowpayments", t("checkout.crypto"), t("checkout.cryptoDesc"), "payment-crypto")}
           </div>
           {paymentMethod === "nowpayments" && (

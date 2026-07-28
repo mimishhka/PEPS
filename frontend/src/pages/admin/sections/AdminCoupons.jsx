@@ -12,7 +12,7 @@ export default function AdminCoupons() {
 
   const blank = {
     code: "", discount_type: "percent", value: 10, min_subtotal: 0,
-    usage_limit: null, active: true, expires_at: null,
+    usage_limit: null, active: true, expires_at: null, public: false,
   };
 
   const save = async () => {
@@ -112,6 +112,10 @@ export default function AdminCoupons() {
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={!!editing.active} onChange={(e) => setEditing({ ...editing, active: e.target.checked })} data-testid="c-active" className="accent-ink" />
                 Active
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={!!editing.public} onChange={(e) => setEditing({ ...editing, public: e.target.checked })} data-testid="c-public" className="accent-ink" />
+                Show publicly at checkout (available coupons)
               </label>
               <div className="flex gap-2 pt-2">
                 <button onClick={save} data-testid="save-coupon-btn" className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-5 py-3 flex items-center gap-2"><Save size={14} /> Save</button>
