@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, Plus, Minus, Trash2, ShieldCheck, PackageOpen } from "lucide-react";
+import { X, Plus, Minus, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
@@ -126,7 +126,7 @@ export default function CartDrawer() {
         </div>
 
         {items.length > 0 && (
-          <div className="border-t border-ash p-6 space-y-4 shrink-0">
+          <div className="border-t border-ash p-5 space-y-3 shrink-0">
             <div className="flex justify-between items-baseline">
               <span className="font-data text-xs uppercase tracking-[0.16em] text-glacier">{t("common.subtotal")}</span>
               <span className="font-display font-bold text-xl text-nordfjord" data-testid="cart-subtotal">${subtotal.toFixed(2)} CAD</span>
@@ -135,26 +135,18 @@ export default function CartDrawer() {
               {lang === "fr" ? "TAXES ET LIVRAISON CALCULÉES AU PAIEMENT" : "TAXES & SHIPPING CALCULATED AT CHECKOUT"}
             </p>
 
-            <div className="flex items-center justify-center gap-4 py-1 font-data text-[10px] uppercase tracking-[0.14em] text-glacier">
-              <span className="flex items-center gap-1.5"><ShieldCheck size={13} className="text-nova" /> {lang === "fr" ? "Paiement sécurisé" : "Secure payment"}</span>
-              <span className="flex items-center gap-1.5"><PackageOpen size={13} className="text-nova" /> {lang === "fr" ? "Envoi discret" : "Discreet shipping"}</span>
-            </div>
-            <p className="text-center font-data text-[10px] uppercase tracking-[0.14em] text-compliance">
-              {lang === "fr" ? "Usage recherche uniquement · 19+" : "For Research Use Only · 19+"}
-            </p>
-
-            <div className="flex gap-3">
+            <div className="flex gap-2.5">
               <button
                 onClick={() => { setOpen(false); navigate("/catalog"); }}
                 data-testid="cart-keep-shopping"
-                className="flex-1 btn-pill border-[1.5px] border-ash text-nordfjord hover:border-nova hover:text-nova"
+                className="flex-1 rounded-xl border-[1.5px] border-ash px-4 py-3 font-data text-[11px] font-semibold uppercase tracking-[0.14em] text-nordfjord hover:border-nova hover:text-nova transition-colors"
               >
                 {t("cart.keepShopping")}
               </button>
               <button
                 data-testid="cart-checkout-btn"
                 onClick={() => { setOpen(false); navigate("/checkout"); }}
-                className="flex-1 btn-pill btn-nova"
+                className="flex-1 rounded-xl bg-nova px-4 py-3 font-data text-[11px] font-semibold uppercase tracking-[0.14em] text-nordfjord hover:bg-[#00A3BC] transition-colors"
               >
                 {t("cart.proceed")} →
               </button>
