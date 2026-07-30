@@ -239,13 +239,34 @@ def create_access_token(user_id: str, email: str, role: str, token_version: int 
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
-def set_auth_cookie(response: Response, token: str) -> None:
+def _cookie_secure_for_request(request: Optional[Request]) -> bool:
+    """Keep secure cookies in production, but allow local HTTP development.
+
+    Browsers reject `Secure` cookies on plain HTTP, which breaks local auth
+    flows (admin upload endpoints rely on that auth cookie).
+    """
+    if not COOKIE_SECURE:
+        return False
+    if request is None:
+        return COOKIE_SECURE
+    host = (request.headers.get("host") or "").split(":", 1)[0].strip().lower()
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "").lower()
+    if proto != "https" and host in {"localhost", "127.0.0.1"}:
+        return False
+    return COOKIE_SECURE
+
+
+def set_auth_cookie(response: Response, token: str, request: Optional[Request] = None) -> None:
+    secure_flag = _cookie_secure_for_request(request)
+    samesite_flag = COOKIE_SAMESITE
+    if not secure_flag and samesite_flag == "none":
+        samesite_flag = "lax"
     response.set_cookie(
         key="access_token",
         value=token,
         httponly=True,
-        secure=COOKIE_SECURE,
-        samesite=COOKIE_SAMESITE,
+        secure=secure_flag,
+        samesite=samesite_flag,
         max_age=ACCESS_TOKEN_MINUTES * 60,
         path="/",
     )
@@ -645,7 +666,7 @@ async def register(payload: RegisterIn, response: Response, request: Request):
     except Exception as e:  # pragma: no cover
         logging.warning("subscriber conversion flag failed for %s: %s", email, e)
     token = create_access_token(user_doc["id"], email, "user", token_version=0)
-    set_auth_cookie(response, token)
+    set_auth_cookie(response, token, request)
     return {
         "id": user_doc["id"],
         "email": email,
@@ -864,7 +885,7 @@ async def login(payload: LoginIn, response: Response, request: Request):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     _LOGIN_ATTEMPTS.pop(throttle_key, None)
     token = create_access_token(user["id"], user["email"], user["role"], token_version=user.get("token_version", 0))
-    set_auth_cookie(response, token)
+    set_auth_cookie(response, token, request)
     return {
         "id": user["id"],
         "email": user["email"],

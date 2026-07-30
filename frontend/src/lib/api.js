@@ -1,8 +1,11 @@
 import axios from "axios";
 
 const ENV_BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const LOCAL_BACKEND_URL = "http://127.0.0.1:8001";
-const isLocalHost = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const isBrowser = typeof window !== "undefined";
+const isLocalHost = isBrowser && ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const LOCAL_BACKEND_URL = isBrowser
+  ? `http://${window.location.hostname}:8001`
+  : "http://127.0.0.1:8001";
 const BACKEND_URL = isLocalHost ? LOCAL_BACKEND_URL : ENV_BACKEND_URL;
 
 export const API_BASE = `${BACKEND_URL}/api`;
