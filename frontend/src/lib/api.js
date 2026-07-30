@@ -1,6 +1,10 @@
 import axios from "axios";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const ENV_BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const LOCAL_BACKEND_URL = "http://127.0.0.1:8001";
+const isLocalHost = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const BACKEND_URL = isLocalHost ? LOCAL_BACKEND_URL : ENV_BACKEND_URL;
+
 export const API_BASE = `${BACKEND_URL}/api`;
 export const ASSET_BASE = API_BASE.replace(/\/api$/, "");
 
@@ -25,20 +29,11 @@ export function formatApiError(detail) {
 
 export function resolveAssetUrl(value) {
   if (!value) return "";
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  if (value.startsWith("/api/uploads/")) return `${ASSET_BASE}${value.replace(/^\/api/, "")}`;
+  if (value.startsWith("/uploads/")) return `${ASSET_BASE}${value}`;
   if (value.startsWith("/")) return `${ASSET_BASE}${value}`;
-  if (!value.startsWith("http")) return `${ASSET_BASE}/${value.replace(/^\/+/, "")}`;
-  try {
-    const parsed = new URL(value);
-    if (parsed.pathname.startsWith("/uploads/")) {
-      return `${ASSET_BASE}${parsed.pathname}`;
-    }
-    if (parsed.pathname.startsWith("/api/uploads/")) {
-      return `${ASSET_BASE}${parsed.pathname.replace(/^\/api/, "")}`;
-    }
-    return value;
-  } catch {
-    return value;
-  }
+  return `${ASSET_BASE}/${value.replace(/^\/+/, "")}`;
 }
 
 export default api;
