@@ -30,6 +30,7 @@ import Lab from "./pages/Lab";
 import Compliance from "./pages/Compliance";
 import Privacy from "./pages/Privacy";
 import Faq from "./pages/Faq";
+import Testing from "./pages/Testing";
 import NotFound from "./pages/NotFound";
 
 // Chargé à la demande (chunk séparé) — le code du panneau admin n'est PLUS
@@ -118,6 +119,7 @@ function AppRoutes() {
       <Route path="/compliance" element={<Compliance />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/faq" element={<Faq />} />
+      <Route path="/testing" element={<Testing />} />
       <Route
         path={`${ADMIN_PATH}/*`}
         element={
