@@ -111,7 +111,7 @@ export default function AdminSubscribers() {
                 </td>
                 <td className="px-4 py-3">
                   {r.converted
-                    ? <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[color:var(--fn-success)]">Registered</span>
+                    ? <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#2E7D52]">Registered</span>
                     : <span className="font-mono text-[10px] text-inkmuted">—</span>}
                 </td>
                 {/* consent_at + consent_ip = la preuve exigée en cas de plainte CASL */}

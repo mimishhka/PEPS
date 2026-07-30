@@ -104,6 +104,19 @@
     transition: opacity .6s ease, transform .6s ease;
   }
   .reveal.revealed { opacity: 1; transform: none; }
+
+  /* RUO strip (bilingual) - identite Nordfjord/Nova.
+     Recupere depuis l'ancien tokens.css (supprime) et re-style aux couleurs
+     officielles. Utilise dans Footer, AgeGate et ComingSoon. */
+  .fn-ruo {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: .04em;
+    color: #0B2E4F;
+    border: 1.5px solid #00B8D4;
+    border-radius: 8px;
+    padding: 12px 18px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
