@@ -8,23 +8,12 @@ import { useSiteConfig } from "../contexts/SiteConfigContext";
 import ProductCard from "../components/ProductCard.jsx";
 import { MolecularMesh, Seal, NovaSpark, Reveal, FnMark } from "../components/brand";
 
-function PurityTrace() {
-  return (
-    <svg viewBox="0 0 520 180" className="w-full" aria-hidden="true">
-      <g stroke="#1B4A73" strokeWidth="1">
-        {[36, 72, 108, 144].map((y) => <line key={y} x1="0" y1={y} x2="520" y2={y} opacity=".5" />)}
-      </g>
-      <path
-        d="M0 150 L60 150 L78 148 L92 150 L150 150 L166 142 L178 150 L250 150 L262 146 L272 150 L340 150 L352 96 L362 34 L372 20 L382 34 L392 96 L402 150 L520 150"
-        fill="none" stroke="#00B8D4" strokeWidth="2.5" strokeLinecap="round"
-      />
-      <circle cx="372" cy="20" r="4" fill="#00B8D4" />
-      <text x="404" y="30" fill="#00B8D4" fontSize="12" fontFamily="'JetBrains Mono', monospace" letterSpacing="1">99%</text>
-      <text x="12" y="172" fill="#5B7A9E" fontSize="10" fontFamily="'JetBrains Mono', monospace" letterSpacing="1.5">RETENTION TIME →</text>
-      <text x="420" y="60" fill="#5B7A9E" fontSize="10" fontFamily="'JetBrains Mono', monospace" letterSpacing="1.5">HPLC · λ 214nm</text>
-    </svg>
-  );
-}
+/* ============================================================================
+ * FIRONOVA — Home
+ * Positionnement : traçabilité par lot + clarté, PAS emphase pureté/tests.
+ * Aucun chiffre de pureté ni chromatogramme en dur (non sourcés).
+ * La preuve de pureté vit au niveau du lot, sur la fiche produit, quand un COA existe.
+ * ==========================================================================*/
 
 export default function Home() {
   const { t, lang } = useLang();
@@ -65,46 +54,58 @@ export default function Home() {
     }
   };
 
-  const trustItems = [t("home.trustTested"), t("home.trustCanada"), t("home.trustPurity"), t("home.trustDiscreet")];
-
-  const categories = [
-    { key: "healing", label: t("categories.healing") },
-    { key: "weight-loss", label: t("categories.weight-loss") },
-    { key: "gh-secretagogues", label: t("categories.gh-secretagogues") },
-    { key: "cognitive", label: t("categories.cognitive") },
-    { key: "longevity", label: t("categories.longevity") },
-  ];
-
+  /* ---------- Textes FR/EN (inline, cohérent avec le reste du fichier) ---------- */
+  const heroEyebrow = "FIRONOVA · CANADA";
   const heroTitle = lang === "fr"
-    ? { a: "Des peptides de recherche,", b: "documentés jusqu'à la molécule." }
-    : { a: "Research-grade peptides,", b: "documented to the molecule." };
-  const heroEyebrow = lang === "fr" ? "PEPTIDES DE RECHERCHE CANADIENS" : "CANADIAN RESEARCH PEPTIDES";
+    ? { a: "Peptides de recherche.", b: "Traçables par lot, expédiés du Canada." }
+    : { a: "Research peptides.", b: "Lot-traceable, shipped from Canada." };
   const heroLede = lang === "fr"
-    ? "Chaque lot est vérifié par HPLC dans un laboratoire indépendant et expédié avec son certificat d'analyse. Précision clinique, sobriété nordique, conformité bilingue complète."
-    : "Every lot is HPLC-verified by an independent lab and ships with its certificate of analysis. Clinical precision, Nordic restraint, full bilingual compliance.";
+    ? "Chaque variante affiche le statut de son certificat d'analyse. Vous voyez ce qui est documenté — et ce qui ne l'est pas encore."
+    : "Every variant shows the status of its certificate of analysis. You see what's documented — and what isn't yet.";
   const ctaPrimary = lang === "fr" ? "Voir le catalogue" : "Browse the catalog";
-  const ctaSecondary = lang === "fr" ? "Nos standards" : "Our standards";
-  const chip = lang === "fr" ? { lot: "LOT", purity: "PURETÉ", license: "LICENCE" } : { lot: "LOT", purity: "PURITY", license: "LICENSE" };
+  const ctaSecondary = lang === "fr" ? "Notre approche des tests" : "Our testing approach";
 
-  const featEyebrow = lang === "fr" ? "01 — COMPOSÉS EN VEDETTE" : "01 — FEATURED COMPOUNDS";
-  const featTitle = lang === "fr" ? "Une pureté documentée, à chaque lot" : "Documented purity, every lot";
-  const featLede = lang === "fr" ? "Un catalogue restreint et rigoureux. Aucun bruit — chaque composé gagne sa place par une vérification indépendante." : "A tight, curated catalog. No noise — each compound earns its place with third-party verification.";
+  // Trois piliers — aucune promesse de pureté ni de résultat.
+  const pillars = lang === "fr"
+    ? [
+        { tag: "01", title: "Traçable par lot", body: "Chaque lot porte un numéro. Quand un COA existe, il est rattaché à ce lot précis — pas à une moyenne." },
+        { tag: "02", title: "Basé au Canada", body: "Expédition depuis le Canada. Usage recherche uniquement, accès 19+, conformité Loi 25 / PIPEDA." },
+        { tag: "03", title: "Statuts transparents", body: "Disponible, à venir, ou absent : le statut affiché correspond toujours à l'état réel du lot." },
+      ]
+    : [
+        { tag: "01", title: "Lot-traceable", body: "Every lot carries a number. When a COA exists, it's tied to that specific lot — not to an average." },
+        { tag: "02", title: "Canada-based", body: "Shipped from Canada. Research use only, 19+ access, Loi 25 / PIPEDA compliant." },
+        { tag: "03", title: "Transparent statuses", body: "Available, pending, or none: the status shown always reflects the real state of the lot." },
+      ];
+
+  const howEyebrow = lang === "fr" ? "COMMENT ÇA MARCHE" : "HOW IT WORKS";
+  const howTitle = lang === "fr" ? "Comment lire nos fiches produits" : "How to read our product pages";
+  const howBody = lang === "fr"
+    ? "Sur chaque produit, vous choisissez une variante. Le statut de son certificat d'analyse s'affiche directement : COA disponible (rapport téléchargeable), COA à venir (en attente), ou sans COA (aucun rapport publié pour ce lot). Nous n'affirmons que ce que nous pouvons documenter."
+    : "On each product, you pick a variant. Its certificate-of-analysis status shows directly: COA available (downloadable report), COA pending (awaiting report), or no COA (no report published for this lot). We state only what we can document.";
+  const howLink = lang === "fr" ? "Lire notre approche complète des tests" : "Read our full testing approach";
+
+  const featEyebrow = lang === "fr" ? "01 — CATALOGUE" : "01 — CATALOG";
+  const featTitle = lang === "fr" ? "Nos peptides de recherche" : "Our research peptides";
+  const featLede = lang === "fr" ? "Un catalogue restreint et clair. Chaque variante affiche son statut COA." : "A tight, clear catalog. Each variant shows its COA status.";
   const featAll = lang === "fr" ? "Voir tout le catalogue" : "View full catalog";
-  const catsEyebrow = lang === "fr" ? "02 — DOMAINES DE RECHERCHE" : "02 — RESEARCH AREAS";
-  const catsTitle = lang === "fr" ? "Cinq domaines, un seul standard" : "Five fields, one standard";
-  const catsProducts = lang === "fr" ? "composés" : "compounds";
-  const newsTitle = lang === "fr" ? "Sorties de lots & notes de recherche" : "Lot releases & research notes";
-  const newsLede = lang === "fr" ? "Un courriel précis par mois. Nouveaux lots, rapports de pureté, réassorts. Conforme à la LCAP, désabonnement en tout temps." : "One precise email per month. New lots, purity reports, restocks. CASL-compliant, unsubscribe anytime.";
+
+  const ruoStrip = lang === "fr"
+    ? "USAGE RECHERCHE UNIQUEMENT · NON DESTINÉ À UN USAGE HUMAIN OU VÉTÉRINAIRE · ACCÈS 19+"
+    : "FOR RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY USE · 19+ ACCESS";
+
+  const newsTitle = lang === "fr" ? "Sorties de lots & mises à jour" : "Lot releases & updates";
+  const newsLede = lang === "fr" ? "Un courriel par mois. Nouveaux lots, mises à jour de statut COA, réassorts. Conforme à la LCAP, désabonnement en tout temps." : "One email per month. New lots, COA status updates, restocks. CASL-compliant, unsubscribe anytime.";
   const newsDone = lang === "fr" ? "Confirmé — vous êtes inscrit." : "Confirmed — you're on the list.";
 
   return (
     <div data-testid="home-page">
-      {/* HERO */}
+      {/* HERO — visuel de marque, aucune donnée de pureté */}
       <section className="relative bg-nordfjord text-clinical overflow-hidden" data-testid="hero-section">
         <MolecularMesh opacity={0.28} />
         <div className="absolute -top-40 -right-40 w-[560px] h-[560px] rounded-full pointer-events-none"
           style={{ background: "radial-gradient(circle, rgba(0,184,212,.16), transparent 65%)" }} />
-        <div className="relative max-w-7xl mx-auto px-6 lg:px-8 pt-20 pb-24 grid lg:grid-cols-[1.05fr_.95fr] gap-16 items-center min-h-[78vh]">
+        <div className="relative max-w-7xl mx-auto px-6 lg:px-8 pt-20 pb-24 grid lg:grid-cols-[1.05fr_.95fr] gap-16 items-center min-h-[70vh]">
           <div>
             <Reveal>
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.22em] text-nova mb-7 flex items-center gap-2">
@@ -122,63 +123,58 @@ export default function Home() {
               <p className="text-lg text-[#B7CADD] max-w-[52ch] leading-relaxed mb-10">{heroLede}</p>
             </Reveal>
             <Reveal delay={260}>
-              <div className="flex flex-wrap items-center gap-4 mb-12">
+              <div className="flex flex-wrap items-center gap-4">
                 <Link to="/catalog" data-testid="hero-cta-catalog" className="btn-pill btn-nova">{ctaPrimary}</Link>
-                <Link to="/about" data-testid="hero-cta-lab" className="btn-pill border-[1.5px] border-[#3E5C76] text-clinical hover:border-nova hover:text-nova">{ctaSecondary}</Link>
-              </div>
-            </Reveal>
-            <Reveal delay={340}>
-              <div className="flex flex-wrap gap-x-10 gap-y-4 font-data text-[12px] uppercase tracking-[0.16em] text-[#8FB3C9]">
-                <span><span className="text-nova">{chip.lot}</span> FN-26005</span>
-                <span><span className="text-nova">{chip.purity}</span> ≥ 99%</span>
-
+                <Link to="/testing" data-testid="hero-cta-testing" className="btn-pill border-[1.5px] border-[#3E5C76] text-clinical hover:border-nova hover:text-nova">{ctaSecondary}</Link>
               </div>
             </Reveal>
           </div>
+          {/* Visuel de marque abstrait — remplace la fausse carte COA */}
           <Reveal delay={300} className="relative hidden lg:block">
-            <div className="relative bg-[#0D3560]/80 backdrop-blur border border-[#1E4A73] rounded-2xl p-8 shadow-[0_40px_80px_-30px_rgba(0,0,0,.5)]">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <p className="font-data text-[10px] uppercase tracking-[0.22em] text-nova mb-1.5">Certificate of Analysis</p>
-                  <p className="font-display text-lg font-semibold text-white">BPC-157 · 5 mg</p>
-                </div>
-                <NovaSpark size={26} />
-              </div>
-              <PurityTrace />
-              <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-[#1E4A73] font-data text-center">
-                {[["LOT", "FN-26005"], ["PURITY", "99.42%"], ["EXP", "2028-06"]].map(([k, v]) => (
-                  <div key={k}>
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-[#5B7A9E] mb-1">{k}</p>
-                    <p className="text-sm text-nova font-semibold">{v}</p>
-                  </div>
-                ))}
-              </div>
+            <div className="relative flex items-center justify-center h-[380px]">
+              <div className="absolute inset-0 rounded-full"
+                style={{ background: "radial-gradient(circle, rgba(0,184,212,.10), transparent 68%)" }} />
+              <FnMark size={280} frame="#1E4A73" spark="#00B8D4" />
+              <div className="absolute -bottom-6 -left-6"><Seal size={120} /></div>
             </div>
-            <div className="absolute -bottom-14 -left-16"><Seal size={120} /></div>
           </Reveal>
         </div>
       </section>
 
-      {/* TRUST TICKER */}
-      <section className="max-w-7xl mx-auto px-6 lg:px-8 -mt-10 relative z-10" data-testid="trust-marquee">
-        <div className="rounded-2xl bg-nordfjord py-5 overflow-hidden shadow-[0_24px_48px_-24px_rgba(11,46,79,.5)]">
-          <div style={{
-            display: "flex",
-            width: "max-content",
-            animation: "trust-scroll 22s linear infinite",
-          }}>
-            {[...trustItems, ...trustItems, ...trustItems, ...trustItems, ...trustItems, ...trustItems].map((it, i) => (
-              <span key={i} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "0 40px", fontSize: "12px", fontWeight: 600, letterSpacing: "0.18em", textTransform: "uppercase", color: "#F7FAFC", whiteSpace: "nowrap" }}>
-                <NovaSpark size={13} /> {it}
-              </span>
-            ))}
-          </div>
-          <style>{`@keyframes trust-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
+      {/* TROIS PILIERS — remplace le trust ticker "pureté vérifiée" */}
+      <section className="max-w-7xl mx-auto px-6 lg:px-8 -mt-12 relative z-10" data-testid="pillars-section">
+        <div className="grid md:grid-cols-3 gap-5">
+          {pillars.map((p, i) => (
+            <Reveal key={p.tag} delay={i * 90}>
+              <div className="h-full rounded-2xl bg-white border border-ash/60 p-7 shadow-[0_24px_48px_-30px_rgba(11,46,79,.35)]">
+                <div className="flex items-center gap-3 mb-4">
+                  <NovaSpark size={16} />
+                  <span className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier">{p.tag}</span>
+                </div>
+                <h3 className="font-display text-[21px] font-semibold text-nordfjord mb-2 leading-snug">{p.title}</h3>
+                <p className="text-[15px] text-glacier leading-relaxed">{p.body}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      {/* COMMENT ÇA MARCHE — pédagogie COA, honnête */}
+      <section className="py-24 lg:py-28" data-testid="how-it-works">
+        <div className="max-w-4xl mx-auto px-6 lg:px-8 text-center">
+          <Reveal><p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">{howEyebrow}</p></Reveal>
+          <Reveal delay={60}><h2 className="font-display text-[34px] lg:text-[42px] font-semibold text-nordfjord leading-tight mb-6">{howTitle}</h2></Reveal>
+          <Reveal delay={120}><p className="text-lg text-glacier leading-relaxed mb-8">{howBody}</p></Reveal>
+          <Reveal delay={180}>
+            <Link to="/testing" data-testid="how-testing-link" className="btn-pill btn-outline group inline-flex">
+              {howLink} <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
+            </Link>
+          </Reveal>
         </div>
       </section>
 
       {/* FEATURED PRODUCTS */}
-      <section className="py-24 lg:py-32" data-testid="featured-products">
+      <section className="pb-24 lg:pb-32" data-testid="featured-products">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <Reveal><p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">{featEyebrow}</p></Reveal>
           <div className="flex flex-wrap items-end justify-between gap-6 mb-14">
@@ -200,34 +196,10 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CATEGORIES */}
-      <section className="py-24 bg-white border-y border-ash/60" data-testid="categories-section">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <Reveal><p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">{catsEyebrow}</p></Reveal>
-          <Reveal delay={60}><h2 className="font-display text-[42px] font-semibold text-nordfjord mb-14">{catsTitle}</h2></Reveal>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-6">
-            {categories.map((c, i) => (
-              <Reveal key={c.key} delay={i * 80}>
-                <Link to={`/catalog?cat=${c.key}`} data-testid={`category-${c.key}`}
-                  className="group relative block rounded-2xl bg-nordfjord p-8 h-56 overflow-hidden card-hover">
-                  <svg viewBox="0 0 300 200" className="absolute inset-0 w-full h-full opacity-20 transition-opacity duration-500 group-hover:opacity-40" aria-hidden="true">
-                    <g stroke="#00B8D4" strokeWidth="1" fill="none">
-                      <line x1={30 + i * 14} y1="60" x2="150" y2="110" /><line x1="150" y1="110" x2="260" y2="50" /><line x1="150" y1="110" x2="220" y2="170" />
-                    </g>
-                    <g fill="#00B8D4"><circle cx={30 + i * 14} cy="60" r="4" /><circle cx="150" cy="110" r="5" /><circle cx="260" cy="50" r="4" /><circle cx="220" cy="170" r="4" /></g>
-                  </svg>
-                  <div className="relative h-full flex flex-col">
-                    <span className="font-data text-[11px] uppercase tracking-[0.2em] text-nova">0{i + 1}</span>
-                    <h3 className="font-display text-[22px] font-semibold text-white mt-auto leading-snug">{c.label}</h3>
-                    <p className="font-data text-[11px] uppercase tracking-[0.16em] text-[#8FB3C9] mt-2 flex items-center gap-2">
-                      {catsProducts}
-                      <ArrowRight size={13} className="text-nova transition-transform duration-300 group-hover:translate-x-1.5" />
-                    </p>
-                  </div>
-                </Link>
-              </Reveal>
-            ))}
-          </div>
+      {/* BANDEAU RUO */}
+      <section className="bg-nordfjord" data-testid="ruo-strip">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8 py-4">
+          <p className="font-data text-[11px] text-center uppercase tracking-[0.16em] text-[#8FB3C9]">{ruoStrip}</p>
         </div>
       </section>
 
