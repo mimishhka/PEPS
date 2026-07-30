@@ -32,6 +32,9 @@ export function resolveAssetUrl(value) {
     if (parsed.pathname.startsWith("/uploads/")) {
       return `${ASSET_BASE}${parsed.pathname}`;
     }
+    if (parsed.pathname.startsWith("/api/uploads/")) {
+      return `${ASSET_BASE}${parsed.pathname.replace(/^\/api/, "")}`;
+    }
     return value;
   } catch {
     return value;

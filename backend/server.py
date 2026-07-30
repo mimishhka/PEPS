@@ -1666,8 +1666,7 @@ async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depend
         f.write(contents)
 
     rel_path = f"/uploads/images/{safe_name}"
-    url = f"{PUBLIC_BASE_URL}{rel_path}" if PUBLIC_BASE_URL else rel_path
-    return {"url": url, "original_filename": filename, "size_bytes": len(contents)}
+    return {"url": rel_path, "original_filename": filename, "size_bytes": len(contents)}
 
 
 # ---------------------------------------------------------------------------
