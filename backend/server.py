@@ -90,7 +90,6 @@ COA_PAGE_ENABLED = os.environ.get("COA_PAGE_ENABLED", "false").strip().lower() =
 PRELAUNCH_ENABLED = os.environ.get("PRELAUNCH_ENABLED", "false").strip().lower() == "true"
 PRELAUNCH_PREVIEW_TOKEN = os.environ.get("PRELAUNCH_PREVIEW_TOKEN", "")  # ?preview=<token> contourne la porte
 LAUNCH_COUPON_CODE = os.environ.get("LAUNCH_COUPON_CODE", "LAUNCH15").strip().upper()
-COUPON_SECTION_ENABLED = os.environ.get("COUPON_SECTION_ENABLED", "true").strip().lower() == "true"
 
 # File uploads (COA PDFs). Served statically at /uploads/coa/<file>.
 UPLOAD_DIR = ROOT_DIR / "uploads"
@@ -212,9 +211,6 @@ api = APIRouter(prefix="/api")
 
 # Serve uploaded files (COA PDFs, etc.) at /uploads/...
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
-# Also serve under /api/uploads so assets pass the platform ingress (only /api is
-# routed to the backend on Emergent). Product/COA URLs use the /api/uploads form.
-app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads-api")
 
 
 # ---------------------------------------------------------------------------
@@ -450,10 +446,7 @@ class CheckoutIn(BaseModel):
     items: List[CartItem]
     shipping: ShippingAddress
     email: Optional[EmailStr] = None  # guest email; auth user's email is used if logged in
-    # Stripe retire de l'offre publique. Le code Stripe reste dormant plus bas
-    # (webhook, StripeCheckout) pour une reactivation future, mais l'API n'accepte
-    # plus "stripe" en entree.
-    payment_method: Literal["interac", "nowpayments"]
+    payment_method: Literal["interac", "nowpayments", "stripe"]
     pay_currency: Optional[str] = "btc"  # used only for nowpayments
     coupon_code: Optional[str] = None
     origin_url: Optional[str] = None  # used by stripe to build success/cancel URLs
@@ -470,7 +463,6 @@ class CouponIn(BaseModel):
     usage_limit: Optional[int] = None  # None = unlimited
     active: bool = True
     expires_at: Optional[str] = None  # ISO string
-    public: bool = False  # if True, shown in the public "available coupons" list at checkout
 
 
 class OrderNoteIn(BaseModel):
@@ -1610,7 +1602,7 @@ async def admin_delete_product(product_id: str, admin: dict = Depends(require_ar
 
 
 @api.post("/admin/upload/coa")
-async def admin_upload_coa(request: Request, file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
+async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
     """Uploads a Certificate of Analysis PDF and returns a URL to paste into a
     product's or variant's coa_url field. Storage is local disk under UPLOAD_DIR,
     served statically at /uploads/coa/<file>."""
@@ -1631,13 +1623,13 @@ async def admin_upload_coa(request: Request, file: UploadFile = File(...), _admi
     with open(dest, "wb") as f:
         f.write(contents)
 
-    rel_path = f"/api/uploads/coa/{safe_name}"
-    url = f"{str(request.base_url).rstrip('/')}{rel_path}"
+    rel_path = f"/uploads/coa/{safe_name}"
+    url = f"{PUBLIC_BASE_URL}{rel_path}" if PUBLIC_BASE_URL else rel_path
     return {"url": url, "original_filename": filename, "size_bytes": len(contents)}
 
 
 @api.post("/admin/upload/image")
-async def admin_upload_image(request: Request, file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
+async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
     """Uploads a product image (PNG, JPEG, WebP, GIF) and returns a URL to use in 
     the image_url field. Storage is local disk under UPLOAD_DIR/images, served 
     statically at /uploads/images/<file>."""
@@ -1673,8 +1665,8 @@ async def admin_upload_image(request: Request, file: UploadFile = File(...), _ad
     with open(dest, "wb") as f:
         f.write(contents)
 
-    rel_path = f"/api/uploads/images/{safe_name}"
-    url = f"{str(request.base_url).rstrip('/')}{rel_path}"
+    rel_path = f"/uploads/images/{safe_name}"
+    url = f"{PUBLIC_BASE_URL}{rel_path}" if PUBLIC_BASE_URL else rel_path
     return {"url": url, "original_filename": filename, "size_bytes": len(contents)}
 
 
@@ -5390,7 +5382,6 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_
         "used_count": 0,
         "active": payload.active,
         "expires_at": payload.expires_at,
-        "public": payload.public,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.coupons.insert_one(doc)
@@ -5411,34 +5402,6 @@ async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = 
 @api.delete("/admin/coupons/{coupon_id}")
 async def admin_delete_coupon(coupon_id: str, admin: dict = Depends(require_area("coupons", "manage"))):
     return await _soft_delete("coupons", coupon_id, admin)
-
-
-@api.get("/coupons/public")
-async def public_coupons():
-    """Coupons the shop chooses to advertise publicly (checkout "available coupons").
-    Only returns active, non-expired, public coupons — private/targeted codes never
-    appear here. No usage counts or internal fields are exposed."""
-    now = datetime.now(timezone.utc)
-    out = []
-    cursor = db.coupons.find({"deleted_at": None, "active": True, "public": True}, {"_id": 0})
-    async for c in cursor:
-        exp = c.get("expires_at")
-        if exp:
-            try:
-                if datetime.fromisoformat(exp.replace("Z", "+00:00")) < now:
-                    continue
-            except ValueError:
-                pass
-        if c.get("usage_limit") and c.get("used_count", 0) >= c["usage_limit"]:
-            continue
-        out.append({
-            "code": c["code"],
-            "discount_type": c["discount_type"],
-            "value": c["value"],
-            "min_subtotal": c.get("min_subtotal", 0),
-            "expires_at": c.get("expires_at"),
-        })
-    return out
 
 
 @api.post("/coupons/validate")
@@ -6145,7 +6108,6 @@ async def meta():
         "canada_post_enabled": is_canada_post_configured(),
         "prelaunch_enabled": PRELAUNCH_ENABLED,
         "launch_coupon_code": LAUNCH_COUPON_CODE,
-        "coupon_section_enabled": COUPON_SECTION_ENABLED,
         # PRELAUNCH_PREVIEW_TOKEN n'est JAMAIS exposé ici — il ne se vérifie que
         # côté serveur via GET /prelaunch/preview.
     }

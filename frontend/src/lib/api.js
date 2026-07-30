@@ -29,7 +29,7 @@ export function resolveAssetUrl(value) {
   if (!value.startsWith("http")) return `${ASSET_BASE}/${value.replace(/^\/+/, "")}`;
   try {
     const parsed = new URL(value);
-    if (parsed.pathname.startsWith("/uploads/") || parsed.pathname.startsWith("/api/uploads/")) {
+    if (parsed.pathname.startsWith("/uploads/")) {
       return `${ASSET_BASE}${parsed.pathname}`;
     }
     return value;

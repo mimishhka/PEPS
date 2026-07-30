@@ -17,7 +17,6 @@ const DEFAULTS = {
   // mettrait tout le site derrière la page d'attente au moindre hoquet réseau.
   prelaunchEnabled: false,
   launchCouponCode: "LAUNCH15",
-  couponSectionEnabled: true, // coupon section shown by default
 };
 
 export function SiteConfigProvider({ children }) {
@@ -41,7 +40,6 @@ export function SiteConfigProvider({ children }) {
           canadaPostEnabled: !!r.data.canada_post_enabled,
           prelaunchEnabled: !!r.data.prelaunch_enabled,
           launchCouponCode: r.data.launch_coupon_code || "LAUNCH15",
-          couponSectionEnabled: r.data.coupon_section_enabled !== false,
         });
       })
       .catch(() => {

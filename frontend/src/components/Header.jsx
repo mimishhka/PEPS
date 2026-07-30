@@ -11,13 +11,10 @@ import { FnMark, Wordmark } from "./brand";
 export default function Header() {
   const { lang, toggle, t } = useLang();
   const { user, logout } = useAuth();
-  const { count, setOpen, pulse, setCartLang } = useCart();
+  const { count, setOpen } = useCart();
   const { coaPageEnabled } = useSiteConfig();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
-
-  // Sync language with cart toast
-  useEffect(() => { setCartLang(lang); }, [lang, setCartLang]);
 
   // NOTE: keep in sync with ADMIN_PATH in App.js
   const ADMIN_PATH = "/ops-portal-fn7k2q";
@@ -114,9 +111,8 @@ export default function Header() {
                 <ShoppingBag size={18} strokeWidth={1.5} />
                 {count > 0 && (
                   <span
-                    key={pulse}
                     data-testid="cart-count-badge"
-                    className="absolute -top-2 -right-3 rounded-full bg-nova text-nordfjord text-[10px] font-bold leading-none px-1.5 py-1 min-w-[18px] text-center animate-[cartpulse_300ms_ease-out]"
+                    className="absolute -top-2 -right-3 rounded-full bg-nova text-nordfjord text-[10px] font-bold leading-none px-1.5 py-1 min-w-[18px] text-center"
                   >
                     {count}
                   </span>

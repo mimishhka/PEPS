@@ -25,7 +25,6 @@ export default function ProductDetail() {
   const [notifyEmail, setNotifyEmail] = useState("");
   const [notifySubmitting, setNotifySubmitting] = useState(false);
   const [notifyDone, setNotifyDone] = useState(false);
-  const [imageFailed, setImageFailed] = useState(false);
 
   useDocumentHead({
     title: product ? (lang === "fr" ? product.name_fr : product.name_en) : "Product",
@@ -97,7 +96,7 @@ export default function ProductDetail() {
   const coaUrl = selectedVariant?.coa_url || "";
   const coaAvailable = coaStatus === "available" && !!coaUrl;
   const coaPending = coaStatus === "pending";
-  const imageSrc = imageFailed ? "" : resolveAssetUrl(product.image_url);
+  const imageSrc = resolveAssetUrl(product.image_url);
 
   const specs = [
     { k: lang === "fr" ? "PURETÉ (HPLC)" : "PURITY (HPLC)", v: product.purity },
@@ -119,7 +118,7 @@ export default function ProductDetail() {
           <div className="relative">
             <div className="rounded-2xl overflow-hidden aspect-square relative">
               {imageSrc ? (
-                <img src={imageSrc} alt={name} onError={() => setImageFailed(true)} className="w-full h-full object-cover" />
+                <img src={imageSrc} alt={name} className="w-full h-full object-cover" />
               ) : (
                 <VialArt hue={hueFor(product.slug)} className="w-full h-full" />
               )}

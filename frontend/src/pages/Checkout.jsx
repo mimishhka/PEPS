@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { useAuth } from "../contexts/AuthContext";
-import { useSiteConfig } from "../contexts/SiteConfigContext";
 import { VialArt } from "../components/brand";
-import { Plus } from "lucide-react";
 
 function hueFor(slug = "") {
   let h = 0;
@@ -40,8 +38,6 @@ export default function Checkout() {
   const { lang, t } = useLang();
   const { user } = useAuth();
   const { items, subtotal, clear } = useCart();
-  const { couponSectionEnabled } = useSiteConfig();
-  const [suggestions, setSuggestions] = useState([]);
 
   const [form, setForm] = useState({
     email: user?.email || "",
@@ -59,8 +55,6 @@ export default function Checkout() {
   const [ack, setAck] = useState({ a1: false, a2: false, a3: false });
   const [submitting, setSubmitting] = useState(false);
   const [coupon, setCoupon] = useState({ code: "", applied: null, error: "" });
-  const [publicCoupons, setPublicCoupons] = useState([]);
-  const [couponsOpen, setCouponsOpen] = useState(false);
 
   const [savedAddresses, setSavedAddresses] = useState([]);
   const applySavedAddress = (a) => {
@@ -88,50 +82,9 @@ export default function Checkout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Cross-sell: fetch featured products not already in the cart
-  useEffect(() => {
-    let cancelled = false;
-    api.get("/products", { params: { featured: true } })
-      .then((r) => {
-        if (cancelled) return;
-        const inCart = new Set(items.map((i) => i.product_id));
-        setSuggestions((r.data || []).filter((p) => !inCart.has(p.id)).slice(0, 3));
-      })
-      .catch(() => { if (!cancelled) setSuggestions([]); });
-    return () => { cancelled = true; };
-  }, [items]);
-
-  // Public coupons advertised at checkout (admin-flagged only).
-  useEffect(() => {
-    let cancelled = false;
-    api.get("/coupons/public")
-      .then((r) => { if (!cancelled) setPublicCoupons(r.data || []); })
-      .catch(() => { if (!cancelled) setPublicCoupons([]); });
-    return () => { cancelled = true; };
-  }, []);
-
-  const cheapestVariantPrice = (p) => {
-    const vs = p.variants || [];
-    if (!vs.length) return p.price_cad ?? 0;
-    return vs.reduce((m, v) => {
-      const sale = v.sale_price && v.sale_price < v.price ? v.sale_price : v.price;
-      return sale < m ? sale : m;
-    }, Infinity);
-  };
-
   const discount = coupon.applied?.discount_amount || 0;
   const shipping = useMemo(() => (Math.max(0, subtotal - discount) >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FLAT), [subtotal, discount]);
   const total = useMemo(() => +(Math.max(0, subtotal - discount) + shipping).toFixed(2), [subtotal, discount, shipping]);
-
-  const applyCode = async (rawCode) => {
-    try {
-      const { data } = await api.post(`/coupons/validate?code=${encodeURIComponent(rawCode.trim())}&subtotal=${subtotal}`);
-      setCoupon({ code: data.code, applied: data, error: "" });
-      toast.success(`${data.code} ${lang === "fr" ? "applique" : "applied"} — ${data.discount_type === "percent" ? data.value + "%" : "$" + data.value}`);
-    } catch (e) {
-      setCoupon((c) => ({ ...c, applied: null, error: formatApiError(e.response?.data?.detail) }));
-    }
-  };
 
   const applyCoupon = async () => {
     if (!coupon.code.trim()) return;
@@ -186,7 +139,10 @@ export default function Checkout() {
         confirm_research_use: ack.a2,
       });
       clear();
-      // (Stripe retire — paiement par Interac ou crypto uniquement)
+      if (paymentMethod === "stripe" && data.payment_info?.checkout_url) {
+        window.location.href = data.payment_info.checkout_url;
+        return;
+      }
       navigate(`/order/${data.id}`, { state: { order: data } });
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || err.message);
@@ -194,30 +150,7 @@ export default function Checkout() {
       setSubmitting(false);
     }
   };
-{!user && (
-          <section className="space-y-4 bg-nova/5 border border-nova/20 rounded-2xl p-6">
-            <div className="font-data text-[11px] uppercase tracking-[0.2em] text-nova">00 · SIGN IN OR CREATE ACCOUNT</div>
-            <p className="text-sm text-glacier">{lang === "fr" ? "Créer un compte pour suivre vos commandes et activer les adresses enregistrées." : "Create an account to track your orders and enable saved addresses."}</p>
-            <div className="flex gap-3">
-              <Link
-                to="/login"
-                data-testid="checkout-login-link"
-                className="flex-1 rounded-full border border-ash px-4 py-3 font-data text-[11px] font-semibold uppercase tracking-[0.16em] text-nordfjord hover:border-nova hover:text-nova text-center transition-colors"
-              >
-                {lang === "fr" ? "Se connecter" : "Sign In"}
-              </Link>
-              <Link
-                to="/register"
-                data-testid="checkout-register-link"
-                className="flex-1 rounded-full bg-nova text-nordfjord px-4 py-3 font-data text-[11px] font-semibold uppercase tracking-[0.16em] hover:bg-[#00A3BC] text-center transition-colors"
-              >
-                {lang === "fr" ? "Créer un compte" : "Create Account"}
-              </Link>
-            </div>
-          </section>
-        )}
 
-        
   const payCard = (id, title, desc, testId) => (
     <button
       type="button"
@@ -289,6 +222,7 @@ export default function Checkout() {
           <div className="font-data text-[11px] uppercase tracking-[0.2em] text-compliance">03 · {t("checkout.payment")}</div>
           <div className="grid sm:grid-cols-3 gap-3">
             {payCard("interac", t("checkout.interac"), t("checkout.interacDesc"), "payment-interac")}
+            {payCard("stripe", "Card · Stripe", "Visa, Mastercard, Amex. Secure 3-D Secure checkout.", "payment-stripe")}
             {payCard("nowpayments", t("checkout.crypto"), t("checkout.cryptoDesc"), "payment-crypto")}
           </div>
           {paymentMethod === "nowpayments" && (
@@ -317,80 +251,6 @@ export default function Checkout() {
           <Checkbox checked={ack.a2} onChange={(c) => setAck({ ...ack, a2: c })} label={t("checkout.ack2")} testId="ack-research" />
           <Checkbox checked={ack.a3} onChange={(c) => setAck({ ...ack, a3: c })} label={t("checkout.ack3")} testId="ack-terms" />
         </section>
-
-        {couponSectionEnabled && (
-          <div className="mt-4 pt-4 border-t border-ash" data-testid="coupon-section">
-            {!coupon.applied && publicCoupons.length > 0 && (
-              <div className="mb-4 rounded-xl border border-ash overflow-hidden" data-testid="available-coupons">
-                <button
-                  type="button"
-                  onClick={() => setCouponsOpen((v) => !v)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-white hover:bg-clinical transition-colors"
-                  data-testid="available-coupons-toggle"
-                >
-                  <span className="font-data text-[11px] uppercase tracking-[0.18em] text-nordfjord">
-                    {lang === "fr" ? "Coupons disponibles" : "Available coupons"} ({publicCoupons.length})
-                  </span>
-                  <span className={`text-nova transition-transform ${couponsOpen ? "rotate-180" : ""}`}>▾</span>
-                </button>
-                {couponsOpen && (
-                  <div className="divide-y divide-ash border-t border-ash">
-                    {publicCoupons.map((pc) => {
-                      const label = pc.discount_type === "percent" ? `${pc.value}%` : `$${pc.value}`;
-                      const belowMin = pc.min_subtotal && subtotal < pc.min_subtotal;
-                      return (
-                        <div key={pc.code} className="flex items-center justify-between gap-3 px-4 py-3" data-testid={`public-coupon-${pc.code}`}>
-                          <div className="min-w-0">
-                            <div className="font-data text-sm font-bold text-nordfjord">{pc.code} · {label} {lang === "fr" ? "de rabais" : "off"}</div>
-                            {pc.min_subtotal > 0 && (
-                              <div className="font-data text-[10px] uppercase tracking-[0.14em] text-glacier">
-                                {lang === "fr" ? "Min." : "Min."} ${pc.min_subtotal.toFixed(2)}
-                              </div>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => applyCode(pc.code)}
-                            disabled={belowMin}
-                            data-testid={`apply-public-coupon-${pc.code}`}
-                            className="shrink-0 rounded-full border border-ash px-4 py-1.5 font-data text-[10px] font-semibold uppercase tracking-[0.14em] text-nordfjord hover:border-nova hover:text-nova disabled:opacity-40 disabled:pointer-events-none transition-colors"
-                          >
-                            {belowMin ? (lang === "fr" ? "Min. requis" : "Min. required") : (lang === "fr" ? "Appliquer" : "Apply")}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-            {!coupon.applied ? (
-              <div className="space-y-2">
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance">Coupon code</label>
-                <div className="flex gap-2">
-                  <input
-                    value={coupon.code}
-                    onChange={(e) => setCoupon({ ...coupon, code: e.target.value.toUpperCase(), error: "" })}
-                    placeholder="FIRONOVA10"
-                    data-testid="coupon-input"
-                    className="flex-1 rounded-full border border-ash px-4 py-2 text-sm font-data uppercase text-nordfjord outline-none focus:border-nova"
-                  />
-                  <button type="button" onClick={applyCoupon} data-testid="apply-coupon" className="btn-pill btn-outline">
-                    Apply
-                  </button>
-                </div>
-                {coupon.error && <div className="font-data text-[11px] text-error" data-testid="coupon-error">{coupon.error}</div>}
-              </div>
-            ) : (
-              <div className="flex items-center justify-between rounded-xl bg-success/10 border border-success px-3 py-2" data-testid="coupon-applied">
-                <div className="text-sm text-nordfjord">
-                  <span className="font-data font-bold">{coupon.applied.code}</span> applied · ${discount.toFixed(2)} off
-                </div>
-                <button type="button" onClick={removeCoupon} className="font-data text-xs uppercase tracking-[0.16em] text-success">Remove</button>
-              </div>
-            )}
-          </div>
-        )}
 
         <button
           type="submit"
@@ -439,48 +299,35 @@ export default function Checkout() {
             </div>
           )}
         </div>
-        
-        {suggestions.length > 0 && (
-          <div className="mt-6 pt-6 border-t border-ash" data-testid="checkout-cross-sell">
-            <p className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-4">
-              {lang === "fr" ? "Pourrait aussi vous intéresser" : "You might also like"}
-            </p>
-            <div className="space-y-3">
-              {suggestions.map((p) => {
-                const pname = lang === "fr" ? p.name_fr : p.name_en;
-                const price = cheapestVariantPrice(p);
-                return (
-                  <div key={p.id} className="flex items-center gap-3 p-3 rounded-lg bg-clinical hover:bg-ash/20 transition-colors" data-testid={`checkout-cross-sell-${p.slug}`}>
-                    <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0">
-                      <VialArt hue={hueFor(p.slug)} className="w-full h-full" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <Link
-                        to={`/product/${p.slug}`}
-                        className="font-display font-bold text-xs text-nordfjord hover:text-nova transition-colors truncate block"
-                      >
-                        {pname}
-                      </Link>
-                      <div className="font-data text-[10px] text-glacier">
-                        {lang === "fr" ? "dès" : "from"} ${price.toFixed(2)}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setSuggestions((prev) => prev.filter((s) => s.id !== p.id)); navigate(`/product/${p.slug}`); }}
-                      className="shrink-0 rounded-full border border-ash w-9 h-9 flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova hover:bg-nova/5 transition-colors"
-                      aria-label={lang === "fr" ? "Voir le produit" : "View product"}
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
-        <div className="mt-6 border-t-2 border-nordfjord pt-6 flex justify-between items-end">
+        <div className="mt-4 pt-4 border-t border-ash" data-testid="coupon-section">
+          {!coupon.applied ? (
+            <div className="space-y-2">
+              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance">Coupon code</label>
+              <div className="flex gap-2">
+                <input
+                  value={coupon.code}
+                  onChange={(e) => setCoupon({ ...coupon, code: e.target.value.toUpperCase(), error: "" })}
+                  placeholder="FIRONOVA10"
+                  data-testid="coupon-input"
+                  className="flex-1 rounded-full border border-ash px-4 py-2 text-sm font-data uppercase text-nordfjord outline-none focus:border-nova"
+                />
+                <button type="button" onClick={applyCoupon} data-testid="apply-coupon" className="btn-pill btn-outline">
+                  Apply
+                </button>
+              </div>
+              {coupon.error && <div className="font-data text-[11px] text-error" data-testid="coupon-error">{coupon.error}</div>}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between rounded-xl bg-success/10 border border-success px-3 py-2" data-testid="coupon-applied">
+              <div className="text-sm text-nordfjord">
+                <span className="font-data font-bold">{coupon.applied.code}</span> applied · ${discount.toFixed(2)} off
+              </div>
+              <button type="button" onClick={removeCoupon} className="font-data text-xs uppercase tracking-[0.16em] text-success">Remove</button>
+            </div>
+          )}
+        </div>
+        <div className="mt-4 border-t-2 border-nordfjord pt-4 flex justify-between items-end">
           <span className="font-data uppercase tracking-[0.16em] text-xs text-glacier">{t("common.total")} CAD</span>
           <span className="font-display text-3xl font-bold text-nordfjord" data-testid="summary-total">${total.toFixed(2)}</span>
         </div>
