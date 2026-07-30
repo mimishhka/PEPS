@@ -33,8 +33,10 @@ export function formatApiError(detail) {
 export function resolveAssetUrl(value) {
   if (!value) return "";
   if (value.startsWith("http://") || value.startsWith("https://")) return value;
-  if (value.startsWith("/api/uploads/")) return `${ASSET_BASE}${value.replace(/^\/api/, "")}`;
-  if (value.startsWith("/uploads/")) return `${ASSET_BASE}${value}`;
+  // Sur Emergent, seules les URL /api/... atteignent le backend. On garde donc
+  // TOUJOURS le préfixe /api sur les chemins uploads.
+  if (value.startsWith("/api/uploads/")) return `${ASSET_BASE}${value}`;
+  if (value.startsWith("/uploads/")) return `${ASSET_BASE}/api${value}`;
   if (value.startsWith("/")) return `${ASSET_BASE}${value}`;
   return `${ASSET_BASE}/${value.replace(/^\/+/, "")}`;
 }
