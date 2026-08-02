@@ -207,8 +207,8 @@ function InviteModal({ L, onClose, onDone }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-background rounded-2xl border border-border w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl border border-border bg-white p-6 text-foreground shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="font-display text-lg font-bold text-foreground">{L("Inviter un affilié", "Invite an affiliate")}</h3>
           <button onClick={onClose}><X size={18} /></button>
@@ -295,8 +295,8 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const m = data?.metrics;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-background rounded-2xl border border-border w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4" onClick={onClose}>
+      <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl border border-border bg-white p-6 text-foreground shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="font-display text-lg font-bold text-foreground">{a?.name || "—"}</h3>
           <button onClick={onClose}><X size={18} /></button>
