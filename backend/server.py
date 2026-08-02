@@ -3280,6 +3280,8 @@ async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Op
     # La commande attend dans « À étiqueter » et l'admin génère l'étiquette
     # depuis l'écran Dispatch.
     # asyncio.create_task(_auto_create_dispatch_label(order_id))
+    # --- AFFILIATE: commission pending au paiement confirme ---
+    await affiliate_on_order_paid(order)
     return order
 
 
@@ -3400,6 +3402,8 @@ async def checkout(payload: CheckoutIn, request: Request):
             "ip": request.client.host if request.client else None,
         },
     }
+    # --- AFFILIATE: attribution depuis le cookie fn_ref (champ additif) ---
+    await affiliate_attach_to_order(order_doc, request)
     await db.orders.insert_one(order_doc)
     order_doc.pop("_id", None)
 
@@ -4019,6 +4023,9 @@ async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Dep
         "ts": datetime.now(timezone.utc).isoformat(),
     }
     await db.orders.update_one({"id": order_id}, {"$set": update, "$push": {"notes": note}})
+    # --- AFFILIATE: annule la commission si remboursement total ---
+    if new_refunded >= total:
+        await affiliate_on_order_reversed(order_id, full=True)
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if updated.get("email"):
         asyncio.create_task(send_refund_email(updated, amount, new_refunded))
@@ -6540,6 +6547,7 @@ async def seed_admin_and_products():
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
     await db.products.create_index("slug", unique=True)
+    await affiliate_ensure_indexes()
     await db.products.create_index("id", unique=True)
     await db.products.create_index([("active", 1), ("category", 1)])
     await db.products.create_index([("active", 1), ("featured", 1)])
@@ -6937,6 +6945,7 @@ async def startup_event():
         asyncio.create_task(_trash_auto_purge_watchdog())
         asyncio.create_task(_rollover_watchdog())
         asyncio.create_task(_magic_tokens_cleanup())
+        asyncio.create_task(affiliate_maintenance_watchdog())
 
 
 async def _backfill_dispatch_batch():
@@ -6966,6 +6975,931 @@ async def shutdown_event():
 # ---------------------------------------------------------------------------
 # App wiring
 # ---------------------------------------------------------------------------
+
+# ===== FIRONOVA_AFFILIATE_BLOCK_START =====
+# ===========================================================================
+# CONSTANTES DU PROGRAMME
+# ===========================================================================
+
+AFFILIATE_INVITE_TTL_HOURS = 168          # 7 jours
+AFFILIATE_COOKIE_DAYS = 30                # fenêtre d'attribution du clic
+AFFILIATE_CLICK_TTL_DAYS = 45             # rétention des clics (purge auto)
+AFFILIATE_COOKIE_NAME = "fn_ref"
+AFFILIATE_INVITE_MAX = 5                  # rate-limit renvois / fenêtre
+AFFILIATE_INVITE_WINDOW = 3600            # 1 h
+
+# Paliers cumulés (seuil bas inclus, seuil haut exclu sauf Diamond).
+# (rate, floor, ceil)  — ceil None = illimité
+AFFILIATE_TIERS = [
+    ("standard", 0.10, 0.0, 2000.0),
+    ("bronze", 0.12, 2001.0, 5000.0),
+    ("silver", 0.14, 5001.0, 10000.0),
+    ("gold", 0.16, 10001.0, 20000.0),
+    ("platinum", 0.18, 20001.0, 35000.0),
+    ("diamond", 0.20, 35001.0, None),
+]
+
+AFFILIATE_TIER_LABELS = {
+    "standard": {"fr": "Standard", "en": "Standard"},
+    "bronze": {"fr": "Bronze", "en": "Bronze"},
+    "silver": {"fr": "Argent", "en": "Silver"},
+    "gold": {"fr": "Or", "en": "Gold"},
+    "platinum": {"fr": "Platine", "en": "Platinum"},
+    "diamond": {"fr": "Diamant", "en": "Diamond"},
+}
+
+
+def _affiliate_tier_for_revenue(cumulative_revenue: float) -> str:
+    """Palier théorique pour un CA cumulé donné (sans plancher trimestriel)."""
+    rev = float(cumulative_revenue or 0.0)
+    tier = "standard"
+    for name, _rate, floor, _ceil in AFFILIATE_TIERS:
+        if rev >= floor:
+            tier = name
+    return tier
+
+
+def _affiliate_rate_for_tier(tier: str) -> float:
+    for name, rate, _floor, _ceil in AFFILIATE_TIERS:
+        if name == tier:
+            return rate
+    return 0.10
+
+
+def _affiliate_tier_index(tier: str) -> int:
+    for i, (name, _r, _f, _c) in enumerate(AFFILIATE_TIERS):
+        if name == tier:
+            return i
+    return 0
+
+
+def _affiliate_tier_bounds(tier: str):
+    for name, _r, floor, ceil in AFFILIATE_TIERS:
+        if name == tier:
+            return floor, ceil
+    return 0.0, 2000.0
+
+
+def _affiliate_next_tier(tier: str):
+    idx = _affiliate_tier_index(tier)
+    if idx + 1 < len(AFFILIATE_TIERS):
+        n = AFFILIATE_TIERS[idx + 1]
+        return {"tier": n[0], "rate": n[1], "floor": n[2]}
+    return None
+
+
+# ===========================================================================
+# HACHAGE : token d'invitation + IP salée
+# ===========================================================================
+
+def _affiliate_hash_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _affiliate_ip_salt() -> bytes:
+    # Dérivé de JWT_SECRET (déjà obligatoire) — pas de nouvelle variable d'env
+    # requise. Permet de comparer "même IP ?" sans jamais stocker l'IP en clair.
+    secret = os.environ.get("JWT_SECRET", "fironova-fallback-salt")
+    return hashlib.sha256(("aff-ip::" + secret).encode("utf-8")).digest()
+
+
+def _affiliate_hash_ip(ip: Optional[str]) -> Optional[str]:
+    if not ip:
+        return None
+    return hmac.new(_affiliate_ip_salt(), ip.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _affiliate_gen_code() -> str:
+    # Code de parrainage lisible : FN + 6 caractères base32 sans ambiguïté.
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "FN" + "".join(secrets.choice(alphabet) for _ in range(6))
+
+
+def _affiliate_quarter_start(now: Optional[datetime] = None) -> datetime:
+    now = now or datetime.now(timezone.utc)
+    q_month = 3 * ((now.month - 1) // 3) + 1
+    return now.replace(month=q_month, day=1, hour=0, minute=0,
+                       second=0, microsecond=0)
+
+
+def _affiliate_next_quarter_start(now: Optional[datetime] = None) -> datetime:
+    qs = _affiliate_quarter_start(now)
+    # +3 mois
+    month = qs.month + 3
+    year = qs.year + (1 if month > 12 else 0)
+    month = month - 12 if month > 12 else month
+    return qs.replace(year=year, month=month)
+
+
+# ===========================================================================
+# MODÈLES Pydantic
+# ===========================================================================
+
+class AffiliateInviteIn(BaseModel):
+    email: EmailStr
+    name: str = Field(min_length=1, max_length=160)
+    commission_note: Optional[str] = ""        # note interne admin
+    payout_currency: Optional[str] = "btc"     # devise crypto de payout par défaut
+    lang: str = "fr"
+
+
+class AffiliateJoinIn(BaseModel):
+    token: str = Field(min_length=10)
+    # L'email n'est PAS fourni par le client : il est lu depuis l'invitation.
+    payout_address: Optional[str] = ""         # adresse crypto de réception
+    payout_currency: Optional[str] = None
+
+
+class AffiliatePayoutSettingsIn(BaseModel):
+    payout_address: str = Field(min_length=4, max_length=200)
+    payout_currency: str = Field(min_length=2, max_length=12)
+
+
+class AffiliateAdminUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    status: Optional[Literal["invited", "active", "suspended"]] = None
+    compliance_status: Optional[Literal["compliant", "review", "suspended"]] = None
+    manual_tier: Optional[str] = None          # override manuel du palier
+    commission_note: Optional[str] = None
+
+
+class AffiliatePayoutMarkIn(BaseModel):
+    reference: str = Field(min_length=1, max_length=200)   # tx hash / réf
+    note: Optional[str] = ""
+
+
+# ===========================================================================
+# CALCUL DES MÉTRIQUES D'UN AFFILIÉ
+# ===========================================================================
+
+async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
+    """Agrège les référrals validés (approved|paid) en CA cumulé + trimestriel,
+    calcule le palier avec plancher trimestriel (baisse d'un niveau max)."""
+    q_start = _affiliate_quarter_start()
+
+    cumulative = 0.0
+    quarter = 0.0
+    pending_commission = 0.0
+    approved_commission = 0.0
+    paid_commission = 0.0
+    validated_orders = 0
+
+    cursor = db.affiliate_referrals.find(
+        {"affiliate_id": affiliate_id}, {"_id": 0}
+    )
+    async for r in cursor:
+        status = r.get("status")
+        base = float(r.get("base_amount", 0.0))       # produits HT
+        comm = float(r.get("commission_amount", 0.0))
+        if status in ("approved", "paid"):
+            cumulative += base
+            validated_orders += 1
+            created = r.get("approved_at") or r.get("created_at")
+            if created:
+                try:
+                    dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if dt >= q_start:
+                        quarter += base
+                except Exception:
+                    pass
+        if status == "pending":
+            pending_commission += comm
+        elif status == "approved":
+            approved_commission += comm
+        elif status == "paid":
+            paid_commission += comm
+
+    # Palier théorique selon CA cumulé
+    theoretical = _affiliate_tier_for_revenue(cumulative)
+
+    # Plancher trimestriel : si le CA du trimestre est SOUS le seuil du palier
+    # théorique, on descend d'UN niveau max (jamais plus).
+    floor, _ceil = _affiliate_tier_bounds(theoretical)
+    effective = theoretical
+    if quarter < floor and _affiliate_tier_index(theoretical) > 0:
+        prev = AFFILIATE_TIERS[_affiliate_tier_index(theoretical) - 1]
+        effective = prev[0]
+
+    rate = _affiliate_rate_for_tier(effective)
+    nxt = _affiliate_next_tier(effective)
+    remaining = None
+    progress = None
+    if nxt:
+        remaining = max(0.0, nxt["floor"] - cumulative)
+        span = nxt["floor"] - _affiliate_tier_bounds(effective)[0]
+        if span > 0:
+            progress = min(1.0, (cumulative - _affiliate_tier_bounds(effective)[0]) / span)
+
+    return {
+        "cumulative_revenue": round(cumulative, 2),
+        "quarter_revenue": round(quarter, 2),
+        "validated_orders": validated_orders,
+        "tier": effective,
+        "tier_theoretical": theoretical,
+        "commission_rate": rate,
+        "next_tier": nxt,
+        "remaining_to_next": round(remaining, 2) if remaining is not None else None,
+        "progress_to_next": round(progress, 4) if progress is not None else None,
+        "pending_commission": round(pending_commission, 2),
+        "approved_commission": round(approved_commission, 2),
+        "paid_commission": round(paid_commission, 2),
+        "next_review": _affiliate_next_quarter_start().isoformat(),
+    }
+
+
+def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr") -> dict:
+    """Représentation exposée à l'affilié (jamais de champs internes sensibles)."""
+    out = {
+        "id": aff.get("id"),
+        "code": aff.get("code"),
+        "name": aff.get("name"),
+        "email": aff.get("email"),
+        "status": aff.get("status"),
+        "compliance_status": aff.get("compliance_status", "compliant"),
+        "payout_currency": aff.get("payout_currency", "btc"),
+        "payout_address": aff.get("payout_address", ""),
+        "activated_at": aff.get("activated_at"),
+        "created_at": aff.get("created_at"),
+    }
+    if metrics:
+        out.update(metrics)
+        out["tier_label"] = AFFILIATE_TIER_LABELS.get(
+            metrics["tier"], {}).get("fr" if lang.startswith("fr") else "en", metrics["tier"])
+    return out
+
+
+# ===========================================================================
+# EMAILS (NOVA identity, cohérent avec _send_magic_email)
+# ===========================================================================
+
+def _affiliate_invite_html(name: str, link: str, lang: str) -> tuple:
+    fr = lang.startswith("fr")
+    if fr:
+        subject = "Invitation — Programme d'affiliation Fironova"
+        heading = "Vous êtes invité(e)"
+        intro = (f"Bonjour {name}, vous avez été invité(e) à rejoindre le "
+                 "programme d'affiliation privé de Fironova. Activez votre "
+                 "compte pour accéder à votre tableau de bord.")
+        cta = "Activer mon compte affilié"
+        expiry = f"Ce lien expire dans {AFFILIATE_INVITE_TTL_HOURS // 24} jours et ne sert qu'une fois."
+        ignore = "Si vous n'attendiez pas cette invitation, ignorez cet email."
+    else:
+        subject = "Invitation — Fironova Affiliate Program"
+        heading = "You're invited"
+        intro = (f"Hi {name}, you've been invited to join Fironova's private "
+                 "affiliate program. Activate your account to access your dashboard.")
+        cta = "Activate my affiliate account"
+        expiry = f"This link expires in {AFFILIATE_INVITE_TTL_HOURS // 24} days and works only once."
+        ignore = "If you weren't expecting this invitation, you can ignore this email."
+    html = f"""\
+<div style="font-family:Inter,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;background:#F7FAFC;padding:40px 24px;">
+  <div style="background:#0B2E4F;border-radius:20px 20px 0 0;padding:28px 32px;">
+    <span style="font-family:'Space Grotesk',sans-serif;color:#F7FAFC;font-size:20px;font-weight:700;letter-spacing:-0.02em;">FIRONOVA</span>
+    <span style="color:#00B8D4;font-size:20px;font-weight:700;"> ·</span>
+  </div>
+  <div style="background:#ffffff;border-radius:0 0 20px 20px;padding:36px 32px;border:1px solid #E2E8F0;border-top:none;">
+    <h1 style="font-family:'Space Grotesk',sans-serif;color:#0B2E4F;font-size:24px;font-weight:700;margin:0 0 12px;">{heading}</h1>
+    <p style="color:#334155;font-size:15px;line-height:1.6;margin:0 0 28px;">{intro}</p>
+    <a href="{link}" style="display:inline-block;background:#00B8D4;color:#0B2E4F;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:999px;font-size:15px;">{cta} &rarr;</a>
+    <p style="color:#64748B;font-size:12px;line-height:1.6;margin:28px 0 0;font-family:'JetBrains Mono',monospace;">{expiry}</p>
+    <p style="color:#94A3B8;font-size:12px;line-height:1.6;margin:8px 0 0;">{ignore}</p>
+    <hr style="border:none;border-top:1px solid #E2E8F0;margin:24px 0 12px;">
+    <p style="color:#94A3B8;font-size:11px;line-height:1.5;margin:0;">Produits destin&eacute;s &agrave; la recherche uniquement (RUO). R&eacute;serv&eacute; aux 18 ans et plus.<br>For Research Use Only. 18+ only.</p>
+  </div>
+</div>"""
+    return subject, html
+
+
+async def _affiliate_send_invite(email: str, name: str, link: str, lang: str) -> None:
+    subject, html = _affiliate_invite_html(name, link, lang)
+    from_addr = (globals().get("MAGIC_SENDER_EMAIL") or
+                 globals().get("SENDER_EMAIL") or "orders@fironova.com")
+    await _send_email(email, subject, html, from_email=from_addr)  # noqa: F821
+
+
+# ===========================================================================
+# ATTRIBUTION — appelée depuis checkout() et _mark_order_paid() / refund
+# ===========================================================================
+
+async def affiliate_capture_click(request: Request, response: Response, code: str) -> None:
+    """Pose le cookie d'attribution (httpOnly) + journalise le clic.
+    À appeler depuis un endpoint public GET /affiliate/ref/{code} ou au 1er hit
+    du site avec ?ref=CODE (voir wiring frontend)."""
+    code = (code or "").strip().upper()
+    if not code:
+        return
+    affiliate = await db.affiliates.find_one(
+        {"code": code, "status": "active"}, {"_id": 0, "id": 1, "code": 1}
+    )
+    if not affiliate:
+        return
+    now = datetime.now(timezone.utc)
+    response.set_cookie(
+        AFFILIATE_COOKIE_NAME, code,
+        max_age=AFFILIATE_COOKIE_DAYS * 86400,
+        httponly=True, samesite="lax", secure=True, path="/",
+    )
+    await db.affiliate_clicks.insert_one({
+        "id": str(uuid.uuid4()),
+        "affiliate_id": affiliate["id"],
+        "code": code,
+        "ip_hash": _affiliate_hash_ip(_client_ip(request)),  # noqa: F821
+        "user_agent": (request.headers.get("user-agent", "") or "")[:300],
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(days=AFFILIATE_CLICK_TTL_DAYS)).isoformat(),
+    })
+
+
+async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
+    """Lit le cookie fn_ref et attache l'affilié à la commande (champ additif).
+    Anti auto-parrainage : refuse si l'email de commande == email affilié.
+    À appeler DANS checkout() juste avant db.orders.insert_one(order_doc)."""
+    code = request.cookies.get(AFFILIATE_COOKIE_NAME)
+    if not code:
+        return
+    code = code.strip().upper()
+    affiliate = await db.affiliates.find_one(
+        {"code": code, "status": "active"}, {"_id": 0}
+    )
+    if not affiliate:
+        return
+    order_email = (order_doc.get("email") or "").lower().strip()
+    # Auto-parrainage direct (même email) : bloqué d'emblée.
+    if order_email and order_email == (affiliate.get("email") or "").lower().strip():
+        return
+    order_doc["affiliate_id"] = affiliate["id"]
+    order_doc["affiliate_code"] = affiliate["code"]
+    order_doc["affiliate_ip_hash"] = _affiliate_hash_ip(_client_ip(request))  # noqa: F821
+
+
+async def _affiliate_is_self_order(affiliate: dict, order: dict) -> bool:
+    """self-order = email OU adresse de livraison OU IP hachée en commun avec
+    l'affilié ou avec une commande antérieure déjà marquée self-order."""
+    aff_email = (affiliate.get("email") or "").lower().strip()
+    order_email = (order.get("email") or "").lower().strip()
+    if aff_email and order_email and aff_email == order_email:
+        return True
+
+    # IP du clic/commande == IP connue de l'affilié (invite/activation)
+    order_ip_hash = order.get("affiliate_ip_hash")
+    if order_ip_hash and order_ip_hash == affiliate.get("ip_hash"):
+        return True
+
+    # Adresse de livraison identique à une adresse connue de l'affilié
+    addr = order.get("shipping_address") or {}
+    norm = _affiliate_norm_address(addr)
+    if norm and norm in (affiliate.get("known_addresses") or []):
+        return True
+    return False
+
+
+def _affiliate_norm_address(addr: dict) -> str:
+    if not addr:
+        return ""
+    parts = [
+        (addr.get("address1") or "").lower().strip(),
+        (addr.get("postal_code") or "").lower().replace(" ", ""),
+    ]
+    return "|".join(p for p in parts if p)
+
+
+async def affiliate_on_order_paid(order: dict) -> None:
+    """Crée la commission 'pending' au paiement confirmé.
+    À appeler DANS _mark_order_paid(), après la transition réussie.
+    Idempotent : index unique sur order_id empêche le double comptage."""
+    affiliate_id = order.get("affiliate_id")
+    if not affiliate_id:
+        return
+    affiliate = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
+    if not affiliate or affiliate.get("status") != "active":
+        return
+
+    # Base = sous-total produits HT (hors port, hors taxes), net de remise.
+    subtotal = float(order.get("subtotal", 0.0))
+    discount = float(order.get("discount", 0.0))
+    base = max(0.0, round(subtotal - discount, 2))
+    if base <= 0:
+        return
+
+    # Exclusion self-order
+    if await _affiliate_is_self_order(affiliate, order):
+        excluded_reason = "self_order"
+        status = "excluded"
+        commission = 0.0
+    else:
+        excluded_reason = None
+        status = "pending"
+        # Taux au palier EFFECTIF courant de l'affilié
+        metrics = await _affiliate_compute_metrics(affiliate_id)
+        commission = round(base * metrics["commission_rate"], 2)
+
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "affiliate_id": affiliate_id,
+        "affiliate_code": affiliate.get("code"),
+        "order_id": order.get("id"),
+        "order_number": order.get("order_number"),
+        "order_email": order.get("email"),
+        "base_amount": base,
+        "commission_amount": commission,
+        "status": status,                       # pending|approved|paid<reversed|excluded
+        "excluded_reason": excluded_reason,
+        "created_at": now,
+        "approved_at": None,
+        "paid_at": None,
+        "payout_id": None,
+    }
+    try:
+        await db.affiliate_referrals.insert_one(doc)
+    except Exception as e:
+        # index unique (order_id) → déjà comptée, on ignore silencieusement
+        logging.info("[affiliate] referral already exists for order %s (%s)",
+                     order.get("order_number"), e)
+
+
+async def affiliate_on_order_reversed(order_id: str, full: bool = True) -> None:
+    """Passe la commission liée à 'reversed' lors d'un remboursement total /
+    chargeback. À appeler depuis admin_refund_order() quand new_refunded>=total,
+    et depuis le webhook chargeback si présent."""
+    if not full:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    await db.affiliate_referrals.update_many(
+        {"order_id": order_id, "status": {"$in": ["pending", "approved"]}},
+        {"$set": {"status": "reversed", "reversed_at": now}},
+    )
+
+
+# ===========================================================================
+# TÂCHE : approbation automatique après fenêtre de rétractation
+# ===========================================================================
+
+AFFILIATE_APPROVAL_HOLD_DAYS = 14  # délai avant qu'une commission 'pending'
+#                                    devienne 'approved' (fenêtre refund)
+
+
+async def _affiliate_approve_matured():
+    """Passe pending→approved les commissions dont l'ordre est payé depuis
+    plus de AFFILIATE_APPROVAL_HOLD_DAYS jours et non remboursé."""
+    cutoff = (datetime.now(timezone.utc) -
+              timedelta(days=AFFILIATE_APPROVAL_HOLD_DAYS)).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
+    cursor = db.affiliate_referrals.find(
+        {"status": "pending", "created_at": {"$lte": cutoff}}, {"_id": 0}
+    )
+    async for r in cursor:
+        order = await db.orders.find_one(
+            {"id": r["order_id"]}, {"_id": 0, "payment_status": 1}
+        )
+        if order and order.get("payment_status") == "paid":
+            await db.affiliate_referrals.update_one(
+                {"id": r["id"], "status": "pending"},
+                {"$set": {"status": "approved", "approved_at": now}},
+            )
+
+
+async def _affiliate_clicks_cleanup():
+    """Purge des clics expirés (rétention limitée — proportionnalité Loi 25)."""
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        await db.affiliate_clicks.delete_many({"expires_at": {"$lt": now}})
+    except Exception as e:  # pragma: no cover
+        logging.error("[affiliate] clicks cleanup failed: %s", e)
+
+
+async def affiliate_maintenance_watchdog():
+    """Boucle de maintenance (à lancer au startup si worker lock acquis)."""
+    while True:
+        try:
+            await _affiliate_approve_matured()
+            await _affiliate_clicks_cleanup()
+        except Exception as e:  # pragma: no cover
+            logging.error("[affiliate] maintenance error: %s", e)
+        await asyncio.sleep(3600)  # toutes les heures
+
+
+async def affiliate_ensure_indexes():
+    """Index — à appeler dans seed_admin_and_products() ou au startup."""
+    await db.affiliates.create_index("id", unique=True)
+    await db.affiliates.create_index("code", unique=True, sparse=True)
+    await db.affiliates.create_index("email", unique=True)
+    await db.affiliates.create_index("user_id", sparse=True)
+    await db.affiliate_referrals.create_index("order_id", unique=True)
+    await db.affiliate_referrals.create_index("affiliate_id")
+    await db.affiliate_referrals.create_index("status")
+    await db.affiliate_clicks.create_index("affiliate_id")
+    await db.affiliate_clicks.create_index("expires_at")
+    await db.affiliate_payouts.create_index("id", unique=True)
+    await db.affiliate_payouts.create_index("affiliate_id")
+
+
+# ===========================================================================
+# DÉPENDANCE : affilié courant (compte user avec is_affiliate + affiliate lié)
+# ===========================================================================
+
+async def get_current_affiliate(request: Request) -> dict:
+    user = await get_current_user(request)  # noqa: F821
+    aff = await db.affiliates.find_one(
+        {"user_id": user["id"], "status": {"$in": ["active", "suspended"]}},
+        {"_id": 0},
+    )
+    if not aff:
+        raise HTTPException(403, "Not an affiliate")
+    if aff.get("status") == "suspended":
+        raise HTTPException(403, "Affiliate account suspended")
+    return aff
+
+
+# ===========================================================================
+# ENDPOINTS — AFFILIÉ (dashboard)
+# ===========================================================================
+
+@api.post("/affiliate/join")  # noqa: F821
+async def affiliate_join(payload: AffiliateJoinIn, request: Request):
+    """Active un compte affilié à partir d'un token d'invitation.
+    L'utilisateur DOIT être connecté (auth existante), et son email doit
+    correspondre à l'email de l'invitation. Token consommé atomiquement."""
+    user = await get_current_user(request)  # noqa: F821
+    token_hash = _affiliate_hash_token(payload.token.strip())
+    now = datetime.now(timezone.utc)
+
+    invite = await db.affiliates.find_one(
+        {"invite_token_hash": token_hash, "status": "invited"}, {"_id": 0}
+    )
+    if not invite:
+        raise HTTPException(400, "Invalid or already-used invitation")
+    # Expiration
+    exp = invite.get("invite_expires_at")
+    if exp:
+        try:
+            exp_dt = datetime.fromisoformat(exp.replace("Z", "+00:00"))
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+            if now > exp_dt:
+                raise HTTPException(400, "Invitation expired")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+    # Verrou email : l'email connecté doit matcher l'email invité
+    if (user.get("email") or "").lower().strip() != (invite.get("email") or "").lower().strip():
+        raise HTTPException(403, "This invitation is bound to a different email address")
+
+    code = _affiliate_gen_code()
+    # collision improbable, mais on garantit l'unicité
+    for _ in range(5):
+        if not await db.affiliates.find_one({"code": code}, {"_id": 1}):
+            break
+        code = _affiliate_gen_code()
+
+    known_addresses = []
+    # (aucune adresse connue à l'activation ; se remplit via les commandes)
+    update = {
+        "$set": {
+            "status": "active",
+            "user_id": user["id"],
+            "code": code,
+            "activated_at": now.isoformat(),
+            "ip_hash": _affiliate_hash_ip(_client_ip(request)),  # noqa: F821
+            "known_addresses": known_addresses,
+            "payout_address": (payload.payout_address or "").strip(),
+            "payout_currency": (payload.payout_currency or invite.get("payout_currency") or "btc"),
+            # invalide le token (consommation atomique)
+            "invite_token_hash": None,
+            "invite_expires_at": None,
+        }
+    }
+    res = await db.affiliates.update_one(
+        {"id": invite["id"], "status": "invited"}, update
+    )
+    if not res.modified_count:
+        raise HTTPException(409, "Invitation already consumed")
+
+    aff = await db.affiliates.find_one({"id": invite["id"]}, {"_id": 0})
+    metrics = await _affiliate_compute_metrics(aff["id"])
+    return _affiliate_public(aff, metrics)
+
+
+@api.get("/affiliate/me")  # noqa: F821
+async def affiliate_me(request: Request, lang: str = "fr"):
+    aff = await get_current_affiliate(request)
+    metrics = await _affiliate_compute_metrics(aff["id"])
+    return _affiliate_public(aff, metrics, lang=lang)
+
+
+@api.get("/affiliate/referrals")  # noqa: F821
+async def affiliate_referrals(request: Request, limit: int = 200):
+    aff = await get_current_affiliate(request)
+    rows = await db.affiliate_referrals.find(
+        {"affiliate_id": aff["id"], "status": {"$ne": "excluded"}},
+        {"_id": 0, "order_email": 0, "affiliate_ip_hash": 0},
+    ).sort("created_at", -1).to_list(min(limit, 500))
+    return rows
+
+
+@api.get("/affiliate/payouts")  # noqa: F821
+async def affiliate_payouts(request: Request):
+    aff = await get_current_affiliate(request)
+    rows = await db.affiliate_payouts.find(
+        {"affiliate_id": aff["id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    return rows
+
+
+@api.put("/affiliate/payout-settings")  # noqa: F821
+async def affiliate_payout_settings(payload: AffiliatePayoutSettingsIn, request: Request):
+    aff = await get_current_affiliate(request)
+    await db.affiliates.update_one(
+        {"id": aff["id"]},
+        {"$set": {"payout_address": payload.payout_address.strip(),
+                  "payout_currency": payload.payout_currency.strip().lower()}},
+    )
+    fresh = await db.affiliates.find_one({"id": aff["id"]}, {"_id": 0})
+    return _affiliate_public(fresh)
+
+
+@api.get("/affiliate/performance")  # noqa: F821
+async def affiliate_performance(request: Request):
+    """Séries mensuelles (12 derniers mois) de CA validé pour les graphiques."""
+    aff = await get_current_affiliate(request)
+    buckets: dict = {}
+    cursor = db.affiliate_referrals.find(
+        {"affiliate_id": aff["id"], "status": {"$in": ["approved", "paid"]}},
+        {"_id": 0, "base_amount": 1, "approved_at": 1, "created_at": 1},
+    )
+    async for r in cursor:
+        ts = r.get("approved_at") or r.get("created_at")
+        if not ts:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        except Exception:
+            continue
+        key = f"{dt.year}-{dt.month:02d}"
+        buckets[key] = round(buckets.get(key, 0.0) + float(r.get("base_amount", 0.0)), 2)
+    series = [{"month": k, "revenue": v} for k, v in sorted(buckets.items())]
+    return {"series": series}
+
+
+# ===========================================================================
+# ENDPOINTS — ATTRIBUTION PUBLIQUE (pose du cookie)
+# ===========================================================================
+
+@api.get("/affiliate/ref/{code}")  # noqa: F821
+async def affiliate_ref(code: str, request: Request, response: Response):
+    """Endpoint de tracking : pose le cookie et renvoie ok. Le frontend appelle
+    ceci au 1er chargement quand ?ref=CODE est présent dans l'URL."""
+    _rate_limit("affiliate_ref", _client_ip(request), 60, 60,  # noqa: F821
+                "Trop de requêtes.")
+    await affiliate_capture_click(request, response, code)
+    return {"ok": True}
+
+
+# ===========================================================================
+# ENDPOINTS — ADMIN
+# ===========================================================================
+
+@api.post("/admin/affiliates/invite")  # noqa: F821
+async def admin_affiliate_invite(payload: AffiliateInviteIn,
+                                 admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Crée (ou ré-invite) un affilié verrouillé à un email. Envoie l'email."""
+    email = payload.email.lower().strip()
+    raw = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    expires = (now + timedelta(hours=AFFILIATE_INVITE_TTL_HOURS)).isoformat()
+
+    existing = await db.affiliates.find_one({"email": email}, {"_id": 0})
+    if existing and existing.get("status") == "active":
+        raise HTTPException(409, "This email is already an active affiliate")
+
+    if existing:
+        # ré-invitation : régénère le token, l'ancien meurt
+        await db.affiliates.update_one(
+            {"id": existing["id"]},
+            {"$set": {
+                "invite_token_hash": _affiliate_hash_token(raw),
+                "invite_expires_at": expires,
+                "name": payload.name.strip(),
+                "status": "invited",
+                "payout_currency": payload.payout_currency or "btc",
+                "invite_last_sent_at": now.isoformat(),
+            },
+             "$inc": {"invite_sent_count": 1}},
+        )
+        aff_id = existing["id"]
+    else:
+        aff_id = str(uuid.uuid4())
+        await db.affiliates.insert_one({
+            "id": aff_id,
+            "email": email,
+            "name": payload.name.strip(),
+            "code": None,
+            "user_id": None,
+            "status": "invited",
+            "compliance_status": "compliant",
+            "manual_tier": None,
+            "commission_note": payload.commission_note or "",
+            "payout_currency": payload.payout_currency or "btc",
+            "payout_address": "",
+            "ip_hash": None,
+            "known_addresses": [],
+            "invite_token_hash": _affiliate_hash_token(raw),
+            "invite_expires_at": expires,
+            "invite_sent_count": 1,
+            "invite_last_sent_at": now.isoformat(),
+            "created_at": now.isoformat(),
+            "activated_at": None,
+        })
+
+    base = (globals().get("PUBLIC_BASE_URL") or "").rstrip("/")
+    if not base:
+        base = str(request_base_url_safe())  # fallback
+    link = f"{base}/affiliate/join?token={raw}"
+    await _affiliate_send_invite(email, payload.name.strip(), link, payload.lang or "fr")
+    return {"ok": True, "affiliate_id": aff_id, "invite_link": link}
+
+
+def request_base_url_safe() -> str:
+    return (globals().get("PUBLIC_BASE_URL") or "").rstrip("/")
+
+
+@api.post("/admin/affiliates/{affiliate_id}/resend-invite")  # noqa: F821
+async def admin_affiliate_resend(affiliate_id: str,
+                                 admin: dict = Depends(get_admin_user)):  # noqa: F821
+    aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
+    if not aff:
+        raise HTTPException(404, "Affiliate not found")
+    if aff.get("status") == "active":
+        raise HTTPException(400, "Affiliate already active — no invite to resend")
+    _rate_limit("affiliate_invite", affiliate_id, AFFILIATE_INVITE_MAX,  # noqa: F821
+                AFFILIATE_INVITE_WINDOW, "Trop de renvois. Réessayez plus tard.")
+    raw = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    expires = (now + timedelta(hours=AFFILIATE_INVITE_TTL_HOURS)).isoformat()
+    await db.affiliates.update_one(
+        {"id": affiliate_id},
+        {"$set": {"invite_token_hash": _affiliate_hash_token(raw),
+                  "invite_expires_at": expires,
+                  "status": "invited",
+                  "invite_last_sent_at": now.isoformat()},
+         "$inc": {"invite_sent_count": 1}},
+    )
+    base = (globals().get("PUBLIC_BASE_URL") or "").rstrip("/")
+    link = f"{base}/affiliate/join?token={raw}"
+    await _affiliate_send_invite(aff["email"], aff.get("name", ""), link,
+                                 "fr")
+    return {"ok": True, "invite_link": link, "sent_to": aff["email"]}
+
+
+@api.get("/admin/affiliates")  # noqa: F821
+async def admin_affiliates_list(admin: dict = Depends(get_admin_user)):  # noqa: F821
+    rows = await db.affiliates.find(
+        {}, {"_id": 0, "invite_token_hash": 0}
+    ).sort("created_at", -1).to_list(1000)
+    out = []
+    for aff in rows:
+        metrics = await _affiliate_compute_metrics(aff["id"]) if aff.get("status") == "active" else None
+        item = dict(aff)
+        if metrics:
+            item.update({
+                "cumulative_revenue": metrics["cumulative_revenue"],
+                "quarter_revenue": metrics["quarter_revenue"],
+                "tier": metrics["tier"],
+                "commission_rate": metrics["commission_rate"],
+                "pending_commission": metrics["pending_commission"],
+                "approved_commission": metrics["approved_commission"],
+                "paid_commission": metrics["paid_commission"],
+            })
+        out.append(item)
+    return out
+
+
+@api.get("/admin/affiliates/{affiliate_id}")  # noqa: F821
+async def admin_affiliate_detail(affiliate_id: str,
+                                 admin: dict = Depends(get_admin_user)):  # noqa: F821
+    aff = await db.affiliates.find_one(
+        {"id": affiliate_id}, {"_id": 0, "invite_token_hash": 0}
+    )
+    if not aff:
+        raise HTTPException(404, "Affiliate not found")
+    metrics = await _affiliate_compute_metrics(affiliate_id) if aff.get("status") == "active" else None
+    referrals = await db.affiliate_referrals.find(
+        {"affiliate_id": affiliate_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(500)
+    payouts = await db.affiliate_payouts.find(
+        {"affiliate_id": affiliate_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    return {"affiliate": aff, "metrics": metrics,
+            "referrals": referrals, "payouts": payouts}
+
+
+@api.put("/admin/affiliates/{affiliate_id}")  # noqa: F821
+async def admin_affiliate_update(affiliate_id: str, payload: AffiliateAdminUpdateIn,
+                                 admin: dict = Depends(get_admin_user)):  # noqa: F821
+    aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
+    if not aff:
+        raise HTTPException(404, "Affiliate not found")
+    update = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
+    if update:
+        await db.affiliates.update_one({"id": affiliate_id}, {"$set": update})
+    fresh = await db.affiliates.find_one(
+        {"id": affiliate_id}, {"_id": 0, "invite_token_hash": 0}
+    )
+    return fresh
+
+
+@api.post("/admin/affiliates/payouts/run")  # noqa: F821
+async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # noqa: F821
+                                      period: Optional[str] = None):
+    """Génère les payouts mensuels : agrège les commissions 'approved' par
+    affilié en un relevé de payout (status 'ready'), marque les référrals
+    comme rattachés. Le paiement crypto réel se fait ensuite hors-système,
+    puis l'admin confirme via /mark-paid avec la référence de transaction."""
+    now = datetime.now(timezone.utc)
+    period = period or now.strftime("%Y-%m")
+    created = []
+
+    # Regroupe par affilié les commissions approuvées non encore payées
+    pipeline = [
+        {"$match": {"status": "approved", "payout_id": None}},
+        {"$group": {"_id": "$affiliate_id",
+                    "total": {"$sum": "$commission_amount"},
+                    "ids": {"$push": "$id"}}},
+    ]
+    async for grp in db.affiliate_referrals.aggregate(pipeline):
+        affiliate_id = grp["_id"]
+        total = round(float(grp["total"]), 2)
+        if total <= 0:
+            continue
+        aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
+        if not aff or aff.get("status") != "active":
+            continue
+        payout_id = str(uuid.uuid4())
+        await db.affiliate_payouts.insert_one({
+            "id": payout_id,
+            "affiliate_id": affiliate_id,
+            "affiliate_code": aff.get("code"),
+            "period": period,
+            "amount": total,
+            "currency": aff.get("payout_currency", "btc"),
+            "payout_address": aff.get("payout_address", ""),
+            "referral_ids": grp["ids"],
+            "referral_count": len(grp["ids"]),
+            "status": "ready",           # ready → paid
+            "reference": None,
+            "note": "",
+            "created_at": now.isoformat(),
+            "paid_at": None,
+        })
+        await db.affiliate_referrals.update_many(
+            {"id": {"$in": grp["ids"]}},
+            {"$set": {"payout_id": payout_id}},
+        )
+        created.append({"affiliate_id": affiliate_id, "amount": total,
+                        "payout_id": payout_id})
+    return {"ok": True, "period": period, "payouts_created": len(created),
+            "detail": created}
+
+
+@api.post("/admin/affiliates/payouts/{payout_id}/mark-paid")  # noqa: F821
+async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMarkIn,
+                                    admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Confirme le paiement crypto : enregistre la référence de transaction
+    (traçabilité), passe le payout + ses référrals à 'paid'."""
+    payout = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
+    if not payout:
+        raise HTTPException(404, "Payout not found")
+    if payout.get("status") == "paid":
+        raise HTTPException(400, "Payout already marked paid")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.affiliate_payouts.update_one(
+        {"id": payout_id},
+        {"$set": {"status": "paid", "reference": payload.reference.strip(),
+                  "note": payload.note or "", "paid_at": now,
+                  "paid_by": admin.get("email")}},
+    )
+    await db.affiliate_referrals.update_many(
+        {"payout_id": payout_id},
+        {"$set": {"status": "paid", "paid_at": now}},
+    )
+    fresh = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
+    return fresh
+
+
+@api.get("/admin/affiliates/payouts/all")  # noqa: F821
+async def admin_affiliate_payouts_all(admin: dict = Depends(get_admin_user),  # noqa: F821
+                                      status: Optional[str] = None):
+    filt = {}
+    if status:
+        filt["status"] = status
+    rows = await db.affiliate_payouts.find(filt, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return rows
+
+# ===== FIRONOVA_AFFILIATE_BLOCK_END =====
+
 app.include_router(api)
 
 # CORS crédentialé : le navigateur refuse Access-Control-Allow-Origin: * dès

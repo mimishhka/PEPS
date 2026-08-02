@@ -30,6 +30,9 @@ import Lab from "./pages/Lab";
 import Compliance from "./pages/Compliance";
 import Privacy from "./pages/Privacy";
 import Faq from "./pages/Faq";
+import AffiliateDashboard from "./pages/AffiliateDashboard";
+import AffiliateJoin from "./pages/AffiliateJoin";
+import useAffiliateRef from "./hooks/useAffiliateRef";
 import NotFound from "./pages/NotFound";
 
 // Chargé à la demande (chunk séparé) — le code du panneau admin n'est PLUS
@@ -62,6 +65,7 @@ function Shell({ children }) {
 // ni footer — sinon le prélancement laisse fuiter toute la navigation.
 function GatedApp() {
   const { loaded, prelaunchEnabled } = useSiteConfig();
+  useAffiliateRef();
   const { user, checking: authLoading } = useAuth();
   const location = useLocation();
   const [previewOk, setPreviewOk] = useState(false);
@@ -118,6 +122,8 @@ function AppRoutes() {
       <Route path="/compliance" element={<Compliance />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/faq" element={<Faq />} />
+      <Route path="/affiliate/join" element={<AffiliateJoin />} />
+      <Route path="/affiliate" element={<ProtectedRoute><AffiliateDashboard /></ProtectedRoute>} />
       <Route
         path={`${ADMIN_PATH}/*`}
         element={

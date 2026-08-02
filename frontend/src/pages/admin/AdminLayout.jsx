@@ -3,7 +3,7 @@ import { NavLink, Routes, Route, Navigate, useNavigate, useLocation } from "reac
 import {
   LayoutDashboard, ShoppingCart, Package, Ticket, Users, Truck, Settings as Cog,
   LogOut, Download, Search, X, Plus, Edit, Trash2, FileText, CheckCircle2, AlertCircle, Clock, UserCog,
-  History, FolderTree, ListTree, Mail,
+  History, FolderTree, ListTree, Mail, Handshake,
 } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../lib/api";
@@ -25,6 +25,7 @@ import AdminAuditLog from "./sections/AdminAuditLog";
 import AdminCategories from "./sections/AdminCategories";
 import AdminMenus from "./sections/AdminMenus";
 import AdminSubscribers from "./sections/AdminSubscribers";
+import AdminAffiliates from "./sections/AdminAffiliates";
 
 function hasAccess(user, area) {
   if (!user) return false;
@@ -67,6 +68,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
     if (user?.role === "admin") {
       filtered.push({ to: `${basePath}/categories`, label: L("Catégories", "Categories"), icon: FolderTree, area: "categories" });
       filtered.push({ to: `${basePath}/menus`, label: L("Menus", "Menus"), icon: ListTree, area: "menus" });
+      filtered.push({ to: `${basePath}/affiliates`, label: L("Affiliés", "Affiliates"), icon: Handshake, area: "affiliates" });
       filtered.push({ to: `${basePath}/staff`, label: L("Équipe", "Team"), icon: UserCog, area: "staff" });
       filtered.push({ to: `${basePath}/trash`, label: L("Corbeille", "Trash"), icon: Trash2, area: "trash" });
       filtered.push({ to: `${basePath}/audit-log`, label: L("Journal", "Activity log"), icon: History, area: "audit" });
@@ -165,6 +167,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
             <Route path="subscribers" element={hasAccess(user, "subscribers") ? <AdminSubscribers /> : <Navigate to={landingPath} replace />} />
             <Route path="categories" element={user?.role === "admin" ? <AdminCategories /> : <Navigate to={landingPath} replace />} />
             <Route path="menus" element={user?.role === "admin" ? <AdminMenus /> : <Navigate to={landingPath} replace />} />
+            <Route path="affiliates" element={user?.role === "admin" ? <AdminAffiliates /> : <Navigate to={landingPath} replace />} />
             <Route path="staff" element={user?.role === "admin" ? <AdminStaff /> : <Navigate to={landingPath} replace />} />
             <Route path="trash" element={user?.role === "admin" ? <AdminTrash /> : <Navigate to={landingPath} replace />} />
             <Route path="audit-log" element={user?.role === "admin" ? <AdminAuditLog /> : <Navigate to={landingPath} replace />} />
