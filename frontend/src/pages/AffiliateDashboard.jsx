@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
 import api, { formatApiError } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
@@ -39,6 +39,7 @@ export default function AffiliateDashboard() {
   const [referrals, setReferrals] = useState([]);
   const [payouts, setPayouts] = useState([]);
   const [series, setSeries] = useState([]);
+  const [insights, setInsights] = useState(null);
   const [tab, setTab] = useState("overview");
   const [copied, setCopied] = useState(false);
 
@@ -54,16 +55,19 @@ export default function AffiliateDashboard() {
       setData(me.data);
       setPayAddr(me.data.payout_address || "");
       setPayCur(me.data.payout_currency || "btc");
-      const [r, p, perf] = await Promise.all([
+      const [r, p, perf, ins] = await Promise.all([
         api.get("/affiliate/referrals"),
         api.get("/affiliate/payouts"),
         api.get("/affiliate/performance"),
+        api.get("/affiliate/insights"),
       ]);
       setReferrals(r.data || []);
       setPayouts(p.data || []);
+      setInsights(ins.data || null);
       setSeries((perf.data?.series || []).map((s) => ({
         month: s.month,
         revenue: s.revenue,
+        commission: s.commission,
       })));
       setNotAffiliate(false);
     } catch (e) {
@@ -198,12 +202,44 @@ export default function AffiliateDashboard() {
         {/* OVERVIEW */}
         {tab === "overview" && (
           <div className="space-y-8" data-testid="affiliate-overview">
+            {/* Bandeau gains du mois en cours */}
+            <div className="rounded-2xl bg-nordfjord p-6 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+                  {L("GAINS DU MOIS EN COURS", "THIS MONTH'S EARNINGS")}
+                </p>
+                <p className="font-display text-4xl font-bold text-white tabular-nums">
+                  {money(insights?.current_month?.commission)}
+                </p>
+                <p className="font-data text-xs text-white/60 mt-1">
+                  {money(insights?.current_month?.revenue)} {L("de ventes validées", "in validated sales")}
+                </p>
+              </div>
+              {insights?.best_month && (
+                <div className="text-right">
+                  <p className="font-data text-[11px] uppercase tracking-wider text-white/50 mb-1">
+                    {L("Meilleur mois", "Best month")}
+                  </p>
+                  <p className="font-display text-xl font-bold text-white">{money(insights.best_month.commission)}</p>
+                  <p className="font-data text-xs text-white/60">{insights.best_month.month}</p>
+                </div>
+              )}
+            </div>
+
             {/* KPI cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <KpiCard label={L("Revenu validé cumulé", "Cumulative validated revenue")} value={money(data?.cumulative_revenue)} />
               <KpiCard label={L("Revenu du trimestre", "Quarter revenue")} value={money(data?.quarter_revenue)} />
               <KpiCard label={L("Commissions en attente", "Pending commissions")} value={money(data?.pending_commission)} />
               <KpiCard label={L("Commissions payées", "Paid commissions")} value={money(data?.paid_commission)} accent />
+            </div>
+
+            {/* Insights secondaires : clics / conversion / commandes / panier */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <MiniInsight label={L("Clics sur votre lien", "Clicks on your link")} value={insights?.clicks != null ? insights.clicks.toLocaleString("en-CA") : "—"} />
+              <MiniInsight label={L("Taux de conversion", "Conversion rate")} value={insights?.conversion_rate != null ? `${(insights.conversion_rate * 100).toFixed(1)}%` : "—"} />
+              <MiniInsight label={L("Commandes validées", "Validated orders")} value={insights?.validated_orders != null ? insights.validated_orders.toLocaleString("en-CA") : "—"} />
+              <MiniInsight label={L("Panier moyen", "Avg order")} value={money(insights?.avg_order_value)} />
             </div>
 
             {/* Tier progression */}
@@ -275,7 +311,9 @@ export default function AffiliateDashboard() {
                       <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#64748B" }} />
                       <YAxis tick={{ fontSize: 11, fill: "#64748B" }} />
                       <Tooltip formatter={(v) => money(v)} />
-                      <Line type="monotone" dataKey="revenue" stroke="#00B8D4" strokeWidth={2} dot={{ r: 3 }} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Line type="monotone" dataKey="revenue" name={L("CA validé", "Revenue")} stroke="#0B2E4F" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="commission" name={L("Commissions", "Commissions")} stroke="#00B8D4" strokeWidth={2} dot={{ r: 3 }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -438,6 +476,15 @@ function KpiCard({ label, value, accent }) {
         {label}
       </p>
       <p className={`font-display text-2xl font-bold ${accent ? "text-white" : "text-nordfjord"}`}>{value}</p>
+    </div>
+  );
+}
+
+function MiniInsight({ label, value }) {
+  return (
+    <div className="rounded-xl border border-ash bg-white px-4 py-3">
+      <p className="font-data text-[10px] font-semibold uppercase tracking-[0.18em] text-glacier mb-1">{label}</p>
+      <p className="font-display text-xl font-bold text-nordfjord tabular-nums">{value}</p>
     </div>
   );
 }

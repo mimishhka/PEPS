@@ -74,6 +74,21 @@ const SECTIONS = [
     ],
   },
   {
+    id: "fraud-prevention",
+    en: { title: "Affiliate Fraud Prevention" },
+    fr: { title: "Prévention de la fraude d'affiliation" },
+    paras: [
+      {
+        en: "If you take part in our affiliate program, we process a limited amount of technical data to detect and prevent fraud — in particular, self-referrals (an affiliate placing orders through their own referral link). To do this, we compare a one-way, salted cryptographic fingerprint (a \"hash\") of the IP address associated with a click or order against the affiliate's own. We never store the actual IP address in readable form; only the irreversible fingerprint is retained, and solely for this anti-fraud purpose.",
+        fr: "Si vous participez à notre programme d'affiliation, nous traitons une quantité limitée de données techniques afin de détecter et de prévenir la fraude — en particulier l'auto-parrainage (un affilié qui passe des commandes via son propre lien de parrainage). Pour ce faire, nous comparons une empreinte cryptographique salée et à sens unique (un « hachage ») de l'adresse IP associée à un clic ou à une commande avec celle de l'affilié. Nous ne conservons jamais l'adresse IP réelle sous une forme lisible ; seule l'empreinte irréversible est conservée, et uniquement à cette fin de prévention de la fraude.",
+      },
+      {
+        en: "This processing is carried out on the basis of our legitimate interest in protecting the integrity of the program, in accordance with PIPEDA and, for Québec residents, Law 25. These fingerprints are kept only for the limited period needed to detect fraud and are deleted afterward.",
+        fr: "Ce traitement est effectué sur la base de notre intérêt légitime à protéger l'intégrité du programme, conformément à la LPRPDE et, pour les résidents du Québec, à la Loi 25. Ces empreintes ne sont conservées que pour la période limitée nécessaire à la détection de la fraude, puis supprimées.",
+      },
+    ],
+  },
+  {
     id: "communications",
     en: { title: "Communications" },
     fr: { title: "Communications" },

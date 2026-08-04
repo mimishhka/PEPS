@@ -4023,9 +4023,7 @@ async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Dep
         "ts": datetime.now(timezone.utc).isoformat(),
     }
     await db.orders.update_one({"id": order_id}, {"$set": update, "$push": {"notes": note}})
-    # --- AFFILIATE: annule la commission si remboursement total ---
-    if new_refunded >= total:
-        await affiliate_on_order_reversed(order_id, full=True)
+    await affiliate_on_order_refunded(order_id, new_refunded, total)
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if updated.get("email"):
         asyncio.create_task(send_refund_email(updated, amount, new_refunded))
