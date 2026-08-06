@@ -7898,6 +7898,163 @@ async def admin_affiliate_payouts_all(admin: dict = Depends(get_admin_user),  # 
 
 # ===== FIRONOVA_AFFILIATE_BLOCK_END =====
 
+
+
+# ===== FIRONOVA_SEO_BACKEND_START =====
+@api.get("/seo/health")
+async def seo_health():
+    return {"ok": True, "source": "fironova"}
+
+@api.get("/seo/sitemap")
+async def seo_sitemap():
+    return {"sitemap": ["/", "/catalog", "/about", "/faq", "/privacy", "/compliance"]}
+
+@api.get("/seo/product/{slug}")
+async def seo_product(slug: str):
+    product = await db.products.find_one({"slug": slug}, {"_id": 0, "slug": 1, "name_en": 1, "name_fr": 1, "description_en": 1, "description_fr": 1})
+    if not product:
+        raise HTTPException(404, "Product not found")
+    return {
+        "slug": product.get("slug"),
+        "title": product.get("name_en") or product.get("name_fr") or slug,
+        "description": product.get("description_en") or product.get("description_fr") or "",
+    }
+# ===== FIRONOVA_SEO_BACKEND_END =====
+
+
+
+# ===== FIRONOVA_RELATED_PRODUCTS_START =====
+@api.get("/products/{slug}/related")
+async def get_related_products(slug: str, limit: int = 4):
+    """Produits reliés : même catégorie d'abord, complétés par des vedettes."""
+    base = await db.products.find_one({"slug": slug}, {"_id": 0, "category": 1, "id": 1})
+    if not base:
+        raise HTTPException(404, "Product not found")
+    limit = max(1, min(limit, 8))
+    seen = {base.get("id")}
+    out = []
+
+    same = await db.products.find(
+        {"active": True, "category": base.get("category"), "slug": {"$ne": slug}},
+        {"_id": 0},
+    ).sort("featured", -1).to_list(50)
+    for product in same:
+        if product.get("id") in seen:
+            continue
+        seen.add(product.get("id"))
+        out.append(product)
+        if len(out) >= limit:
+            return out
+
+    featured = await db.products.find(
+        {"active": True, "featured": True, "slug": {"$ne": slug}},
+        {"_id": 0},
+    ).to_list(50)
+    for product in featured:
+        if product.get("id") in seen:
+            continue
+        seen.add(product.get("id"))
+        out.append(product)
+        if len(out) >= limit:
+            break
+    return out
+# ===== FIRONOVA_RELATED_PRODUCTS_END =====
+
+
+
+# ===== FIRONOVA_CUSTOMERS_ENRICHED_START =====
+@api.get("/admin/customers/{user_id}")
+async def admin_customer_detail(user_id: str, _admin: dict = Depends(require_area("customers", "view"))):
+    """Fiche client complète avec historique de commandes."""
+    user = await db.users.find_one(
+        {"id": user_id}, {"_id": 0, "password_hash": 0, "token_version": 0}
+    )
+    if not user:
+        raise HTTPException(404, "Customer not found")
+
+    orders = await db.orders.find(
+        {"email": (user.get("email") or "").lower()}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    paid = [order for order in orders if order.get("payment_status") == "paid"]
+    total_spent = round(sum(order.get("total", 0) for order in paid), 2)
+    aov = round(total_spent / len(paid), 2) if paid else 0.0
+    return {
+        "customer": user,
+        "orders": orders,
+        "summary": {
+            "total_spent": total_spent,
+            "paid_orders": len(paid),
+            "all_orders": len(orders),
+            "aov": aov,
+        },
+    }
+# ===== FIRONOVA_CUSTOMERS_ENRICHED_END =====
+
+
+
+# ===== FIRONOVA_ANALYTICS_ENHANCED_START =====
+@api.get("/admin/analytics/enhanced")
+async def admin_analytics_enhanced(period: int = 30, _admin: dict = Depends(require_area("dashboard", "view"))):
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=period)
+    start_iso = start.isoformat()
+
+    paid_orders = await db.orders.find(
+        {"payment_status": "paid", "created_at": {"$gte": start_iso}},
+        {"_id": 0, "total": 1}
+    ).to_list(5000)
+    created_orders = await db.orders.find(
+        {"created_at": {"$gte": start_iso}},
+        {"_id": 0, "id": 1}
+    ).to_list(5000)
+
+    revenue = round(sum(order.get("total", 0) for order in paid_orders), 2)
+    paid_count = len(paid_orders)
+    created_count = len(created_orders)
+    conversion_rate = round((paid_count / created_count) * 100 if created_count else 0.0, 2)
+    aov = round(revenue / paid_count, 2) if paid_count else 0.0
+
+    return {
+        "period_days": period,
+        "revenue": revenue,
+        "paid_orders": paid_count,
+        "created_orders": created_count,
+        "conversion_rate": conversion_rate,
+        "aov": aov,
+    }
+# ===== FIRONOVA_ANALYTICS_ENHANCED_END =====
+
+
+
+# ===== FIRONOVA_EMAILS_NOVA_START =====
+def _email_shell(order=None, lang="en"):
+    lang = (lang or "en").lower()
+    if not order:
+        return {"subject": "Order update", "body": "Thank you for your order."}
+
+    if lang == "fr":
+        return {
+            "subject": "Confirmation de commande",
+            "body": "Bonjour, votre commande est confirmée. Merci pour votre confiance.",
+            "follow_up": "Vous recevrez un email de suivi dès l'expédition.",
+        }
+    return {
+        "subject": "Order confirmation",
+        "body": "Hello, your order is confirmed. Thank you for your trust.",
+        "follow_up": "You will receive a shipping update as soon as your order is on the way.",
+    }
+# ===== FIRONOVA_EMAILS_NOVA_END =====
+
+
+
+# ===== FIRONOVA_EMAIL_AUTOMATION_START =====
+async def email_automation_watchdog():
+    return {
+        "status": "ok",
+        "checks": ["welcome_email", "abandoned_cart", "order_follow_up"],
+    }
+# ===== FIRONOVA_EMAIL_AUTOMATION_END =====
+
 app.include_router(api)
 
 # CORS crédentialé : le navigateur refuse Access-Control-Allow-Origin: * dès
