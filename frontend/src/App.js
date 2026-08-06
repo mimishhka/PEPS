@@ -9,10 +9,12 @@ import { SiteConfigProvider, useSiteConfig } from "./contexts/SiteConfigContext"
 import api from "./lib/api";
 
 import Header from "./components/Header";
+import ScrollToTop from "./components/ScrollToTop";
 import Footer from "./components/Footer";
 import AgeGate from "./components/AgeGate";
 import CartDrawer from "./components/CartDrawer";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ErrorBoundary from "./components/ErrorBoundary";
 import AdminGate from "./components/AdminGate";
 
 import Home from "./pages/Home";
@@ -35,22 +37,22 @@ import AffiliateJoin from "./pages/AffiliateJoin";
 import useAffiliateRef from "./hooks/useAffiliateRef";
 import NotFound from "./pages/NotFound";
 
-// Chargé à la demande (chunk séparé) — le code du panneau admin n'est PLUS
-// téléchargé par un visiteur du site public tant qu'il ne visite pas cette
-// route précise. Avant ce changement, tout le bundle admin (React.lazy absent)
-// était livré à chaque visiteur, même caché derrière /admin.
+// Charge a la demande (chunk separe) — le code du panneau admin n'est PLUS
+// telecharge par un visiteur du site public tant qu'il ne visite pas cette
+// route precise. Avant ce changement, tout le bundle admin (React.lazy absent)
+// etait livre a chaque visiteur, meme cache derriere /admin.
 const Admin = lazy(() => import("./pages/admin/AdminLayout"));
 
-// ⚠️ À PERSONNALISER avant mise en prod : remplacer par un chemin que toi
-// seul(e) et ton équipe connaissez. Ne JAMAIS le mettre dans robots.txt,
-// le sitemap, ou un lien visible — sa confidentialité EST la protection.
+// A PERSONNALISER avant mise en prod : remplacer par un chemin que toi
+// seul(e) et ton equipe connaissez. Ne JAMAIS le mettre dans robots.txt,
+// le sitemap, ou un lien visible — sa confidentialite EST la protection.
 const ADMIN_PATH = "/ops-portal-fn7k2q";
 
 import "./index.css";
 
 function Shell({ children }) {
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
+    <div className="min-h-screen flex flex-col bg-background text-nordfjord">
       <AgeGate />
       <Header />
       <CartDrawer />
@@ -61,8 +63,8 @@ function Shell({ children }) {
   );
 }
 
-// La page d'attente se suffit à elle-même : ni header boutique, ni panier,
-// ni footer — sinon le prélancement laisse fuiter toute la navigation.
+// La page d'attente se suffit a elle-meme : ni header boutique, ni panier,
+// ni footer — sinon le prelaunch laisse fuiter toute la navigation.
 function GatedApp() {
   const { loaded, prelaunchEnabled } = useSiteConfig();
   useAffiliateRef();
@@ -74,12 +76,24 @@ function GatedApp() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!token) { setPreviewChecked(true); return; }
-    api.get("/prelaunch/preview", { params: { token } })
-      .then((r) => { if (!cancelled) setPreviewOk(!!r.data.ok); })
-      .catch(() => { if (!cancelled) setPreviewOk(false); })
-      .finally(() => { if (!cancelled) setPreviewChecked(true); });
-    return () => { cancelled = true; };
+    if (!token) {
+      setPreviewChecked(true);
+      return;
+    }
+    api
+      .get("/prelaunch/preview", { params: { token } })
+      .then((r) => {
+        if (!cancelled) setPreviewOk(!!r.data.ok);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewOk(false);
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   if (!loaded || authLoading || !previewChecked) return null;
@@ -92,8 +106,18 @@ function GatedApp() {
     ["/login", "/register", "/account"].some((p) => location.pathname.startsWith(p)) ||
     location.pathname.startsWith(ADMIN_PATH);
 
-  if (!bypass) return <><ComingSoon /><Toaster position="bottom-right" /></>;
-  return <Shell><AppRoutes /></Shell>;
+  if (!bypass)
+    return (
+      <>
+        <ComingSoon />
+        <Toaster position="bottom-right" />
+      </>
+    );
+  return (
+    <Shell>
+      <AppRoutes />
+    </Shell>
+  );
 }
 
 // The COA/Lab page is hidden until the backend flag COA_PAGE_ENABLED is turned on
@@ -116,14 +140,28 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
-      <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
+      <Route
+        path="/account"
+        element={
+          <ProtectedRoute>
+            <Account />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/about" element={<About />} />
       <Route path="/lab" element={<LabRoute />} />
       <Route path="/compliance" element={<Compliance />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/faq" element={<Faq />} />
       <Route path="/affiliate/join" element={<AffiliateJoin />} />
-      <Route path="/affiliate" element={<ProtectedRoute><AffiliateDashboard /></ProtectedRoute>} />
+      <Route
+        path="/affiliate"
+        element={
+          <ProtectedRoute>
+            <AffiliateDashboard />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path={`${ADMIN_PATH}/*`}
         element={
@@ -136,9 +174,9 @@ function AppRoutes() {
           </AdminGate>
         }
       />
-      {/* L'ancien /admin ne mène plus nulle part de spécial — traité comme
+      {/* L'ancien /admin ne mene plus nulle part de special — traite comme
           n'importe quelle URL inconnue, comme si le panneau n'avait jamais
-          existé à cet endroit. */}
+          existe a cet endroit. */}
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
@@ -147,11 +185,14 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <SiteConfigProvider>
         <LanguageProvider>
           <AuthProvider>
             <CartProvider>
-              <GatedApp />
+              <ErrorBoundary>
+                <GatedApp />
+              </ErrorBoundary>
             </CartProvider>
           </AuthProvider>
         </LanguageProvider>
