@@ -441,6 +441,11 @@ class ProductIn(BaseModel):
     mechanism: str = ""                # ex. "Potentialise la libération d'hormone de croissance"
     research_areas: List[str] = []     # ex. ["Réparation tissulaire", "Anti-inflammatoire"]
     synonyms: List[str] = []           # ex. ["Sermorelin", "GRF 1-29"]
+    meta_title_en: str = ""
+    meta_title_fr: str = ""
+    meta_description_en: str = ""
+    meta_description_fr: str = ""
+    og_image_url: str = ""
     variants: List[ProductVariant] = []
 
 
@@ -668,6 +673,8 @@ async def register(payload: RegisterIn, response: Response, request: Request):
         await db.subscribers.update_one({"email": email}, {"$set": {"converted": True}})
     except Exception as e:  # pragma: no cover
         logging.warning("subscriber conversion flag failed for %s: %s", email, e)
+    # --- AUTOMATION: email de bienvenue (n'interrompt jamais l'inscription) ---
+    asyncio.create_task(welcome_new_user(email, user_doc.get("name", ""), "fr"))
     token = create_access_token(user_doc["id"], email, "user", token_version=0)
     set_auth_cookie(response, token, request)
     return {
@@ -850,6 +857,16 @@ class StaffPermissionsIn(BaseModel):
     subscribers: Literal["none", "view", "manage"] = "none"
     shipping: Literal["none", "view", "manage"] = "none"
     dashboard: Literal["none", "view", "manage"] = "none"
+    # Zones additionnelles — alignées sur la nav admin frontend pour qu'un
+    # compte staff puisse réellement se voir accorder l'accès à chacune.
+    categories: Literal["none", "view", "manage"] = "none"
+    menus: Literal["none", "view", "manage"] = "none"
+    affiliates: Literal["none", "view", "manage"] = "none"
+    seo: Literal["none", "view", "manage"] = "none"
+    emails: Literal["none", "view", "manage"] = "none"
+    audit: Literal["none", "view", "manage"] = "none"
+    trash: Literal["none", "view", "manage"] = "none"
+    staff: Literal["none", "view", "manage"] = "none"
 
 
 class StaffInviteIn(BaseModel):
@@ -3922,8 +3939,65 @@ async def admin_audit_log(limit: int = 200, admin: dict = Depends(get_admin_user
 
 @api.get("/admin/customers")
 async def admin_customers(_admin: dict = Depends(require_area("customers", "view"))):
-    users = await db.users.find({}, {"_id": 0, "password_hash": 0, "token_version": 0}).sort("created_at", -1).to_list(500)
-    return users
+    """Clients enrichis : dépenses cumulées, nb de commandes payées, dernière commande,
+    et segment de rétention déterministe (nouveau / actif / fidèle / à risque / inactif)."""
+    users = await db.users.find(
+        {"role": {"$ne": "admin"}},
+        {"_id": 0, "password_hash": 0, "token_version": 0},
+    ).sort("created_at", -1).to_list(2000)
+
+    # Agrégation des commandes payées par email (une seule passe)
+    agg = db.orders.aggregate([
+        {"$match": {"payment_status": "paid", "email": {"$ne": None}}},
+        {"$group": {
+            "_id": "$email",
+            "orders": {"$sum": 1},
+            "spent": {"$sum": "$total"},
+            "last_order": {"$max": "$created_at"},
+        }},
+    ])
+    stats = {}
+    async for row in agg:
+        if row["_id"]:
+            stats[row["_id"].lower()] = row
+
+    now = datetime.now(timezone.utc)
+
+    def _segment(orders, last_iso):
+        if orders == 0:
+            return "prospect"
+        days = 999
+        if last_iso:
+            try:
+                days = (now - datetime.fromisoformat(last_iso.replace("Z", "+00:00"))).days
+            except Exception:
+                days = 999
+        if orders >= 3:
+            return "loyal" if days <= 120 else "at_risk"
+        if days <= 45:
+            return "active"
+        if days <= 120:
+            return "cooling"
+        return "dormant"
+
+    out = []
+    for u in users:
+        st = stats.get((u.get("email") or "").lower())
+        orders = st["orders"] if st else 0
+        spent = round(st["spent"], 2) if st else 0.0
+        last_order = st["last_order"] if st else None
+        u["orders_count"] = orders
+        u["total_spent"] = spent
+        u["last_order_at"] = last_order
+        u["segment"] = _segment(orders, last_order)
+        out.append(u)
+
+    # Compte par segment (pour les filtres UI)
+    seg_counts = {}
+    for u in out:
+        seg_counts[u["segment"]] = seg_counts.get(u["segment"], 0) + 1
+
+    return {"customers": out, "segment_counts": seg_counts, "total": len(out)}
 
 
 @api.get("/admin/subscribers")
@@ -6136,6 +6210,7 @@ async def meta():
         "canada_post_enabled": is_canada_post_configured(),
         "prelaunch_enabled": PRELAUNCH_ENABLED,
         "launch_coupon_code": LAUNCH_COUPON_CODE,
+        "seo": await _seo_get_settings(),
         # PRELAUNCH_PREVIEW_TOKEN n'est JAMAIS exposé ici — il ne se vérifie que
         # côté serveur via GET /prelaunch/preview.
     }
@@ -6943,6 +7018,7 @@ async def startup_event():
         asyncio.create_task(_trash_auto_purge_watchdog())
         asyncio.create_task(_rollover_watchdog())
         asyncio.create_task(_magic_tokens_cleanup())
+        asyncio.create_task(_abandoned_cart_watchdog())
         asyncio.create_task(affiliate_maintenance_watchdog())
 
 
@@ -7926,35 +8002,34 @@ async def seo_product(slug: str):
 # ===== FIRONOVA_RELATED_PRODUCTS_START =====
 @api.get("/products/{slug}/related")
 async def get_related_products(slug: str, limit: int = 4):
-    """Produits reliés : même catégorie d'abord, complétés par des vedettes."""
+    """Produits reliés : même catégorie d'abord, complétés par des vedettes.
+    Déterministe, sans ML. Sert le cross-sell « souvent recherché avec »."""
     base = await db.products.find_one({"slug": slug}, {"_id": 0, "category": 1, "id": 1})
     if not base:
         raise HTTPException(404, "Product not found")
     limit = max(1, min(limit, 8))
     seen = {base.get("id")}
     out = []
-
+    # 1) même catégorie, en stock en priorité
     same = await db.products.find(
         {"active": True, "category": base.get("category"), "slug": {"$ne": slug}},
         {"_id": 0},
     ).sort("featured", -1).to_list(50)
-    for product in same:
-        if product.get("id") in seen:
+    for p in same:
+        if p.get("id") in seen:
             continue
-        seen.add(product.get("id"))
-        out.append(product)
+        seen.add(p.get("id")); out.append(p)
         if len(out) >= limit:
             return out
-
-    featured = await db.products.find(
+    # 2) compléter avec des vedettes d'autres catégories
+    feat = await db.products.find(
         {"active": True, "featured": True, "slug": {"$ne": slug}},
         {"_id": 0},
     ).to_list(50)
-    for product in featured:
-        if product.get("id") in seen:
+    for p in feat:
+        if p.get("id") in seen:
             continue
-        seen.add(product.get("id"))
-        out.append(product)
+        seen.add(p.get("id")); out.append(p)
         if len(out) >= limit:
             break
     return out
@@ -7966,20 +8041,19 @@ async def get_related_products(slug: str, limit: int = 4):
 @api.get("/admin/customers/{user_id}")
 async def admin_customer_detail(user_id: str, _admin: dict = Depends(require_area("customers", "view"))):
     """Fiche client complète avec historique de commandes."""
-    user = await db.users.find_one(
+    u = await db.users.find_one(
         {"id": user_id}, {"_id": 0, "password_hash": 0, "token_version": 0}
     )
-    if not user:
+    if not u:
         raise HTTPException(404, "Customer not found")
-
     orders = await db.orders.find(
-        {"email": (user.get("email") or "").lower()}, {"_id": 0}
+        {"email": (u.get("email") or "").lower()}, {"_id": 0}
     ).sort("created_at", -1).to_list(200)
-    paid = [order for order in orders if order.get("payment_status") == "paid"]
-    total_spent = round(sum(order.get("total", 0) for order in paid), 2)
+    paid = [o for o in orders if o.get("payment_status") == "paid"]
+    total_spent = round(sum(o.get("total", 0) for o in paid), 2)
     aov = round(total_spent / len(paid), 2) if paid else 0.0
     return {
-        "customer": user,
+        "customer": u,
         "orders": orders,
         "summary": {
             "total_spent": total_spent,
@@ -7993,35 +8067,118 @@ async def admin_customer_detail(user_id: str, _admin: dict = Depends(require_are
 
 
 # ===== FIRONOVA_ANALYTICS_ENHANCED_START =====
-@api.get("/admin/analytics/enhanced")
-async def admin_analytics_enhanced(period: int = 30, _admin: dict = Depends(require_area("dashboard", "view"))):
+TAX_THRESHOLD_CAD = 30000.0          # seuil d'inscription TPS/TVQ (petit fournisseur)
+TAX_ALERT_RATIO = 0.80               # alerte "approche" à 80 % du seuil
+_UNPAID = ["pending", "awaiting_etransfer", "awaiting_crypto", "awaiting_stripe"]
+
+
+def _pct_change(cur: float, prev: float):
+    """Variation en % ; None si base précédente nulle (évite division par zéro)."""
+    if prev == 0:
+        return None
+    return round((cur - prev) / prev * 100, 1)
+
+
+@api.get("/admin/analytics/enhanced")  # noqa: F821
+async def admin_analytics_enhanced(period: int = 30,
+                                   _admin: dict = Depends(require_area("dashboard", "view"))):  # noqa: F821
+    """Métriques de pilotage avec comparaison période courante vs précédente."""
+    if period not in (7, 30, 90):
+        period = 30
     now = datetime.now(timezone.utc)
-    start = now - timedelta(days=period)
-    start_iso = start.isoformat()
+    cur_start = now - timedelta(days=period)
+    prev_start = now - timedelta(days=period * 2)
+    cur_start_s = cur_start.isoformat()
+    prev_start_s = prev_start.isoformat()
 
-    paid_orders = await db.orders.find(
-        {"payment_status": "paid", "created_at": {"$gte": start_iso}},
-        {"_id": 0, "total": 1}
-    ).to_list(5000)
-    created_orders = await db.orders.find(
-        {"created_at": {"$gte": start_iso}},
-        {"_id": 0, "id": 1}
-    ).to_list(5000)
+    # ---- Période courante : commandes payées ----
+    async def _period_stats(start_s: str, end_s: str) -> dict:
+        cur = db.orders.aggregate([  # noqa: F821
+            {"$match": {"payment_status": "paid",
+                        "created_at": {"$gte": start_s, "$lt": end_s}}},
+            {"$group": {"_id": None,
+                        "revenue": {"$sum": "$total"},
+                        "orders": {"$sum": 1}}},
+        ])
+        doc = await cur.to_list(1)
+        rev = round(doc[0]["revenue"], 2) if doc else 0.0
+        n = doc[0]["orders"] if doc else 0
+        return {"revenue": rev, "orders": n, "aov": round(rev / n, 2) if n else 0.0}
 
-    revenue = round(sum(order.get("total", 0) for order in paid_orders), 2)
-    paid_count = len(paid_orders)
-    created_count = len(created_orders)
-    conversion_rate = round((paid_count / created_count) * 100 if created_count else 0.0, 2)
-    aov = round(revenue / paid_count, 2) if paid_count else 0.0
+    current = await _period_stats(cur_start_s, now.isoformat())
+    previous = await _period_stats(prev_start_s, cur_start_s)
+
+    # ---- Conversion : payées / créées (toutes, sur la période courante) ----
+    created = await db.orders.count_documents(  # noqa: F821
+        {"created_at": {"$gte": cur_start_s}})
+    paid = await db.orders.count_documents(  # noqa: F821
+        {"created_at": {"$gte": cur_start_s}, "payment_status": "paid"})
+    abandoned = await db.orders.count_documents(  # noqa: F821
+        {"created_at": {"$gte": cur_start_s}, "payment_status": {"$in": _UNPAID}})
+    conversion = round(paid / created * 100, 1) if created else None
+
+    # ---- Nouveaux vs récurrents (clients ayant payé sur la période) ----
+    cur = db.orders.aggregate([  # noqa: F821
+        {"$match": {"payment_status": "paid", "created_at": {"$gte": cur_start_s},
+                    "email": {"$nin": [None, ""]}}},
+        {"$group": {"_id": "$email"}},
+    ])
+    period_emails = [d["_id"] async for d in cur]
+    new_customers = 0
+    returning_customers = 0
+    for em in period_emails:
+        prior = await db.orders.count_documents(  # noqa: F821
+            {"email": em, "payment_status": "paid", "created_at": {"$lt": cur_start_s}})
+        if prior > 0:
+            returning_customers += 1
+        else:
+            new_customers += 1
+
+    # ---- Alerte seuil de taxe : CA payé sur 12 mois glissants ----
+    twelve_start = (now - timedelta(days=365)).isoformat()
+    ytd_cur = db.orders.aggregate([  # noqa: F821
+        {"$match": {"payment_status": "paid", "created_at": {"$gte": twelve_start}}},
+        {"$group": {"_id": None, "total": {"$sum": "$total"}}},
+    ])
+    ytd_doc = await ytd_cur.to_list(1)
+    rolling_12mo = round(ytd_doc[0]["total"], 2) if ytd_doc else 0.0
+    ratio = rolling_12mo / TAX_THRESHOLD_CAD if TAX_THRESHOLD_CAD else 0
+    if rolling_12mo >= TAX_THRESHOLD_CAD:
+        tax_level = "exceeded"
+    elif ratio >= TAX_ALERT_RATIO:
+        tax_level = "approaching"
+    else:
+        tax_level = "ok"
 
     return {
         "period_days": period,
-        "revenue": revenue,
-        "paid_orders": paid_count,
-        "created_orders": created_count,
-        "conversion_rate": conversion_rate,
-        "aov": aov,
+        "current": current,
+        "previous": previous,
+        "changes": {
+            "revenue": _pct_change(current["revenue"], previous["revenue"]),
+            "orders": _pct_change(current["orders"], previous["orders"]),
+            "aov": _pct_change(current["aov"], previous["aov"]),
+        },
+        "conversion": {
+            "orders_created": created,
+            "orders_paid": paid,
+            "orders_abandoned": abandoned,
+            "conversion_rate": conversion,
+        },
+        "customers": {
+            "new": new_customers,
+            "returning": returning_customers,
+            "total_active": len(period_emails),
+        },
+        "tax_threshold": {
+            "rolling_12mo_revenue": rolling_12mo,
+            "threshold": TAX_THRESHOLD_CAD,
+            "ratio": round(ratio, 3),
+            "level": tax_level,            # ok | approaching | exceeded
+            "remaining": round(max(0.0, TAX_THRESHOLD_CAD - rolling_12mo), 2),
+        },
     }
+
 # ===== FIRONOVA_ANALYTICS_ENHANCED_END =====
 
 
@@ -8048,12 +8205,412 @@ def _email_shell(order=None, lang="en"):
 
 
 # ===== FIRONOVA_EMAIL_AUTOMATION_START =====
-async def email_automation_watchdog():
-    return {
-        "status": "ok",
-        "checks": ["welcome_email", "abandoned_cart", "order_follow_up"],
-    }
+import os
+import asyncio
+import logging
+from datetime import datetime, timezone, timedelta
+
+ABANDON_MIN_HOURS = float(os.environ.get("ABANDON_MIN_HOURS", "4"))
+ABANDON_MAX_HOURS = float(os.environ.get("ABANDON_MAX_HOURS", "72"))
+ABANDON_COUPON_CODE = os.environ.get("ABANDON_COUPON_CODE", "").strip()
+ABANDON_SWEEP_MINUTES = float(os.environ.get("ABANDON_SWEEP_MINUTES", "30"))
+_AUTOMATION_BASE = os.environ.get("PUBLIC_BASE_URL", "https://fironova.com").rstrip("/")
+
+# Statuts considérés « non payés » = panier/checkout abandonné
+_UNPAID_STATUSES = ["pending", "awaiting_etransfer", "awaiting_crypto", "awaiting_stripe"]
+
+
+def _nova_email_shell(heading_fr: str, heading_en: str, body_html: str,
+                      cta_url: str = "", cta_label_fr: str = "", cta_label_en: str = "") -> str:
+    """Gabarit email identité NOVA (Nordfjord Blue + Nova Cyan), bilingue."""
+    cta = ""
+    if cta_url and cta_label_fr:
+        cta = f"""
+      <div style="margin:28px 0 8px">
+        <a href="{cta_url}" style="display:inline-block;background:#00B8D4;color:#0B2E4F;
+           font-weight:700;text-decoration:none;padding:14px 32px;border-radius:999px;
+           font-size:15px">{cta_label_fr} &nbsp;/&nbsp; {cta_label_en}</a>
+      </div>"""
+    return f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#F7FAFC;font-family:'Helvetica Neue',Arial,sans-serif;color:#0B2E4F">
+  <table style="width:100%;max-width:600px;margin:0 auto;background:#fff;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden">
+    <tr><td style="background:#0B2E4F;padding:24px 32px">
+      <div style="font-family:'Space Grotesk',Arial,sans-serif;font-size:20px;font-weight:800;color:#fff;letter-spacing:-0.5px">
+        FIRONOVA<span style="color:#00B8D4"> ·</span>
+      </div>
+    </td></tr>
+    <tr><td style="padding:32px">
+      <div style="font-size:22px;font-weight:800;color:#0B2E4F;letter-spacing:-0.4px;margin-bottom:4px">{heading_fr}</div>
+      <div style="font-size:15px;font-style:italic;color:#3E5C76;margin-bottom:20px">{heading_en}</div>
+      <div style="font-size:14px;line-height:1.7;color:#1A2A38">{body_html}</div>
+      {cta}
+    </td></tr>
+    <tr><td style="background:#F7FAFC;padding:16px 32px;font-family:monospace;font-size:10px;letter-spacing:1px;color:#94A3B8;border-top:1px solid #E2E8F0">
+      PRODUITS DESTINÉS À LA RECHERCHE UNIQUEMENT (RUO) · 18+ · Ne pas consommer.<br>
+      FOR RESEARCH USE ONLY (RUO) · 18+ · Not for human consumption.
+    </td></tr>
+  </table>
+</body></html>"""
+
+
+def _abandoned_items_html(order: dict) -> str:
+    rows = ""
+    for it in order.get("items", [])[:6]:
+        name = it.get("name_en") or it.get("name_fr") or it.get("slug", "")
+        qty = it.get("qty", 1)
+        rows += (f'<tr><td style="padding:6px 0;color:#1A2A38">{name}</td>'
+                 f'<td style="padding:6px 0;text-align:right;color:#3E5C76">× {qty}</td></tr>')
+    return f'<table style="width:100%;border-collapse:collapse;margin:8px 0 4px">{rows}</table>'
+
+
+async def send_abandoned_cart_reminder(order: dict) -> None:
+    """Envoie UN rappel de panier abandonné (bilingue, NOVA)."""
+    email = order.get("email")
+    if not email:
+        return
+    items_html = _abandoned_items_html(order)
+    coupon_html = ""
+    if ABANDON_COUPON_CODE:
+        coupon_html = (
+            f'<div style="margin:16px 0;padding:14px 18px;background:#E6FBFF;border:1px dashed #00B8D4;border-radius:8px">'
+            f'<div style="font-size:13px;color:#3E5C76">Utilisez le code / Use code</div>'
+            f'<div style="font-size:20px;font-weight:800;color:#0B2E4F;letter-spacing:1px">{ABANDON_COUPON_CODE}</div>'
+            f'</div>'
+        )
+    body = (
+        "<p>Votre sélection vous attend toujours. Vos articles sont réservés ci-dessous — "
+        "reprenez là où vous vous êtes arrêté·e.</p>"
+        "<p style='color:#3E5C76;font-style:italic'>Your selection is still waiting. Your items are saved below — "
+        "pick up right where you left off.</p>"
+        f"{items_html}{coupon_html}"
+    )
+    cta_url = f"{_AUTOMATION_BASE}/checkout"
+    html = _nova_email_shell(
+        "Votre panier vous attend", "Your cart is waiting",
+        body, cta_url, "Finaliser ma commande", "Complete my order",
+    )
+    await _send_email(email, "Votre panier Fironova vous attend / Your Fironova cart is waiting", html)  # noqa: F821
+
+
+async def welcome_new_user(email: str, name: str = "", lang: str = "fr") -> None:
+    """Email de bienvenue à l'inscription (bilingue, NOVA)."""
+    if not email:
+        return
+    greeting_fr = f"Bienvenue{(' ' + name) if name else ''}"
+    body = (
+        "<p>Merci d'avoir créé votre compte Fironova. Vous avez maintenant accès à notre catalogue "
+        "de peptides de qualité recherche, avec documentation de certificat d'analyse.</p>"
+        "<p style='color:#3E5C76;font-style:italic'>Thank you for creating your Fironova account. You now have access "
+        "to our catalogue of research-grade peptides, with certificate-of-analysis documentation.</p>"
+        "<p style='margin-top:14px;font-size:12px;color:#94A3B8'>Rappel : nos produits sont strictement destinés à la "
+        "recherche en laboratoire (RUO). / Reminder: our products are strictly for laboratory research use (RUO).</p>"
+    )
+    html = _nova_email_shell(
+        greeting_fr, "Welcome to Fironova",
+        body, f"{_AUTOMATION_BASE}/catalog", "Explorer le catalogue", "Browse the catalogue",
+    )
+    await _send_email(email, "Bienvenue chez Fironova / Welcome to Fironova", html)  # noqa: F821
+
+
+async def _abandoned_cart_watchdog() -> None:
+    """Balaye périodiquement les commandes non payées et relance une seule fois."""
+    await asyncio.sleep(60)  # laisse le démarrage se stabiliser
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            cutoff_recent = (now - timedelta(hours=ABANDON_MIN_HOURS)).isoformat()
+            cutoff_old = (now - timedelta(hours=ABANDON_MAX_HOURS)).isoformat()
+            query = {
+                "payment_status": {"$in": _UNPAID_STATUSES},
+                "email": {"$nin": [None, ""]},
+                "created_at": {"$lte": cutoff_recent, "$gte": cutoff_old},
+                "abandoned_reminder_sent": {"$ne": True},
+            }
+            cursor = db.orders.find(query, {"_id": 0})  # noqa: F821
+            async for order in cursor:
+                # Marque AVANT l'envoi (idempotence : jamais deux rappels)
+                res = await db.orders.update_one(  # noqa: F821
+                    {"id": order["id"], "abandoned_reminder_sent": {"$ne": True}},
+                    {"$set": {"abandoned_reminder_sent": True,
+                              "abandoned_reminder_at": now.isoformat()}},
+                )
+                if res.modified_count == 1:
+                    try:
+                        await send_abandoned_cart_reminder(order)
+                        logging.info("[abandoned-cart] rappel envoyé pour %s", order.get("order_number"))
+                    except Exception as e:
+                        logging.error("[abandoned-cart] échec envoi %s: %s", order.get("id"), e)
+        except Exception as e:
+            logging.error("[abandoned-cart] watchdog error: %s", e)
+        await asyncio.sleep(ABANDON_SWEEP_MINUTES * 60)
+
 # ===== FIRONOVA_EMAIL_AUTOMATION_END =====
+
+
+
+# ===== FIRONOVA_SEO_BLOCK_START =====
+SEO_ORIGIN = os.environ.get("PUBLIC_BASE_URL", "https://fironova.com").rstrip("/")  # noqa: F821
+
+# Pages statiques indexables (doit rester cohérent avec robots.txt)
+SEO_STATIC_PAGES = [
+    ("/", "weekly", "1.0"),
+    ("/catalog", "weekly", "0.9"),
+    ("/about", "monthly", "0.6"),
+    ("/compliance", "monthly", "0.7"),
+    ("/faq", "monthly", "0.7"),
+    ("/privacy", "yearly", "0.4"),
+]
+
+
+def _seo_xml_escape(s: str) -> str:
+    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+@api.get("/sitemap.xml")  # noqa: F821
+async def dynamic_sitemap():
+    """Sitemap généré à la volée : pages statiques + toutes les fiches produits
+    actives. Un produit ajouté apparaît automatiquement — plus de sitemap figé."""
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    parts = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+
+    for path, freq, prio in SEO_STATIC_PAGES:
+        parts.append(
+            f"  <url><loc>{SEO_ORIGIN}{path}</loc>"
+            f"<changefreq>{freq}</changefreq><priority>{prio}</priority></url>"
+        )
+
+    # Produits actifs
+    cursor = db.products.find(  # noqa: F821
+        {"active": True},
+        {"_id": 0, "slug": 1, "updated_at": 1, "created_at": 1},
+    )
+    async for p in cursor:
+        slug = p.get("slug")
+        if not slug:
+            continue
+        lastmod = (p.get("updated_at") or p.get("created_at") or "")[:10]
+        lastmod_tag = f"<lastmod>{lastmod}</lastmod>" if lastmod else ""
+        parts.append(
+            f"  <url><loc>{SEO_ORIGIN}/product/{_seo_xml_escape(slug)}</loc>"
+            f"{lastmod_tag}<changefreq>weekly</changefreq><priority>0.8</priority></url>"
+        )
+
+    parts.append("</urlset>")
+    return Response(content="\n".join(parts), media_type="application/xml")
+
+
+@api.get("/seo/product/{slug}")  # noqa: F821
+async def product_seo(slug: str):
+    """Métadonnées SEO d'un produit : title/description/og + JSON-LD Product
+    prêt à injecter. Le front appelle ça et remplit le <head> de la fiche."""
+    p = await db.products.find_one({"slug": slug, "active": True}, {"_id": 0})  # noqa: F821
+    if not p:
+        raise HTTPException(404, "Product not found")  # noqa: F821
+
+    variants = p.get("variants", []) or []
+    prices = [float(v.get("price", 0)) for v in variants if v.get("price")]
+    low_price = min(prices) if prices else float(p.get("price_cad", 0) or 0)
+    in_stock = any(int(v.get("stock", 0) or 0) > 0 for v in variants) or int(p.get("stock", 0) or 0) > 0
+    img = p.get("og_image_url") or p.get("image_url") or ""
+    if img and img.startswith("/"):
+        img = SEO_ORIGIN + img
+
+    def _meta(lang: str) -> dict:
+        name = p.get(f"name_{lang}") or p.get("name_en") or slug
+        title = p.get(f"meta_title_{lang}") or f"{name} — Fironova"
+        desc = p.get(f"meta_description_{lang}") or ""
+        if not desc:
+            raw = p.get(f"description_{lang}") or p.get("description_en") or ""
+            desc = (raw[:157] + "…") if len(raw) > 158 else raw
+        return {"title": title, "description": desc, "name": name}
+
+    # JSON-LD Product (schema.org) — anglais comme langue canonique du balisage
+    en = _meta("en")
+    jsonld = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": en["name"],
+        "description": en["description"],
+        "sku": p.get("slug"),
+        "brand": {"@type": "Brand", "name": "Fironova"},
+        "category": p.get("category", ""),
+    }
+    if img:
+        jsonld["image"] = img
+    if p.get("molecular_formula"):
+        jsonld["additionalProperty"] = [{
+            "@type": "PropertyValue", "name": "Molecular formula",
+            "value": p.get("molecular_formula"),
+        }]
+    if low_price > 0:
+        jsonld["offers"] = {
+            "@type": "Offer",
+            "priceCurrency": "CAD",
+            "price": round(low_price, 2),
+            "availability": ("https://schema.org/InStock" if in_stock
+                             else "https://schema.org/OutOfStock"),
+            "url": f"{SEO_ORIGIN}/product/{slug}",
+        }
+
+    return {
+        "slug": slug,
+        "canonical": f"{SEO_ORIGIN}/product/{slug}",
+        "image": img,
+        "en": en,
+        "fr": _meta("fr"),
+        "jsonld": jsonld,
+    }
+
+# ===== FIRONOVA_SEO_BLOCK_END =====
+
+
+
+# ===== FIRONOVA_SEO_ADMIN_BLOCK_START =====
+# Valeurs par défaut si aucun réglage n'a encore été enregistré.
+SEO_DEFAULTS = {
+    "site_title_en": "Fironova — Research Peptides (For Research Use Only)",
+    "site_title_fr": "Fironova — Peptides de recherche (RUO)",
+    "site_description_en": "Fironova supplies research-grade peptides for laboratory use, with certificate-of-analysis documentation. For Research Use Only. Not for human consumption.",
+    "site_description_fr": "Fironova fournit des peptides de qualité recherche pour usage en laboratoire, avec documentation de certificat d'analyse. Réservé à la recherche (RUO). Ne pas consommer.",
+    "default_og_image": "",
+    "keywords_en": "research peptides, laboratory, certificate of analysis, RUO",
+    "keywords_fr": "peptides de recherche, laboratoire, certificat d'analyse, RUO",
+}
+
+
+class SeoSettingsIn(BaseModel):
+    site_title_en: str = ""
+    site_title_fr: str = ""
+    site_description_en: str = ""
+    site_description_fr: str = ""
+    default_og_image: str = ""
+    keywords_en: str = ""
+    keywords_fr: str = ""
+
+
+class ProductSeoIn(BaseModel):
+    meta_title_en: str = ""
+    meta_title_fr: str = ""
+    meta_description_en: str = ""
+    meta_description_fr: str = ""
+    og_image_url: str = ""
+
+
+async def _seo_get_settings() -> dict:
+    doc = await db.seo_settings.find_one({"id": "global"}, {"_id": 0})  # noqa: F821
+    if not doc:
+        return dict(SEO_DEFAULTS)
+    merged = dict(SEO_DEFAULTS)
+    for k in SEO_DEFAULTS:
+        if doc.get(k):
+            merged[k] = doc[k]
+    return merged
+
+
+@api.get("/admin/seo/settings")  # noqa: F821
+async def admin_seo_get_settings(admin: dict = Depends(get_admin_user)):  # noqa: F821
+    return await _seo_get_settings()
+
+
+@api.put("/admin/seo/settings")  # noqa: F821
+async def admin_seo_set_settings(payload: SeoSettingsIn,
+                                 admin: dict = Depends(get_admin_user)):  # noqa: F821
+    data = {k: v for k, v in payload.model_dump().items()}
+    data.update({
+        "id": "global",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": admin.get("email"),
+    })
+    await db.seo_settings.update_one({"id": "global"}, {"$set": data}, upsert=True)  # noqa: F821
+    return await _seo_get_settings()
+
+
+@api.get("/admin/seo/health")  # noqa: F821
+async def admin_seo_health(admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """État de santé SEO : combien de produits actifs, combien sans meta."""
+    total = await db.products.count_documents({"active": True})  # noqa: F821
+    missing_title = 0
+    missing_desc = 0
+    missing_image = 0
+    async for p in db.products.find(  # noqa: F821
+        {"active": True},
+        {"_id": 0, "meta_title_en": 1, "meta_title_fr": 1,
+         "meta_description_en": 1, "meta_description_fr": 1,
+         "og_image_url": 1, "image_url": 1},
+    ):
+        if not (p.get("meta_title_en") or p.get("meta_title_fr")):
+            missing_title += 1
+        if not (p.get("meta_description_en") or p.get("meta_description_fr")):
+            missing_desc += 1
+        if not (p.get("og_image_url") or p.get("image_url")):
+            missing_image += 1
+
+    settings = await _seo_get_settings()
+    global_ok = bool(settings.get("site_title_en") and settings.get("site_description_en"))
+
+    return {
+        "products_active": total,
+        "products_missing_meta_title": missing_title,
+        "products_missing_meta_description": missing_desc,
+        "products_missing_image": missing_image,
+        "products_fully_optimized": max(0, total - max(missing_title, missing_desc)),
+        "global_seo_configured": global_ok,
+        "default_og_image_set": bool(settings.get("default_og_image")),
+        "sitemap_url": "/api/sitemap.xml",
+    }
+
+
+@api.get("/admin/seo/products")  # noqa: F821
+async def admin_seo_products(admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """SEO de tous les produits, une ligne par produit (pour édition centralisée)."""
+    rows = []
+    async for p in db.products.find(  # noqa: F821
+        {}, {"_id": 0, "slug": 1, "name_en": 1, "name_fr": 1, "active": 1,
+             "meta_title_en": 1, "meta_title_fr": 1,
+             "meta_description_en": 1, "meta_description_fr": 1,
+             "og_image_url": 1, "image_url": 1},
+    ):
+        has_title = bool(p.get("meta_title_en") or p.get("meta_title_fr"))
+        has_desc = bool(p.get("meta_description_en") or p.get("meta_description_fr"))
+        rows.append({
+            "slug": p.get("slug"),
+            "name_en": p.get("name_en"),
+            "name_fr": p.get("name_fr"),
+            "active": p.get("active", False),
+            "meta_title_en": p.get("meta_title_en", ""),
+            "meta_title_fr": p.get("meta_title_fr", ""),
+            "meta_description_en": p.get("meta_description_en", ""),
+            "meta_description_fr": p.get("meta_description_fr", ""),
+            "og_image_url": p.get("og_image_url", ""),
+            "image_url": p.get("image_url", ""),
+            "optimized": has_title and has_desc,
+        })
+    rows.sort(key=lambda r: (r["optimized"], not r["active"]))  # non-optimisés d'abord
+    return {"products": rows}
+
+
+@api.put("/admin/seo/products/{slug}")  # noqa: F821
+async def admin_seo_update_product(slug: str, payload: ProductSeoIn,
+                                   admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Édite uniquement les champs SEO d'un produit (sans toucher au reste)."""
+    p = await db.products.find_one({"slug": slug}, {"_id": 0, "id": 1})  # noqa: F821
+    if not p:
+        raise HTTPException(404, "Product not found")  # noqa: F821
+    await db.products.update_one(  # noqa: F821
+        {"slug": slug},
+        {"$set": {
+            "meta_title_en": payload.meta_title_en,
+            "meta_title_fr": payload.meta_title_fr,
+            "meta_description_en": payload.meta_description_en,
+            "meta_description_fr": payload.meta_description_fr,
+            "og_image_url": payload.og_image_url,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    return {"ok": True, "slug": slug}
+
+# ===== FIRONOVA_SEO_ADMIN_BLOCK_END =====
 
 app.include_router(api)
 
