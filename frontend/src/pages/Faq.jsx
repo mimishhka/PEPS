@@ -144,8 +144,8 @@ const GROUPS = [
         id: "unpaid",
         q: { en: "What happens if I don't send my payment?", fr: "Que se passe-t-il si je n'envoie pas mon paiement ?" },
         a: {
-          en: "Orders awaiting payment (Interac e-Transfer or crypto) are automatically cancelled if payment is not received within 48 hours, and the reserved stock is released. You can simply place a new order afterwards.",
-          fr: "Les commandes en attente de paiement (virement Interac ou crypto) sont automatiquement annulées si le paiement n'est pas reçu dans les 48 heures, et le stock réservé est libéré. Vous pouvez simplement passer une nouvelle commande par la suite.",
+          en: "Orders awaiting payment (Interac e-Transfer or crypto) are automatically cancelled if payment is not received within 24 hours, and the reserved stock is released. You can simply place a new order afterwards.",
+          fr: "Les commandes en attente de paiement (virement Interac ou crypto) sont automatiquement annulées si le paiement n'est pas reçu dans les 24 heures, et le stock réservé est libéré. Vous pouvez simplement passer une nouvelle commande par la suite.",
         },
       },
     ],

@@ -1,3 +1,6 @@
+// frontend/src/pages/admin/sections/AdminSeo.jsx
+// Page SEO centrale : réglages globaux du site + santé SEO + édition du SEO
+// de chaque produit depuis une seule vue. Section Système.
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import { Search as SearchIcon, ExternalLink, Check, AlertTriangle, Save, X } from "lucide-react";
@@ -42,7 +45,7 @@ export default function AdminSeo() {
     try {
       const { data } = await api.put("/admin/seo/settings", settings);
       setSettings(data);
-      toast.success(L("Reglages SEO enregistres", "SEO settings saved"));
+      toast.success(L("Réglages SEO enregistrés", "SEO settings saved"));
       load();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
@@ -52,20 +55,23 @@ export default function AdminSeo() {
   const filtered = products.filter((p) => {
     if (!query.trim()) return true;
     const q = query.toLowerCase();
-    return (p.name_en || "").toLowerCase().includes(q) || (p.name_fr || "").toLowerCase().includes(q) || (p.slug || "").toLowerCase().includes(q);
+        return (p.name_en || "").toLowerCase().includes(q) ||
+          (p.name_fr || "").toLowerCase().includes(q) ||
+          (p.slug || "").toLowerCase().includes(q);
   });
 
   return (
     <div data-testid="admin-seo">
       <div className="mb-6">
-        <div className="font-data text-[11px] uppercase tracking-[0.24em] text-glacier">{L("SYSTEME", "SYSTEM")}</div>
+        <div className="font-data text-[11px] uppercase tracking-[0.24em] text-glacier">{L("SYSTÈME", "SYSTEM")}</div>
         <h1 className="font-display text-3xl font-extrabold tracking-tight">SEO</h1>
       </div>
 
       {loading ? (
-        <p className="text-sm text-glacier py-16 text-center">{L("Chargement...", "Loading...")}</p>
+        <p className="text-sm text-glacier py-16 text-center">{L("Chargement…", "Loading…")}</p>
       ) : (
         <>
+          {/* SANTÉ SEO */}
           {health && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
               <HealthCard label={L("Produits actifs", "Active products")} value={health.products_active} />
@@ -81,44 +87,66 @@ export default function AdminSeo() {
               />
               <HealthCard
                 label={L("SEO global", "Global SEO")}
-                value={health.global_seo_configured ? L("Configure", "Set") : L("A faire", "Todo")}
+                value={health.global_seo_configured ? L("Configuré", "Set") : L("À faire", "Todo")}
                 warn={!health.global_seo_configured}
               />
             </div>
           )}
 
+          {/* Lien sitemap */}
           <a href="/api/sitemap.xml" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-nova hover:underline mb-6">
             <ExternalLink size={14} /> {L("Voir le sitemap.xml", "View sitemap.xml")}
           </a>
 
+          {/* TABS */}
           <div className="flex gap-1 mb-5 border-b border-ash">
             <TabBtn active={tab === "global"} onClick={() => setTab("global")}>{L("SEO global du site", "Global site SEO")}</TabBtn>
             <TabBtn active={tab === "products"} onClick={() => setTab("products")}>{L("SEO par produit", "Per-product SEO")}</TabBtn>
           </div>
 
+          {/* GLOBAL */}
           {tab === "global" && settings && (
             <div className="bg-white border border-ash rounded-xl p-6 max-w-3xl space-y-4">
+              <p className="text-xs text-glacier mb-2">
+                {L("Ces valeurs décrivent votre site dans Google et sur les réseaux sociaux (page d'accueil et partages génériques).",
+                  "These describe your site in Google and on social media (home page and generic shares).")}
+              </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Field label={L("Titre du site (FR)", "Site title (FR)")} value={settings.site_title_fr} onChange={(v) => setSettings({ ...settings, site_title_fr: v })} />
                 <Field label={L("Titre du site (EN)", "Site title (EN)")} value={settings.site_title_en} onChange={(v) => setSettings({ ...settings, site_title_en: v })} />
               </div>
-              <TextArea label={L("Description (FR)", "Description (FR)")} value={settings.site_description_fr} onChange={(v) => setSettings({ ...settings, site_description_fr: v })} />
-              <TextArea label={L("Description (EN)", "Description (EN)")} value={settings.site_description_en} onChange={(v) => setSettings({ ...settings, site_description_en: v })} />
+              <TextArea label={L("Description (FR)", "Description (FR)")} value={settings.site_description_fr}
+                onChange={(v) => setSettings({ ...settings, site_description_fr: v })} hint={L("≤ 155 caractères idéalement", "≤ 155 chars ideally")} />
+              <TextArea label={L("Description (EN)", "Description (EN)")} value={settings.site_description_en}
+                onChange={(v) => setSettings({ ...settings, site_description_en: v })} hint={L("≤ 155 caractères idéalement", "≤ 155 chars ideally")} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Field label={L("Mots-cles (FR)", "Keywords (FR)")} value={settings.keywords_fr} onChange={(v) => setSettings({ ...settings, keywords_fr: v })} />
-                <Field label={L("Mots-cles (EN)", "Keywords (EN)")} value={settings.keywords_en} onChange={(v) => setSettings({ ...settings, keywords_en: v })} />
+                <Field label={L("Mots-clés (FR)", "Keywords (FR)")} value={settings.keywords_fr}
+                  onChange={(v) => setSettings({ ...settings, keywords_fr: v })} />
+                <Field label={L("Mots-clés (EN)", "Keywords (EN)")} value={settings.keywords_en}
+                  onChange={(v) => setSettings({ ...settings, keywords_en: v })} />
               </div>
-              <Field label={L("Image de partage (URL)", "Default share image (URL)")} value={settings.default_og_image} onChange={(v) => setSettings({ ...settings, default_og_image: v })} />
+              <Field label={L("Image de partage par défaut (URL)", "Default share image (URL)")} value={settings.default_og_image}
+                onChange={(v) => setSettings({ ...settings, default_og_image: v })}
+                hint={L("Affichée quand on partage un lien sans image propre", "Shown when a link is shared without its own image")} />
+
+              {/* Aperçu Google */}
+              <div className="mt-4 rounded-lg border border-ash bg-clinical p-4">
+                <p className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-2">{L("Aperçu Google", "Google preview")}</p>
+                <p className="text-[#1a0dab] text-lg leading-tight truncate">{(lang === "fr" ? settings.site_title_fr : settings.site_title_en) || "—"}</p>
+                <p className="text-[#006621] text-xs">https://fironova.com</p>
+                <p className="text-[#545454] text-sm mt-0.5 line-clamp-2">{(lang === "fr" ? settings.site_description_fr : settings.site_description_en) || "—"}</p>
+              </div>
               <button
                 onClick={saveSettings}
                 data-testid="seo-save-global"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-nordfjord text-white text-sm font-medium hover:bg-nordfjord/80 transition"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-nordfjord text-white text-sm font-medium hover:bg-foreground/80 transition"
               >
                 <Save size={15} /> {L("Enregistrer", "Save")}
               </button>
             </div>
           )}
 
+          {/* PRODUITS */}
           {tab === "products" && (
             <div>
               <div className="flex items-center gap-2 mb-4 max-w-sm">
@@ -127,7 +155,7 @@ export default function AdminSeo() {
                   <input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder={L("Rechercher un produit...", "Search a product...")}
+                    placeholder={L("Rechercher un produit…", "Search a product…")}
                     className="w-full pl-9 pr-3 py-2 rounded-lg border border-ash text-sm outline-none focus:border-nova"
                   />
                 </div>
@@ -139,7 +167,7 @@ export default function AdminSeo() {
                     <tr className="text-left text-xs uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
                       <th className="px-4 py-3">{L("Produit", "Product")}</th>
                       <th className="px-4 py-3">{L("Meta titre", "Meta title")}</th>
-                      <th className="px-4 py-3 text-center">{L("Etat", "Status")}</th>
+                      <th className="px-4 py-3 text-center">{L("État", "Status")}</th>
                       <th className="px-4 py-3"></th>
                     </tr>
                   </thead>
@@ -154,20 +182,23 @@ export default function AdminSeo() {
                           </p>
                         </td>
                         <td className="px-4 py-3 text-glacier max-w-xs truncate">
-                          {(lang === "fr" ? p.meta_title_fr : p.meta_title_en) || <span className="text-glacier/50 italic">{L("defaut", "default")}</span>}
+                          {(lang === "fr" ? p.meta_title_fr : p.meta_title_en) || <span className="text-glacier/50 italic">{L("défaut", "default")}</span>}
                         </td>
                         <td className="px-4 py-3 text-center">
                           {p.optimized ? <Check size={16} className="inline text-green-600" /> : <AlertTriangle size={16} className="inline text-amber-500" />}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <button onClick={() => setEditing(p)} className="px-3 py-1.5 rounded-md border border-ash text-xs hover:bg-clinical transition">
-                            {L("Editer", "Edit")}
+                            {L("Éditer", "Edit")}
                           </button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {filtered.length === 0 && (
+                  <p className="text-sm text-glacier/70 py-10 text-center">{L("Aucun produit.", "No products.")}</p>
+                )}
               </div>
             </div>
           )}
@@ -201,20 +232,25 @@ function TabBtn({ active, onClick, children }) {
   );
 }
 
-function Field({ label, value, onChange }) {
+function Field({ label, value, onChange, hint }) {
   return (
     <label className="block">
       <span className="block font-data text-[10px] uppercase tracking-[0.2em] mb-1 text-glacier">{label}</span>
       <input value={value || ""} onChange={(e) => onChange(e.target.value)} className="w-full rounded-lg border border-ash px-3 py-2 text-sm outline-none focus:border-nova" />
+      {hint && <span className="block text-[11px] text-glacier/70 mt-1">{hint}</span>}
     </label>
   );
 }
 
-function TextArea({ label, value, onChange }) {
+function TextArea({ label, value, onChange, hint }) {
+  const len = (value || "").length;
   return (
     <label className="block">
-      <span className="block font-data text-[10px] uppercase tracking-[0.2em] mb-1 text-glacier">{label}</span>
+      <span className="block font-data text-[10px] uppercase tracking-[0.2em] mb-1 text-glacier">
+        {label} <span className={len > 158 ? "text-amber-600" : "text-glacier/50"}>({len})</span>
+      </span>
       <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} rows={2} className="w-full rounded-lg border border-ash px-3 py-2 text-sm outline-none focus:border-nova resize-none" />
+      {hint && <span className="block text-[11px] text-glacier/70 mt-1">{hint}</span>}
     </label>
   );
 }
@@ -233,7 +269,7 @@ function ProductSeoModal({ product, L, lang, onClose, onSaved }) {
     setBusy(true);
     try {
       await api.put(`/admin/seo/products/${product.slug}`, form);
-      toast.success(L("SEO du produit enregistre", "Product SEO saved"));
+      toast.success(L("SEO du produit enregistré", "Product SEO saved"));
       onSaved();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
@@ -262,9 +298,9 @@ function ProductSeoModal({ product, L, lang, onClose, onSaved }) {
           onClick={save}
           disabled={busy}
           data-testid="seo-save-product"
-          className="w-full mt-5 px-4 py-2.5 rounded-lg bg-nordfjord text-white text-sm font-medium hover:bg-nordfjord/80 disabled:opacity-50 transition"
+          className="w-full mt-5 px-4 py-2.5 rounded-lg bg-nordfjord text-white text-sm font-medium hover:bg-foreground/80 disabled:opacity-50 transition"
         >
-          {busy ? L("Enregistrement...", "Saving...") : L("Enregistrer", "Save")}
+          {busy ? L("Enregistrement…", "Saving…") : L("Enregistrer", "Save")}
         </button>
       </div>
     </div>

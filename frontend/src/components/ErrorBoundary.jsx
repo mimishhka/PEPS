@@ -1,3 +1,7 @@
+// frontend/src/components/ErrorBoundary.jsx
+// Capture toute erreur de rendu React et affiche une page propre au lieu d'un
+// écran blanc. Bilingue FR/EN, identité NOVA. Composant de classe (obligatoire
+// pour componentDidCatch — les hooks ne peuvent pas capturer les erreurs enfant).
 import React from "react";
 
 export default class ErrorBoundary extends React.Component {
@@ -11,6 +15,8 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
+    // Journalisation locale. En prod, on pourrait relayer vers un service
+    // (Sentry, etc.) ici — mais jamais exposer la stack à l'utilisateur.
     // eslint-disable-next-line no-console
     console.error("[ErrorBoundary]", error, info?.componentStack);
   }
@@ -23,14 +29,15 @@ export default class ErrorBoundary extends React.Component {
   render() {
     if (!this.state.hasError) return this.props.children;
 
+    // FR/EN sans dépendre du contexte (il pourrait être la source du crash).
     const lang = (typeof navigator !== "undefined" && navigator.language || "en")
       .toLowerCase().startsWith("fr") ? "fr" : "en";
     const t = {
       fr: {
         title: "Une erreur est survenue",
-        body: "Quelque chose s'est mal passe de notre cote. Vous pouvez recharger la page ou revenir a l'accueil.",
-        cta: "Retour a l'accueil",
-        ruo: "Produits destines a la recherche uniquement (RUO) · 18+",
+        body: "Quelque chose s'est mal passé de notre côté. Vous pouvez recharger la page ou revenir à l'accueil.",
+        cta: "Retour à l'accueil",
+        ruo: "Produits destinés à la recherche uniquement (RUO) · 18+",
       },
       en: {
         title: "Something went wrong",
@@ -41,68 +48,32 @@ export default class ErrorBoundary extends React.Component {
     }[lang];
 
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#F7FAFC",
-          padding: "24px",
-          fontFamily: "Inter, -apple-system, Segoe UI, sans-serif",
-        }}
-      >
+      <div style={{
+        minHeight: "100vh", display: "flex", alignItems: "center",
+        justifyContent: "center", background: "#F7FAFC", padding: "24px",
+        fontFamily: "Inter, -apple-system, Segoe UI, sans-serif",
+      }}>
         <div style={{ maxWidth: 440, textAlign: "center" }}>
-          <div
-            style={{
-              fontFamily: "'Space Grotesk', sans-serif",
-              fontWeight: 700,
-              fontSize: 22,
-              color: "#0B2E4F",
-              letterSpacing: "-0.02em",
-              marginBottom: 24,
-            }}
-          >
+          <div style={{
+            fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700,
+            fontSize: 22, color: "#0B2E4F", letterSpacing: "-0.02em", marginBottom: 24,
+          }}>
             FIRONOVA<span style={{ color: "#00B8D4" }}> ·</span>
           </div>
-          <h1
-            style={{
-              fontFamily: "'Space Grotesk', sans-serif",
-              fontSize: 26,
-              fontWeight: 700,
-              color: "#0B2E4F",
-              margin: "0 0 12px",
-            }}
-          >
-            {t.title}
-          </h1>
+          <h1 style={{
+            fontFamily: "'Space Grotesk', sans-serif", fontSize: 26, fontWeight: 700,
+            color: "#0B2E4F", margin: "0 0 12px",
+          }}>{t.title}</h1>
           <p style={{ color: "#3E5C76", fontSize: 15, lineHeight: 1.6, margin: "0 0 28px" }}>{t.body}</p>
-          <button
-            onClick={this.handleReload}
-            style={{
-              background: "#00B8D4",
-              color: "#0B2E4F",
-              fontWeight: 700,
-              border: "none",
-              padding: "13px 30px",
-              borderRadius: 999,
-              fontSize: 15,
-              cursor: "pointer",
-            }}
-          >
-            {t.cta}
-          </button>
-          <p
-            style={{
-              color: "#94A3B8",
-              fontSize: 11,
-              marginTop: 32,
-              fontFamily: "'JetBrains Mono', monospace",
-              letterSpacing: "0.05em",
-            }}
-          >
-            {t.ruo}
-          </p>
+          <button onClick={this.handleReload} style={{
+            background: "#00B8D4", color: "#0B2E4F", fontWeight: 700,
+            border: "none", padding: "13px 30px", borderRadius: 999,
+            fontSize: 15, cursor: "pointer",
+          }}>{t.cta}</button>
+          <p style={{
+            color: "#94A3B8", fontSize: 11, marginTop: 32,
+            fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.05em",
+          }}>{t.ruo}</p>
         </div>
       </div>
     );

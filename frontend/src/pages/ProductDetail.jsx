@@ -21,15 +21,43 @@ export default function ProductDetail() {
   const [product, setProduct] = useState(null);
   const [qty, setQty] = useState(1);
   const [variantId, setVariantId] = useState(null);
+  const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notifyEmail, setNotifyEmail] = useState("");
   const [notifySubmitting, setNotifySubmitting] = useState(false);
   const [notifyDone, setNotifyDone] = useState(false);
 
+  const _ogImage = product
+    ? (product.og_image_url || product.image_url || "")
+    : "";
+  const _jsonLd = product ? (() => {
+    const prices = (product.variants || []).map((v) => Number(v.price)).filter(Boolean);
+    const low = prices.length ? Math.min(...prices) : Number(product.price_cad || 0);
+    const inStock = (product.variants || []).some((v) => Number(v.stock) > 0) || Number(product.stock) > 0;
+    const ld = {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: product.name_en || product.slug,
+      description: (product.description_en || "").slice(0, 300),
+      sku: product.slug,
+      brand: { "@type": "Brand", name: "Fironova" },
+      category: product.category || "",
+    };
+    if (_ogImage) ld.image = _ogImage;
+    if (low > 0) ld.offers = {
+      "@type": "Offer", priceCurrency: "CAD", price: Number(low.toFixed(2)),
+      availability: inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      url: `https://fironova.com/product/${slug}`,
+    };
+    return ld;
+  })() : null;
+
   useDocumentHead({
     title: product ? (lang === "fr" ? product.name_fr : product.name_en) : "Product",
-    description: product ? ((lang === "fr" ? product.description_fr : product.description_en) || "").slice(0, 155) : undefined,
+    description: product ? ((lang === "fr" ? product.meta_description_fr || product.description_fr : product.meta_description_en || product.description_en) || "").slice(0, 155) : undefined,
     path: `/product/${slug}`,
+    image: _ogImage || undefined,
+    jsonLd: _jsonLd || undefined,
   });
 
   useEffect(() => {
@@ -43,6 +71,11 @@ export default function ProductDetail() {
       .finally(() => setLoading(false));
   }, [slug]);
 
+  useEffect(() => {
+    setRelated([]);
+    api.get(`/products/${slug}/related?limit=4`).then((r) => setRelated(r.data || [])).catch(() => {});
+  }, [slug]);
+
   useEffect(() => { setNotifyDone(false); setNotifyEmail(""); }, [variantId, slug]);
 
   if (loading) {
@@ -50,8 +83,20 @@ export default function ProductDetail() {
   }
   if (!product) {
     return (
-      <div className="p-16 font-data text-xs uppercase tracking-[0.2em] text-glacier">
-        Product not found. <Link to="/catalog" className="text-nova underline">Back to catalog</Link>
+      <div className="min-h-[60vh] flex items-center justify-center px-6" data-testid="product-not-found">
+        <div className="text-center">
+          <p className="font-display text-2xl font-semibold text-nordfjord mb-2">
+            {lang === "fr" ? "Produit introuvable" : "Product not found"}
+          </p>
+          <p className="text-glacier text-sm mb-6">
+            {lang === "fr"
+              ? "Ce composé n'existe plus ou l'adresse est incorrecte."
+              : "This compound no longer exists or the address is incorrect."}
+          </p>
+          <Link to="/catalog" className="btn-pill btn-nova">
+            {lang === "fr" ? "Retour au catalogue" : "Back to catalog"}
+          </Link>
+        </div>
       </div>
     );
   }
@@ -207,7 +252,7 @@ export default function ProductDetail() {
                 <span className={`w-2 h-2 rounded-full ${stockN > 0 ? "bg-success" : "bg-warning"}`} />
                 {isComingSoon ? (lang === "fr" ? "À venir" : "Coming soon")
                   : isVariantPreorder ? (lang === "fr" ? "Précommande" : "Pre-order")
-                  : stockN > 0 ? `${lang === "fr" ? "En stock" : "In stock"} · ${stockN}`
+                  : stockN > 0 ? (lang === "fr" ? "En stock" : "In stock")
                   : (lang === "fr" ? "Rupture" : "Out of stock")}
               </span>
             </div>
@@ -280,6 +325,43 @@ export default function ProductDetail() {
             )}
           </div>
         </div>
+
+        {related.length > 0 && (
+          <div className="mt-16 border-t border-ash pt-10" data-testid="related-products">
+            <h2 className="font-display text-xl font-extrabold text-nordfjord tracking-tight mb-6">
+              {lang === "fr" ? "Souvent recherché avec" : "Often researched with"}
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {related.map((p) => {
+                const rvars = p.variants || [];
+                const rprice = rvars.map((v) => Number(v.sale_price || v.price)).filter(Boolean).sort((a, b) => a - b)[0];
+                const rstock = rvars.some((v) => Number(v.stock) > 0) || Number(p.stock) > 0;
+                return (
+                  <Link key={p.id} to={`/product/${p.slug}`} data-testid="related-card"
+                    className="group rounded-2xl border border-ash bg-white p-4 hover:border-nova transition">
+                    <div className="aspect-square rounded-xl mb-3 flex items-center justify-center overflow-hidden"
+                      style={{ background: `hsl(${hueFor(p.slug)} 70% 96%)` }}>
+                      {p.image_url ? (
+                        <img src={resolveAssetUrl(p.image_url)} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <VialArt hue={hueFor(p.slug)} />
+                      )}
+                    </div>
+                    <div className="font-display font-bold text-sm text-nordfjord leading-tight group-hover:text-nova transition">
+                      {lang === "fr" ? p.name_fr : p.name_en}
+                    </div>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="font-data text-[13px] text-nordfjord">
+                        {rprice ? `$${rprice.toFixed(2)}` : "—"}
+                      </span>
+                      <span className={`w-2 h-2 rounded-full ${rstock ? "bg-success" : "bg-warning"}`} />
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

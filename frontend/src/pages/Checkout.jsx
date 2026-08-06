@@ -1,369 +1,375 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
-import api, { formatApiError } from "../lib/api";
+import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
-import useDocumentHead from "../hooks/useDocumentHead";
-import { useAuth } from "../contexts/AuthContext";
-import { VialArt } from "../components/brand";
+import api, { formatApiError } from "../lib/api";
+import { toast } from "sonner";
 
-function hueFor(slug = "") {
-  let h = 0;
-  for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) % 360;
-  return 190 + (h % 40);
+function normalizePostal(country, value) {
+  const v = String(value || "").trim();
+  if (!v) return "";
+  if (country === "CA") return v.toUpperCase().replace(/\s+/g, "").replace(/(.{3})/, "$1 ").trim();
+  if (country === "US") return v.replace(/[^0-9\-]/g, "").slice(0, 10);
+  return v;
 }
 
-const PROVINCES = [
-  { code: "AB", name: "Alberta" },
-  { code: "BC", name: "British Columbia" },
-  { code: "MB", name: "Manitoba" },
-  { code: "NB", name: "New Brunswick" },
-  { code: "NL", name: "Newfoundland and Labrador" },
-  { code: "NS", name: "Nova Scotia" },
-  { code: "NT", name: "Northwest Territories" },
-  { code: "NU", name: "Nunavut" },
-  { code: "ON", name: "Ontario" },
-  { code: "PE", name: "Prince Edward Island" },
-  { code: "QC", name: "Québec" },
-  { code: "SK", name: "Saskatchewan" },
-  { code: "YT", name: "Yukon" },
-];
-const SHIPPING_FLAT = 20.0;
-const FREE_SHIPPING_THRESHOLD = 200.0;
+function validateAddress(a, lang) {
+  const req = (k, label) => (!String(a[k] || "").trim() ? `${label} ${lang === "fr" ? "est requis" : "is required"}` : null);
+  const errs = [
+    req("full_name", lang === "fr" ? "Nom" : "Full name"),
+    req("line1", lang === "fr" ? "Adresse" : "Address"),
+    req("city", lang === "fr" ? "Ville" : "City"),
+    req("postal_code", lang === "fr" ? "Code postal" : "Postal code"),
+    req("country", lang === "fr" ? "Pays" : "Country"),
+  ].filter(Boolean);
+
+  if (a.country === "CA" && a.postal_code) {
+    const ok = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/.test(a.postal_code);
+    if (!ok) errs.push(lang === "fr" ? "Code postal canadien invalide" : "Invalid Canadian postal code");
+  }
+  if (a.country === "US" && a.postal_code) {
+    const ok = /^\d{5}(-\d{4})?$/.test(a.postal_code);
+    if (!ok) errs.push(lang === "fr" ? "Code ZIP invalide" : "Invalid ZIP code");
+  }
+  return errs;
+}
 
 export default function Checkout() {
-  useDocumentHead({ title: "Checkout", path: "/checkout", noindex: true });
-  const navigate = useNavigate();
-  const { lang, t } = useLang();
-  const { user } = useAuth();
   const { items, subtotal, clear } = useCart();
+  const { lang } = useLang();
+  const nav = useNavigate();
 
-  const [form, setForm] = useState({
-    email: user?.email || "",
-    full_name: user?.name || "",
-    phone: "",
-    address1: "",
-    address2: "",
+  const [submitting, setSubmitting] = useState(false);
+  const [email, setEmail] = useState("");
+  const [acceptRuO, setAcceptRuO] = useState(false);
+  const [acceptPolicy, setAcceptPolicy] = useState(false);
+
+  const [ship, setShip] = useState({
+    full_name: "",
+    line1: "",
+    line2: "",
     city: "",
-    province: "QC",
+    province: "",
     postal_code: "",
     country: "CA",
   });
-  const [paymentMethod, setPaymentMethod] = useState("interac");
-  const [payCurrency, setPayCurrency] = useState("btc");
-  const [ack, setAck] = useState({ a1: false, a2: false, a3: false });
-  const [submitting, setSubmitting] = useState(false);
-  const [coupon, setCoupon] = useState({ code: "", applied: null, error: "" });
 
-  const [savedAddresses, setSavedAddresses] = useState([]);
-  const applySavedAddress = (a) => {
-    setForm((f) => ({
-      ...f,
-      full_name: a.full_name,
-      phone: a.phone || "",
-      address1: a.address1,
-      address2: a.address2 || "",
-      city: a.city,
-      province: a.province,
-      postal_code: a.postal_code,
-      country: a.country || "CA",
-    }));
-  };
-  useEffect(() => {
-    if (!user) return;
-    api.get("/account/addresses")
-      .then((r) => {
-        setSavedAddresses(r.data);
-        const def = r.data.find((a) => a.is_default);
-        if (def) applySavedAddress(def);
-      })
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  const [billSame, setBillSame] = useState(true);
+  const [bill, setBill] = useState({
+    full_name: "",
+    line1: "",
+    line2: "",
+    city: "",
+    province: "",
+    postal_code: "",
+    country: "CA",
+  });
 
-  const discount = coupon.applied?.discount_amount || 0;
-  const shipping = useMemo(() => (Math.max(0, subtotal - discount) >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FLAT), [subtotal, discount]);
-  const total = useMemo(() => +(Math.max(0, subtotal - discount) + shipping).toFixed(2), [subtotal, discount, shipping]);
+  // Anti-dup click / back-forward resubmission guard
+  const [idempotencyKey] = useState(() => {
+    const rand = Math.random().toString(36).slice(2);
+    return `chk_${Date.now()}_${rand}`;
+  });
 
-  const applyCoupon = async () => {
-    if (!coupon.code.trim()) return;
-    try {
-      const { data } = await api.post(`/coupons/validate?code=${encodeURIComponent(coupon.code.trim())}&subtotal=${subtotal}`);
-      setCoupon({ code: data.code, applied: data, error: "" });
-      toast.success(`Coupon ${data.code} applied — ${data.discount_type === "percent" ? data.value + "%" : "$" + data.value} off`);
-    } catch (e) {
-      setCoupon({ code: coupon.code, applied: null, error: formatApiError(e.response?.data?.detail) });
+  const canSubmit = useMemo(() => {
+    if (!items?.length) return false;
+    if (!acceptRuO || !acceptPolicy) return false;
+    if (!/^\S+@\S+\.\S+$/.test(email)) return false;
+    const se = validateAddress(ship, lang);
+    if (se.length) return false;
+    if (!billSame) {
+      const be = validateAddress(bill, lang);
+      if (be.length) return false;
     }
+    return true;
+  }, [items, acceptRuO, acceptPolicy, email, ship, bill, billSame, lang]);
+
+  useEffect(() => {
+    // Keep billing country aligned initially; user can change when billSame=false
+    if (billSame) setBill((b) => ({ ...b, country: ship.country }));
+  }, [ship.country, billSame]);
+
+  const lineTotal = (it) => {
+    const v = it.variant || null;
+    const isPre = !!(v && v.preorder_enabled && (v.stock <= 0 || v.badge_coa_pending || v.badge_coming_soon));
+    const sale = !!(v && v.sale_price && v.sale_price < v.price);
+    const price = v ? (isPre && v.preorder_price ? v.preorder_price : sale ? v.sale_price : v.price) : it.price_cad;
+    return Number(price || 0) * Number(it.qty || 1);
   };
-  const removeCoupon = () => setCoupon({ code: "", applied: null, error: "" });
 
-  if (items.length === 0) {
-    return (
-      <div className="bg-clinical min-h-[70vh] flex flex-col items-center justify-center gap-6 p-16 text-center" data-testid="checkout-empty">
-        <p className="text-glacier">{t("cart.empty")}</p>
-        <button onClick={() => navigate("/catalog")} className="btn-pill btn-nova">
-          {t("cart.keepShopping")} →
-        </button>
-      </div>
-    );
-  }
+  const total = useMemo(() => {
+    const computed = (items || []).reduce((s, it) => s + lineTotal(it), 0);
+    return Number(computed.toFixed(2));
+  }, [items]);
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    if (!ack.a1 || !ack.a2 || !ack.a3) {
-      toast.error("Please confirm all compliance items.");
+  const submit = async () => {
+    if (!canSubmit || submitting) return;
+
+    const shipNorm = { ...ship, postal_code: normalizePostal(ship.country, ship.postal_code) };
+    const billRaw = billSame ? shipNorm : bill;
+    const billNorm = { ...billRaw, postal_code: normalizePostal(billRaw.country, billRaw.postal_code) };
+
+    const se = validateAddress(shipNorm, lang);
+    const be = validateAddress(billNorm, lang);
+    if (se.length || (!billSame && be.length)) {
+      toast.error([...(se || []), ...(!billSame ? be : [])][0]);
       return;
     }
+
+    const payload = {
+      email: email.trim(),
+      shipping_address: shipNorm,
+      billing_address: billNorm,
+      agree_research_use_only: !!acceptRuO,
+      agree_policy: !!acceptPolicy,
+      // Explicit items structure expected by backend
+      items: (items || []).map((it) => ({
+        product_id: it.id,
+        variant_id: it.variant?.id || null,
+        qty: Number(it.qty || 1),
+      })),
+    };
+
     setSubmitting(true);
     try {
-      const { data } = await api.post("/checkout", {
-        items: items.map((i) => ({ product_id: i.product_id, variant_id: i.variant_id || null, qty: i.qty })),
-        email: form.email,
-        shipping: {
-          full_name: form.full_name,
-          address1: form.address1,
-          address2: form.address2,
-          city: form.city,
-          province: form.province,
-          postal_code: form.postal_code,
-          country: form.country,
-          phone: form.phone,
+      const r = await api.post("/checkout", payload, {
+        headers: {
+          "Idempotency-Key": idempotencyKey,
         },
-        payment_method: paymentMethod,
-        pay_currency: payCurrency,
-        coupon_code: coupon.applied?.code || null,
-        origin_url: window.location.origin,
-        accept_terms: ack.a3,
-        confirm_age: ack.a1,
-        confirm_research_use: ack.a2,
       });
+      const { order_id, payment_url } = r.data || {};
+      if (!order_id || !payment_url) throw new Error("Malformed checkout response");
       clear();
-      if (paymentMethod === "stripe" && data.payment_info?.checkout_url) {
-        window.location.href = data.payment_info.checkout_url;
-        return;
-      }
-      navigate(`/order/${data.id}`, { state: { order: data } });
+      window.location.assign(payment_url);
     } catch (err) {
-      toast.error(formatApiError(err.response?.data?.detail) || err.message);
+      toast.error(formatApiError(err?.response?.data?.detail || err?.message));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const payCard = (id, title, desc, testId) => (
-    <button
-      type="button"
-      onClick={() => setPaymentMethod(id)}
-      data-testid={testId}
-      className={`p-5 text-left rounded-xl border-[1.5px] transition-colors ${paymentMethod === id ? "border-nova bg-nova/5" : "border-ash hover:border-nova"}`}
-    >
-      <div className="font-data text-[10px] uppercase tracking-[0.2em] text-nova">{paymentMethod === id ? "✓ SELECTED" : "SELECT"}</div>
-      <div className="font-display text-lg font-bold mt-2 text-nordfjord">{title}</div>
-      <div className="text-xs mt-1 text-glacier">{desc}</div>
-    </button>
-  );
+  if (!items?.length) {
+    return (
+      <div className="max-w-3xl mx-auto px-6 py-20 text-center" data-testid="checkout-empty">
+        <h1 className="font-display text-3xl font-bold text-nordfjord mb-3">
+          {lang === "fr" ? "Votre panier est vide" : "Your cart is empty"}
+        </h1>
+        <p className="text-glacier mb-8">
+          {lang === "fr"
+            ? "Ajoutez des composés avant de passer au paiement."
+            : "Add compounds before proceeding to checkout."}
+        </p>
+        <Link to="/catalog" className="btn-pill btn-nova">
+          {lang === "fr" ? "Explorer le catalogue" : "Browse catalog"}
+        </Link>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-clinical min-h-screen grid lg:grid-cols-[1.4fr_1fr]" data-testid="checkout-page">
-      <form onSubmit={onSubmit} className="p-8 lg:p-12 space-y-12">
-        <div>
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">CHECKOUT</p>
-          <h1 className="font-display text-[40px] font-bold text-nordfjord">{t("checkout.title")}</h1>
-        </div>
-
-        <section className="space-y-4">
-          <div className="font-data text-[11px] uppercase tracking-[0.2em] text-compliance">01 · {t("checkout.contact")}</div>
-          <Input label={t("checkout.email")} required type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} testId="checkout-email" />
-        </section>
-
-        <section className="space-y-4">
-          <div className="font-data text-[11px] uppercase tracking-[0.2em] text-compliance">02 · {t("checkout.shipping")}</div>
-          {savedAddresses.length > 0 && (
-            <div data-testid="saved-address-picker">
-              <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("checkout.savedAddresses")}</div>
-              <div className="flex flex-wrap gap-2">
-                {savedAddresses.map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() => applySavedAddress(a)}
-                    data-testid={`saved-address-${a.id}`}
-                    className="rounded-full border border-ash px-4 py-2 font-data text-[10px] uppercase tracking-[0.14em] text-nordfjord hover:border-nova hover:text-nova"
-                  >
-                    {a.label || a.address1}{a.is_default ? " ★" : ""}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          <Input label={t("checkout.fullName")} required value={form.full_name} onChange={(v) => setForm({ ...form, full_name: v })} testId="checkout-name" />
-          <Input label={t("checkout.phone")} value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} testId="checkout-phone" />
-          <Input label={t("checkout.address1")} required value={form.address1} onChange={(v) => setForm({ ...form, address1: v })} testId="checkout-address1" />
-          <Input label={t("checkout.address2")} value={form.address2} onChange={(v) => setForm({ ...form, address2: v })} testId="checkout-address2" />
-          <div className="grid grid-cols-2 gap-4">
-            <Input label={t("checkout.city")} required value={form.city} onChange={(v) => setForm({ ...form, city: v })} testId="checkout-city" />
-            <Input label={t("checkout.postal")} required value={form.postal_code} onChange={(v) => setForm({ ...form, postal_code: v })} testId="checkout-postal" />
-          </div>
+    <div className="bg-clinical min-h-screen" data-testid="checkout-page">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8 py-12 grid lg:grid-cols-[1.1fr_.9fr] gap-8">
+        <section className="space-y-6">
           <div>
-            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("checkout.province")}</label>
-            <select
-              value={form.province}
-              onChange={(e) => setForm({ ...form, province: e.target.value })}
-              className="w-full rounded-full border border-ash px-5 py-3 bg-white font-data text-sm text-nordfjord focus:outline-none focus:border-nova"
-              data-testid="checkout-province"
+            <p className="font-data text-[11px] uppercase tracking-[0.22em] text-compliance mb-2">
+              {lang === "fr" ? "PAIEMENT SÉCURISÉ" : "SECURE CHECKOUT"}
+            </p>
+            <h1 className="font-display text-4xl font-bold text-nordfjord">
+              {lang === "fr" ? "Finaliser la commande" : "Complete your order"}
+            </h1>
+          </div>
+
+          <div className="rounded-2xl border border-ash bg-white p-5">
+            <h2 className="font-display text-xl font-bold text-nordfjord mb-4">{lang === "fr" ? "Contact" : "Contact"}</h2>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={lang === "fr" ? "votre@courriel.com" : "you@email.com"}
+              data-testid="checkout-email"
+              className="w-full rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova"
+            />
+          </div>
+
+          <div className="rounded-2xl border border-ash bg-white p-5">
+            <h2 className="font-display text-xl font-bold text-nordfjord mb-4">
+              {lang === "fr" ? "Adresse de livraison" : "Shipping address"}
+            </h2>
+            <AddressForm value={ship} setValue={setShip} lang={lang} prefix="shipping" />
+          </div>
+
+          <div className="rounded-2xl border border-ash bg-white p-5">
+            <label className="flex items-center gap-2 text-sm text-nordfjord mb-4">
+              <input
+                type="checkbox"
+                checked={billSame}
+                onChange={(e) => setBillSame(e.target.checked)}
+                data-testid="checkout-bill-same"
+              />
+              {lang === "fr" ? "Adresse de facturation identique" : "Billing same as shipping"}
+            </label>
+
+            {!billSame && (
+              <>
+                <h2 className="font-display text-xl font-bold text-nordfjord mb-4">
+                  {lang === "fr" ? "Adresse de facturation" : "Billing address"}
+                </h2>
+                <AddressForm value={bill} setValue={setBill} lang={lang} prefix="billing" />
+              </>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-ash bg-white p-5 space-y-3">
+            <label className="flex items-start gap-2 text-sm text-nordfjord">
+              <input
+                type="checkbox"
+                checked={acceptRuO}
+                onChange={(e) => setAcceptRuO(e.target.checked)}
+                data-testid="checkout-accept-ruo"
+                className="mt-1"
+              />
+              <span>
+                {lang === "fr"
+                  ? "Je confirme que ces produits sont destinés à un usage de recherche uniquement (RUO)."
+                  : "I confirm these products are for Research Use Only (RUO)."}
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-nordfjord">
+              <input
+                type="checkbox"
+                checked={acceptPolicy}
+                onChange={(e) => setAcceptPolicy(e.target.checked)}
+                data-testid="checkout-accept-policy"
+                className="mt-1"
+              />
+              <span>
+                {lang === "fr" ? "J'accepte la politique de confidentialité et les conditions." : "I accept the privacy policy and terms."}
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <aside>
+          <div className="rounded-2xl border border-ash bg-white p-5 sticky top-24" data-testid="checkout-summary">
+            <h2 className="font-display text-xl font-bold text-nordfjord mb-4">
+              {lang === "fr" ? "Résumé" : "Summary"}
+            </h2>
+            <div className="space-y-3 max-h-[50vh] overflow-auto pr-1">
+              {(items || []).map((it) => {
+                const title = lang === "fr" ? it.name_fr : it.name_en;
+                const v = it.variant;
+                const isPre = !!(v && v.preorder_enabled && (v.stock <= 0 || v.badge_coa_pending || v.badge_coming_soon));
+                const sale = !!(v && v.sale_price && v.sale_price < v.price);
+                const unit = v ? (isPre && v.preorder_price ? v.preorder_price : sale ? v.sale_price : v.price) : it.price_cad;
+                return (
+                  <div key={`${it.id}:${v?.id || "_"}`} className="flex items-start justify-between gap-3 border-b border-ash pb-3">
+                    <div>
+                      <div className="font-medium text-nordfjord">{title}</div>
+                      <div className="text-xs text-glacier">
+                        {v?.name ? `${v.name} · ` : ""}x{it.qty}
+                        {isPre ? ` · ${lang === "fr" ? "précommande" : "pre-order"}` : ""}
+                      </div>
+                    </div>
+                    <div className="font-semibold text-nordfjord">${(Number(unit) * Number(it.qty || 1)).toFixed(2)}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between text-glacier">
+                <span>{lang === "fr" ? "Sous-total" : "Subtotal"}</span>
+                <span>${Number(subtotal || total).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-glacier">
+                <span>{lang === "fr" ? "Livraison" : "Shipping"}</span>
+                <span>{lang === "fr" ? "Calculée à la caisse" : "Calculated at payment"}</span>
+              </div>
+              <div className="flex justify-between text-nordfjord font-bold text-base pt-2 border-t border-ash">
+                <span>{lang === "fr" ? "Total" : "Total"}</span>
+                <span>${Number(total).toFixed(2)} CAD</span>
+              </div>
+            </div>
+
+            <button
+              onClick={submit}
+              disabled={!canSubmit || submitting}
+              data-testid="checkout-submit"
+              className="w-full mt-5 btn-pill btn-nova disabled:opacity-40 disabled:pointer-events-none"
             >
-              {PROVINCES.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
-            </select>
-          </div>
-        </section>
+              {submitting
+                ? (lang === "fr" ? "Traitement…" : "Processing…")
+                : (lang === "fr" ? "Procéder au paiement" : "Proceed to payment")}
+            </button>
 
-        <section className="space-y-4">
-          <div className="font-data text-[11px] uppercase tracking-[0.2em] text-compliance">03 · {t("checkout.payment")}</div>
-          <div className="grid sm:grid-cols-3 gap-3">
-            {payCard("interac", t("checkout.interac"), t("checkout.interacDesc"), "payment-interac")}
-            {payCard("stripe", "Card · Stripe", "Visa, Mastercard, Amex. Secure 3-D Secure checkout.", "payment-stripe")}
-            {payCard("nowpayments", t("checkout.crypto"), t("checkout.cryptoDesc"), "payment-crypto")}
-          </div>
-          {paymentMethod === "nowpayments" && (
-            <div>
-              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("checkout.payCurrency")}</label>
-              <select
-                value={payCurrency}
-                onChange={(e) => setPayCurrency(e.target.value)}
-                className="w-full rounded-full border border-ash px-5 py-3 bg-white font-data text-sm text-nordfjord focus:outline-none focus:border-nova"
-                data-testid="checkout-pay-currency"
-              >
-                <option value="btc">Bitcoin (BTC)</option>
-                <option value="eth">Ethereum (ETH)</option>
-                <option value="usdttrc20">Tether (USDT · TRC-20)</option>
-                <option value="usdterc20">Tether (USDT · ERC-20)</option>
-                <option value="ltc">Litecoin (LTC)</option>
-                <option value="sol">Solana (SOL)</option>
-              </select>
-            </div>
-          )}
-        </section>
-
-        <section className="space-y-4 bg-nordfjord text-clinical p-6 rounded-2xl">
-          <div className="font-data text-[11px] uppercase tracking-[0.2em] text-nova">04 · COMPLIANCE — REQUIRED</div>
-          <Checkbox checked={ack.a1} onChange={(c) => setAck({ ...ack, a1: c })} label={t("checkout.ack1")} testId="ack-age" />
-          <Checkbox checked={ack.a2} onChange={(c) => setAck({ ...ack, a2: c })} label={t("checkout.ack2")} testId="ack-research" />
-          <Checkbox checked={ack.a3} onChange={(c) => setAck({ ...ack, a3: c })} label={t("checkout.ack3")} testId="ack-terms" />
-        </section>
-
-        <button
-          type="submit"
-          disabled={submitting}
-          data-testid="place-order-btn"
-          className="w-full btn-pill btn-nova disabled:opacity-50"
-        >
-          {submitting ? t("checkout.processing") : `${t("checkout.placeOrder")} · $${total.toFixed(2)} CAD →`}
-        </button>
-      </form>
-
-      <aside className="p-8 lg:p-12 bg-white border-l border-ash" data-testid="checkout-summary">
-        <h3 className="font-display text-xl font-bold text-nordfjord">{t("common.total")}</h3>
-        <ul className="mt-6 divide-y divide-ash">
-          {items.map((i) => {
-            const name = lang === "fr" ? i.name_fr : i.name_en;
-            return (
-              <li key={i.product_id} className="grid grid-cols-[60px_1fr_auto] gap-3 py-3 items-center" data-testid={`summary-item-${i.slug}`}>
-                <div className="aspect-square rounded-lg overflow-hidden"><VialArt hue={hueFor(i.slug)} className="w-full h-full" /></div>
-                <div>
-                  <div className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">{i.qty}× · {i.slug}</div>
-                  <div className="font-bold text-sm text-nordfjord">{name}</div>
-                </div>
-                <div className="font-data font-bold text-sm text-nordfjord">${(i.price_cad * i.qty).toFixed(2)}</div>
-              </li>
-            );
-          })}
-        </ul>
-        <div className="mt-6 border-t border-ash pt-4 space-y-2 font-data text-sm">
-          <div className="flex justify-between"><span className="text-glacier uppercase tracking-[0.14em] text-xs">{t("common.subtotal")}</span><span className="text-nordfjord" data-testid="summary-subtotal">${subtotal.toFixed(2)}</span></div>
-          {discount > 0 && (
-            <div className="flex justify-between text-success" data-testid="summary-discount">
-              <span className="uppercase tracking-[0.14em] text-xs">DISCOUNT ({coupon.applied.code})</span>
-              <span>-${discount.toFixed(2)}</span>
-            </div>
-          )}
-          <div className="flex justify-between">
-            <span className="text-glacier uppercase tracking-[0.14em] text-xs">{t("common.shipping")}</span>
-            <span className="text-nordfjord" data-testid="summary-shipping">{shipping === 0 ? (lang === "fr" ? "GRATUIT" : "FREE") : `$${shipping.toFixed(2)}`}</span>
-          </div>
-          {shipping > 0 && (
-            <div className="font-data text-[10px] uppercase tracking-[0.14em] text-compliance" data-testid="free-shipping-hint">
+            <p className="mt-3 text-[11px] text-glacier leading-relaxed">
               {lang === "fr"
-                ? `Livraison gratuite dès ${FREE_SHIPPING_THRESHOLD.toFixed(0)} $ — plus que $${(FREE_SHIPPING_THRESHOLD - Math.max(0, subtotal - discount)).toFixed(2)}`
-                : `Free shipping at $${FREE_SHIPPING_THRESHOLD.toFixed(0)} — only $${(FREE_SHIPPING_THRESHOLD - Math.max(0, subtotal - discount)).toFixed(2)} to go`}
-            </div>
-          )}
-        </div>
-
-        <div className="mt-4 pt-4 border-t border-ash" data-testid="coupon-section">
-          {!coupon.applied ? (
-            <div className="space-y-2">
-              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance">Coupon code</label>
-              <div className="flex gap-2">
-                <input
-                  value={coupon.code}
-                  onChange={(e) => setCoupon({ ...coupon, code: e.target.value.toUpperCase(), error: "" })}
-                  placeholder="FIRONOVA10"
-                  data-testid="coupon-input"
-                  className="flex-1 rounded-full border border-ash px-4 py-2 text-sm font-data uppercase text-nordfjord outline-none focus:border-nova"
-                />
-                <button type="button" onClick={applyCoupon} data-testid="apply-coupon" className="btn-pill btn-outline">
-                  Apply
-                </button>
-              </div>
-              {coupon.error && <div className="font-data text-[11px] text-error" data-testid="coupon-error">{coupon.error}</div>}
-            </div>
-          ) : (
-            <div className="flex items-center justify-between rounded-xl bg-success/10 border border-success px-3 py-2" data-testid="coupon-applied">
-              <div className="text-sm text-nordfjord">
-                <span className="font-data font-bold">{coupon.applied.code}</span> applied · ${discount.toFixed(2)} off
-              </div>
-              <button type="button" onClick={removeCoupon} className="font-data text-xs uppercase tracking-[0.16em] text-success">Remove</button>
-            </div>
-          )}
-        </div>
-        <div className="mt-4 border-t-2 border-nordfjord pt-4 flex justify-between items-end">
-          <span className="font-data uppercase tracking-[0.16em] text-xs text-glacier">{t("common.total")} CAD</span>
-          <span className="font-display text-3xl font-bold text-nordfjord" data-testid="summary-total">${total.toFixed(2)}</span>
-        </div>
-      </aside>
+                ? "Vous serez redirigé vers notre prestataire de paiement sécurisé."
+                : "You will be redirected to our secure payment provider."}
+            </p>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
 
-function Input({ label, value, onChange, type = "text", required = false, testId }) {
+function AddressForm({ value, setValue, lang, prefix }) {
+  const set = (k, v) => setValue((s) => ({ ...s, [k]: v }));
+
   return (
-    <div>
-      <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{label}{required && " *"}</label>
+    <div className="grid sm:grid-cols-2 gap-3">
       <input
-        type={type}
-        value={value}
-        required={required}
-        onChange={(e) => onChange(e.target.value)}
-        data-testid={testId}
-        className="w-full rounded-full border border-ash px-5 py-3 bg-white text-sm text-nordfjord outline-none focus:border-nova"
+        value={value.full_name}
+        onChange={(e) => set("full_name", e.target.value)}
+        placeholder={lang === "fr" ? "Nom complet" : "Full name"}
+        data-testid={`${prefix}-full-name`}
+        className="sm:col-span-2 rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova"
       />
+      <input
+        value={value.line1}
+        onChange={(e) => set("line1", e.target.value)}
+        placeholder={lang === "fr" ? "Adresse" : "Address line 1"}
+        data-testid={`${prefix}-line1`}
+        className="sm:col-span-2 rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova"
+      />
+      <input
+        value={value.line2}
+        onChange={(e) => set("line2", e.target.value)}
+        placeholder={lang === "fr" ? "Appartement, suite (optionnel)" : "Address line 2 (optional)"}
+        data-testid={`${prefix}-line2`}
+        className="sm:col-span-2 rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova"
+      />
+      <input
+        value={value.city}
+        onChange={(e) => set("city", e.target.value)}
+        placeholder={lang === "fr" ? "Ville" : "City"}
+        data-testid={`${prefix}-city`}
+        className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova"
+      />
+      <input
+        value={value.province}
+        onChange={(e) => set("province", e.target.value)}
+        placeholder={lang === "fr" ? "Province / État" : "Province / State"}
+        data-testid={`${prefix}-province`}
+        className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova"
+      />
+      <input
+        value={value.postal_code}
+        onChange={(e) => set("postal_code", e.target.value)}
+        placeholder={value.country === "CA" ? "A1A 1A1" : "12345"}
+        data-testid={`${prefix}-postal`}
+        className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova"
+      />
+      <select
+        value={value.country}
+        onChange={(e) => set("country", e.target.value)}
+        data-testid={`${prefix}-country`}
+        className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova bg-white"
+      >
+        <option value="CA">Canada</option>
+        <option value="US">United States</option>
+      </select>
     </div>
   );
 }
-
-function Checkbox({ checked, onChange, label, testId }) {
-  return (
-    <label className="flex items-start gap-3 cursor-pointer">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        data-testid={testId}
-        className="mt-0.5 w-4 h-4 accent-[#00B8D4]"
-      />
-      <span className="text-xs leading-relaxed text-[#B7CADD]">{label}</span>
-    </label>
-  );
-}
-

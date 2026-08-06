@@ -22,6 +22,8 @@ export default function Catalog() {
   const [params, setParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [activeRetry, setActiveRetry] = useState(0);
   const [sort, setSort] = useState("name");
   const [query, setQuery] = useState("");
   const [cats, setCats] = useState(null);
@@ -43,10 +45,12 @@ export default function Catalog() {
 
   useEffect(() => {
     setLoading(true);
+    setLoadError(false);
     api.get("/products", { params: active !== "all" ? { category: active } : {} })
-      .then((r) => setProducts(r.data))
+      .then((r) => setProducts(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-  }, [active]);
+  }, [active, activeRetry]);
 
   const sorted = useMemo(() => {
     let arr = [...products];
@@ -132,9 +136,47 @@ export default function Catalog() {
           </div>
 
           {loading ? (
-            <div className="py-16 font-data text-xs uppercase tracking-[0.2em] text-glacier">{t("common.loading")}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="catalog-loading">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="rounded-2xl border border-ash bg-white overflow-hidden animate-pulse">
+                  <div className="aspect-square bg-clinical" />
+                  <div className="p-5 space-y-3">
+                    <div className="h-4 bg-clinical rounded w-3/4" />
+                    <div className="h-3 bg-clinical rounded w-1/2" />
+                    <div className="h-6 bg-clinical rounded w-1/3 mt-4" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : loadError ? (
+            <div className="py-20 text-center" data-testid="catalog-error">
+              <p className="text-nordfjord font-display text-lg font-semibold mb-2">
+                {lang === "fr" ? "Impossible de charger le catalogue" : "Couldn't load the catalog"}
+              </p>
+              <p className="text-glacier text-sm mb-6">
+                {lang === "fr" ? "Vérifiez votre connexion et réessayez." : "Check your connection and try again."}
+              </p>
+              <button onClick={() => setActiveRetry((n) => n + 1)}
+                className="btn-pill btn-nova" data-testid="catalog-retry">
+                {lang === "fr" ? "Réessayer" : "Retry"}
+              </button>
+            </div>
           ) : sorted.length === 0 ? (
-            <div className="py-16 font-data text-xs uppercase tracking-[0.2em] text-glacier" data-testid="catalog-empty">{t("catalog.empty")}</div>
+            <div className="py-20 text-center" data-testid="catalog-empty">
+              <p className="text-nordfjord font-display text-lg font-semibold mb-2">
+                {query.trim()
+                  ? (lang === "fr" ? `Aucun résultat pour « ${query.trim()} »` : `No results for “${query.trim()}”`)
+                  : (lang === "fr" ? "Aucun composé dans cette catégorie" : "No compounds in this category")}
+              </p>
+              <p className="text-glacier text-sm mb-6">
+                {lang === "fr" ? "Essayez un autre terme ou parcourez tout le catalogue." : "Try another term or browse the full catalog."}
+              </p>
+              <button
+                onClick={() => { setQuery(""); setParams({}); }}
+                className="btn-pill btn-outline" data-testid="catalog-reset">
+                {lang === "fr" ? "Réinitialiser les filtres" : "Reset filters"}
+              </button>
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {sorted.map((p, i) => <ProductCard product={p} key={p.id} index={i} />)}

@@ -89,7 +89,9 @@ export default function ProductCard({ product, index = 0 }) {
           </div>
           <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock ? "text-success" : "text-warning"}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${inStock ? "bg-success" : "bg-warning"}`} />
-            {anyPreorder && !inStock ? (lang === "fr" ? "Précommande" : "Pre-order") : inStock ? (lang === "fr" ? "En stock" : "In stock") : (lang === "fr" ? "Rupture" : "Out")}
+            {anyPreorder && !inStock ? (lang === "fr" ? "Précommande" : "Pre-order")
+              : inStock ? (lang === "fr" ? "En stock" : "In stock")
+              : (lang === "fr" ? "Rupture" : "Out")}
           </span>
         </div>
       </div>
