@@ -76,25 +76,25 @@ export default function Home() {
   ];
 
   const heroTitle = lang === "fr"
-    ? { a: "Des peptides de recherche,", b: "documentés jusqu'à la molécule." }
-    : { a: "Research-grade peptides,", b: "documented to the molecule." };
+    ? { a: "Peptides de précision", b: "pour la recherche." }
+    : { a: "Precision peptides", b: "for research." };
   const heroEyebrow = lang === "fr" ? "PEPTIDES DE RECHERCHE CANADIENS" : "CANADIAN RESEARCH PEPTIDES";
   const heroLede = lang === "fr"
-    ? "Chaque lot est vérifié par HPLC dans un laboratoire indépendant et expédié avec son certificat d'analyse. Précision clinique, sobriété nordique, conformité bilingue complète."
-    : "Every lot is HPLC-verified by an independent lab and ships with its certificate of analysis. Clinical precision, Nordic restraint, full bilingual compliance.";
+    ? "Testés par HPLC en laboratoire indépendant. Certificat d'analyse fourni pour les lots documentés. Sobriété nordique, conformité bilingue complète."
+    : "HPLC-tested by an independent lab. Certificate of analysis provided for documented lots. Nordic restraint, full bilingual compliance.";
   const ctaPrimary = lang === "fr" ? "Voir le catalogue" : "Browse the catalog";
   const ctaSecondary = lang === "fr" ? "Nos standards" : "Our standards";
   const chip = lang === "fr" ? { lot: "LOT", purity: "PURETÉ", license: "LICENCE" } : { lot: "LOT", purity: "PURITY", license: "LICENSE" };
 
   const featEyebrow = lang === "fr" ? "01 — COMPOSÉS EN VEDETTE" : "01 — FEATURED COMPOUNDS";
-  const featTitle = lang === "fr" ? "Une pureté documentée, à chaque lot" : "Documented purity, every lot";
+  const featTitle = lang === "fr" ? "Une pureté documentée" : "Documented purity";
   const featLede = lang === "fr" ? "Un catalogue restreint et rigoureux. Aucun bruit — chaque composé gagne sa place par une vérification indépendante." : "A tight, curated catalog. No noise — each compound earns its place with third-party verification.";
   const featAll = lang === "fr" ? "Voir tout le catalogue" : "View full catalog";
   const catsEyebrow = lang === "fr" ? "02 — DOMAINES DE RECHERCHE" : "02 — RESEARCH AREAS";
   const catsTitle = lang === "fr" ? "Cinq domaines, un seul standard" : "Five fields, one standard";
   const catsProducts = lang === "fr" ? "composés" : "compounds";
   const newsTitle = lang === "fr" ? "Sorties de lots & notes de recherche" : "Lot releases & research notes";
-  const newsLede = lang === "fr" ? "Un courriel précis par mois. Nouveaux lots, rapports de pureté, réassorts. Conforme à la LCAP, désabonnement en tout temps." : "One precise email per month. New lots, purity reports, restocks. CASL-compliant, unsubscribe anytime.";
+  const newsLede = lang === "fr" ? "Un courriel précis par mois. Nouveaux lots, rapports de lots, réassorts. Conforme à la LCAP, désabonnement en tout temps." : "One precise email per month. New lots, lot reports, restocks. CASL-compliant, unsubscribe anytime.";
   const newsDone = lang === "fr" ? "Confirmé — vous êtes inscrit." : "Confirmed — you're on the list.";
 
   return (
@@ -130,7 +130,6 @@ export default function Home() {
             <Reveal delay={340}>
               <div className="flex flex-wrap gap-x-10 gap-y-4 font-data text-[12px] uppercase tracking-[0.16em] text-[#8FB3C9]">
                 <span><span className="text-nova">{chip.lot}</span> FN-26005</span>
-                <span><span className="text-nova">{chip.purity}</span> ≥ 99%</span>
 
               </div>
             </Reveal>
