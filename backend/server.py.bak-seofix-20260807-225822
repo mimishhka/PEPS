@@ -7521,25 +7521,18 @@ async def _affiliate_approve_matured():
     cutoff = (datetime.now(timezone.utc) -
               timedelta(days=AFFILIATE_APPROVAL_HOLD_DAYS)).isoformat()
     now = datetime.now(timezone.utc).isoformat()
-    # Batch: on collecte les order_ids des referrals mûrs, on filtre en UNE
-    # requête ceux dont la commande est payée, puis un seul update_many.
-    matured = await db.affiliate_referrals.find(
-        {"status": "pending", "created_at": {"$lte": cutoff}},
-        {"_id": 0, "id": 1, "order_id": 1},
-    ).to_list(None)
-    if not matured:
-        return
-    order_ids = list({r["order_id"] for r in matured})
-    paid_cursor = db.orders.find(
-        {"id": {"$in": order_ids}, "payment_status": "paid"}, {"_id": 0, "id": 1}
+    cursor = db.affiliate_referrals.find(
+        {"status": "pending", "created_at": {"$lte": cutoff}}, {"_id": 0}
     )
-    paid_ids = {o["id"] async for o in paid_cursor}
-    approve_ids = [r["id"] for r in matured if r["order_id"] in paid_ids]
-    if approve_ids:
-        await db.affiliate_referrals.update_many(
-            {"id": {"$in": approve_ids}, "status": "pending"},
-            {"$set": {"status": "approved", "approved_at": now}},
+    async for r in cursor:
+        order = await db.orders.find_one(
+            {"id": r["order_id"]}, {"_id": 0, "payment_status": 1}
         )
+        if order and order.get("payment_status") == "paid":
+            await db.affiliate_referrals.update_one(
+                {"id": r["id"], "status": "pending"},
+                {"$set": {"status": "approved", "approved_at": now}},
+            )
 
 
 async def _affiliate_clicks_cleanup():
@@ -7992,6 +7985,16 @@ async def seo_health():
 async def seo_sitemap():
     return {"sitemap": ["/", "/catalog", "/about", "/faq", "/privacy", "/compliance"]}
 
+@api.get("/seo/product/{slug}")
+async def seo_product(slug: str):
+    product = await db.products.find_one({"slug": slug}, {"_id": 0, "slug": 1, "name_en": 1, "name_fr": 1, "description_en": 1, "description_fr": 1})
+    if not product:
+        raise HTTPException(404, "Product not found")
+    return {
+        "slug": product.get("slug"),
+        "title": product.get("name_en") or product.get("name_fr") or slug,
+        "description": product.get("description_en") or product.get("description_fr") or "",
+    }
 # ===== FIRONOVA_SEO_BACKEND_END =====
 
 
