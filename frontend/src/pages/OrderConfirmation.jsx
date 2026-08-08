@@ -123,7 +123,7 @@ export default function OrderConfirmation() {
       </div>
 
       {stripePolling && (
-        <div className="mt-8 border border-ink p-4 bg-yellow-50 font-mono text-xs uppercase tracking-[0.2em]" data-testid="stripe-polling">
+        <div className="mt-8 border border-nordfjord/20 rounded-2xl p-4 bg-yellow-50 font-mono text-xs uppercase tracking-[0.2em]" data-testid="stripe-polling">
           ⏳ Verifying your Stripe payment…
         </div>
       )}
@@ -170,7 +170,7 @@ export default function OrderConfirmation() {
       )}
 
       {interac && (
-        <div className="mt-8 border border-ink" data-testid="interac-instructions">
+        <div className="mt-8 border border-nordfjord/20 rounded-2xl overflow-hidden" data-testid="interac-instructions">
           <div className="bg-signal text-white px-6 py-3 font-mono text-[11px] uppercase tracking-[0.25em]" style={{ background: "#C20114" }}>
             ⚡ {t("confirmation.interacHeading")}
           </div>
@@ -180,7 +180,7 @@ export default function OrderConfirmation() {
             <Row label={t("confirmation.interacStep3")} value={interac.reference} onCopy={() => copy(interac.reference, "ref")} copied={copied === "ref"} testId="interac-ref" highlight />
             <Row label={t("confirmation.interacStep4")} value={interac.security_question} testId="interac-question" />
             <Row label={t("confirmation.interacStep5")} value={interac.security_answer_hint} onCopy={() => copy(interac.security_answer_hint, "ans")} copied={copied === "ans"} testId="interac-answer" />
-            <p className="text-xs text-foreground/70 pt-4 border-t border-ink/15 leading-relaxed font-sans">
+            <p className="text-xs text-foreground/70 pt-4 border-t border-nordfjord/15 leading-relaxed font-sans">
               {t("confirmation.interacFooter")}
             </p>
           </div>
@@ -188,8 +188,8 @@ export default function OrderConfirmation() {
       )}
 
       {np && (
-        <div className="mt-8 border border-ink" data-testid="crypto-instructions">
-          <div className="bg-ink text-white px-6 py-3 font-mono text-[11px] uppercase tracking-[0.25em]">
+        <div className="mt-8 border border-nordfjord/20 rounded-2xl overflow-hidden" data-testid="crypto-instructions">
+          <div className="bg-nordfjord text-white px-6 py-3 font-mono text-[11px] uppercase tracking-[0.25em]">
             ₿ {t("confirmation.cryptoHeading")}
           </div>
           {np.invoice_id ? (
@@ -218,7 +218,7 @@ export default function OrderConfirmation() {
               >
                 {lang === "fr" ? "Ouvrir la page de paiement dans un nouvel onglet →" : "Open the payment page in a new tab →"}
               </a>
-              <div className="w-full max-w-md border-t border-ink/15 pt-4 mt-2" data-testid="crypto-key-notes">
+              <div className="w-full max-w-md border-t border-nordfjord/15 pt-4 mt-2" data-testid="crypto-key-notes">
                 <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/60 mb-3">
                   {lang === "fr" ? "Points importants" : "Key things to note"}
                 </div>
@@ -248,7 +248,7 @@ export default function OrderConfirmation() {
               <Row label={t("confirmation.cryptoAddress")} value={np.pay_address} onCopy={() => copy(np.pay_address, "addr")} copied={copied === "addr"} testId="crypto-address" highlight />
               <Row label={t("confirmation.cryptoAmount")} value={`${np.pay_amount} ${np.pay_currency?.toUpperCase()}`} onCopy={() => copy(`${np.pay_amount}`, "amt")} copied={copied === "amt"} testId="crypto-amount" />
               <Row label={t("confirmation.cryptoNetwork")} value={np.pay_currency?.toUpperCase()} testId="crypto-network" />
-              <p className="text-xs text-foreground/70 pt-4 border-t border-ink/15 leading-relaxed font-sans">
+              <p className="text-xs text-foreground/70 pt-4 border-t border-nordfjord/15 leading-relaxed font-sans">
                 {t("confirmation.cryptoFooter")}
               </p>
             </div>
@@ -296,7 +296,7 @@ export default function OrderConfirmation() {
       </div>
 
       <div className="mt-10 flex gap-4">
-        <Link to="/" className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-6 py-4 hover:bg-ink hover:text-white" data-testid="back-home-btn">
+        <Link to="/" className="border border-nordfjord rounded-full font-mono text-xs uppercase tracking-[0.25em] px-6 py-4 hover:bg-nordfjord hover:text-white transition-colors" data-testid="back-home-btn">
           ← {t("confirmation.backHome")}
         </Link>
       </div>
@@ -312,7 +312,7 @@ function Row({ label, value, onCopy, copied, testId, highlight }) {
         <div className="text-base font-bold break-all" data-testid={testId}>{value}</div>
       </div>
       {onCopy && (
-        <button onClick={onCopy} className="border border-ink p-2 hover:bg-ink hover:text-white" aria-label="copy">
+        <button onClick={onCopy} className="border border-nordfjord/40 rounded-lg p-2 hover:bg-nordfjord hover:text-white transition-colors" aria-label="copy">
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
       )}
