@@ -4,7 +4,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, Ticket, Users, Truck, Settings as Cog,
   LogOut, Download, Search, X, Plus, Edit, Trash2, FileText, CheckCircle2, AlertCircle, Clock, UserCog,
   History, FolderTree, ListTree, Mail, Handshake, Globe,
-  CalendarCheck, Send, Boxes, LayoutGrid,
+  CalendarCheck, Send, Boxes, LayoutGrid, DollarSign,
 } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../lib/api";
