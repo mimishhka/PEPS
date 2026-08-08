@@ -50,7 +50,10 @@ export function CartProvider({ children }) {
         },
       ];
     });
-    toast.success("Added to cart", { description: `${product.name_en}${v?.name ? ` · ${v.name}` : ""}`, duration: 1500 });
+    const _lang = (typeof window !== "undefined" && (localStorage.getItem("fironova_lang") || "en")) || "en";
+    const _title = _lang === "fr" ? "Ajouté au panier" : "Added to cart";
+    const _name = _lang === "fr" ? (product.name_fr || product.name_en) : (product.name_en || product.name_fr);
+    toast.success(_title, { description: `${_name}${v?.name ? ` · ${v.name}` : ""}`, duration: 1500 });
     setOpen(true);
   }, []);
 
