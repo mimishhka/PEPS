@@ -7,13 +7,29 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 
-const statusColor = {
-  awaiting_etransfer: "bg-ash/40 text-nordfjord",
-  awaiting_crypto: "bg-ash/40 text-nordfjord",
-  paid: "bg-nordfjord text-white",
-  shipped: "bg-warning text-white",
-  delivered: "bg-success text-white",
-  pending: "bg-ash/40 text-nordfjord",
+// Statuts de paiement : couleur + libellé lisible bilingue (les 9 statuts backend).
+const PAYMENT_STATUS = {
+  awaiting_etransfer: { cls: "bg-warning/15 text-warning border border-warning/30", fr: "En attente · Interac", en: "Awaiting · Interac" },
+  awaiting_crypto:    { cls: "bg-warning/15 text-warning border border-warning/30", fr: "En attente · crypto", en: "Awaiting · crypto" },
+  awaiting_stripe:    { cls: "bg-warning/15 text-warning border border-warning/30", fr: "En attente · carte", en: "Awaiting · card" },
+  pending:            { cls: "bg-ash/40 text-nordfjord border border-ash", fr: "En attente", en: "Pending" },
+  paid:               { cls: "bg-nova/15 text-nova border border-nova/30", fr: "Payée", en: "Paid" },
+  refunded:           { cls: "bg-glacier/15 text-glacier border border-glacier/30", fr: "Remboursée", en: "Refunded" },
+  cancelled:          { cls: "bg-error/10 text-error border border-error/25", fr: "Annulée", en: "Cancelled" },
+  expired:            { cls: "bg-error/10 text-error border border-error/25", fr: "Expirée", en: "Expired" },
+  failed:             { cls: "bg-error/10 text-error border border-error/25", fr: "Échouée", en: "Failed" },
+};
+function paymentBadge(status, lang) {
+  const s = PAYMENT_STATUS[status] || { cls: "bg-ash/40 text-nordfjord border border-ash", fr: status, en: status };
+  return { cls: s.cls, label: lang === "fr" ? s.fr : s.en };
+}
+const FULFILL_LABEL = {
+  processing: { fr: "En traitement", en: "Processing" },
+  packing:    { fr: "En préparation", en: "Preparing" },
+  packed:     { fr: "Prête à expédier", en: "Ready to ship" },
+  shipped:    { fr: "Expédiée", en: "Shipped" },
+  delivered:  { fr: "Livrée", en: "Delivered" },
+  preorder:   { fr: "Précommande", en: "Pre-order" },
 };
 
 const PROVINCES = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"];
@@ -33,13 +49,23 @@ export default function Account() {
   return (
     <div className="bg-clinical min-h-screen">
       <div className="max-w-6xl mx-auto px-6 py-16" data-testid="account-page">
-        <div className="flex items-end justify-between border-b border-ash pb-6 mb-8">
-          <div>
-            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">ACCOUNT</p>
-            <h1 className="font-display text-[40px] font-bold text-nordfjord" data-testid="account-name">{user?.name}</h1>
-            <p className="font-data text-xs text-glacier mt-1">{user?.email}</p>
+        <div className="rounded-3xl border border-ash bg-white p-6 sm:p-7 mb-8 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-4 min-w-0">
+            <div
+              className="w-14 h-14 rounded-2xl bg-nordfjord text-white flex items-center justify-center font-display font-extrabold text-xl shrink-0"
+              aria-hidden="true"
+            >
+              {(user?.name || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <p className="font-data text-[10px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+                {lang === "fr" ? "MON COMPTE" : "MY ACCOUNT"}
+              </p>
+              <h1 className="font-display text-2xl sm:text-3xl font-bold text-nordfjord leading-tight truncate" data-testid="account-name">{user?.name}</h1>
+              <p className="font-data text-xs text-glacier mt-0.5 truncate">{user?.email}</p>
+            </div>
           </div>
-          <button onClick={logout} data-testid="account-logout" className="font-data text-xs uppercase tracking-[0.2em] text-glacier hover:text-nordfjord transition-colors">
+          <button onClick={logout} data-testid="account-logout" className="font-data text-xs uppercase tracking-[0.2em] text-glacier hover:text-error transition-colors shrink-0">
             {t("nav.logout")} →
           </button>
         </div>
@@ -74,81 +100,105 @@ export default function Account() {
 }
 
 /* Orders */
+function OrderCard({ o, t, lang }) {
+  const badge = paymentBadge(o.payment_status, lang);
+  const info = o.shipping_info || {};
+  const pin = info.tracking_number;
+  const fl = FULFILL_LABEL[o.fulfillment_status];
+  return (
+    <Link
+      to={`/order/${o.id}`}
+      data-testid={`order-row-${o.order_number}`}
+      className="block rounded-2xl border border-ash bg-white p-5 hover:border-nova hover:shadow-[0_12px_30px_-18px_rgba(11,46,79,.35)] transition-all"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="font-display font-bold text-nordfjord text-lg leading-tight">{o.order_number}</div>
+          <div className="font-data text-[11px] text-glacier mt-1">
+            {new Date(o.created_at).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { year: "numeric", month: "short", day: "numeric" })}
+            {" · "}
+            {o.items.length} {o.items.length > 1 ? (lang === "fr" ? "articles" : "items") : (lang === "fr" ? "article" : "item")}
+          </div>
+        </div>
+        <span className={`shrink-0 rounded-full px-3 py-1 uppercase tracking-[0.1em] text-[10px] font-semibold font-data ${badge.cls}`}>
+          {badge.label}
+        </span>
+      </div>
+
+      <div className="mt-4 flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          {pin ? (
+            <a
+              href={`https://www.canadapost-postescanada.ca/track-reperage/${lang === "fr" ? "fr" : "en"}#/resultList?searchFor=${pin}`}
+              target="_blank" rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="font-data text-xs text-nova underline font-medium break-all"
+              data-testid={`order-tracking-${o.order_number}`}
+            >
+              {lang === "fr" ? "Suivi : " : "Tracking: "}{pin}
+            </a>
+          ) : fl ? (
+            <span className="font-data text-[11px] uppercase tracking-[0.14em] text-glacier">{lang === "fr" ? fl.fr : fl.en}</span>
+          ) : (
+            <span className="font-data text-[11px] text-glacier">—</span>
+          )}
+        </div>
+        <div className="font-display font-extrabold text-nordfjord text-lg shrink-0">${o.total.toFixed(2)} <span className="text-[11px] font-data text-glacier">CAD</span></div>
+      </div>
+    </Link>
+  );
+}
+
 function OrdersTab({ t, lang }) {
   const [orders, setOrders] = useState(null);
   useEffect(() => {
     api.get("/orders/mine").then((r) => setOrders(r.data)).catch(() => setOrders([]));
   }, []);
+
   if (orders === null) {
-    return <p className="font-data text-xs uppercase tracking-[0.2em] text-glacier">{t("common.loading")}</p>;
-  }
-  if (orders.length === 0) {
     return (
-      <div className="rounded-2xl border border-ash bg-white p-8 text-center" data-testid="account-no-orders">
-        <p className="text-glacier">{t("account.noOrders")}</p>
-        <Link to="/catalog" className="inline-block mt-4 btn-pill btn-nova">{t("nav.catalog")} →</Link>
+      <div className="space-y-4" data-testid="account-orders-loading">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="rounded-2xl border border-ash bg-white p-5 animate-pulse">
+            <div className="h-5 w-40 bg-ash/50 rounded mb-3" />
+            <div className="h-3 w-24 bg-ash/40 rounded" />
+          </div>
+        ))}
       </div>
     );
   }
+
+  if (orders.length === 0) {
+    return (
+      <div className="rounded-2xl border border-ash bg-white p-10 text-center" data-testid="account-no-orders">
+        <p className="font-display text-lg font-bold text-nordfjord">{lang === "fr" ? "Aucune commande pour l'instant" : "No orders yet"}</p>
+        <p className="text-glacier mt-1">{t("account.noOrders")}</p>
+        <Link to="/catalog" className="inline-block mt-5 btn-pill btn-nova">{t("nav.catalog")} →</Link>
+      </div>
+    );
+  }
+
+  const spent = orders.filter((o) => o.payment_status === "paid").reduce((s2, o) => s2 + (o.total || 0), 0);
+  const awaiting = orders.filter((o) => String(o.payment_status || "").startsWith("awaiting")).length;
+  const stats = [
+    { label: lang === "fr" ? "Commandes" : "Orders", value: orders.length },
+    { label: lang === "fr" ? "Payées (total)" : "Paid (total)", value: `$${spent.toFixed(2)}` },
+    { label: lang === "fr" ? "En attente" : "Awaiting", value: awaiting },
+  ];
+
   return (
-    <div className="rounded-2xl border border-ash bg-white overflow-x-auto">
-      <table className="w-full font-data text-xs">
-        <thead className="bg-nordfjord text-white">
-          <tr>
-            <th className="px-4 py-3 text-left uppercase tracking-[0.16em]">{t("account.orderNumber")}</th>
-            <th className="px-4 py-3 text-left uppercase tracking-[0.16em]">{t("account.date")}</th>
-            <th className="px-4 py-3 text-left uppercase tracking-[0.16em]">Items</th>
-            <th className="px-4 py-3 text-left uppercase tracking-[0.16em]">{t("account.status")}</th>
-            <th className="px-4 py-3 text-left uppercase tracking-[0.16em]">{t("account.shipping") || "Expédition"}</th>
-            <th className="px-4 py-3 text-right uppercase tracking-[0.16em]">{t("account.total")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {orders.map((o) => (
-            <tr key={o.id} className="border-t border-ash hover:bg-clinical" data-testid={`order-row-${o.order_number}`}>
-              <td className="px-4 py-4">
-                <Link to={`/order/${o.id}`} className="font-bold text-nordfjord hover:text-nova">{o.order_number}</Link>
-              </td>
-              <td className="px-4 py-4 text-glacier">{new Date(o.created_at).toLocaleDateString()}</td>
-              <td className="px-4 py-4 text-nordfjord">{o.items.length}</td>
-              <td className="px-4 py-4">
-                <span className={`rounded-full px-2.5 py-1 uppercase tracking-[0.12em] text-[10px] ${statusColor[o.payment_status] || "bg-ash/40 text-nordfjord"}`}>
-                  {o.payment_status}
-                </span>
-              </td>
-              <td className="px-4 py-4">
-                {(() => {
-                  const info = o.shipping_info || {};
-                  const pin = info.tracking_number;
-                  const fs = o.fulfillment_status;
-                  if (pin) {
-                    return (
-                      <a
-                        href={`https://www.canadapost-postescanada.ca/track-reperage/${lang === "fr" ? "fr" : "en"}#/resultList?searchFor=${pin}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-nova underline font-medium"
-                        data-testid={`order-tracking-${o.order_number}`}
-                      >
-                        {pin}
-                      </a>
-                    );
-                  }
-                  const map = {
-                    processing: lang === "fr" ? "En traitement" : "Processing",
-                    packing: lang === "fr" ? "En préparation" : "Preparing",
-                    packed: lang === "fr" ? "Prête à expédier" : "Ready to ship",
-                    shipped: lang === "fr" ? "Expédiée" : "Shipped",
-                    delivered: lang === "fr" ? "Livrée" : "Delivered",
-                  };
-                  return <span className="text-glacier">{map[fs] || "—"}</span>;
-                })()}
-              </td>
-              <td className="px-4 py-4 text-right font-bold text-nordfjord">${o.total.toFixed(2)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-5" data-testid="account-orders">
+      <div className="grid grid-cols-3 gap-3">
+        {stats.map((st) => (
+          <div key={st.label} className="rounded-2xl border border-ash bg-white px-4 py-3">
+            <div className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{st.label}</div>
+            <div className="font-display font-extrabold text-nordfjord text-xl mt-1">{st.value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="space-y-3">
+        {orders.map((o) => <OrderCard key={o.id} o={o} t={t} lang={lang} />)}
+      </div>
     </div>
   );
 }
