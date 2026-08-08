@@ -100,7 +100,7 @@ export default function ProductCard({ product, index = 0 }) {
         <button
           data-testid={`add-to-cart-${product.slug}`}
           onClick={() => add(product)}
-          className="w-full btn-pill btn-nova"
+          className="w-full btn-pill btn-nova !py-2.5 !text-[13px] !tracking-[0.06em]"
         >
           {lang === "fr" ? "Ajouter à la commande" : "Add to order"}
         </button>
