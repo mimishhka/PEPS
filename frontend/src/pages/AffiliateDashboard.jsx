@@ -55,16 +55,18 @@ export default function AffiliateDashboard() {
       setData(me.data);
       setPayAddr(me.data.payout_address || "");
       setPayCur(me.data.payout_currency || "btc");
-      const [r, p, perf, ins] = await Promise.all([
+      // Résilient : un endpoint qui échoue ne casse pas tout le tableau de bord.
+      const [r, p, perf, ins] = await Promise.allSettled([
         api.get("/affiliate/referrals"),
         api.get("/affiliate/payouts"),
         api.get("/affiliate/performance"),
         api.get("/affiliate/insights"),
       ]);
-      setReferrals(r.data || []);
-      setPayouts(p.data || []);
-      setInsights(ins.data || null);
-      setSeries((perf.data?.series || []).map((s) => ({
+      setReferrals(r.status === "fulfilled" ? (r.value.data || []) : []);
+      setPayouts(p.status === "fulfilled" ? (p.value.data || []) : []);
+      setInsights(ins.status === "fulfilled" ? (ins.value.data || null) : null);
+      const perfData = perf.status === "fulfilled" ? perf.value.data : null;
+      setSeries((perfData?.series || []).map((s) => ({
         month: s.month,
         revenue: s.revenue,
         commission: s.commission,
