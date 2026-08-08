@@ -102,49 +102,30 @@ export default function Account() {
 /* Orders */
 function OrderCard({ o, t, lang }) {
   const badge = paymentBadge(o.payment_status, lang);
-  const info = o.shipping_info || {};
-  const pin = info.tracking_number;
+  const pin = (o.shipping_info || {}).tracking_number;
   const fl = FULFILL_LABEL[o.fulfillment_status];
   return (
     <Link
       to={`/order/${o.id}`}
       data-testid={`order-row-${o.order_number}`}
-      className="block rounded-2xl border border-ash bg-white p-5 hover:border-nova hover:shadow-[0_12px_30px_-18px_rgba(11,46,79,.35)] transition-all"
+      className="flex items-center gap-4 rounded-xl border border-ash bg-white px-4 py-3 hover:border-nova transition-colors"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="font-display font-bold text-nordfjord text-lg leading-tight">{o.order_number}</div>
-          <div className="font-data text-[11px] text-glacier mt-1">
-            {new Date(o.created_at).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { year: "numeric", month: "short", day: "numeric" })}
-            {" · "}
-            {o.items.length} {o.items.length > 1 ? (lang === "fr" ? "articles" : "items") : (lang === "fr" ? "article" : "item")}
-          </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="font-display font-bold text-nordfjord text-sm truncate">{o.order_number}</span>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold font-data uppercase tracking-[0.08em] ${badge.cls}`}>{badge.label}</span>
         </div>
-        <span className={`shrink-0 rounded-full px-3 py-1 uppercase tracking-[0.1em] text-[10px] font-semibold font-data ${badge.cls}`}>
-          {badge.label}
-        </span>
-      </div>
-
-      <div className="mt-4 flex items-end justify-between gap-4">
-        <div className="min-w-0">
+        <div className="font-data text-[11px] text-glacier mt-0.5 truncate">
+          {new Date(o.created_at).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { year: "numeric", month: "short", day: "numeric" })}
+          {" · "}{o.items.length} {o.items.length > 1 ? (lang === "fr" ? "articles" : "items") : (lang === "fr" ? "article" : "item")}
           {pin ? (
-            <a
-              href={`https://www.canadapost-postescanada.ca/track-reperage/${lang === "fr" ? "fr" : "en"}#/resultList?searchFor=${pin}`}
-              target="_blank" rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="font-data text-xs text-nova underline font-medium break-all"
-              data-testid={`order-tracking-${o.order_number}`}
-            >
-              {lang === "fr" ? "Suivi : " : "Tracking: "}{pin}
-            </a>
-          ) : fl ? (
-            <span className="font-data text-[11px] uppercase tracking-[0.14em] text-glacier">{lang === "fr" ? fl.fr : fl.en}</span>
-          ) : (
-            <span className="font-data text-[11px] text-glacier">—</span>
-          )}
+            <> · <a href={`https://www.canadapost-postescanada.ca/track-reperage/${lang === "fr" ? "fr" : "en"}#/resultList?searchFor=${pin}`}
+              target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+              className="text-nova underline" data-testid={`order-tracking-${o.order_number}`}>{lang === "fr" ? "suivi" : "track"}</a></>
+          ) : fl ? <> · {lang === "fr" ? fl.fr : fl.en}</> : null}
         </div>
-        <div className="font-display font-extrabold text-nordfjord text-lg shrink-0">${o.total.toFixed(2)} <span className="text-[11px] font-data text-glacier">CAD</span></div>
       </div>
+      <div className="font-display font-bold text-nordfjord text-sm shrink-0">${o.total.toFixed(2)}</div>
     </Link>
   );
 }
@@ -157,11 +138,11 @@ function OrdersTab({ t, lang }) {
 
   if (orders === null) {
     return (
-      <div className="space-y-4" data-testid="account-orders-loading">
+      <div className="space-y-2" data-testid="account-orders-loading">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="rounded-2xl border border-ash bg-white p-5 animate-pulse">
-            <div className="h-5 w-40 bg-ash/50 rounded mb-3" />
-            <div className="h-3 w-24 bg-ash/40 rounded" />
+          <div key={i} className="rounded-xl border border-ash bg-white px-4 py-3 animate-pulse flex items-center gap-4">
+            <div className="flex-1"><div className="h-3.5 w-32 bg-ash/50 rounded mb-2" /><div className="h-2.5 w-24 bg-ash/40 rounded" /></div>
+            <div className="h-3.5 w-14 bg-ash/50 rounded" />
           </div>
         ))}
       </div>
@@ -178,27 +159,9 @@ function OrdersTab({ t, lang }) {
     );
   }
 
-  const spent = orders.filter((o) => o.payment_status === "paid").reduce((s2, o) => s2 + (o.total || 0), 0);
-  const awaiting = orders.filter((o) => String(o.payment_status || "").startsWith("awaiting")).length;
-  const stats = [
-    { label: lang === "fr" ? "Commandes" : "Orders", value: orders.length },
-    { label: lang === "fr" ? "Payées (total)" : "Paid (total)", value: `$${spent.toFixed(2)}` },
-    { label: lang === "fr" ? "En attente" : "Awaiting", value: awaiting },
-  ];
-
   return (
-    <div className="space-y-5" data-testid="account-orders">
-      <div className="grid grid-cols-3 gap-3">
-        {stats.map((st) => (
-          <div key={st.label} className="rounded-2xl border border-ash bg-white px-4 py-3">
-            <div className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{st.label}</div>
-            <div className="font-display font-extrabold text-nordfjord text-xl mt-1">{st.value}</div>
-          </div>
-        ))}
-      </div>
-      <div className="space-y-3">
-        {orders.map((o) => <OrderCard key={o.id} o={o} t={t} lang={lang} />)}
-      </div>
+    <div className="space-y-2" data-testid="account-orders">
+      {orders.map((o) => <OrderCard key={o.id} o={o} t={t} lang={lang} />)}
     </div>
   );
 }
@@ -240,9 +203,9 @@ function ProfileTab({ t, user, refresh }) {
   };
 
   return (
-    <div className="grid lg:grid-cols-2 gap-12 max-w-4xl">
-      <form onSubmit={saveName} className="space-y-5" data-testid="profile-form">
-        <h2 className="font-display text-2xl font-bold text-nordfjord">{t("account.profile")}</h2>
+    <div className="grid lg:grid-cols-2 gap-5 max-w-4xl">
+      <form onSubmit={saveName} className="rounded-2xl border border-ash bg-white p-6 space-y-5 self-start" data-testid="profile-form">
+        <h2 className="font-display text-lg font-bold text-nordfjord">{t("account.profile")}</h2>
         <div>
           <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.fullName")}</label>
           <input required value={name} onChange={(e) => setName(e.target.value)} data-testid="profile-name"
@@ -253,8 +216,8 @@ function ProfileTab({ t, user, refresh }) {
         </button>
       </form>
 
-      <form onSubmit={requestEmailChange} className="space-y-5" data-testid="email-change-form">
-        <h2 className="font-display text-2xl font-bold text-nordfjord">{t("account.changeEmail")}</h2>
+      <form onSubmit={requestEmailChange} className="rounded-2xl border border-ash bg-white p-6 space-y-5 self-start" data-testid="email-change-form">
+        <h2 className="font-display text-lg font-bold text-nordfjord">{t("account.changeEmail")}</h2>
         {emailSentTo ? (
           <div className="rounded-2xl border border-ash bg-white p-5 text-sm" data-testid="email-change-sent">
             <p className="font-bold text-nordfjord">{t("account.emailSentTitle")}</p>
@@ -338,7 +301,7 @@ function AddressesTab({ t }) {
   return (
     <div className="max-w-4xl">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="font-display text-2xl font-bold text-nordfjord">{t("account.addresses")}</h2>
+        <h2 className="font-display text-lg font-bold text-nordfjord">{t("account.addresses")}</h2>
         {!editing && (
           <button onClick={() => setEditing({ ...EMPTY_ADDRESS })} data-testid="address-add" className="btn-pill btn-nova">
             + {t("account.addAddress")}
@@ -486,9 +449,9 @@ function SecurityTab({ t, logout, navigate }) {
   };
 
   return (
-    <div className="max-w-4xl space-y-14">
-      <form onSubmit={changePassword} className="space-y-5 max-w-md" data-testid="password-form">
-        <h2 className="font-display text-2xl font-bold text-nordfjord">{t("account.changePassword")}</h2>
+    <div className="max-w-2xl space-y-5">
+      <form onSubmit={changePassword} className="rounded-2xl border border-ash bg-white p-6 space-y-5" data-testid="password-form">
+        <h2 className="font-display text-lg font-bold text-nordfjord">{t("account.changePassword")}</h2>
         <div>
           <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
           <input type="password" required value={pw.current_password} data-testid="password-current"
@@ -513,16 +476,16 @@ function SecurityTab({ t, logout, navigate }) {
         <p className="text-xs text-glacier">{t("account.passwordHint")}</p>
       </form>
 
-      <div className="max-w-md">
-        <h2 className="font-display text-2xl font-bold text-nordfjord mb-3">{t("account.sessions")}</h2>
+      <div className="rounded-2xl border border-ash bg-white p-6">
+        <h2 className="font-display text-lg font-bold text-nordfjord mb-3">{t("account.sessions")}</h2>
         <p className="text-sm text-glacier mb-4">{t("account.sessionsHint")}</p>
         <button onClick={logoutAll} data-testid="logout-all" className="btn-pill btn-outline">
           {t("account.logoutAll")}
         </button>
       </div>
 
-      <div className="max-w-md border-t border-error/40 pt-10">
-        <h2 className="font-display text-2xl font-bold text-error mb-3">{t("account.dangerZone")}</h2>
+      <div className="rounded-2xl border border-error/30 bg-error/[0.03] p-6">
+        <h2 className="font-display text-lg font-bold text-error mb-3">{t("account.dangerZone")}</h2>
         <p className="text-sm text-glacier mb-4">{t("account.deleteHint")}</p>
         {!showDelete ? (
           <button onClick={() => setShowDelete(true)} data-testid="delete-account-reveal"
