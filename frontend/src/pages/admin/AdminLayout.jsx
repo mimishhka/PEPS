@@ -29,6 +29,7 @@ import AdminCategories from "./sections/AdminCategories";
 import AdminMenus from "./sections/AdminMenus";
 import AdminSubscribers from "./sections/AdminSubscribers";
 import AdminAffiliates from "./sections/AdminAffiliates";
+import AdminPayouts from "./sections/AdminPayouts";
 
 function hasAccess(user, area) {
   if (!user) return false;
@@ -92,6 +93,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
         label: L("CROISSANCE", "GROWTH"),
         items: [
           { to: `${basePath}/affiliates`, label: L("Affiliés", "Affiliates"), icon: Handshake, area: "affiliates" },
+          { to: `${basePath}/payouts`, label: L("Paiements", "Payouts"), icon: DollarSign, area: "affiliates" },
           { to: `${basePath}/subscribers`, label: L("Abonnés", "Subscribers"), icon: Mail, area: "subscribers" },
         ],
       },
@@ -219,6 +221,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
             <Route path="categories" element={hasAccess(user, "categories") ? <AdminCategories /> : <Navigate to={landingPath} replace />} />
             <Route path="menus" element={hasAccess(user, "menus") ? <AdminMenus /> : <Navigate to={landingPath} replace />} />
             <Route path="affiliates" element={hasAccess(user, "affiliates") ? <AdminAffiliates /> : <Navigate to={landingPath} replace />} />
+            <Route path="payouts" element={hasAccess(user, "affiliates") ? <AdminPayouts /> : <Navigate to={landingPath} replace />} />
             <Route path="staff" element={hasAccess(user, "staff") ? <AdminStaff /> : <Navigate to={landingPath} replace />} />
             <Route path="trash" element={hasAccess(user, "trash") ? <AdminTrash /> : <Navigate to={landingPath} replace />} />
             <Route path="audit-log" element={hasAccess(user, "audit") ? <AdminAuditLog /> : <Navigate to={landingPath} replace />} />
