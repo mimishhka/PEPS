@@ -95,9 +95,13 @@ export default function OrderConfirmation() {
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-16" data-testid="confirmation-page">
-      <div className="border border-ink">
-        <div className="bg-ink text-white px-6 py-4 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.25em]">
-          <span>// ORDER CONFIRMED</span>
+      <div className="border border-nordfjord/20 rounded-2xl overflow-hidden">
+        <div className="bg-nordfjord text-white px-6 py-4 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.25em]">
+          <span>
+            {order.payment_status === "paid"
+              ? (lang === "fr" ? "// COMMANDE CONFIRMÉE" : "// ORDER CONFIRMED")
+              : (lang === "fr" ? "// COMMANDE REÇUE — PAIEMENT EN ATTENTE" : "// ORDER RECEIVED — AWAITING PAYMENT")}
+          </span>
           <span>{new Date(order.created_at).toLocaleString()}</span>
         </div>
         <div className="p-8">
@@ -105,8 +109,16 @@ export default function OrderConfirmation() {
           <div className="font-display text-4xl sm:text-5xl font-extrabold tracking-tight mt-2" data-testid="order-number">
             {order.order_number}
           </div>
-          <h1 className="font-display text-2xl uppercase tracking-tight mt-8">{t("confirmation.title")}</h1>
-          <p className="text-foreground/70 mt-2">{t("confirmation.sub")}</p>
+          <h1 className="font-display text-2xl uppercase tracking-tight mt-8">
+            {order.payment_status === "paid"
+              ? (lang === "fr" ? "Commande confirmée" : "Order confirmed")
+              : (lang === "fr" ? "Commande reçue" : "Order received")}
+          </h1>
+          <p className="text-foreground/70 mt-2">
+            {order.payment_status === "paid"
+              ? (lang === "fr" ? "Merci ! Votre paiement est confirmé et votre commande est en préparation." : "Thank you! Your payment is confirmed and your order is being prepared.")
+              : (lang === "fr" ? "Conservez votre numéro de commande — il vous sera nécessaire pour compléter le paiement." : "Save your order number — you'll need it to complete the payment.")}
+          </p>
         </div>
       </div>
 
@@ -244,18 +256,42 @@ export default function OrderConfirmation() {
         </div>
       )}
 
-      <div className="mt-8 border border-ink/20 p-6 bg-secondary">
-        <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50 mb-3">ITEMS</div>
-        <ul className="divide-y divide-ink/15">
+      <div className="mt-8 border border-nordfjord/15 rounded-2xl p-6 bg-secondary">
+        <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50 mb-3">{lang === "fr" ? "ARTICLES" : "ITEMS"}</div>
+        <ul className="divide-y divide-nordfjord/10">
           {order.items.map((i) => (
             <li key={i.product_id} className="py-3 flex justify-between text-sm">
-              <span><span className="font-mono text-foreground/60">{i.qty}×</span> {i.name_en}</span>
+              <span><span className="font-mono text-foreground/60">{i.qty}×</span> {lang === "fr" ? (i.name_fr || i.name_en) : i.name_en}</span>
               <span className="font-bold">${i.line_total.toFixed(2)}</span>
             </li>
           ))}
         </ul>
-        <div className="border-t-2 border-ink mt-4 pt-3 flex justify-between font-display font-extrabold text-xl">
-          <span>TOTAL</span><span>${order.total.toFixed(2)} CAD</span>
+        <div className="mt-4 pt-3 border-t border-nordfjord/15 space-y-1.5 text-sm">
+          <div className="flex justify-between text-foreground/70">
+            <span>{lang === "fr" ? "Sous-total" : "Subtotal"}</span>
+            <span data-testid="confirm-subtotal">${Number(order.subtotal ?? order.total).toFixed(2)}</span>
+          </div>
+          {Number(order.discount) > 0 && (
+            <div className="flex justify-between text-nova">
+              <span>{lang === "fr" ? "Rabais" : "Discount"}</span>
+              <span data-testid="confirm-discount">−${Number(order.discount).toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-foreground/70">
+            <span>{lang === "fr" ? "Livraison" : "Shipping"}</span>
+            <span data-testid="confirm-shipping">
+              {Number(order.shipping) > 0 ? `$${Number(order.shipping).toFixed(2)}` : (lang === "fr" ? "GRATUITE" : "FREE")}
+            </span>
+          </div>
+          {Number(order.tax) > 0 && (
+            <div className="flex justify-between text-foreground/70">
+              <span>{lang === "fr" ? "Taxes" : "Tax"}</span>
+              <span data-testid="confirm-tax">${Number(order.tax).toFixed(2)}</span>
+            </div>
+          )}
+        </div>
+        <div className="border-t-2 border-nordfjord mt-3 pt-3 flex justify-between font-display font-extrabold text-xl">
+          <span>TOTAL</span><span data-testid="confirm-total">${order.total.toFixed(2)} CAD</span>
         </div>
       </div>
 
