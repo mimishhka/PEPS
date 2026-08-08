@@ -8012,6 +8012,141 @@ async def admin_affiliates_list(admin: dict = Depends(get_admin_user)):  # noqa:
     return out
 
 
+# ===========================================================================
+# ===== FIRONOVA_AFFILIATE_ADMIN_OVERVIEW_START =====
+# Endpoints manquants requis par AdminAffiliates.jsx (sinon la page casse).
+
+@api.get("/admin/affiliates/overview")  # noqa: F821
+async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Vue d'ensemble du programme d'affiliation : finances, effectifs,
+    alertes, attribution, série mensuelle, top affiliés, distribution tiers."""
+    now = datetime.now(timezone.utc)
+
+    # --- Effectifs ---
+    active = await db.affiliates.count_documents({"status": "active"})
+    invited = await db.affiliates.count_documents({"status": "invited"})
+    suspended = await db.affiliates.count_documents({"status": "suspended"})
+
+    # --- Finances (depuis les referrals) ---
+    referrals = await db.affiliate_referrals.find(
+        {"status": {"$ne": "excluded"}},
+        {"_id": 0, "status": 1, "commission_amount": 1, "order_total": 1, "created_at": 1, "affiliate_id": 1},
+    ).to_list(5000)
+    commission_pending = commission_due = commission_paid = commission_reversed = 0.0
+    validated_orders = 0
+    validated_revenue = 0.0
+    monthly = {}
+    per_aff = {}
+    for r in referrals:
+        st = str(r.get("status", "")).lower()
+        comm = float(r.get("commission_amount", 0.0))
+        rev = float(r.get("order_total", 0.0))
+        if st == "pending":
+            commission_pending += comm
+        elif st == "approved":
+            commission_due += comm
+        elif st == "paid":
+            commission_paid += comm
+        elif st in ("reversed", "refunded"):
+            commission_reversed += comm
+        if st in ("approved", "paid"):
+            validated_orders += 1
+            validated_revenue += rev
+            mk = str(r.get("created_at", ""))[:7]
+            mm = monthly.setdefault(mk, {"month": mk, "revenue": 0.0, "commission": 0.0})
+            mm["revenue"] += rev
+            mm["commission"] += comm
+            pa = per_aff.setdefault(r.get("affiliate_id"), {"revenue": 0.0, "commission": 0.0})
+            pa["revenue"] += rev
+            pa["commission"] += comm
+
+    avg_order_value = (validated_revenue / validated_orders) if validated_orders else 0.0
+    monthly_series = [monthly[k] for k in sorted(monthly.keys())][-12:]
+    for m in monthly_series:
+        m["revenue"] = round(m["revenue"], 2)
+        m["commission"] = round(m["commission"], 2)
+
+    # --- Top affiliés (par revenu validé) ---
+    top_ids = sorted(per_aff.keys(), key=lambda k: per_aff[k]["revenue"], reverse=True)[:5]
+    top_affiliates = []
+    for aid in top_ids:
+        a = await db.affiliates.find_one({"id": aid}, {"_id": 0, "code": 1, "name": 1})
+        if a:
+            top_affiliates.append({
+                "code": a.get("code"), "name": a.get("name"),
+                "revenue": round(per_aff[aid]["revenue"], 2),
+                "commission": round(per_aff[aid]["commission"], 2),
+            })
+
+    # --- Distribution des tiers ---
+    tier_distribution = {}
+    async for a in db.affiliates.find({"status": "active"}, {"_id": 0, "id": 1, "manual_tier": 1}):
+        try:
+            mt = await _affiliate_compute_metrics(a["id"])
+            tier = str(mt.get("tier", "—"))
+        except Exception:
+            tier = "—"
+        tier_distribution[tier] = tier_distribution.get(tier, 0) + 1
+
+    # --- Attribution (clics / conversion) ---
+    total_clicks = await db.affiliate_clicks.count_documents({})
+    conversion_rate = (validated_orders / total_clicks) if total_clicks else None
+
+    # --- Alertes ---
+    ready = await db.affiliate_payouts.find({"status": "ready"}, {"_id": 0, "amount": 1}).to_list(1000)
+    payouts_ready = len(ready)
+    payouts_ready_amount = round(sum(float(p.get("amount", 0)) for p in ready), 2)
+    invites_expired = await db.affiliates.count_documents(
+        {"status": "invited", "invite_expires_at": {"$lt": now.isoformat()}}
+    )
+    compliance_review = await db.affiliates.count_documents({"compliance_status": "review"})
+    commissions_maturing = await db.affiliate_referrals.count_documents({"status": "pending"})
+
+    return {
+        "financial": {
+            "commission_pending": round(commission_pending, 2),
+            "commission_due": round(commission_due, 2),
+            "commission_paid": round(commission_paid, 2),
+            "commission_reversed": round(commission_reversed, 2),
+            "validated_orders": validated_orders,
+            "validated_revenue": round(validated_revenue, 2),
+            "avg_order_value": round(avg_order_value, 2),
+        },
+        "affiliates": {"active": active, "invited": invited, "suspended": suspended},
+        "alerts": {
+            "payouts_ready": payouts_ready,
+            "payouts_ready_amount": payouts_ready_amount,
+            "invites_expired": invites_expired,
+            "compliance_review": compliance_review,
+            "commissions_maturing": commissions_maturing,
+        },
+        "attribution": {
+            "total_clicks": total_clicks,
+            "conversion_rate": conversion_rate,
+        },
+        "monthly_series": monthly_series,
+        "top_affiliates": top_affiliates,
+        "tier_distribution": tier_distribution,
+    }
+
+
+@api.get("/admin/affiliates/risk")  # noqa: F821
+async def admin_affiliates_risk(admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Détection de risque : referrals exclus (auto-parrainage, IP partagée)
+    et affiliés à surveiller. Retourne la liste + le compte signalé."""
+    flagged = await db.affiliate_referrals.find(
+        {"status": "excluded"},
+        {"_id": 0, "id": 1, "order_number": 1, "commission_amount": 1,
+         "base_amount": 1, "excluded_reason": 1, "status": 1, "affiliate_id": 1},
+    ).sort("created_at", -1).to_list(200)
+    # Enrichir avec le code affilié
+    for f in flagged:
+        a = await db.affiliates.find_one({"id": f.get("affiliate_id")}, {"_id": 0, "code": 1})
+        f["affiliate_code"] = a.get("code") if a else None
+    return {"affiliates": flagged, "flagged_count": len(flagged)}
+# ===== FIRONOVA_AFFILIATE_ADMIN_OVERVIEW_END =====
+
+
 @api.get("/admin/affiliates/{affiliate_id}")  # noqa: F821
 async def admin_affiliate_detail(affiliate_id: str,
                                  admin: dict = Depends(get_admin_user)):  # noqa: F821
@@ -9241,6 +9376,290 @@ def _order_ctx(order: dict) -> tuple:
     }
     return lang, order.get("email"), ctx
 # ===== FIRONOVA_EMAIL_WIRING_END =====
+
+
+
+# ===========================================================================
+# ===== FIRONOVA_NOWPAYMENTS_PAYOUT_START =====
+# Client Payouts NOWPayments + flux semi-automatique sécurisé.
+#
+# Flux (option "semi-auto sécurisé", cf. décision produit) :
+#   1) L'admin exécute un payout "ready" -> le système obtient un JWT
+#      (email/password NOWPayments), crée le payout via POST /v1/payout,
+#      NOWPayments envoie un code 2FA à l'email du compte marchand.
+#      -> statut interne: "creating" (en attente du 2FA).
+#   2) L'admin saisit le code 2FA -> POST /v1/payout/{id}/verify.
+#      -> statut interne: "processing" puis "paid" (via statut/IPN).
+#
+# Sécurité : aucun secret 2FA stocké. Le JWT est éphémère (5 min), obtenu à
+# la demande. L'IP du serveur doit être whitelistée chez NOWPayments.
+# Interrupteur: NOWPAYMENTS_PAYOUT_ENABLED (off => flux manuel conservé).
+# ===========================================================================
+
+NOWPAYMENTS_PAYOUT_ENABLED = os.environ.get("NOWPAYMENTS_PAYOUT_ENABLED", "false").lower() == "true"
+NOWPAYMENTS_EMAIL = os.environ.get("NOWPAYMENTS_EMAIL", "")
+NOWPAYMENTS_PASSWORD = os.environ.get("NOWPAYMENTS_PASSWORD", "")
+
+
+class NowPaymentsPayoutError(Exception):
+    """Erreur explicite côté payout NOWPayments (message sûr pour l'admin)."""
+
+
+async def _np_auth_token() -> str:
+    """Obtient un JWT NOWPayments (valide ~5 min). Requis pour les payouts."""
+    if not (NOWPAYMENTS_EMAIL and NOWPAYMENTS_PASSWORD):
+        raise NowPaymentsPayoutError(
+            "Identifiants NOWPayments manquants (NOWPAYMENTS_EMAIL / NOWPAYMENTS_PASSWORD)."
+        )
+    try:
+        async with httpx.AsyncClient(timeout=20) as cx:
+            r = await cx.post(
+                f"{NOWPAYMENTS_BASE_URL}/auth",
+                json={"email": NOWPAYMENTS_EMAIL, "password": NOWPAYMENTS_PASSWORD},
+                headers={"Content-Type": "application/json"},
+            )
+    except httpx.HTTPError as e:
+        raise NowPaymentsPayoutError(f"Connexion NOWPayments échouée: {e}")
+    if r.status_code != 200:
+        raise NowPaymentsPayoutError(f"Auth NOWPayments refusée ({r.status_code}).")
+    token = (r.json() or {}).get("token")
+    if not token:
+        raise NowPaymentsPayoutError("Auth NOWPayments: token absent de la réponse.")
+    return token
+
+
+async def _np_create_payout(withdrawals: list, description: str = "") -> dict:
+    """Crée un payout (batch). Renvoie la réponse NOWPayments (contient l'id).
+    Un code 2FA est envoyé par NOWPayments à l'email marchand."""
+    if not NOWPAYMENTS_API_KEY:
+        raise NowPaymentsPayoutError("NOWPAYMENTS_API_KEY manquante.")
+    token = await _np_auth_token()
+    body = {"withdrawals": withdrawals}
+    if description:
+        body["payout_description"] = description
+    if NOWPAYMENTS_IPN_SECRET:
+        # callback pour maj auto des statuts (facultatif mais recommandé)
+        base = (globals().get("PUBLIC_BASE_URL") or "").rstrip("/")
+        if base:
+            body["ipn_callback_url"] = f"{base}/api/webhook/nowpayments-payout"
+    try:
+        async with httpx.AsyncClient(timeout=30) as cx:
+            r = await cx.post(
+                f"{NOWPAYMENTS_BASE_URL}/payout",
+                json=body,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "x-api-key": NOWPAYMENTS_API_KEY,
+                    "Content-Type": "application/json",
+                },
+            )
+    except httpx.HTTPError as e:
+        raise NowPaymentsPayoutError(f"Création du payout échouée: {e}")
+    if r.status_code not in (200, 201):
+        detail = ""
+        try:
+            detail = (r.json() or {}).get("message", "")
+        except Exception:
+            detail = r.text[:200]
+        raise NowPaymentsPayoutError(f"Payout refusé ({r.status_code}): {detail}")
+    return r.json() or {}
+
+
+async def _np_verify_payout(batch_id: str, verification_code: str) -> dict:
+    """Valide un payout avec le code 2FA reçu par email."""
+    if not NOWPAYMENTS_API_KEY:
+        raise NowPaymentsPayoutError("NOWPAYMENTS_API_KEY manquante.")
+    token = await _np_auth_token()
+    try:
+        async with httpx.AsyncClient(timeout=20) as cx:
+            r = await cx.post(
+                f"{NOWPAYMENTS_BASE_URL}/payout/{batch_id}/verify",
+                json={"verification_code": verification_code.strip()},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "x-api-key": NOWPAYMENTS_API_KEY,
+                    "Content-Type": "application/json",
+                },
+            )
+    except httpx.HTTPError as e:
+        raise NowPaymentsPayoutError(f"Vérification 2FA échouée: {e}")
+    if r.status_code != 200:
+        detail = ""
+        try:
+            detail = (r.json() or {}).get("message", "")
+        except Exception:
+            detail = r.text[:200]
+        raise NowPaymentsPayoutError(f"Code 2FA refusé ({r.status_code}): {detail}")
+    return r.json() or {}
+
+
+async def _np_payout_status(batch_id: str) -> dict:
+    """Récupère le statut d'un payout (batch)."""
+    if not NOWPAYMENTS_API_KEY:
+        raise NowPaymentsPayoutError("NOWPAYMENTS_API_KEY manquante.")
+    try:
+        async with httpx.AsyncClient(timeout=20) as cx:
+            r = await cx.get(
+                f"{NOWPAYMENTS_BASE_URL}/payout/{batch_id}",
+                headers={"x-api-key": NOWPAYMENTS_API_KEY},
+            )
+    except httpx.HTTPError as e:
+        raise NowPaymentsPayoutError(f"Statut payout indisponible: {e}")
+    if r.status_code != 200:
+        raise NowPaymentsPayoutError(f"Statut payout ({r.status_code}).")
+    return r.json() or {}
+# ===== FIRONOVA_NOWPAYMENTS_PAYOUT_END =====
+
+
+# ===========================================================================
+# ===== FIRONOVA_PAYOUT_ENDPOINTS_START =====
+
+class PayoutVerifyIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    verification_code: str = Field(min_length=3, max_length=32)
+
+
+@api.post("/admin/affiliates/payouts/{payout_id}/execute")  # noqa: F821
+async def admin_payout_execute(payout_id: str, admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Étape 1/2 — crée le payout crypto via NOWPayments. Un code 2FA est
+    envoyé par NOWPayments à l'email marchand. Le payout passe en 'creating'."""
+    if not NOWPAYMENTS_PAYOUT_ENABLED:
+        raise HTTPException(400, "Les payouts automatiques NOWPayments sont désactivés (NOWPAYMENTS_PAYOUT_ENABLED=false). Utilisez le paiement manuel + mark-paid.")
+    payout = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
+    if not payout:
+        raise HTTPException(404, "Payout introuvable")
+    if payout.get("status") not in ("ready", "failed"):
+        raise HTTPException(400, f"Payout non exécutable (statut: {payout.get('status')})")
+    address = (payout.get("payout_address") or "").strip()
+    if not address:
+        raise HTTPException(400, "Adresse de versement manquante pour cet affilié.")
+    amount = float(payout.get("amount", 0))
+    if amount <= 0:
+        raise HTTPException(400, "Montant de payout invalide.")
+    currency = (payout.get("currency") or "btc").lower()
+
+    withdrawals = [{"address": address, "currency": currency, "amount": amount}]
+    desc = f"Fironova affiliate {payout.get('affiliate_code')} — {payout.get('period')}"
+    try:
+        resp = await _np_create_payout(withdrawals, description=desc)
+    except NowPaymentsPayoutError as e:
+        await db.affiliate_payouts.update_one({"id": payout_id},
+            {"$set": {"status": "failed", "np_error": str(e), "updated_at": datetime.now(timezone.utc).isoformat()}})
+        raise HTTPException(502, str(e))
+
+    batch_id = str(resp.get("id") or resp.get("batch_withdrawal_id") or "")
+    if not batch_id:
+        raise HTTPException(502, "NOWPayments n'a pas renvoyé d'identifiant de payout.")
+    await db.affiliate_payouts.update_one({"id": payout_id}, {"$set": {
+        "status": "creating", "np_batch_id": batch_id, "np_error": None,
+        "executed_by": admin.get("email"), "executed_at": datetime.now(timezone.utc).isoformat(),
+    }})
+    asyncio.create_task(_log_action(admin, "affiliate_payout_execute", f"payout={payout_id} batch={batch_id} amount={amount} {currency}", "settings"))
+    return {"ok": True, "status": "creating", "np_batch_id": batch_id,
+            "message": "Payout créé. Un code de vérification 2FA a été envoyé à l'adresse courriel du compte NOWPayments. Saisissez-le pour finaliser."}
+
+
+@api.post("/admin/affiliates/payouts/{payout_id}/verify")  # noqa: F821
+async def admin_payout_verify(payout_id: str, payload: PayoutVerifyIn,
+                              admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Étape 2/2 — valide le payout avec le code 2FA reçu par email."""
+    payout = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
+    if not payout:
+        raise HTTPException(404, "Payout introuvable")
+    batch_id = payout.get("np_batch_id")
+    if not batch_id or payout.get("status") != "creating":
+        raise HTTPException(400, "Ce payout n'est pas en attente de vérification 2FA.")
+    try:
+        await _np_verify_payout(batch_id, payload.verification_code)
+    except NowPaymentsPayoutError as e:
+        raise HTTPException(502, str(e))
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.affiliate_payouts.update_one({"id": payout_id}, {"$set": {
+        "status": "processing", "verified_by": admin.get("email"), "verified_at": now,
+    }})
+    asyncio.create_task(_log_action(admin, "affiliate_payout_verify", f"payout={payout_id} batch={batch_id}", "settings"))
+    return {"ok": True, "status": "processing",
+            "message": "Payout vérifié et en cours de traitement par NOWPayments."}
+
+
+@api.get("/admin/affiliates/payouts/{payout_id}/status")  # noqa: F821
+async def admin_payout_status(payout_id: str, admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Rafraîchit le statut depuis NOWPayments et synchronise l'état interne."""
+    payout = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
+    if not payout:
+        raise HTTPException(404, "Payout introuvable")
+    batch_id = payout.get("np_batch_id")
+    if not batch_id:
+        return {"status": payout.get("status"), "np_status": None}
+    try:
+        data = await _np_payout_status(batch_id)
+    except NowPaymentsPayoutError as e:
+        raise HTTPException(502, str(e))
+    np_status = str(data.get("status", "")).lower()
+    # Mappe le statut NOWPayments vers l'état interne + finalise si terminé.
+    mapped = payout.get("status")
+    if np_status in ("finished", "sent", "completed"):
+        mapped = "paid"
+    elif np_status in ("failed", "rejected"):
+        mapped = "failed"
+    elif np_status in ("processing", "sending", "waiting", "confirming"):
+        mapped = "processing"
+    if mapped != payout.get("status"):
+        now = datetime.now(timezone.utc).isoformat()
+        upd = {"status": mapped, "np_status": np_status, "updated_at": now}
+        if mapped == "paid":
+            upd["paid_at"] = now
+            upd["reference"] = str(data.get("id") or batch_id)
+            await db.affiliate_referrals.update_many({"payout_id": payout_id},
+                {"$set": {"status": "paid", "paid_at": now}})
+        await db.affiliate_payouts.update_one({"id": payout_id}, {"$set": upd})
+    return {"status": mapped, "np_status": np_status}
+
+
+@api.post("/webhook/nowpayments-payout")  # noqa: F821
+async def nowpayments_payout_ipn(request: Request):
+    """IPN payout : NOWPayments notifie les changements de statut.
+    Signature HMAC-SHA512 vérifiée (même schéma que l'IPN paiement)."""
+    if not NOWPAYMENTS_IPN_SECRET:
+        raise HTTPException(503, "IPN not configured")
+    raw = await request.body()
+    sig = request.headers.get("x-nowpayments-sig", "")
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        raise HTTPException(400, "Invalid payload")
+    expected = hmac.new(
+        NOWPAYMENTS_IPN_SECRET.encode(),
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode(),
+        hashlib.sha512,
+    ).hexdigest()
+    if not sig or not hmac.compare_digest(expected, sig):
+        logging.warning("NOWPayments payout IPN: signature invalide")
+        raise HTTPException(401, "Invalid signature")
+
+    batch_id = str(payload.get("id") or payload.get("batch_withdrawal_id") or "")
+    np_status = str(payload.get("status", "")).lower()
+    if not batch_id:
+        return {"ok": True}
+    payout = await db.affiliate_payouts.find_one({"np_batch_id": batch_id}, {"_id": 0})
+    if not payout:
+        return {"ok": True}
+    now = datetime.now(timezone.utc).isoformat()
+    if np_status in ("finished", "sent", "completed"):
+        await db.affiliate_payouts.update_one({"id": payout["id"]},
+            {"$set": {"status": "paid", "np_status": np_status, "paid_at": now, "reference": batch_id}})
+        await db.affiliate_referrals.update_many({"payout_id": payout["id"]},
+            {"$set": {"status": "paid", "paid_at": now}})
+    elif np_status in ("failed", "rejected"):
+        await db.affiliate_payouts.update_one({"id": payout["id"]},
+            {"$set": {"status": "failed", "np_status": np_status, "updated_at": now}})
+    else:
+        await db.affiliate_payouts.update_one({"id": payout["id"]},
+            {"$set": {"np_status": np_status, "updated_at": now}})
+    return {"ok": True}
+# ===== FIRONOVA_PAYOUT_ENDPOINTS_END =====
+
 
 
 app.include_router(api)
