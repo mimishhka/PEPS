@@ -74,6 +74,8 @@ STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
 FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))
 UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "24"))
+# Rabais % du coupon auto-lié à chaque affilié (0 = pas de coupon auto).
+AFFILIATE_COUPON_PERCENT = float(os.environ.get("AFFILIATE_COUPON_PERCENT", "10"))
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").strip().lower() == "true"
 COOKIE_SAMESITE = os.environ.get("COOKIE_SAMESITE", "none").strip().lower()
 if COOKIE_SAMESITE not in {"lax", "strict", "none"}:
@@ -7038,11 +7040,33 @@ async def _seed_launch_coupon() -> None:
 
 
 @app.on_event("startup")
+
+async def _backfill_affiliate_coupons() -> None:
+    """Crée le coupon lié pour les affiliés déjà actifs qui n'en ont pas
+    (les nouveaux le reçoivent à l'activation). Idempotent, sûr à relancer."""
+    if AFFILIATE_COUPON_PERCENT <= 0:
+        return
+    try:
+        actives = await db.affiliates.find(
+            {"status": "active", "code": {"$ne": None}}, {"_id": 0, "id": 1, "code": 1}
+        ).to_list(1000)
+        created = 0
+        for a in actives:
+            c = await _affiliate_ensure_coupon(a.get("code"), a["id"])
+            if c:
+                created += 1
+        if created:
+            logging.info("[affiliate] backfill coupons: %d affiliés vérifiés", created)
+    except Exception as e:
+        logging.warning("[affiliate] backfill coupons échoué: %s", e)
+
+
 async def startup_event():
     await seed_admin_and_products()
     await _seed_categories_from_products()
     await _seed_default_menus()
     await _seed_launch_coupon()
+    await _backfill_affiliate_coupons()
     if await _acquire_worker_lock("background_tasks"):
         asyncio.create_task(_unpaid_orders_watchdog())
         asyncio.create_task(_backfill_dispatch_batch())
@@ -7391,6 +7415,40 @@ async def _affiliate_send_invite(email: str, name: str, link: str, lang: str) ->
 # ATTRIBUTION — appelée depuis checkout() et _mark_order_paid() / refund
 # ===========================================================================
 
+
+async def _affiliate_ensure_coupon(affiliate_code: str, affiliate_id: str) -> Optional[dict]:
+    """Crée un coupon de rabais lié au code affilié (idempotent).
+    Si AFFILIATE_COUPON_PERCENT <= 0, ne crée rien. Le coupon reste
+    éditable/désactivable depuis l'admin Coupons (c'est un coupon standard,
+    marqué affiliate_id pour le lien et le contrôle)."""
+    if AFFILIATE_COUPON_PERCENT <= 0:
+        return None
+    code = (affiliate_code or "").upper().strip()
+    if not code:
+        return None
+    existing = await db.coupons.find_one({"code": code}, {"_id": 0})
+    if existing:
+        return existing  # déjà présent : on ne l'écrase pas (respecte les réglages admin)
+    doc = {
+        "id": str(uuid.uuid4()),
+        "code": code,
+        "discount_type": "percent",
+        "value": AFFILIATE_COUPON_PERCENT,
+        "min_subtotal": 0.0,
+        "usage_limit": None,
+        "used_count": 0,
+        "active": True,
+        "expires_at": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "affiliate_id": affiliate_id,   # lien affilié (permet le contrôle/filtrage)
+        "source": "affiliate",
+    }
+    await db.coupons.insert_one(doc)
+    doc.pop("_id", None)
+    logging.info("[affiliate] coupon %s créé (%.0f%%) pour affilié %s", code, AFFILIATE_COUPON_PERCENT, affiliate_id)
+    return doc
+
+
 async def affiliate_capture_click(request: Request, response: Response, code: str) -> None:
     """Pose le cookie d'attribution (httpOnly) + journalise le clic.
     À appeler depuis un endpoint public GET /affiliate/ref/{code} ou au 1er hit
@@ -7692,6 +7750,11 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request):
         raise HTTPException(409, "Invitation already consumed")
 
     aff = await db.affiliates.find_one({"id": invite["id"]}, {"_id": 0})
+    # Coupon de rabais auto-lié au code affilié (idempotent, contrôlable en admin).
+    try:
+        await _affiliate_ensure_coupon(aff.get("code"), aff["id"])
+    except Exception as _e:
+        logging.warning("[affiliate] échec création coupon pour %s: %s", aff.get("code"), _e)
     metrics = await _affiliate_compute_metrics(aff["id"])
     return _affiliate_public(aff, metrics)
 
@@ -7760,6 +7823,65 @@ async def affiliate_performance(request: Request):
 # ===========================================================================
 # ENDPOINTS — ATTRIBUTION PUBLIQUE (pose du cookie)
 # ===========================================================================
+
+@api.get("/affiliate/insights")  # noqa: F821
+async def affiliate_insights(request: Request):
+    """Indicateurs synthétiques pour le tableau de bord affilié :
+    mois courant, meilleur mois, clics, taux de conversion, commandes
+    validées, panier moyen. Données réelles agrégées depuis les referrals
+    et les clics."""
+    aff = await get_current_affiliate(request)
+    aff_id = aff["id"]
+
+    # Referrals non exclus
+    referrals = await db.affiliate_referrals.find(
+        {"affiliate_id": aff_id, "status": {"$ne": "excluded"}},
+        {"_id": 0, "order_total": 1, "commission_amount": 1, "status": 1, "created_at": 1},
+    ).to_list(2000)
+
+    # Un referral "validé" = commande payée (approved/paid/approuvé)
+    VALIDATED = {"approved", "paid"}
+    by_month = {}
+    validated_orders = 0
+    validated_revenue = 0.0
+    for r in referrals:
+        st = str(r.get("status", "")).lower()
+        comm = float(r.get("commission_amount", 0.0))
+        rev = float(r.get("order_total", 0.0))
+        ts = str(r.get("created_at", ""))[:7]  # YYYY-MM
+        if st in VALIDATED:
+            validated_orders += 1
+            validated_revenue += rev
+            m = by_month.setdefault(ts, {"commission": 0.0, "revenue": 0.0})
+            m["commission"] += comm
+            m["revenue"] += rev
+
+    now_month = datetime.now(timezone.utc).isoformat()[:7]
+    current_month = by_month.get(now_month, {"commission": 0.0, "revenue": 0.0})
+
+    best_month = None
+    if by_month:
+        bm_key = max(by_month, key=lambda k: by_month[k]["commission"])
+        if by_month[bm_key]["commission"] > 0:
+            best_month = {"month": bm_key, "commission": round(by_month[bm_key]["commission"], 2)}
+
+    # Clics (collection affiliate_clicks)
+    clicks = await db.affiliate_clicks.count_documents({"affiliate_id": aff_id})
+    conversion_rate = (validated_orders / clicks) if clicks > 0 else None
+    avg_order_value = (validated_revenue / validated_orders) if validated_orders > 0 else None
+
+    return {
+        "current_month": {
+            "commission": round(current_month["commission"], 2),
+            "revenue": round(current_month["revenue"], 2),
+        },
+        "best_month": best_month,
+        "clicks": clicks,
+        "conversion_rate": conversion_rate,
+        "validated_orders": validated_orders,
+        "avg_order_value": round(avg_order_value, 2) if avg_order_value is not None else None,
+    }
+
 
 @api.get("/affiliate/ref/{code}")  # noqa: F821
 async def affiliate_ref(code: str, request: Request, response: Response):
