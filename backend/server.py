@@ -3016,8 +3016,9 @@ async def send_order_confirmation(order: dict) -> None:
     if not order.get("email"):
         logging.info("[email] skip customer confirm: no email on order %s", order["order_number"])
     else:
-        html = _order_email_html(order, "Order received")
-        await _send_email(order["email"], f"FIRONOVA — Order {order['order_number']} received", html)
+        lang, to, ctx = _order_ctx(order)
+        key = "order_confirmation_crypto" if order.get("payment_method") == "nowpayments" else "order_confirmation_interac"
+        await send_template_email(key, to, lang, ctx, order)
 
     # Admin notification
     admin_html = _order_email_html(order, "New order received")
@@ -3032,8 +3033,8 @@ async def send_payment_received(order: dict) -> None:
     if not order.get("email"):
         logging.info("[email] skip payment-received: no email on order %s", order["order_number"])
         return
-    html = _order_email_html(order, "Payment received")
-    await _send_email(order["email"], f"FIRONOVA — Payment received for {order['order_number']}", html)
+    lang, to, ctx = _order_ctx(order)
+    await send_template_email("payment_received", to, lang, ctx, order)
 
 
 def _simple_order_email_html(order: dict, heading: str, body_html: str) -> str:
@@ -3129,8 +3130,10 @@ async def send_shipping_notification(order: dict) -> None:
         f"style='display:inline-block;background:#050505;color:#fff;font-family:monospace;font-size:12px;"
         f"letter-spacing:2px;padding:12px 24px;text-decoration:none'>TRACK PARCEL / SUIVRE →</a></p>"
     )
-    html = _simple_order_email_html(order, "Your order has shipped / Votre commande est expédiée", body)
-    await _send_email(order["email"], f"FIRONOVA — Order {order['order_number']} shipped / expédiée", html)
+    lang, to, ctx = _order_ctx(order)
+    ctx["tracking_number"] = pin or ctx.get("tracking_number", "")
+    order = {**order, "tracking_number": ctx["tracking_number"]}
+    await send_template_email("shipping", to, lang, ctx, order)
 
 
 async def send_customer_note_email(order: dict, note_text: str) -> None:
@@ -3155,8 +3158,9 @@ async def send_refund_email(order: dict, amount: float, total_refunded: float) -
         f"Total refunded to date / Total remboursé à ce jour : <b>${total_refunded:.2f} CAD</b> "
         f"(order total / total de la commande : ${float(order.get('total',0)):.2f} CAD)"
     )
-    html = _simple_order_email_html(order, "Order refunded / Commande remboursée", body)
-    await _send_email(order["email"], f"FIRONOVA — Refund for order {order['order_number']}", html)
+    lang, to, ctx = _order_ctx({**order, "_refund_amount": amount})
+    ctx["amount"] = f"{amount:.2f} $"
+    await send_template_email("refund", to, lang, ctx, {**order, "_refund_amount": amount})
 
 
 # ---------------------------------------------------------------------------
@@ -3188,7 +3192,7 @@ def _restock_email_html(product: dict, variant: Optional[dict]) -> str:
 async def _send_restock_email(to_email: str, product: dict, variant: Optional[dict]) -> None:
     name = product.get("name_en", product.get("slug", ""))
     html = _restock_email_html(product, variant)
-    await _send_email(to_email, f"FIRONOVA — {name} is back in stock", html)
+    await send_template_email("restock", to_email, "en", {"product_name": name, "product_url": (PUBLIC_BASE_URL or "").rstrip("/") + f"/product/{product.get('slug','')}"})
 
 
 async def _maybe_notify_restock(product_id: str, variant_id: Optional[str] = None) -> None:
@@ -4097,8 +4101,6 @@ async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Dep
         "ts": datetime.now(timezone.utc).isoformat(),
     }
     await db.orders.update_one({"id": order_id}, {"$set": update, "$push": {"notes": note}})
-    # Reverse la commission affiliatee uniquement si la commande est
-    # integralement remboursee (cf. docstring affiliate_on_order_reversed).
     await affiliate_on_order_reversed(order_id, full=(new_refunded >= total))
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if updated.get("email"):
@@ -6825,6 +6827,32 @@ async def _restock_order_items(order: dict):
         asyncio.create_task(_maybe_notify_restock(it["product_id"], it["variant_id"]))
 
 
+
+PAYMENT_REMINDER_HOURS = float(os.environ.get("PAYMENT_REMINDER_HOURS", "6"))
+
+async def send_payment_reminders():
+    """Envoie un rappel unique aux commandes impayées ayant dépassé la moitié
+    du délai d'expiration, avant leur annulation automatique."""
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(hours=PAYMENT_REMINDER_HOURS)).isoformat()
+    floor = (now - timedelta(hours=UNPAID_ORDER_TTL_HOURS)).isoformat()
+    pending = await db.orders.find(
+        {
+            "payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto"]},
+            "created_at": {"$lt": cutoff, "$gte": floor},
+            "payment_reminder_sent": {"$ne": True},
+        }, {"_id": 0}
+    ).to_list(500)
+    for order in pending:
+        marked = await db.orders.update_one(
+            {"id": order["id"], "payment_reminder_sent": {"$ne": True}},
+            {"$set": {"payment_reminder_sent": True}},
+        )
+        if marked.modified_count and order.get("email"):
+            lang, to, ctx = _order_ctx(order)
+            await send_template_email("payment_reminder", to, lang, ctx, order)
+    return len(pending)
+
 async def cancel_stale_unpaid_orders():
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=UNPAID_ORDER_TTL_HOURS)).isoformat()
     stale = await db.orders.find(
@@ -6860,12 +6888,16 @@ async def cancel_stale_unpaid_orders():
                 )
                 await db.orders.update_one({"id": order["id"]}, {"$set": {"coupon_counted": False}})
             logging.info("Auto-cancelled unpaid order %s", order.get("order_number", order["id"]))
+            if order.get("email"):
+                lang, to, ctx = _order_ctx(order)
+                asyncio.create_task(send_template_email("order_expired", to, lang, ctx, order))
     return len(stale)
 
 
 async def _unpaid_orders_watchdog():
     while True:
         try:
+            await send_payment_reminders()
             await cancel_stale_unpaid_orders()
         except Exception as e:
             logging.error("Unpaid order watchdog error: %s", e)
@@ -7523,8 +7555,6 @@ async def _affiliate_approve_matured():
     cutoff = (datetime.now(timezone.utc) -
               timedelta(days=AFFILIATE_APPROVAL_HOLD_DAYS)).isoformat()
     now = datetime.now(timezone.utc).isoformat()
-    # Batch: on collecte les order_ids des referrals mûrs, on filtre en UNE
-    # requête ceux dont la commande est payée, puis un seul update_many.
     matured = await db.affiliate_referrals.find(
         {"status": "pending", "created_at": {"$lte": cutoff}},
         {"_id": 0, "id": 1, "order_id": 1},
@@ -8288,27 +8318,14 @@ async def send_abandoned_cart_reminder(order: dict) -> None:
         "Votre panier vous attend", "Your cart is waiting",
         body, cta_url, "Finaliser ma commande", "Complete my order",
     )
-    await _send_email(email, "Votre panier Fironova vous attend / Your Fironova cart is waiting", html)  # noqa: F821
+    await send_template_email("abandoned_cart", email, "fr", {"customer_name": "", "cart_url": (PUBLIC_BASE_URL or "").rstrip("/") + "/cart"})  # noqa: F821
 
 
 async def welcome_new_user(email: str, name: str = "", lang: str = "fr") -> None:
-    """Email de bienvenue à l'inscription (bilingue, NOVA)."""
+    """Email de bienvenue à l'inscription (via le centre de gestion des courriels)."""
     if not email:
         return
-    greeting_fr = f"Bienvenue{(' ' + name) if name else ''}"
-    body = (
-        "<p>Merci d'avoir créé votre compte Fironova. Vous avez maintenant accès à notre catalogue "
-        "de peptides de qualité recherche, avec documentation de certificat d'analyse.</p>"
-        "<p style='color:#3E5C76;font-style:italic'>Thank you for creating your Fironova account. You now have access "
-        "to our catalogue of research-grade peptides, with certificate-of-analysis documentation.</p>"
-        "<p style='margin-top:14px;font-size:12px;color:#94A3B8'>Rappel : nos produits sont strictement destinés à la "
-        "recherche en laboratoire (RUO). / Reminder: our products are strictly for laboratory research use (RUO).</p>"
-    )
-    html = _nova_email_shell(
-        greeting_fr, "Welcome to Fironova",
-        body, f"{_AUTOMATION_BASE}/catalog", "Explorer le catalogue", "Browse the catalogue",
-    )
-    await _send_email(email, "Bienvenue chez Fironova / Welcome to Fironova", html)  # noqa: F821
+    await send_template_email("welcome", email, lang, {"customer_name": name or ("là" if str(lang).startswith("fr") else "there")})
 
 
 async def _abandoned_cart_watchdog() -> None:
@@ -8398,6 +8415,68 @@ async def dynamic_sitemap():
     parts.append("</urlset>")
     return Response(content="\n".join(parts), media_type="application/xml")
 
+
+@api.get("/seo/product/{slug}")  # noqa: F821
+async def product_seo(slug: str):
+    """Métadonnées SEO d'un produit : title/description/og + JSON-LD Product
+    prêt à injecter. Le front appelle ça et remplit le <head> de la fiche."""
+    p = await db.products.find_one({"slug": slug, "active": True}, {"_id": 0})  # noqa: F821
+    if not p:
+        raise HTTPException(404, "Product not found")  # noqa: F821
+
+    variants = p.get("variants", []) or []
+    prices = [float(v.get("price", 0)) for v in variants if v.get("price")]
+    low_price = min(prices) if prices else float(p.get("price_cad", 0) or 0)
+    in_stock = any(int(v.get("stock", 0) or 0) > 0 for v in variants) or int(p.get("stock", 0) or 0) > 0
+    img = p.get("og_image_url") or p.get("image_url") or ""
+    if img and img.startswith("/"):
+        img = SEO_ORIGIN + img
+
+    def _meta(lang: str) -> dict:
+        name = p.get(f"name_{lang}") or p.get("name_en") or slug
+        title = p.get(f"meta_title_{lang}") or f"{name} — Fironova"
+        desc = p.get(f"meta_description_{lang}") or ""
+        if not desc:
+            raw = p.get(f"description_{lang}") or p.get("description_en") or ""
+            desc = (raw[:157] + "…") if len(raw) > 158 else raw
+        return {"title": title, "description": desc, "name": name}
+
+    # JSON-LD Product (schema.org) — anglais comme langue canonique du balisage
+    en = _meta("en")
+    jsonld = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": en["name"],
+        "description": en["description"],
+        "sku": p.get("slug"),
+        "brand": {"@type": "Brand", "name": "Fironova"},
+        "category": p.get("category", ""),
+    }
+    if img:
+        jsonld["image"] = img
+    if p.get("molecular_formula"):
+        jsonld["additionalProperty"] = [{
+            "@type": "PropertyValue", "name": "Molecular formula",
+            "value": p.get("molecular_formula"),
+        }]
+    if low_price > 0:
+        jsonld["offers"] = {
+            "@type": "Offer",
+            "priceCurrency": "CAD",
+            "price": round(low_price, 2),
+            "availability": ("https://schema.org/InStock" if in_stock
+                             else "https://schema.org/OutOfStock"),
+            "url": f"{SEO_ORIGIN}/product/{slug}",
+        }
+
+    return {
+        "slug": slug,
+        "canonical": f"{SEO_ORIGIN}/product/{slug}",
+        "image": img,
+        "en": en,
+        "fr": _meta("fr"),
+        "jsonld": jsonld,
+    }
 
 # ===== FIRONOVA_SEO_BLOCK_END =====
 
@@ -8552,183 +8631,447 @@ async def admin_seo_update_product(slug: str, payload: ProductSeoIn,
 
 # ===========================================================================
 # ===== FIRONOVA_EMAIL_TEMPLATES_START =====
-# Centre de gestion des courriels automatiques (édition depuis l'admin).
-# Contrat aligné sur AdminEmails.jsx : GET/PUT /admin/email-templates,
-# + reset + preview. Chaque template = sujet/heading/body/cta bilingue.
-# Rendu via _nova_email_shell. Si un template n'a jamais été édité, ses
-# valeurs par défaut (ci-dessous) sont utilisées -> zéro régression.
+# Centre de gestion des courriels — 11 types + création de types custom.
+# Chaque template : sujet / heading / intro / body / (bloc dynamique) / cta,
+# bilingue FR/EN. Rendu via _nova_email_shell. Merge défauts <- surcharges DB.
+# Le champ "block" injecte un bloc contextuel (Interac, crypto, items, suivi).
 # ===========================================================================
 
-# Catalogue de référence. "variables" = jetons remplaçables affichés dans l'UI.
+# Blocs dynamiques disponibles (rendus au moment de l'envoi selon la commande).
+EMAIL_BLOCKS = ("none", "interac", "crypto", "items", "tracking", "refund_detail")
+
 EMAIL_TEMPLATE_CATALOG = {
-    "order_confirmation": {
-        "label": "Confirmation de commande / Order confirmation",
-        "variables": ["{{order_number}}", "{{total}}", "{{customer_name}}"],
+    "order_confirmation_interac": {
+        "label": "Commande reçue — Interac / Order received — Interac",
+        "variables": ["{{order_number}}", "{{customer_name}}", "{{total}}"],
+        "block": "interac",
         "default": {
-            "subject_fr": "FIRONOVA — Commande {{order_number}} reçue",
-            "subject_en": "FIRONOVA — Order {{order_number}} received",
-            "heading_fr": "Commande reçue", "heading_en": "Order received",
-            "body_fr": "Merci pour votre commande {{order_number}}. Nous la préparons.",
-            "body_en": "Thank you for your order {{order_number}}. We're preparing it.",
+            "subject_fr": "FIRONOVA — Votre commande {{order_number}} est réservée",
+            "subject_en": "FIRONOVA — Your order {{order_number}} is reserved",
+            "heading_fr": "Merci, {{customer_name}} — votre commande est réservée",
+            "heading_en": "Thank you, {{customer_name}} — your order is reserved",
+            "intro_fr": "Nous avons bien reçu votre commande <strong>{{order_number}}</strong> et nous la gardons précieusement de côté pour vous. Il ne reste qu'une étape : régler votre virement Interac. Dès sa réception, nous préparons votre colis avec le plus grand soin.",
+            "intro_en": "We've received your order <strong>{{order_number}}</strong> and we're keeping it safe for you. Just one step remains: sending your Interac e-transfer. As soon as it arrives, we'll prepare your parcel with the greatest care.",
+            "body_fr": "Vous trouverez ci-dessous toutes les informations nécessaires à votre virement. <strong>Un détail essentiel :</strong> pensez à inscrire votre numéro de commande <strong>{{order_number}}</strong> dans la note du virement — c'est ce qui nous permet de vous associer votre paiement rapidement.",
+            "body_en": "Below you'll find everything you need to complete your transfer. <strong>One essential detail:</strong> please include your order number <strong>{{order_number}}</strong> in the transfer message — that's how we match your payment to your order quickly.",
+            "outro_fr": "Votre commande reste réservée pendant 12 heures. Une question, un doute ? Répondez simplement à ce courriel, une vraie personne vous lira.",
+            "outro_en": "Your order stays reserved for 12 hours. Any question or hesitation? Just reply to this email — a real person will read it.",
             "cta_url": "", "cta_label_fr": "", "cta_label_en": "",
         },
     },
-    "payment_received": {
-        "label": "Paiement reçu / Payment received",
-        "variables": ["{{order_number}}", "{{total}}"],
+    "order_confirmation_crypto": {
+        "label": "Commande reçue — Crypto / Order received — Crypto",
+        "variables": ["{{order_number}}", "{{customer_name}}", "{{total}}"],
+        "block": "crypto",
         "default": {
-            "subject_fr": "FIRONOVA — Paiement reçu pour {{order_number}}",
-            "subject_en": "FIRONOVA — Payment received for {{order_number}}",
-            "heading_fr": "Paiement confirmé", "heading_en": "Payment confirmed",
-            "body_fr": "Nous avons bien reçu votre paiement pour la commande {{order_number}}.",
-            "body_en": "We've received your payment for order {{order_number}}.",
+            "subject_fr": "FIRONOVA — Votre commande {{order_number}} est réservée",
+            "subject_en": "FIRONOVA — Your order {{order_number}} is reserved",
+            "heading_fr": "Merci, {{customer_name}} — votre commande est réservée",
+            "heading_en": "Thank you, {{customer_name}} — your order is reserved",
+            "intro_fr": "Nous avons bien reçu votre commande <strong>{{order_number}}</strong> et nous la mettons de côté pour vous. La dernière étape consiste à régler votre paiement en cryptomonnaie à l'aide des instructions ci-dessous.",
+            "intro_en": "We've received your order <strong>{{order_number}}</strong> and we're setting it aside for you. The final step is to complete your crypto payment using the instructions below.",
+            "body_fr": "Le montant et l'adresse de paiement sont générés spécifiquement pour votre commande. Une fois la transaction confirmée sur la blockchain, votre paiement nous parvient automatiquement — aucune action supplémentaire de votre part.",
+            "body_en": "The amount and payment address are generated specifically for your order. Once the transaction is confirmed on the blockchain, your payment reaches us automatically — nothing more for you to do.",
+            "outro_fr": "Une question sur le processus ? Répondez à ce courriel, nous sommes là pour vous accompagner.",
+            "outro_en": "Any question about the process? Reply to this email — we're here to help.",
+            "cta_url": "", "cta_label_fr": "", "cta_label_en": "",
+        },
+    },
+    "payment_reminder": {
+        "label": "Rappel de paiement (6h) / Payment reminder (6h)",
+        "variables": ["{{order_number}}", "{{customer_name}}", "{{total}}"],
+        "block": "interac",
+        "default": {
+            "subject_fr": "FIRONOVA — Petit rappel pour votre commande {{order_number}}",
+            "subject_en": "FIRONOVA — A gentle reminder for order {{order_number}}",
+            "heading_fr": "Votre commande vous attend, {{customer_name}}",
+            "heading_en": "Your order is waiting, {{customer_name}}",
+            "intro_fr": "Un petit mot amical pour vous rappeler que votre commande <strong>{{order_number}}</strong> est toujours réservée. Nous n'avons pas encore reçu votre virement, et nous voulions nous assurer que tout allait bien de votre côté.",
+            "intro_en": "Just a friendly note to let you know your order <strong>{{order_number}}</strong> is still reserved. We haven't received your transfer yet, and we wanted to make sure everything's alright on your end.",
+            "body_fr": "Il vous reste encore un peu de temps pour finaliser votre virement Interac à l'aide des informations ci-dessous. Passé le délai de 12 heures, la commande sera libérée automatiquement — mais rien n'est perdu, vous pourrez toujours la repasser.",
+            "body_en": "There's still a little time to complete your Interac e-transfer using the details below. After the 12-hour window, the order will be released automatically — but nothing is lost, you can always place it again.",
+            "outro_fr": "Un empêchement, une hésitation ? Écrivez-nous, nous trouverons une solution ensemble.",
+            "outro_en": "Ran into something, or hesitating? Write to us — we'll find a solution together.",
+            "cta_url": "", "cta_label_fr": "", "cta_label_en": "",
+        },
+    },
+    "order_expired": {
+        "label": "Commande expirée / Order expired",
+        "variables": ["{{order_number}}", "{{customer_name}}"],
+        "block": "none",
+        "default": {
+            "subject_fr": "FIRONOVA — Votre commande {{order_number}} a été libérée",
+            "subject_en": "FIRONOVA — Your order {{order_number}} has been released",
+            "heading_fr": "Pas de souci, {{customer_name}}",
+            "heading_en": "No worries, {{customer_name}}",
+            "intro_fr": "Comme nous n'avons pas reçu de paiement dans le délai imparti, votre commande <strong>{{order_number}}</strong> a été libérée. C'est parfaitement normal et cela n'entraîne aucun frais.",
+            "intro_en": "Since we didn't receive a payment within the allotted time, your order <strong>{{order_number}}</strong> has been released. This is completely normal and carries no charge.",
+            "body_fr": "Vos produits vous intéressent toujours ? Ils vous attendent dans notre catalogue, et repasser commande ne prend qu'un instant. Si un problème technique vous a empêché de finaliser, dites-le-nous — nous serons ravis de vous aider.",
+            "body_en": "Still interested in your products? They're waiting for you in our catalog, and placing a new order takes just a moment. If a technical issue got in the way, let us know — we'd be glad to help.",
+            "outro_fr": "Au plaisir de vous compter bientôt parmi nos chercheurs.",
+            "outro_en": "We hope to count you among our researchers again soon.",
+            "cta_url": "{{catalog_url}}", "cta_label_fr": "Retourner au catalogue", "cta_label_en": "Back to the catalog",
+        },
+    },
+    "payment_received": {
+        "label": "Paiement confirmé / Payment confirmed",
+        "variables": ["{{order_number}}", "{{customer_name}}", "{{total}}"],
+        "block": "items",
+        "default": {
+            "subject_fr": "FIRONOVA — Paiement reçu, merci {{customer_name}} !",
+            "subject_en": "FIRONOVA — Payment received, thank you {{customer_name}}!",
+            "heading_fr": "C'est confirmé — merci pour votre confiance",
+            "heading_en": "It's confirmed — thank you for your trust",
+            "intro_fr": "Excellente nouvelle : nous avons bien reçu votre paiement pour la commande <strong>{{order_number}}</strong>. Votre confiance nous touche, et nous mettons désormais tout en œuvre pour préparer votre colis.",
+            "intro_en": "Great news: we've received your payment for order <strong>{{order_number}}</strong>. Your trust means a lot to us, and we're now putting everything in motion to prepare your parcel.",
+            "body_fr": "Voici un récapitulatif de votre commande. Nos équipes procèdent à la préparation avec la rigueur que mérite le matériel de recherche : vérification, emballage discret et soigné. Vous recevrez un nouveau courriel dès l'expédition, avec votre numéro de suivi.",
+            "body_en": "Here's a summary of your order. Our team prepares it with the rigor research material deserves: verification, discreet and careful packaging. You'll receive another email as soon as it ships, with your tracking number.",
+            "outro_fr": "Merci encore de faire confiance à Fironova. Nous avons hâte que vous receviez votre commande.",
+            "outro_en": "Thank you again for trusting Fironova. We can't wait for you to receive your order.",
+            "cta_url": "", "cta_label_fr": "", "cta_label_en": "",
+        },
+    },
+    "order_processing": {
+        "label": "En préparation / Being prepared",
+        "variables": ["{{order_number}}", "{{customer_name}}"],
+        "block": "none",
+        "default": {
+            "subject_fr": "FIRONOVA — Votre commande {{order_number}} est en préparation",
+            "subject_en": "FIRONOVA — Your order {{order_number}} is being prepared",
+            "heading_fr": "On s'active pour vous, {{customer_name}}",
+            "heading_en": "We're on it, {{customer_name}}",
+            "intro_fr": "Votre commande <strong>{{order_number}}</strong> vient d'entrer en préparation dans notre atelier. Chaque produit est vérifié et emballé avec soin avant de prendre la route vers vous.",
+            "intro_en": "Your order <strong>{{order_number}}</strong> has just entered preparation in our workshop. Each product is checked and packed with care before making its way to you.",
+            "body_fr": "Nous accordons une attention particulière à la discrétion et à l'intégrité de chaque envoi. Dès que votre colis quitte nos mains, vous recevrez votre numéro de suivi pour le suivre jusqu'à votre porte.",
+            "body_en": "We pay special attention to the discretion and integrity of every shipment. As soon as your parcel leaves our hands, you'll receive your tracking number to follow it all the way to your door.",
+            "outro_fr": "Merci pour votre patience — la qualité mérite qu'on prenne le temps de bien faire.",
+            "outro_en": "Thank you for your patience — quality is worth taking the time to do right.",
             "cta_url": "", "cta_label_fr": "", "cta_label_en": "",
         },
     },
     "shipping": {
         "label": "Commande expédiée / Order shipped",
-        "variables": ["{{order_number}}", "{{tracking_number}}", "{{tracking_url}}"],
+        "variables": ["{{order_number}}", "{{customer_name}}", "{{tracking_number}}"],
+        "block": "tracking",
         "default": {
-            "subject_fr": "FIRONOVA — Commande {{order_number}} expédiée",
-            "subject_en": "FIRONOVA — Order {{order_number}} shipped",
-            "heading_fr": "En route", "heading_en": "On its way",
-            "body_fr": "Votre commande {{order_number}} a été expédiée. Suivi : {{tracking_number}}",
-            "body_en": "Your order {{order_number}} has shipped. Tracking: {{tracking_number}}",
-            "cta_url": "{{tracking_url}}", "cta_label_fr": "Suivre le colis", "cta_label_en": "Track parcel",
+            "subject_fr": "FIRONOVA — Votre commande {{order_number}} est en route !",
+            "subject_en": "FIRONOVA — Your order {{order_number}} is on its way!",
+            "heading_fr": "En route vers vous, {{customer_name}}",
+            "heading_en": "On its way to you, {{customer_name}}",
+            "intro_fr": "Ça y est : votre commande <strong>{{order_number}}</strong> a quitté notre atelier et voyage désormais vers vous. Nous sommes ravis de vous savoir bientôt équipé pour vos recherches.",
+            "intro_en": "Here we go: your order <strong>{{order_number}}</strong> has left our workshop and is now traveling to you. We're delighted to know you'll soon be equipped for your research.",
+            "body_fr": "Vous pouvez suivre l'acheminement de votre colis à tout moment grâce au numéro de suivi ci-dessous. Les délais de livraison dépendent ensuite de Postes Canada et de votre région.",
+            "body_en": "You can track your parcel's journey at any time using the tracking number below. Delivery times then depend on Canada Post and your region.",
+            "outro_fr": "Une question en cours de route ? Nous restons disponibles pour vous. Bonnes recherches !",
+            "outro_en": "Any question along the way? We remain available to you. Happy researching!",
+            "cta_url": "{{tracking_url}}", "cta_label_fr": "Suivre mon colis", "cta_label_en": "Track my parcel",
+        },
+    },
+    "order_delivered": {
+        "label": "Commande livrée / Order delivered",
+        "variables": ["{{order_number}}", "{{customer_name}}"],
+        "block": "none",
+        "default": {
+            "subject_fr": "FIRONOVA — Votre commande {{order_number}} est arrivée",
+            "subject_en": "FIRONOVA — Your order {{order_number}} has arrived",
+            "heading_fr": "Bien arrivée, {{customer_name}} ?",
+            "heading_en": "Did it arrive safely, {{customer_name}}?",
+            "intro_fr": "D'après notre suivi, votre commande <strong>{{order_number}}</strong> a été livrée. Nous espérons que tout est arrivé en parfait état et conforme à vos attentes.",
+            "intro_en": "According to our tracking, your order <strong>{{order_number}}</strong> has been delivered. We hope everything arrived in perfect condition and met your expectations.",
+            "body_fr": "Un rappel important : nos produits sont destinés exclusivement à la recherche (RUO) et réservés aux personnes majeures. Si quelque chose ne va pas avec votre colis, contactez-nous sans tarder — nous prenons chaque message au sérieux.",
+            "body_en": "An important reminder: our products are strictly for research use (RUO) and reserved for adults. If anything is wrong with your parcel, contact us right away — we take every message seriously.",
+            "outro_fr": "Merci d'avoir choisi Fironova pour vos travaux. Ce fut un plaisir de vous servir.",
+            "outro_en": "Thank you for choosing Fironova for your work. It was a pleasure to serve you.",
+            "cta_url": "", "cta_label_fr": "", "cta_label_en": "",
         },
     },
     "refund": {
         "label": "Remboursement / Refund",
-        "variables": ["{{order_number}}", "{{amount}}"],
+        "variables": ["{{order_number}}", "{{customer_name}}", "{{amount}}"],
+        "block": "refund_detail",
         "default": {
-            "subject_fr": "FIRONOVA — Remboursement commande {{order_number}}",
-            "subject_en": "FIRONOVA — Refund for order {{order_number}}",
-            "heading_fr": "Remboursement émis", "heading_en": "Refund issued",
-            "body_fr": "Un remboursement de {{amount}} a été émis pour la commande {{order_number}}.",
-            "body_en": "A refund of {{amount}} was issued for order {{order_number}}.",
+            "subject_fr": "FIRONOVA — Remboursement de votre commande {{order_number}}",
+            "subject_en": "FIRONOVA — Refund for your order {{order_number}}",
+            "heading_fr": "Votre remboursement est en route, {{customer_name}}",
+            "heading_en": "Your refund is on its way, {{customer_name}}",
+            "intro_fr": "Nous vous confirmons qu'un remboursement a été émis pour votre commande <strong>{{order_number}}</strong>. Selon votre méthode de paiement initiale, le délai avant réception peut varier de quelques heures à quelques jours.",
+            "intro_en": "We confirm that a refund has been issued for your order <strong>{{order_number}}</strong>. Depending on your original payment method, the time before you receive it may vary from a few hours to a few days.",
+            "body_fr": "Vous trouverez le détail du montant ci-dessous. Si vous avez la moindre question sur ce remboursement, ou si vous n'en voyez pas la trace passé quelques jours, n'hésitez pas à nous écrire — nous suivrons cela personnellement.",
+            "body_en": "You'll find the amount details below. If you have any question about this refund, or if you don't see it after a few days, don't hesitate to write to us — we'll follow up personally.",
+            "outro_fr": "Nous espérons avoir l'occasion de vous accompagner à nouveau dans le futur.",
+            "outro_en": "We hope to have the chance to serve you again in the future.",
             "cta_url": "", "cta_label_fr": "", "cta_label_en": "",
         },
     },
     "welcome": {
         "label": "Bienvenue / Welcome",
         "variables": ["{{customer_name}}"],
+        "block": "none",
         "default": {
-            "subject_fr": "Bienvenue chez Fironova",
-            "subject_en": "Welcome to Fironova",
-            "heading_fr": "Bienvenue", "heading_en": "Welcome",
-            "body_fr": "Merci d'avoir créé votre compte Fironova.",
-            "body_en": "Thank you for creating your Fironova account.",
-            "cta_url": "", "cta_label_fr": "", "cta_label_en": "",
+            "subject_fr": "Bienvenue chez Fironova, {{customer_name}}",
+            "subject_en": "Welcome to Fironova, {{customer_name}}",
+            "heading_fr": "Ravis de vous accueillir, {{customer_name}}",
+            "heading_en": "Delighted to welcome you, {{customer_name}}",
+            "intro_fr": "Bienvenue chez Fironova. En créant votre compte, vous rejoignez une communauté de chercheurs qui attendent de leurs peptides une chose avant tout : la rigueur.",
+            "intro_en": "Welcome to Fironova. By creating your account, you join a community of researchers who expect one thing above all from their peptides: rigor.",
+            "body_fr": "Nous sélectionnons nos composés avec exigence et documentons nos lots avec transparence. Notre catalogue est volontairement restreint : nous préférons faire peu de choses, mais les faire irréprochablement. Nos produits sont destinés à la recherche uniquement (RUO), réservés aux personnes majeures.",
+            "body_en": "We select our compounds demandingly and document our lots transparently. Our catalog is deliberately tight: we'd rather do few things, but do them impeccably. Our products are for research use only (RUO), reserved for adults.",
+            "outro_fr": "Prenez le temps d'explorer. Et pour toute question, une vraie personne vous répondra toujours.",
+            "outro_en": "Take your time to explore. And for any question, a real person will always reply.",
+            "cta_url": "{{catalog_url}}", "cta_label_fr": "Découvrir le catalogue", "cta_label_en": "Discover the catalog",
         },
     },
     "abandoned_cart": {
         "label": "Panier abandonné / Abandoned cart",
-        "variables": ["{{cart_url}}"],
+        "variables": ["{{customer_name}}", "{{cart_url}}"],
+        "block": "none",
         "default": {
-            "subject_fr": "Votre panier Fironova vous attend",
-            "subject_en": "Your Fironova cart is waiting",
-            "heading_fr": "Vous avez oublié quelque chose", "heading_en": "You left something behind",
-            "body_fr": "Votre panier est toujours disponible.",
-            "body_en": "Your cart is still available.",
-            "cta_url": "{{cart_url}}", "cta_label_fr": "Reprendre", "cta_label_en": "Resume",
+            "subject_fr": "Votre panier Fironova vous attend, {{customer_name}}",
+            "subject_en": "Your Fironova cart is waiting, {{customer_name}}",
+            "heading_fr": "Vous avez laissé quelque chose derrière vous",
+            "heading_en": "You left something behind",
+            "intro_fr": "Nous avons remarqué que vous aviez commencé une commande sans la finaliser. Pas de pression : votre panier est toujours là, exactement comme vous l'avez laissé.",
+            "intro_en": "We noticed you started an order without completing it. No pressure: your cart is still here, exactly as you left it.",
+            "body_fr": "Si une question vous a retenu — sur un composé, sur nos méthodes de paiement Interac ou crypto, sur la livraison — nous serons heureux d'y répondre. Il suffit de nous écrire.",
+            "body_en": "If a question held you back — about a compound, our Interac or crypto payment methods, or delivery — we'd be happy to answer. Just write to us.",
+            "outro_fr": "Votre panier reste disponible encore quelque temps. Au plaisir de vous retrouver.",
+            "outro_en": "Your cart stays available a little longer. We hope to see you again.",
+            "cta_url": "{{cart_url}}", "cta_label_fr": "Reprendre ma commande", "cta_label_en": "Resume my order",
         },
     },
     "restock": {
         "label": "Retour en stock / Back in stock",
         "variables": ["{{product_name}}", "{{product_url}}"],
+        "block": "none",
         "default": {
-            "subject_fr": "FIRONOVA — {{product_name}} de retour en stock",
-            "subject_en": "FIRONOVA — {{product_name}} is back in stock",
-            "heading_fr": "De retour", "heading_en": "Back in stock",
-            "body_fr": "{{product_name}} est de nouveau disponible.",
-            "body_en": "{{product_name}} is available again.",
-            "cta_url": "{{product_url}}", "cta_label_fr": "Voir le produit", "cta_label_en": "View product",
+            "subject_fr": "FIRONOVA — {{product_name}} est de retour",
+            "subject_en": "FIRONOVA — {{product_name}} is back",
+            "heading_fr": "Bonne nouvelle : {{product_name}} est de retour",
+            "heading_en": "Good news: {{product_name}} is back",
+            "intro_fr": "Vous nous aviez demandé d'être prévenu, et nous tenons parole : <strong>{{product_name}}</strong> est de nouveau disponible dans notre catalogue.",
+            "intro_en": "You asked us to let you know, and we're keeping our word: <strong>{{product_name}}</strong> is available again in our catalog.",
+            "body_fr": "Les réassorts partent parfois vite. Si ce composé est important pour vos travaux, nous vous invitons à ne pas trop tarder. Comme toujours, il est proposé pour la recherche uniquement (RUO).",
+            "body_en": "Restocks sometimes go quickly. If this compound matters for your work, we'd suggest not waiting too long. As always, it's offered for research use only (RUO).",
+            "outro_fr": "Merci de votre fidélité et de votre confiance renouvelée.",
+            "outro_en": "Thank you for your loyalty and renewed trust.",
+            "cta_url": "{{product_url}}", "cta_label_fr": "Voir le produit", "cta_label_en": "View the product",
         },
     },
 }
+# ===== FIRONOVA_EMAIL_TEMPLATES_END =====
 
-
-def _email_template_defaults(key: str) -> dict:
-    meta = EMAIL_TEMPLATE_CATALOG[key]
+# ===== FIRONOVA_EMAIL_ENGINE_START =====
+def _email_defaults(key: str) -> dict:
+    meta = EMAIL_TEMPLATE_CATALOG.get(key)
+    if not meta:
+        return {}
     d = dict(meta["default"])
-    d["key"] = key
-    d["label"] = meta["label"]
-    d["variables"] = meta["variables"]
+    d.update({"key": key, "label": meta["label"],
+              "variables": meta["variables"], "block": meta.get("block", "none")})
     return d
 
 
-async def _email_template_get(key: str) -> dict:
-    """Merge : défauts du catalogue <- surcharges admin (si présentes)."""
-    base = _email_template_defaults(key)
+async def _email_template_get(key: str) -> Optional[dict]:
+    """Merge défauts catalogue <- surcharges DB. Gère aussi les types custom
+    (créés depuis l'admin) qui n'existent que dans la collection."""
+    base = _email_defaults(key)
     doc = await db.email_templates.find_one({"key": key}, {"_id": 0})
+    if not base and not doc:
+        return None
+    if not base and doc:  # type entièrement custom
+        base = {"key": key, "label": doc.get("label", key),
+                "variables": doc.get("variables", []), "block": doc.get("block", "none"),
+                "subject_fr": "", "subject_en": "", "heading_fr": "", "heading_en": "",
+                "intro_fr": "", "intro_en": "", "body_fr": "", "body_en": "",
+                "outro_fr": "", "outro_en": "", "cta_url": "",
+                "cta_label_fr": "", "cta_label_en": ""}
     if doc:
         for fld in ("subject_fr", "subject_en", "heading_fr", "heading_en",
-                    "body_fr", "body_en", "cta_url", "cta_label_fr", "cta_label_en"):
+                    "intro_fr", "intro_en", "body_fr", "body_en", "outro_fr", "outro_en",
+                    "cta_url", "cta_label_fr", "cta_label_en", "label", "block"):
             if doc.get(fld) not in (None, ""):
                 base[fld] = doc[fld]
+    base.setdefault("custom", bool(doc and key not in EMAIL_TEMPLATE_CATALOG))
     return base
 
 
-def _email_render(tpl: dict, lang: str, ctx: dict) -> tuple:
-    """Rend (sujet, html) pour une langue, en substituant les {{variables}}."""
+def _render_block(block: str, lang: str, order: Optional[dict]) -> str:
+    """Rend le bloc contextuel HTML (infos Interac, crypto, items, suivi)."""
+    if not block or block == "none" or not order:
+        return ""
+    L = (lambda fr, en: fr if str(lang).startswith("fr") else en)
+    if block == "interac":
+        pi = (order.get("payment_info") or {}).get("instructions") or {}
+        if not pi:
+            return ""
+        return f"""
+        <div style="margin:8px 0 20px;border:2px solid #00B8D4;border-radius:12px;padding:20px;background:#F0FBFD">
+          <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#0B2E4F;font-weight:bold;margin-bottom:14px">{L("VIREMENT INTERAC — INFORMATIONS","INTERAC E-TRANSFER — DETAILS")}</div>
+          <table style="width:100%;font-size:14px;border-collapse:collapse">
+            <tr><td style="padding:7px 0;color:#3E5C76">{L("Destinataire","Send to")}</td><td style="padding:7px 0;text-align:right;font-weight:bold;color:#0B2E4F">{pi.get("send_to","")}</td></tr>
+            <tr><td style="padding:7px 0;color:#3E5C76">{L("Montant exact","Exact amount")}</td><td style="padding:7px 0;text-align:right;font-weight:bold;color:#0B2E4F">{pi.get("amount_cad",0):.2f} $ CAD</td></tr>
+            <tr><td style="padding:7px 0;color:#3E5C76">{L("Référence (à inscrire)","Reference (include it)")}</td><td style="padding:7px 0;text-align:right;font-weight:bold;color:#00838F">{pi.get("reference","")}</td></tr>
+            <tr><td style="padding:7px 0;color:#3E5C76">{L("Question de sécurité","Security question")}</td><td style="padding:7px 0;text-align:right;color:#0B2E4F">{pi.get("security_question","")}</td></tr>
+            <tr><td style="padding:7px 0;color:#3E5C76">{L("Réponse de sécurité","Security answer")}</td><td style="padding:7px 0;text-align:right;font-weight:bold;color:#0B2E4F">{pi.get("security_answer_hint","")}</td></tr>
+          </table>
+        </div>"""
+    if block == "crypto":
+        pi = (order.get("payment_info") or {})
+        addr = pi.get("pay_address") or pi.get("address") or ""
+        amt = pi.get("pay_amount") or pi.get("amount") or ""
+        cur = pi.get("pay_currency") or pi.get("currency") or ""
+        url = pi.get("payment_url") or pi.get("invoice_url") or ""
+        rows = ""
+        if amt: rows += f'<tr><td style="padding:7px 0;color:#3E5C76">{L("Montant","Amount")}</td><td style="padding:7px 0;text-align:right;font-weight:bold">{amt} {str(cur).upper()}</td></tr>'
+        if addr: rows += f'<tr><td style="padding:7px 0;color:#3E5C76">{L("Adresse","Address")}</td><td style="padding:7px 0;text-align:right;font-family:monospace;font-size:12px;word-break:break-all">{addr}</td></tr>'
+        link = f'<div style="margin-top:14px"><a href="{url}" style="color:#00838F;font-weight:bold">{L("Ouvrir la page de paiement sécurisée","Open the secure payment page")}</a></div>' if url else ""
+        return f"""
+        <div style="margin:8px 0 20px;border:2px solid #00B8D4;border-radius:12px;padding:20px;background:#F0FBFD">
+          <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#0B2E4F;font-weight:bold;margin-bottom:14px">{L("PAIEMENT CRYPTO — INFORMATIONS","CRYPTO PAYMENT — DETAILS")}</div>
+          <table style="width:100%;font-size:14px;border-collapse:collapse">{rows}</table>{link}
+        </div>"""
+    if block == "items":
+        items = order.get("items", [])
+        rows = ""
+        for it in items[:12]:
+            name = it.get("name_en") or it.get("name_fr") or it.get("slug", "")
+            qty = it.get("qty", 1)
+            rows += f'<tr><td style="padding:6px 0;color:#1A2A38">{name}</td><td style="padding:6px 0;text-align:right;color:#3E5C76">× {qty}</td></tr>'
+        total = order.get("total", 0)
+        return f"""
+        <div style="margin:8px 0 20px;border:1px solid #E2E8F0;border-radius:12px;padding:20px;background:#FBFDFE">
+          <table style="width:100%;font-size:14px;border-collapse:collapse">{rows}
+            <tr><td style="padding:12px 0 0;border-top:2px solid #0B2E4F;font-weight:bold">{L("Total","Total")}</td><td style="padding:12px 0 0;border-top:2px solid #0B2E4F;text-align:right;font-weight:bold">{total:.2f} $ CAD</td></tr>
+          </table>
+        </div>"""
+    if block == "tracking":
+        tn = order.get("tracking_number") or order.get("tracking") or ""
+        if not tn:
+            return ""
+        return f"""
+        <div style="margin:8px 0 20px;border:1px solid #E2E8F0;border-radius:12px;padding:20px;background:#FBFDFE">
+          <div style="font-size:13px;color:#3E5C76">{L("Numéro de suivi","Tracking number")}</div>
+          <div style="font-family:monospace;font-size:16px;font-weight:bold;color:#0B2E4F;margin-top:4px">{tn}</div>
+        </div>"""
+    if block == "refund_detail":
+        amt = order.get("_refund_amount", order.get("total", 0))
+        return f"""
+        <div style="margin:8px 0 20px;border:1px solid #E2E8F0;border-radius:12px;padding:20px;background:#FBFDFE">
+          <table style="width:100%;font-size:14px"><tr><td style="color:#3E5C76">{L("Montant remboursé","Refunded amount")}</td><td style="text-align:right;font-weight:bold;color:#0B2E4F">{amt:.2f} $ CAD</td></tr></table>
+        </div>"""
+    return ""
+
+
+def _email_render(tpl: dict, lang: str, ctx: dict, order: Optional[dict] = None) -> tuple:
     lang = "fr" if str(lang).lower().startswith("fr") else "en"
-    def sub(txt: str) -> str:
+    def sub(txt):
         out = txt or ""
         for k, v in (ctx or {}).items():
             out = out.replace("{{" + k + "}}", str(v))
         return out
     subject = sub(tpl.get(f"subject_{lang}") or tpl.get("subject_en") or "FIRONOVA")
-    heading_fr = sub(tpl.get("heading_fr") or "")
-    heading_en = sub(tpl.get("heading_en") or "")
-    body = sub(tpl.get(f"body_{lang}") or tpl.get("body_en") or "")
-    body_html = f'<p style="margin:0 0 12px">{body}</p>'
-    cta_url = sub(tpl.get("cta_url") or "")
-    html = _nova_email_shell(heading_fr, heading_en, body_html,
-                             cta_url=cta_url,
-                             cta_label_fr=tpl.get("cta_label_fr", ""),
-                             cta_label_en=tpl.get("cta_label_en", ""))
+    parts = []
+    intro = sub(tpl.get(f"intro_{lang}") or "")
+    if intro: parts.append(f'<p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#1A2A38">{intro}</p>')
+    block_html = _render_block(tpl.get("block", "none"), lang, order)
+    if block_html: parts.append(block_html)
+    body = sub(tpl.get(f"body_{lang}") or "")
+    if body: parts.append(f'<p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#1A2A38">{body}</p>')
+    outro = sub(tpl.get(f"outro_{lang}") or "")
+    if outro: parts.append(f'<p style="margin:16px 0 0;font-size:14px;line-height:1.7;color:#3E5C76">{outro}</p>')
+    body_html = "\n".join(parts)
+    html = _nova_email_shell(sub(tpl.get("heading_fr", "")), sub(tpl.get("heading_en", "")),
+                             body_html, cta_url=sub(tpl.get("cta_url", "")),
+                             cta_label_fr=tpl.get("cta_label_fr", ""), cta_label_en=tpl.get("cta_label_en", ""))
     return subject, html
+
+
+async def send_template_email(key: str, to: str, lang: str, ctx: dict, order: Optional[dict] = None):
+    """Point d'entrée unifié : rend le template et envoie (respecte on/off via email_key)."""
+    tpl = await _email_template_get(key)
+    if not tpl:
+        logging.warning("[email] template inconnu: %s", key); return
+    subject, html = _email_render(tpl, lang, ctx or {}, order)
+    await _send_email(to, subject, html, email_key=key)
 
 
 class EmailTemplateIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    subject_fr: Optional[str] = None
-    subject_en: Optional[str] = None
-    heading_fr: Optional[str] = None
-    heading_en: Optional[str] = None
-    body_fr: Optional[str] = None
-    body_en: Optional[str] = None
+    subject_fr: Optional[str] = None; subject_en: Optional[str] = None
+    heading_fr: Optional[str] = None; heading_en: Optional[str] = None
+    intro_fr: Optional[str] = None; intro_en: Optional[str] = None
+    body_fr: Optional[str] = None; body_en: Optional[str] = None
+    outro_fr: Optional[str] = None; outro_en: Optional[str] = None
     cta_url: Optional[str] = None
-    cta_label_fr: Optional[str] = None
-    cta_label_en: Optional[str] = None
+    cta_label_fr: Optional[str] = None; cta_label_en: Optional[str] = None
+    block: Optional[str] = None
+
+
+class EmailTemplateCreateIn(EmailTemplateIn):
+    key: str
+    label: Optional[str] = None
+    variables: Optional[list] = None
 
 
 @api.get("/admin/email-templates")
 async def admin_email_templates_list(_admin: dict = Depends(require_area("settings", "view"))):
-    templates = [await _email_template_get(k) for k in EMAIL_TEMPLATE_CATALOG]
+    keys = list(EMAIL_TEMPLATE_CATALOG.keys())
+    custom = await db.email_templates.find({"key": {"$nin": keys}}, {"_id": 0, "key": 1}).to_list(100)
+    keys += [c["key"] for c in custom]
+    templates = [t for t in [await _email_template_get(k) for k in keys] if t]
     return {"templates": templates}
+
+
+@api.post("/admin/email-templates")
+async def admin_email_template_create(payload: EmailTemplateCreateIn,
+                                      _admin: dict = Depends(require_area("settings", "manage"))):
+    key = (payload.key or "").strip().lower().replace(" ", "_")
+    if not key or not key.replace("_", "").isalnum():
+        raise HTTPException(400, "Clé invalide (lettres, chiffres, underscores).")
+    if key in EMAIL_TEMPLATE_CATALOG or await db.email_templates.find_one({"key": key}):
+        raise HTTPException(409, "Un courriel avec cette clé existe déjà.")
+    doc = payload.model_dump(exclude_none=True)
+    doc["key"] = key
+    doc.setdefault("label", key)
+    doc.setdefault("block", "none")
+    doc.setdefault("variables", [])
+    doc["custom"] = True
+    doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.email_templates.insert_one(dict(doc))
+    asyncio.create_task(_log_action(_admin, "email_template_create", f"key={key}", "settings"))
+    return await _email_template_get(key)
 
 
 @api.put("/admin/email-templates/{key}")
 async def admin_email_template_update(key: str, payload: EmailTemplateIn,
-                                     _admin: dict = Depends(require_area("settings", "manage"))):
-    if key not in EMAIL_TEMPLATE_CATALOG:
+                                      _admin: dict = Depends(require_area("settings", "manage"))):
+    exists = key in EMAIL_TEMPLATE_CATALOG or await db.email_templates.find_one({"key": key})
+    if not exists:
         raise HTTPException(404, "Unknown template key")
     updates = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
     updates["key"] = key
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.email_templates.update_one({"key": key}, {"$set": updates}, upsert=True)
     asyncio.create_task(_log_action(_admin, "email_template_update",
-                                   f"key={key} fields={list(payload.model_dump(exclude_none=True).keys())}",
-                                   "settings"))
+                                    f"key={key} fields={list(payload.model_dump(exclude_none=True).keys())}", "settings"))
     return await _email_template_get(key)
 
 
+@api.delete("/admin/email-templates/{key}")
+async def admin_email_template_delete(key: str, _admin: dict = Depends(require_area("settings", "manage"))):
+    if key in EMAIL_TEMPLATE_CATALOG:
+        raise HTTPException(400, "Ce courriel est intégré et ne peut pas être supprimé. Utilisez Réinitialiser.")
+    res = await db.email_templates.delete_one({"key": key})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Template not found")
+    asyncio.create_task(_log_action(_admin, "email_template_delete", f"key={key}", "settings"))
+    return {"deleted": True, "key": key}
+
+
 @api.post("/admin/email-templates/{key}/reset")
-async def admin_email_template_reset(key: str,
-                                     _admin: dict = Depends(require_area("settings", "manage"))):
+async def admin_email_template_reset(key: str, _admin: dict = Depends(require_area("settings", "manage"))):
     if key not in EMAIL_TEMPLATE_CATALOG:
-        raise HTTPException(404, "Unknown template key")
+        raise HTTPException(400, "Seuls les courriels intégrés peuvent être réinitialisés.")
     await db.email_templates.delete_one({"key": key})
     asyncio.create_task(_log_action(_admin, "email_template_reset", f"key={key}", "settings"))
     return await _email_template_get(key)
@@ -8737,18 +9080,45 @@ async def admin_email_template_reset(key: str,
 @api.post("/admin/email-templates/{key}/preview")
 async def admin_email_template_preview(key: str, lang: str = "fr",
                                        _admin: dict = Depends(require_area("settings", "view"))):
-    if key not in EMAIL_TEMPLATE_CATALOG:
-        raise HTTPException(404, "Unknown template key")
     tpl = await _email_template_get(key)
-    sample = {
-        "order_number": "FN-26042", "total": "149.00 $", "customer_name": "Alex",
-        "tracking_number": "1Z999AA10123456784", "tracking_url": "https://example.com/track",
-        "amount": "149.00 $", "cart_url": "https://fironova.com/cart",
-        "product_name": "BPC-157 5mg", "product_url": "https://fironova.com/p/bpc-157",
+    if not tpl:
+        raise HTTPException(404, "Unknown template key")
+    sample_order = {
+        "payment_info": {"instructions": {"send_to": "orders@fironova.com", "amount_cad": 149.00,
+                          "reference": "FN-26042", "security_question": "What is the brand name? (lowercase)",
+                          "security_answer_hint": "fironova"},
+                          "pay_address": "0xA1b2C3d4E5f6...", "pay_amount": "0.0021", "pay_currency": "eth",
+                          "payment_url": "https://nowpayments.io/payment/xyz"},
+        "items": [{"name_fr": "BPC-157 5mg", "name_en": "BPC-157 5mg", "qty": 2},
+                  {"name_fr": "TB-500 5mg", "name_en": "TB-500 5mg", "qty": 1}],
+        "total": 149.00, "tracking_number": "1Z999AA10123456784", "_refund_amount": 149.00,
     }
-    subject, html = _email_render(tpl, lang, sample)
+    ctx = {"order_number": "FN-26042", "customer_name": "Alex", "total": "149,00 $",
+           "tracking_number": "1Z999AA10123456784", "tracking_url": "https://example.com/track",
+           "amount": "149,00 $", "cart_url": "https://fironova.com/cart",
+           "catalog_url": "https://fironova.com/catalog",
+           "product_name": "BPC-157 5mg", "product_url": "https://fironova.com/p/bpc-157"}
+    subject, html = _email_render(tpl, lang, ctx, sample_order)
     return {"subject": subject, "html": html}
-# ===== FIRONOVA_EMAIL_TEMPLATES_END =====
+# ===== FIRONOVA_EMAIL_ENGINE_END =====
+
+# ===== FIRONOVA_EMAIL_WIRING_START =====
+def _order_ctx(order: dict) -> tuple:
+    """Construit (lang, to, ctx) à partir d'une commande."""
+    lang = (order.get("lang") or "fr").lower()
+    name = order.get("customer_name") or order.get("name") or (order.get("shipping_address") or {}).get("name") or ""
+    ctx = {
+        "order_number": order.get("order_number", ""),
+        "customer_name": name or ("là" if lang.startswith("fr") else "there"),
+        "total": f"{order.get('total', 0):.2f} $",
+        "amount": f"{order.get('_refund_amount', order.get('total', 0)):.2f} $",
+        "tracking_number": order.get("tracking_number") or order.get("tracking") or "",
+        "tracking_url": order.get("tracking_url") or "",
+        "catalog_url": (PUBLIC_BASE_URL or "").rstrip("/") + "/catalog",
+        "cart_url": (PUBLIC_BASE_URL or "").rstrip("/") + "/cart",
+    }
+    return lang, order.get("email"), ctx
+# ===== FIRONOVA_EMAIL_WIRING_END =====
 
 
 app.include_router(api)
