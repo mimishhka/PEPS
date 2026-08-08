@@ -50,10 +50,10 @@ export default function OrderConfirmation() {
     poll();
   }, [id]);
 
-  // Countdown for awaiting payments (24h from order creation)
+  // Countdown for awaiting payments (12h from order creation)
   useEffect(() => {
     if (!order || !["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status)) return;
-    const deadline = new Date(order.created_at).getTime() + 24 * 3600 * 1000;
+    const deadline = new Date(order.created_at).getTime() + 12 * 3600 * 1000;
     const tick = () => setRemainingMs(deadline - Date.now());
     tick();
     const iv = setInterval(tick, 30000);
@@ -149,12 +149,12 @@ export default function OrderConfirmation() {
           <span className="font-display font-extrabold text-xl leading-none" style={{ color: "#C20114" }}>!</span>
           <div>
             <div className="font-mono text-[11px] uppercase tracking-[0.25em]" style={{ color: "#C20114" }}>
-              {lang === "fr" ? "Paiement requis sous 24 heures" : "Payment required within 24 hours"}
+              {lang === "fr" ? "Paiement requis sous 12 heures" : "Payment required within 12 hours"}
             </div>
             <p className="mt-2 text-sm text-foreground/80 leading-relaxed">
               {lang === "fr"
-                ? "Votre commande sera automatiquement annulée si le paiement n'est pas reçu dans les 24 heures."
-                : "Your order will be automatically cancelled if payment is not received within 24 hours."}
+                ? "Votre commande sera automatiquement annulée si le paiement n'est pas reçu dans les 12 heures."
+                : "Your order will be automatically cancelled if payment is not received within 12 hours."}
             </p>
             {remainingMs !== null && (
               <div className="mt-3 font-mono text-sm font-bold tracking-[0.1em]" data-testid="payment-countdown">
