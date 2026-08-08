@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
 import { VialArt } from "./brand";
+import { resolveAssetUrl } from "../lib/api";
 
 function hueFor(slug = "") {
   let h = 0;
@@ -52,11 +53,15 @@ export default function CartDrawer() {
                 return (
                   <li
                     key={`${it.product_id}-${it.variant_id || "default"}`}
-                    className="grid grid-cols-[80px_1fr_auto] gap-4 p-4 border-b border-ash"
+                    className="grid grid-cols-[56px_1fr_auto] gap-3 p-4 border-b border-ash items-start"
                     data-testid={`cart-item-${it.slug}`}
                   >
-                    <div className="aspect-square rounded-xl overflow-hidden">
-                      <VialArt hue={hueFor(it.slug)} className="w-full h-full" />
+                    <div className="aspect-square rounded-lg overflow-hidden border border-ash bg-clinical">
+                      {resolveAssetUrl(it.image_url) ? (
+                        <img src={resolveAssetUrl(it.image_url)} alt={name} className="w-full h-full object-cover" />
+                      ) : (
+                        <VialArt hue={hueFor(it.slug)} className="w-full h-full" />
+                      )}
                     </div>
                     <div className="flex flex-col gap-1">
                       <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">{it.slug}</div>
