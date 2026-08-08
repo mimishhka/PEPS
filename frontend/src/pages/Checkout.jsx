@@ -142,13 +142,9 @@ export default function Checkout() {
       const { data } = await api.post("/checkout", payload, { headers: { "Idempotency-Key": idempotencyKey } });
       if (!data?.id) throw new Error(lang === "fr" ? "Réponse de commande invalide" : "Malformed checkout response");
       clear();
-      // Crypto : NOWPayments fournit une page hébergée -> on y redirige si présente.
-      const invoice = data?.payment_info?.provider_response?.invoice_url || data?.payment_info?.invoice_url;
-      if (paymentMethod === "nowpayments" && invoice) {
-        window.location.assign(invoice);
-        return;
-      }
-      // Interac (et fallback) : page de confirmation interne avec instructions.
+      // Interac ET crypto : page de confirmation interne.
+      // Le paiement crypto s'affiche via le widget NOWPayments intégré
+      // (iframe) directement sur /order/{id} — aucune redirection externe.
       nav(`/order/${data.id}`, { state: { order: data } });
     } catch (err) {
       toast.error(formatApiError(err?.response?.data?.detail || err?.message));
@@ -249,7 +245,7 @@ export default function Checkout() {
               {payCard(
                 "nowpayments",
                 lang === "fr" ? "Cryptomonnaie" : "Cryptocurrency",
-                lang === "fr" ? "Paiement en USDC via NOWPayments." : "Pay in USDC via NOWPayments.",
+                lang === "fr" ? "Paiement USDC sur place, sans redirection." : "Pay in USDC on-site, no redirect.",
                 "payment-crypto"
               )}
             </div>
@@ -368,8 +364,8 @@ export default function Checkout() {
                   ? "Vous recevrez les instructions de virement Interac sur la page suivante et par courriel."
                   : "You'll get the Interac transfer instructions on the next page and by email.")
                 : (lang === "fr"
-                  ? "Vous serez redirigé vers NOWPayments pour régler en USDC."
-                  : "You'll be redirected to NOWPayments to pay in USDC.")}
+                  ? "Le paiement en USDC s'affichera sur la page suivante, sans quitter le site."
+                  : "Your USDC payment will appear on the next page, without leaving the site.")}
             </p>
           </div>
         </aside>
