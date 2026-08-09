@@ -4272,7 +4272,12 @@ async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Dep
                 )
             await db.orders.update_one({"id": order_id}, {"$set": {"coupon_counted": False}})
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
-    if updated.get("email"):
+    provider_refund_id = (
+        updated.get("provider_refund_id")
+        or (updated.get("payment_info") or {}).get("provider_refund_id")
+        or ((updated.get("payment_info") or {}).get("provider_response") or {}).get("refund_id")
+    )
+    if updated.get("email") and provider_refund_id:
         asyncio.create_task(send_refund_email(updated, amount, new_refunded))
     return updated
 
