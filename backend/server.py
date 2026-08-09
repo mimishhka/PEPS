@@ -74,6 +74,7 @@ STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
 FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))
 UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "24"))
+PREORDER_RELEASE_INTERVAL_SECONDS = int(os.environ.get("PREORDER_RELEASE_INTERVAL_SECONDS", "300"))
 # Rabais % du coupon auto-lié à chaque affilié (0 = pas de coupon auto).
 AFFILIATE_COUPON_PERCENT = float(os.environ.get("AFFILIATE_COUPON_PERCENT", "10"))
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").strip().lower() == "true"
@@ -1635,6 +1636,9 @@ async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict
                 asyncio.create_task(_maybe_notify_restock(product_id, vid))
         if before.get("stock", 0) <= 0 < after.get("stock", 0):
             asyncio.create_task(_maybe_notify_restock(product_id, None))
+
+    # Re-evaluate preorders whenever stock or COA/coming-soon badges change.
+    asyncio.create_task(_release_ready_preorder_orders())
 
     return after
 
@@ -6925,6 +6929,68 @@ async def _unpaid_orders_watchdog():
         await asyncio.sleep(3600)
 
 
+async def _release_ready_preorder_orders() -> int:
+    """Flip paid preorder orders to processing once every preorder line has
+    stock >= qty and no coming-soon / COA-pending badge. Idempotent."""
+    released = 0
+    cursor = db.orders.find(
+        {"payment_status": "paid", "fulfillment_status": "preorder"},
+        {"_id": 0, "id": 1, "order_number": 1, "items": 1},
+    )
+    async for order in cursor:
+        items = order.get("items") or []
+        preorder_lines = [it for it in items if it.get("preorder")]
+        if not preorder_lines:
+            continue
+        all_ready = True
+        for it in preorder_lines:
+            p = await db.products.find_one({"id": it.get("product_id")}, {"_id": 0, "variants": 1, "stock": 1})
+            if not p:
+                all_ready = False
+                break
+            variant_id = it.get("variant_id")
+            if variant_id:
+                v = next((v for v in p.get("variants", []) if v.get("id") == variant_id), None)
+            else:
+                v = None
+            stock = int((v or p).get("stock", 0)) if (v or p) else 0
+            if v and (v.get("badge_coming_soon") or v.get("badge_coa_pending")):
+                all_ready = False
+                break
+            if stock < it.get("qty", 1):
+                all_ready = False
+                break
+        if not all_ready:
+            continue
+        now = datetime.now(timezone.utc).isoformat()
+        res = await db.orders.update_one(
+            {"id": order["id"], "fulfillment_status": "preorder"},
+            {"$set": {
+                "fulfillment_status": "processing",
+                "dispatch_batch": compute_dispatch_batch(now),
+                "preorder_released_at": now,
+            }, "$push": {"notes": {
+                "id": str(uuid.uuid4()),
+                "text": "Preorder auto-released: all items back in stock.",
+                "author": "system",
+                "created_at": now,
+            }}},
+        )
+        if res.modified_count:
+            released += 1
+            logging.info("Preorder order %s released to processing", order.get("order_number", order["id"]))
+    return released
+
+
+async def _release_preorders_watchdog():
+    while True:
+        try:
+            await _release_ready_preorder_orders()
+        except Exception as e:
+            logging.error("Preorder release watchdog error: %s", e)
+        await asyncio.sleep(PREORDER_RELEASE_INTERVAL_SECONDS)
+
+
 async def _acquire_worker_lock(name: str, ttl_seconds: int = 120) -> bool:
     """Verrou coopératif Mongo : un seul worker exécute les tâches de fond.
     Sans ça, N workers uvicorn lancent N boucles concurrentes sur les mêmes
@@ -7088,6 +7154,7 @@ async def startup_event():
     if await _acquire_worker_lock("background_tasks"):
         asyncio.create_task(_unpaid_orders_watchdog())
         asyncio.create_task(_backfill_dispatch_batch())
+        asyncio.create_task(_release_preorders_watchdog())
         # Dispatch manuel : watchdog d'auto-étiquetage désactivé.
         # asyncio.create_task(_auto_label_paid_orders_watchdog())
         asyncio.create_task(_auto_sync_delivered_orders_watchdog())
