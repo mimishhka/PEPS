@@ -106,7 +106,7 @@ export default function ProductDetail() {
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [user, product?.id]);
+  }, [user, product]);
 
   if (loading) {
     return <div className="p-16 font-data text-xs uppercase tracking-[0.2em] text-glacier">{t("common.loading")}</div>;
