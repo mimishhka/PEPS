@@ -89,6 +89,10 @@ UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "24"))
 PREORDER_RELEASE_INTERVAL_SECONDS = int(os.environ.get("PREORDER_RELEASE_INTERVAL_SECONDS", "300"))
 # Rabais % du coupon auto-lié à chaque affilié (0 = pas de coupon auto).
 AFFILIATE_COUPON_PERCENT = float(os.environ.get("AFFILIATE_COUPON_PERCENT", "10"))
+_STANDARD_COUPON_MAX_PERCENT_RAW = os.environ.get("STANDARD_COUPON_MAX_PERCENT", "").strip()
+STANDARD_COUPON_MAX_PERCENT = (
+    float(_STANDARD_COUPON_MAX_PERCENT_RAW) if _STANDARD_COUPON_MAX_PERCENT_RAW else None
+)
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "true").strip().lower() == "true"
 COOKIE_SAMESITE = os.environ.get("COOKIE_SAMESITE", "none").strip().lower()
 if COOKIE_SAMESITE not in {"lax", "strict", "none"}:
@@ -1860,6 +1864,17 @@ def _coupon_usage_for_email(coupon: dict, email: str) -> int:
     return sum(e.get("count", 0) for e in (coupon.get("used_by") or []) if e.get("email") == email)
 
 
+def _is_affiliate_coupon(coupon: dict) -> bool:
+    return bool(coupon.get("affiliate_id")) or coupon.get("source") == "affiliate"
+
+
+def _enforce_standard_coupon_percent_limit(discount_type: str, value: float, is_affiliate: bool) -> None:
+    if is_affiliate or STANDARD_COUPON_MAX_PERCENT is None:
+        return
+    if discount_type == "percent" and float(value) > STANDARD_COUPON_MAX_PERCENT:
+        raise HTTPException(400, f"Standard coupon percent cannot exceed {STANDARD_COUPON_MAX_PERCENT:.2f}")
+
+
 async def _coupon_discount(coupon: dict, subtotal: float,
                            line_items: list = None, email: str = None) -> tuple:
     """Validates and computes coupon discount. Returns (discount_amount, applied_dict)."""
@@ -1882,6 +1897,11 @@ async def _coupon_discount(coupon: dict, subtotal: float,
         raise HTTPException(400, "Coupon usage limit reached")
     if subtotal < coupon.get("min_subtotal", 0):
         raise HTTPException(400, f"Minimum subtotal of ${coupon['min_subtotal']:.2f} required for this coupon")
+    _enforce_standard_coupon_percent_limit(
+        coupon.get("discount_type", ""),
+        float(coupon.get("value", 0)),
+        _is_affiliate_coupon(coupon),
+    )
     if email is not None:
         email_norm = email.strip().lower()
         if coupon.get("allowed_emails") and email_norm not in [e.lower() for e in coupon["allowed_emails"]]:
@@ -5624,6 +5644,7 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_
     code = payload.code.upper().strip()
     if await db.coupons.find_one({"code": code}):
         raise HTTPException(409, "Coupon code already exists")
+    _enforce_standard_coupon_percent_limit(payload.discount_type, payload.value, is_affiliate=False)
     doc = {
         "id": str(uuid.uuid4()),
         "code": code,
@@ -5652,7 +5673,15 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_
 
 @api.put("/admin/coupons/{coupon_id}")
 async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = Depends(require_area("coupons", "manage"))):
+    existing = await db.coupons.find_one({"id": coupon_id}, {"_id": 0, "affiliate_id": 1, "source": 1})
+    if not existing:
+        raise HTTPException(404, "Coupon not found")
     update = payload.model_dump(exclude_unset=True)
+    _enforce_standard_coupon_percent_limit(
+        update.get("discount_type", payload.discount_type),
+        float(update.get("value", payload.value)),
+        _is_affiliate_coupon(existing),
+    )
     if "code" in update:
         update["code"] = update["code"].upper().strip()
     if "allowed_emails" in update:
@@ -5662,8 +5691,6 @@ async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = 
     if "restrict_categories" in update:
         update["restrict_categories"] = [c for c in update["restrict_categories"] if c]
     res = await db.coupons.update_one({"id": coupon_id}, {"$set": update})
-    if res.matched_count == 0:
-        raise HTTPException(404, "Coupon not found")
     return await db.coupons.find_one({"id": coupon_id}, {"_id": 0})
 
 
