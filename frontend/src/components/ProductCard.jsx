@@ -1,13 +1,72 @@
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useLang } from "../contexts/LanguageContext";
 import { useCart } from "../contexts/CartContext";
+import { useAuth } from "../contexts/AuthContext";
 import { VialArt } from "./brand";
-import { resolveAssetUrl } from "../lib/api";
+import { Heart } from "lucide-react";
+import { toast } from "sonner";
+import api, { formatApiError, resolveAssetUrl } from "../lib/api";
 
 function hueFor(slug = "") {
   let h = 0;
   for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) % 360;
   return 190 + (h % 40); // teal→blue band
+}
+
+function WishlistButton({ product }) {
+  const { user } = useAuth();
+  const { t } = useLang();
+  const navigate = useNavigate();
+  const [inWishlist, setInWishlist] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    api.get("/account/wishlist")
+      .then((r) => { if (!cancelled) setInWishlist((r.data?.items || []).some((i) => i.product_id === product.id)); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user, product.id]);
+
+  const toggle = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!user) { navigate("/login"); return; }
+    setBusy(true);
+    try {
+      if (inWishlist) {
+        await api.delete(`/account/wishlist/${product.id}`);
+        setInWishlist(false);
+        toast.success(t("product.wishlistRemoved"));
+      } else {
+        await api.post("/account/wishlist", { product_id: product.id, variant_id: null });
+        setInWishlist(true);
+        toast.success(t("product.wishlistAdded"));
+      }
+    } catch (err) {
+      toast.error(formatApiError(err?.response?.data?.detail) || err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      disabled={busy}
+      aria-pressed={inWishlist}
+      aria-label={inWishlist ? t("product.wishlistRemove") : t("product.wishlistAdd")}
+      data-testid={`wishlist-toggle-${product.slug}`}
+      className={`absolute top-3 right-3 z-10 w-9 h-9 rounded-full border flex items-center justify-center transition-colors disabled:opacity-40 ${
+        inWishlist ? "border-nova bg-nova/10 text-nova" : "border-ash bg-white/90 text-nordfjord hover:border-nova hover:text-nova"
+      }`}
+    >
+      <Heart size={16} fill={inWishlist ? "currentColor" : "none"} />
+    </button>
+  );
 }
 
 export default function ProductCard({ product, index = 0 }) {
@@ -45,6 +104,7 @@ export default function ProductCard({ product, index = 0 }) {
       data-testid={`product-card-${product.slug}`}
     >
       <Link to={`/product/${product.slug}`} className="block relative aspect-[4/3] overflow-hidden">
+        <WishlistButton product={product} />
         {imageSrc ? (
           <img src={imageSrc} alt={name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
         ) : (

@@ -70,10 +70,10 @@ export default function Checkout() {
     return Math.min(subtotal, coupon.value);
   }, [coupon, subtotal]);
 
-  const shippingEst = useMemo(
-    () => (Math.max(0, subtotal - discount) >= FREE_SHIPPING_THRESHOLD_CAD ? 0 : SHIPPING_FLAT_CAD),
-    [subtotal, discount]
-  );
+  const shippingEst = useMemo(() => {
+    if (coupon?.free_shipping) return 0;
+    return Math.max(0, subtotal - discount) >= FREE_SHIPPING_THRESHOLD_CAD ? 0 : SHIPPING_FLAT_CAD;
+  }, [subtotal, discount, coupon]);
   const total = useMemo(
     () => +(Math.max(0, subtotal - discount) + shippingEst).toFixed(2),
     [subtotal, discount, shippingEst]
@@ -91,7 +91,10 @@ export default function Checkout() {
     if (!code) return;
     setCouponBusy(true);
     try {
-      const { data } = await api.post(`/coupons/validate?code=${encodeURIComponent(code)}&subtotal=${subtotal}`);
+      const params = new URLSearchParams({ code, subtotal: String(subtotal) });
+      if (email.trim()) params.set("email", email.trim());
+      if (items?.length) params.set("items", JSON.stringify(items.map((i) => ({ product_id: i.product_id }))));
+      const { data } = await api.post(`/coupons/validate?${params.toString()}`);
       setCoupon(data);
       toast.success(lang === "fr" ? "Code appliqué" : "Coupon applied");
     } catch (err) {
@@ -339,6 +342,11 @@ export default function Checkout() {
                   {lang === "fr"
                     ? `Livraison gratuite dès ${FREE_SHIPPING_THRESHOLD_CAD.toFixed(0)}$ — plus que ${(FREE_SHIPPING_THRESHOLD_CAD - Math.max(0, subtotal - discount)).toFixed(2)}$`
                     : `Free shipping at $${FREE_SHIPPING_THRESHOLD_CAD.toFixed(0)} — only $${(FREE_SHIPPING_THRESHOLD_CAD - Math.max(0, subtotal - discount)).toFixed(2)} to go`}
+                </div>
+              )}
+              {coupon?.free_shipping && shippingEst === 0 && (
+                <div className="font-data text-[10px] uppercase tracking-[0.14em] text-nova" data-testid="coupon-free-shipping">
+                  {lang === "fr" ? "Livraison gratuite incluse dans le code promo" : "Free shipping included in your promo code"}
                 </div>
               )}
               <div className="flex justify-between text-nordfjord font-bold text-base pt-2 border-t border-ash">

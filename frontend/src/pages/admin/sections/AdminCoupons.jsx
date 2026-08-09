@@ -13,7 +13,17 @@ export default function AdminCoupons() {
   const blank = {
     code: "", discount_type: "percent", value: 10, min_subtotal: 0,
     usage_limit: null, active: true, expires_at: null,
+    start_at: null, allowed_emails: "", per_customer_limit: null,
+    first_order_only: false, free_shipping: false, max_discount_cad: null,
+    restrict_products: "", restrict_categories: "",
   };
+
+  const shape = (c) => ({
+    ...c,
+    allowed_emails: (c.allowed_emails || []).join(", "),
+    restrict_products: (c.restrict_products || []).join(", "),
+    restrict_categories: (c.restrict_categories || []).join(", "),
+  });
 
   const save = async () => {
     try {
@@ -21,8 +31,18 @@ export default function AdminCoupons() {
       if (payload.usage_limit === "" || payload.usage_limit == null) payload.usage_limit = null;
       else payload.usage_limit = parseInt(payload.usage_limit);
       if (!payload.expires_at) payload.expires_at = null;
+      if (!payload.start_at) payload.start_at = null;
       payload.value = parseFloat(payload.value);
       payload.min_subtotal = parseFloat(payload.min_subtotal) || 0;
+      if (payload.per_customer_limit === "" || payload.per_customer_limit == null) payload.per_customer_limit = null;
+      else payload.per_customer_limit = parseInt(payload.per_customer_limit);
+      if (payload.max_discount_cad === "" || payload.max_discount_cad == null) payload.max_discount_cad = null;
+      else payload.max_discount_cad = parseFloat(payload.max_discount_cad) || 0;
+      payload.allowed_emails = String(payload.allowed_emails || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+      payload.restrict_products = String(payload.restrict_products || "").split(",").map((s) => s.trim()).filter(Boolean);
+      payload.restrict_categories = String(payload.restrict_categories || "").split(",").map((s) => s.trim()).filter(Boolean);
+      payload.first_order_only = !!payload.first_order_only;
+      payload.free_shipping = !!payload.free_shipping;
       if (editing.id) await api.put(`/admin/coupons/${editing.id}`, payload);
       else await api.post("/admin/coupons", payload);
       toast.success("Saved"); setEditing(null); load();
@@ -43,7 +63,7 @@ export default function AdminCoupons() {
           <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">Coupons</h1>
           <p className="font-mono text-xs text-foreground/60 mt-1">{coupons.length} active codes</p>
         </div>
-        <button onClick={() => setEditing({ ...blank })} data-testid="new-coupon-btn" className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-foreground/80">
+        <button onClick={() => setEditing(shape({ ...blank }))} data-testid="new-coupon-btn" className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-foreground/80">
           <Plus size={14} /> New Coupon
         </button>
       </div>
@@ -66,6 +86,14 @@ export default function AdminCoupons() {
               <tr key={c.id} className="border-t border-ink/5" data-testid={`coupon-row-${c.code}`}>
                 <td className="px-6 py-3">
                   <div className="flex items-center gap-2"><Ticket size={14} /> <span className="font-mono font-bold">{c.code}</span></div>
+                  {(c.free_shipping || c.first_order_only || c.allowed_emails?.length || c.restrict_products?.length || c.restrict_categories?.length) && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {c.free_shipping && <span className="text-[9px] font-mono uppercase tracking-[0.12em] bg-nova/10 text-nova px-1.5 py-0.5">FREE SHIP</span>}
+                      {(c.first_order_only || c.allowed_emails?.length || c.restrict_products?.length || c.restrict_categories?.length) && (
+                        <span className="text-[9px] font-mono uppercase tracking-[0.12em] bg-warning/15 text-warning px-1.5 py-0.5">RESTRICTED</span>
+                      )}
+                    </div>
+                  )}
                 </td>
                 <td className="px-6 py-3 font-mono text-sm">
                   {c.discount_type === "percent" ? `${c.value}% off` : `$${c.value.toFixed(2)} off`}
@@ -74,14 +102,18 @@ export default function AdminCoupons() {
                 <td className="px-6 py-3 font-mono text-xs">
                   {c.used_count || 0}{c.usage_limit ? ` / ${c.usage_limit}` : " / ∞"}
                 </td>
-                <td className="px-6 py-3 font-mono text-xs">{c.expires_at ? c.expires_at.slice(0, 10) : "—"}</td>
+                <td className="px-6 py-3 font-mono text-xs">
+                  {c.start_at || c.expires_at
+                    ? `${(c.start_at || "").slice(0, 10) || "…"} → ${(c.expires_at || "").slice(0, 10) || "∞"}`
+                    : "—"}
+                </td>
                 <td className="px-6 py-3">
                   {c.active
                     ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-emerald-600 text-white px-2 py-0.5">ON</span>
                     : <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-gray-400 text-white px-2 py-0.5">OFF</span>}
                 </td>
                 <td className="px-6 py-3 text-right">
-                  <button onClick={() => setEditing({ ...c })} data-testid={`edit-coupon-${c.code}`} className="border border-ink/30 px-2 py-1 hover:bg-ink hover:text-white mr-1"><Edit size={12} /></button>
+                  <button onClick={() => setEditing(shape({ ...c }))} data-testid={`edit-coupon-${c.code}`} className="border border-ink/30 px-2 py-1 hover:bg-ink hover:text-white mr-1"><Edit size={12} /></button>
                   <button onClick={() => del(c.id)} data-testid={`delete-coupon-${c.code}`} className="border border-ink/30 px-2 py-1 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={12} /></button>
                 </td>
               </tr>
@@ -113,6 +145,27 @@ export default function AdminCoupons() {
                 <input type="checkbox" checked={!!editing.active} onChange={(e) => setEditing({ ...editing, active: e.target.checked })} data-testid="c-active" className="accent-ink" />
                 Active
               </label>
+              <div className="rounded-lg border border-ink/10 p-3 space-y-3 bg-secondary/40">
+                <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50">Advanced (optional)</div>
+                <F label="Starts at (YYYY-MM-DD, optional)" value={editing.start_at?.slice(0, 10) ?? ""} onChange={(v) => setEditing({ ...editing, start_at: v ? `${v}T00:00:00+00:00` : null })} test="c-start" />
+                <div className="grid grid-cols-2 gap-3">
+                  <F label="Per-customer limit (blank = ∞)" type="number" value={editing.per_customer_limit ?? ""} onChange={(v) => setEditing({ ...editing, per_customer_limit: v })} test="c-per-customer" />
+                  <F label="Max discount (CAD, blank = none)" type="number" value={editing.max_discount_cad ?? ""} onChange={(v) => setEditing({ ...editing, max_discount_cad: v })} test="c-max-discount" />
+                </div>
+                <F label="Allowed emails (comma-separated, blank = everyone)" value={editing.allowed_emails} onChange={(v) => setEditing({ ...editing, allowed_emails: v })} test="c-emails" />
+                <F label="Restricted product ids (comma-separated, blank = all)" value={editing.restrict_products} onChange={(v) => setEditing({ ...editing, restrict_products: v })} test="c-products" />
+                <F label="Restricted categories (comma-separated, blank = all)" value={editing.restrict_categories} onChange={(v) => setEditing({ ...editing, restrict_categories: v })} test="c-categories" />
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={!!editing.first_order_only} onChange={(e) => setEditing({ ...editing, first_order_only: e.target.checked })} data-testid="c-first-order" className="accent-ink" />
+                    First order only
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={!!editing.free_shipping} onChange={(e) => setEditing({ ...editing, free_shipping: e.target.checked })} data-testid="c-free-shipping" className="accent-ink" />
+                    Free shipping
+                  </label>
+                </div>
+              </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={save} data-testid="save-coupon-btn" className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-5 py-3 flex items-center gap-2"><Save size={14} /> Save</button>
                 <button onClick={() => setEditing(null)} className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-5 py-3">Cancel</button>
