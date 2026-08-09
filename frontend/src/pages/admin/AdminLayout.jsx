@@ -117,7 +117,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
         ),
       }))
       .filter((g) => g.items.length > 0);
-  }, [user, basePath, lang]);
+  }, [user, basePath, lang, L]);
 
   const landingPath = navGroups[0]?.items[0]?.to || basePath;
 
