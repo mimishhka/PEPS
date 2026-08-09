@@ -28,6 +28,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depend
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
+from PIL import Image as PILImage
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import DuplicateKeyError
 from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator
@@ -111,6 +112,7 @@ IMAGE_UPLOAD_DIR = UPLOAD_DIR / "images"
 IMAGE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_IMAGE_UPLOAD_MB = float(os.environ.get("MAX_IMAGE_UPLOAD_MB", "5"))
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+_IMAGE_FORMAT_EXT = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp", "GIF": "gif"}
 
 # Étiquettes d'expédition Postes Canada — servies à /uploads/labels/<file>.
 LABEL_UPLOAD_DIR = UPLOAD_DIR / "labels"
@@ -455,6 +457,7 @@ class ProductIn(BaseModel):
     meta_description_en: str = ""
     meta_description_fr: str = ""
     og_image_url: str = ""
+    images: List[str] = []  # galerie : image_url reste la couverture (images[0] ou saisie manuelle)
     variants: List[ProductVariant] = []
 
 
@@ -501,6 +504,19 @@ class CouponIn(BaseModel):
     usage_limit: Optional[int] = None  # None = unlimited
     active: bool = True
     expires_at: Optional[str] = None  # ISO string
+    start_at: Optional[str] = None
+    allowed_emails: List[str] = []
+    per_customer_limit: Optional[int] = None
+    first_order_only: bool = False
+    free_shipping: bool = False
+    max_discount_cad: Optional[float] = None
+    restrict_products: List[str] = []
+    restrict_categories: List[str] = []
+
+
+class WishlistItemIn(BaseModel):
+    product_id: str = Field(min_length=1, max_length=100)
+    variant_id: Optional[str] = None  # None = full product listing
 
 
 class OrderNoteIn(BaseModel):
@@ -1592,6 +1608,25 @@ async def newsletter_unsubscribe(token: str):
     return {"ok": True}
 
 
+def _normalize_images(payload_doc: dict) -> dict:
+    """Keeps image_url as cover; always first in gallery; caps at 8 entries."""
+    image_url = str(payload_doc.get("image_url") or "").strip()
+    raw = [str(u) for u in (payload_doc.get("images") or []) if u and isinstance(u, str) and u.strip()]
+    images = raw[:8]
+    if image_url and image_url not in images:
+        images = [image_url] + images[:7]
+    if not images and image_url:
+        images = [image_url]
+    if images:
+        payload_doc["images"] = images[:8]
+        if not image_url or image_url not in images:
+            payload_doc["image_url"] = images[0]
+    else:
+        payload_doc["images"] = []
+        payload_doc["image_url"] = ""
+    return payload_doc
+
+
 def _ensure_variant_ids(payload_doc: dict) -> dict:
     """Ensure every variant has an id. Sync legacy price_cad/stock from first variant if variants present."""
     variants = payload_doc.get("variants") or []
@@ -1616,6 +1651,7 @@ async def admin_create_product(payload: ProductIn, _admin: dict = Depends(requir
         raise HTTPException(409, "Slug already exists")
     doc = payload.model_dump()
     doc = _ensure_variant_ids(doc)
+    doc = _normalize_images(doc)
     doc["id"] = str(uuid.uuid4())
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
     await db.products.insert_one(doc)
@@ -1628,6 +1664,7 @@ async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict
     before = await db.products.find_one({"id": product_id}, {"_id": 0})
     update = payload.model_dump()
     update = _ensure_variant_ids(update)
+    update = _normalize_images(update)
     res = await db.products.update_one({"id": product_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Product not found")
@@ -1684,40 +1721,30 @@ async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(
 @api.post("/admin/upload/image")
 async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
     """Uploads a product image (PNG, JPEG, WebP, GIF) and returns a URL to use in 
-    the image_url field. Storage is local disk under UPLOAD_DIR/images, served 
-    statically at /uploads/images/<file>."""
+    the image_url field. Content validated by magic bytes (not Content-Type)."""
     filename = file.filename or ""
-    
-    # Determine file extension from filename
-    ext = None
-    if "." in filename:
-        ext = filename.rsplit(".", 1)[1].lower()
-    
-    # Validate by content type first
-    content_type = file.content_type or ""
-    if content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(400, "Only PNG, JPEG, WebP, and GIF images are allowed")
-    
     contents = await file.read()
     size_mb = len(contents) / (1024 * 1024)
     if size_mb > MAX_IMAGE_UPLOAD_MB:
         raise HTTPException(400, f"File too large — max {MAX_IMAGE_UPLOAD_MB:.0f} MB")
-    
-    # Map content type to extension if not provided
+    prev_max = PILImage.MAX_IMAGE_PIXELS
+    PILImage.MAX_IMAGE_PIXELS = 50_000_000
+    try:
+        try:
+            with PILImage.open(io.BytesIO(contents)) as im:
+                fmt = (im.format or "").upper()
+                im.verify()
+        except Exception:
+            raise HTTPException(400, "File is not a valid image")
+    finally:
+        PILImage.MAX_IMAGE_PIXELS = prev_max
+    ext = _IMAGE_FORMAT_EXT.get(fmt)
     if not ext:
-        ext_map = {
-            "image/png": "png",
-            "image/jpeg": "jpg",
-            "image/webp": "webp",
-            "image/gif": "gif",
-        }
-        ext = ext_map.get(content_type, "jpg")
-    
+        raise HTTPException(400, "Only PNG, JPEG, WebP, and GIF images are allowed")
     safe_name = f"{uuid.uuid4().hex}.{ext}"
     dest = IMAGE_UPLOAD_DIR / safe_name
     with open(dest, "wb") as f:
         f.write(contents)
-
     rel_path = f"/api/uploads/images/{safe_name}"
     return {"url": rel_path, "original_filename": filename, "size_bytes": len(contents)}
 
@@ -1825,6 +1852,67 @@ async def _release_stock_atomic(line_items: list) -> None:
             )
 
 
+def _coupon_usage_for_email(coupon: dict, email: str) -> int:
+    return sum(e.get("count", 0) for e in (coupon.get("used_by") or []) if e.get("email") == email)
+
+
+async def _coupon_discount(coupon: dict, subtotal: float,
+                           line_items: list = None, email: str = None) -> tuple:
+    """Validates and computes coupon discount. Returns (discount_amount, applied_dict)."""
+    now = datetime.now(timezone.utc)
+    if not coupon or not coupon.get("active"):
+        raise HTTPException(400, "Invalid coupon code")
+    if coupon.get("expires_at"):
+        try:
+            if datetime.fromisoformat(coupon["expires_at"].replace("Z", "+00:00")) < now:
+                raise HTTPException(400, "Coupon expired")
+        except ValueError:
+            pass
+    if coupon.get("start_at"):
+        try:
+            if datetime.fromisoformat(coupon["start_at"].replace("Z", "+00:00")) > now:
+                raise HTTPException(400, "Coupon not active yet")
+        except ValueError:
+            pass
+    if coupon.get("usage_limit") and coupon.get("used_count", 0) >= coupon["usage_limit"]:
+        raise HTTPException(400, "Coupon usage limit reached")
+    if subtotal < coupon.get("min_subtotal", 0):
+        raise HTTPException(400, f"Minimum subtotal of ${coupon['min_subtotal']:.2f} required for this coupon")
+    if email is not None:
+        email_norm = email.strip().lower()
+        if coupon.get("allowed_emails") and email_norm not in [e.lower() for e in coupon["allowed_emails"]]:
+            raise HTTPException(400, "This coupon is not valid for this account")
+        if coupon.get("first_order_only"):
+            past = await db.orders.count_documents({"email": email_norm, "payment_status": "paid"})
+            if past > 0:
+                raise HTTPException(400, "This coupon is valid for first orders only")
+        if coupon.get("per_customer_limit") is not None:
+            usage = _coupon_usage_for_email(coupon, email_norm)
+            if usage >= coupon["per_customer_limit"]:
+                raise HTTPException(400, "Coupon usage limit reached for this account")
+    if line_items is not None and (coupon.get("restrict_products") or coupon.get("restrict_categories")):
+        rp = set(coupon.get("restrict_products") or [])
+        rc = set(coupon.get("restrict_categories") or [])
+        for li in line_items:
+            if rp and li.get("product_id") not in rp:
+                if not rc or li.get("category") not in rc:
+                    raise HTTPException(400, "This coupon does not apply to all items in your cart")
+    if coupon["discount_type"] == "percent":
+        discount = round(subtotal * coupon["value"] / 100, 2)
+    else:
+        discount = round(min(coupon["value"], subtotal), 2)
+    if coupon.get("max_discount_cad") is not None:
+        discount = round(min(discount, float(coupon["max_discount_cad"])), 2)
+    applied = {
+        "code": coupon["code"],
+        "discount_type": coupon["discount_type"],
+        "value": coupon["value"],
+        "discount_amount": discount,
+        "free_shipping": bool(coupon.get("free_shipping")),
+    }
+    return discount, applied
+
+
 async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] = None):
     line_items = []
     subtotal = 0.0
@@ -1881,31 +1969,18 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
         subtotal += line_total
     subtotal = round(subtotal, 2)
 
-    # Apply coupon (unchanged logic)
     discount = 0.0
     applied_coupon = None
     if coupon_code:
         coupon = await db.coupons.find_one({"code": coupon_code.upper().strip()}, {"_id": 0})
-        if not coupon or not coupon.get("active"):
-            raise HTTPException(400, "Invalid coupon code")
-        if coupon.get("expires_at"):
-            try:
-                if datetime.fromisoformat(coupon["expires_at"].replace("Z", "+00:00")) < datetime.now(timezone.utc):
-                    raise HTTPException(400, "Coupon expired")
-            except ValueError:
-                pass
-        if coupon.get("usage_limit") and coupon.get("used_count", 0) >= coupon["usage_limit"]:
-            raise HTTPException(400, "Coupon usage limit reached")
-        if subtotal < coupon.get("min_subtotal", 0):
-            raise HTTPException(400, f"Minimum subtotal of ${coupon['min_subtotal']:.2f} required for this coupon")
-        if coupon["discount_type"] == "percent":
-            discount = round(subtotal * (coupon["value"] / 100.0), 2)
-        else:
-            discount = round(min(coupon["value"], subtotal), 2)
-        applied_coupon = {"code": coupon["code"], "discount_type": coupon["discount_type"], "value": coupon["value"], "discount_amount": discount}
+        discount, applied_coupon = await _coupon_discount(coupon, subtotal, line_items=line_items)
 
     tax_rate = 0.0
     shipping = 0.0 if (subtotal - discount) >= FREE_SHIPPING_THRESHOLD_CAD else SHIPPING_FLAT_CAD
+    if applied_coupon and applied_coupon.get("free_shipping") and shipping > 0:
+        discount = round(discount + shipping, 2)
+        applied_coupon["discount_amount"] = discount
+        shipping = 0.0
     tax = 0.0
     total = round(max(0, subtotal - discount) + shipping, 2)
     return line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder
@@ -3305,10 +3380,19 @@ async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Op
     if not order:
         return None
 
-    # Décompte du coupon au paiement confirmé, une seule fois.
+    # Décompte du coupon au paiement confirmé, une seule fois (global + par client).
     coupon = order.get("coupon")
     if coupon and coupon.get("code") and not order.get("coupon_counted"):
-        await db.coupons.update_one({"code": coupon["code"]}, {"$inc": {"used_count": 1}})
+        code = coupon["code"]
+        await db.coupons.update_one({"code": code}, {"$inc": {"used_count": 1}})
+        email_norm = (order.get("email") or "").strip().lower()
+        if email_norm:
+            res2 = await db.coupons.update_one(
+                {"code": code, "used_by.email": email_norm},
+                {"$inc": {"used_by.$.count": 1}},
+            )
+            if res2.matched_count == 0:
+                await db.coupons.update_one({"code": code}, {"$push": {"used_by": {"email": email_norm, "count": 1}}})
         await db.orders.update_one({"id": order_id}, {"$set": {"coupon_counted": True}})
 
     if order.get("email"):
@@ -3482,6 +3566,51 @@ async def my_orders(user: dict = Depends(get_current_user)):
         {"user_id": user["id"], "deleted_at": None}, {"_id": 0}
     ).sort("created_at", -1).to_list(200)
     return items
+
+
+# ---------------------------------------------------------------------------
+# Wishlist / liste d'envies
+# ---------------------------------------------------------------------------
+
+@api.get("/account/wishlist")
+async def get_wishlist(user: dict = Depends(get_current_user)):
+    items = await db.wishlist.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    ids = list({it["product_id"] for it in items})
+    prods = {p["id"]: p async for p in db.products.find({"id": {"$in": ids}, "deleted_at": None}, {"_id": 0})}
+    enriched = [
+        {**it, "product": prods[it["product_id"]]}
+        for it in items if it["product_id"] in prods
+    ]
+    return {"items": enriched, "total": len(enriched)}
+
+
+@api.post("/account/wishlist")
+async def add_to_wishlist(payload: WishlistItemIn, user: dict = Depends(get_current_user)):
+    product = await db.products.find_one({"id": payload.product_id, "deleted_at": None})
+    if not product:
+        raise HTTPException(404, "Product not found")
+    if payload.variant_id and not any(v.get("id") == payload.variant_id for v in product.get("variants", [])):
+        raise HTTPException(400, "Variant not found in this product")
+    existing = await db.wishlist.find_one({"user_id": user["id"], "product_id": payload.product_id})
+    if existing:
+        return {"ok": True, "already_in_wishlist": True, "id": existing["id"]}
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "product_id": payload.product_id,
+        "variant_id": payload.variant_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.wishlist.insert_one(doc)
+    return {"ok": True, "already_in_wishlist": False, "id": doc["id"]}
+
+
+@api.delete("/account/wishlist/{product_id}")
+async def remove_from_wishlist(product_id: str, user: dict = Depends(get_current_user)):
+    res = await db.wishlist.delete_one({"user_id": user["id"], "product_id": product_id})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Item not in wishlist")
+    return {"ok": True}
 
 
 @api.get("/orders/{order_id}")
@@ -5524,8 +5653,17 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_
         "min_subtotal": payload.min_subtotal,
         "usage_limit": payload.usage_limit,
         "used_count": 0,
+        "used_by": [],
         "active": payload.active,
         "expires_at": payload.expires_at,
+        "start_at": payload.start_at,
+        "allowed_emails": [e.lower().strip() for e in payload.allowed_emails if e.strip()],
+        "per_customer_limit": payload.per_customer_limit,
+        "first_order_only": payload.first_order_only,
+        "free_shipping": payload.free_shipping,
+        "max_discount_cad": payload.max_discount_cad,
+        "restrict_products": [p for p in payload.restrict_products if p],
+        "restrict_categories": [c for c in payload.restrict_categories if c],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.coupons.insert_one(doc)
@@ -5535,8 +5673,15 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_
 
 @api.put("/admin/coupons/{coupon_id}")
 async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = Depends(require_area("coupons", "manage"))):
-    update = payload.model_dump()
-    update["code"] = update["code"].upper().strip()
+    update = payload.model_dump(exclude_unset=True)
+    if "code" in update:
+        update["code"] = update["code"].upper().strip()
+    if "allowed_emails" in update:
+        update["allowed_emails"] = [e.lower().strip() for e in update["allowed_emails"] if e.strip()]
+    if "restrict_products" in update:
+        update["restrict_products"] = [p for p in update["restrict_products"] if p]
+    if "restrict_categories" in update:
+        update["restrict_categories"] = [c for c in update["restrict_categories"] if c]
     res = await db.coupons.update_one({"id": coupon_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Coupon not found")
@@ -5551,24 +5696,8 @@ async def admin_delete_coupon(coupon_id: str, admin: dict = Depends(require_area
 @api.post("/coupons/validate")
 async def validate_coupon(code: str, subtotal: float):
     coupon = await db.coupons.find_one({"code": code.upper().strip()}, {"_id": 0})
-    if not coupon or not coupon.get("active"):
-        raise HTTPException(400, "Invalid coupon code")
-    if coupon.get("expires_at"):
-        try:
-            if datetime.fromisoformat(coupon["expires_at"].replace("Z", "+00:00")) < datetime.now(timezone.utc):
-                raise HTTPException(400, "Coupon expired")
-        except ValueError:
-            pass
-    if coupon.get("usage_limit") and coupon.get("used_count", 0) >= coupon["usage_limit"]:
-        raise HTTPException(400, "Coupon usage limit reached")
-    if subtotal < coupon.get("min_subtotal", 0):
-        raise HTTPException(400, f"Minimum subtotal of ${coupon['min_subtotal']:.2f} required")
-    if coupon["discount_type"] == "percent":
-        discount = round(subtotal * (coupon["value"] / 100.0), 2)
-    else:
-        discount = round(min(coupon["value"], subtotal), 2)
-    return {"code": coupon["code"], "discount_type": coupon["discount_type"],
-            "value": coupon["value"], "discount_amount": discount, "min_subtotal": coupon.get("min_subtotal", 0)}
+    discount, applied = await _coupon_discount(coupon, subtotal)
+    return {**applied, "min_subtotal": coupon.get("min_subtotal", 0)}
 
 
 # ---------------------------------------------------------------------------
@@ -6837,6 +6966,7 @@ async def seed_admin_and_products():
     await db.shipping_zones.create_index("deleted_at")
     await db.shipping_methods.create_index("deleted_at")
     await db.orders.create_index("deleted_at")
+    await db.wishlist.create_index([("user_id", 1), ("product_id", 1)], unique=True)
 
     # Admin
     existing = await db.users.find_one({"email": ADMIN_EMAIL.lower()})
@@ -10121,5 +10251,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _csrf_origin_guard(request: Request, call_next):
+    """Block cross-origin state-mutating requests that carry the session cookie."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.cookies.get("access_token"):
+        origin = (request.headers.get("origin") or "").lower().rstrip("/")
+        if origin:
+            allowed = {o.lower().rstrip("/") for o in _cors_origins}
+            if origin not in allowed:
+                return Response(status_code=403, content="Origin not allowed", media_type="text/plain")
+    return await call_next(request)
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    body = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        f"Sitemap: {SEO_ORIGIN}/api/sitemap.xml\n"
+    )
+    return Response(content=body, media_type="text/plain")
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
