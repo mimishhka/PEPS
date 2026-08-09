@@ -7201,6 +7201,19 @@ def _affiliate_hash_ip(ip: Optional[str]) -> Optional[str]:
     return hmac.new(_affiliate_ip_salt(), ip.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
+def _affiliate_referrer_domain(url: str) -> str:
+    """Réduit un référent URL à son domaine (netloc) pour l'analyse des sources."""
+    url = (url or "").strip()
+    if not url:
+        return ""
+    try:
+        from urllib.parse import urlparse
+        net = (urlparse(url if "://" in url else "//" + url).netloc or "").lower()
+        return net[4:] if net.startswith("www.") else net
+    except Exception:
+        return url[:120]
+
+
 def _affiliate_gen_code() -> str:
     # Code de parrainage lisible : FN + 6 caractères base32 sans ambiguïté.
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -7324,6 +7337,13 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
         if span > 0:
             progress = min(1.0, (cumulative - _affiliate_tier_bounds(effective)[0]) / span)
 
+    # Garde-fou trimestriel : pour CONSERVER le palier effectif, il faut que le CA
+    # du trimestre reste >= au plancher du palier (sinon descente d'un niveau max).
+    floor, _ceil = _affiliate_tier_bounds(effective)
+    quarter_target = round(floor, 2)
+    quarter_progress = min(1.0, quarter / floor) if floor > 0 else None
+    quarter_warning = bool(quarter < floor and _affiliate_tier_index(effective) > 0)
+
     return {
         "cumulative_revenue": round(cumulative, 2),
         "quarter_revenue": round(quarter, 2),
@@ -7338,6 +7358,9 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
         "approved_commission": round(approved_commission, 2),
         "paid_commission": round(paid_commission, 2),
         "next_review": _affiliate_next_quarter_start().isoformat(),
+        "quarter_target": quarter_target,
+        "quarter_progress": round(quarter_progress, 4) if quarter_progress is not None else None,
+        "quarter_warning": quarter_warning,
     }
 
 
@@ -7449,13 +7472,18 @@ async def _affiliate_ensure_coupon(affiliate_code: str, affiliate_id: str) -> Op
     return doc
 
 
-async def affiliate_capture_click(request: Request, response: Response, code: str) -> None:
+async def affiliate_capture_click(request: Request, response: Response, code: str,
+                                  page: str = "", referrer: str = "", device: str = "") -> None:
     """Pose le cookie d'attribution (httpOnly) + journalise le clic.
-    À appeler depuis un endpoint public GET /affiliate/ref/{code} ou au 1er hit
-    du site avec ?ref=CODE (voir wiring frontend)."""
+    Attribution au PREMIER clic : si un cookie fn_ref valide est déjà posé,
+    on le conserve (le référent d'origine garde la commande).
+    page/referrer/device sont des métadonnées d'analyse de sources (optionnelles)."""
     code = (code or "").strip().upper()
     if not code:
         return
+    existing = request.cookies.get(AFFILIATE_COOKIE_NAME)
+    if existing and existing.strip().upper():
+        return  # premier clic conservé — pas d'écrasement
     affiliate = await db.affiliates.find_one(
         {"code": code, "status": "active"}, {"_id": 0, "id": 1, "code": 1}
     )
@@ -7467,7 +7495,7 @@ async def affiliate_capture_click(request: Request, response: Response, code: st
         max_age=AFFILIATE_COOKIE_DAYS * 86400,
         httponly=True, samesite="lax", secure=True, path="/",
     )
-    await db.affiliate_clicks.insert_one({
+    click_doc = {
         "id": str(uuid.uuid4()),
         "affiliate_id": affiliate["id"],
         "code": code,
@@ -7475,7 +7503,11 @@ async def affiliate_capture_click(request: Request, response: Response, code: st
         "user_agent": (request.headers.get("user-agent", "") or "")[:300],
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(days=AFFILIATE_CLICK_TTL_DAYS)).isoformat(),
-    })
+    }
+    click_doc["page"] = (page or "")[:300]
+    click_doc["referrer"] = (referrer or "")[:300]
+    click_doc["device"] = (device or "")[:40]
+    await db.affiliate_clicks.insert_one(click_doc)
 
 
 async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
@@ -7883,13 +7915,97 @@ async def affiliate_insights(request: Request):
     }
 
 
+@api.get("/affiliate/clicks/sources")  # noqa: F821
+async def affiliate_clicks_sources(request: Request, days: int = 30):
+    """Top sources des clics de l'affilié : pages d'atterrissage, domaines
+    référents et types d'appareil (30 derniers jours par défaut)."""
+    aff = await get_current_affiliate(request)  # noqa: F821
+    days = max(7, min(int(days), 90))
+    start = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    pages, refs, devices = {}, {}, {}
+    total = 0
+    cursor = db.affiliate_clicks.find(
+        {"affiliate_id": aff["id"], "created_at": {"$gte": start}},
+        {"_id": 0, "page": 1, "referrer": 1, "device": 1},
+    )
+    async for c in cursor:
+        total += 1
+        page = str(c.get("page") or "").strip() or "direct"
+        pages[page] = pages.get(page, 0) + 1
+        ref = _affiliate_referrer_domain(str(c.get("referrer") or "")) or "direct"
+        refs[ref] = refs.get(ref, 0) + 1
+        dev = str(c.get("device") or "").strip() or "unknown"
+        devices[dev] = devices.get(dev, 0) + 1
+
+    def _top(d, n=8):
+        return [{"source": k, "clicks": v}
+                for k, v in sorted(d.items(), key=lambda kv: kv[1], reverse=True)[:n]]
+
+    return {
+        "days": days,
+        "total_clicks": total,
+        "top_pages": _top(pages),
+        "top_referrers": _top(refs),
+        "devices": devices,
+    }
+
+
+@api.get("/affiliate/activity")  # noqa: F821
+async def affiliate_activity(request: Request, limit: int = 20):
+    """Flux d'activité récent de l'affilié : clics, commandes et paiements
+    fusionnés, triés par date décroissante (type/at/label/status/amount)."""
+    aff = await get_current_affiliate(request)  # noqa: F821
+    limit = max(5, min(int(limit), 50))
+    events = []
+
+    clicks = await db.affiliate_clicks.find(
+        {"affiliate_id": aff["id"]},
+        {"_id": 0, "created_at": 1, "page": 1, "device": 1},
+    ).sort("created_at", -1).to_list(limit)
+    for c in clicks:
+        events.append({
+            "type": "click", "at": c.get("created_at"),
+            "label": str(c.get("page") or ""), "device": str(c.get("device") or ""),
+        })
+
+    referrals = await db.affiliate_referrals.find(
+        {"affiliate_id": aff["id"], "status": {"$ne": "excluded"}},
+        {"_id": 0, "order_number": 1, "status": 1, "commission_amount": 1,
+         "base_amount": 1, "created_at": 1},
+    ).sort("created_at", -1).to_list(limit)
+    for r in referrals:
+        events.append({
+            "type": "referral", "at": r.get("created_at"),
+            "label": str(r.get("order_number") or ""), "status": r.get("status"),
+            "amount": round(float(r.get("commission_amount") or 0), 2),
+            "base": round(float(r.get("base_amount") or 0), 2),
+        })
+
+    payouts = await db.affiliate_payouts.find(
+        {"affiliate_id": aff["id"]},
+        {"_id": 0, "period": 1, "status": 1, "amount": 1, "created_at": 1},
+    ).sort("created_at", -1).to_list(limit)
+    for p in payouts:
+        events.append({
+            "type": "payout", "at": p.get("created_at"),
+            "label": str(p.get("period") or ""), "status": p.get("status"),
+            "amount": round(float(p.get("amount") or 0), 2),
+        })
+
+    events.sort(key=lambda e: str(e.get("at") or ""), reverse=True)
+    return events[:limit]
+
+
 @api.get("/affiliate/ref/{code}")  # noqa: F821
-async def affiliate_ref(code: str, request: Request, response: Response):
+async def affiliate_ref(code: str, request: Request, response: Response,
+                        page: str = "", referrer: str = "", device: str = ""):
     """Endpoint de tracking : pose le cookie et renvoie ok. Le frontend appelle
-    ceci au 1er chargement quand ?ref=CODE est présent dans l'URL."""
+    ceci au 1er chargement quand ?ref=CODE est présent dans l'URL.
+    page/referrer/device (optionnels) alimentent l'analyse des sources."""
     _rate_limit("affiliate_ref", _client_ip(request), 60, 60,  # noqa: F821
                 "Trop de requêtes.")
-    await affiliate_capture_click(request, response, code)
+    await affiliate_capture_click(request, response, code,
+                                  page=page, referrer=referrer, device=device)
     return {"ok": True}
 
 
@@ -8009,6 +8125,22 @@ async def admin_affiliates_list(admin: dict = Depends(get_admin_user)):  # noqa:
                 "paid_commission": metrics["paid_commission"],
             })
         out.append(item)
+
+    # Clics + dernier clic par affilié (colonne liste + tri)
+    click_stats = {}
+    async for grp in db.affiliate_clicks.aggregate([
+        {"$group": {"_id": "$affiliate_id",
+                    "clicks": {"$sum": 1},
+                    "last": {"$max": "$created_at"}}}
+    ]):
+        click_stats[grp["_id"]] = {
+            "clicks": int(grp.get("clicks", 0)),
+            "last": grp.get("last"),
+        }
+    for item in out:
+        cs = click_stats.get(item["id"], {})
+        item["clicks"] = cs.get("clicks", 0)
+        item["last_click_at"] = cs.get("last")
     return out
 
 
@@ -8127,6 +8259,78 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
         "monthly_series": monthly_series,
         "top_affiliates": top_affiliates,
         "tier_distribution": tier_distribution,
+    }
+
+
+@api.get("/admin/affiliates/clicks")  # noqa: F821
+async def admin_affiliates_clicks(admin: dict = Depends(get_admin_user),  # noqa: F821
+                                  days: int = 30):
+    """Analyse d'attribution à l'échelle du programme : volume de clics,
+    tendance quotidienne, top pages/référents/appareils et top affiliés par
+    volume de clics."""
+    days = max(7, min(int(days), 90))
+    start_date = datetime.now(timezone.utc).date() - timedelta(days=days - 1)
+    q = {"created_at": {"$gte": start_date.isoformat() + "T00:00:00"}}
+    trend, per_aff, pages, refs, devices = {}, {}, {}, {}, {}
+    total = 0
+    cursor = db.affiliate_clicks.find(
+        q, {"_id": 0, "created_at": 1, "affiliate_id": 1, "page": 1,
+            "referrer": 1, "device": 1},
+    )
+    async for c in cursor:
+        total += 1
+        day = str(c.get("created_at", ""))[:10]
+        trend[day] = trend.get(day, 0) + 1
+        aid = c.get("affiliate_id")
+        if aid:
+            per_aff[aid] = per_aff.get(aid, 0) + 1
+        page = str(c.get("page") or "").strip() or "direct"
+        pages[page] = pages.get(page, 0) + 1
+        ref = _affiliate_referrer_domain(str(c.get("referrer") or "")) or "direct"
+        refs[ref] = refs.get(ref, 0) + 1
+        dev = str(c.get("device") or "").strip() or "unknown"
+        devices[dev] = devices.get(dev, 0) + 1
+
+    top_affiliates = []
+    for aid, n in sorted(per_aff.items(), key=lambda kv: kv[1], reverse=True)[:10]:
+        a = await db.affiliates.find_one({"id": aid}, {"_id": 0, "name": 1, "code": 1})
+        top_affiliates.append({
+            "id": aid, "name": (a or {}).get("name") or "—",
+            "code": (a or {}).get("code") or "", "clicks": n,
+        })
+
+    series = []
+    for i in range(days):
+        d = (start_date + timedelta(days=i)).isoformat()
+        series.append({"date": d, "clicks": trend.get(d, 0)})
+
+    def _top(d, n=8):
+        return [{"source": k, "clicks": v}
+                for k, v in sorted(d.items(), key=lambda kv: kv[1], reverse=True)[:n]]
+
+    # Conversions validées sur la même fenêtre (approved|paid)
+    conversions_30d = 0
+    rcursor = db.affiliate_referrals.find(
+        {"status": {"$in": ["approved", "paid"]},
+         "$or": [{"approved_at": {"$gte": start_date.isoformat() + "T00:00:00"}},
+                 {"created_at": {"$gte": start_date.isoformat() + "T00:00:00"}}]},
+        {"_id": 0, "approved_at": 1, "created_at": 1},
+    )
+    async for r in rcursor:
+        ts = r.get("approved_at") or r.get("created_at")
+        if str(ts or "")[:10] >= start_date.isoformat():
+            conversions_30d += 1
+
+    return {
+        "days": days,
+        "total_clicks": total,
+        "conversions_30d": conversions_30d,
+        "active_affiliates": len(per_aff),
+        "trend": series,
+        "top_pages": _top(pages),
+        "top_referrers": _top(refs),
+        "devices": devices,
+        "top_affiliates": top_affiliates,
     }
 
 
