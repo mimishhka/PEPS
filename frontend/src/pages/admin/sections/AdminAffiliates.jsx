@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   Plus, RefreshCw, Copy, DollarSign, X, Users, TrendingUp, Clock,
   AlertTriangle, MousePointerClick, Award, Wallet, ShieldAlert, Eye,
+  Search, Download, BarChart3, Smartphone, Globe,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -15,6 +16,53 @@ import { useLang } from "../../../contexts/LanguageContext";
 
 const money = (n) => `$${Number(n || 0).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const int = (n) => Number(n || 0).toLocaleString("en-CA");
+
+const PAGE_SIZE = 10;
+const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+const toCsv = (headers, rows) =>
+  [headers.map(esc).join(","), ...rows.map((r) => r.map(esc).join(","))].join("\r\n");
+const downloadCsv = (filename, headers, rows) => {
+  const blob = new Blob(["\uFEFF" + toCsv(headers, rows)], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const fmtDate = (iso) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d) ? "—" : d.toLocaleDateString();
+};
+
+function AdminPagination({ page, total, onChange, L }) {
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (pages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between px-5 py-3 border-t border-ash">
+      <p className="text-[11px] text-glacier">{L("Page", "Page")} {page} / {pages}</p>
+      <div className="flex gap-1.5">
+        <button disabled={page <= 1} onClick={() => onChange(page - 1)}
+          className="px-3 py-1 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical disabled:opacity-40">
+          {L("Précédent", "Prev")}
+        </button>
+        <button disabled={page >= pages} onClick={() => onChange(page + 1)}
+          className="px-3 py-1 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical disabled:opacity-40">
+          {L("Suivant", "Next")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const DEVICE_LABELS = (L) => ({
+  desktop: L("Ordinateur", "Desktop"),
+  mobile: L("Mobile", "Mobile"),
+  tablet: L("Tablette", "Tablet"),
+  unknown: L("Inconnu", "Unknown"),
+});
 
 const TIER_LABEL = {
   standard: { fr: "Standard", en: "Standard" }, bronze: { fr: "Bronze", en: "Bronze" },
@@ -36,6 +84,15 @@ export default function AdminAffiliates() {
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
   const [detail, setDetail] = useState(null);
+  const [tab, setTab] = useState("overview");
+  const [q, setQ] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  const [fTier, setFTier] = useState("");
+  const [affPage, setAffPage] = useState(1);
+  const [payPage, setPayPage] = useState(1);
+  const [clicks, setClicks] = useState(null);
+  const [clicksLoading, setClicksLoading] = useState(false);
+  const [payouts, setPayouts] = useState([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,7 +112,31 @@ export default function AdminAffiliates() {
     }
   }, []);
 
+  const loadPayouts = useCallback(async () => {
+    try {
+      const { data } = await api.get("/admin/affiliates/payouts/all");
+      setPayouts(data || []);
+      setPayPage(1);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
+  }, []);
+
+  const loadClicks = useCallback(async () => {
+    setClicksLoading(true);
+    try {
+      const { data } = await api.get("/admin/affiliates/clicks");
+      setClicks(data || null);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setClicksLoading(false);
+    }
+  }, []);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (tab === "payouts") loadPayouts(); }, [tab, loadPayouts]);
+  useEffect(() => { if (tab === "clicks") loadClicks(); }, [tab, loadClicks]);
 
   const runPayouts = async () => {
     try {
@@ -71,6 +152,45 @@ export default function AdminAffiliates() {
   const aff = ov?.affiliates || {};
   const al = ov?.alerts || {};
   const attr = ov?.attribution || {};
+
+  const ql = (q || "").trim().toLowerCase();
+  const filteredRows = rows.filter((a) => {
+    if (fStatus && a.status !== fStatus) return false;
+    if (fTier && a.tier !== fTier) return false;
+    if (ql) {
+      const hay = `${a.name || ""} ${a.email || ""} ${a.code || ""}`.toLowerCase();
+      if (!hay.includes(ql)) return false;
+    }
+    return true;
+  });
+  const affPageRows = filteredRows.slice((affPage - 1) * PAGE_SIZE, affPage * PAGE_SIZE);
+  const payPageRows = payouts.slice((payPage - 1) * PAGE_SIZE, payPage * PAGE_SIZE);
+  const tierOptions = [...new Set(rows.map((r) => r.tier).filter(Boolean))];
+
+  const exportAffiliates = () =>
+    downloadCsv(
+      "affiliates.csv",
+      ["Name", "Email", "Code", "Discount", "Status", "Compliance", "Tier", "Rate",
+       "Validated", "Pending", "Clicks"],
+      filteredRows.map((a) => [
+        a.name, a.email, a.code, a.coupon_percent != null ? `${a.coupon_percent}%` : "",
+        a.status, a.compliance_status, a.tier || "",
+        a.commission_rate != null ? `${Math.round(a.commission_rate * 100)}%` : "",
+        a.cumulative_revenue != null ? money(a.cumulative_revenue) : "",
+        a.pending_commission != null ? money(a.pending_commission) : "",
+        a.clicks || 0,
+      ])
+    );
+
+  const exportPayoutsAll = () =>
+    downloadCsv(
+      "payouts.csv",
+      ["Period", "Affiliate", "Amount", "Currency", "Status", "Refs", "TxRef"],
+      payouts.map((p) => [
+        p.period, p.affiliate_code, p.amount, p.currency, p.status,
+        p.referral_count || 0, p.reference || "",
+      ])
+    );
 
   return (
     <div data-testid="admin-affiliates">
@@ -92,10 +212,23 @@ export default function AdminAffiliates() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {[["overview", L("Vue d'ensemble", "Overview")], ["clicks", L("Attribution", "Attribution")], ["payouts", L("Paiements", "Payouts")]].map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)}
+            className={`px-4 py-2 rounded-full font-data text-xs font-semibold uppercase tracking-wider transition ${
+              tab === k ? "bg-nordfjord text-white" : "bg-white text-glacier border border-ash hover:border-nova"
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <p className="text-sm text-glacier py-16 text-center">{L("Chargement…", "Loading…")}</p>
       ) : (
         <>
+          {tab === "overview" && (<>
           {/* PANNEAU À AUDITER (signaux de risque — décision manuelle) */}
           {risk?.flagged_count > 0 && (
             <RiskPanel risk={risk} L={L} lang={lang} onOpen={setDetail} />
@@ -208,64 +341,265 @@ export default function AdminAffiliates() {
           {/* LISTE ENRICHIE */}
           <div className="bg-white border border-ash rounded-xl overflow-hidden">
             <div className="px-5 py-3 border-b border-ash flex items-center justify-between">
-              <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier">{L("TOUS LES AFFILIÉS", "ALL AFFILIATES")}</p>
-              <button onClick={load} className="text-glacier hover:text-nordfjord transition"><RefreshCw size={14} /></button>
-            </div>
-            {rows.length === 0 ? (
-              <p className="text-sm text-glacier py-12 text-center">{L("Aucun affilié. Invitez votre premier partenaire.", "No affiliates yet.")}</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
-                      <th className="px-4 py-3">{L("Affilié", "Affiliate")}</th>
-                      <th className="px-4 py-3">{L("Code", "Code")}</th>
-                      <th className="px-4 py-3">{L("Statut", "Status")}</th>
-                      <th className="px-4 py-3">{L("Conf.", "Comp.")}</th>
-                      <th className="px-4 py-3">{L("Palier", "Tier")}</th>
-                      <th className="px-4 py-3 text-right">{L("CA validé", "Validated")}</th>
-                      <th className="px-4 py-3 text-right">{L("En attente", "Pending")}</th>
-                      <th className="px-4 py-3"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((a) => (
-                      <tr key={a.id} className="border-b border-ash/60 hover:bg-clinical/60">
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-nordfjord">{a.name}</p>
-                          <p className="text-xs text-glacier">{a.email}</p>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-xs text-nordfjord">{a.code || "—"}</td>
-                        <td className="px-4 py-3"><StatusPill status={a.status} L={L} /></td>
-                        <td className="px-4 py-3"><CompDot status={a.compliance_status} /></td>
-                        <td className="px-4 py-3">
-                          {a.tier ? (
-                            <span className="inline-flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full" style={{ background: TIER_COLOR[a.tier] }} />
-                              <span className="text-nordfjord">{TIER_LABEL[a.tier]?.[lang] || a.tier}</span>
-                              <span className="text-glacier text-xs">{a.commission_rate ? `${Math.round(a.commission_rate * 100)}%` : ""}</span>
-                            </span>
-                          ) : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-right text-nordfjord tabular-nums">{a.cumulative_revenue != null ? money(a.cumulative_revenue) : "—"}</td>
-                        <td className="px-4 py-3 text-right text-nordfjord tabular-nums">{a.pending_commission != null ? money(a.pending_commission) : "—"}</td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex gap-1 justify-end">
-                            {a.status !== "active" && <ResendButton affiliateId={a.id} L={L} />}
-                            <button onClick={() => setDetail(a.id)}
-                              className="px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical transition">
-                              {L("Détails", "Details")}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier">
+                {L("TOUS LES AFFILIÉS", "ALL AFFILIATES")} ({int(filteredRows.length)})
+              </p>
+              <div className="flex gap-2">
+                <button onClick={exportAffiliates}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical transition">
+                  <Download size={13} /> CSV
+                </button>
+                <button onClick={load} className="text-glacier hover:text-nordfjord transition"><RefreshCw size={14} /></button>
               </div>
+            </div>
+            {/* Recherche + filtres */}
+            <div className="px-5 py-3 border-b border-ash bg-clinical/40 flex flex-wrap gap-2">
+              <div className="relative flex-1 min-w-[180px]">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-glacier" />
+                <input value={q} onChange={(e) => { setQ(e.target.value); setAffPage(1); }}
+                  placeholder={L("Rechercher nom, courriel, code…", "Search name, email, code…")}
+                  data-testid="affiliate-search"
+                  className="w-full rounded-lg border border-ash bg-white pl-9 pr-3 py-2 text-xs text-nordfjord outline-none focus:border-nova" />
+              </div>
+              <select value={fStatus} onChange={(e) => { setFStatus(e.target.value); setAffPage(1); }}
+                data-testid="affiliate-filter-status"
+                className="rounded-lg border border-ash bg-white px-3 py-2 text-xs text-nordfjord outline-none focus:border-nova">
+                <option value="">{L("Statut : tous", "Status: all")}</option>
+                <option value="active">{L("Actifs", "Active")}</option>
+                <option value="invited">{L("Invités", "Invited")}</option>
+                <option value="suspended">{L("Suspendus", "Suspended")}</option>
+              </select>
+              <select value={fTier} onChange={(e) => { setFTier(e.target.value); setAffPage(1); }}
+                data-testid="affiliate-filter-tier"
+                className="rounded-lg border border-ash bg-white px-3 py-2 text-xs text-nordfjord outline-none focus:border-nova">
+                <option value="">{L("Palier : tous", "Tier: all")}</option>
+                {tierOptions.map((t) => (
+                  <option key={t} value={t}>{TIER_LABEL[t]?.[lang] || t}</option>
+                ))}
+              </select>
+              {(q || fStatus || fTier) && (
+                <button onClick={() => { setQ(""); setFStatus(""); setFTier(""); setAffPage(1); }}
+                  className="px-3 py-2 rounded-lg border border-ash text-xs text-glacier hover:bg-white transition">
+                  <X size={13} className="inline mr-1 -mt-0.5" />{L("Réinitialiser", "Reset")}
+                </button>
+              )}
+            </div>
+            {filteredRows.length === 0 ? (
+              <p className="text-sm text-glacier py-12 text-center">
+                {rows.length === 0
+                  ? L("Aucun affilié. Invitez votre premier partenaire.", "No affiliates yet.")
+                  : L("Aucun résultat pour ces filtres.", "No results for these filters.")}
+              </p>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
+                        <th className="px-4 py-3">{L("Affilié", "Affiliate")}</th>
+                        <th className="px-4 py-3">{L("Code", "Code")}</th>
+                        <th className="px-4 py-3">{L("Statut", "Status")}</th>
+                        <th className="px-4 py-3">{L("Conf.", "Comp.")}</th>
+                        <th className="px-4 py-3">{L("Palier", "Tier")}</th>
+                        <th className="px-4 py-3 text-right">{L("Clics", "Clicks")}</th>
+                        <th className="px-4 py-3 text-right">{L("CA validé", "Validated")}</th>
+                        <th className="px-4 py-3 text-right">{L("En attente", "Pending")}</th>
+                        <th className="px-4 py-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {affPageRows.map((a) => (
+                        <tr key={a.id} className="border-b border-ash/60 hover:bg-clinical/60">
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-nordfjord">{a.name}</p>
+                            <p className="text-xs text-glacier">{a.email}</p>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs text-nordfjord">{a.code || "—"}</td>
+                          <td className="px-4 py-3"><StatusPill status={a.status} L={L} /></td>
+                          <td className="px-4 py-3"><CompDot status={a.compliance_status} /></td>
+                          <td className="px-4 py-3">
+                            {a.tier ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full" style={{ background: TIER_COLOR[a.tier] }} />
+                                <span className="text-nordfjord">{TIER_LABEL[a.tier]?.[lang] || a.tier}</span>
+                                <span className="text-glacier text-xs">{a.commission_rate ? `${Math.round(a.commission_rate * 100)}%` : ""}</span>
+                              </span>
+                            ) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right text-glacier tabular-nums">
+                            {a.clicks ? (
+                              <span title={a.last_click_at ? `${L("Dernier clic", "Last click")}: ${fmtDate(a.last_click_at)}` : ""}>
+                                {int(a.clicks)}
+                              </span>
+                            ) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right text-nordfjord tabular-nums">{a.cumulative_revenue != null ? money(a.cumulative_revenue) : "—"}</td>
+                          <td className="px-4 py-3 text-right text-nordfjord tabular-nums">{a.pending_commission != null ? money(a.pending_commission) : "—"}</td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex gap-1 justify-end">
+                              {a.status !== "active" && <ResendButton affiliateId={a.id} L={L} />}
+                              <button onClick={() => setDetail(a.id)}
+                                className="px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical transition">
+                                {L("Détails", "Details")}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <AdminPagination page={affPage} total={filteredRows.length} onChange={setAffPage} L={L} />
+              </>
             )}
           </div>
-        </>
+          </>)}
+
+        {/* Attribution tab */}
+        {!loading && tab === "clicks" && (
+          <div className="space-y-4" data-testid="affiliate-clicks">
+            {clicksLoading ? (
+              <p className="text-sm text-glacier py-16 text-center">{L("Chargement…", "Loading…")}</p>
+            ) : !clicks ? (
+              <p className="text-sm text-glacier py-16 text-center">{L("Aucune donnée d'attribution.", "No attribution data.")}</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <Kpi icon={MousePointerClick} accent="#00B8D4"
+                    label={L("Clics (30 j)", "Clicks (30d)")} value={int(clicks.total_clicks)}
+                    sub={`${int(clicks.active_affiliates)} ${L("affiliés actifs", "active affiliates")}`} />
+                  <Kpi icon={Smartphone} accent="#2E9E6B"
+                    label={L("Taux de conversion", "Conversion rate")}
+                    value={attr.conversion_rate != null ? `${(attr.conversion_rate * 100).toFixed(1)}%` : "—"}
+                    sub={L("commandes / clics", "orders / clicks")} />
+                  <Kpi icon={Globe} accent="#E8A33D"
+                    label={L("Meilleure page", "Top page")}
+                    value={clicks.top_pages?.[0]?.source === "direct" ? L("Accès direct", "Direct") : clicks.top_pages?.[0]?.source || "—"}
+                    sub={clicks.top_pages?.[0] ? int(clicks.top_pages[0].clicks) : ""} />
+                  <Kpi icon={Users} accent="#00B8D4"
+                    label={L("Conversions (30 j)", "Conversions (30d)")}
+                    value={int(clicks.conversions_30d)}
+                    sub={clicks.total_clicks && clicks.conversions_30d
+                      ? `${((clicks.conversions_30d / clicks.total_clicks) * 100).toFixed(1)}% ${L("taux", "rate")}`
+                      : "—"} />
+                </div>
+
+                <div className="bg-white border border-ash rounded-xl p-5">
+                  <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier mb-4">
+                    {L("CLICS — 30 DERNIERS JOURS", "CLICKS — LAST 30 DAYS")}
+                  </p>
+                  <div style={{ width: "100%", height: 240 }}>
+                    <ResponsiveContainer>
+                      <LineChart data={clicks.trend || []} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#64748B" }}
+                          tickFormatter={(d) => d.slice(5)} />
+                        <YAxis tick={{ fontSize: 10, fill: "#64748B" }} allowDecimals={false} />
+                        <Tooltip labelFormatter={(d) => new Date(d).toLocaleDateString()} />
+                        <Line type="monotone" dataKey="clicks" name={L("Clics", "Clicks")}
+                          stroke="#00B8D4" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <AdminSourcesCard icon={Globe} title={L("PAGES D'ATTERRISSAGE", "LANDING PAGES")} L={L}
+                    rows={clicks.top_pages} />
+                  <AdminSourcesCard icon={MousePointerClick} title={L("RÉFÉRENTS", "REFERRERS")} L={L}
+                    rows={clicks.top_referrers} />
+                  <AdminDevicesCard devices={clicks.devices} L={L} />
+                </div>
+
+                <div className="bg-white border border-ash rounded-xl overflow-hidden">
+                  <div className="px-5 py-3 border-b border-ash">
+                    <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier">
+                      {L("TOP AFFILIÉS PAR VOLUME DE CLICS", "TOP AFFILIATES BY CLICK VOLUME")}
+                    </p>
+                  </div>
+                  {clicks.top_affiliates?.length ? (
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {clicks.top_affiliates.map((t, i) => (
+                          <tr key={t.id} className="border-b border-ash/60 hover:bg-clinical/60">
+                            <td className="px-5 py-3 w-10">
+                              <span className="w-6 h-6 rounded-full bg-nordfjord text-white text-xs font-bold grid place-items-center">{i + 1}</span>
+                            </td>
+                            <td className="px-5 py-3">
+                              <p className="font-medium text-nordfjord">{t.name}</p>
+                              <p className="text-[11px] text-glacier font-mono">{t.code || "—"}</p>
+                            </td>
+                            <td className="px-5 py-3 text-right">
+                              <button onClick={() => setDetail(t.id)}
+                                className="text-xs text-nova hover:underline">{L("Détails", "Details")}</button>
+                            </td>
+                            <td className="px-5 py-3 text-right text-nordfjord tabular-nums">{int(t.clicks)} {L("clics", "clicks")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : <p className="text-sm text-glacier py-10 text-center">{L("Aucun clic.", "No clicks.")}</p>}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Payouts tab */}
+        {!loading && tab === "payouts" && (
+          <div className="space-y-4" data-testid="affiliate-payouts">
+            <div className="bg-white border border-ash rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-ash flex items-center justify-between">
+                <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier">
+                  {L("HISTORIQUE DES PAIEMENTS", "PAYMENT HISTORY")}
+                </p>
+                <button onClick={exportPayoutsAll}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical transition">
+                  <Download size={13} /> CSV
+                </button>
+              </div>
+              {payouts.length === 0 ? (
+                <p className="text-sm text-glacier py-12 text-center">{L("Aucun paiement.", "No payouts.")}</p>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
+                          <th className="px-4 py-3">{L("Période", "Period")}</th>
+                          <th className="px-4 py-3">{L("Affilié", "Affiliate")}</th>
+                          <th className="px-4 py-3 text-right">{L("Montant", "Amount")}</th>
+                          <th className="px-4 py-3">{L("Devise", "Currency")}</th>
+                          <th className="px-4 py-3">{L("Statut", "Status")}</th>
+                          <th className="px-4 py-3">{L("Réf.", "Ref.")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {payPageRows.map((p) => (
+                          <tr key={p.id} className="border-b border-ash/60 hover:bg-clinical/60">
+                            <td className="px-4 py-3 font-data text-nordfjord">{p.period}</td>
+                            <td className="px-4 py-3 font-mono text-xs text-nordfjord">{p.affiliate_code || "—"}</td>
+                            <td className="px-4 py-3 text-right font-semibold text-nordfjord tabular-nums">{money(p.amount)}</td>
+                            <td className="px-4 py-3 uppercase text-glacier text-xs">{p.currency}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${p.status === "paid" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>
+                                {p.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-[11px] text-glacier break-all max-w-[180px]">{p.reference || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <AdminPagination page={payPage} total={payouts.length} onChange={setPayPage} L={L} />
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+      </>
       )}
 
       {showInvite && <InviteModal L={L} onClose={() => setShowInvite(false)} onDone={load} />}
@@ -355,6 +689,62 @@ function MiniStat({ label, value, icon: Icon }) {
         <p className="text-[10px] uppercase tracking-wider text-glacier truncate">{label}</p>
         <p className="text-lg font-bold text-nordfjord tabular-nums">{value}</p>
       </div>
+    </div>
+  );
+}
+
+function AdminSourcesCard({ icon: Icon, title, rows, L }) {
+  const max = rows?.[0]?.clicks || 1;
+  return (
+    <div className="bg-white border border-ash rounded-xl p-5">
+      <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier mb-4 flex items-center gap-2">
+        <Icon size={14} /> {title}
+      </p>
+      {!rows || rows.length === 0 ? (
+        <p className="text-sm text-glacier">{L("Aucune donnée.", "No data.")}</p>
+      ) : (
+        <div className="space-y-1.5">
+          {rows.map((r) => (
+            <div key={r.source} className="flex items-center gap-2">
+              <span className="text-xs text-nordfjord w-[130px] truncate" title={r.source}>
+                {r.source === "direct" ? L("Accès direct", "Direct") : r.source}
+              </span>
+              <div className="flex-1 h-2 rounded-full bg-ash overflow-hidden">
+                <div className="h-full rounded-full bg-nova" style={{ width: `${Math.max(2, (r.clicks / max) * 100)}%` }} />
+              </div>
+              <span className="text-xs text-glacier tabular-nums w-8 text-right">{int(r.clicks)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminDevicesCard({ devices, L }) {
+  const labels = DEVICE_LABELS(L);
+  const entries = Object.entries(devices || {}).sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((s, [, n]) => s + n, 0) || 1;
+  return (
+    <div className="bg-white border border-ash rounded-xl p-5">
+      <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier mb-4 flex items-center gap-2">
+        <Smartphone size={14} /> {L("APPAREILS", "DEVICES")}
+      </p>
+      {entries.length === 0 ? (
+        <p className="text-sm text-glacier">{L("Aucune donnée.", "No data.")}</p>
+      ) : (
+        <div className="space-y-1.5">
+          {entries.map(([k, n]) => (
+            <div key={k} className="flex items-center gap-2">
+              <span className="text-xs text-nordfjord w-[130px] truncate">{labels[k] || k}</span>
+              <div className="flex-1 h-2 rounded-full bg-ash overflow-hidden">
+                <div className="h-full rounded-full bg-nova" style={{ width: `${Math.max(2, (n / total) * 100)}%` }} />
+              </div>
+              <span className="text-xs text-glacier tabular-nums w-8 text-right">{Math.round((n / total) * 100)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
