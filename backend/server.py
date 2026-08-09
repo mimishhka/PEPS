@@ -77,7 +77,6 @@ RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@fironova.com")
 MAGIC_SENDER_EMAIL = os.environ.get("MAGIC_SENDER_EMAIL", "")
 ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@fironova.com")
-STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
 FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))
 UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "24"))
@@ -202,14 +201,6 @@ def compute_dispatch_batch(paid_at) -> str:
     while not _is_business_day(candidate):
         candidate = candidate + timedelta(days=1)
     return candidate.isoformat()
-
-try:
-    from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
-    _STRIPE_AVAILABLE = True
-except Exception:
-    _STRIPE_AVAILABLE = False
-    StripeCheckout = None
-    CheckoutSessionRequest = None
 
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
@@ -487,10 +478,9 @@ class CheckoutIn(BaseModel):
     items: List[CartItem]
     shipping: ShippingAddress
     email: Optional[EmailStr] = None  # guest email; auth user's email is used if logged in
-    payment_method: Literal["interac", "nowpayments", "stripe"]
+    payment_method: Literal["interac", "nowpayments"]
     pay_currency: Optional[str] = "btc"  # used only for nowpayments
     coupon_code: Optional[str] = None
-    origin_url: Optional[str] = None  # used by stripe to build success/cancel URLs
     accept_terms: bool
     confirm_age: bool
     confirm_research_use: bool
@@ -3341,7 +3331,7 @@ async def get_shipping_rates(payload: ShippingRateRequest):
 # ---------------------------------------------------------------------------
 # Confirmation de paiement — point d'entrée UNIQUE et idempotent.
 # Le filtre {"payment_status": {"$ne": "paid"}} dans le update_one garantit
-# qu'un seul appelant gagne, même si le webhook Stripe et le polling frontend
+# qu'un seul appelant gagne, même avec des callbacks/pollings concurrents
 # arrivent à la milliseconde près. Le coupon est décompté ici (et pas à la
 # création) : un panier abandonné ne doit jamais consommer un usage_limit.
 # ---------------------------------------------------------------------------
@@ -3448,50 +3438,7 @@ async def checkout(payload: CheckoutIn, request: Request):
             },
         }
         payment_status = "awaiting_etransfer"
-    elif payload.payment_method == "stripe":
-        if not _STRIPE_AVAILABLE or not STRIPE_API_KEY:
-            raise HTTPException(503, "Stripe not configured")
-        origin = (payload.origin_url or "").rstrip("/")
-        if not origin:
-            raise HTTPException(400, "origin_url is required for Stripe checkout")
-        success_url = f"{origin}/order/{order_id}?session_id={{CHECKOUT_SESSION_ID}}"
-        cancel_url = f"{origin}/checkout"
-        stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{origin}/api/webhook/stripe")
-        try:
-            req = CheckoutSessionRequest(
-                amount=float(total),
-                currency="cad",
-                success_url=success_url,
-                cancel_url=cancel_url,
-                metadata={"order_id": order_id, "order_number": order_number,
-                          "user_id": user["id"] if user else "guest"},
-            )
-            session = await stripe_checkout.create_checkout_session(req)
-        except HTTPException:
-            await _release_stock_atomic(reserved)
-            raise
-        except Exception as e:
-            await _release_stock_atomic(reserved)
-            logging.error("Stripe checkout session error: %s", e)
-            raise HTTPException(502, "Stripe checkout unavailable")
-        await db.payment_transactions.insert_one({
-            "id": str(uuid.uuid4()),
-            "order_id": order_id,
-            "session_id": session.session_id,
-            "amount": total,
-            "currency": "cad",
-            "metadata": {"order_number": order_number},
-            "payment_status": "pending",
-            "status": "initiated",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-        payment_info = {
-            "type": "stripe",
-            "session_id": session.session_id,
-            "checkout_url": session.url,
-        }
-        payment_status = "awaiting_stripe"
-    else:
+    elif payload.payment_method == "nowpayments":
         try:
             np = await _nowpayments_create(order_id, total, payload.pay_currency or "btc")
         except Exception:
@@ -3499,6 +3446,9 @@ async def checkout(payload: CheckoutIn, request: Request):
             raise
         payment_info = {"type": "nowpayments", "provider_response": np}
         payment_status = "awaiting_crypto"
+    else:  # defensive guard if a client sends an unsupported value
+        await _release_stock_atomic(reserved)
+        raise HTTPException(400, "Unsupported payment method")
 
     order_doc = {
         "id": order_id,
@@ -6175,59 +6125,6 @@ async def order_invoice_pdf(order_id: str, request: Request):
     )
 
 
-@api.get("/payments/stripe/status/{session_id}")
-async def stripe_status(session_id: str, request: Request):
-    """Poll Stripe checkout session status. Updates payment_transactions + order atomically once paid."""
-    if not _STRIPE_AVAILABLE or not STRIPE_API_KEY:
-        raise HTTPException(503, "Stripe not configured")
-    txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
-    if not txn:
-        raise HTTPException(404, "Session not found")
-    # Idempotent: if already paid in our DB, return cached
-    if txn.get("payment_status") == "paid":
-        return {"session_id": session_id, "payment_status": "paid", "status": "complete"}
-
-    origin = str(request.base_url).rstrip("/")
-    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{origin}/api/webhook/stripe")
-    try:
-        status_resp = await stripe_checkout.get_checkout_status(session_id)
-    except Exception as e:
-        logging.error("Stripe status err: %s", e)
-        raise HTTPException(502, "Stripe status unavailable")
-
-    await db.payment_transactions.update_one(
-        {"session_id": session_id},
-        {"$set": {"payment_status": status_resp.payment_status, "status": status_resp.status,
-                  "updated_at": datetime.now(timezone.utc).isoformat()}},
-    )
-    # If paid, mark it paid via the single idempotent entry point. Safe even if
-    # the Stripe webhook already did it concurrently — only one caller wins.
-    if status_resp.payment_status == "paid":
-        await _mark_order_paid(txn["order_id"], "Payment confirmed via Stripe checkout status")
-    # Expired Stripe session = active payment failure → "failed" (distinct from voluntary "cancelled")
-    if status_resp.status == "expired":
-        order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
-        if order and order.get("payment_status") not in ("paid",) and order.get("fulfillment_status") not in ("cancelled", "failed"):
-            await db.orders.update_one(
-                {"id": txn["order_id"]},
-                {"$set": {"payment_status": "failed", "fulfillment_status": "failed"},
-                 "$push": {"notes": {
-                     "id": str(uuid.uuid4()),
-                     "text": "Payment failed: Stripe checkout session expired",
-                     "author": "system",
-                     "created_at": datetime.now(timezone.utc).isoformat(),
-                 }}},
-            )
-            await _restock_order_items(order)
-    return {
-        "session_id": session_id,
-        "payment_status": status_resp.payment_status,
-        "status": status_resp.status,
-        "amount_total": status_resp.amount_total,
-        "currency": status_resp.currency,
-    }
-
-
 @api.post("/webhook/nowpayments")
 async def nowpayments_ipn(request: Request):
     """NOWPayments IPN callback. HMAC-SHA512 signature verified against sorted JSON payload."""
@@ -6487,35 +6384,6 @@ async def _interac_deposit_watchdog() -> None:
         except Exception as ex:  # pragma: no cover
             logging.error("interac deposit watchdog failed: %s", ex)
         await asyncio.sleep(INTERAC_GRAPH_POLL_SECONDS)
-
-
-@api.post("/webhook/stripe")
-async def stripe_webhook(request: Request):
-    """Handle Stripe webhook events to mark orders as paid."""
-    if not _STRIPE_AVAILABLE or not STRIPE_API_KEY:
-        return {"ok": False, "reason": "stripe_disabled"}
-    body = await request.body()
-    sig = request.headers.get("Stripe-Signature", "")
-    origin = str(request.base_url).rstrip("/")
-    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{origin}/api/webhook/stripe")
-    try:
-        evt = await stripe_checkout.handle_webhook(body, sig)
-    except Exception as e:
-        logging.error("Stripe webhook err: %s", e)
-        return {"ok": False}
-    if evt.payment_status == "paid" and evt.session_id:
-        txn = await db.payment_transactions.find_one({"session_id": evt.session_id})
-        if txn:
-            await db.payment_transactions.update_one(
-                {"session_id": evt.session_id},
-                {"$set": {"payment_status": "paid", "status": "complete",
-                          "updated_at": datetime.now(timezone.utc).isoformat()}},
-            )
-            # Point d'entrée unique et idempotent : que ce webhook arrive avant,
-            # après, ou en même temps que le polling stripe_status, un seul des
-            # deux fera la transition (garde $ne "paid" dans _mark_order_paid).
-            await _mark_order_paid(txn["order_id"], "Payment confirmed via Stripe webhook")
-    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -7178,7 +7046,7 @@ async def cancel_stale_unpaid_orders():
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=UNPAID_ORDER_TTL_HOURS)).isoformat()
     stale = await db.orders.find(
         {
-            "payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto", "awaiting_stripe"]},
+            "payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto"]},
             "created_at": {"$lt": cutoff},
         },
         {"_id": 0},
@@ -8947,7 +8815,7 @@ async def admin_customer_detail(user_id: str, _admin: dict = Depends(require_are
 # ===== FIRONOVA_ANALYTICS_ENHANCED_START =====
 TAX_THRESHOLD_CAD = 30000.0          # seuil d'inscription TPS/TVQ (petit fournisseur)
 TAX_ALERT_RATIO = 0.80               # alerte "approche" à 80 % du seuil
-_UNPAID = ["pending", "awaiting_etransfer", "awaiting_crypto", "awaiting_stripe"]
+_UNPAID = ["pending", "awaiting_etransfer", "awaiting_crypto"]
 
 
 def _pct_change(cur: float, prev: float):
@@ -9095,7 +8963,7 @@ ABANDON_SWEEP_MINUTES = float(os.environ.get("ABANDON_SWEEP_MINUTES", "30"))
 _AUTOMATION_BASE = os.environ.get("PUBLIC_BASE_URL", "https://fironova.com").rstrip("/")
 
 # Statuts considérés « non payés » = panier/checkout abandonné
-_UNPAID_STATUSES = ["pending", "awaiting_etransfer", "awaiting_crypto", "awaiting_stripe"]
+_UNPAID_STATUSES = ["pending", "awaiting_etransfer", "awaiting_crypto"]
 
 
 def _nova_email_shell(heading_fr: str, heading_en: str, body_html: str,

@@ -8,11 +8,10 @@ import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { useConfirm } from "../components/ConfirmDialog";
 
-// Statuts de paiement : couleur + libellé lisible bilingue (les 9 statuts backend).
+// Statuts de paiement : couleur + libellé lisible bilingue.
 const PAYMENT_STATUS = {
   awaiting_etransfer: { cls: "bg-warning/15 text-warning border border-warning/30", fr: "En attente · Interac", en: "Awaiting · Interac" },
   awaiting_crypto:    { cls: "bg-warning/15 text-warning border border-warning/30", fr: "En attente · crypto", en: "Awaiting · crypto" },
-  awaiting_stripe:    { cls: "bg-warning/15 text-warning border border-warning/30", fr: "En attente · carte", en: "Awaiting · card" },
   pending:            { cls: "bg-ash/40 text-nordfjord border border-ash", fr: "En attente", en: "Pending" },
   paid:               { cls: "bg-nova/15 text-nova border border-nova/30", fr: "Payée", en: "Paid" },
   refunded:           { cls: "bg-glacier/15 text-glacier border border-glacier/30", fr: "Remboursée", en: "Refunded" },

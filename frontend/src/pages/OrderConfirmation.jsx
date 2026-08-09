@@ -12,7 +12,6 @@ export default function OrderConfirmation() {
   const { t, lang } = useLang();
   const [order, setOrder] = useState(state?.order || null);
   const [copied, setCopied] = useState("");
-  const [stripePolling, setStripePolling] = useState(false);
   const [remainingMs, setRemainingMs] = useState(null);
 
   useEffect(() => {
@@ -20,35 +19,6 @@ export default function OrderConfirmation() {
       api.get(`/orders/${id}`).then((r) => setOrder(r.data)).catch(() => {});
     }
   }, [id, order]);
-
-  // Stripe success-redirect polling
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const sessionId = params.get("session_id");
-    if (!sessionId) return;
-    let attempts = 0;
-    const max = 8;
-    setStripePolling(true);
-    const poll = async () => {
-      try {
-        const { data } = await api.get(`/payments/stripe/status/${sessionId}`);
-        if (data.payment_status === "paid") {
-          setStripePolling(false);
-          const fresh = await api.get(`/orders/${id}`);
-          setOrder(fresh.data);
-          return;
-        }
-        if (data.status === "expired") {
-          setStripePolling(false);
-          return;
-        }
-      } catch { /* ignore */ }
-      attempts += 1;
-      if (attempts < max) setTimeout(poll, 2000);
-      else setStripePolling(false);
-    };
-    poll();
-  }, [id]);
 
   // Countdown uses backend-stored deadline; falls back to 24h if absent.
   useEffect(() => {
@@ -142,12 +112,6 @@ export default function OrderConfirmation() {
           </p>
         </div>
       </div>
-
-      {stripePolling && (
-        <div className="mt-8 border border-nordfjord/20 rounded-2xl p-4 bg-yellow-50 font-mono text-xs uppercase tracking-[0.2em]" data-testid="stripe-polling">
-          ⏳ Verifying your Stripe payment…
-        </div>
-      )}
 
       {order.payment_status === "paid" && (
         <div className="mt-8 border-2 p-5 flex items-start gap-3" style={{ borderColor: "#16a34a" }} data-testid="payment-paid-banner">

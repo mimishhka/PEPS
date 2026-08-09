@@ -8,7 +8,7 @@ Coverage:
         note added, payment_id persisted in provider_response
     (c) valid signature 'confirming' → provider_response.payment_status updated only (order still awaiting_crypto)
 - GET /api/payments/crypto/status/{order_id} invoice-flow → 'awaiting_crypto'/'waiting' pre-IPN, 'paid' post-IPN
-- REGRESSION: Interac + Stripe checkout still work
+- REGRESSION: Interac checkout still works
 - CLEANUP: delete created orders + restore variant stock
 """
 import os
@@ -87,8 +87,6 @@ def _checkout(product, variant, qty=1, payment_method="interac", pay_currency=No
     }
     if pay_currency:
         payload["pay_currency"] = pay_currency
-    if payment_method == "stripe":
-        payload["origin_url"] = "https://peptide-ca.preview.emergentagent.com"
     return requests.post(f"{BASE_URL}/api/checkout", json=payload, timeout=30)
 
 
@@ -245,18 +243,6 @@ def test_interac_regression(products, db):
     assert data["payment_status"] in ("awaiting_interac", "awaiting_etransfer")
     after = int(next(x for x in db.products.find_one({"id": p["id"]})["variants"] if x["id"] == v["id"])["stock"])
     assert after == before - 1
-
-
-def test_stripe_regression(products):
-    """Stripe checkout returns https checkout_url."""
-    p, v = _pick(products)
-    r = _checkout(p, v, qty=1, payment_method="stripe")
-    assert r.status_code == 200, r.text
-    data = r.json()
-    CREATED_ORDERS.append((data["id"], [(v["id"], 1)]))
-    pi = data.get("payment_info") or {}
-    url = pi.get("checkout_url") or ""
-    assert url.startswith("https://"), f"bad stripe url: {url}"
 
 
 # ==================== Cleanup ====================

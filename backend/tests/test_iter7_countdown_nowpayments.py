@@ -5,7 +5,6 @@ Coverage:
 - GET /api/payments/crypto/status/{order_id} for crypto order → 200 with np_status='waiting'
 - GET /api/payments/crypto/status/{order_id} for non-crypto order → 404
 - GET /api/payments/crypto/status/{order_id} for already-paid crypto order → 'paid' (no provider call)
-- REGRESSION: Stripe checkout returns url
 - REGRESSION: Interac checkout works and decrements variant stock
 - CLEANUP: delete created test orders and restore stock
 """
@@ -53,7 +52,7 @@ def _pick(products, min_stock=2, max_price=150):
     return None, None
 
 
-def _checkout(product, variant, qty=1, payment_method="interac", pay_currency=None, email=None, origin_url=None):
+def _checkout(product, variant, qty=1, payment_method="interac", pay_currency=None, email=None):
     payload = {
         "email": email or TEST_EMAIL,
         "items": [{"product_id": product["id"], "variant_id": variant["id"], "qty": qty}],
@@ -66,8 +65,6 @@ def _checkout(product, variant, qty=1, payment_method="interac", pay_currency=No
     }
     if pay_currency:
         payload["pay_currency"] = pay_currency
-    if origin_url:
-        payload["origin_url"] = origin_url
     return requests.post(f"{BASE_URL}/api/checkout", json=payload, timeout=30)
 
 
@@ -161,24 +158,6 @@ def test_crypto_status_paid_order_short_circuits(crypto_order, db):
     finally:
         # Restore original status so autocancel/cleanup works correctly
         db.orders.update_one({"id": oid}, {"$set": {"payment_status": original_status}})
-
-
-# ==================== REGRESSION: Stripe & Interac ====================
-
-def test_stripe_checkout_returns_url(products):
-    """Regression: Stripe checkout still returns a checkout url."""
-    p, v = _pick(products)
-    r = _checkout(p, v, qty=1, payment_method="stripe", origin_url=BASE_URL)
-    if r.status_code == 503:
-        pytest.skip("Stripe not configured on this environment")
-    assert r.status_code == 200, f"Stripe checkout: {r.status_code} {r.text}"
-    body = r.json()
-    pi = body.get("payment_info") or {}
-    url = pi.get("checkout_url") or pi.get("url") or body.get("url")
-    assert url and url.startswith("http"), f"No stripe url in response: {body}"
-    # If order was created, track it
-    if body.get("id"):
-        CREATED_ORDERS.append((body["id"], [(v["id"], 1)]))
 
 
 def test_interac_checkout_decrements_stock(products, db):

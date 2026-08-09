@@ -7,14 +7,14 @@
 
 La version du 2026-08-08 ne correspondait pas au code courant. Les affirmations suivantes etaient inexactes et sont corrigees ici :
 
-- Stripe n'est pas retire. Il est actif dans le backend (checkout, webhook, status, statuts `awaiting_stripe`).
+- Stripe est retire du backend (checkout, status, webhook supprimes).
 - `register` ne force pas de verification email. Le compte est cree immediatement et une session est ouverte via cookie.
 - `frontend/src/lib/supabaseClient.js` existe encore.
 
 ## 2. Etat reel confirme dans le code
 
-- Paiements : `interac`, `nowpayments`, `stripe` sont supportes.
-- Webhooks : NOWPayments et Stripe sont presents.
+- Paiements : `interac` et `nowpayments` sont supportes.
+- Webhooks : NOWPayments uniquement.
 - Auth : `POST /auth/register` cree l'utilisateur directement puis pose le cookie d'auth.
 - Frontend : le client Supabase est encore present dans l'arborescence.
 

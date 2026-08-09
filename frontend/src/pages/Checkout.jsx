@@ -134,7 +134,6 @@ export default function Checkout() {
       payment_method: paymentMethod,
       pay_currency: paymentMethod === "nowpayments" ? "usdc" : undefined,
       coupon_code: coupon?.code || null,
-      origin_url: window.location.origin,
       accept_terms: !!acceptPolicy,
       confirm_age: !!confirmAge,
       confirm_research_use: !!acceptRuO,

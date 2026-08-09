@@ -120,8 +120,8 @@ const GROUPS = [
         id: "methods",
         q: { en: "What payment methods do you accept?", fr: "Quels modes de paiement acceptez-vous ?" },
         a: {
-          en: "We accept secure card payments via Stripe, Interac e-Transfer, and cryptocurrency via NOWPayments (BTC, ETH, USDT, LTC, SOL and 100+ others). Detailed instructions are provided at checkout.",
-          fr: "Nous acceptons les paiements par carte sécurisés via Stripe, les virements Interac, ainsi que les cryptomonnaies via NOWPayments (BTC, ETH, USDT, LTC, SOL et plus de 100 autres). Les instructions détaillées sont fournies au moment du paiement.",
+          en: "We accept Interac e-Transfer and cryptocurrency via NOWPayments (BTC, ETH, USDT, LTC, SOL and 100+ others). Detailed instructions are provided at checkout.",
+          fr: "Nous acceptons les virements Interac ainsi que les cryptomonnaies via NOWPayments (BTC, ETH, USDT, LTC, SOL et plus de 100 autres). Les instructions detaillees sont fournies au moment du paiement.",
         },
       },
       {

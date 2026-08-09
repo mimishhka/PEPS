@@ -126,7 +126,7 @@ def test_auto_cancel_stale_unpaid_order_restocks(products, db):
     assert r.status_code == 200, r.text
     order = r.json()
     order_id = order["id"]
-    assert order["payment_status"] in ("awaiting_etransfer", "awaiting_stripe", "awaiting_crypto")
+    assert order["payment_status"] in ("awaiting_etransfer", "awaiting_crypto")
 
     # Confirm stock decremented
     doc = db.products.find_one({"id": p["id"]})
