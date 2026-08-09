@@ -54,6 +54,12 @@ if not ADMIN_PASSWORD:
         "avant de démarrer le serveur."
     )
 INTERAC_EMAIL = os.environ.get("INTERAC_EMAIL", "orders@fironova.com")
+# Confirmation automatique des virements Interac (Autodeposit) via Microsoft
+# Graph API (app-only / client credentials). Boîte surveillée = INTERAC_EMAIL.
+INTERAC_GRAPH_TENANT_ID = os.environ.get("INTERAC_GRAPH_TENANT_ID", "")
+INTERAC_GRAPH_CLIENT_ID = os.environ.get("INTERAC_GRAPH_CLIENT_ID", "")
+INTERAC_GRAPH_CLIENT_SECRET = os.environ.get("INTERAC_GRAPH_CLIENT_SECRET", "")
+INTERAC_GRAPH_USER = os.environ.get("INTERAC_GRAPH_USER", "").strip().lower() or INTERAC_EMAIL.lower()
 
 # Code d'accès facultatif demandé AVANT même l'écran de login admin, côté SPA
 # publique. Ne remplace pas l'auth (JWT + rôle restent la vraie barrière sur
@@ -6194,6 +6200,151 @@ async def crypto_status(order_id: str):
     return {"order_id": order_id, "payment_status": order.get("payment_status"), "np_status": np_status}
 
 
+# ---------------------------------------------------------------------------
+# Interac Autodeposit — confirmation automatique via Microsoft Graph API
+# ---------------------------------------------------------------------------
+
+_GRAPH_TOKEN_URL = "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+_GRAPH_API_URL = "https://graph.microsoft.com/v1.0"
+
+
+async def _graph_access_token() -> Optional[str]:
+    """Jeton OAuth2 app-only (client credentials) pour Microsoft Graph."""
+    if not (INTERAC_GRAPH_TENANT_ID and INTERAC_GRAPH_CLIENT_ID and INTERAC_GRAPH_CLIENT_SECRET):
+        return None
+    async with httpx.AsyncClient(timeout=20) as cx:
+        r = await cx.post(
+            _GRAPH_TOKEN_URL.format(tenant=INTERAC_GRAPH_TENANT_ID),
+            data={
+                "grant_type": "client_credentials",
+                "client_id": INTERAC_GRAPH_CLIENT_ID,
+                "client_secret": INTERAC_GRAPH_CLIENT_SECRET,
+                "scope": "https://graph.microsoft.com/.default",
+            },
+        )
+        r.raise_for_status()
+        data = r.json()
+    return data.get("access_token")
+
+
+async def _graph_unread_messages(token: str) -> list:
+    """Messages non lus de la boîte Interac (Graph app-only)."""
+    async with httpx.AsyncClient(timeout=30) as cx:
+        r = await cx.get(
+            f"{_GRAPH_API_URL}/users/{INTERAC_GRAPH_USER}/mailFolders/inbox/messages",
+            params={
+                "$filter": "isRead eq false",
+                "$top": 50,
+                "$select": "id,subject,from,body,receivedDateTime",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        r.raise_for_status()
+        data = r.json()
+    return data.get("value") or []
+
+
+async def _graph_mark_read(token: str, message_id: str) -> None:
+    async with httpx.AsyncClient(timeout=20) as cx:
+        await cx.patch(
+            f"{_GRAPH_API_URL}/users/{INTERAC_GRAPH_USER}/messages/{message_id}",
+            json={"isRead": True},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+
+def _strip_html(html: str) -> str:
+    return re.sub(r"<[^>]+>", " ", html or "")
+
+
+def _extract_interac_refs(text: str) -> list:
+    """Références de commande 'FN-XXXXXX-XXXXXX' trouvées dans un texte (dédupliquées)."""
+    return sorted({r.upper() for r in re.findall(r"FN-\d{6}-[0-9A-F]{6}", text.upper())})
+
+
+def _parse_amounts(text: str) -> list:
+    """Montants '$12.34' / '12.34 CAD' trouvés dans un texte."""
+    amounts = []
+    for m in re.finditer(r"\$\s?(\d[\d.,]*)|(\d[\d.,]*)\s*CAD", text, re.IGNORECASE):
+        raw = m.group(1) or m.group(2)
+        raw = raw.replace(",", "")
+        try:
+            amounts.append(round(float(raw), 2))
+        except ValueError:
+            continue
+    return amounts
+
+
+async def _process_interac_deposit_emails() -> int:
+    token = await _graph_access_token()
+    if not token:
+        return 0
+    try:
+        messages = await _graph_unread_messages(token)
+    except Exception as ex:
+        logging.error("Interac Graph: lecture de la boîte échouée: %s", ex)
+        return 0
+
+    processed = 0
+    for msg in messages:
+        from_addr = ((msg.get("from") or {}).get("emailAddress") or {}).get("address") or ""
+        if "interac" not in from_addr.lower():
+            continue  # pas une notification Interac — on laisse en non-lu
+        subject = msg.get("subject") or ""
+        body = msg.get("body") or {}
+        text = f"{subject}\n{_strip_html(body.get('content') or '')}"
+        refs = _extract_interac_refs(text)
+        acted = False
+        for ref in refs:
+            order = await db.orders.find_one(
+                {"order_number": ref, "payment_status": "awaiting_etransfer"}, {"_id": 0}
+            )
+            if not order:
+                continue
+            amounts = _parse_amounts(text)
+            order_total = float(order.get("total", 0))
+            if not amounts or not any(abs(a - order_total) <= 0.01 for a in amounts):
+                await db.orders.update_one({"id": order["id"]}, {"$push": {"notes": {
+                    "id": str(uuid.uuid4()),
+                    "text": (f"Notification de dépôt Interac reçue (réf {ref}) avec un montant "
+                             f"divergent — paiement NON auto-confirmé, à vérifier manuellement."),
+                    "author": "system",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }}})
+                logging.warning("Interac deposit: montant divergent pour %s — revue manuelle", ref)
+                acted = True
+                break
+            fresh = await _mark_order_paid(
+                order["id"],
+                f"Virement Interac confirmé (dépôt auto) — notification de dépôt reçue pour {ref}.",
+            )
+            if fresh:
+                logging.info("Order %s marked paid via Interac Autodeposit notification", ref)
+            acted = True
+            break
+        if acted:
+            try:
+                await _graph_mark_read(token, msg["id"])
+            except Exception:
+                pass
+            processed += 1
+    return processed
+
+
+INTERAC_GRAPH_POLL_SECONDS = int(os.environ.get("INTERAC_GRAPH_POLL_SECONDS", "120"))
+
+
+async def _interac_deposit_watchdog() -> None:
+    """Toutes les INTERAC_GRAPH_POLL_SECONDS : confirme les commandes Interac
+    dont le dépôt (Autodeposit) est notifié par email."""
+    while True:
+        try:
+            await _process_interac_deposit_emails()
+        except Exception as ex:  # pragma: no cover
+            logging.error("interac deposit watchdog failed: %s", ex)
+        await asyncio.sleep(INTERAC_GRAPH_POLL_SECONDS)
+
+
 @api.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     """Handle Stripe webhook events to mark orders as paid."""
@@ -7155,6 +7306,7 @@ async def startup_event():
         asyncio.create_task(_unpaid_orders_watchdog())
         asyncio.create_task(_backfill_dispatch_batch())
         asyncio.create_task(_release_preorders_watchdog())
+        asyncio.create_task(_interac_deposit_watchdog())
         # Dispatch manuel : watchdog d'auto-étiquetage désactivé.
         # asyncio.create_task(_auto_label_paid_orders_watchdog())
         asyncio.create_task(_auto_sync_delivered_orders_watchdog())
