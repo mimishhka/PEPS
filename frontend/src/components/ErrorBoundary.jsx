@@ -37,13 +37,13 @@ export default class ErrorBoundary extends React.Component {
         title: "Une erreur est survenue",
         body: "Quelque chose s'est mal passé de notre côté. Vous pouvez recharger la page ou revenir à l'accueil.",
         cta: "Retour à l'accueil",
-        ruo: "Produits destinés à la recherche uniquement (RUO) · 18+",
+        ruo: "Produits destinés à la recherche uniquement (RUO) · 19+",
       },
       en: {
         title: "Something went wrong",
         body: "An unexpected error occurred on our side. You can reload the page or return home.",
         cta: "Back to home",
-        ruo: "For Research Use Only (RUO) · 18+",
+        ruo: "For Research Use Only (RUO) · 19+",
       },
     }[lang];
 
@@ -71,8 +71,8 @@ export default class ErrorBoundary extends React.Component {
             fontSize: 15, cursor: "pointer",
           }}>{t.cta}</button>
           <p style={{
-            color: "#94A3B8", fontSize: 11, marginTop: 32,
-            fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.05em",
+            color: "#3E5C76", fontSize: 11, marginTop: 32,
+            fontFamily: "Inter, sans-serif", letterSpacing: "0.05em",
           }}>{t.ruo}</p>
         </div>
       </div>

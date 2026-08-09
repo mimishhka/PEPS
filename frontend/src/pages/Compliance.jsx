@@ -84,8 +84,8 @@ const TERMS = [
     fr: { title: "Politique de retour" },
     paras: [
       {
-        en: "FIRONOVA does not accept returns. Every sale is final as soon as the order is placed, except in the case of a documented product defect reported within 48 hours of delivery.",
-        fr: "FIRONOVA n'accepte aucun retour. Toute vente est finale dès que la commande est passée, sauf en cas de défaut de produit documenté et signalé dans les 48 heures suivant la livraison.",
+        en: "FIRONOVA does not accept returns. Every sale is final as soon as the order is placed, except in the case of a documented product defect reported within 48 hours of delivery to info@fironova.com.",
+        fr: "FIRONOVA n'accepte aucun retour. Toute vente est finale dès que la commande est passée, sauf en cas de défaut de produit documenté et signalé à l'adresse info@fironova.com dans les 48 heures suivant la livraison.",
       },
     ],
   },
@@ -329,8 +329,8 @@ const SHIPPING = [
     fr: { title: "Retours" },
     paras: [
       {
-        en: "Due to the nature of the products, all sales are final. No returns or refunds, except in the case of a documented product defect reported within 48 hours of delivery.",
-        fr: "En raison de la nature des produits, toutes les ventes sont finales. Aucun retour ni remboursement, sauf en cas de défaut de produit documenté et signalé dans les 48 heures suivant la livraison.",
+        en: "Due to the nature of the products, all sales are final. No returns or refunds, except in the case of a documented product defect reported within 48 hours of delivery to info@fironova.com.",
+        fr: "En raison de la nature des produits, toutes les ventes sont finales. Aucun retour ni remboursement, sauf en cas de défaut de produit documenté et signalé à l'adresse info@fironova.com dans les 48 heures suivant la livraison.",
       },
     ],
   },

@@ -1016,17 +1016,7 @@ async def logout_all_devices(response: Response, user: dict = Depends(get_curren
 
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
-    # Indique si l'utilisateur a un compte affilié (actif/suspendu), pour
-    # afficher le lien "Espace affilié" (sinon la page /affiliate est inaccessible).
-    aff = await db.affiliates.find_one(
-        {"user_id": user["id"], "status": {"$in": ["active", "suspended"]}},
-        {"_id": 0, "status": 1, "code": 1},
-    )
-    out = dict(user)
-    out["is_affiliate"] = bool(aff)
-    out["affiliate_code"] = aff.get("code") if aff else None
-    out["affiliate_status"] = aff.get("status") if aff else None
-    return out
+    return user
 
 
 # ---------------------------------------------------------------------------
@@ -7595,6 +7585,18 @@ async def _backfill_affiliate_coupons() -> None:
 
 @app.on_event("startup")
 async def startup_event():
+    try:
+        await db.command("ping")
+    except Exception as e:
+        strict_startup = os.environ.get("STRICT_STARTUP_DB", "0").strip().lower() in ("1", "true", "yes", "on")
+        if strict_startup:
+            raise
+        logging.error(
+            "MongoDB unavailable at startup (%s). Continuing in degraded mode: seed and background tasks are skipped.",
+            e,
+        )
+        return
+
     await seed_admin_and_products()
     await _seed_categories_from_products()
     await _seed_default_menus()
@@ -7753,29 +7755,6 @@ def _affiliate_gen_code() -> str:
     # Code de parrainage lisible : FN + 6 caractères base32 sans ambiguïté.
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     return "FN" + "".join(secrets.choice(alphabet) for _ in range(6))
-
-
-async def _affiliate_gen_memorable_code(name: str) -> str:
-    """Code mémorisable basé sur le prénom (MARIE, ALEX...). Suffixe numérique
-    en cas de collision (MARIE, MARIE2...). Repli aléatoire si nom inexploitable."""
-    import re as _rc
-    first = (name or "").strip().split(" ")[0]
-    base = _rc.sub(r"[^A-Za-z]", "", first).upper()[:16]
-    if len(base) < 3:
-        code = _affiliate_gen_code()
-        for _ in range(6):
-            if await _affiliate_code_available(code):
-                return code
-            code = _affiliate_gen_code()
-        return code
-    candidate = base
-    n = 1
-    while not await _affiliate_code_available(candidate):
-        n += 1
-        candidate = f"{base}{n}"
-        if n > 999:
-            return _affiliate_gen_code()
-    return candidate
 
 
 def _affiliate_code_valid(code: str) -> bool:
@@ -8467,9 +8446,15 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request):
         raise HTTPException(403, "This invitation is bound to a different email address")
 
     code = (invite.get("code") or "").strip().upper()
-    if not code or not _affiliate_code_valid(code) or not await _affiliate_code_available(code, exclude_id=invite["id"]):
-        # Pas de code d'invitation valide -> génère un code mémorisable (prénom).
-        code = await _affiliate_gen_memorable_code(user.get("name") or invite.get("name") or "")
+    if not code or not _affiliate_code_valid(code):
+        code = _affiliate_gen_code()
+    if not await _affiliate_code_available(code, exclude_id=invite["id"]):
+        code = _affiliate_gen_code()  # collision ailleurs → on régénère
+    # collision improbable, mais on garantit l'unicité
+    for _ in range(5):
+        if not await db.affiliates.find_one({"code": code}, {"_id": 1}):
+            break
+        code = _affiliate_gen_code()
 
     known_addresses = []
     # (aucune adresse connue à l'activation ; se remplit via les commandes)
@@ -10472,7 +10457,7 @@ async def send_template_email(key: str, to: str, lang: str, ctx: dict, order: Op
     if not tpl:
         logging.warning("[email] template inconnu: %s", key); return
     subject, html = _email_render(tpl, lang, ctx or {}, order)
-    await _send_email(to, subject, html, email_key=key)
+    await _send_email(to, subject, html)
 
 
 class EmailTemplateIn(BaseModel):

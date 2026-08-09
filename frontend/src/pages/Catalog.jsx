@@ -99,6 +99,20 @@ export default function Catalog() {
         </aside>
 
         <section>
+          <div className="lg:hidden flex gap-2 overflow-x-auto pb-2 -mx-6 px-6 mb-4" data-testid="catalog-mobile-chips">
+            {chips.map((c) => (
+              <button
+                key={c.slug}
+                onClick={() => setParams(c.slug === "all" ? {} : { cat: c.slug })}
+                data-testid={`mobile-filter-${c.slug}`}
+                className={`shrink-0 rounded-full font-data text-xs font-semibold uppercase tracking-[0.16em] px-4 py-2 border-[1.5px] transition-colors ${
+                  active === c.slug ? "bg-nordfjord border-nordfjord text-white" : "border-ash bg-white text-glacier hover:border-nova hover:text-nova"
+                }`}
+              >
+                {catLabel(c, lang, t)}
+              </button>
+            ))}
+          </div>
           <div className="flex flex-col sm:flex-row gap-3 mb-8">
             <div className="flex-1 flex items-center gap-2.5 bg-white border border-ash rounded-full px-5 py-3">
               <Search size={16} className="text-glacier shrink-0" />

@@ -98,9 +98,12 @@ export default function Header() {
               data-testid="lang-toggle"
               onClick={toggle}
               className="rounded-full font-data text-xs font-semibold uppercase tracking-[0.18em] border-[1.5px] border-ash px-3 py-1.5 text-nordfjord hover:border-nova hover:text-nova transition-colors"
-              aria-label="Toggle language"
+              aria-label={lang === "en" ? "Switch to French" : "Passer à l'anglais"}
+              title={lang === "en" ? "Switch to French" : "Passer à l'anglais"}
             >
-              {lang === "en" ? "EN · FR" : "FR · EN"}
+              <span className={lang === "en" ? "text-nordfjord" : "text-glacier"}>EN</span>
+              <span className="text-ash mx-0.5" aria-hidden="true">/</span>
+              <span className={lang === "fr" ? "text-nordfjord" : "text-glacier"}>FR</span>
             </button>
             <button
               data-testid="cart-button"

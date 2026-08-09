@@ -55,7 +55,7 @@ export default function StaffAccept() {
     <div className="min-h-[80vh] flex items-center justify-center px-6" data-testid="staff-accept-page">
       <form onSubmit={onSubmit} className="w-full max-w-sm">
         <div className="font-display font-extrabold text-2xl tracking-tight mb-1">
-          FIRONOVA<span style={{ color: "#C20114" }}>.</span>
+          FIRONOVA<span style={{ color: "#00B8D4" }}>.</span>
         </div>
         <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-8">
           // Team invitation
@@ -71,13 +71,13 @@ export default function StaffAccept() {
               <label className="block font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60 mb-1">Password</label>
               <input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)}
                 data-testid="staff-accept-password"
-                className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal" />
+                className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-nova" />
             </div>
             <div>
               <label className="block font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60 mb-1">Confirm password</label>
               <input type="password" required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)}
                 data-testid="staff-accept-confirm"
-                className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal" />
+                className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-nova" />
             </div>
             <button type="submit" disabled={busy} data-testid="staff-accept-submit"
               className="w-full bg-ink text-white font-mono text-xs uppercase tracking-[0.3em] py-4 hover:bg-foreground/85 disabled:opacity-50">

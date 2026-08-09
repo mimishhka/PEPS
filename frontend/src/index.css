@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -22,7 +22,7 @@
   --sp: 8px;
   --display: 'Space Grotesk', sans-serif;
   --body: 'Inter', sans-serif;
-  --data: 'JetBrains Mono', monospace;
+  --data: 'Inter', sans-serif;
 }
 
 @layer base {
@@ -38,6 +38,22 @@
     font-family: var(--display);
     line-height: 1.12;
     letter-spacing: -0.01em;
+  }
+
+  /* Accessibilité clavier : indicateur de focus visible sur tout ce qui est
+     focusable, avec la « spark » nova. Les composants qui ont déjà un état
+     de focus propre (border nova) conservent le leur. */
+  :focus-visible {
+    outline: 2px solid var(--nova);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--nova);
+    border-radius: 2px;
   }
 }
 
@@ -72,6 +88,11 @@
     color: var(--nordfjord);
   }
   .btn-nova:hover { background: #00A3BC; transform: translateY(-1px); }
+  .btn-nova-sm {
+    font-size: 13px;
+    padding: 10px 22px;
+    letter-spacing: 0.06em;
+  }
   .btn-outline {
     background: transparent;
     color: var(--nordfjord);
@@ -89,6 +110,23 @@
     font-size: 12px;
     letter-spacing: 0.03em;
   }
+
+  /* functional warning banner — amber means "act" (identity §05) */
+  .warn-banner {
+    @apply flex items-start gap-3 rounded-lg;
+    background: #FDF6E9;
+    border: 1px solid var(--warning);
+    border-left: 4px solid var(--warning);
+    padding: 16px 18px;
+  }
+  .warn-banner .wt {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 14px;
+    color: #8A5A16;
+    margin-bottom: 3px;
+  }
+  .warn-banner p { font-size: 13px; color: #8A5A16; }
 
   /* card hover lift */
   .card-hover { transition: transform .2s ease, box-shadow .2s ease; }

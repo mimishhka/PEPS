@@ -34,9 +34,10 @@ export function AuthProvider({ children }) {
 
   const register = useCallback(async (name, email, password) => {
     try {
-      const { data } = await api.post("/auth/register", { name, email, password });
-      setUser({ id: data.id, email: data.email, name: data.name, role: data.role, created_at: data.created_at });
-      return { ok: true };
+      const { data } = await api.post("/auth/register", { name, email, password, website: "" });
+      // Plus de session immédiate : l'inscription par mot de passe exige une
+      // activation par email (verification_sent). Le cookie est posé à l'activation.
+      return { ok: true, data };
     } catch (e) {
       return { ok: false, error: formatApiError(e.response?.data?.detail) || e.message };
     }
@@ -45,7 +46,7 @@ export function AuthProvider({ children }) {
   // Magic link — envoie l'email (create=true pour l'inscription passwordless).
   const requestMagic = useCallback(async ({ email, name, create, lang }) => {
     try {
-      await api.post("/auth/magic/request", { email, name, create: !!create, lang: lang || "fr" });
+      await api.post("/auth/magic/request", { email, name, create: !!create, lang: lang || "fr", website: "" });
       return { ok: true };
     } catch (e) {
       return { ok: false, error: formatApiError(e.response?.data?.detail) || e.message };

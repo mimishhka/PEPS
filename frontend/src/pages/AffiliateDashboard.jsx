@@ -3,8 +3,14 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
+  ComposedChart, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
+import { QRCodeSVG } from "qrcode.react";
+import {
+  MousePointerClick, ShoppingBag, Wallet, Download, ShieldAlert,
+  MessageCircle, Send, Mail, Activity,
+} from "lucide-react";
 import api, { formatApiError } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
@@ -27,6 +33,65 @@ const COMPLIANCE_META = {
 
 const money = (n) => `$${Number(n || 0).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+const toCsv = (headers, rows) =>
+  [headers.map(esc).join(","), ...rows.map((r) => r.map(esc).join(","))].join("\r\n");
+
+const downloadCsv = (filename, headers, rows) => {
+  const blob = new Blob(["\uFEFF" + toCsv(headers, rows)], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const PAGE_SIZE = 10;
+const fmtDate = (iso, lang) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d)) return "—";
+  return d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
+    { year: "numeric", month: "short", day: "numeric" });
+};
+const fmtDateTime = (iso, lang) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d)) return "—";
+  return d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
+    { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+};
+
+const REFERRAL_STATUS_META = {
+  pending: { fr: "En attente", en: "Pending", cls: "bg-ash/50 text-glacier" },
+  approved: { fr: "Approuvé", en: "Approved", cls: "bg-nova/15 text-nordfjord" },
+  paid: { fr: "Payé", en: "Paid", cls: "bg-success/15 text-success" },
+  reversed: { fr: "Annulé", en: "Reversed", cls: "bg-error/15 text-error" },
+};
+
+function Pagination({ page, total, pageSize, onChange, L }) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (pages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between px-6 py-3 border-t border-ash">
+      <p className="text-[11px] text-glacier">
+        {L("Page", "Page")} {page} / {pages}
+      </p>
+      <div className="flex gap-1.5">
+        <button disabled={page <= 1} onClick={() => onChange(page - 1)}
+          className="px-3 py-1 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical disabled:opacity-40">
+          {L("Précédent", "Prev")}
+        </button>
+        <button disabled={page >= pages} onClick={() => onChange(page + 1)}
+          className="px-3 py-1 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical disabled:opacity-40">
+          {L("Suivant", "Next")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AffiliateDashboard() {
   useDocumentHead({ title: "Affiliate Dashboard", path: "/affiliate", noindex: true });
   const { user } = useAuth();
@@ -39,9 +104,14 @@ export default function AffiliateDashboard() {
   const [referrals, setReferrals] = useState([]);
   const [payouts, setPayouts] = useState([]);
   const [series, setSeries] = useState([]);
+  const [clicksStats, setClicksStats] = useState(null);
   const [insights, setInsights] = useState(null);
+  const [sources, setSources] = useState(null);
+  const [activity, setActivity] = useState([]);
   const [tab, setTab] = useState("overview");
   const [copied, setCopied] = useState(false);
+  const [refPage, setRefPage] = useState(1);
+  const [payPage, setPayPage] = useState(1);
 
   // Payout settings form
   const [payAddr, setPayAddr] = useState("");
@@ -55,16 +125,23 @@ export default function AffiliateDashboard() {
       setData(me.data);
       setPayAddr(me.data.payout_address || "");
       setPayCur(me.data.payout_currency || "btc");
+      setRefPage(1); setPayPage(1);
       // Résilient : un endpoint qui échoue ne casse pas tout le tableau de bord.
-      const [r, p, perf, ins] = await Promise.allSettled([
+      const [r, p, perf, ins, ck, src, act] = await Promise.allSettled([
         api.get("/affiliate/referrals"),
         api.get("/affiliate/payouts"),
         api.get("/affiliate/performance"),
         api.get("/affiliate/insights"),
+        api.get("/affiliate/clicks"),
+        api.get("/affiliate/clicks/sources"),
+        api.get("/affiliate/activity"),
       ]);
       setReferrals(r.status === "fulfilled" ? (r.value.data || []) : []);
       setPayouts(p.status === "fulfilled" ? (p.value.data || []) : []);
       setInsights(ins.status === "fulfilled" ? (ins.value.data || null) : null);
+      setClicksStats(ck.status === "fulfilled" ? (ck.value.data || null) : null);
+      setSources(src.status === "fulfilled" ? (src.value.data || null) : null);
+      setActivity(act.status === "fulfilled" ? (act.value.data || []) : []);
       const perfData = perf.status === "fulfilled" ? perf.value.data : null;
       setSeries((perfData?.series || []).map((s) => ({
         month: s.month,
@@ -96,6 +173,40 @@ export default function AffiliateDashboard() {
       toast.error(L("Copie impossible", "Copy failed"));
     }
   };
+
+  const share = (kind) => {
+    const url = encodeURIComponent(refLink);
+    const text = encodeURIComponent(
+      L(`Découvrez la gamme Fironova avec mon code promo ${refCode || ""}`, `Check out Fironova with my promo code ${refCode || ""}`)
+    );
+    const targets = {
+      whatsapp: `https://wa.me/?text=${text}%20${url}`,
+      telegram: `https://t.me/share/url?url=${url}&text=${text}`,
+      email: `mailto:?subject=${encodeURIComponent(L("Recommandation Fironova", "Fironova recommendation"))}&body=${text}%20${url}`,
+    };
+    try { window.open(targets[kind], "_blank", "noopener,noreferrer"); }
+    catch { toast.error(L("Ouverture impossible", "Unable to open")); }
+  };
+
+  const exportReferrals = () =>
+    downloadCsv(
+      `fironova-referrals-${refCode}.csv`,
+      ["Order", "Base", "Commission", "Status", "Date"],
+      referrals.map((r) => [
+        r.order_number, r.base_amount, r.commission_amount, r.status,
+        fmtDate(r.created_at, lang),
+      ])
+    );
+
+  const exportPayouts = () =>
+    downloadCsv(
+      `fironova-payouts-${refCode}.csv`,
+      ["Period", "Amount", "Currency", "Status", "Reference"],
+      payouts.map((p) => [p.period, p.amount, p.currency, p.status, p.reference])
+    );
+
+  const refPageRows = referrals.slice((refPage - 1) * PAGE_SIZE, refPage * PAGE_SIZE);
+  const payPageRows = payouts.slice((payPage - 1) * PAGE_SIZE, payPage * PAGE_SIZE);
 
   const savePayout = async () => {
     if (!payAddr.trim()) {
@@ -182,6 +293,11 @@ export default function AffiliateDashboard() {
                   style={{ background: `${tierColor}1a`, color: tierColor }}>
               {tierLabel} · {Math.round((data?.commission_rate || 0) * 100)}%
             </span>
+            {data?.tier_is_manual && (
+              <span className="px-3 py-1.5 rounded-full font-data text-[11px] font-semibold uppercase tracking-wider bg-warning/15 text-warning">
+                {L("Palier manuel", "Manual tier")}
+              </span>
+            )}
             <span className={`px-3 py-1.5 rounded-full font-data text-[11px] font-semibold ${comp.cls}`}>
               {comp.dot} {comp[lang]}
             </span>
@@ -270,20 +386,118 @@ export default function AffiliateDashboard() {
               )}
             </div>
 
+            {/* Garde-fou trimestriel : sécuriser son palier */}
+            {data?.quarter_target > 0 && (
+              <div className={`bg-white rounded-2xl border p-6 ${data.quarter_warning ? "border-warning/50 bg-warning/5" : "border-ash"}`}>
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+                      {L("SÉCURISEZ VOTRE PALIER", "PROTECT YOUR TIER")}
+                    </p>
+                    <p className="font-display text-2xl font-bold text-nordfjord tabular-nums">
+                      {money(data.quarter_revenue)}
+                      <span className="text-sm font-medium text-glacier"> / {money(data.quarter_target)}</span>
+                    </p>
+                  </div>
+                  {data.quarter_warning && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-warning/15 text-warning text-[11px] font-semibold">
+                      <ShieldAlert size={14} />
+                      {L("Sous le plancher", "Below floor")}
+                    </span>
+                  )}
+                </div>
+                <div className="h-3 rounded-full bg-ash overflow-hidden">
+                  <div className="h-full rounded-full transition-all"
+                       style={{ width: `${Math.min(100, Math.round((data.quarter_progress || 0) * 100))}%`,
+                                background: data.quarter_warning ? "#E8A33D" : "#00B8D4" }} />
+                </div>
+                <p className="font-data text-[11px] text-glacier mt-2">
+                  {data.quarter_warning ? (
+                    <>{L(
+                      "Votre CA du trimestre est sous le plancher de votre palier. À la prochaine réévaluation (",
+                      "Your quarterly revenue is below your tier floor. At the next review (")}
+                      {fmtDate(data.next_review, lang)}
+                      {L("), vous pourriez descendre d'un palier.", "), you could drop one tier.")}
+                    </>
+                  ) : (
+                    <>{L(
+                      "Maintenez au moins ce montant de ventes validées d'ici la prochaine réévaluation (",
+                      "Keep at least this amount of validated sales before the next review (")}
+                      {fmtDate(data.next_review, lang)}
+                      {L(") pour conserver votre palier.", ") to keep your tier.")}
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
+
+            {/* Activité récente */}
+            <div className="bg-white rounded-2xl border border-ash p-6">
+              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
+                {L("ACTIVITÉ RÉCENTE", "RECENT ACTIVITY")}
+              </p>
+              {activity.length === 0 ? (
+                <p className="text-glacier text-sm py-6 text-center">
+                  {L("Aucune activité pour l'instant.", "No activity yet.")}
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {activity.slice(0, 8).map((e, i) => (
+                    <ActivityRow key={i} e={e} L={L} lang={lang} money={money} fmtDateTime={fmtDateTime} />
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Referral link */}
             <div className="bg-white rounded-2xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
                 {L("VOTRE LIEN DE PARRAINAGE", "YOUR REFERRAL LINK")}
               </p>
-              <div className="flex flex-wrap items-center gap-3">
-                <code className="flex-1 min-w-[240px] font-data text-sm text-nordfjord bg-clinical rounded-lg px-4 py-3 border border-ash break-all">
-                  {refLink}
-                </code>
-                <button onClick={copyLink} data-testid="affiliate-copy-link"
-                        className="px-5 py-3 rounded-full bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition">
-                  {copied ? L("Copié ✓", "Copied ✓") : L("Copier", "Copy")}
-                </button>
+              <div className="flex flex-col sm:flex-row gap-5">
+                <div className="flex-1">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <code className="flex-1 min-w-[240px] font-data text-sm text-nordfjord bg-clinical rounded-lg px-4 py-3 border border-ash break-all">
+                      {refLink}
+                    </code>
+                    <button onClick={copyLink} data-testid="affiliate-copy-link"
+                            className="px-5 py-3 rounded-full bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition">
+                      {copied ? L("Copié ✓", "Copied ✓") : L("Copier", "Copy")}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 mt-4">
+                    <button onClick={() => share("whatsapp")} title={L("WhatsApp", "WhatsApp")}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ash text-xs text-nordfjord hover:bg-clinical transition">
+                      <MessageCircle size={14} className="text-success" /> WhatsApp
+                    </button>
+                    <button onClick={() => share("telegram")} title={L("Telegram", "Telegram")}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ash text-xs text-nordfjord hover:bg-clinical transition">
+                      <Send size={14} className="text-nova" /> Telegram
+                    </button>
+                    <button onClick={() => share("email")} title={L("Email", "Email")}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-ash text-xs text-nordfjord hover:bg-clinical transition">
+                      <Mail size={14} className="text-nordfjord" /> Email
+                    </button>
+                  </div>
+                </div>
+                {refLink && (
+                  <div className="shrink-0 flex flex-col items-center gap-2">
+                    <div className="bg-white border border-ash rounded-xl p-3">
+                      <QRCodeSVG value={refLink} size={120} level="M" fgColor="#0B2E4F" />
+                    </div>
+                    <p className="font-data text-[10px] uppercase tracking-wider text-glacier">
+                      {L("Scanner pour partager", "Scan to share")}
+                    </p>
+                  </div>
+                )}
               </div>
+              <p className="font-data text-[11px] text-glacier mt-3 leading-relaxed">
+                {L("Code promo à donner à vos clients", "Promo code to give your customers")} :{" "}
+                <span className="font-mono text-nordfjord font-semibold">{data?.coupon_code || refCode}</span>
+                {data?.coupon_percent > 0
+                  ? L(` — ${data.coupon_percent}% de rabais sur leur commande`, ` — ${data.coupon_percent}% off their order`)
+                  : L(" — rabais désactivé", " — discount disabled")}
+              </p>
               <p className="font-data text-[11px] text-glacier mt-3 leading-relaxed">
                 {L(
                   "Communication privée uniquement — ne partagez jamais ce lien via des publications, vidéos ou forums publics.",
@@ -322,13 +536,79 @@ export default function AffiliateDashboard() {
               )}
             </div>
 
+            {/* Clics & conversions — 30 derniers jours */}
+            <div className="bg-white rounded-2xl border border-ash p-6">
+              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
+                {L("CLICS & CONVERSIONS — 30 DERNIERS JOURS", "CLICKS & CONVERSIONS — LAST 30 DAYS")}
+              </p>
+              {!clicksStats?.series?.length || (clicksStats.summary?.total_clicks || 0) === 0 ? (
+                <p className="text-glacier text-sm py-12 text-center">
+                  {L("Aucun clic enregistré pour l'instant.", "No clicks recorded yet.")}
+                </p>
+              ) : (
+                <div style={{ width: "100%", height: 240 }}>
+                  <ResponsiveContainer>
+                    <ComposedChart data={clicksStats.series} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                      <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#64748B" }}
+                        tickFormatter={(d) => d.slice(5)} />
+                      <YAxis tick={{ fontSize: 11, fill: "#64748B" }} allowDecimals={false} />
+                      <Tooltip formatter={(v) => Number(v).toLocaleString("en-CA")}
+                        labelFormatter={(d) => new Date(d).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA")} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="clicks" name={L("Clics", "Clicks")} fill="#E2E8F0" radius={[3, 3, 0, 0]} />
+                      <Line type="monotone" dataKey="conversions"
+                        name={L("Conversions", "Conversions")} stroke="#00B8D4" strokeWidth={2} dot={{ r: 3 }} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+              {clicksStats?.summary && (
+                <p className="font-data text-[11px] text-glacier mt-3">
+                  {L("Taux de conversion (30 j)", "Conversion rate (30d)")} :{" "}
+                  <span className="text-nordfjord font-semibold">
+                    {clicksStats.summary.conversion_rate != null
+                      ? `${(clicksStats.summary.conversion_rate * 100).toFixed(1)}%`
+                      : "—"}
+                  </span>
+                  {" · "}
+                  {L("Ventes validées", "Validated sales")} :{" "}
+                  <span className="text-nordfjord font-semibold">{clicksStats.summary.total_conversions}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Top sources des clics */}
+            <div className="bg-white rounded-2xl border border-ash p-6">
+              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+                {L("SOURCES DE VOS CLICS", "WHERE YOUR CLICKS COME FROM")}
+              </p>
+              <p className="font-data text-[11px] text-glacier mb-4">
+                {L("Derniers 30 jours — pages d'atterrissage, référents et appareils.",
+                   "Last 30 days — landing pages, referrers and devices.")}
+              </p>
+              {!sources || sources.total_clicks === 0 ? (
+                <p className="text-glacier text-sm py-8 text-center">
+                  {L("Aucun clic enregistré pour l'instant.", "No clicks recorded yet.")}
+                </p>
+              ) : (
+                <SourcesGrid sources={sources} L={L} lang={lang} />
+              )}
+            </div>
+
             <div className="bg-white rounded-2xl border border-ash overflow-hidden">
-              <div className="px-6 py-4 border-b border-ash">
+              <div className="px-6 py-4 border-b border-ash flex items-center justify-between">
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
                   {L("COMMANDES VALIDÉES", "VALIDATED ORDERS")}
                 </p>
+                <button onClick={exportReferrals}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical transition">
+                  <Download size={13} /> CSV
+                </button>
               </div>
-              <ReferralTable rows={referrals} lang={lang} L={L} money={money} />
+              <ReferralTable rows={refPageRows} lang={lang} L={L} money={money} />
+              <Pagination page={refPage} total={referrals.length} pageSize={PAGE_SIZE}
+                onChange={setRefPage} L={L} />
             </div>
           </div>
         )}
@@ -342,16 +622,21 @@ export default function AffiliateDashboard() {
               <KpiCard label={L("Payé", "Paid")} value={money(data?.paid_commission)} accent />
             </div>
             <div className="bg-white rounded-2xl border border-ash overflow-hidden">
-              <div className="px-6 py-4 border-b border-ash">
+              <div className="px-6 py-4 border-b border-ash flex items-center justify-between">
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
                   {L("HISTORIQUE DES PAIEMENTS", "PAYMENT HISTORY")}
                 </p>
+                <button onClick={exportPayouts}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical transition">
+                  <Download size={13} /> CSV
+                </button>
               </div>
               {payouts.length === 0 ? (
                 <p className="text-glacier text-sm py-12 text-center">
                   {L("Aucun paiement pour l'instant.", "No payments yet.")}
                 </p>
               ) : (
+                <>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -364,7 +649,7 @@ export default function AffiliateDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {payouts.map((p) => (
+                      {payPageRows.map((p) => (
                         <tr key={p.id} className="border-b border-ash/60">
                           <td className="px-6 py-3 font-data text-nordfjord">{p.period}</td>
                           <td className="px-6 py-3 font-semibold text-nordfjord">{money(p.amount)}</td>
@@ -380,6 +665,9 @@ export default function AffiliateDashboard() {
                     </tbody>
                   </table>
                 </div>
+                <Pagination page={payPage} total={payouts.length} pageSize={PAGE_SIZE}
+                  onChange={setPayPage} L={L} />
+                </>
               )}
             </div>
           </div>
@@ -487,6 +775,134 @@ function MiniInsight({ label, value }) {
     <div className="rounded-xl border border-ash bg-white px-4 py-3">
       <p className="font-data text-[10px] font-semibold uppercase tracking-[0.18em] text-glacier mb-1">{label}</p>
       <p className="font-display text-xl font-bold text-nordfjord tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+function SourceBars({ rows, max, fmt, L }) {
+  if (!rows || rows.length === 0) {
+    return <p className="text-glacier text-[11px]">{L("Aucune donnée.", "No data.")}</p>;
+  }
+  const n = max || rows[0]?.clicks || 1;
+  return (
+    <div className="space-y-1.5">
+      {rows.map((r) => (
+        <div key={r.source} className="flex items-center gap-2">
+          <span className="text-[11px] text-nordfjord w-[120px] truncate" title={r.source}>{fmt(r.source)}</span>
+          <div className="flex-1 h-2 rounded-full bg-ash overflow-hidden">
+            <div className="h-full rounded-full bg-nova" style={{ width: `${Math.max(2, (r.clicks / n) * 100)}%` }} />
+          </div>
+          <span className="text-[11px] text-glacier tabular-nums w-8 text-right">{r.clicks}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SourcesGrid({ sources, L, lang }) {
+  const devLabels = {
+    desktop: L("Ordinateur", "Desktop"),
+    mobile: L("Mobile", "Mobile"),
+    tablet: L("Tablette", "Tablet"),
+    unknown: L("Inconnu", "Unknown"),
+  };
+  const devices = Object.entries(sources.devices || {}).sort((a, b) => b[1] - a[1]);
+  const devTotal = devices.reduce((s, [, n]) => s + n, 0) || 1;
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div>
+        <p className="font-data text-[10px] uppercase tracking-wider text-glacier mb-2">
+          {L("PAGES D'ATTERRISSAGE", "LANDING PAGES")}
+        </p>
+        <SourceBars rows={sources.top_pages} L={L}
+          fmt={(s) => (s === "direct" ? L("Accès direct", "Direct") : s)} />
+      </div>
+      <div>
+        <p className="font-data text-[10px] uppercase tracking-wider text-glacier mb-2">
+          {L("RÉFÉRENTS", "REFERRERS")}
+        </p>
+        <SourceBars rows={sources.top_referrers} L={L}
+          fmt={(s) => (s === "direct" ? L("Accès direct", "Direct") : s)} />
+      </div>
+      <div>
+        <p className="font-data text-[10px] uppercase tracking-wider text-glacier mb-2">
+          {L("APPAREILS", "DEVICES")}
+        </p>
+        <div className="space-y-1.5">
+          {devices.length === 0 && (
+            <p className="text-glacier text-[11px]">{L("Aucune donnée.", "No data.")}</p>
+          )}
+          {devices.map(([k, n]) => (
+            <div key={k} className="flex items-center gap-2">
+              <span className="text-[11px] text-nordfjord w-[120px] truncate">{devLabels[k] || k}</span>
+              <div className="flex-1 h-2 rounded-full bg-ash overflow-hidden">
+                <div className="h-full rounded-full bg-nova" style={{ width: `${Math.max(2, (n / devTotal) * 100)}%` }} />
+              </div>
+              <span className="text-[11px] text-glacier tabular-nums w-8 text-right">{Math.round((n / devTotal) * 100)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActivityRow({ e, L, lang, money, fmtDateTime }) {
+  if (e.type === "click") {
+    return (
+      <div className="flex items-center gap-3 py-2 border-b border-ash/40 last:border-0">
+        <span className="w-8 h-8 rounded-lg bg-nova/10 text-nova grid place-items-center shrink-0">
+          <MousePointerClick size={15} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-nordfjord">
+            {L("Clic sur votre lien", "Click on your link")}
+            {e.label ? <span className="text-glacier"> · {e.label}</span> : null}
+          </p>
+        </div>
+        <span className="text-[11px] text-glacier shrink-0">{fmtDateTime(e.at, lang)}</span>
+      </div>
+    );
+  }
+  if (e.type === "referral") {
+    const m = REFERRAL_STATUS_META[e.status] || REFERRAL_STATUS_META.pending;
+    return (
+      <div className="flex items-center gap-3 py-2 border-b border-ash/40 last:border-0">
+        <span className="w-8 h-8 rounded-lg bg-success/10 text-success grid place-items-center shrink-0">
+          <ShoppingBag size={15} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-nordfjord">
+            {L("Commande", "Order")} <span className="font-semibold">{e.label || "—"}</span>
+            {e.base != null ? <span className="text-glacier"> · {money(e.base)}</span> : null}
+          </p>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${m.cls}`}>
+            {lang === "fr" ? m.fr : m.en}
+          </span>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-sm font-semibold text-nordfjord tabular-nums">{money(e.amount)}</p>
+          <p className="text-[11px] text-glacier">{fmtDateTime(e.at, lang)}</p>
+        </div>
+      </div>
+    );
+  }
+  // payout
+  return (
+    <div className="flex items-center gap-3 py-2 border-b border-ash/40 last:border-0">
+      <span className="w-8 h-8 rounded-lg bg-warning/10 text-warning grid place-items-center shrink-0">
+        <Wallet size={15} />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-nordfjord">
+          {L("Paiement", "Payout")} <span className="font-semibold">{e.label || "—"}</span>
+        </p>
+        <p className="text-[11px] text-glacier uppercase">{e.status}</p>
+      </div>
+      <div className="text-right shrink-0">
+        <p className="text-sm font-semibold text-nordfjord tabular-nums">{money(e.amount)}</p>
+        <p className="text-[11px] text-glacier">{fmtDateTime(e.at, lang)}</p>
+      </div>
     </div>
   );
 }

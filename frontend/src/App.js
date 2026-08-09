@@ -12,7 +12,9 @@ import Header from "./components/Header";
 import ScrollToTop from "./components/ScrollToTop";
 import Footer from "./components/Footer";
 import AgeGate from "./components/AgeGate";
+import CookieConsent from "./components/CookieConsent";
 import CartDrawer from "./components/CartDrawer";
+import { ConfirmProvider } from "./components/ConfirmDialog";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminGate from "./components/AdminGate";
 
@@ -33,6 +35,7 @@ import Privacy from "./pages/Privacy";
 import Faq from "./pages/Faq";
 import AffiliateDashboard from "./pages/AffiliateDashboard";
 import AffiliateJoin from "./pages/AffiliateJoin";
+import StaffAccept from "./pages/StaffAccept";
 import useAffiliateRef from "./hooks/useAffiliateRef";
 import NotFound from "./pages/NotFound";
 
@@ -53,6 +56,7 @@ function Shell({ children }) {
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <AgeGate />
+      <CookieConsent />
       <Header />
       <CartDrawer />
       <main className="flex-1">{children}</main>
@@ -124,6 +128,7 @@ function AppRoutes() {
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/faq" element={<Faq />} />
       <Route path="/affiliate/join" element={<AffiliateJoin />} />
+      <Route path="/staff-accept" element={<StaffAccept />} />
       <Route path="/affiliate" element={<ProtectedRoute><AffiliateDashboard /></ProtectedRoute>} />
       <Route
         path={`${ADMIN_PATH}/*`}
@@ -153,7 +158,9 @@ export default function App() {
         <LanguageProvider>
           <AuthProvider>
             <CartProvider>
-              <GatedApp />
+              <ConfirmProvider>
+                <GatedApp />
+              </ConfirmProvider>
             </CartProvider>
           </AuthProvider>
         </LanguageProvider>

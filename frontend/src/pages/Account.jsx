@@ -2,16 +2,16 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import api, { formatApiError } from "../lib/api";
+import api, { formatApiError, resolveAssetUrl } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
+import { useConfirm } from "../components/ConfirmDialog";
 import useDocumentHead from "../hooks/useDocumentHead";
 
-// Statuts de paiement : couleur + libellé lisible bilingue (les 9 statuts backend).
+// Statuts de paiement : couleur + libellé lisible bilingue (les 8 statuts backend).
 const PAYMENT_STATUS = {
   awaiting_etransfer: { cls: "bg-warning/15 text-warning border border-warning/30", fr: "En attente · Interac", en: "Awaiting · Interac" },
   awaiting_crypto:    { cls: "bg-warning/15 text-warning border border-warning/30", fr: "En attente · crypto", en: "Awaiting · crypto" },
-  awaiting_stripe:    { cls: "bg-warning/15 text-warning border border-warning/30", fr: "En attente · carte", en: "Awaiting · card" },
   pending:            { cls: "bg-ash/40 text-nordfjord border border-ash", fr: "En attente", en: "Pending" },
   paid:               { cls: "bg-nova/15 text-nova border border-nova/30", fr: "Payée", en: "Paid" },
   refunded:           { cls: "bg-glacier/15 text-glacier border border-glacier/30", fr: "Remboursée", en: "Refunded" },
@@ -73,6 +73,7 @@ export default function Account() {
         <div className="flex flex-wrap gap-1 border-b border-ash mb-10" data-testid="account-tabs">
           {[
             ["orders", t("account.orders")],
+            ["wishlist", t("account.wishlist")],
             ["profile", t("account.profile")],
             ["addresses", t("account.addresses")],
             ["security", t("account.security")],
@@ -91,6 +92,7 @@ export default function Account() {
         </div>
 
         {tab === "orders" && <OrdersTab t={t} lang={lang} />}
+        {tab === "wishlist" && <WishlistTab t={t} lang={lang} />}
         {tab === "profile" && <ProfileTab t={t} user={user} refresh={refresh} />}
         {tab === "addresses" && <AddressesTab t={t} />}
         {tab === "security" && <SecurityTab t={t} logout={logout} navigate={navigate} />}
@@ -162,6 +164,87 @@ function OrdersTab({ t, lang }) {
   return (
     <div className="space-y-2" data-testid="account-orders">
       {orders.map((o) => <OrderCard key={o.id} o={o} t={t} lang={lang} />)}
+    </div>
+  );
+}
+
+/* Wishlist */
+function WishlistTab({ t, lang }) {
+  const [items, setItems] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+
+  const load = useCallback(() => {
+    api.get("/account/wishlist").then((r) => setItems(r.data?.items || [])).catch(() => setItems([]));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const remove = async (item) => {
+    setBusyId(item.product_id);
+    try {
+      await api.delete(`/account/wishlist/${item.product_id}`);
+      setItems((prev) => prev.filter((x) => x.product_id !== item.product_id));
+      toast.success(lang === "fr" ? "Retiré de la liste d'envies" : "Removed from wishlist");
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail) || err.message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (items === null) {
+    return (
+      <div className="space-y-2" data-testid="account-wishlist-loading">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="rounded-xl border border-ash bg-white px-4 py-3 animate-pulse flex items-center gap-4">
+            <div className="w-14 h-14 rounded-lg bg-ash/50 shrink-0" />
+            <div className="flex-1"><div className="h-3.5 w-40 bg-ash/50 rounded mb-2" /><div className="h-2.5 w-24 bg-ash/40 rounded" /></div>
+            <div className="h-3.5 w-14 bg-ash/50 rounded" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="rounded-2xl border border-ash bg-white p-10 text-center" data-testid="account-no-wishlist">
+        <p className="font-display text-lg font-bold text-nordfjord">{t("account.wishlist")}</p>
+        <p className="text-glacier mt-1">{t("account.noWishlist")}</p>
+        <Link to="/catalog" className="inline-block mt-5 btn-pill btn-nova">{t("nav.catalog")} →</Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2" data-testid="account-wishlist">
+      {items.map((item) => {
+        const p = item.product || {};
+        const v = (p.variants || []).find((x) => x.id === item.variant_id) || p.variants?.[0];
+        const price = v && v.sale_price && v.sale_price < v.price ? v.sale_price : v?.price;
+        const name = lang === "fr" ? p.name_fr : p.name_en;
+        const img = p.images?.[0] || p.image_url;
+        const inStock = v ? Number(v.stock) > 0 : Number(p.stock) > 0;
+        return (
+          <div key={item.id} data-testid={`wishlist-row-${p.slug}`}
+            className="flex items-center gap-4 rounded-xl border border-ash bg-white px-4 py-3">
+            <Link to={`/product/${p.slug}`} className="shrink-0 w-14 h-14 rounded-lg overflow-hidden bg-ash/30">
+              {img && <img src={resolveAssetUrl(img)} alt="" className="w-full h-full object-cover" />}
+            </Link>
+            <Link to={`/product/${p.slug}`} className="min-w-0 flex-1">
+              <div className="font-display font-bold text-nordfjord text-sm truncate">{name || p.slug}</div>
+              <div className="font-data text-[11px] text-glacier mt-0.5 flex items-center gap-2">
+                {price != null ? `$${Number(price).toFixed(2)}` : "—"}
+                <span className={`w-2 h-2 rounded-full ${inStock ? "bg-success" : "bg-error"}`} />
+              </div>
+            </Link>
+            <button onClick={() => remove(item)} disabled={busyId === item.product_id}
+              data-testid={`wishlist-remove-${p.slug}`}
+              className="font-data text-[10px] uppercase tracking-[0.16em] text-error hover:opacity-70 shrink-0 disabled:opacity-40">
+              {busyId === item.product_id ? "…" : t("common.remove")}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -250,6 +333,7 @@ function ProfileTab({ t, user, refresh }) {
 
 /* Addresses */
 function AddressesTab({ t }) {
+  const confirm = useConfirm();
   const [addresses, setAddresses] = useState(null);
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -276,7 +360,13 @@ function AddressesTab({ t }) {
   };
 
   const remove = async (id) => {
-    if (!window.confirm(t("account.addressDeleteConfirm"))) return;
+    const ok = await confirm({
+      title: t("account.addressDeleteConfirm"),
+      confirmLabel: t("common.delete"),
+      cancelLabel: t("common.cancel"),
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await api.delete(`/account/addresses/${id}`);
       load();
@@ -395,6 +485,7 @@ function Field({ label, value, onChange, required = false, className = "", testi
 
 /* Security */
 function SecurityTab({ t, logout, navigate }) {
+  const confirm = useConfirm();
   const [pw, setPw] = useState({ current_password: "", new_password: "", confirm: "" });
   const [pwBusy, setPwBusy] = useState(false);
   const [delPassword, setDelPassword] = useState("");
@@ -433,7 +524,13 @@ function SecurityTab({ t, logout, navigate }) {
 
   const deleteAccount = async (e) => {
     e.preventDefault();
-    if (!window.confirm(t("account.deleteConfirm"))) return;
+    const ok = await confirm({
+      title: t("account.deleteConfirm"),
+      confirmLabel: t("account.deleteForever"),
+      cancelLabel: t("common.cancel"),
+      destructive: true,
+    });
+    if (!ok) return;
     setDelBusy(true);
     try {
       await api.post("/account/delete", { current_password: delPassword });

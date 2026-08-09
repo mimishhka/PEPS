@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { Plus, Minus, BellRing, Check, FileText } from "lucide-react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { Plus, Minus, BellRing, Check, FileText, Heart } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError, resolveAssetUrl } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
+import { useAuth } from "../contexts/AuthContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { useCart } from "../contexts/CartContext";
 import { VialArt, Seal } from "../components/brand";
@@ -14,10 +15,23 @@ function hueFor(slug = "") {
   return 190 + (h % 40);
 }
 
+function analyticalSeoDescription(product, lang) {
+  const isFr = lang === "fr";
+  const name = (isFr ? product.name_fr : product.name_en) || product.slug;
+  const cas = product.cas_number
+    ? (isFr ? ` (n° CAS ${product.cas_number})` : ` (CAS ${product.cas_number})`)
+    : "";
+  return isFr
+    ? `${name}${cas} — standard de référence chimique pour recherche en laboratoire uniquement. Interdit à tout usage humain ou animal.`
+    : `${name}${cas} — chemical reference standard for laboratory research only. Not for human or animal use.`;
+}
+
 export default function ProductDetail() {
   const { slug } = useParams();
   const { lang, t } = useLang();
   const { add } = useCart();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [product, setProduct] = useState(null);
   const [qty, setQty] = useState(1);
   const [variantId, setVariantId] = useState(null);
@@ -26,6 +40,10 @@ export default function ProductDetail() {
   const [notifyEmail, setNotifyEmail] = useState("");
   const [notifySubmitting, setNotifySubmitting] = useState(false);
   const [notifyDone, setNotifyDone] = useState(false);
+  const [activeImage, setActiveImage] = useState(null);
+  const [inWishlist, setInWishlist] = useState(false);
+  const [wishlistBusy, setWishlistBusy] = useState(false);
+  const productId = product?.id;
 
   const _ogImage = product
     ? (product.og_image_url || product.image_url || "")
@@ -38,7 +56,7 @@ export default function ProductDetail() {
       "@context": "https://schema.org",
       "@type": "Product",
       name: product.name_en || product.slug,
-      description: (product.description_en || "").slice(0, 300),
+      description: analyticalSeoDescription(product, "en").slice(0, 300),
       sku: product.slug,
       brand: { "@type": "Brand", name: "Fironova" },
       category: product.category || "",
@@ -54,7 +72,7 @@ export default function ProductDetail() {
 
   useDocumentHead({
     title: product ? (lang === "fr" ? product.name_fr : product.name_en) : "Product",
-    description: product ? ((lang === "fr" ? product.meta_description_fr || product.description_fr : product.meta_description_en || product.description_en) || "").slice(0, 155) : undefined,
+    description: product ? ((lang === "fr" ? product.meta_description_fr : product.meta_description_en) || analyticalSeoDescription(product, lang)).slice(0, 155) : undefined,
     path: `/product/${slug}`,
     image: _ogImage || undefined,
     jsonLd: _jsonLd || undefined,
@@ -62,6 +80,7 @@ export default function ProductDetail() {
 
   useEffect(() => {
     setLoading(true);
+    setActiveImage(null);
     api.get(`/products/${slug}`)
       .then((r) => {
         setProduct(r.data);
@@ -77,6 +96,18 @@ export default function ProductDetail() {
   }, [slug]);
 
   useEffect(() => { setNotifyDone(false); setNotifyEmail(""); }, [variantId, slug]);
+
+  useEffect(() => {
+    if (!user || !productId) return;
+    let cancelled = false;
+    api.get("/account/wishlist")
+      .then((r) => {
+        if (cancelled) return;
+        setInWishlist((r.data?.items || []).some((i) => i.product_id === productId));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user, productId]);
 
   if (loading) {
     return <div className="p-16 font-data text-xs uppercase tracking-[0.2em] text-glacier">{t("common.loading")}</div>;
@@ -106,14 +137,16 @@ export default function ProductDetail() {
   const variants = product.variants || [];
   const selectedVariant = variants.find((v) => v.id === variantId) || variants[0] || null;
   const coaComing = !!(selectedVariant && (selectedVariant.badge_coa_pending || selectedVariant.badge_coming_soon));
-  const isVariantPreorder = !!(selectedVariant && selectedVariant.preorder_enabled && (selectedVariant.stock <= 0 || coaComing));
+  // Même règle que le backend (_build_order_totals) : précommande si preorder_enabled
+  // ET (coming_soon OU coa_pending OU stock < quantité). Le prix affiché == prix facturé.
+  const isVariantPreorder = !!(selectedVariant && selectedVariant.preorder_enabled && (selectedVariant.stock < qty || coaComing));
   const hasSale = !!(selectedVariant && selectedVariant.sale_price && selectedVariant.sale_price < selectedVariant.price);
   const effectivePrice = selectedVariant
     ? (isVariantPreorder && selectedVariant.preorder_price ? selectedVariant.preorder_price : hasSale ? selectedVariant.sale_price : selectedVariant.price)
     : product.price_cad;
   const showOriginal = !!(selectedVariant && effectivePrice < selectedVariant.price);
   const isComingSoon = !!(selectedVariant && selectedVariant.badge_coming_soon && !selectedVariant.preorder_enabled);
-  const isOutOfStock = !!(selectedVariant && selectedVariant.stock <= 0 && !selectedVariant.preorder_enabled && !coaComing);
+  const isOutOfStock = !!(selectedVariant && !isVariantPreorder && selectedVariant.stock < qty);
   const stockN = selectedVariant?.stock ?? product.stock ?? 0;
 
   const submitNotify = async () => {
@@ -141,7 +174,38 @@ export default function ProductDetail() {
   const coaUrl = selectedVariant?.coa_url || "";
   const coaAvailable = coaStatus === "available" && !!coaUrl;
   const coaPending = coaStatus === "pending";
-  const imageSrc = resolveAssetUrl(product.image_url);
+
+  const galleryImages = (product.images && product.images.length
+    ? product.images
+    : product.image_url ? [product.image_url] : []);
+  const mainImageSrc = resolveAssetUrl(activeImage || galleryImages[0]);
+
+  const toggleWishlist = async () => {
+    if (!user) {
+      toast.info(lang === "fr" ? "Connectez-vous pour sauvegarder dans votre liste d'envies" : "Sign in to save to your wishlist");
+      navigate("/login");
+      return;
+    }
+    setWishlistBusy(true);
+    try {
+      if (inWishlist) {
+        await api.delete(`/account/wishlist/${product.id}`);
+        setInWishlist(false);
+        toast.success(t("product.wishlistRemoved"));
+      } else {
+        await api.post("/account/wishlist", {
+          product_id: product.id,
+          variant_id: selectedVariant && selectedVariant.id !== "_default" ? selectedVariant.id : null,
+        });
+        setInWishlist(true);
+        toast.success(t("product.wishlistAdded"));
+      }
+    } catch (err) {
+      toast.error(formatApiError(err?.response?.data?.detail));
+    } finally {
+      setWishlistBusy(false);
+    }
+  };
 
   const specs = [
     { k: lang === "fr" ? "PURETÉ (HPLC)" : "PURITY (HPLC)", v: product.purity },
@@ -162,13 +226,28 @@ export default function ProductDetail() {
         <div className="grid lg:grid-cols-2 gap-12">
           <div className="relative">
             <div className="rounded-2xl overflow-hidden aspect-square relative">
-              {imageSrc ? (
-                <img src={imageSrc} alt={name} className="w-full h-full object-cover" />
+              {mainImageSrc ? (
+                <img src={mainImageSrc} alt={name} className="w-full h-full object-cover" />
               ) : (
                 <VialArt hue={hueFor(product.slug)} className="w-full h-full" />
               )}
               <div className="absolute bottom-5 right-5"><Seal size={92} /></div>
             </div>
+            {galleryImages.length > 1 && (
+              <div className="flex gap-2 mt-3" data-testid="product-gallery">
+                {galleryImages.map((img) => {
+                  const src = resolveAssetUrl(img);
+                  const isActive = src === mainImageSrc;
+                  return (
+                    <button key={img} type="button" onClick={() => setActiveImage(img)}
+                      aria-label={lang === "fr" ? "Image du produit" : "Product image"}
+                      className={`w-16 h-16 rounded-lg overflow-hidden border-2 ${isActive ? "border-nova" : "border-ash hover:border-glacier"} transition-colors`}>
+                      <img src={src} alt="" className="w-full h-full object-cover" />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {coaAvailable ? (
               <div data-testid="coa-badge-verified" className="mt-4 inline-flex items-center gap-2 rounded-full border border-ash bg-white px-4 py-2 font-data text-[11px] uppercase tracking-[0.16em] text-nordfjord">
                 <FileText size={13} /> {lang === "fr" ? "Certificat d'analyse disponible" : "Certificate of Analysis available"}
@@ -184,6 +263,11 @@ export default function ProductDetail() {
             <p className="font-data text-[11px] uppercase tracking-[0.22em] text-compliance mb-3">
               {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT" : "FOR RESEARCH USE ONLY"}
             </p>
+            <p className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance mb-3">
+              {lang === "fr"
+                ? "Standard de référence chimique — pas un médicament approuvé · Interdit à tout usage humain ou animal"
+                : "Chemical reference standard — not an approved pharmaceutical · Not for human or animal use"}
+            </p>
             <h1 className="font-display text-[44px] font-bold text-nordfjord leading-none mb-5" data-testid="product-name">{name}</h1>
             <p className="text-base leading-relaxed text-glacier mb-7">{desc}</p>
 
@@ -194,7 +278,7 @@ export default function ProductDetail() {
                   {variants.map((v) => {
                     const isActive = v.id === variantId;
                     const vCoaComing = v.badge_coa_pending || v.badge_coming_soon;
-                    const vPre = v.preorder_enabled && (v.stock <= 0 || vCoaComing);
+                    const vPre = v.preorder_enabled && (v.stock < qty || vCoaComing);
                     const vSale = v.sale_price && v.sale_price < v.price;
                     const vPrice = vPre && v.preorder_price ? v.preorder_price : vSale ? v.sale_price : v.price;
                     const outNoPre = v.stock <= 0 && !v.preorder_enabled && !v.badge_coming_soon;
@@ -248,8 +332,8 @@ export default function ProductDetail() {
                   <div className="font-data text-[11px] text-warning mt-1" data-testid="preorder-note">{selectedVariant.preorder_note}</div>
                 )}
               </div>
-              <span className={`font-data text-[12px] uppercase tracking-[0.14em] flex items-center gap-2 ${stockN > 0 ? "text-success" : "text-warning"}`}>
-                <span className={`w-2 h-2 rounded-full ${stockN > 0 ? "bg-success" : "bg-warning"}`} />
+              <span className={`font-data text-[12px] uppercase tracking-[0.14em] flex items-center gap-2 ${stockN > 0 ? "text-success" : "text-error"}`}>
+                <span className={`w-2 h-2 rounded-full ${stockN > 0 ? "bg-success" : "bg-error"}`} />
                 {isComingSoon ? (lang === "fr" ? "À venir" : "Coming soon")
                   : isVariantPreorder ? (lang === "fr" ? "Précommande" : "Pre-order")
                   : stockN > 0 ? (lang === "fr" ? "En stock" : "In stock")
@@ -274,6 +358,19 @@ export default function ProductDetail() {
                   : isOutOfStock ? (lang === "fr" ? "RUPTURE" : "OUT OF STOCK")
                   : `${lang === "fr" ? "Ajouter à la commande" : "Add to order"} · $${(effectivePrice * qty).toFixed(2)}`}
               </button>
+              <button
+                onClick={toggleWishlist}
+                disabled={wishlistBusy}
+                data-testid="product-wishlist-toggle"
+                aria-pressed={inWishlist}
+                aria-label={inWishlist ? t("product.wishlistRemove") : t("product.wishlistAdd")}
+                title={inWishlist ? t("product.wishlistRemove") : t("product.wishlistAdd")}
+                className={`w-12 rounded-full border flex items-center justify-center transition-colors disabled:opacity-40 ${
+                  inWishlist ? "border-nova bg-nova/10 text-nova" : "border-ash bg-white text-nordfjord hover:border-nova hover:text-nova"
+                }`}
+              >
+                <Heart size={18} fill={inWishlist ? "currentColor" : "none"} />
+              </button>
             </div>
 
             <div className="rounded-xl bg-nordfjord text-clinical px-5 py-4 font-data text-[11px] uppercase tracking-[0.16em] leading-relaxed" data-testid="research-only-banner">
@@ -281,13 +378,16 @@ export default function ProductDetail() {
             </div>
 
             {coaPending && (
-              <div data-testid="coa-pending-warning" className="mt-4 flex items-start gap-2.5 rounded-xl border border-warning/40 bg-warning/5 px-4 py-3">
-                <FileText size={15} className="text-warning mt-0.5 shrink-0" />
-                <p className="font-data text-[11px] uppercase tracking-[0.14em] text-nordfjord leading-relaxed">
-                  {lang === "fr"
-                    ? "Le certificat d'analyse de ce lot est à venir. Vous pouvez commander dès maintenant — le COA sera publié dès sa réception."
-                    : "The certificate of analysis for this lot is coming. You can order now — the COA will be published as soon as it's received."}
-                </p>
+              <div data-testid="coa-pending-warning" className="warn-banner mt-4">
+                <FileText size={15} className="text-[#8A5A16] mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <div className="wt">{lang === "fr" ? "Certificat d'analyse à venir" : "Certificate of analysis coming"}</div>
+                  <p className="mt-1">
+                    {lang === "fr"
+                      ? "Le certificat d'analyse de ce lot est à venir. Vous pouvez commander dès maintenant — le COA sera publié dès sa réception."
+                      : "The certificate of analysis for this lot is coming. You can order now — the COA will be published as soon as it's received."}
+                  </p>
+                </div>
               </div>
             )}
 
@@ -354,7 +454,7 @@ export default function ProductDetail() {
                       <span className="font-data text-[13px] text-nordfjord">
                         {rprice ? `$${rprice.toFixed(2)}` : "—"}
                       </span>
-                      <span className={`w-2 h-2 rounded-full ${rstock ? "bg-success" : "bg-warning"}`} />
+                      <span className={`w-2 h-2 rounded-full ${rstock ? "bg-success" : "bg-error"}`} />
                     </div>
                   </Link>
                 );

@@ -18,7 +18,9 @@ export default function ProductCard({ product, index = 0 }) {
   const variants = product.variants || [];
   const priced = variants.map((v) => {
     const coaComing = v.badge_coa_pending || v.badge_coming_soon;
-    const isPre = v.preorder_enabled && (v.stock <= 0 || coaComing);
+    // Même règle que le backend (_build_order_totals) ; la carte ajoute qty=1,
+    // donc "stock < 1" == "stock insuffisant pour la quantité".
+    const isPre = v.preorder_enabled && ((v.stock ?? 0) < 1 || coaComing);
     const sale = v.sale_price && v.sale_price < v.price;
     const eff = isPre && v.preorder_price ? v.preorder_price : sale ? v.sale_price : v.price;
     return { ...v, eff, isPre, sale };
@@ -44,7 +46,7 @@ export default function ProductCard({ product, index = 0 }) {
       className="group bg-white border border-ash rounded-2xl overflow-hidden flex flex-col card-hover"
       data-testid={`product-card-${product.slug}`}
     >
-      <Link to={`/product/${product.slug}`} className="block relative aspect-[4/3] overflow-hidden">
+      <Link to={`/product/${product.slug}`} className="block relative aspect-square overflow-hidden">
         {imageSrc ? (
           <img src={imageSrc} alt={name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
         ) : (
@@ -87,8 +89,8 @@ export default function ProductCard({ product, index = 0 }) {
               <span className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{lang === "fr" ? "dès" : "from"}</span>
             )}
           </div>
-          <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock ? "text-success" : "text-warning"}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${inStock ? "bg-success" : "bg-warning"}`} />
+          <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock ? "text-success" : "text-error"}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${inStock ? "bg-success" : "bg-error"}`} />
             {anyPreorder && !inStock ? (lang === "fr" ? "Précommande" : "Pre-order")
               : inStock ? (lang === "fr" ? "En stock" : "In stock")
               : (lang === "fr" ? "Rupture" : "Out")}
@@ -100,7 +102,7 @@ export default function ProductCard({ product, index = 0 }) {
         <button
           data-testid={`add-to-cart-${product.slug}`}
           onClick={() => add(product)}
-          className="w-full btn-pill btn-nova !py-2.5 !text-[13px] !tracking-[0.06em]"
+          className="w-full btn-pill btn-nova btn-nova-sm"
         >
           {lang === "fr" ? "Ajouter à la commande" : "Add to order"}
         </button>

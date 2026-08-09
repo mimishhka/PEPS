@@ -19,9 +19,9 @@ function PurityTrace() {
         fill="none" stroke="#00B8D4" strokeWidth="2.5" strokeLinecap="round"
       />
       <circle cx="372" cy="20" r="4" fill="#00B8D4" />
-      <text x="404" y="30" fill="#00B8D4" fontSize="12" fontFamily="'JetBrains Mono', monospace" letterSpacing="1">99%</text>
-      <text x="12" y="172" fill="#5B7A9E" fontSize="10" fontFamily="'JetBrains Mono', monospace" letterSpacing="1.5">RETENTION TIME →</text>
-      <text x="420" y="60" fill="#5B7A9E" fontSize="10" fontFamily="'JetBrains Mono', monospace" letterSpacing="1.5">HPLC · λ 214nm</text>
+      <text x="404" y="30" fill="#00B8D4" fontSize="12" fontFamily="Inter, sans-serif" letterSpacing="1">99%</text>
+      <text x="12" y="172" fill="#5B7A9E" fontSize="10" fontFamily="Inter, sans-serif" letterSpacing="1.5">RETENTION TIME →</text>
+      <text x="420" y="60" fill="#5B7A9E" fontSize="10" fontFamily="Inter, sans-serif" letterSpacing="1.5">HPLC · λ 214nm</text>
     </svg>
   );
 }
@@ -84,7 +84,9 @@ export default function Home() {
     : "HPLC-tested by an independent lab. Certificate of analysis provided for documented lots. Nordic restraint, full bilingual compliance.";
   const ctaPrimary = lang === "fr" ? "Voir le catalogue" : "Browse the catalog";
   const ctaSecondary = lang === "fr" ? "Nos standards" : "Our standards";
-  const chip = lang === "fr" ? { lot: "LOT", purity: "PURETÉ", license: "LICENCE" } : { lot: "LOT", purity: "PURITY", license: "LICENSE" };
+  const cert = lang === "fr"
+    ? [["LOT", "PAR LOT"], ["PURETÉ", "≥ 99%"], ["EXP", "COA INCLUS"]]
+    : [["LOT", "PER LOT"], ["PURITY", "≥ 99%"], ["EXP", "COA INCLUDED"]];
 
   const featEyebrow = lang === "fr" ? "01 — COMPOSÉS EN VEDETTE" : "01 — FEATURED COMPOUNDS";
   const featTitle = lang === "fr" ? "Une pureté documentée" : "Documented purity";
@@ -129,13 +131,14 @@ export default function Home() {
             </Reveal>
             <Reveal delay={340}>
               <div className="flex flex-wrap gap-x-10 gap-y-4 font-data text-[12px] uppercase tracking-[0.16em] text-[#8FB3C9]">
-                <span><span className="text-nova">{chip.lot}</span> FN-26005</span>
-
+                {cert.map(([k, v]) => (
+                  <span key={k}><span className="text-nova">{k}</span> {v}</span>
+                ))}
               </div>
             </Reveal>
           </div>
           <Reveal delay={300} className="relative hidden lg:block">
-            <div className="relative bg-[#0D3560]/80 backdrop-blur border border-[#1E4A73] rounded-2xl p-8 shadow-[0_40px_80px_-30px_rgba(0,0,0,.5)]">
+            <div className="relative bg-[#0D3560]/80 backdrop-blur border border-[#1B4A73] rounded-2xl p-8 shadow-[0_40px_80px_-30px_rgba(0,0,0,.5)]">
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <p className="font-data text-[10px] uppercase tracking-[0.22em] text-nova mb-1.5">Certificate of Analysis</p>
@@ -144,8 +147,8 @@ export default function Home() {
                 <NovaSpark size={26} />
               </div>
               <PurityTrace />
-              <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-[#1E4A73] font-data text-center">
-                {[["LOT", "FN-26005"], ["PURITY", "99.42%"], ["EXP", "2028-06"]].map(([k, v]) => (
+              <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-[#1B4A73] font-data text-center">
+                {cert.map(([k, v]) => (
                   <div key={k}>
                     <p className="text-[10px] uppercase tracking-[0.2em] text-[#5B7A9E] mb-1">{k}</p>
                     <p className="text-sm text-nova font-semibold">{v}</p>
@@ -196,6 +199,12 @@ export default function Home() {
               <Reveal key={p.id} delay={i * 90}><ProductCard product={p} index={i} /></Reveal>
             ))}
           </div>
+          {products.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-ash bg-clinical p-14 text-center">
+              <p className="font-display text-xl font-semibold text-nordfjord">{lang === "fr" ? "Aucun composé en vedette pour le moment" : "No featured compounds yet"}</p>
+              <p className="text-glacier mt-2">{lang === "fr" ? "Revenez bientôt — le catalogue est en cours de mise à jour." : "Check back soon — the catalog is being updated."}</p>
+            </div>
+          )}
         </div>
       </section>
 

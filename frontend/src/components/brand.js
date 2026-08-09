@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 /* ============================================================================
  * FIRONOVA — Brand primitives
  * Official identity: nordfjord #0B2E4F (structure) · nova #00B8D4 (spark/accent)
- * Display: Space Grotesk 700 · Data channel: JetBrains Mono
+ * Display: Space Grotesk 700 · Data channel: Inter
  * All marks are code-drawn and match the canonical logo-mark.svg geometry 1:1.
  * ==========================================================================*/
 
@@ -91,7 +91,7 @@ export function Seal({ size = 120 }) {
     <div className="relative" style={{ width: size, height: size }} aria-hidden="true">
       <svg viewBox="0 0 100 100" width={size} height={size} className="animate-seal absolute inset-0">
         <defs><path id="seal-circle" d="M50,50 m-38,0 a38,38 0 1,1 76,0 a38,38 0 1,1 -76,0" /></defs>
-        <text fill={NOVA} fontSize="8.2" letterSpacing="2.6" fontFamily="JetBrains Mono, monospace">
+        <text fill={NOVA} fontSize="8.2" letterSpacing="2.6" fontFamily="Inter, sans-serif">
           <textPath href="#seal-circle">HPLC VERIFIED · 99% PURITY · FIRONOVA LABS ·</textPath>
         </text>
       </svg>

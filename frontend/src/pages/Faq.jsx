@@ -58,8 +58,8 @@ const GROUPS = [
         id: "discreet",
         q: { en: "Is the packaging discreet?", fr: "L'emballage est-il discret ?" },
         a: {
-          en: "Yes. We take privacy seriously: every order ships in plain, unbranded packaging with no indication of the contents on the outer label.",
-          fr: "Oui. Nous prenons la confidentialité au sérieux : chaque commande est expédiée dans un emballage neutre, sans marque ni indication du contenu sur l'étiquette extérieure.",
+          en: "Yes. Every order ships in plain, unbranded, standard protective packaging.",
+          fr: "Oui. Chaque commande est expédiée dans un emballage neutre, sans marque et conforme aux normes de transport standard.",
         },
       },
       {
@@ -89,8 +89,8 @@ const GROUPS = [
         id: "storage-how",
         q: { en: "How should peptides be stored?", fr: "Comment entreposer les peptides ?" },
         a: {
-          en: "Lyophilized (powder form): keep in a cool, dry place away from direct sunlight; for long-term storage (months or years), keep frozen at -20°C. Reconstituted (mixed): once diluted with a solvent such as bacteriostatic water, the solution must be refrigerated (2°C to 8°C) and used within the timeframe dictated by your research protocol, typically 4 to 6 weeks.",
-          fr: "Lyophilisé (forme en poudre) : conserver dans un endroit frais et sec, à l'abri de la lumière directe ; pour un entreposage à long terme (mois ou années), conserver au congélateur à -20 °C. Reconstitué (mélangé) : une fois dilué avec un solvant comme l'eau bactériostatique, la solution doit être réfrigérée (2 °C à 8 °C) et utilisée dans le délai prescrit par votre protocole de recherche, généralement 4 à 6 semaines.",
+          en: "Lyophilized (powder form): store in a cool, dry place away from direct sunlight; for long-term storage (months or years), keep frozen at -20°C. When reconstituted for research use, the solution must be stored refrigerated (2°C to 8°C) and used within the stability window defined by your research protocol (typically 4 to 6 weeks under laboratory conditions).",
+          fr: "Lyophilisé (forme en poudre) : conserver dans un endroit frais et sec, à l'abri de la lumière directe ; pour un entreposage à long terme (mois ou années), conserver au congélateur à -20 °C. Une fois reconstitué pour usage en recherche, la solution doit être conservée au réfrigérateur (2 °C à 8 °C) et utilisée dans la fenêtre de stabilité définie par votre protocole de recherche (généralement 4 à 6 semaines dans des conditions de laboratoire).",
         },
       },
       {
@@ -120,8 +120,8 @@ const GROUPS = [
         id: "methods",
         q: { en: "What payment methods do you accept?", fr: "Quels modes de paiement acceptez-vous ?" },
         a: {
-          en: "We accept secure card payments via Stripe, Interac e-Transfer, and cryptocurrency via NOWPayments (BTC, ETH, USDT, LTC, SOL and 100+ others). Detailed instructions are provided at checkout.",
-          fr: "Nous acceptons les paiements par carte sécurisés via Stripe, les virements Interac, ainsi que les cryptomonnaies via NOWPayments (BTC, ETH, USDT, LTC, SOL et plus de 100 autres). Les instructions détaillées sont fournies au moment du paiement.",
+          en: "We accept Interac e-Transfer and cryptocurrency via NOWPayments (BTC, ETH, USDT, LTC, SOL and 100+ others). Detailed instructions are provided at checkout.",
+          fr: "Nous acceptons les virements Interac ainsi que les cryptomonnaies via NOWPayments (BTC, ETH, USDT, LTC, SOL et plus de 100 autres). Les instructions détaillées sont fournies au moment du paiement.",
         },
       },
       {
@@ -167,8 +167,8 @@ const GROUPS = [
         id: "returns",
         q: { en: "Can I return a product once received?", fr: "Puis-je retourner un produit une fois reçu ?" },
         a: {
-          en: "Due to the sensitive nature of research peptides and the risk of degradation once they leave our controlled environment, all sales are final: no returns or exchanges. However, if there is an error with your order or a product arrives damaged, contact us within 48 hours of delivery and we will make it right.",
-          fr: "En raison de la nature sensible des peptides de recherche et du risque de dégradation dès qu'ils quittent notre environnement contrôlé, toutes les ventes sont finales : aucun retour ni échange. Toutefois, en cas d'erreur dans votre commande ou de produit endommagé, contactez-nous dans les 48 heures suivant la livraison et nous corrigerons la situation.",
+          en: "Due to the sensitive nature of research peptides and the risk of degradation once they leave our controlled environment, all sales are final: no returns or exchanges. However, if there is an error with your order or a product arrives damaged, contact us at info@fironova.com within 48 hours of delivery and we will make it right.",
+          fr: "En raison de la nature sensible des peptides de recherche et du risque de dégradation dès qu'ils quittent notre environnement contrôlé, toutes les ventes sont finales : aucun retour ni échange. Toutefois, en cas d'erreur dans votre commande ou de produit endommagé, écrivez-nous à info@fironova.com dans les 48 heures suivant la livraison et nous corrigerons la situation.",
         },
       },
       {

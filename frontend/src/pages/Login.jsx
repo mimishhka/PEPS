@@ -49,6 +49,24 @@ export default function Login() {
     }
   };
 
+  const onTabKeyDown = (e) => {
+    const tabs = ["magic", "password"];
+    const idx = tabs.indexOf(mode);
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      const next = e.key === "ArrowRight" ? (idx + 1) % tabs.length : (idx - 1 + tabs.length) % tabs.length;
+      e.preventDefault();
+      setMode(tabs[next]);
+      setMagicSent(false);
+      document.getElementById(`login-tab-${tabs[next]}`)?.focus();
+    } else if (e.key === "Home" || e.key === "End") {
+      const next = e.key === "Home" ? 0 : tabs.length - 1;
+      e.preventDefault();
+      setMode(tabs[next]);
+      setMagicSent(false);
+      document.getElementById(`login-tab-${tabs[next]}`)?.focus();
+    }
+  };
+
   return (
     <div className="min-h-[85vh] grid lg:grid-cols-2 bg-clinical" data-testid="login-page">
       <div className="hidden lg:block relative bg-nordfjord overflow-hidden">
@@ -82,9 +100,14 @@ export default function Login() {
 
         <div className="max-w-md">
           {!isAdminLogin && (
-            <div className="inline-flex rounded-full border border-ash bg-white p-1 mb-8" role="tablist">
+            <div className="inline-flex rounded-full border border-ash bg-white p-1 mb-8" role="tablist" aria-label={lang === "fr" ? "Méthode de connexion" : "Sign-in method"} onKeyDown={onTabKeyDown}>
               <button
                 type="button"
+                role="tab"
+                id="login-tab-magic"
+                aria-selected={mode === "magic"}
+                aria-controls="login-panel-magic"
+                tabIndex={mode === "magic" ? 0 : -1}
                 onClick={() => { setMode("magic"); setMagicSent(false); }}
                 data-testid="login-tab-magic"
                 className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "magic" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}
@@ -93,6 +116,11 @@ export default function Login() {
               </button>
               <button
                 type="button"
+                role="tab"
+                id="login-tab-password"
+                aria-selected={mode === "password"}
+                aria-controls="login-panel-password"
+                tabIndex={mode === "password" ? 0 : -1}
                 onClick={() => setMode("password")}
                 data-testid="login-tab-password"
                 className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "password" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}
@@ -103,36 +131,41 @@ export default function Login() {
           )}
 
           {!isAdminLogin && mode === "magic" ? (
-            magicSent ? (
-              <div className="rounded-3xl border border-nova/40 bg-nova/5 p-6" data-testid="magic-sent">
-                <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-2">Fironova · Magic Link</p>
-                <h3 className="font-display text-[20px] font-bold text-nordfjord mb-2">
-                  {t("auth.magicCheckTitle") || "Vérifiez votre boîte mail"}
-                </h3>
-                <p className="text-sm text-glacier mb-4">
-                  {(t("auth.magicCheckSub") || "Un lien de connexion a été envoyé à {email}.").replace("{email}", email)}
-                </p>
-                <button type="button" onClick={() => setMagicSent(false)} className="text-sm font-semibold text-nordfjord hover:text-nova">
-                  {t("auth.magicResend") || "Renvoyer ou changer d'email"}
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={onMagicSubmit} className="space-y-5">
-                <p className="text-sm text-glacier">
-                  {t("auth.magicLinkSub") || "Connexion rapide et sans mot de passe pour clients Fironova."}
-                </p>
-                <div>
-                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
-                  <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-magic-email"
-                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+            <div role="tabpanel" id="login-panel-magic" aria-labelledby="login-tab-magic">
+              {magicSent ? (
+                <div className="rounded-3xl border border-nova/40 bg-nova/5 p-6" data-testid="magic-sent">
+                  <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-2">Fironova · Magic Link</p>
+                  <h3 className="font-display text-[20px] font-bold text-nordfjord mb-2">
+                    {t("auth.magicCheckTitle") || "Vérifiez votre boîte mail"}
+                  </h3>
+                  <p className="text-sm text-glacier mb-4">
+                    {(t("auth.magicCheckSub") || "Un lien de connexion a été envoyé à {email}.").replace("{email}", email)}
+                  </p>
+                  <button type="button" onClick={() => setMagicSent(false)} className="text-sm font-semibold text-nordfjord hover:text-nova">
+                    {t("auth.magicResend") || "Renvoyer ou changer d'email"}
+                  </button>
                 </div>
-                <button type="submit" disabled={busy} data-testid="login-magic-submit" className="w-full btn-pill btn-nova disabled:opacity-50">
-                  {busy ? t("common.loading") : `${t("auth.magicSend") || "Envoyer le lien"} →`}
-                </button>
-              </form>
-            )
+              ) : (
+                <form onSubmit={onMagicSubmit} className="space-y-5">
+                  {/* Honeypot anti-bot : champ invisible, doit rester vide */}
+                  <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true"
+                    className="hidden" data-testid="honeypot" />
+                  <p className="text-sm text-glacier">
+                    {t("auth.magicLinkSub") || "Connexion rapide et sans mot de passe pour clients Fironova."}
+                  </p>
+                  <div>
+                    <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
+                    <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-magic-email"
+                      className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                  </div>
+                  <button type="submit" disabled={busy} data-testid="login-magic-submit" className="w-full btn-pill btn-nova disabled:opacity-50">
+                    {busy ? t("common.loading") : `${t("auth.magicSend") || "Envoyer le lien"} →`}
+                  </button>
+                </form>
+              )}
+            </div>
           ) : (
-            <form onSubmit={onPasswordSubmit} className="space-y-5">
+            <form role={!isAdminLogin ? "tabpanel" : undefined} id="login-panel-password" aria-labelledby="login-tab-password" onSubmit={onPasswordSubmit} className="space-y-5">
               {isAdminLogin && (
                 <p className="text-sm text-glacier">
                   {lang === "fr"
@@ -146,7 +179,17 @@ export default function Login() {
                   className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
               </div>
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.password")}</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">{t("auth.password")}</label>
+                  <button
+                    type="button"
+                    onClick={() => { setMode("magic"); setMagicSent(false); }}
+                    data-testid="login-forgot-password-link"
+                    className="text-xs font-semibold text-nordfjord hover:text-nova"
+                  >
+                    {t("auth.forgotPassword") || (lang === "fr" ? "Mot de passe oublié ?" : "Forgot password?")}
+                  </button>
+                </div>
                 <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} data-testid="login-password"
                   className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
               </div>

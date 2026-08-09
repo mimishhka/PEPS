@@ -107,7 +107,7 @@ export default function Footer() {
             <Wordmark size={20} color="#0B2E4F" />
           </div>
           <p className="mt-4 text-sm text-glacier max-w-sm leading-relaxed">{t("footer.tagline")}</p>
-          <p className="mt-6 fn-ruo inline-block">FOR RESEARCH USE ONLY · USAGE RECHERCHE UNIQUEMENT</p>
+          <p className="mt-6 inline-block border border-compliance/40 text-compliance rounded-lg px-4 py-3 font-mono text-[11px] uppercase tracking-[0.2em]">FOR RESEARCH USE ONLY · USAGE RECHERCHE UNIQUEMENT</p>
         </div>
         {columns.map((col) => (
           <div key={col.key} data-testid={`footer-col-${col.key}`}>
