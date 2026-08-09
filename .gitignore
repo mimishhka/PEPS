@@ -87,9 +87,12 @@ android-sdk/
 .env
 .env.*
 *.env
+!.env.example
+!backend/.env.example
 credentials.json
 *.key
 .credentials
+backend/server.py.bak-*
 frontend/node_modules/.cache/default-development/29.pack
 frontend/node_modules/.cache/default-development/1.pack
 frontend/node_modules/.cache/default-development/24.pack
