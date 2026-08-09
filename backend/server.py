@@ -3573,7 +3573,7 @@ async def my_orders(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 
 @api.get("/account/wishlist")
-async def get_wishlist(user: dict = Depends(get_current_user)):
+async def account_wishlist(user: dict = Depends(get_current_user)):
     items = await db.wishlist.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
     ids = list({it["product_id"] for it in items})
     prods = {p["id"]: p async for p in db.products.find({"id": {"$in": ids}, "deleted_at": None}, {"_id": 0})}
@@ -3585,7 +3585,7 @@ async def get_wishlist(user: dict = Depends(get_current_user)):
 
 
 @api.post("/account/wishlist")
-async def add_to_wishlist(payload: WishlistItemIn, user: dict = Depends(get_current_user)):
+async def account_wishlist_add(payload: WishlistItemIn, user: dict = Depends(get_current_user)):
     product = await db.products.find_one({"id": payload.product_id, "deleted_at": None})
     if not product:
         raise HTTPException(404, "Product not found")
@@ -3606,7 +3606,7 @@ async def add_to_wishlist(payload: WishlistItemIn, user: dict = Depends(get_curr
 
 
 @api.delete("/account/wishlist/{product_id}")
-async def remove_from_wishlist(product_id: str, user: dict = Depends(get_current_user)):
+async def account_wishlist_remove(product_id: str, user: dict = Depends(get_current_user)):
     res = await db.wishlist.delete_one({"user_id": user["id"], "product_id": product_id})
     if res.deleted_count == 0:
         raise HTTPException(404, "Item not in wishlist")
