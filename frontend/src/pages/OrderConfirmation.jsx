@@ -83,6 +83,25 @@ export default function OrderConfirmation() {
     return () => clearInterval(iv);
   }, [order]);
 
+  // Interac (Autodeposit) live status polling — confirmed automatically by backend watchdog
+  useEffect(() => {
+    if (!order) return;
+    if (order.payment_method !== "interac" || order.payment_status !== "awaiting_etransfer") return;
+    let attempts = 0;
+    const iv = setInterval(async () => {
+      attempts += 1;
+      if (attempts > 45) { clearInterval(iv); return; }
+      try {
+        const { data } = await api.get(`/orders/${order.id}`);
+        if (data.payment_status === "paid") {
+          clearInterval(iv);
+          setOrder(data);
+        }
+      } catch { /* ignore */ }
+    }, 20000);
+    return () => clearInterval(iv);
+  }, [order]);
+
   if (!order) return <div className="p-16 font-mono text-xs uppercase tracking-[0.25em]">{t("common.loading")}</div>;
 
   const copy = (text, label) => {
