@@ -106,7 +106,7 @@ export default function ProductDetail() {
   const variants = product.variants || [];
   const selectedVariant = variants.find((v) => v.id === variantId) || variants[0] || null;
   const coaComing = !!(selectedVariant && (selectedVariant.badge_coa_pending || selectedVariant.badge_coming_soon));
-  const isVariantPreorder = !!(selectedVariant && selectedVariant.preorder_enabled && (selectedVariant.stock <= 0 || coaComing));
+  const isVariantPreorder = !!(selectedVariant && selectedVariant.preorder_enabled && (coaComing || selectedVariant.stock < qty));
   const hasSale = !!(selectedVariant && selectedVariant.sale_price && selectedVariant.sale_price < selectedVariant.price);
   const effectivePrice = selectedVariant
     ? (isVariantPreorder && selectedVariant.preorder_price ? selectedVariant.preorder_price : hasSale ? selectedVariant.sale_price : selectedVariant.price)
@@ -194,7 +194,7 @@ export default function ProductDetail() {
                   {variants.map((v) => {
                     const isActive = v.id === variantId;
                     const vCoaComing = v.badge_coa_pending || v.badge_coming_soon;
-                    const vPre = v.preorder_enabled && (v.stock <= 0 || vCoaComing);
+                    const vPre = v.preorder_enabled && (vCoaComing || v.stock < qty);
                     const vSale = v.sale_price && v.sale_price < v.price;
                     const vPrice = vPre && v.preorder_price ? v.preorder_price : vSale ? v.sale_price : v.price;
                     const outNoPre = v.stock <= 0 && !v.preorder_enabled && !v.badge_coming_soon;

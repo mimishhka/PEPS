@@ -50,10 +50,12 @@ export default function OrderConfirmation() {
     poll();
   }, [id]);
 
-  // Countdown for awaiting payments (12h from order creation)
+  // Countdown uses backend-stored deadline; falls back to 24h if absent.
   useEffect(() => {
     if (!order || !["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status)) return;
-    const deadline = new Date(order.created_at).getTime() + 12 * 3600 * 1000;
+    const deadline = order.payment_deadline
+      ? new Date(order.payment_deadline).getTime()
+      : new Date(order.created_at).getTime() + 24 * 3600 * 1000;
     const tick = () => setRemainingMs(deadline - Date.now());
     tick();
     const iv = setInterval(tick, 30000);

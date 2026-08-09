@@ -22,14 +22,16 @@ export function CartProvider({ children }) {
     const v = variant || (product.variants && product.variants[0]) || null;
     const variant_id = v?.id || null;
     let unit_price = v?.price ?? product.price_cad ?? 0;
-    if (v) {
-      const coaComing = v.badge_coa_pending || v.badge_coming_soon;
-      const isPre = v.preorder_enabled && (v.stock <= 0 || coaComing);
-      if (isPre && v.preorder_price) unit_price = v.preorder_price;
-      else if (v.sale_price && v.sale_price < v.price) unit_price = v.sale_price;
-    }
+    // Preorder/sale price is computed inside setItems where merged qty is known.
     setItems((curr) => {
       const idx = curr.findIndex((i) => i.product_id === product.id && i.variant_id === variant_id);
+      const mergedQty = idx >= 0 ? curr[idx].qty + qty : qty;
+      if (v) {
+        const coaComing = v.badge_coa_pending || v.badge_coming_soon;
+        const isPre = v.preorder_enabled && (coaComing || v.stock < mergedQty);
+        unit_price = isPre && v.preorder_price ? v.preorder_price
+          : (v.sale_price && v.sale_price < v.price ? v.sale_price : unit_price);
+      }
       if (idx >= 0) {
         const next = [...curr];
         next[idx] = { ...next[idx], qty: next[idx].qty + qty };

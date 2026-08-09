@@ -200,6 +200,7 @@ def test_ipn_finished_marks_paid(invoice_order, db):
         "payment_status": "finished",
         "payment_id": 555555555,
         "pay_currency": "btc",
+        "price_amount": float(invoice_order["total"]),
         "actually_paid": float(invoice_order["total"]),
     }
     body = json.dumps(payload, separators=(",", ":"), sort_keys=True)

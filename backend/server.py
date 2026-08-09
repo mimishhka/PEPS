@@ -1835,10 +1835,9 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
 
         v = _resolve_variant(p, it.variant_id)
         is_preorder = False
-        # coa_status "pending" no longer blocks or forces preorder on its own
-        # (variant stays purchasable with a warning). Only badge_coming_soon
-        # (product not yet launched) drives the "coming" preorder path here.
-        coa_coming = bool(v.get("badge_coming_soon"))
+        # badge_coa_pending (COA not yet available) also forces preorder path,
+        # matching the frontend rule (badge_coa_pending || badge_coming_soon).
+        coa_coming = bool(v.get("badge_coming_soon") or v.get("badge_coa_pending"))
         if v.get("preorder_enabled") and (coa_coming or v.get("stock", 0) < it.qty):
             is_preorder = True
             has_preorder = True
@@ -3264,10 +3263,15 @@ async def get_shipping_rates(payload: ShippingRateRequest):
 async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Optional[dict]:
     """Retourne l'order fraîche si CET appel a fait la transition, sinon None."""
     paid_at = datetime.now(timezone.utc).isoformat()
+    # Preorder orders retain 'preorder' fulfillment_status until items ship.
+    existing = await db.orders.find_one({"id": order_id}, {"_id": 0, "has_preorder": 1, "payment_status": 1})
+    if not existing or existing.get("payment_status") == "paid":
+        return None
+    new_fulfillment = "preorder" if existing.get("has_preorder") else "processing"
     update: dict = {
         "$set": {
             "payment_status": "paid",
-            "fulfillment_status": "processing",
+            "fulfillment_status": new_fulfillment,
             "paid_at": paid_at,
             "dispatch_batch": compute_dispatch_batch(paid_at),
         }
@@ -3314,6 +3318,13 @@ async def checkout(payload: CheckoutIn, request: Request):
         raise HTTPException(400, "All compliance confirmations are required")
     if not payload.items:
         raise HTTPException(400, "Cart is empty")
+
+    # Idempotency: replay identical submission within the same session.
+    idem_key = request.headers.get("Idempotency-Key", "").strip()
+    if idem_key:
+        cached = await db.idempotency.find_one({"_id": idem_key}, {"_id": 0, "response": 1})
+        if cached:
+            return cached["response"]
 
     user = await _resolve_user(request)
 
@@ -3418,6 +3429,8 @@ async def checkout(payload: CheckoutIn, request: Request):
         "has_preorder": has_preorder,
         "notes": [],
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "payment_ttl_hours": UNPAID_ORDER_TTL_HOURS,
+        "payment_deadline": (datetime.now(timezone.utc) + timedelta(hours=UNPAID_ORDER_TTL_HOURS)).isoformat(),
         "compliance": {
             "accept_terms": True,
             "confirm_age": True,
@@ -3426,9 +3439,21 @@ async def checkout(payload: CheckoutIn, request: Request):
         },
     }
     # --- AFFILIATE: attribution depuis le cookie fn_ref (champ additif) ---
-    await affiliate_attach_to_order(order_doc, request)
-    await db.orders.insert_one(order_doc)
+    try:
+        await affiliate_attach_to_order(order_doc, request)
+        await db.orders.insert_one(order_doc)
+    except Exception:
+        await _release_stock_atomic(reserved)
+        raise
     order_doc.pop("_id", None)
+
+    # Persist idempotency key so replay returns same order without re-processing.
+    if idem_key:
+        try:
+            await db.idempotency.insert_one({"_id": idem_key, "response": order_doc,
+                                             "created_at": datetime.now(timezone.utc).isoformat()})
+        except Exception:
+            pass  # duplicate insert on race — safe to ignore
 
     # Le stock est déjà réservé atomiquement plus haut (_reserve_stock_atomic),
     # avant l'appel au PSP. Rien à faire ici.
@@ -3673,10 +3698,11 @@ async def admin_update_order(
         raise HTTPException(404, "Order not found")
 
     # Auto-transition: when payment becomes paid, move fulfillment to processing
+    # (but leave preorder orders in 'preorder' until items are shipped).
     if (
         payment_status == "paid"
         and existing.get("payment_status") != "paid"
-        and existing.get("fulfillment_status") in ("pending", "preorder", None)
+        and existing.get("fulfillment_status") in ("pending", None)
     ):
         update["fulfillment_status"] = "processing"
 
@@ -6061,7 +6087,7 @@ async def nowpayments_ipn(request: Request):
         raise HTTPException(400, "Invalid payload")
     expected = hmac.new(
         NOWPAYMENTS_IPN_SECRET.encode(),
-        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode(),
+        raw,
         hashlib.sha512,
     ).hexdigest()
     if not sig or not hmac.compare_digest(expected, sig):
@@ -6154,19 +6180,12 @@ async def crypto_status(order_id: str):
             {"$set": {"payment_info.provider_response.payment_status": np_status}},
         )
     if np_status == "finished":
-        res = await db.orders.update_one(
-            {"id": order_id, "payment_status": {"$ne": "paid"}},
-            {"$set": {
-                "payment_status": "paid",
-                "fulfillment_status": "processing",
-                "paid_at": (_pa := datetime.now(timezone.utc).isoformat()),
-                "dispatch_batch": compute_dispatch_batch(_pa),
-            }},
+        fresh = await _mark_order_paid(
+            order_id,
+            f"Crypto payment confirmed via NOWPayments status poll (payment_id {payment_id})",
         )
-        if res.modified_count:
-            fresh = await db.orders.find_one({"id": order_id}, {"_id": 0})
-            if fresh.get("email"):
-                asyncio.create_task(send_payment_received(fresh))
+        if fresh:
+            logging.info("Order %s marked paid via crypto_status poll", order_id)
         return {"order_id": order_id, "payment_status": "paid", "np_status": np_status}
     return {"order_id": order_id, "payment_status": order.get("payment_status"), "np_status": np_status}
 
@@ -7039,8 +7058,6 @@ async def _seed_launch_coupon() -> None:
         logging.error("launch coupon seed failed: %s", e)
 
 
-@app.on_event("startup")
-
 async def _backfill_affiliate_coupons() -> None:
     """Crée le coupon lié pour les affiliés déjà actifs qui n'en ont pas
     (les nouveaux le reçoivent à l'activation). Idempotent, sûr à relancer."""
@@ -7061,6 +7078,7 @@ async def _backfill_affiliate_coupons() -> None:
         logging.warning("[affiliate] backfill coupons échoué: %s", e)
 
 
+@app.on_event("startup")
 async def startup_event():
     await seed_admin_and_products()
     await _seed_categories_from_products()
