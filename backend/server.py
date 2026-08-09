@@ -72,6 +72,12 @@ INTERAC_PASSWORD_HINT = os.environ.get("INTERAC_PASSWORD_HINT", "FIRONOVA")
 NOWPAYMENTS_API_KEY = os.environ.get("NOWPAYMENTS_API_KEY", "")
 NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "")
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+APP_ENV = os.environ.get("APP_ENV", os.environ.get("ENV", os.environ.get("ENVIRONMENT", ""))).strip().lower()
+IS_PRODUCTION = APP_ENV in {"prod", "production"}
+if IS_PRODUCTION and not PUBLIC_BASE_URL:
+    raise RuntimeError(
+        "PUBLIC_BASE_URL est obligatoire en production. Définissez-la avant de démarrer le serveur."
+    )
 NOWPAYMENTS_BASE_URL = "https://api.nowpayments.io/v1"
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@fironova.com")
@@ -971,6 +977,14 @@ def _hash_magic_token(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _trusted_public_base_url() -> str:
+    """Source unique des liens email; ne jamais utiliser request.base_url (Host header)."""
+    base = (PUBLIC_BASE_URL or "").rstrip("/")
+    if not base:
+        raise HTTPException(503, "PUBLIC_BASE_URL is required for email links")
+    return base
+
+
 async def _send_magic_email(email: str, link: str, lang: str, is_signup: bool) -> None:
     fr = lang.startswith("fr")
     if fr:
@@ -1032,7 +1046,7 @@ async def magic_request(payload: MagicRequestIn, request: Request):
         "used_at": None,
         "ip": _client_ip(request),
     })
-    base = PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
+    base = _trusted_public_base_url()
     link = f"{base}/auth/callback?token={raw}"
     await _send_magic_email(email, link, payload.lang or "fr", is_signup)
     return {"ok": True}
@@ -1187,7 +1201,7 @@ async def account_request_email_change(payload: EmailChangeRequestIn, request: R
         "expires_at": (now + timedelta(hours=EMAIL_CHANGE_TTL_HOURS)).isoformat(),
         "used": False,
     })
-    base = PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
+    base = _trusted_public_base_url()
     confirm_url = f"{base}/api/account/email/confirm?token={token}"
     lang = "fr"  # les emails transactionnels suivent la langue du site ; FR par défaut au Québec
     asyncio.create_task(_send_email(new_email, "FIRONOVA — Confirmez votre nouvelle adresse email",
@@ -3936,7 +3950,7 @@ async def admin_invite_staff(payload: StaffInviteIn, request: Request, admin: di
         "expires_at": (now + timedelta(hours=STAFF_INVITE_TTL_HOURS)).isoformat(),
         "used": False,
     })
-    base = PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
+    base = _trusted_public_base_url()
     accept_url = f"{base}/staff-accept?token={token}"
     asyncio.create_task(_send_email(
         email, "FIRONOVA — Invitation à rejoindre l'équipe",
@@ -8321,16 +8335,10 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
             "activated_at": None,
         })
 
-    base = (globals().get("PUBLIC_BASE_URL") or "").rstrip("/")
-    if not base:
-        base = str(request_base_url_safe())  # fallback
+    base = _trusted_public_base_url()
     link = f"{base}/affiliate/join?token={raw}"
     await _affiliate_send_invite(email, payload.name.strip(), link, payload.lang or "fr")
     return {"ok": True, "affiliate_id": aff_id, "invite_link": link}
-
-
-def request_base_url_safe() -> str:
-    return (globals().get("PUBLIC_BASE_URL") or "").rstrip("/")
 
 
 @api.post("/admin/affiliates/{affiliate_id}/resend-invite")  # noqa: F821
@@ -8354,7 +8362,7 @@ async def admin_affiliate_resend(affiliate_id: str,
                   "invite_last_sent_at": now.isoformat()},
          "$inc": {"invite_sent_count": 1}},
     )
-    base = (globals().get("PUBLIC_BASE_URL") or "").rstrip("/")
+    base = _trusted_public_base_url()
     link = f"{base}/affiliate/join?token={raw}"
     await _affiliate_send_invite(aff["email"], aff.get("name", ""), link,
                                  "fr")
