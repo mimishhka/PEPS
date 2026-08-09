@@ -1,0 +1,63 @@
+{
+  "summary": "Iteration 8 validation of NOWPayments INVOICE + widget + signed IPN webhook. Backend: 10/10 pytest cases pass. Frontend: widget iframe with correct iid, invoice link, countdown, deadline warning all confirmed. BUG FOUND: after signed 'finished' IPN, the deadline banner correctly disappears but the crypto widget/instructions block still renders when payment_status='paid'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "OrderConfirmation.jsx", "issue": "Crypto instructions/widget block does NOT disappear when order.payment_status='paid'. Line 91 sets `np = order.payment_info?.type === 'nowpayments' ? provider_response : null` without gating on payment_status, so line 160 `{np && (...)}` continues to render the iframe/instructions after payment. Only the deadline warning banner (gated by awaitingPayment) disappears.", "selector": "[data-testid=\"crypto-instructions\"] / [data-testid=\"nowpayments-widget\"]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": [
+    "BACKEND pytest test_iter8_invoice_ipn.py — 10/10 PASS",
+    "  * Invoice shape: invoice_id numeric, invoice_url https://nowpayments.io/payment/?iid=..., price_amount == order total, payment_status='waiting', NO pay_address, no mock flag",
+    "  * crypto/status pre-IPN → {payment_status:'awaiting_crypto', np_status:'waiting'} (no provider call because no payment_id)",
+    "  * IPN missing x-nowpayments-sig header → 401, order unchanged (still awaiting_crypto)",
+    "  * IPN wrong signature → 401, order unchanged",
+    "  * IPN valid sig + payment_status='confirming' → provider_response.payment_status updated to 'confirming', payment_id persisted, order NOT flipped to paid",
+    "  * IPN valid sig + payment_status='finished' → payment_status='paid', fulfillment_status='processing', paid_at set, system note added ('NOWPayments IPN...'), payment_id persisted",
+    "  * crypto/status after finished IPN → {payment_status:'paid'}",
+    "  * REGRESSION: Interac checkout → 200 + payment_status awaiting_etransfer + stock decrement -1",
+    "  * REGRESSION: Stripe checkout → 200 + https checkout_url",
+    "  * Cleanup verified in test",
+    "FRONTEND UI (Playwright, preview URL):",
+    "  * Guest crypto checkout flow (age gate → catalog → BPC-157 product → variant select → add-to-cart → checkout QC → crypto payment method → place-order-btn) created order 349b22 with total $84.99",
+    "  * data-testid='nowpayments-widget' iframe src = https://nowpayments.io/embeds/payment-widget?iid=4952730348 ✓",
+    "  * data-testid='crypto-invoice-link' href = https://nowpayments.io/payment/?iid=4952730348 ✓",
+    "  * data-testid='payment-countdown' shows '⏳ You have 47h 59min left to pay' (EN) ✓",
+    "  * Helper paragraph: 'Pay $84.99 CAD in crypto through the secure NOWPayments module below — the exact amount is pre-filled...' ✓",
+    "  * data-testid='payment-deadline-warning' present ✓",
+    "  * SIMULATED signed IPN 'finished' via curl → backend returned 200, API /orders/{id} returned payment_status=paid, fulfillment_status=processing",
+    "  * After reload of /order/{id}: deadline warning DISAPPEARED (correct) BUT nowpayments widget iframe + crypto-instructions block STILL VISIBLE (BUG)"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iter8_invoice_ipn.py",
+    "/app/test_reports/pytest/iter8_results.xml"
+  ],
+  "action_items": [
+    "Fix OrderConfirmation.jsx line 91 or line 160: gate the crypto instructions/widget block on `awaiting_crypto` (or hide when payment_status === 'paid'). Suggested: replace `{np && (...)}` with `{np && awaitingPayment && (...)}` or compute `const np = order.payment_status === 'awaiting_crypto' && order.payment_info?.type === 'nowpayments' ? order.payment_info.provider_response : null;`. Optional: add an explicit success banner (data-testid='payment-paid-banner') when payment_status='paid' to reassure the buyer."
+  ],
+  "critical_code_review_comments": [
+    "OrderConfirmation.jsx line 91: `np` is derived only from payment_info.type, not payment_status. Consequence: paid crypto orders continue showing the NOWPayments iframe indefinitely.",
+    "server.py nowpayments_ipn (line 1404): correct HMAC-SHA512 verification using json.dumps(sort_keys=True, separators=(',',':')) — matches NOWPayments spec. Idempotency guarded by `payment_status: {\"$ne\": \"paid\"}` filter — good.",
+    "server.py _nowpayments_create (line 531): builds POST /v1/invoice with ipn_callback_url + success_url/cancel_url from PUBLIC_BASE_URL — correct. Returns invoice_id/invoice_url/price_amount/payment_status only; no pay_address (invoice flow).",
+    "Persistent React hydration warning ('<span> cannot be a child of <option>') still present on Checkout province select — carry-over from iter 6/7, cosmetic in dev only.",
+    "Repeated 401 on /api/auth/me for guest visits — expected but noisy; consider skipping the request when no nordpep_token is present.",
+    "backend/.env still has NOWPAYMENTS_API_KEY declared only once now (iter 7 comment cleared) — good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter8_invoice_ipn.py (new)"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "83% (5/6 scenarios — paid-state UI transition failed)"},
+  "test_credentials": "Guest checkout — no credentials required. Admin creds at /app/memory/test_credentials.md not used.",
+  "seed_data_creation": "Created 5 test orders via backend pytest (2 crypto invoice + 1 interac + 1 stripe + 1 confirming) and 1 UI order (crypto). All deleted after tests. Variant stock restored for the awaiting orders. No residual TEST_ or test_ui_iter8 orders remain in mongo.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The IPN webhook + invoice + widget backend flow is solid. The only issue is the frontend not hiding the crypto payment widget after payment_status flips to paid. Fix requires a 1-line change in /app/frontend/src/pages/OrderConfirmation.jsx (either line 91 or the conditional at line 160). Backend HMAC signature calculation for the IPN uses `json.dumps(payload, separators=(',',':'), sort_keys=True)` with NOWPAYMENTS_IPN_SECRET from backend/.env; the test file demonstrates this correctly. Serial pytest run uses `-n 0` override.",
+  "rca_of_the_issue": {
+    "bug": "Crypto widget still renders when order is paid",
+    "reproduction": "1) Place guest crypto order via UI → /order/{id} shows widget + deadline banner. 2) POST /api/webhook/nowpayments with signed payload payment_status='finished'. 3) Reload /order/{id}. Expected: widget + crypto-instructions disappear. Actual: deadline banner disappears but iframe/instructions block persists.",
+    "root_cause": "OrderConfirmation.jsx line 91: `const np = order.payment_info?.type === 'nowpayments' ? order.payment_info.provider_response : null;`. `np` is truthy for every nowpayments order regardless of payment_status, so the `{np && (...)}` block at line 160 always renders once payment_info.type is set.",
+    "mitigation": "Add `&& awaitingPayment` to the `np` computation, e.g. `const np = awaitingPayment && order.payment_info?.type === 'nowpayments' ? order.payment_info.provider_response : null;` — this reuses the same gating already applied to the deadline warning banner (line 117)."
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "summary": "NORDPEP iteration 3 (full admin redesign + preorders + coupons + shipping zones + COA + invoice PDF + CSV exports) tested end-to-end. Backend: 18/18 new pytest cases pass + 20/20 regression (iter1+iter2) = 38/38 total. Frontend: all admin sections render with full sidebar nav (admin-shell, admin-sidebar, nav-{dashboard,orders,products,coupons,customers,shipping} all present), Dashboard shows stat-{revenue,orders,customers,products} + chart-revenue + top-products + recent-orders-table, Orders detail drawer shows all expected fields, Shipping displays seeded Canada (13 provinces, 2 methods $20/$12) + International ($45 method), Coupon editor opens with save-coupon-btn, Checkout has coupon-section/input/apply wired to /api/coupons/validate, Home shows 'FEATURED COMPOUNDS' 3-col grid with 'COA ✓' badges, Product Detail shows orange 'COA Pending' badge correctly.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminProducts product-editor", "issue": "Missing data-testids for new iter3 fields: f-preorder_allowed, f-coa_url, f-coa_lot, f-coa_date are NOT present in the editor DOM (only f-featured + save-product-btn found). Either the fields aren't rendered or they don't carry the spec-required testids. Cannot automate Stock/COA/Visibility section testing without these.", "selector": "[data-testid=\"product-editor\"]", "priority": "MEDIUM"},
+      {"component": "AdminOrders detail drawer", "issue": "Drawer overlay (fixed inset-0 z-50) intercepts pointer events on the sidebar — Escape key does not close it; user must click the X close button. Sidebar nav links become unclickable while drawer open.", "selector": "[data-testid=\"order-detail-drawer\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AdminDashboard chart-revenue", "issues": ["Revenue chart container renders empty/blank when daily_revenue array has few/no entries in the last 30 days. Consider an empty-state message like 'No paid orders in last 30 days'."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter3_features.py",
+    "/app/backend/tests/test_nordpep_api.py",
+    "/app/test_reports/pytest/iter3_results.xml"
+  ],
+  "action_items": [
+    "Add data-testid attributes to the AdminProducts editor for the new iter3 fields: f-preorder_allowed (toggle), f-coa_url, f-coa_lot, f-coa_date (inputs). Spec in iteration request explicitly lists these.",
+    "Make the order-detail-drawer dismiss on Escape and on outside-click of the overlay (currently only the X button closes it).",
+    "Add empty-state for chart-revenue when daily_revenue is empty/short."
+  ],
+  "critical_code_review_comments": [
+    "_build_order_totals correctly skips stock decrement for preorder lines (server.py:644-646) — verified by test_checkout_preorder_when_stock_zero.",
+    "admin_confirm_payment is idempotent (returns early if already paid) — good.",
+    "admin_update_order auto-transitions fulfillment from pending|preorder → processing when payment becomes paid (lines 702-707) — verified.",
+    "Coupon validation logic duplicated between _build_order_totals (lines 411-429) and /coupons/validate (lines 868-887). Consider extracting into a shared helper to avoid drift.",
+    "/api/admin/products.csv columns include featured, preorder_allowed, coa_url as required — verified.",
+    "Invoice PDF endpoint uses Response (not StreamingResponse) — fine; returns %PDF header + >1KB content. Auth check correctly allows anon orders + owner + admin.",
+    "shipping_zones seed only runs when collection is empty (line 1466) — idempotent across restarts."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter3_features.py"],
+  "success_rate": {"backend": "100%", "frontend": "92%"},
+  "test_credentials": "Admin admin@nordpep.ca / NordpepAdmin2026! — works (read from /app/memory/test_credentials.md).",
+  "seed_data_creation": "Tests create transient TEST_ products + 1 NORDPEP10 coupon (session-scoped, deleted at teardown). Many TEST_ orders accumulated from compounded iterations — no cleanup as orders are append-only.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend has 38 pytest cases across two files: test_nordpep_api.py (iter1+iter2) and test_iter3_features.py (iter3). Run with: python -m pytest backend/tests/ -v -o addopts= (the project pytest.ini sets xdist loadscope which needs -o addopts= to override on demand). NORDPEP10 coupon is cleaned up after backend tests — re-create via admin UI if frontend coupon UI testing needed. The orders detail drawer intercepts sidebar clicks; navigate via direct URL (/admin/products etc) for cross-section automation. Auto-login token is stored as localStorage 'nordpep_token' + cookie; the ADMIN button in header creates the admin user on the fly if missing.",
+  "rca of the issue": "Frontend coupon apply showed 'Invalid coupon code' during E2E because the session-scoped backend test fixture nordpep10_coupon deletes NORDPEP10 on teardown before frontend ran. Backend coupon flow itself is verified (test_validate_coupon_valid + test_checkout_applies_coupon both PASS). Not a product bug."
+}
