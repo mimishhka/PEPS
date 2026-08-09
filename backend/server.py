@@ -4269,6 +4269,21 @@ async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Dep
     }
     await db.orders.update_one({"id": order_id}, {"$set": update, "$push": {"notes": note}})
     await affiliate_on_order_reversed(order_id, full=(new_refunded >= total))
+    # Coupon decrement on full refund.
+    if new_refunded >= total:
+        c = order.get("coupon")
+        if c and c.get("code") and order.get("coupon_counted"):
+            await db.coupons.update_one(
+                {"code": c["code"], "used_count": {"$gt": 0}},
+                {"$inc": {"used_count": -1}},
+            )
+            email_norm = (order.get("email") or "").strip().lower()
+            if email_norm:
+                await db.coupons.update_one(
+                    {"code": c["code"], "used_by.email": email_norm, "used_by.count": {"$gt": 0}},
+                    {"$inc": {"used_by.$.count": -1}},
+                )
+            await db.orders.update_one({"id": order_id}, {"$set": {"coupon_counted": False}})
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if updated.get("email"):
         asyncio.create_task(send_refund_email(updated, amount, new_refunded))
@@ -7192,6 +7207,12 @@ async def cancel_stale_unpaid_orders():
                     {"code": c["code"], "used_count": {"$gt": 0}},
                     {"$inc": {"used_count": -1}},
                 )
+                email_norm = (order.get("email") or "").strip().lower()
+                if email_norm:
+                    await db.coupons.update_one(
+                        {"code": c["code"], "used_by.email": email_norm, "used_by.count": {"$gt": 0}},
+                        {"$inc": {"used_by.$.count": -1}},
+                    )
                 await db.orders.update_one({"id": order["id"]}, {"$set": {"coupon_counted": False}})
             logging.info("Auto-cancelled unpaid order %s", order.get("order_number", order["id"]))
             if order.get("email"):
