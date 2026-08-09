@@ -6,10 +6,12 @@ import { toast } from "sonner";
 import { Mail, Save, RotateCcw, Eye, Check, X } from "lucide-react";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
+import { useConfirm } from "../../../components/ConfirmDialog";
 
 export default function AdminEmails() {
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
+  const confirm = useConfirm();
 
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +67,7 @@ export default function AdminEmails() {
 
   const reset = async () => {
     if (!selected) return;
-    if (!window.confirm(L("Réinitialiser cet email au texte par défaut ?", "Reset this email to default text?"))) return;
+    if (!await confirm({ title: L("Réinitialiser cet email au texte par défaut ?", "Reset this email to default text?"), destructive: true })) return;
     try {
       await api.post(`/admin/email-templates/${selected}/reset`);
       toast.success(L("Réinitialisé", "Reset done"));

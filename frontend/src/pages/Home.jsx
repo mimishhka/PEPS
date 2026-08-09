@@ -130,7 +130,8 @@ export default function Home() {
             <Reveal delay={340}>
               <div className="flex flex-wrap gap-x-10 gap-y-4 font-data text-[12px] uppercase tracking-[0.16em] text-[#8FB3C9]">
                 <span><span className="text-nova">{chip.lot}</span> FN-26005</span>
-
+                <span><span className="text-nova">{chip.purity}</span> 99.42%</span>
+                <span><span className="text-nova">{chip.license}</span> RUO</span>
               </div>
             </Reveal>
           </div>

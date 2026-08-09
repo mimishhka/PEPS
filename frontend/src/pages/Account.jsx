@@ -6,6 +6,7 @@ import api, { formatApiError } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
+import { useConfirm } from "../components/ConfirmDialog";
 
 // Statuts de paiement : couleur + libellé lisible bilingue (les 9 statuts backend).
 const PAYMENT_STATUS = {
@@ -250,7 +251,8 @@ function ProfileTab({ t, user, refresh }) {
 
 /* Addresses */
 function AddressesTab({ t }) {
-  const [addresses, setAddresses] = useState(null);
+  const confirm = useConfirm();
+  const [addresses, setAddresses] = useState([]);
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -276,7 +278,7 @@ function AddressesTab({ t }) {
   };
 
   const remove = async (id) => {
-    if (!window.confirm(t("account.addressDeleteConfirm"))) return;
+    if (!await confirm({ title: t("account.addressDeleteConfirm"), destructive: true, confirmLabel: t("common.delete") || "Delete", cancelLabel: t("common.cancel") || "Cancel" })) return;
     try {
       await api.delete(`/account/addresses/${id}`);
       load();
@@ -395,6 +397,7 @@ function Field({ label, value, onChange, required = false, className = "", testi
 
 /* Security */
 function SecurityTab({ t, logout, navigate }) {
+  const confirm = useConfirm();
   const [pw, setPw] = useState({ current_password: "", new_password: "", confirm: "" });
   const [pwBusy, setPwBusy] = useState(false);
   const [delPassword, setDelPassword] = useState("");
@@ -433,7 +436,7 @@ function SecurityTab({ t, logout, navigate }) {
 
   const deleteAccount = async (e) => {
     e.preventDefault();
-    if (!window.confirm(t("account.deleteConfirm"))) return;
+    if (!await confirm({ title: t("account.deleteConfirm"), destructive: true, confirmLabel: t("common.delete") || "Delete", cancelLabel: t("common.cancel") || "Cancel" })) return;
     setDelBusy(true);
     try {
       await api.post("/account/delete", { current_password: delPassword });

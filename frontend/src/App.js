@@ -33,6 +33,8 @@ import Privacy from "./pages/Privacy";
 import Faq from "./pages/Faq";
 import AffiliateDashboard from "./pages/AffiliateDashboard";
 import AffiliateJoin from "./pages/AffiliateJoin";
+import StaffAccept from "./pages/StaffAccept";
+import { ConfirmProvider } from "./components/ConfirmDialog";
 import useAffiliateRef from "./hooks/useAffiliateRef";
 import NotFound from "./pages/NotFound";
 
@@ -51,6 +53,7 @@ import "./index.css";
 
 function Shell({ children }) {
   return (
+    <ConfirmProvider>
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <AgeGate />
       <Header />
@@ -59,6 +62,7 @@ function Shell({ children }) {
       <Footer />
       <Toaster position="bottom-right" />
     </div>
+    </ConfirmProvider>
   );
 }
 
@@ -125,6 +129,7 @@ function AppRoutes() {
       <Route path="/faq" element={<Faq />} />
       <Route path="/affiliate/join" element={<AffiliateJoin />} />
       <Route path="/affiliate" element={<ProtectedRoute><AffiliateDashboard /></ProtectedRoute>} />
+      <Route path="/staff-accept" element={<StaffAccept />} />
       <Route
         path={`${ADMIN_PATH}/*`}
         element={

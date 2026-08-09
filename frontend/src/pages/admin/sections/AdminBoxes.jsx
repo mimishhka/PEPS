@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { Package2, Plus, Trash2, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
+import { useConfirm } from "../../../components/ConfirmDialog";
 
 const EMPTY = { name: "", length_cm: 20.3, width_cm: 10.2, height_cm: 2, tare_grams: 20, max_units: 6, active: true };
 
 export default function AdminBoxes() {
+  const confirm = useConfirm();
   const [boxes, setBoxes] = useState([]);
   const [editing, setEditing] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -41,7 +43,7 @@ export default function AdminBoxes() {
   };
 
   const remove = async (id) => {
-    if (!window.confirm("Supprimer ce contenant ?")) return;
+    if (!await confirm({ title: "Supprimer ce contenant ?", destructive: true })) return;
     try { await api.delete(`/admin/shipping/boxes/${id}`); load(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };

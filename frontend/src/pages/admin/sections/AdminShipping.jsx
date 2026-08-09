@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2, X, Save, MapPin, Edit } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
+import { useConfirm } from "../../../components/ConfirmDialog";
 
 export default function AdminShipping() {
+  const confirm = useConfirm();
   const [zones, setZones] = useState([]);
   const [editingZone, setEditingZone] = useState(null);
   const [editingMethod, setEditingMethod] = useState(null);
@@ -22,7 +24,7 @@ export default function AdminShipping() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   const delZone = async (id) => {
-    if (!window.confirm("Delete this zone and all its methods?")) return;
+    if (!await confirm({ title: "Delete this zone and all its methods?", destructive: true })) return;
     await api.delete(`/admin/shipping/zones/${id}`);
     toast.success("Deleted"); load();
   };
@@ -35,7 +37,7 @@ export default function AdminShipping() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   const delMethod = async (id) => {
-    if (!window.confirm("Delete this method?")) return;
+    if (!await confirm({ title: "Delete this method?", destructive: true })) return;
     await api.delete(`/admin/shipping/methods/${id}`);
     toast.success("Deleted"); load();
   };

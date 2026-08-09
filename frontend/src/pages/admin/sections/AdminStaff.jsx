@@ -8,6 +8,7 @@ import { Plus, Trash2, Mail, ShieldCheck, X, Save, Clock } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
+import { useConfirm } from "../../../components/ConfirmDialog";
 
 const AREAS = [
   { key: "dashboard", fr: "Tableau de bord", en: "Dashboard" },
@@ -36,6 +37,7 @@ const BLANK_PERMISSIONS = Object.fromEntries(AREAS.map((a) => [a.key, "none"]));
 export default function AdminStaff() {
   const { user: me } = useAuth();
   const isOwner = me?.role === "admin";
+  const confirm = useConfirm();
   const [staff, setStaff] = useState([]);
   const [invites, setInvites] = useState([]);
   const [inviting, setInviting] = useState(null); // null | { email, name, permissions }
@@ -83,7 +85,7 @@ export default function AdminStaff() {
   };
 
   const revoke = async (user) => {
-    if (!window.confirm(`Revoke admin access for ${user.name || user.email}? Their account becomes a normal customer account.`)) return;
+    if (!await confirm({ title: `Revoke admin access for ${user.name || user.email}?`, description: "Their account becomes a normal customer account.", destructive: true })) return;
     try {
       await api.delete(`/admin/staff/${user.id}`);
       toast.success("Access revoked");
@@ -94,7 +96,7 @@ export default function AdminStaff() {
   };
 
   const promote = async (user) => {
-    if (!window.confirm(`Make ${user.name || user.email} an owner? They will have full access, including managing other team members. This cannot be undone from here.`)) return;
+    if (!await confirm({ title: `Make ${user.name || user.email} an owner?`, description: "They will have full access, including managing other team members. This cannot be undone from here." })) return;
     try {
       await api.post(`/admin/staff/${user.id}/promote`);
       toast.success(`${user.name || user.email} is now an owner`);

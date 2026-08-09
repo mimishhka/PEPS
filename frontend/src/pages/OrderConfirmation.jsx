@@ -261,7 +261,7 @@ export default function OrderConfirmation() {
             </div>
           ) : (
             <div className="p-8 space-y-5 font-mono text-sm">
-              {np.mock && (
+              {np.mock && process.env.NODE_ENV !== "production" && (
                 <div className="border border-warning bg-yellow-50 p-3 text-xs uppercase tracking-[0.15em]" style={{ borderColor: "#FFCC00" }}>
                   ⚠ DEMO MODE · Configure NOWPAYMENTS_API_KEY to enable live crypto payments.
                 </div>

@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, Edit, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
+import { useConfirm } from "../../../components/ConfirmDialog";
 
 const EMPTY = { slug: "", name_en: "", name_fr: "", published: true, display_order: 0 };
 
 export default function AdminCategories() {
+  const confirm = useConfirm();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // null | {…category} | EMPTY
@@ -68,7 +70,7 @@ export default function AdminCategories() {
   };
 
   const remove = async (row) => {
-    if (!window.confirm(`Delete category "${row.name_en}"?`)) return;
+    if (!await confirm({ title: `Delete category "${row.name_en}"?`, destructive: true })) return;
     try {
       await api.delete(`/admin/categories/${row.id}`);
       toast.success("Category deleted.");

@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { Download, Plus, Edit, Trash2, Star, X, Save, AlertTriangle, CheckCircle2, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError, resolveAssetUrl } from "../../../lib/api";
+import { useConfirm } from "../../../components/ConfirmDialog";
 
 const CATEGORIES = ["healing", "gh-secretagogues", "weight-loss", "cognitive", "longevity"];
 
 export default function AdminProducts() {
+  const confirm = useConfirm();
   const [products, setProducts] = useState([]);
   const [editing, setEditing] = useState(null);
 
@@ -36,7 +38,7 @@ export default function AdminProducts() {
   };
 
   const del = async (id) => {
-    if (!window.confirm("Delete this product?")) return;
+    if (!await confirm({ title: "Delete this product?", destructive: true })) return;
     await api.delete(`/admin/products/${id}`);
     toast.success("Deleted"); load();
   };

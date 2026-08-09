@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Plus, Edit, Trash2, X, Save, Ticket } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
+import { useConfirm } from "../../../components/ConfirmDialog";
 
 export default function AdminCoupons() {
+  const confirm = useConfirm();
   const [coupons, setCoupons] = useState([]);
   const [editing, setEditing] = useState(null);
 
@@ -50,7 +52,7 @@ export default function AdminCoupons() {
   };
 
   const del = async (id) => {
-    if (!window.confirm("Delete this coupon?")) return;
+    if (!await confirm({ title: "Delete this coupon?", destructive: true })) return;
     await api.delete(`/admin/coupons/${id}`);
     toast.success("Deleted"); load();
   };

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { RotateCcw, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
+import { useConfirm } from "../../../components/ConfirmDialog";
 
 const RESOURCES = [
   { key: "orders", label: "Orders", noAutoPurge: true },
@@ -28,6 +29,7 @@ function itemLabel(resource, item) {
 }
 
 export default function AdminTrash() {
+  const confirm = useConfirm();
   const [resource, setResource] = useState("orders");
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(new Set());
@@ -64,7 +66,7 @@ export default function AdminTrash() {
 
   const purge = async () => {
     if (selected.size === 0) return;
-    if (!window.confirm(`Permanently delete ${selected.size} item(s)? This cannot be undone.`)) return;
+    if (!await confirm({ title: `Permanently delete ${selected.size} item(s)?`, description: "This cannot be undone.", destructive: true })) return;
     setBusy(true);
     try {
       const { data } = await api.post(`/admin/trash/${resource}/purge`, { ids: [...selected] });

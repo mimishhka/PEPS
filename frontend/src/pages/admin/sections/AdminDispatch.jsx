@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Printer, Send, RefreshCw, Package, AlertTriangle, ExternalLink, CheckCircle2, Download } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
+import { useConfirm } from "../../../components/ConfirmDialog";
 
 function labelHref(url) {
   if (!url) return "#";
@@ -11,6 +12,7 @@ function labelHref(url) {
 }
 
 export default function AdminDispatch() {
+  const confirm = useConfirm();
   const todayIso = new Date().toLocaleDateString("en-CA");
   const [date, setDate] = useState(todayIso);
   const [data, setData] = useState(null);
@@ -75,7 +77,7 @@ export default function AdminDispatch() {
   };
 
   const transmit = async () => {
-    if (!window.confirm("Transmettre le manifeste à Postes Canada ? À faire une fois par jour, après impression.")) return;
+    if (!await confirm({ title: "Transmettre le manifeste à Postes Canada ?", description: "À faire une fois par jour, après impression.", destructive: true })) return;
     setTxBusy(true);
     try {
       const { data: res } = await api.post("/admin/shipping/transmit");
@@ -93,7 +95,7 @@ export default function AdminDispatch() {
       toast.error("Étiquette déjà transmise — utilisez le remboursement.");
       return;
     }
-    if (!window.confirm(`Annuler l'étiquette de ${o.order_number} ? La commande retourne « à étiqueter ».`)) return;
+    if (!await confirm({ title: `Annuler l'étiquette de ${o.order_number} ?`, description: "La commande retourne « à étiqueter ».", destructive: true })) return;
     setVoidBusy(o.id);
     try {
       await api.post(`/admin/orders/${o.id}/void-label`);

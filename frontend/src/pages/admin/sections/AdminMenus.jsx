@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, Edit, Trash2, X, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
+import { useConfirm } from "../../../components/ConfirmDialog";
 
 const EMPTY_MENU = {
   slug: "", name_en: "", name_fr: "", location: "header",
@@ -12,6 +13,7 @@ const EMPTY_ITEM = {
 };
 
 export default function AdminMenus() {
+  const confirm = useConfirm();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
@@ -67,7 +69,7 @@ export default function AdminMenus() {
   };
 
   const remove = async (row) => {
-    if (!window.confirm(`Delete menu "${row.name_en}"? This cannot be undone.`)) return;
+    if (!await confirm({ title: `Delete menu "${row.name_en}"?`, description: "This cannot be undone.", destructive: true })) return;
     try {
       await api.delete(`/admin/menus/${row.id}`);
       toast.success("Menu deleted.");

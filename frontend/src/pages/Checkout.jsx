@@ -384,31 +384,60 @@ export default function Checkout() {
 
 function AddressForm({ value, setValue, lang, prefix }) {
   const set = (k, v) => setValue((s) => ({ ...s, [k]: v }));
+  const lbl = (en, fr) => lang === "fr" ? fr : en;
   return (
     <div className="grid sm:grid-cols-2 gap-3">
-      <input value={value.full_name} onChange={(e) => set("full_name", e.target.value)}
-        placeholder={lang === "fr" ? "Nom complet" : "Full name"} data-testid={`${prefix}-full-name`}
-        className="sm:col-span-2 rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
-      <input value={value.line1} onChange={(e) => set("line1", e.target.value)}
-        placeholder={lang === "fr" ? "Adresse" : "Address line 1"} data-testid={`${prefix}-line1`}
-        className="sm:col-span-2 rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
-      <input value={value.line2} onChange={(e) => set("line2", e.target.value)}
-        placeholder={lang === "fr" ? "Appartement, suite (optionnel)" : "Address line 2 (optional)"} data-testid={`${prefix}-line2`}
-        className="sm:col-span-2 rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
-      <input value={value.city} onChange={(e) => set("city", e.target.value)}
-        placeholder={lang === "fr" ? "Ville" : "City"} data-testid={`${prefix}-city`}
-        className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
-      <input value={value.province} onChange={(e) => set("province", e.target.value)}
-        placeholder={lang === "fr" ? "Province / État" : "Province / State"} data-testid={`${prefix}-province`}
-        className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
-      <input value={value.postal_code} onChange={(e) => set("postal_code", e.target.value)}
-        placeholder={value.country === "CA" ? "A1A 1A1" : "12345"} data-testid={`${prefix}-postal`}
-        className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
-      <select value={value.country} onChange={(e) => set("country", e.target.value)} data-testid={`${prefix}-country`}
-        className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova bg-white">
-        <option value="CA">Canada</option>
-        <option value="US">United States</option>
-      </select>
+      <label className="sm:col-span-2 flex flex-col gap-1">
+        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Full name", "Nom complet")}</span>
+        <input value={value.full_name} onChange={(e) => set("full_name", e.target.value)}
+          placeholder={lbl("Full name", "Nom complet")} data-testid={`${prefix}-full-name`}
+          autoComplete="name"
+          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+      </label>
+      <label className="sm:col-span-2 flex flex-col gap-1">
+        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Address", "Adresse")}</span>
+        <input value={value.line1} onChange={(e) => set("line1", e.target.value)}
+          placeholder={lbl("Address line 1", "Adresse")} data-testid={`${prefix}-line1`}
+          autoComplete="address-line1"
+          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+      </label>
+      <label className="sm:col-span-2 flex flex-col gap-1">
+        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Apt / Suite (optional)", "Appartement (optionnel)")}</span>
+        <input value={value.line2} onChange={(e) => set("line2", e.target.value)}
+          placeholder={lbl("Address line 2 (optional)", "Appartement, suite (optionnel)")} data-testid={`${prefix}-line2`}
+          autoComplete="address-line2"
+          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("City", "Ville")}</span>
+        <input value={value.city} onChange={(e) => set("city", e.target.value)}
+          placeholder={lbl("City", "Ville")} data-testid={`${prefix}-city`}
+          autoComplete="address-level2"
+          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Province / State", "Province / \u00c9tat")}</span>
+        <input value={value.province} onChange={(e) => set("province", e.target.value)}
+          placeholder={lbl("Province / State", "Province / \u00c9tat")} data-testid={`${prefix}-province`}
+          autoComplete="address-level1"
+          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Postal / ZIP code", "Code postal")}</span>
+        <input value={value.postal_code} onChange={(e) => set("postal_code", e.target.value)}
+          placeholder={value.country === "CA" ? "A1A 1A1" : "12345"} data-testid={`${prefix}-postal`}
+          autoComplete="postal-code"
+          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Country", "Pays")}</span>
+        <select value={value.country} onChange={(e) => set("country", e.target.value)} data-testid={`${prefix}-country`}
+          autoComplete="country"
+          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova bg-white">
+          <option value="CA">Canada</option>
+          <option value="US">United States</option>
+        </select>
+      </label>
     </div>
   );
 }

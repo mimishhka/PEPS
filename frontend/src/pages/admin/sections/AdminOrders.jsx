@@ -3,6 +3,7 @@ import { Download, Search, X, FileText, CheckCircle2, Save, Truck, MessageSquare
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
+import { useConfirm } from "../../../components/ConfirmDialog";
 
 const FULFILLMENT_OPTS = ["pending", "preorder", "processing", "shipped", "delivered", "cancelled", "failed", "refunded"];
 const PAYMENT_OPTS = ["awaiting_etransfer", "awaiting_crypto", "paid", "refunded", "cancelled", "failed"];
@@ -14,6 +15,7 @@ const TABS = [
 ];
 
 export default function AdminOrders() {
+  const confirm = useConfirm();
   const [orders, setOrders] = useState([]);
   const [query, setQuery] = useState("");
   const [filterPayment, setFilterPayment] = useState("all");
@@ -34,7 +36,7 @@ export default function AdminOrders() {
   useEffect(() => { loadManifest(); }, []);
 
   const transmitManifest = async () => {
-    if (!window.confirm("Transmit today's manifest to Canada Post? This closes the shipments for billing.")) return;
+    if (!await confirm({ title: "Transmit today's manifest to Canada Post?", description: "This closes the shipments for billing.", destructive: true })) return;
     setTxBusy(true);
     try {
       const { data } = await api.post("/admin/shipping/transmit");
@@ -223,7 +225,7 @@ export default function AdminOrders() {
 
 function OrderDetail({ order, onClose, onUpdate }) {
   const deleteOrder = async () => {
-    if (!window.confirm(`Move order ${order.order_number} to trash? It stays recoverable there — nothing is lost.`)) return;
+    if (!await confirm({ title: `Move order ${order.order_number} to trash?`, description: "It stays recoverable there — nothing is lost." })) return;
     try {
       await api.delete(`/admin/orders/${order.id}`);
       toast.success("Order moved to trash");
@@ -279,7 +281,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
   };
 
   const voidLabel = async () => {
-    if (!window.confirm("Void this Canada Post label? Only possible before the manifest is transmitted.")) return;
+    if (!await confirm({ title: "Void this Canada Post label?", description: "Only possible before the manifest is transmitted.", destructive: true })) return;
     setCpBusy(true);
     try {
       await api.post(`/admin/orders/${order.id}/void-label`);

@@ -82,9 +82,12 @@ export default function Login() {
 
         <div className="max-w-md">
           {!isAdminLogin && (
-            <div className="inline-flex rounded-full border border-ash bg-white p-1 mb-8" role="tablist">
+            <div className="inline-flex rounded-full border border-ash bg-white p-1 mb-8" role="tablist" aria-label="Sign in method">
               <button
                 type="button"
+                role="tab"
+                aria-selected={mode === "magic"}
+                aria-controls="login-panel-magic"
                 onClick={() => { setMode("magic"); setMagicSent(false); }}
                 data-testid="login-tab-magic"
                 className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "magic" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}
@@ -93,6 +96,9 @@ export default function Login() {
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={mode === "password"}
+                aria-controls="login-panel-password"
                 onClick={() => setMode("password")}
                 data-testid="login-tab-password"
                 className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "password" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}
