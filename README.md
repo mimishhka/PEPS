@@ -21,51 +21,13 @@ Optional sender info:
 
 Do not commit `.env` to source control.
 
-## Quick precheck
+## Google OAuth setup
 
-Run the unified validation script from repository root:
+To enable Google Sign-In for customers, add these variables to your `.env` (see `.env.example`):
 
-```bash
-./precheck.sh
-```
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REDIRECT_URI` (must point to the backend callback, e.g. `https://api.fironova.com/api/auth/google/callback`)
 
-Optional flags:
-
-- `--skip-frontend` to run only backend syntax checks
-- `--with-pytest` to run backend tests after compile checks
-
-## Authentication
-
-Customers sign in with email + password or with a passwordless magic link (both
-set the same httpOnly session cookie). No third-party OAuth provider is wired
-into the backend.
-
-## Interac Autodeposit auto-confirmation (Microsoft Graph)
-
-The backend polls the Interac e-transfer mailbox (`orders@fironova.com`) and auto-marks
-orders as paid when the Autodeposit deposit notification matches an order reference (`FN-…`)
-**and** the amount. A notification without a matching reference or with a divergent amount is
-never auto-confirmed — it is logged for manual review (same defense as the NOWPayments IPN).
-
-Add these variables to `backend/.env`:
-
-- `INTERAC_EMAIL` — the Interac Autodeposit mailbox (e.g. `orders@fironova.com`)
-- `INTERAC_GRAPH_TENANT_ID` — Azure app registration → Directory (tenant) ID
-- `INTERAC_GRAPH_CLIENT_ID` — Azure app registration → Application (client) ID
-- `INTERAC_GRAPH_CLIENT_SECRET` — client secret **Value** (visible only at creation)
-- `INTERAC_GRAPH_USER` — optional; defaults to `INTERAC_EMAIL`. Use this if the mailbox is an
-  alias/subuser whose address differs from `INTERAC_EMAIL`.
-- `INTERAC_GRAPH_POLL_SECONDS` — optional; polling interval (default `120`)
-
-The Azure app needs the **`Mail.ReadWrite`** application permission with **admin consent**
-granted. The watchdog runs only when the Graph credentials are set.
-
-Dry-run (read-only) validation, run from `backend/`:
-
-```bash
-python3 dryrun_interac.py
-```
-
-It verifies the Graph token, mailbox access, and prints what the watchdog *would* have done
-for each unread Interac notification — without marking anything read or touching any order.
+When enabled, users can sign in via Google; the backend will create or attach the account and set the same httpOnly session cookie used by email/password login.
 

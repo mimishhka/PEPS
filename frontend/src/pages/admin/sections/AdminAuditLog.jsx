@@ -49,7 +49,7 @@ export default function AdminAuditLog() {
                   </td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-1.5">
-                      {e.role === "admin" ? <ShieldCheck size={13} className="text-glacier" /> : <User size={13} className="text-foreground/40" />}
+                      {e.role === "admin" ? <ShieldCheck size={13} className="text-copper" /> : <User size={13} className="text-foreground/40" />}
                       <span className="text-xs">{e.user_name || e.user_email}</span>
                     </div>
                   </td>

@@ -5,6 +5,7 @@ Coverage:
 - GET /api/payments/crypto/status/{order_id} for crypto order → 200 with np_status='waiting'
 - GET /api/payments/crypto/status/{order_id} for non-crypto order → 404
 - GET /api/payments/crypto/status/{order_id} for already-paid crypto order → 'paid' (no provider call)
+- REGRESSION: Stripe checkout returns url
 - REGRESSION: Interac checkout works and decrements variant stock
 - CLEANUP: delete created test orders and restore stock
 """
@@ -52,7 +53,7 @@ def _pick(products, min_stock=2, max_price=150):
     return None, None
 
 
-def _checkout(product, variant, qty=1, payment_method="interac", pay_currency=None, email=None):
+def _checkout(product, variant, qty=1, payment_method="interac", pay_currency=None, email=None, origin_url=None):
     payload = {
         "email": email or TEST_EMAIL,
         "items": [{"product_id": product["id"], "variant_id": variant["id"], "qty": qty}],
@@ -65,6 +66,8 @@ def _checkout(product, variant, qty=1, payment_method="interac", pay_currency=No
     }
     if pay_currency:
         payload["pay_currency"] = pay_currency
+    if origin_url:
+        payload["origin_url"] = origin_url
     return requests.post(f"{BASE_URL}/api/checkout", json=payload, timeout=30)
 
 
@@ -91,7 +94,6 @@ def test_nowpayments_live_creation_no_mock_flag(crypto_order):
     assert "mock" not in pr or pr.get("mock") in (False, None), f"provider_response should have NO mock flag, got: {pr}"
 
 
-@pytest.mark.xfail(reason="NOWPayments switched to the invoice flow in iter8: payment_id is replaced by invoice_id", strict=False)
 def test_nowpayments_live_payment_id_numeric(crypto_order):
     pr = crypto_order["payment_info"]["provider_response"]
     pid = pr.get("payment_id")
@@ -100,7 +102,6 @@ def test_nowpayments_live_payment_id_numeric(crypto_order):
     assert re.match(r"^\d+$", str(pid)), f"payment_id should be numeric string, got: {pid}"
 
 
-@pytest.mark.xfail(reason="NOWPayments switched to the invoice flow in iter8: pay_address is no longer returned", strict=False)
 def test_nowpayments_live_pay_address_real_btc(crypto_order):
     pr = crypto_order["payment_info"]["provider_response"]
     addr = pr.get("pay_address")
@@ -162,7 +163,23 @@ def test_crypto_status_paid_order_short_circuits(crypto_order, db):
         db.orders.update_one({"id": oid}, {"$set": {"payment_status": original_status}})
 
 
-# ==================== REGRESSION: Interac ====================
+# ==================== REGRESSION: Stripe & Interac ====================
+
+def test_stripe_checkout_returns_url(products):
+    """Regression: Stripe checkout still returns a checkout url."""
+    p, v = _pick(products)
+    r = _checkout(p, v, qty=1, payment_method="stripe", origin_url=BASE_URL)
+    if r.status_code == 503:
+        pytest.skip("Stripe not configured on this environment")
+    assert r.status_code == 200, f"Stripe checkout: {r.status_code} {r.text}"
+    body = r.json()
+    pi = body.get("payment_info") or {}
+    url = pi.get("checkout_url") or pi.get("url") or body.get("url")
+    assert url and url.startswith("http"), f"No stripe url in response: {body}"
+    # If order was created, track it
+    if body.get("id"):
+        CREATED_ORDERS.append((body["id"], [(v["id"], 1)]))
+
 
 def test_interac_checkout_decrements_stock(products, db):
     """Regression: Interac flow decrements variant stock by qty."""

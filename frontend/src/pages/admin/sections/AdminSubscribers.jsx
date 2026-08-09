@@ -37,14 +37,14 @@ export default function AdminSubscribers() {
     <div className="p-8" data-testid="admin-subscribers">
       <div className="flex items-end justify-between mb-6 flex-wrap gap-4">
         <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-glacier">// SUBSCRIBERS</div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-copper">// SUBSCRIBERS</div>
           <h1 className="font-display text-3xl font-bold tracking-[-0.01em] mt-2 text-ink">Launch list</h1>
         </div>
         <a
           href={`${API_BASE}/admin/subscribers.csv${status === "all" ? "" : `?status=${status}`}`}
           target="_blank" rel="noopener noreferrer"
           data-testid="export-subscribers-csv"
-          className="rounded-full bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2"
+          className="rounded-full bg-ink text-paper font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2"
         >
           <Download size={14} /> CSV
         </a>
@@ -57,8 +57,8 @@ export default function AdminSubscribers() {
           { l: "Converted", v: stats.converted },
           { l: "Conversion", v: `${stats.rate}%` },
         ].map((c) => (
-          <div key={c.l} className="bg-white border border-ash rounded-md px-4 py-3">
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-glacier">{c.l}</div>
+          <div key={c.l} className="bg-paper border border-faint rounded-md px-4 py-3">
+            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-copper">{c.l}</div>
             <div className="font-mono text-2xl font-bold tabular-nums text-ink mt-1">{c.v}</div>
           </div>
         ))}
@@ -71,7 +71,7 @@ export default function AdminSubscribers() {
             onClick={() => setStatus(s)}
             data-testid={`subscribers-filter-${s}`}
             className={`rounded-full font-mono text-[10px] uppercase tracking-[0.2em] px-4 py-1.5 border ${
-              status === s ? "bg-nordfjord text-white border-nordfjord" : "border-ash text-glacier"
+              status === s ? "bg-garnet text-paper border-garnet" : "border-faint text-inkmuted"
             }`}
           >
             {s}
@@ -79,10 +79,10 @@ export default function AdminSubscribers() {
         ))}
       </div>
 
-      <div className="bg-white border border-ash rounded-lg overflow-hidden">
+      <div className="bg-paper border border-faint rounded-lg overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-ash font-mono text-[10px] uppercase tracking-[0.2em] text-glacier">
+            <tr className="border-b border-faint font-mono text-[10px] uppercase tracking-[0.2em] text-copper">
               <th className="text-left px-4 py-3">Email</th>
               <th className="text-left px-4 py-3">Lang</th>
               <th className="text-left px-4 py-3">Source</th>
@@ -92,30 +92,30 @@ export default function AdminSubscribers() {
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={6} className="px-4 py-8 text-center text-glacier">Loading…</td></tr>}
+            {loading && <tr><td colSpan={6} className="px-4 py-8 text-center text-inkmuted">Loading…</td></tr>}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-glacier">
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-inkmuted">
                 <Mail size={18} className="inline mr-2" /> No subscribers yet.
               </td></tr>
             )}
             {rows.map((r) => (
-              <tr key={r.id} className="border-b border-ash last:border-0" data-testid={`subscriber-row-${r.id}`}>
+              <tr key={r.id} className="border-b border-faint last:border-0" data-testid={`subscriber-row-${r.id}`}>
                 <td className="px-4 py-3 font-mono text-xs text-ink">{r.email}</td>
-                <td className="px-4 py-3 font-mono text-xs uppercase text-glacier">{r.lang}</td>
-                <td className="px-4 py-3 font-mono text-xs text-glacier">{r.source || "—"}</td>
+                <td className="px-4 py-3 font-mono text-xs uppercase text-inkmuted">{r.lang}</td>
+                <td className="px-4 py-3 font-mono text-xs text-inkmuted">{r.source || "—"}</td>
                 <td className="px-4 py-3">
                   <span className={`rounded-full font-mono text-[10px] uppercase tracking-[0.2em] px-2.5 py-1 border ${
-                    r.status === "subscribed" ? "bg-nordfjord text-white border-nordfjord" : "border-ash text-glacier"}`}>
+                    r.status === "subscribed" ? "bg-garnet text-paper border-garnet" : "border-faint text-inkmuted"}`}>
                     {r.status}
                   </span>
                 </td>
                 <td className="px-4 py-3">
                   {r.converted
-                    ? <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-success">Registered</span>
-                    : <span className="font-mono text-[10px] text-glacier">—</span>}
+                    ? <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#2E7D52]">Registered</span>
+                    : <span className="font-mono text-[10px] text-inkmuted">—</span>}
                 </td>
                 {/* consent_at + consent_ip = la preuve exigée en cas de plainte CASL */}
-                <td className="px-4 py-3 font-mono text-[10px] text-glacier">
+                <td className="px-4 py-3 font-mono text-[10px] text-inkmuted">
                   {r.consent_at ? `${String(r.consent_at).slice(0, 10)} · ${r.consent_ip || "—"}` : "—"}
                 </td>
               </tr>

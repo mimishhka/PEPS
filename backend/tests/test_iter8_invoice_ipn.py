@@ -4,11 +4,11 @@ Coverage:
 - POST /api/checkout (nowpayments) → payment_info.provider_response has invoice_id/invoice_url/price_amount/payment_status=waiting, NO pay_address
 - POST /api/webhook/nowpayments:
     (a) missing/wrong signature → 401, order untouched
-    (b) valid signature 'finished' → order payment_status=paid, fulfillment_status=processing
-        (or preorder when has_preorder), note added, payment_id persisted in provider_response
+    (b) valid signature 'finished' → order payment_status=paid, fulfillment_status=processing,
+        note added, payment_id persisted in provider_response
     (c) valid signature 'confirming' → provider_response.payment_status updated only (order still awaiting_crypto)
 - GET /api/payments/crypto/status/{order_id} invoice-flow → 'awaiting_crypto'/'waiting' pre-IPN, 'paid' post-IPN
-- REGRESSION: Interac checkout still work
+- REGRESSION: Interac + Stripe checkout still work
 - CLEANUP: delete created orders + restore variant stock
 """
 import os
@@ -87,6 +87,8 @@ def _checkout(product, variant, qty=1, payment_method="interac", pay_currency=No
     }
     if pay_currency:
         payload["pay_currency"] = pay_currency
+    if payment_method == "stripe":
+        payload["origin_url"] = "https://peptide-ca.preview.emergentagent.com"
     return requests.post(f"{BASE_URL}/api/checkout", json=payload, timeout=30)
 
 
@@ -192,13 +194,12 @@ def test_ipn_confirming_only_updates_status(invoice_order, db):
 
 
 def test_ipn_finished_marks_paid(invoice_order, db):
-    """Valid sig with payment_status='finished' → marks paid (preorder stays preorder) + note."""
+    """Valid sig with payment_status='finished' → marks paid + processing + note."""
     payload = {
         "order_id": invoice_order["id"],
         "payment_status": "finished",
         "payment_id": 555555555,
         "pay_currency": "btc",
-        "price_amount": float(invoice_order["total"]),
         "actually_paid": float(invoice_order["total"]),
     }
     body = json.dumps(payload, separators=(",", ":"), sort_keys=True)
@@ -212,11 +213,7 @@ def test_ipn_finished_marks_paid(invoice_order, db):
     assert r.status_code == 200, r.text
     o = db.orders.find_one({"id": invoice_order["id"]})
     assert o["payment_status"] == "paid"
-    # Les précommandes restent "preorder" même payées ; sinon "processing".
-    if o.get("has_preorder"):
-        assert o["fulfillment_status"] == "preorder"
-    else:
-        assert o["fulfillment_status"] == "processing"
+    assert o["fulfillment_status"] == "processing"
     assert o.get("paid_at")
     pr = (o.get("payment_info") or {}).get("provider_response") or {}
     assert pr.get("payment_status") == "finished"
@@ -247,6 +244,18 @@ def test_interac_regression(products, db):
     assert data["payment_status"] in ("awaiting_interac", "awaiting_etransfer")
     after = int(next(x for x in db.products.find_one({"id": p["id"]})["variants"] if x["id"] == v["id"])["stock"])
     assert after == before - 1
+
+
+def test_stripe_regression(products):
+    """Stripe checkout returns https checkout_url."""
+    p, v = _pick(products)
+    r = _checkout(p, v, qty=1, payment_method="stripe")
+    assert r.status_code == 200, r.text
+    data = r.json()
+    CREATED_ORDERS.append((data["id"], [(v["id"], 1)]))
+    pi = data.get("payment_info") or {}
+    url = pi.get("checkout_url") or ""
+    assert url.startswith("https://"), f"bad stripe url: {url}"
 
 
 # ==================== Cleanup ====================

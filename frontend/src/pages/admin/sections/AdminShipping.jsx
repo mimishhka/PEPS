@@ -2,10 +2,8 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2, X, Save, MapPin, Edit } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
-import { useConfirm } from "../../../components/ConfirmDialog";
 
 export default function AdminShipping() {
-  const confirm = useConfirm();
   const [zones, setZones] = useState([]);
   const [editingZone, setEditingZone] = useState(null);
   const [editingMethod, setEditingMethod] = useState(null);
@@ -24,13 +22,7 @@ export default function AdminShipping() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   const delZone = async (id) => {
-    const ok = await confirm({
-      title: "Delete this zone and all its methods?",
-      confirmLabel: "Delete",
-      cancelLabel: "Cancel",
-      destructive: true,
-    });
-    if (!ok) return;
+    if (!window.confirm("Delete this zone and all its methods?")) return;
     await api.delete(`/admin/shipping/zones/${id}`);
     toast.success("Deleted"); load();
   };
@@ -43,13 +35,7 @@ export default function AdminShipping() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
   const delMethod = async (id) => {
-    const ok = await confirm({
-      title: "Delete this method?",
-      confirmLabel: "Delete",
-      cancelLabel: "Cancel",
-      destructive: true,
-    });
-    if (!ok) return;
+    if (!window.confirm("Delete this method?")) return;
     await api.delete(`/admin/shipping/methods/${id}`);
     toast.success("Deleted"); load();
   };
@@ -82,7 +68,7 @@ export default function AdminShipping() {
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => setEditingZone({ ...z })} data-testid={`edit-zone-${z.id}`} className="border border-ink/30 px-2 py-1 hover:bg-ink hover:text-white"><Edit size={12} /></button>
-                <button onClick={() => delZone(z.id)} data-testid={`delete-zone-${z.id}`} className="border border-ink/30 px-2 py-1 hover:bg-error hover:text-white hover:border-error"><Trash2 size={12} /></button>
+                <button onClick={() => delZone(z.id)} data-testid={`delete-zone-${z.id}`} className="border border-ink/30 px-2 py-1 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={12} /></button>
                 <button onClick={() => setEditingMethod(blankMethod(z.id))} data-testid={`add-method-${z.id}`} className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-3 py-1.5 flex items-center gap-1.5"><Plus size={12} /> Method</button>
               </div>
             </div>
@@ -96,7 +82,7 @@ export default function AdminShipping() {
                   <div className="flex items-center gap-3">
                     <div className="font-bold tabular-nums">${m.cost_cad.toFixed(2)}</div>
                     <button onClick={() => setEditingMethod({ ...m })} className="border border-ink/30 px-2 py-1 hover:bg-ink hover:text-white"><Edit size={11} /></button>
-                    <button onClick={() => delMethod(m.id)} className="border border-ink/30 px-2 py-1 hover:bg-error hover:text-white hover:border-error"><Trash2 size={11} /></button>
+                    <button onClick={() => delMethod(m.id)} className="border border-ink/30 px-2 py-1 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={11} /></button>
                   </div>
                 </div>
               ))}

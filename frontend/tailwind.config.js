@@ -16,51 +16,12 @@ module.exports = {
         warning: "#E8A33D",
         error: "#D64545",
         compliance: "#5B7A9E",  // RUO / regulatory channel
-
-        /* ---- Tokens sémantiques (composants shadcn / ui-*) ---- */
-        background: {
-          DEFAULT: "#F7FAFC",   // clinical — page ground
-          foreground: "#0B2E4F",
-        },
-        foreground: "#0B2E4F",  // nordfjord — ink
-        card: {
-          DEFAULT: "#FFFFFF",
-          foreground: "#0B2E4F",
-        },
-        popover: {
-          DEFAULT: "#FFFFFF",
-          foreground: "#0B2E4F",
-        },
-        primary: {
-          DEFAULT: "#0B2E4F",   // nordfjord
-          foreground: "#FFFFFF",
-        },
-        secondary: {
-          DEFAULT: "#CBD5E0",   // ash
-          foreground: "#0B2E4F",
-        },
-        muted: {
-          DEFAULT: "#CBD5E0",   // ash
-          foreground: "#3E5C76", // glacier
-        },
-        accent: {
-          DEFAULT: "#CBD5E0",   // ash
-          foreground: "#0B2E4F",
-        },
-        destructive: {
-          DEFAULT: "#D64545",   // error
-          foreground: "#FFFFFF",
-        },
-        border: "#CBD5E0",      // ash — hairlines
-        input: "#CBD5E0",       // ash
-        ring: "#00B8D4",        // nova — focus spark
       },
       fontFamily: {
         display: ["'Space Grotesk'", "sans-serif"],
         body: ["Inter", "sans-serif"],
-        data: ["Inter", "sans-serif"],
+        data: ["'JetBrains Mono'", "monospace"],
         sans: ["Inter", "sans-serif"],
-        mono: ["'IBM Plex Mono'", "monospace"],
       },
       letterSpacing: {
         wordmark: "0.14em",
@@ -71,7 +32,7 @@ module.exports = {
         md: "8px",
         lg: "12px",
         xl: "16px",
-        "2xl": "24px",
+        "2xl": "16px",
       },
       keyframes: {
         mesh: {

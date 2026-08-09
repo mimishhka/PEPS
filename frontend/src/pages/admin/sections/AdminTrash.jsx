@@ -7,7 +7,6 @@ import { useCallback, useEffect, useState } from "react";
 import { RotateCcw, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
-import { useConfirm } from "../../../components/ConfirmDialog";
 
 const RESOURCES = [
   { key: "orders", label: "Orders", noAutoPurge: true },
@@ -29,7 +28,6 @@ function itemLabel(resource, item) {
 }
 
 export default function AdminTrash() {
-  const confirm = useConfirm();
   const [resource, setResource] = useState("orders");
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(new Set());
@@ -66,14 +64,7 @@ export default function AdminTrash() {
 
   const purge = async () => {
     if (selected.size === 0) return;
-    const ok = await confirm({
-      title: `Permanently delete ${selected.size} item(s)?`,
-      description: "This cannot be undone.",
-      confirmLabel: "Delete forever",
-      cancelLabel: "Cancel",
-      destructive: true,
-    });
-    if (!ok) return;
+    if (!window.confirm(`Permanently delete ${selected.size} item(s)? This cannot be undone.`)) return;
     setBusy(true);
     try {
       const { data } = await api.post(`/admin/trash/${resource}/purge`, { ids: [...selected] });
@@ -111,15 +102,10 @@ export default function AdminTrash() {
       </div>
 
       {activeResource?.noAutoPurge && (
-        <div className="warn-banner mb-5">
-          <AlertTriangle size={14} className="text-[#8A5A16] mt-0.5 shrink-0" />
-          <div className="flex-1">
-            <div className="wt">No automatic purge</div>
-            <p>
-              Orders are never purged automatically — they stay in trash until you purge them yourself.
-              A paid order is an accounting record; restore it if it was deleted by mistake.
-            </p>
-          </div>
+        <div className="flex items-start gap-2 border border-copper/40 bg-copper/5 px-4 py-3 mb-5 text-xs text-foreground/70">
+          <AlertTriangle size={14} className="text-copper mt-0.5 shrink-0" />
+          Orders are never purged automatically — they stay in trash until you purge them yourself.
+          A paid order is an accounting record; restore it if it was deleted by mistake.
         </div>
       )}
 
@@ -134,7 +120,7 @@ export default function AdminTrash() {
             <RotateCcw size={13} /> Restore
           </button>
           <button onClick={purge} disabled={busy || selected.size === 0} data-testid="trash-purge-btn"
-            className="flex items-center gap-2 border border-error text-error font-mono text-xs uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-40 hover:bg-error hover:text-white">
+            className="flex items-center gap-2 border border-signal text-signal font-mono text-xs uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-40 hover:bg-signal hover:text-white">
             <Trash2 size={13} /> Delete forever
           </button>
         </div>

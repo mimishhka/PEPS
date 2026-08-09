@@ -1,5 +1,5 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import { ShoppingBag, User, Menu, X, Lock, Handshake } from "lucide-react";
+import { ShoppingBag, User, Menu, X, Lock } from "lucide-react";
 import { useState, useEffect } from "react";
 import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
@@ -98,12 +98,9 @@ export default function Header() {
               data-testid="lang-toggle"
               onClick={toggle}
               className="rounded-full font-data text-xs font-semibold uppercase tracking-[0.18em] border-[1.5px] border-ash px-3 py-1.5 text-nordfjord hover:border-nova hover:text-nova transition-colors"
-              aria-label={lang === "en" ? "Switch to French" : "Passer à l'anglais"}
-              title={lang === "en" ? "Switch to French" : "Passer à l'anglais"}
+              aria-label="Toggle language"
             >
-              <span className={lang === "en" ? "text-nordfjord" : "text-glacier"}>EN</span>
-              <span className="text-ash mx-0.5" aria-hidden="true">/</span>
-              <span className={lang === "fr" ? "text-nordfjord" : "text-glacier"}>FR</span>
+              {lang === "en" ? "EN · FR" : "FR · EN"}
             </button>
             <button
               data-testid="cart-button"
@@ -125,11 +122,6 @@ export default function Header() {
             </button>
             {user ? (
               <div className="hidden md:flex items-center gap-3">
-                {user.is_affiliate && (
-                  <Link to="/affiliate" data-testid="nav-affiliate" className="font-data text-xs font-semibold uppercase tracking-[0.18em] flex items-center gap-1.5 text-nova hover:text-nordfjord transition-colors">
-                    <Handshake size={16} strokeWidth={1.5} /> {t("nav.account") === "Account" ? "Affiliate" : "Affilié"}
-                  </Link>
-                )}
                 <Link to="/account" data-testid="nav-account" className="font-data text-xs font-semibold uppercase tracking-[0.18em] flex items-center gap-1.5 text-nordfjord hover:text-nova transition-colors">
                   <User size={16} strokeWidth={1.5} /> {user.name?.split(" ")[0] || t("nav.account")}
                 </Link>
@@ -182,11 +174,6 @@ export default function Header() {
               </button>
               {user ? (
                 <>
-                  {user.is_affiliate && (
-                    <Link to="/affiliate" onClick={() => setMobileOpen(false)} className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-2 text-nova">
-                      {t("nav.account") === "Account" ? "Affiliate" : "Affilié"}
-                    </Link>
-                  )}
                   <Link to="/account" onClick={() => setMobileOpen(false)} className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-2 text-nordfjord">
                     {t("nav.account")}
                   </Link>

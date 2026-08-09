@@ -19,29 +19,19 @@ ADMIN_PASSWORD = "NordpepAdmin2026!"
 # ----------------------- fixtures -----------------------
 @pytest.fixture(scope="session")
 def admin_headers():
-    s = requests.Session()
-    r = s.post(f"{BASE_URL}/api/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+    r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
     assert r.status_code == 200, r.text
-    tok = s.cookies.get("access_token")
-    assert tok, "admin login: no access_token cookie (auth cookie-only)"
-    return {"Authorization": f"Bearer {tok}"}
+    return {"Authorization": f"Bearer {r.json()['token']}"}
 
 
 @pytest.fixture(scope="session")
 def user_session():
     email = f"iter3_{uuid.uuid4().hex[:8]}@example.com"
-    s = requests.Session()
-    r = s.post(f"{BASE_URL}/api/auth/register",
-               json={"email": email, "password": "Pass12345!", "name": "Iter3 User"})
+    r = requests.post(f"{BASE_URL}/api/auth/register",
+                      json={"email": email, "password": "Pass12345!", "name": "Iter3 User"})
     assert r.status_code == 200, r.text
     j = r.json()
-    raw = j.get("debug_magic_token")
-    assert raw, "register: no debug_magic_token — set MAGIC_LINK_DEBUG=1 in backend env"
-    vr = s.post(f"{BASE_URL}/api/auth/magic/verify", json={"token": raw})
-    assert vr.status_code == 200, vr.text
-    tok = s.cookies.get("access_token")
-    assert tok, "magic verify: no access_token cookie"
-    return {"email": email, "token": tok, "id": j["id"], "headers": {"Authorization": f"Bearer {tok}"}}
+    return {"email": email, "token": j["token"], "id": j["id"], "headers": {"Authorization": f"Bearer {j['token']}"}}
 
 
 def _first_product():

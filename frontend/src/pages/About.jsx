@@ -10,7 +10,7 @@ export default function About() {
   const steps = [
     { n: "01", t: isFr ? "Synthèse" : "Synthesis", d: isFr ? "Synthèse en phase solide Fmoc. Pureté confirmée par HPLC à ≥ 99 %." : "Fmoc solid-phase synthesis. HPLC-confirmed purity ≥ 99%." },
     { n: "02", t: isFr ? "Test indépendant" : "Independent testing", d: isFr ? "Chaque lot vérifié par un laboratoire tiers ISO 17025." : "Every batch verified by an ISO 17025 third-party lab." },
-    { n: "03", t: isFr ? "Expédition canadienne" : "Canadian shipping", d: isFr ? "Postes Canada Xpresspost. Suivi inclus." : "Canada Post Xpresspost. Tracked." },
+    { n: "03", t: isFr ? "Expédition canadienne" : "Canadian shipping", d: isFr ? "Postes Canada Xpresspost. Suivi inclus. Discret." : "Canada Post Xpresspost. Tracked. Discreet." },
   ];
 
   return (

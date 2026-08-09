@@ -7,18 +7,6 @@ import api from "../lib/api";
 
 const SESSION_KEY = "fn_ref_captured";
 
-// Types d'appareil pour l'analyse des sources (stocké côté backend).
-const detectDevice = () => {
-  try {
-    const ua = navigator.userAgent || "";
-    if (/ipad|tablet/i.test(ua)) return "tablet";
-    if (/mobi/i.test(ua)) return "mobile";
-  } catch {
-    /* noop */
-  }
-  return "desktop";
-};
-
 export default function useAffiliateRef() {
   const location = useLocation();
   const done = useRef(false);
@@ -38,13 +26,7 @@ export default function useAffiliateRef() {
     }
     done.current = true;
     api
-      .get(`/affiliate/ref/${encodeURIComponent(code)}`, {
-        params: {
-          page: location.pathname || "/",
-          referrer: (() => { try { return document.referrer || ""; } catch { return ""; } })(),
-          device: detectDevice(),
-        },
-      })
+      .get(`/affiliate/ref/${encodeURIComponent(code)}`)
       .then(() => {
         try {
           sessionStorage.setItem(SESSION_KEY, code);
@@ -55,5 +37,5 @@ export default function useAffiliateRef() {
       .catch(() => {
         /* silencieux : l'attribution ne doit jamais bloquer l'UX */
       });
-  }, [location.search, location.pathname]);
+  }, [location.search]);
 }

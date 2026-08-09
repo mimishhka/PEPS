@@ -21,29 +21,18 @@ export function CartProvider({ children }) {
   const add = useCallback((product, qty = 1, variant = null) => {
     const v = variant || (product.variants && product.variants[0]) || null;
     const variant_id = v?.id || null;
-
-    // Même règle que le backend (_build_order_totals) : précommande si
-    // preorder_enabled ET (coming_soon OU coa_pending OU stock < quantité).
-    // Le prix est recalculé sur la quantité FUSIONNÉE, pour que le panier
-    // affiche exactement ce que le backend facturera.
-    const computeUnit = (n) => {
-      let unit = v?.price ?? product.price_cad ?? 0;
-      if (!v) return unit;
-      const isPre =
-        v.preorder_enabled &&
-        (!!v.badge_coming_soon || !!v.badge_coa_pending || (v.stock ?? 0) < n);
-      if (isPre && v.preorder_price) unit = v.preorder_price;
-      else if (v.sale_price && v.sale_price < v.price) unit = v.sale_price;
-      return unit;
-    };
-
+    let unit_price = v?.price ?? product.price_cad ?? 0;
+    if (v) {
+      const coaComing = v.badge_coa_pending || v.badge_coming_soon;
+      const isPre = v.preorder_enabled && (v.stock <= 0 || coaComing);
+      if (isPre && v.preorder_price) unit_price = v.preorder_price;
+      else if (v.sale_price && v.sale_price < v.price) unit_price = v.sale_price;
+    }
     setItems((curr) => {
       const idx = curr.findIndex((i) => i.product_id === product.id && i.variant_id === variant_id);
-      const mergedQty = (idx >= 0 ? curr[idx].qty : 0) + qty;
-      const unit_price = computeUnit(mergedQty);
       if (idx >= 0) {
         const next = [...curr];
-        next[idx] = { ...next[idx], qty: mergedQty, price_cad: unit_price };
+        next[idx] = { ...next[idx], qty: next[idx].qty + qty };
         return next;
       }
       return [
@@ -76,7 +65,7 @@ export function CartProvider({ children }) {
           <div className="flex-1 min-w-0">
             <p className="font-data text-[10px] uppercase tracking-[0.18em] text-nova mb-1">{fr ? "✓ Ajouté au panier" : "✓ Added to cart"}</p>
             <p className="font-display font-bold text-nordfjord text-sm truncate">{line}</p>
-            <p className="font-data text-[12px] text-glacier mt-0.5">${computeUnit(qty).toFixed(2)} CAD</p>
+            <p className="font-data text-[12px] text-glacier mt-0.5">${unit_price.toFixed(2)} CAD</p>
           </div>
         </div>
         <div className="flex gap-2 mt-3">

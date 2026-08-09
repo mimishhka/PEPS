@@ -8,7 +8,6 @@ import { Plus, Trash2, Mail, ShieldCheck, X, Save, Clock } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
-import { useConfirm } from "../../../components/ConfirmDialog";
 
 const AREAS = [
   { key: "dashboard", fr: "Tableau de bord", en: "Dashboard" },
@@ -36,7 +35,6 @@ const BLANK_PERMISSIONS = Object.fromEntries(AREAS.map((a) => [a.key, "none"]));
 
 export default function AdminStaff() {
   const { user: me } = useAuth();
-  const confirm = useConfirm();
   const isOwner = me?.role === "admin";
   const [staff, setStaff] = useState([]);
   const [invites, setInvites] = useState([]);
@@ -85,14 +83,7 @@ export default function AdminStaff() {
   };
 
   const revoke = async (user) => {
-    const ok = await confirm({
-      title: `Revoke admin access for ${user.name || user.email}?`,
-      description: "Their account becomes a normal customer account.",
-      confirmLabel: "Revoke",
-      cancelLabel: "Cancel",
-      destructive: true,
-    });
-    if (!ok) return;
+    if (!window.confirm(`Revoke admin access for ${user.name || user.email}? Their account becomes a normal customer account.`)) return;
     try {
       await api.delete(`/admin/staff/${user.id}`);
       toast.success("Access revoked");
@@ -103,13 +94,7 @@ export default function AdminStaff() {
   };
 
   const promote = async (user) => {
-    const ok = await confirm({
-      title: `Make ${user.name || user.email} an owner?`,
-      description: "They will have full access, including managing other team members. This cannot be undone from here.",
-      confirmLabel: "Make owner",
-      cancelLabel: "Cancel",
-    });
-    if (!ok) return;
+    if (!window.confirm(`Make ${user.name || user.email} an owner? They will have full access, including managing other team members. This cannot be undone from here.`)) return;
     try {
       await api.post(`/admin/staff/${user.id}/promote`);
       toast.success(`${user.name || user.email} is now an owner`);
@@ -144,13 +129,13 @@ export default function AdminStaff() {
               <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-1">Name</label>
               <input required value={inviting.name} onChange={(e) => setInviting({ ...inviting, name: e.target.value })}
                 data-testid="staff-invite-name"
-                className="w-full border-b border-nordfjord px-1 py-2.5 bg-transparent focus:outline-none focus:border-nova" />
+                className="w-full border-b border-nordfjord px-1 py-2.5 bg-transparent focus:outline-none focus:border-signal" />
             </div>
             <div>
               <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-1">Email</label>
               <input required type="email" value={inviting.email} onChange={(e) => setInviting({ ...inviting, email: e.target.value })}
                 data-testid="staff-invite-email"
-                className="w-full border-b border-nordfjord px-1 py-2.5 bg-transparent focus:outline-none focus:border-nova" />
+                className="w-full border-b border-nordfjord px-1 py-2.5 bg-transparent focus:outline-none focus:border-signal" />
             </div>
           </div>
           {isOwner && (
@@ -184,7 +169,7 @@ export default function AdminStaff() {
 
       {/* Edit permissions modal-like inline panel */}
       {editingPerms && (
-        <div className="bg-white border border-nova p-6 mb-8" data-testid="staff-edit-permissions">
+        <div className="bg-white border border-signal p-6 mb-8" data-testid="staff-edit-permissions">
           <div className="flex items-center justify-between mb-5">
             <div className="font-data text-xs uppercase tracking-[0.2em]">
               Editing access for <span className="font-bold">{editingPerms.name || editingPerms.email}</span>
@@ -258,7 +243,7 @@ export default function AdminStaff() {
                             Make owner
                           </button>
                           <button onClick={() => revoke(s)} data-testid={`staff-revoke-${s.email}`}
-                            className="font-data text-[10px] uppercase tracking-[0.15em] text-nova link-underline">
+                            className="font-data text-[10px] uppercase tracking-[0.15em] text-signal link-underline">
                             Revoke
                           </button>
                         </>
@@ -298,7 +283,7 @@ export default function AdminStaff() {
                     </td>
                     <td className="px-6 py-3 text-right">
                       <button onClick={() => cancelInvite(inv.id)} data-testid={`invite-cancel-${inv.email}`}
-                        className="font-data text-[10px] uppercase tracking-[0.15em] text-nova link-underline">
+                        className="font-data text-[10px] uppercase tracking-[0.15em] text-signal link-underline">
                         Cancel
                       </button>
                     </td>
@@ -328,11 +313,11 @@ function PermissionGrid({ permissions, onChange, testPrefix, canGrantSensitive =
           return (
           <div key={a.key}
             className={`flex items-center justify-between border px-4 py-2.5 rounded-lg ${
-              a.sensitive ? "border-warning/40 bg-warning/10" : "border-ash"} ${locked ? "opacity-50" : ""}`}>
+              a.sensitive ? "border-amber-300 bg-amber-50/50" : "border-ash"} ${locked ? "opacity-50" : ""}`}>
             <span className="text-sm flex items-center gap-1.5">
               {L(a.fr, a.en)}
               {a.sensitive && (
-                <span className="text-[9px] font-medium uppercase tracking-wider text-warning border border-warning/40 rounded px-1 py-0.5">
+                <span className="text-[9px] font-medium uppercase tracking-wider text-amber-600 border border-amber-300 rounded px-1 py-0.5">
                   {L("sensible", "sensitive")}
                 </span>
               )}

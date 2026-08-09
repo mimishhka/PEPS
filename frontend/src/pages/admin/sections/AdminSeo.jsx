@@ -185,7 +185,7 @@ export default function AdminSeo() {
                           {(lang === "fr" ? p.meta_title_fr : p.meta_title_en) || <span className="text-glacier/50 italic">{L("défaut", "default")}</span>}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {p.optimized ? <Check size={16} className="inline text-success" /> : <AlertTriangle size={16} className="inline text-warning" />}
+                          {p.optimized ? <Check size={16} className="inline text-green-600" /> : <AlertTriangle size={16} className="inline text-amber-500" />}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <button onClick={() => setEditing(p)} className="px-3 py-1.5 rounded-md border border-ash text-xs hover:bg-clinical transition">
@@ -212,9 +212,9 @@ export default function AdminSeo() {
 
 function HealthCard({ label, value, warn }) {
   return (
-    <div className={`rounded-xl border p-4 ${warn ? "border-warning/40 bg-warning/10" : "border-ash bg-white"}`}>
+    <div className={`rounded-xl border p-4 ${warn ? "border-amber-300 bg-amber-50" : "border-ash bg-white"}`}>
       <p className="text-[10px] uppercase tracking-wider text-glacier mb-1">{label}</p>
-      <p className={`text-2xl font-bold tabular-nums ${warn ? "text-warning" : "text-nordfjord"}`}>{value}</p>
+      <p className={`text-2xl font-bold tabular-nums ${warn ? "text-amber-700" : "text-nordfjord"}`}>{value}</p>
     </div>
   );
 }
@@ -247,7 +247,7 @@ function TextArea({ label, value, onChange, hint }) {
   return (
     <label className="block">
       <span className="block font-data text-[10px] uppercase tracking-[0.2em] mb-1 text-glacier">
-        {label} <span className={len > 158 ? "text-warning" : "text-glacier/50"}>({len})</span>
+        {label} <span className={len > 158 ? "text-amber-600" : "text-glacier/50"}>({len})</span>
       </span>
       <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} rows={2} className="w-full rounded-lg border border-ash px-3 py-2 text-sm outline-none focus:border-nova resize-none" />
       {hint && <span className="block text-[11px] text-glacier/70 mt-1">{hint}</span>}

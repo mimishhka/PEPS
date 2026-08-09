@@ -2,10 +2,8 @@ import { useEffect, useState } from "react";
 import { Plus, Edit, Trash2, X, Save, Ticket } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
-import { useConfirm } from "../../../components/ConfirmDialog";
 
 export default function AdminCoupons() {
-  const confirm = useConfirm();
   const [coupons, setCoupons] = useState([]);
   const [editing, setEditing] = useState(null);
 
@@ -32,13 +30,7 @@ export default function AdminCoupons() {
   };
 
   const del = async (id) => {
-    const ok = await confirm({
-      title: "Delete this coupon?",
-      confirmLabel: "Delete",
-      cancelLabel: "Cancel",
-      destructive: true,
-    });
-    if (!ok) return;
+    if (!window.confirm("Delete this coupon?")) return;
     await api.delete(`/admin/coupons/${id}`);
     toast.success("Deleted"); load();
   };
@@ -85,12 +77,12 @@ export default function AdminCoupons() {
                 <td className="px-6 py-3 font-mono text-xs">{c.expires_at ? c.expires_at.slice(0, 10) : "—"}</td>
                 <td className="px-6 py-3">
                   {c.active
-                    ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-success text-white px-2 py-0.5">ON</span>
-                    : <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-ash text-nordfjord px-2 py-0.5">OFF</span>}
+                    ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-emerald-600 text-white px-2 py-0.5">ON</span>
+                    : <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-gray-400 text-white px-2 py-0.5">OFF</span>}
                 </td>
                 <td className="px-6 py-3 text-right">
                   <button onClick={() => setEditing({ ...c })} data-testid={`edit-coupon-${c.code}`} className="border border-ink/30 px-2 py-1 hover:bg-ink hover:text-white mr-1"><Edit size={12} /></button>
-                  <button onClick={() => del(c.id)} data-testid={`delete-coupon-${c.code}`} className="border border-ink/30 px-2 py-1 hover:bg-error hover:text-white hover:border-error"><Trash2 size={12} /></button>
+                  <button onClick={() => del(c.id)} data-testid={`delete-coupon-${c.code}`} className="border border-ink/30 px-2 py-1 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={12} /></button>
                 </td>
               </tr>
             ))}

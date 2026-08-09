@@ -22,11 +22,6 @@ assert BASE_URL, "REACT_APP_BACKEND_URL must be set"
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "nordpep_db")
 
-# TTL du watchdog backend : la note d'auto-annulation embarque ce délai
-# ("within {TTL}h"). On lit la même variable d'env que le serveur (défaut 48h)
-# pour que le test reste vert quelle que soit la config de déploiement.
-UNPAID_ORDER_TTL_HOURS = int(os.environ.get("UNPAID_ORDER_TTL_HOURS", "48"))
-
 
 @pytest.fixture(scope="module")
 def db():
@@ -131,7 +126,7 @@ def test_auto_cancel_stale_unpaid_order_restocks(products, db):
     assert r.status_code == 200, r.text
     order = r.json()
     order_id = order["id"]
-    assert order["payment_status"] in ("awaiting_etransfer", "awaiting_crypto")
+    assert order["payment_status"] in ("awaiting_etransfer", "awaiting_stripe", "awaiting_crypto")
 
     # Confirm stock decremented
     doc = db.products.find_one({"id": p["id"]})
@@ -166,7 +161,7 @@ def test_auto_cancel_stale_unpaid_order_restocks(products, db):
         o2 = db.orders.find_one({"id": order_id})
         assert o2["fulfillment_status"] == "cancelled"
         notes = o2.get("notes", [])
-        assert any(f"Auto-cancelled: payment not received within {UNPAID_ORDER_TTL_HOURS}h" in (n.get("text") or "") for n in notes), \
+        assert any("Auto-cancelled: payment not received within 48h" in (n.get("text") or "") for n in notes), \
             f"missing system note; got: {[n.get('text') for n in notes]}"
         # Verify system-authored note
         sys_notes = [n for n in notes if "Auto-cancelled" in (n.get("text") or "")]

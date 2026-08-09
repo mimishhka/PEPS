@@ -2,12 +2,10 @@ import { useEffect, useState } from "react";
 import { Download, Plus, Edit, Trash2, Star, X, Save, AlertTriangle, CheckCircle2, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError, resolveAssetUrl } from "../../../lib/api";
-import { useConfirm } from "../../../components/ConfirmDialog";
 
 const CATEGORIES = ["healing", "gh-secretagogues", "weight-loss", "cognitive", "longevity"];
 
 export default function AdminProducts() {
-  const confirm = useConfirm();
   const [products, setProducts] = useState([]);
   const [editing, setEditing] = useState(null);
 
@@ -38,13 +36,7 @@ export default function AdminProducts() {
   };
 
   const del = async (id) => {
-    const ok = await confirm({
-      title: "Delete this product?",
-      confirmLabel: "Delete",
-      cancelLabel: "Cancel",
-      destructive: true,
-    });
-    if (!ok) return;
+    if (!window.confirm("Delete this product?")) return;
     await api.delete(`/admin/products/${id}`);
     toast.success("Deleted"); load();
   };
@@ -102,15 +94,15 @@ export default function AdminProducts() {
                   </td>
                   <td className="px-6 py-3">
                     {!p.active
-                      ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-ash text-nordfjord px-2 py-0.5">Hidden</span>
+                      ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-gray-400 text-white px-2 py-0.5">Hidden</span>
                       : totalStock === 0
-                      ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-error text-white px-2 py-0.5">Out</span>
-                      : <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-success text-white px-2 py-0.5">Active</span>}
-                    {p.featured && <Star size={12} className="inline ml-2 fill-warning text-warning" />}
+                      ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-red-600 text-white px-2 py-0.5">Out</span>
+                      : <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-emerald-600 text-white px-2 py-0.5">Active</span>}
+                    {p.featured && <Star size={12} className="inline ml-2 fill-yellow-500 text-yellow-500" />}
                   </td>
                   <td className="px-6 py-3 text-right">
                     <button onClick={() => setEditing({ ...p, variants: [...(p.variants || [])] })} data-testid={`edit-${p.slug}`} className="border border-ink/30 px-2 py-1 hover:bg-ink hover:text-white mr-1"><Edit size={12} /></button>
-                    <button onClick={() => del(p.id)} data-testid={`delete-${p.slug}`} className="border border-ink/30 px-2 py-1 hover:bg-error hover:text-white hover:border-error"><Trash2 size={12} /></button>
+                    <button onClick={() => del(p.id)} data-testid={`delete-${p.slug}`} className="border border-ink/30 px-2 py-1 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={12} /></button>
                   </td>
                 </tr>
               );
@@ -144,7 +136,7 @@ function ProductEditor({ product, setProduct, onSave, onCancel }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex justify-end" onClick={onCancel}>
-      <div className="bg-white w-full max-w-3xl h-full overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="product-editor">
+      <div className="bg-[#fafafa] w-full max-w-3xl h-full overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="product-editor">
         <div className="bg-ink text-white px-6 py-4 sticky top-0 z-10 flex items-center justify-between">
           <div>
             <div className="font-mono text-[10px] uppercase tracking-[0.25em]">// PRODUCT</div>
@@ -163,17 +155,6 @@ function ProductEditor({ product, setProduct, onSave, onCancel }) {
               <F label="Purity" value={product.purity} onChange={(v) => setProduct({ ...product, purity: v })} test="f-purity" />
             </Grid2>
             <ImageUploader value={product.image_url} onChange={(v) => setProduct({ ...product, image_url: v })} test="f-image" />
-            <GalleryUploader
-              images={product.images || []}
-              onChange={(images) =>
-                setProduct({
-                  ...product,
-                  images,
-                  image_url: images.length && !images.includes(product.image_url) ? images[0] : product.image_url,
-                })
-              }
-              test="f-gallery"
-            />
             <TA label="Description EN (rich text)" value={product.description_en} onChange={(v) => setProduct({ ...product, description_en: v })} test="f-desc-en" />
             <TA label="Description FR (texte enrichi)" value={product.description_fr} onChange={(v) => setProduct({ ...product, description_fr: v })} test="f-desc-fr" />
           </Section>
@@ -235,7 +216,7 @@ function VariantRow({ index, variant, onChange, onRemove }) {
           Variant #{index + 1} {variant.name && <span className="font-bold text-foreground">· {variant.name}</span>}
         </div>
         <button type="button" onClick={onRemove} data-testid={`remove-variant-${index}`}
-          className="border border-ink/30 px-2 py-1 hover:bg-error hover:text-white hover:border-error">
+          className="border border-ink/30 px-2 py-1 hover:bg-red-600 hover:text-white hover:border-red-600">
           <Trash2 size={12} />
         </button>
       </div>
@@ -253,7 +234,7 @@ function VariantRow({ index, variant, onChange, onRemove }) {
         <CoaUploader value={variant.coa_url} onChange={(v) => onChange({ coa_url: v })} test={`v-coa-url-${index}`} />
       </div>
       {variant.sale_price != null && variant.sale_price >= variant.price && (
-        <div className="font-mono text-[10px] text-error uppercase tracking-[0.15em]">⚠ Special price must be lower than the regular price to apply.</div>
+        <div className="font-mono text-[10px] text-red-600 uppercase tracking-[0.15em]">⚠ Special price must be lower than the regular price to apply.</div>
       )}
 
       <div className="space-y-3">
@@ -427,89 +408,6 @@ function ImageUploader({ value, onChange, test }) {
   );
 }
 
-function GalleryUploader({ images = [], onChange, test }) {
-  const [uploading, setUploading] = useState(false);
-  const inputId = `gallery-upload-${test}`;
-
-  const handleFile = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-
-    const allowed = ["image/png", "image/jpeg", "image/webp", "image/gif"];
-    if (!allowed.includes(file.type)) {
-      toast.error("Only PNG, JPEG, WebP, and GIF images are allowed");
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await api.post("/admin/upload/image", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      onChange([...images, res.data.url]);
-      toast.success("Gallery image added");
-    } catch (err) {
-      toast.error(formatApiError(err?.response?.data?.detail));
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const removeAt = (i) => onChange(images.filter((_, idx) => idx !== i));
-
-  return (
-    <div>
-      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">
-        Gallery ({images.length})
-      </label>
-      <div className="flex items-center gap-2">
-        <label
-          htmlFor={inputId}
-          data-testid={`${test}-upload-btn`}
-          className={`shrink-0 border border-ink font-mono text-[10px] uppercase tracking-[0.15em] px-3 py-2 cursor-pointer hover:bg-ink hover:text-white ${uploading ? "opacity-50 pointer-events-none" : ""}`}
-        >
-          {uploading ? "Uploading..." : "Add image"}
-        </label>
-        {images.length > 0 && (
-          <button
-            type="button"
-            onClick={() => onChange([])}
-            className="border border-ink/30 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.15em] hover:bg-secondary"
-            data-testid={`${test}-clear-btn`}
-          >
-            Clear all
-          </button>
-        )}
-        <input id={inputId} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={handleFile} />
-      </div>
-      {images.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {images.map((img, i) => (
-            <div key={`${img}-${i}`} className="relative">
-              <img src={resolveAssetUrl(img)} alt={`Gallery ${i + 1}`} className="w-20 h-20 object-cover border border-ink/20" />
-              <button
-                type="button"
-                onClick={() => removeAt(i)}
-                data-testid={`${test}-remove-${i}`}
-                aria-label="Remove image"
-                className="absolute -top-2 -right-2 bg-error text-white w-5 h-5 flex items-center justify-center rounded-full border border-white"
-              >
-                <X size={12} />
-              </button>
-              {i === 0 && (
-                <span className="absolute bottom-0 left-0 bg-ink text-white font-mono text-[8px] uppercase tracking-[0.1em] px-1">Cover</span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function Section({ title, children }) {
   return (
     <div className="bg-white border border-ink/10 p-4 space-y-3">
@@ -533,7 +431,7 @@ function CoaStatusField({ value, hasFile, onChange, test }) {
         {opts.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
       </select>
       {warnNoFile && (
-        <p className="font-mono text-[10px] text-error uppercase tracking-[0.15em] mt-1">⚠ Upload a COA PDF above, or set status to Pending.</p>
+        <p className="font-mono text-[10px] text-red-600 uppercase tracking-[0.15em] mt-1">⚠ Upload a COA PDF above, or set status to Pending.</p>
       )}
     </div>
   );

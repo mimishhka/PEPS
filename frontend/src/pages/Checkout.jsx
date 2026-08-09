@@ -131,6 +131,7 @@ export default function Checkout() {
       payment_method: paymentMethod,
       pay_currency: paymentMethod === "nowpayments" ? "usdc" : undefined,
       coupon_code: coupon?.code || null,
+      origin_url: window.location.origin,
       accept_terms: !!acceptPolicy,
       confirm_age: !!confirmAge,
       confirm_research_use: !!acceptRuO,
@@ -253,7 +254,7 @@ export default function Checkout() {
           <div className="rounded-2xl border border-ash bg-white p-5 space-y-3">
             <label className="flex items-start gap-2 text-sm text-nordfjord">
               <input type="checkbox" checked={confirmAge} onChange={(e) => setConfirmAge(e.target.checked)} data-testid="checkout-confirm-age" className="mt-1" />
-              <span>{lang === "fr" ? "Je confirme avoir 19 ans ou plus." : "I confirm I am 19 years of age or older."}</span>
+              <span>{lang === "fr" ? "Je confirme avoir 18 ans ou plus." : "I confirm I am 18 years of age or older."}</span>
             </label>
             <label className="flex items-start gap-2 text-sm text-nordfjord">
               <input type="checkbox" checked={acceptRuO} onChange={(e) => setAcceptRuO(e.target.checked)} data-testid="checkout-accept-ruo" className="mt-1" />
@@ -375,31 +376,31 @@ export default function Checkout() {
 
 function AddressForm({ value, setValue, lang, prefix }) {
   const set = (k, v) => setValue((s) => ({ ...s, [k]: v }));
-  const t = (fr, en) => (lang === "fr" ? fr : en);
-  const field = (key, label, placeholder, autoComplete, extra = "") => (
-    <label className={`flex flex-col gap-1.5 text-sm font-medium text-nordfjord ${extra}`} htmlFor={`${prefix}-${key}`}>
-      {label}
-      <input id={`${prefix}-${key}`} value={value[key]} onChange={(e) => set(key, e.target.value)}
-        placeholder={placeholder} autoComplete={autoComplete} data-testid={`${prefix}-${key}`}
-        className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
-    </label>
-  );
   return (
     <div className="grid sm:grid-cols-2 gap-3">
-      {field("full_name", t("Nom complet", "Full name"), t("Marie Tremblay", "Marie Tremblay"), "name", "sm:col-span-2")}
-      {field("line1", t("Adresse", "Address line 1"), t("123 rue Principale", "123 Main Street"), "street-address", "sm:col-span-2")}
-      {field("line2", t("Appartement, suite (optionnel)", "Address line 2 (optional)"), t("Apt 3B", "Apt 3B"), "address-line2", "sm:col-span-2")}
-      {field("city", t("Ville", "City"), t("Montréal", "Montreal"), "address-level2")}
-      {field("province", t("Province / État", "Province / State"), t("QC", "QC"), "address-level1")}
-      {field("postal_code", t("Code postal", "Postal / ZIP code"), value.country === "CA" ? "A1A 1A1" : "12345", "postal-code")}
-      <label className="flex flex-col gap-1.5 text-sm font-medium text-nordfjord" htmlFor={`${prefix}-country`}>
-        {t("Pays", "Country")}
-        <select id={`${prefix}-country`} value={value.country} onChange={(e) => set("country", e.target.value)} data-testid={`${prefix}-country`}
-          autoComplete="country" className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova bg-white">
-          <option value="CA">Canada</option>
-          <option value="US">United States</option>
-        </select>
-      </label>
+      <input value={value.full_name} onChange={(e) => set("full_name", e.target.value)}
+        placeholder={lang === "fr" ? "Nom complet" : "Full name"} data-testid={`${prefix}-full-name`}
+        className="sm:col-span-2 rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+      <input value={value.line1} onChange={(e) => set("line1", e.target.value)}
+        placeholder={lang === "fr" ? "Adresse" : "Address line 1"} data-testid={`${prefix}-line1`}
+        className="sm:col-span-2 rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+      <input value={value.line2} onChange={(e) => set("line2", e.target.value)}
+        placeholder={lang === "fr" ? "Appartement, suite (optionnel)" : "Address line 2 (optional)"} data-testid={`${prefix}-line2`}
+        className="sm:col-span-2 rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+      <input value={value.city} onChange={(e) => set("city", e.target.value)}
+        placeholder={lang === "fr" ? "Ville" : "City"} data-testid={`${prefix}-city`}
+        className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+      <input value={value.province} onChange={(e) => set("province", e.target.value)}
+        placeholder={lang === "fr" ? "Province / État" : "Province / State"} data-testid={`${prefix}-province`}
+        className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+      <input value={value.postal_code} onChange={(e) => set("postal_code", e.target.value)}
+        placeholder={value.country === "CA" ? "A1A 1A1" : "12345"} data-testid={`${prefix}-postal`}
+        className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+      <select value={value.country} onChange={(e) => set("country", e.target.value)} data-testid={`${prefix}-country`}
+        className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova bg-white">
+        <option value="CA">Canada</option>
+        <option value="US">United States</option>
+      </select>
     </div>
   );
 }

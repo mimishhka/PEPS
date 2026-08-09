@@ -3,7 +3,6 @@ import { Download, Search, X, FileText, CheckCircle2, Save, Truck, MessageSquare
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
-import { useConfirm } from "../../../components/ConfirmDialog";
 
 const FULFILLMENT_OPTS = ["pending", "preorder", "processing", "shipped", "delivered", "cancelled", "failed", "refunded"];
 const PAYMENT_OPTS = ["awaiting_etransfer", "awaiting_crypto", "paid", "refunded", "cancelled", "failed"];
@@ -15,7 +14,6 @@ const TABS = [
 ];
 
 export default function AdminOrders() {
-  const confirm = useConfirm();
   const [orders, setOrders] = useState([]);
   const [query, setQuery] = useState("");
   const [filterPayment, setFilterPayment] = useState("all");
@@ -36,13 +34,7 @@ export default function AdminOrders() {
   useEffect(() => { loadManifest(); }, []);
 
   const transmitManifest = async () => {
-    const ok = await confirm({
-      title: "Transmit today's manifest to Canada Post?",
-      description: "This closes the shipments for billing.",
-      confirmLabel: "Transmit",
-      cancelLabel: "Cancel",
-    });
-    if (!ok) return;
+    if (!window.confirm("Transmit today's manifest to Canada Post? This closes the shipments for billing.")) return;
     setTxBusy(true);
     try {
       const { data } = await api.post("/admin/shipping/transmit");
@@ -83,16 +75,16 @@ export default function AdminOrders() {
     <div className="p-8" data-testid="admin-orders">
       {manifest?.configured && manifest.pending_count > 0 && (
         <div
-          className="mb-6 border-2 border-error bg-error/10 px-5 py-4 flex flex-wrap items-center justify-between gap-4"
+          className="mb-6 border-2 border-red-600 bg-red-50 px-5 py-4 flex flex-wrap items-center justify-between gap-4"
           data-testid="manifest-warning"
         >
           <div className="flex items-start gap-3">
-            <AlertTriangle size={20} className="text-error shrink-0 mt-0.5" />
+            <AlertTriangle size={20} className="text-red-600 shrink-0 mt-0.5" />
             <div>
-              <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-error font-bold">
+              <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-red-700 font-bold">
                 {manifest.pending_count} label(s) created but not transmitted
               </div>
-              <div className="text-sm text-error mt-1">
+              <div className="text-sm text-red-800 mt-1">
                 Transmit the manifest before end of day. Canada Post bills untransmitted shipments
                 with a <strong>$2 surcharge per item</strong> and removes the automation discount.
               </div>
@@ -102,7 +94,7 @@ export default function AdminOrders() {
             onClick={transmitManifest}
             disabled={txBusy}
             data-testid="transmit-manifest-btn"
-            className="bg-error text-white font-mono text-xs uppercase tracking-[0.2em] px-5 py-2.5 flex items-center gap-2 disabled:opacity-50 shrink-0"
+            className="bg-red-600 text-white font-mono text-xs uppercase tracking-[0.2em] px-5 py-2.5 flex items-center gap-2 disabled:opacity-50 shrink-0"
           >
             <Send size={14} /> {txBusy ? "Transmitting…" : "Transmit manifest"}
           </button>
@@ -193,7 +185,7 @@ export default function AdminOrders() {
                   <div className="font-mono font-bold text-xs">{o.order_number}</div>
                   <div className="font-mono text-[10px] text-foreground/50">{(o.created_at || "").slice(0, 10)}</div>
                   {o.dispatch_batch && (
-                    <div className="font-mono text-[10px] text-glacier" data-testid={`dispatch-batch-${o.order_number}`}>
+                    <div className="font-mono text-[10px] text-copper" data-testid={`dispatch-batch-${o.order_number}`}>
                       LOT {o.dispatch_batch}
                     </div>
                   )}
@@ -230,16 +222,8 @@ export default function AdminOrders() {
 }
 
 function OrderDetail({ order, onClose, onUpdate }) {
-  const confirm = useConfirm();
   const deleteOrder = async () => {
-    const ok = await confirm({
-      title: `Move order ${order.order_number} to trash?`,
-      description: "It stays recoverable there — nothing is lost.",
-      confirmLabel: "Move to trash",
-      cancelLabel: "Cancel",
-      destructive: true,
-    });
-    if (!ok) return;
+    if (!window.confirm(`Move order ${order.order_number} to trash? It stays recoverable there — nothing is lost.`)) return;
     try {
       await api.delete(`/admin/orders/${order.id}`);
       toast.success("Order moved to trash");
@@ -295,14 +279,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
   };
 
   const voidLabel = async () => {
-    const ok = await confirm({
-      title: "Void this Canada Post label?",
-      description: "Only possible before the manifest is transmitted.",
-      confirmLabel: "Void label",
-      cancelLabel: "Cancel",
-      destructive: true,
-    });
-    if (!ok) return;
+    if (!window.confirm("Void this Canada Post label? Only possible before the manifest is transmitted.")) return;
     setCpBusy(true);
     try {
       await api.post(`/admin/orders/${order.id}/void-label`);
@@ -401,13 +378,13 @@ function OrderDetail({ order, onClose, onUpdate }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex justify-end" onClick={onClose}>
-      <div className="bg-white w-full max-w-3xl h-full overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="order-detail-drawer">
+      <div className="bg-[#fafafa] w-full max-w-3xl h-full overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="order-detail-drawer">
         <div className="bg-ink text-white px-6 py-4 sticky top-0 z-10 flex items-center justify-between">
           <div>
             <div className="font-mono text-[10px] uppercase tracking-[0.25em]">// ORDER</div>
             <div className="font-display text-xl font-bold tracking-tight" data-testid="order-detail-number">{order.order_number}</div>
             {order.dispatch_batch && (
-              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-glacier" data-testid="order-detail-dispatch-batch">
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-copperlight" data-testid="order-detail-dispatch-batch">
                 LOT D'EXPÉDITION · {order.dispatch_batch}
               </div>
             )}
@@ -430,7 +407,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
               <button
                 onClick={confirmPayment}
                 data-testid="confirm-payment-btn"
-                className="bg-success text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-success"
+                className="bg-emerald-600 text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-emerald-700"
               >
                 <CheckCircle2 size={14} /> Confirm Payment
               </button>
@@ -480,7 +457,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                     <td className="px-4 py-3">
                       <div className="font-bold">{it.name_en}</div>
                       <div className="font-mono text-[10px] text-foreground/50">{it.slug} · {it.qty}× @ ${it.price_cad?.toFixed(2)}</div>
-                      {it.preorder && <span className="inline-block mt-1 text-[10px] font-mono uppercase tracking-[0.15em] bg-warning text-white px-2 py-0.5">PRE-ORDER</span>}
+                      {it.preorder && <span className="inline-block mt-1 text-[10px] font-mono uppercase tracking-[0.15em] bg-orange-500 text-white px-2 py-0.5">PRE-ORDER</span>}
                     </td>
                     <td className="px-4 py-3 text-right font-bold tabular-nums">${it.line_total?.toFixed(2)}</td>
                   </tr>
@@ -489,7 +466,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
               <tfoot className="bg-secondary/50">
                 <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Subtotal</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.subtotal?.toFixed(2)}</td></tr>
                 {order.discount > 0 && (
-                  <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Discount {order.coupon?.code && `(${order.coupon.code})`}</td><td className="px-4 py-1 text-right text-sm tabular-nums text-success">-${order.discount?.toFixed(2)}</td></tr>
+                  <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Discount {order.coupon?.code && `(${order.coupon.code})`}</td><td className="px-4 py-1 text-right text-sm tabular-nums text-emerald-700">-${order.discount?.toFixed(2)}</td></tr>
                 )}
                 <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Shipping</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.shipping?.toFixed(2)}</td></tr>
                 <tr><td className="px-4 py-2 text-right font-bold uppercase">Total CAD</td><td className="px-4 py-2 text-right font-display font-extrabold text-lg tabular-nums" data-testid="order-total">${order.total?.toFixed(2)}</td></tr>
@@ -544,7 +521,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                     <Download size={14} /> Download label PDF
                   </a>
                   <span className={`font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 border ${
-                    shipInfo.cp_transmitted ? "border-success text-success" : "border-error text-error"}`}>
+                    shipInfo.cp_transmitted ? "border-green-600 text-green-700" : "border-red-600 text-red-700"}`}>
                     {shipInfo.cp_transmitted ? "Manifest transmitted" : "Not transmitted"}
                   </span>
                   {manifestUrl && (
@@ -587,7 +564,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                         <Download size={14} /> Download label PDF
                       </a>
                       <span className={`font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 border ${
-                        shipInfo.cp_transmitted ? "border-success text-success" : "border-error text-error"}`}>
+                        shipInfo.cp_transmitted ? "border-green-600 text-green-700" : "border-red-600 text-red-700"}`}>
                         {shipInfo.cp_transmitted ? "Manifest transmitted" : "Not transmitted"}
                       </span>
                       {manifestUrl && (
@@ -668,7 +645,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 data-testid="refund-amount-input"
                 className="border border-ink/20 px-3 py-2 text-sm w-56"
               />
-              <button onClick={issueRefund} data-testid="issue-refund-btn" className="bg-error text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:bg-error">
+              <button onClick={issueRefund} data-testid="issue-refund-btn" className="bg-red-600 text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:bg-red-700">
                 Issue Refund
               </button>
               <div className="font-mono text-[10px] text-foreground/60" data-testid="refunded-so-far">
@@ -682,11 +659,11 @@ function OrderDetail({ order, onClose, onUpdate }) {
             <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3 flex items-center gap-2"><MessageSquarePlus size={12} /> Order Notes</div>
             <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
               {(order.notes || []).map((n, i) => (
-                <div key={i} className={`text-sm border-l-2 pl-3 py-1 ${n.visible_to_customer ? "border-success" : "border-ink/30"}`} data-testid={`note-${i}`}>
+                <div key={i} className={`text-sm border-l-2 pl-3 py-1 ${n.visible_to_customer ? "border-emerald-500" : "border-ink/30"}`} data-testid={`note-${i}`}>
                   <div className="text-foreground/85">{n.text}</div>
                   <div className="font-mono text-[10px] text-foreground/50 mt-1">
                     {n.admin_email || n.author} · {((n.ts || n.created_at) || "").slice(0, 16).replace("T", " ")}
-                    {n.visible_to_customer && <span className="ml-2 text-success font-bold">CUSTOMER</span>}
+                    {n.visible_to_customer && <span className="ml-2 text-emerald-600 font-bold">CUSTOMER</span>}
                   </div>
                 </div>
               ))}

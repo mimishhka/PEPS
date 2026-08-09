@@ -3,21 +3,6 @@ import useDocumentHead from "../hooks/useDocumentHead";
 
 const SECTIONS = [
   {
-    id: "contact",
-    en: { title: "Contact Information" },
-    fr: { title: "Coordonnées" },
-    paras: [
-      {
-        en: "FIRONOVA is operated from Montréal, Québec, Canada. For any question about this policy, about your personal information, or about an order, write to info@fironova.com.",
-        fr: "FIRONOVA est exploité depuis Montréal, au Québec, au Canada. Pour toute question concernant cette politique, vos renseignements personnels ou une commande, écrivez à info@fironova.com.",
-      },
-      {
-        en: "A postal mailing address will be added to this page as soon as it is available.",
-        fr: "Une adresse postale sera ajoutée à cette page dès qu'elle sera disponible.",
-      },
-    ],
-  },
-  {
     id: "collection",
     en: { title: "Information Collection and Use" },
     fr: { title: "Collecte et utilisation des renseignements" },

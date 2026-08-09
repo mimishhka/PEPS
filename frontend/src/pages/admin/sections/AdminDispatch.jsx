@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import { Printer, Send, RefreshCw, Package, AlertTriangle, ExternalLink, CheckCircle2, Download } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
-import { useConfirm } from "../../../components/ConfirmDialog";
 
 function labelHref(url) {
   if (!url) return "#";
@@ -12,7 +11,6 @@ function labelHref(url) {
 }
 
 export default function AdminDispatch() {
-  const confirm = useConfirm();
   const todayIso = new Date().toLocaleDateString("en-CA");
   const [date, setDate] = useState(todayIso);
   const [data, setData] = useState(null);
@@ -77,13 +75,7 @@ export default function AdminDispatch() {
   };
 
   const transmit = async () => {
-    const ok = await confirm({
-      title: "Transmettre le manifeste à Postes Canada ?",
-      description: "À faire une fois par jour, après impression.",
-      confirmLabel: "Transmettre",
-      cancelLabel: "Annuler",
-    });
-    if (!ok) return;
+    if (!window.confirm("Transmettre le manifeste à Postes Canada ? À faire une fois par jour, après impression.")) return;
     setTxBusy(true);
     try {
       const { data: res } = await api.post("/admin/shipping/transmit");
@@ -101,14 +93,7 @@ export default function AdminDispatch() {
       toast.error("Étiquette déjà transmise — utilisez le remboursement.");
       return;
     }
-    const ok = await confirm({
-      title: `Annuler l'étiquette de ${o.order_number} ?`,
-      description: "La commande retourne « à étiqueter ».",
-      confirmLabel: "Annuler",
-      cancelLabel: "Retour",
-      destructive: true,
-    });
-    if (!ok) return;
+    if (!window.confirm(`Annuler l'étiquette de ${o.order_number} ? La commande retourne « à étiqueter ».`)) return;
     setVoidBusy(o.id);
     try {
       await api.post(`/admin/orders/${o.id}/void-label`);
@@ -217,7 +202,7 @@ export default function AdminDispatch() {
       </div>
 
       {!configured && (
-        <div className="mt-6 flex items-center gap-2 bg-warning/10 border border-warning/40 text-warning px-4 py-3 font-mono text-xs" data-testid="dispatch-not-configured">
+        <div className="mt-6 flex items-center gap-2 bg-yellow-50 border border-yellow-300 text-yellow-900 px-4 py-3 font-mono text-xs" data-testid="dispatch-not-configured">
           <AlertTriangle size={15} /> Postes Canada n'est pas configuré (clés API manquantes). La génération d'étiquettes est désactivée.
         </div>
       )}
@@ -227,27 +212,27 @@ export default function AdminDispatch() {
           <div>
             Mode: <span className="font-bold">{cpConfig.using_openapi ? "openapi" : "legacy"}</span> ·
             Env: <span className="font-bold">{cpConfig.environment || "n/a"}</span> ·
-            Config: <span className={cpConfig.configured ? "text-success font-bold" : "text-error font-bold"}>{cpConfig.configured ? "ok" : "incomplète"}</span>
+            Config: <span className={cpConfig.configured ? "text-green-700 font-bold" : "text-red-700 font-bold"}>{cpConfig.configured ? "ok" : "incomplète"}</span>
           </div>
           {isCpDevportal && (
-            <div className="mt-2 text-warning">
+            <div className="mt-2 text-amber-700">
               Devportal CP actif: les prix et identifiants retournés peuvent rester non représentatifs et ne correspondent pas a un vrai rating live contractuel.
             </div>
           )}
           {!cpConfig.configured && cpConfig.missing_required?.length > 0 && (
-            <div className="mt-1 text-error">Manquants: {cpConfig.missing_required.join(", ")}</div>
+            <div className="mt-1 text-red-700">Manquants: {cpConfig.missing_required.join(", ")}</div>
           )}
         </div>
       )}
 
       {manifest && manifest.pending_count > 0 && (
-        <div className="mt-6 flex items-center justify-between bg-error/10 border border-error/40 text-error px-4 py-3" data-testid="dispatch-manifest-banner">
+        <div className="mt-6 flex items-center justify-between bg-red-50 border border-red-300 text-red-900 px-4 py-3" data-testid="dispatch-manifest-banner">
           <div className="font-mono text-xs flex items-center gap-2">
             <AlertTriangle size={15} />
             {manifest.pending_count} étiquette(s) non transmise(s) — surcharge de 2 $/article tant que le manifeste n'est pas envoyé.
           </div>
           <button onClick={transmit} disabled={txBusy} data-testid="dispatch-transmit"
-            className="bg-error text-white font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-error disabled:opacity-50 flex items-center gap-2">
+            className="bg-red-600 text-white font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-red-700 disabled:opacity-50 flex items-center gap-2">
             <Send size={14} /> {txBusy ? "…" : "Transmettre le manifeste"}
           </button>
         </div>
@@ -385,8 +370,8 @@ export default function AdminDispatch() {
             </td>
             <td className="px-4 py-3 font-mono text-[11px]">
               {o.cp_transmitted
-                ? <span className="text-success flex items-center gap-1"><CheckCircle2 size={12} /> transmis</span>
-                : <span className="text-warning">non transmis</span>}
+                ? <span className="text-green-700 flex items-center gap-1"><CheckCircle2 size={12} /> transmis</span>
+                : <span className="text-yellow-700">non transmis</span>}
             </td>
             <td className="px-4 py-3 text-right">
               <div className="inline-flex items-center gap-3">
@@ -398,7 +383,7 @@ export default function AdminDispatch() {
                 <button onClick={() => voidLabel(o)} disabled={voidBusy === o.id || o.cp_transmitted}
                   data-testid={`dispatch-void-${o.order_number}`}
                   title={o.cp_transmitted ? "Déjà transmise: annulation impossible" : "Annuler cette étiquette (gratuit tant qu'elle n'est pas transmise)"}
-                  className="font-mono text-xs text-error underline hover:opacity-70 disabled:opacity-40">
+                  className="font-mono text-xs text-red-600 underline hover:opacity-70 disabled:opacity-40">
                   {voidBusy === o.id ? "…" : (o.cp_transmitted ? "Annuler (bloqué)" : "Annuler")}
                 </button>
               </div>
@@ -413,9 +398,9 @@ export default function AdminDispatch() {
 function Money({ label, value, accent, muted }) {
   const v = value == null ? null : Number(value);
   return (
-    <div className={`bg-white border p-4 ${accent ? "border-error/40" : "border-ink/10"}`}>
+    <div className={`bg-white border p-4 ${accent ? "border-red-300" : "border-ink/10"}`}>
       <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">{label}</div>
-      <div className={`font-display text-2xl font-extrabold mt-1 ${accent ? "text-error" : muted ? "text-foreground/50" : ""}`}>
+      <div className={`font-display text-2xl font-extrabold mt-1 ${accent ? "text-red-600" : muted ? "text-foreground/50" : ""}`}>
         {v == null ? "—" : `$${v.toFixed(2)}`}
       </div>
     </div>
@@ -424,9 +409,9 @@ function Money({ label, value, accent, muted }) {
 
 function Stat({ label, value, accent, testid }) {
   return (
-    <div className={`bg-white border p-5 ${accent ? "border-error/40" : "border-ink/10"}`} data-testid={testid}>
+    <div className={`bg-white border p-5 ${accent ? "border-red-300" : "border-ink/10"}`} data-testid={testid}>
       <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">{label}</div>
-      <div className={`font-display text-4xl font-extrabold mt-1 ${accent ? "text-error" : ""}`}>{value}</div>
+      <div className={`font-display text-4xl font-extrabold mt-1 ${accent ? "text-red-600" : ""}`}>{value}</div>
     </div>
   );
 }

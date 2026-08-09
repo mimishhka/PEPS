@@ -55,15 +55,14 @@ def product():
 
 @pytest.fixture(scope="module")
 def admin_token():
-    s = requests.Session()
-    r = s.post(
+    r = requests.post(
         f"{BASE_URL}/api/auth/login",
         json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
         timeout=15,
     )
     assert r.status_code == 200, f"admin login failed: {r.status_code} {r.text}"
-    tok = s.cookies.get("access_token")
-    assert tok, "admin login: no access_token cookie (auth cookie-only)"
+    tok = r.json().get("token")
+    assert tok
     return tok
 
 

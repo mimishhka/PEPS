@@ -2,12 +2,10 @@ import { useEffect, useState } from "react";
 import { Package2, Plus, Trash2, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
-import { useConfirm } from "../../../components/ConfirmDialog";
 
 const EMPTY = { name: "", length_cm: 20.3, width_cm: 10.2, height_cm: 2, tare_grams: 20, max_units: 6, active: true };
 
 export default function AdminBoxes() {
-  const confirm = useConfirm();
   const [boxes, setBoxes] = useState([]);
   const [editing, setEditing] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -43,13 +41,7 @@ export default function AdminBoxes() {
   };
 
   const remove = async (id) => {
-    const ok = await confirm({
-      title: "Supprimer ce contenant ?",
-      confirmLabel: "Supprimer",
-      cancelLabel: "Annuler",
-      destructive: true,
-    });
-    if (!ok) return;
+    if (!window.confirm("Supprimer ce contenant ?")) return;
     try { await api.delete(`/admin/shipping/boxes/${id}`); load(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
@@ -124,11 +116,11 @@ export default function AdminBoxes() {
                   <td className="px-4 py-3">{b.length_cm} × {b.width_cm} × {b.height_cm} cm</td>
                   <td className="px-4 py-3">{b.tare_grams} g</td>
                   <td className="px-4 py-3">{b.max_units} u.</td>
-                  <td className="px-4 py-3">{b.active ? <span className="text-success">actif</span> : <span className="text-foreground/40">inactif</span>}</td>
+                  <td className="px-4 py-3">{b.active ? <span className="text-green-700">actif</span> : <span className="text-foreground/40">inactif</span>}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex gap-3">
                       <button onClick={() => setEditing(b)} data-testid={`box-edit-${b.id}`} className="underline hover:text-ink/70">Modifier</button>
-                      <button onClick={() => remove(b.id)} data-testid={`box-delete-${b.id}`} className="text-error hover:opacity-70 inline-flex items-center gap-1">
+                      <button onClick={() => remove(b.id)} data-testid={`box-delete-${b.id}`} className="text-red-600 hover:opacity-70 inline-flex items-center gap-1">
                         <Trash2 size={12} /> Suppr.
                       </button>
                     </div>

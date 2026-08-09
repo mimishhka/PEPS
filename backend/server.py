@@ -11,12 +11,10 @@ import csv
 import json
 import hmac
 import hashlib
-import html
 import uuid
 import logging
 import secrets
 import asyncio
-import ipaddress
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal, Any
 
@@ -37,7 +35,6 @@ from reportlab.lib.pagesizes import LETTER
 from reportlab.lib import colors as rl_colors
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas as rl_canvas
-from PIL import Image as PILImage
 
 
 # ---------------------------------------------------------------------------
@@ -58,27 +55,13 @@ if not ADMIN_PASSWORD:
     )
 INTERAC_EMAIL = os.environ.get("INTERAC_EMAIL", "orders@fironova.com")
 
-# Confirmation automatique des virements Interac (Autodeposit) via Microsoft
-# Graph API (app-only / client credentials). Boîte surveillée = INTERAC_EMAIL.
-INTERAC_GRAPH_TENANT_ID = os.environ.get("INTERAC_GRAPH_TENANT_ID", "")
-INTERAC_GRAPH_CLIENT_ID = os.environ.get("INTERAC_GRAPH_CLIENT_ID", "")
-INTERAC_GRAPH_CLIENT_SECRET = os.environ.get("INTERAC_GRAPH_CLIENT_SECRET", "")
-INTERAC_GRAPH_USER = os.environ.get("INTERAC_GRAPH_USER", "").strip().lower() or INTERAC_EMAIL.lower()
-
 # Code d'accès facultatif demandé AVANT même l'écran de login admin, côté SPA
 # publique. Ne remplace pas l'auth (JWT + rôle restent la vraie barrière sur
 # /api/admin/*) — sert seulement à ce qu'un visiteur qui tombe sur l'URL admin
 # obscure par hasard ne voie même pas d'écran de login. Si non défini, la
 # passerelle est désactivée (aucun blocage).
 ADMIN_GATE_CODE = os.environ.get("ADMIN_GATE_CODE")
-# Question + réponse de sécurité affichées au client pour le virement Interac.
-# La réponse n'est PAS validée par le code (confirmation = référence FN- + montant),
-# mais elle doit rester cohérente avec la question. Réponse en minuscules.
-INTERAC_SECURITY_QUESTION = os.environ.get(
-    "INTERAC_SECURITY_QUESTION",
-    "What are the first two letters of the reference? (lowercase)",
-)
-INTERAC_PASSWORD_HINT = os.environ.get("INTERAC_PASSWORD_HINT", "fn")
+INTERAC_PASSWORD_HINT = os.environ.get("INTERAC_PASSWORD_HINT", "FIRONOVA")
 NOWPAYMENTS_API_KEY = os.environ.get("NOWPAYMENTS_API_KEY", "")
 NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "")
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
@@ -87,6 +70,7 @@ RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@fironova.com")
 MAGIC_SENDER_EMAIL = os.environ.get("MAGIC_SENDER_EMAIL", "")
 ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@fironova.com")
+STRIPE_API_KEY = os.environ.get("STRIPE_API_KEY", "")
 SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
 FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))
 UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "24"))
@@ -99,14 +83,6 @@ if COOKIE_SAMESITE not in {"lax", "strict", "none"}:
 # Browsers reject SameSite=None when Secure=false. Fallback keeps local HTTP usable.
 if not COOKIE_SECURE and COOKIE_SAMESITE == "none":
     COOKIE_SAMESITE = "lax"
-
-# Réseaux de mandataires de confiance (IP ou CIDR, séparés par des virgules), ex.
-# "173.245.48.0/20,103.21.244.0/22" pour Cloudflare. IMPORTANT : si l'API est
-# derrière un reverse-proxy/load-balancer, renseignez cette variable, sinon les
-# taux limites seront calculés sur l'IP du proxy (partagée) et pourront bloquer
-# des utilisateurs légitimes. Vide par défaut = X-Forwarded-For IGNORÉ pour le
-# rate-limiting (un attaquant ne peut pas le truquer pour contourner les limites).
-TRUSTED_PROXIES = [x.strip() for x in os.environ.get("TRUSTED_PROXIES", "").split(",") if x.strip()]
 
 # Feature flags — toggle without deploying new code, just flip the env var and restart.
 COA_PAGE_ENABLED = os.environ.get("COA_PAGE_ENABLED", "false").strip().lower() == "true"
@@ -217,6 +193,14 @@ def compute_dispatch_batch(paid_at) -> str:
     while not _is_business_day(candidate):
         candidate = candidate + timedelta(days=1)
     return candidate.isoformat()
+
+try:
+    from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
+    _STRIPE_AVAILABLE = True
+except Exception:
+    _STRIPE_AVAILABLE = False
+    StripeCheckout = None
+    CheckoutSessionRequest = None
 
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
@@ -384,8 +368,7 @@ def require_area(area: str, level: str = "view"):
 class RegisterIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
-    name: str = Field(min_length=1, max_length=80)
-    website: str = ""  # honeypot anti-bot : doit rester vide
+    name: str = Field(min_length=1)
 
 
 class LoginIn(BaseModel):
@@ -442,7 +425,6 @@ class ProductIn(BaseModel):
     stock: int = 0  # legacy/fallback (= total across variants)
     low_stock_threshold: int = 10
     image_url: str = ""
-    images: List[str] = []  # galerie : image_url reste la couverture (images[0] ou saisie manuelle)
     lab_tested: bool = True
     active: bool = True
     featured: bool = False
@@ -459,7 +441,7 @@ class ProductIn(BaseModel):
     solubility: str = ""               # ex. "Soluble dans l'eau, acide acétique 0,1%"
     appearance: str = ""               # ex. "Poudre lyophilisée blanche"
     mechanism: str = ""                # ex. "Potentialise la libération d'hormone de croissance"
-    research_areas: List[str] = []     # ex. ["Signalisation endocrine", "Métabolisme lipidique"]
+    research_areas: List[str] = []     # ex. ["Réparation tissulaire", "Anti-inflammatoire"]
     synonyms: List[str] = []           # ex. ["Sermorelin", "GRF 1-29"]
     meta_title_en: str = ""
     meta_title_fr: str = ""
@@ -477,7 +459,7 @@ class ProductOut(ProductIn):
 class CartItem(BaseModel):
     product_id: str
     variant_id: Optional[str] = None
-    qty: int = Field(ge=1, le=99)
+    qty: int = Field(ge=1)
 
 
 class ShippingAddress(BaseModel):
@@ -495,9 +477,10 @@ class CheckoutIn(BaseModel):
     items: List[CartItem]
     shipping: ShippingAddress
     email: Optional[EmailStr] = None  # guest email; auth user's email is used if logged in
-    payment_method: Literal["interac", "nowpayments"]
+    payment_method: Literal["interac", "nowpayments", "stripe"]
     pay_currency: Optional[str] = "btc"  # used only for nowpayments
     coupon_code: Optional[str] = None
+    origin_url: Optional[str] = None  # used by stripe to build success/cancel URLs
     accept_terms: bool
     confirm_age: bool
     confirm_research_use: bool
@@ -511,15 +494,6 @@ class CouponIn(BaseModel):
     usage_limit: Optional[int] = None  # None = unlimited
     active: bool = True
     expires_at: Optional[str] = None  # ISO string
-    # --- Avancé (tous optionnels ; vides/désactivés = comportement de base) ---
-    start_at: Optional[str] = None            # ISO string — coupon pas encore actif avant cette date
-    allowed_emails: List[str] = []            # liste blanche d'emails ; vide = tout le monde
-    per_customer_limit: Optional[int] = None  # nb d'utilisations max par email ; None = illimité
-    first_order_only: bool = False            # valable uniquement sur la première commande payée
-    free_shipping: bool = False               # la livraison forfaitaire est offerte
-    max_discount_cad: Optional[float] = None  # plafond de remise en CAD
-    restrict_products: List[str] = []         # restreint aux produits listés (ids) ; vide = tous
-    restrict_categories: List[str] = []       # restreint aux catégories listées ; vide = toutes
 
 
 class OrderNoteIn(BaseModel):
@@ -650,11 +624,6 @@ class AccountDeleteIn(BaseModel):
     current_password: str  # confirmation forte avant action irréversible
 
 
-class WishlistItemIn(BaseModel):
-    product_id: str = Field(min_length=1, max_length=100)
-    variant_id: Optional[str] = None  # None = fiche produit complète
-
-
 class ShippingZoneIn(BaseModel):
     name: str
     countries: List[str] = []  # e.g., ["CA"], ["US"], ["INTL"]
@@ -685,53 +654,41 @@ PROVINCES_CA = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC"
 # Auth endpoints
 # ---------------------------------------------------------------------------
 @api.post("/auth/register")
-async def register(payload: RegisterIn, request: Request):
+async def register(payload: RegisterIn, response: Response, request: Request):
     _rate_limit("register", _client_ip(request), 5, 3600, "Too many registration attempts. Try again later.")
     email = payload.email.lower().strip()
-    name = payload.name.strip()
-    # Honeypot : champ invisible rempli par un bot -> on simule un succès sans rien créer.
-    if payload.website.strip():
-        return {"ok": True, "verification_sent": True}
-    if not name:
-        raise HTTPException(status_code=400, detail="Name is required")
-    if await db.users.find_one({"email": email}):  # noqa: F821
+    if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=409, detail="Email already registered")
     user_doc = {
         "id": str(uuid.uuid4()),
         "email": email,
-        "name": name,
+        "name": payload.name.strip(),
         "password_hash": hash_password(payload.password),
         "role": "user",
         "token_version": 0,
-        "email_verified": False,  # le compte reste inactif tant que l'email n'est pas confirmé
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.users.insert_one(user_doc)  # noqa: F821
+    await db.users.insert_one(user_doc)
     # Un abonné pré-lancement qui crée son compte : on marque la conversion.
     # N'interrompt jamais l'inscription si ça échoue.
     try:
-        await db.subscribers.update_one({"email": email}, {"$set": {"converted": True}})  # noqa: F821
+        await db.subscribers.update_one({"email": email}, {"$set": {"converted": True}})
     except Exception as e:  # pragma: no cover
         logging.warning("subscriber conversion flag failed for %s: %s", email, e)
-    # Activation par email : lien à usage unique (15 min). Pas de cookie, pas de
-    # session tant que l'adresse n'est pas confirmée — bloque la création en masse
-    # de comptes avec des emails de victimes.
-    raw = await _issue_magic_token(email, name, True, "fr", _client_ip(request))
-    base = PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
-    link = f"{base}/auth/callback?token={raw}"
-    await _send_magic_email(email, link, "fr", True)
-    resp = {
+    # --- AUTOMATION: email de bienvenue (n'interrompt jamais l'inscription) ---
+    asyncio.create_task(welcome_new_user(email, user_doc.get("name", ""), "fr"))
+    token = create_access_token(user_doc["id"], email, "user", token_version=0)
+    set_auth_cookie(response, token, request)
+    return {
         "id": user_doc["id"],
         "email": email,
-        "name": name,
+        "name": user_doc["name"],
         "role": "user",
         "created_at": user_doc["created_at"],
-        "email_verified": False,
-        "verification_sent": True,
+        # NOTE: le token n'est volontairement PAS renvoyé dans le body —
+        # l'auth passe uniquement par le cookie httpOnly, donc une XSS
+        # future ne peut pas exfiltrer la session.
     }
-    if MAGIC_LINK_DEBUG:
-        resp["debug_magic_token"] = raw
-    return resp
 
 
 # In-memory brute-force protection: max 5 failed attempts per IP+email in a 15-min window
@@ -741,33 +698,8 @@ _LOGIN_WINDOW_SECONDS = 900
 
 
 def _client_ip(request: Request) -> str:
-    """Adresse IP réelle du client pour le rate-limiting.
-
-    X-Forwarded-For n'est pris en compte QUE si la connexion entrante vient
-    d'un proxy de confiance (TRUSTED_PROXIES). Sans ça, n'importe qui pouvait
-    envoyer un X-Forwarded-For au choix et réinitialiser tous les compteurs
-    (register, login, magic_request) → les limites anti-spam sautaient.
-    """
-    peer = request.client.host if request.client else "unknown"
-    if not TRUSTED_PROXIES:
-        return peer
-    trusted = False
-    try:
-        peer_ip = ipaddress.ip_address(peer)
-        for entry in TRUSTED_PROXIES:
-            if "/" in entry:
-                if peer_ip in ipaddress.ip_network(entry, strict=False):
-                    trusted = True
-                    break
-            elif entry.lower() == peer.lower():
-                trusted = True
-                break
-    except ValueError:
-        return peer
-    if not trusted:
-        return peer
     fwd = request.headers.get("x-forwarded-for", "")
-    return fwd.split(",")[0].strip() if fwd else peer
+    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "unknown")
 
 
 def _login_throttle_check(key: str):
@@ -964,28 +896,15 @@ async def admin_gate_verify(payload: AdminGateIn, request: Request):
     return {"ok": True}
 
 
-@api.get("/admin/autologin")
-async def admin_autologin(_admin: dict = Depends(get_admin_user)):
-    """Autologin de la porte admin : si une session admin valide existe déjà
-    (cookie httpOnly access_token), la porte est levée côté frontend sans
-    ressaisir le code — AdminGate.jsx appelle cette route à l'ouverture."""
-    return {"ok": True}
-
-
 @api.post("/auth/login")
 async def login(payload: LoginIn, response: Response, request: Request):
     email = payload.email.lower().strip()
     throttle_key = f"{_client_ip(request)}:{email}"
     _login_throttle_check(throttle_key)
-    user = await db.users.find_one({"email": email})  # noqa: F821
+    user = await db.users.find_one({"email": email})
     if not user or not verify_password(payload.password, user["password_hash"]):
         _LOGIN_ATTEMPTS.setdefault(throttle_key, []).append(datetime.now(timezone.utc).timestamp())
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    # Compte créé par mot de passe mais jamais activé -> pas de session.
-    # (le champ absent = compte antérieur au contrôle, considéré vérifié)
-    if user.get("email_verified", True) is not True:
-        raise HTTPException(status_code=403,
-                            detail="Verify your email to activate your account. / Vérifiez votre email pour activer votre compte.")
     _LOGIN_ATTEMPTS.pop(throttle_key, None)
     token = create_access_token(user["id"], user["email"], user["role"], token_version=user.get("token_version", 0))
     set_auth_cookie(response, token, request)
@@ -1016,15 +935,7 @@ async def logout_all_devices(response: Response, user: dict = Depends(get_curren
 
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
-    aff = await db.affiliates.find_one(
-        {"user_id": user["id"], "status": {"$in": ["active", "suspended"]}},
-        {"_id": 0, "status": 1, "code": 1},
-    )
-    out = dict(user)
-    out["is_affiliate"] = bool(aff)
-    out["affiliate_code"] = aff.get("code") if aff else None
-    out["affiliate_status"] = aff.get("status") if aff else None
-    return out
+    return user
 
 
 # ---------------------------------------------------------------------------
@@ -1034,12 +945,6 @@ async def me(user: dict = Depends(get_current_user)):
 MAGIC_TOKEN_TTL_MINUTES = 15
 MAGIC_REQUEST_MAX = 5
 MAGIC_REQUEST_WINDOW = 3600
-MAGIC_VERIFY_MAX = 300
-MAGIC_VERIFY_WINDOW = 3600
-# Dev/test uniquement : renvoie le token magique brut dans la réponse
-# (register / magic/request) pour que les tests d'intégration puissent
-# finaliser la vérification email sans boîte de réception. Désactivé en prod.
-MAGIC_LINK_DEBUG = os.environ.get("MAGIC_LINK_DEBUG", "").strip().lower() == "1"
 
 
 class MagicRequestIn(BaseModel):
@@ -1047,28 +952,10 @@ class MagicRequestIn(BaseModel):
     name: Optional[str] = None
     create: bool = False
     lang: str = "fr"
-    website: str = ""  # honeypot anti-bot : doit rester vide
 
 
 def _hash_magic_token(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
-async def _issue_magic_token(email: str, name: str, is_signup: bool, lang: str, ip: str) -> str:
-    """Crée un token de connexion/activation à usage unique et le stocke. Renvoie le token brut."""
-    raw = secrets.token_urlsafe(32)
-    await db.magic_tokens.insert_one({  # noqa: F821
-        "id": str(uuid.uuid4()),
-        "email": email,
-        "token_hash": _hash_magic_token(raw),
-        "is_signup": is_signup,
-        "name": (name or "").strip()[:120],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=MAGIC_TOKEN_TTL_MINUTES)).isoformat(),
-        "used_at": None,
-        "ip": ip,
-    })
-    return raw
 
 
 async def _send_magic_email(email: str, link: str, lang: str, is_signup: bool) -> None:
@@ -1115,33 +1002,34 @@ async def magic_request(payload: MagicRequestIn, request: Request):
     _rate_limit("magic_request", _client_ip(request), MAGIC_REQUEST_MAX,
                 MAGIC_REQUEST_WINDOW, "Trop de demandes. Réessayez plus tard.")
     email = payload.email.lower().strip()
-    # Honeypot : champ invisible rempli par un bot -> réponse neutre sans effet.
-    if payload.website.strip():
-        return {"ok": True}
-    existing = await db.users.find_one({"email": email})  # noqa: F821
+    existing = await db.users.find_one({"email": email})
     is_signup = payload.create and not existing
     # Login demandé sur un email inconnu -> réponse neutre, aucun email (anti-énumération).
     if not payload.create and not existing:
         return {"ok": True}
-    raw = await _issue_magic_token(email, payload.name or "", is_signup, payload.lang or "fr", _client_ip(request))
+    raw = secrets.token_urlsafe(32)
+    await db.magic_tokens.insert_one({
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "token_hash": _hash_magic_token(raw),
+        "is_signup": is_signup,
+        "name": (payload.name or "").strip()[:120],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=MAGIC_TOKEN_TTL_MINUTES)).isoformat(),
+        "used_at": None,
+        "ip": _client_ip(request),
+    })
     base = PUBLIC_BASE_URL or str(request.base_url).rstrip("/")
     link = f"{base}/auth/callback?token={raw}"
     await _send_magic_email(email, link, payload.lang or "fr", is_signup)
-    resp = {"ok": True}
-    if MAGIC_LINK_DEBUG:
-        resp["debug_magic_token"] = raw
-    return resp
+    return {"ok": True}
 
 
 @api.post("/auth/magic/verify")
 async def magic_verify(response: Response, request: Request, token: str = Body(..., embed=True)):
     """Vérifie le token (usage unique + TTL), crée le compte si signup, pose le cookie."""
-    # Limite souple : le token est à très haute entropie (impossible à deviner),
-    # mais sans limite l'endpoint est un point public non borné qui tape la DB.
-    _rate_limit("magic_verify", _client_ip(request), MAGIC_VERIFY_MAX,
-                MAGIC_VERIFY_WINDOW, "Trop de tentatives. Réessayez plus tard.")
     token_hash = _hash_magic_token((token or "").strip())
-    rec = await db.magic_tokens.find_one({"token_hash": token_hash})  # noqa: F821
+    rec = await db.magic_tokens.find_one({"token_hash": token_hash})
     now = datetime.now(timezone.utc)
     invalid = HTTPException(status_code=400, detail="Lien invalide ou expiré.")
     if not rec or rec.get("used_at"):
@@ -1153,14 +1041,14 @@ async def magic_verify(response: Response, request: Request, token: str = Body(.
         raise
     except Exception:
         raise invalid
-    claimed = await db.magic_tokens.update_one(  # noqa: F821
+    claimed = await db.magic_tokens.update_one(
         {"_id": rec["_id"], "used_at": None},
         {"$set": {"used_at": now.isoformat()}},
     )
     if claimed.modified_count != 1:
         raise invalid
     email = rec["email"]
-    user = await db.users.find_one({"email": email})  # noqa: F821
+    user = await db.users.find_one({"email": email})
     if not user:
         user_doc = {
             "id": str(uuid.uuid4()),
@@ -1169,22 +1057,15 @@ async def magic_verify(response: Response, request: Request, token: str = Body(.
             "password_hash": hash_password(secrets.token_urlsafe(32)),
             "role": "user",
             "token_version": 0,
-            "email_verified": True,  # cliqué un lien envoyé à cette adresse = vérifié
             "created_at": now.isoformat(),
             "passwordless": True,
         }
-        await db.users.insert_one(user_doc)  # noqa: F821
+        await db.users.insert_one(user_doc)
         try:
-            await db.subscribers.update_one({"email": email}, {"$set": {"converted": True}})  # noqa: F821
+            await db.subscribers.update_one({"email": email}, {"$set": {"converted": True}})
         except Exception as e:  # pragma: no cover
             logging.warning("subscriber conversion flag failed for %s: %s", email, e)
-        asyncio.create_task(welcome_new_user(email, user_doc.get("name", ""), "fr"))
         user = user_doc
-    else:
-        # Compte existant (ex. inscription par mot de passe) : le clic active l'email.
-        await db.users.update_one({"email": email}, {"$set": {"email_verified": True}})  # noqa: F821
-        if rec.get("is_signup"):
-            asyncio.create_task(welcome_new_user(email, user.get("name") or "", "fr"))
     token_jwt = create_access_token(user["id"], user["email"], user["role"],
                                     token_version=user.get("token_version", 0))
     set_auth_cookie(response, token_jwt)
@@ -1198,24 +1079,11 @@ async def _magic_tokens_cleanup():
     while True:
         try:
             cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-            res = await db.magic_tokens.delete_many({"expires_at": {"$lt": cutoff}})  # noqa: F821
+            res = await db.magic_tokens.delete_many({"expires_at": {"$lt": cutoff}})
             if res.deleted_count:
                 logging.info("[magic] purged %d expired tokens", res.deleted_count)
         except Exception as e:
             logging.error("[magic] cleanup error: %s", e)
-        # Purge anti-spam : comptes créés par mot de passe dont l'email n'a jamais
-        # été confirmé sous 72h. (Comptes antérieurs au contrôle : pas de champ
-        # email_verified -> jamais touchés par cette requête.)
-        try:
-            cutoff_verify = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
-            res = await db.users.delete_many({  # noqa: F821
-                "email_verified": False,
-                "created_at": {"$lte": cutoff_verify},
-            })
-            if res.deleted_count:
-                logging.info("[magic] purged %d unverified accounts", res.deleted_count)
-        except Exception as e:
-            logging.error("[magic] unverified purge error: %s", e)
         await asyncio.sleep(6 * 3600)
 
 
@@ -1400,66 +1268,6 @@ async def account_delete_address(address_id: str, user: dict = Depends(get_curre
         newest = await db.addresses.find_one({"user_id": user["id"]}, sort=[("created_at", -1)])
         if newest:
             await db.addresses.update_one({"id": newest["id"]}, {"$set": {"is_default": True}})
-    return {"ok": True}
-
-
-# --- Wishlist (liste d'envies) ------------------------------------------------
-@api.get("/account/wishlist")
-async def account_wishlist(user: dict = Depends(get_current_user)):
-    """Liste d'envies du client, enrichie avec les fiches produits actuelles."""
-    items = await db.wishlist.find(
-        {"user_id": user["id"]}, {"_id": 0}
-    ).sort("created_at", -1).to_list(500)
-    product_ids = list({i["product_id"] for i in items})
-    docs = {}
-    if product_ids:
-        cursor = db.products.find({"id": {"$in": product_ids}, "deleted_at": None}, {"_id": 0})
-        async for p in cursor:
-            docs[p["id"]] = p
-    out = []
-    for i in items:
-        p = docs.get(i["product_id"])
-        if not p:
-            continue
-        out.append({
-            "id": i["id"],
-            "product_id": i["product_id"],
-            "variant_id": i.get("variant_id"),
-            "created_at": i["created_at"],
-            "product": p,
-        })
-    return {"items": out, "total": len(out)}
-
-
-@api.post("/account/wishlist")
-async def account_wishlist_add(payload: WishlistItemIn, user: dict = Depends(get_current_user)):
-    product = await db.products.find_one({"id": payload.product_id, "deleted_at": None}, {"_id": 0})
-    if not product:
-        raise HTTPException(404, "Product not found")
-    if payload.variant_id and not any(v.get("id") == payload.variant_id for v in product.get("variants", [])):
-        raise HTTPException(400, "Variant not found for this product")
-    existing = await db.wishlist.find_one({
-        "user_id": user["id"], "product_id": payload.product_id,
-    })
-    if existing:
-        return {"ok": True, "already_in_wishlist": True, "id": existing["id"]}
-    doc = {
-        "id": str(uuid.uuid4()),
-        "user_id": user["id"],
-        "product_id": payload.product_id,
-        "variant_id": payload.variant_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await db.wishlist.insert_one(doc)
-    doc.pop("_id", None)
-    return {"ok": True, "already_in_wishlist": False, "id": doc["id"]}
-
-
-@api.delete("/account/wishlist/{product_id}")
-async def account_wishlist_remove(product_id: str, user: dict = Depends(get_current_user)):
-    res = await db.wishlist.delete_one({"user_id": user["id"], "product_id": product_id})
-    if not res.deleted_count:
-        raise HTTPException(404, "Wishlist item not found")
     return {"ok": True}
 
 
@@ -1794,28 +1602,6 @@ def _ensure_variant_ids(payload_doc: dict) -> dict:
     return payload_doc
 
 
-def _normalize_images(payload_doc: dict) -> dict:
-    """Normalise la galerie d'images. image_url reste la couverture :
-    la galerie est bornée à 8 entrées, l'image de couverture y est toujours
-    incluse en première position (additif — les fiches existantes sans champ
-    images restent inchangées, la galerie hérite simplement de image_url)."""
-    image_url = str(payload_doc.get("image_url") or "").strip()
-    raw = [str(u) for u in (payload_doc.get("images") or []) if u and isinstance(u, str) and u.strip()]
-    images = raw[:8]
-    if image_url and image_url not in images:
-        images = [image_url] + images[:7]
-    if not images and image_url:
-        images = [image_url]
-    if images:
-        payload_doc["images"] = images[:8]
-        if not image_url or image_url not in images:
-            payload_doc["image_url"] = images[0]
-    else:
-        payload_doc["images"] = []
-        payload_doc["image_url"] = ""
-    return payload_doc
-
-
 @api.post("/admin/products")
 async def admin_create_product(payload: ProductIn, _admin: dict = Depends(require_area("products", "manage"))):
     existing = await db.products.find_one({"slug": payload.slug})
@@ -1823,7 +1609,6 @@ async def admin_create_product(payload: ProductIn, _admin: dict = Depends(requir
         raise HTTPException(409, "Slug already exists")
     doc = payload.model_dump()
     doc = _ensure_variant_ids(doc)
-    doc = _normalize_images(doc)
     doc["id"] = str(uuid.uuid4())
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
     await db.products.insert_one(doc)
@@ -1836,7 +1621,6 @@ async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict
     before = await db.products.find_one({"id": product_id}, {"_id": 0})
     update = payload.model_dump()
     update = _ensure_variant_ids(update)
-    update = _normalize_images(update)
     res = await db.products.update_one({"id": product_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Product not found")
@@ -1851,10 +1635,6 @@ async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict
                 asyncio.create_task(_maybe_notify_restock(product_id, vid))
         if before.get("stock", 0) <= 0 < after.get("stock", 0):
             asyncio.create_task(_maybe_notify_restock(product_id, None))
-
-    # Réévalue les précommandes : une fiche mise à jour (stock reçu, badge
-    # coming-soon / COA débloqué) peut rendre expédiables des commandes payées.
-    asyncio.create_task(_release_ready_preorder_orders())
 
     return after
 
@@ -1897,38 +1677,32 @@ async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depend
     the image_url field. Storage is local disk under UPLOAD_DIR/images, served 
     statically at /uploads/images/<file>."""
     filename = file.filename or ""
-
+    
+    # Determine file extension from filename
+    ext = None
+    if "." in filename:
+        ext = filename.rsplit(".", 1)[1].lower()
+    
+    # Validate by content type first
+    content_type = file.content_type or ""
+    if content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(400, "Only PNG, JPEG, WebP, and GIF images are allowed")
+    
     contents = await file.read()
     size_mb = len(contents) / (1024 * 1024)
     if size_mb > MAX_IMAGE_UPLOAD_MB:
         raise HTTPException(400, f"File too large — max {MAX_IMAGE_UPLOAD_MB:.0f} MB")
-
-    # Validation PAR LE CONTENU (magic bytes), pas par le Content-Type déclaré par
-    # le client : un Content-Type est triviable, un header de fichier ne l'est pas.
-    # Sans ça, un compte staff avec la permission produits pouvait servir un HTML/JS
-    # depuis /uploads via un fichier renommé en .jpg.
-    _IMAGE_FORMAT_EXT = {
-        "PNG": "png",
-        "JPEG": "jpg",
-        "WEBP": "webp",
-        "GIF": "gif",
-    }
-    try:
-        prev_max = PILImage.MAX_IMAGE_PIXELS
-        PILImage.MAX_IMAGE_PIXELS = 50_000_000  # borne anti-decompression-bomb
-        try:
-            with PILImage.open(io.BytesIO(contents)) as im:
-                fmt = (im.format or "").upper()
-                im.verify()
-        finally:
-            PILImage.MAX_IMAGE_PIXELS = prev_max
-    except Exception:
-        raise HTTPException(400, "File is not a valid image")
-
-    ext = _IMAGE_FORMAT_EXT.get(fmt)
+    
+    # Map content type to extension if not provided
     if not ext:
-        raise HTTPException(400, "Only PNG, JPEG, WebP, and GIF images are allowed")
-
+        ext_map = {
+            "image/png": "png",
+            "image/jpeg": "jpg",
+            "image/webp": "webp",
+            "image/gif": "gif",
+        }
+        ext = ext_map.get(content_type, "jpg")
+    
     safe_name = f"{uuid.uuid4().hex}.{ext}"
     dest = IMAGE_UPLOAD_DIR / safe_name
     with open(dest, "wb") as f:
@@ -2041,88 +1815,7 @@ async def _release_stock_atomic(line_items: list) -> None:
             )
 
 
-def _coupon_usage_for_email(coupon: dict, email: str) -> int:
-    """Nombre d'utilisations d'un coupon par un email donné (tableau used_by)."""
-    for entry in coupon.get("used_by") or []:
-        if entry and entry.get("email") == email:
-            try:
-                return int(entry.get("count", 0))
-            except (TypeError, ValueError):
-                return 0
-    return 0
-
-
-async def _coupon_discount(coupon: dict, subtotal: float,
-                           line_items: Optional[list] = None,
-                           email: Optional[str] = None) -> tuple[float, dict]:
-    """Valide un coupon et retourne (discount, applied_coupon). Lève 400 si invalide.
-
-    Les restrictions contextuelles (emails autorisés, premier achat, limite par
-    client, restriction produit/catégorie) ne sont vérifiées QUE si le contexte
-    est fourni : le checkout le fournit toujours ; le point public /coupons/validate
-    sans email ni items reste strictement rétrocompatible."""
-    if not coupon or not coupon.get("active"):
-        raise HTTPException(400, "Invalid coupon code")
-    if coupon.get("expires_at"):
-        try:
-            if datetime.fromisoformat(coupon["expires_at"].replace("Z", "+00:00")) < datetime.now(timezone.utc):
-                raise HTTPException(400, "Coupon expired")
-        except ValueError:
-            pass
-    if coupon.get("start_at"):
-        try:
-            if datetime.fromisoformat(coupon["start_at"].replace("Z", "+00:00")) > datetime.now(timezone.utc):
-                raise HTTPException(400, "Coupon not active yet")
-        except ValueError:
-            pass
-    if coupon.get("usage_limit") and coupon.get("used_count", 0) >= coupon["usage_limit"]:
-        raise HTTPException(400, "Coupon usage limit reached")
-    if subtotal < coupon.get("min_subtotal", 0):
-        raise HTTPException(400, f"Minimum subtotal of ${coupon['min_subtotal']:.2f} required for this coupon")
-
-    email_norm = (email or "").strip().lower()
-    allowed = [e.lower().strip() for e in (coupon.get("allowed_emails") or []) if e and e.strip()]
-    if allowed and email_norm:
-        if email_norm not in allowed:
-            raise HTTPException(400, "This coupon is not valid for this account")
-    if coupon.get("first_order_only") and email_norm:
-        prior = await db.orders.count_documents({"email": email_norm, "payment_status": "paid"})
-        if prior > 0:
-            raise HTTPException(400, "This coupon is valid for first orders only")
-    per_limit = coupon.get("per_customer_limit")
-    if per_limit and email_norm:
-        if _coupon_usage_for_email(coupon, email_norm) >= int(per_limit):
-            raise HTTPException(400, "Coupon usage limit reached for this account")
-
-    restrict_products = [p for p in (coupon.get("restrict_products") or []) if p]
-    restrict_categories = [c for c in (coupon.get("restrict_categories") or []) if c]
-    if line_items and (restrict_products or restrict_categories):
-        for it in line_items:
-            if restrict_products and str(it.get("product_id", "")) not in restrict_products:
-                raise HTTPException(400, "This coupon does not apply to all items in your cart")
-            if restrict_categories and (it.get("category") or "") not in restrict_categories:
-                raise HTTPException(400, "This coupon does not apply to all items in your cart")
-
-    if coupon["discount_type"] == "percent":
-        discount = round(subtotal * (coupon["value"] / 100.0), 2)
-    else:
-        discount = round(min(coupon["value"], subtotal), 2)
-    max_disc = coupon.get("max_discount_cad")
-    if max_disc is not None:
-        discount = round(min(discount, float(max_disc)), 2)
-
-    applied = {
-        "code": coupon["code"],
-        "discount_type": coupon["discount_type"],
-        "value": coupon["value"],
-        "discount_amount": discount,
-        "free_shipping": bool(coupon.get("free_shipping")),
-    }
-    return discount, applied
-
-
-async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] = None,
-                              customer_email: Optional[str] = None):
+async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] = None):
     line_items = []
     subtotal = 0.0
     has_preorder = False
@@ -2142,11 +1835,10 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
 
         v = _resolve_variant(p, it.variant_id)
         is_preorder = False
-        # Règle de précommande alignée sur le frontend (ProductDetail/CartContext) :
-        # précommande si preorder_enabled ET (coming_soon OU COA en attente OU
-        # stock insuffisant pour la quantité commandée). Le prix affiché au client
-        # (preorder_price) doit être exactement celui facturé ici.
-        coa_coming = bool(v.get("badge_coming_soon")) or bool(v.get("badge_coa_pending"))
+        # coa_status "pending" no longer blocks or forces preorder on its own
+        # (variant stays purchasable with a warning). Only badge_coming_soon
+        # (product not yet launched) drives the "coming" preorder path here.
+        coa_coming = bool(v.get("badge_coming_soon"))
         if v.get("preorder_enabled") and (coa_coming or v.get("stock", 0) < it.qty):
             is_preorder = True
             has_preorder = True
@@ -2167,7 +1859,6 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
             "sku": v.get("sku", p["slug"].upper()),
             "name_en": p["name_en"],
             "name_fr": p["name_fr"],
-            "category": p.get("category", ""),
             "price_cad": unit_price,
             "qty": it.qty,
             "line_total": line_total,
@@ -2181,23 +1872,31 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
         subtotal += line_total
     subtotal = round(subtotal, 2)
 
-    # Apply coupon (règles de base + avancées, voir _coupon_discount)
+    # Apply coupon (unchanged logic)
     discount = 0.0
     applied_coupon = None
     if coupon_code:
         coupon = await db.coupons.find_one({"code": coupon_code.upper().strip()}, {"_id": 0})
-        discount, applied_coupon = await _coupon_discount(
-            coupon, subtotal, line_items=line_items, email=customer_email
-        )
+        if not coupon or not coupon.get("active"):
+            raise HTTPException(400, "Invalid coupon code")
+        if coupon.get("expires_at"):
+            try:
+                if datetime.fromisoformat(coupon["expires_at"].replace("Z", "+00:00")) < datetime.now(timezone.utc):
+                    raise HTTPException(400, "Coupon expired")
+            except ValueError:
+                pass
+        if coupon.get("usage_limit") and coupon.get("used_count", 0) >= coupon["usage_limit"]:
+            raise HTTPException(400, "Coupon usage limit reached")
+        if subtotal < coupon.get("min_subtotal", 0):
+            raise HTTPException(400, f"Minimum subtotal of ${coupon['min_subtotal']:.2f} required for this coupon")
+        if coupon["discount_type"] == "percent":
+            discount = round(subtotal * (coupon["value"] / 100.0), 2)
+        else:
+            discount = round(min(coupon["value"], subtotal), 2)
+        applied_coupon = {"code": coupon["code"], "discount_type": coupon["discount_type"], "value": coupon["value"], "discount_amount": discount}
 
     tax_rate = 0.0
     shipping = 0.0 if (subtotal - discount) >= FREE_SHIPPING_THRESHOLD_CAD else SHIPPING_FLAT_CAD
-    # Coupon "livraison gratuite" : on soustrait le forfait de la remise et on
-    # ramène le shipping facturé à 0 (le total final reste identique).
-    if applied_coupon and applied_coupon.get("free_shipping") and shipping > 0:
-        discount = round(discount + shipping, 2)
-        applied_coupon["discount_amount"] = discount
-        shipping = 0.0
     tax = 0.0
     total = round(max(0, subtotal - discount) + shipping, 2)
     return line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder
@@ -3295,7 +2994,7 @@ def _order_email_html(order: dict, body_intro: str) -> str:
       </table>
       <p style="margin:32px 0 0;font-family:monospace;font-size:10px;letter-spacing:2px;color:#999;text-transform:uppercase">For Research Use Only · Not For Human Or Veterinary Consumption</p>
     </td></tr>
-    <tr><td style="background:#050505;color:#fff;padding:14px 28px;font-family:monospace;font-size:10px;letter-spacing:2px">FIRONOVA · MONTRÉAL, QUÉBEC, CANADA · INFO@FIRONOVA.COM · {datetime.now(timezone.utc).strftime("%Y")}</td></tr>
+    <tr><td style="background:#050505;color:#fff;padding:14px 28px;font-family:monospace;font-size:10px;letter-spacing:2px">FIRONOVA · CANADA · {datetime.now(timezone.utc).strftime("%Y")}</td></tr>
   </table>
 </body></html>"""
 
@@ -3353,8 +3052,7 @@ def _simple_order_email_html(order: dict, heading: str, body_html: str) -> str:
       <div style="font-size:14px;line-height:1.7;margin-top:14px">{body_html}</div>
     </td></tr>
     <tr><td style="background:#f5f5f5;padding:16px 28px;font-family:monospace;font-size:10px;letter-spacing:1px;color:#888">
-      FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION · 19+ ONLY<br>
-      FIRONOVA · MONTRÉAL, QUÉBEC, CANADA · INFO@FIRONOVA.COM
+      FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION · 19+ ONLY
     </td></tr>
   </table>
 </body></html>"""
@@ -3372,8 +3070,7 @@ def _prelaunch_email_html(heading: str, body_html: str) -> str:
     </td></tr>
     <tr><td style="padding:28px"><div style="font-size:14px;line-height:1.7">{body_html}</div></td></tr>
     <tr><td style="background:#f5f5f5;padding:16px 28px;font-family:monospace;font-size:10px;letter-spacing:1px;color:#888">
-      FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION · 19+ ONLY<br>
-      FIRONOVA · MONTRÉAL, QUÉBEC, CANADA · INFO@FIRONOVA.COM
+      FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION · 19+ ONLY
     </td></tr>
   </table>
 </body></html>"""
@@ -3489,7 +3186,7 @@ def _restock_email_html(product: dict, variant: Optional[dict]) -> str:
       <a href="{link}" style="display:inline-block;background:#050505;color:#fff;font-family:monospace;font-size:12px;letter-spacing:2px;padding:12px 24px;text-decoration:none">VIEW PRODUCT / VOIR LE PRODUIT →</a>
       <p style="margin:32px 0 0;font-family:monospace;font-size:10px;letter-spacing:2px;color:#999;text-transform:uppercase">For Research Use Only · Not For Human Or Veterinary Consumption</p>
     </td></tr>
-    <tr><td style="background:#050505;color:#fff;padding:14px 28px;font-family:monospace;font-size:10px;letter-spacing:2px">FIRONOVA · MONTRÉAL, QUÉBEC, CANADA · INFO@FIRONOVA.COM · {datetime.now(timezone.utc).strftime("%Y")}</td></tr>
+    <tr><td style="background:#050505;color:#fff;padding:14px 28px;font-family:monospace;font-size:10px;letter-spacing:2px">FIRONOVA · CANADA · {datetime.now(timezone.utc).strftime("%Y")}</td></tr>
   </table>
 </body></html>"""
 
@@ -3560,29 +3257,17 @@ async def get_shipping_rates(payload: ShippingRateRequest):
 # ---------------------------------------------------------------------------
 # Confirmation de paiement — point d'entrée UNIQUE et idempotent.
 # Le filtre {"payment_status": {"$ne": "paid"}} dans le update_one garantit
-# qu'un seul appelant gagne, même si le webhook et un appel concurrent
+# qu'un seul appelant gagne, même si le webhook Stripe et le polling frontend
 # arrivent à la milliseconde près. Le coupon est décompté ici (et pas à la
 # création) : un panier abandonné ne doit jamais consommer un usage_limit.
 # ---------------------------------------------------------------------------
 async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Optional[dict]:
     """Retourne l'order fraîche si CET appel a fait la transition, sinon None."""
     paid_at = datetime.now(timezone.utc).isoformat()
-    existing = await db.orders.find_one(
-        {"id": order_id, "payment_status": {"$ne": "paid"}},
-        {"_id": 0, "has_preorder": 1, "fulfillment_status": 1},
-    )
-    if not existing:
-        return None  # introuvable ou déjà payée : un autre chemin a gagné la course
-    # Les précommandes restent "preorder" même une fois payées : on n'expédie
-    # qu'à l'arrivée de la marchandise. Le paiement ne les bascule pas en "processing".
-    if existing.get("has_preorder") or existing.get("fulfillment_status") == "preorder":
-        fulfillment_status = "preorder"
-    else:
-        fulfillment_status = "processing"
     update: dict = {
         "$set": {
             "payment_status": "paid",
-            "fulfillment_status": fulfillment_status,
+            "fulfillment_status": "processing",
             "paid_at": paid_at,
             "dispatch_batch": compute_dispatch_batch(paid_at),
         }
@@ -3610,18 +3295,6 @@ async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Op
     coupon = order.get("coupon")
     if coupon and coupon.get("code") and not order.get("coupon_counted"):
         await db.coupons.update_one({"code": coupon["code"]}, {"$inc": {"used_count": 1}})
-        # Usage par client (used_by[].count) pour la limite per_customer_limit.
-        email_norm = (order.get("email") or "").strip().lower()
-        if email_norm:
-            res = await db.coupons.update_one(
-                {"code": coupon["code"], "used_by.email": email_norm},
-                {"$inc": {"used_by.$.count": 1}},
-            )
-            if res.matched_count == 0:
-                await db.coupons.update_one(
-                    {"code": coupon["code"]},
-                    {"$push": {"used_by": {"email": email_norm, "count": 1}}},
-                )
         await db.orders.update_one({"id": order_id}, {"$set": {"coupon_counted": True}})
 
     if order.get("email"):
@@ -3642,37 +3315,10 @@ async def checkout(payload: CheckoutIn, request: Request):
     if not payload.items:
         raise HTTPException(400, "Cart is empty")
 
-    # --- Idempotency : le header Idempotency-Key envoyé par le frontend protège
-    # contre les doubles soumissions (double-clic, retry réseau). Une seule
-    # commande est créée par clé ; un replay retourne la commande existante.
-    idem_key = (request.headers.get("idempotency-key") or "").strip()
-    if len(idem_key) > 200:
-        raise HTTPException(400, "Idempotency-Key must be ≤ 200 characters")
-    if idem_key:
-        try:
-            await db.checkout_claims.insert_one({
-                "_id": idem_key,
-                "status": "pending",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
-        except DuplicateKeyError:
-            # La clé existe déjà : requête concurrente en cours ou commande déjà créée (replay).
-            for _ in range(50):
-                claim = await db.checkout_claims.find_one({"_id": idem_key})
-                if claim and claim.get("order_id"):
-                    existing = await db.orders.find_one({"id": claim["order_id"]}, {"_id": 0})
-                    if existing:
-                        return existing
-                if claim and claim.get("status") == "failed":
-                    raise HTTPException(409, "Checkout already attempted — use a fresh key to retry")
-                await asyncio.sleep(0.1)
-            raise HTTPException(409, "Concurrent checkout already in progress for this key")
-
     user = await _resolve_user(request)
 
-    customer_email = (user["email"] if user else None) or (payload.email.lower().strip() if payload.email else None)
     line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder = await _build_order_totals(
-        payload.items, payload.coupon_code, customer_email=customer_email
+        payload.items, payload.coupon_code
     )
 
     order_id = str(uuid.uuid4())
@@ -3684,76 +3330,105 @@ async def checkout(payload: CheckoutIn, request: Request):
     # check-then-act qui laissait deux clients acheter le même dernier flacon.
     reserved = await _reserve_stock_atomic(line_items)
 
-    try:
-        payment_info: dict = {}
-        if payload.payment_method == "interac":
-            payment_info = {
-                "type": "interac",
-                "instructions": {
-                    "send_to": INTERAC_EMAIL,
-                    "amount_cad": total,
-                    "reference": order_number,
-                    "security_question": INTERAC_SECURITY_QUESTION,
-                    "security_answer_hint": INTERAC_PASSWORD_HINT.lower(),
-                },
-            }
-            payment_status = "awaiting_etransfer"
-        else:
-            try:
-                np = await _nowpayments_create(order_id, total, payload.pay_currency or "btc")
-            except Exception:
-                raise
-            payment_info = {"type": "nowpayments", "provider_response": np}
-            payment_status = "awaiting_crypto"
-
-        order_doc = {
-            "id": order_id,
-            "order_number": order_number,
-            "user_id": user["id"] if user else None,
-            "email": customer_email,
-            "items": line_items,
-            "subtotal": subtotal,
-            "discount": discount,
-            "coupon": applied_coupon,
-            "tax_rate": tax_rate,
-            "tax": tax,
-            "shipping": shipping,
-            "total": total,
-            "currency": "CAD",
-            "shipping_address": payload.shipping.model_dump(),
-            "shipping_info": {"carrier": "", "tracking_number": "", "shipped_at": None},
-            "payment_method": payload.payment_method,
-            "payment_status": payment_status,
-            "payment_info": payment_info,
-            "fulfillment_status": "preorder" if has_preorder else "pending",
-            "has_preorder": has_preorder,
-            "notes": [],
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "payment_ttl_hours": UNPAID_ORDER_TTL_HOURS,
-            "payment_deadline": (datetime.now(timezone.utc) + timedelta(hours=UNPAID_ORDER_TTL_HOURS)).isoformat(),
-            "compliance": {
-                "accept_terms": True,
-                "confirm_age": True,
-                "confirm_research_use": True,
-                "ip": request.client.host if request.client else None,
+    payment_info: dict = {}
+    if payload.payment_method == "interac":
+        payment_info = {
+            "type": "interac",
+            "instructions": {
+                "send_to": INTERAC_EMAIL,
+                "amount_cad": total,
+                "reference": order_number,
+                "security_question": "What is the brand name? (lowercase)",
+                "security_answer_hint": INTERAC_PASSWORD_HINT.lower(),
             },
         }
-        # --- AFFILIATE: attribution depuis le cookie fn_ref (champ additif) ---
-        await affiliate_attach_to_order(order_doc, request)
-        await db.orders.insert_one(order_doc)
-        order_doc.pop("_id", None)
-    except Exception:
-        # Toute erreur APRÈS la réservation (PSP, insert, affilié) doit rendre le
-        # stock : sinon il fuit définitivement sans aucune commande à auto-annuler.
-        await _release_stock_atomic(reserved)
-        if idem_key:
-            await db.checkout_claims.update_one({"_id": idem_key}, {"$set": {"status": "failed"}})
-        raise
+        payment_status = "awaiting_etransfer"
+    elif payload.payment_method == "stripe":
+        if not _STRIPE_AVAILABLE or not STRIPE_API_KEY:
+            raise HTTPException(503, "Stripe not configured")
+        origin = (payload.origin_url or "").rstrip("/")
+        if not origin:
+            raise HTTPException(400, "origin_url is required for Stripe checkout")
+        success_url = f"{origin}/order/{order_id}?session_id={{CHECKOUT_SESSION_ID}}"
+        cancel_url = f"{origin}/checkout"
+        stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{origin}/api/webhook/stripe")
+        try:
+            req = CheckoutSessionRequest(
+                amount=float(total),
+                currency="cad",
+                success_url=success_url,
+                cancel_url=cancel_url,
+                metadata={"order_id": order_id, "order_number": order_number,
+                          "user_id": user["id"] if user else "guest"},
+            )
+            session = await stripe_checkout.create_checkout_session(req)
+        except HTTPException:
+            await _release_stock_atomic(reserved)
+            raise
+        except Exception as e:
+            await _release_stock_atomic(reserved)
+            logging.error("Stripe checkout session error: %s", e)
+            raise HTTPException(502, "Stripe checkout unavailable")
+        await db.payment_transactions.insert_one({
+            "id": str(uuid.uuid4()),
+            "order_id": order_id,
+            "session_id": session.session_id,
+            "amount": total,
+            "currency": "cad",
+            "metadata": {"order_number": order_number},
+            "payment_status": "pending",
+            "status": "initiated",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        payment_info = {
+            "type": "stripe",
+            "session_id": session.session_id,
+            "checkout_url": session.url,
+        }
+        payment_status = "awaiting_stripe"
+    else:
+        try:
+            np = await _nowpayments_create(order_id, total, payload.pay_currency or "btc")
+        except Exception:
+            await _release_stock_atomic(reserved)
+            raise
+        payment_info = {"type": "nowpayments", "provider_response": np}
+        payment_status = "awaiting_crypto"
 
-    if idem_key:
-        await db.checkout_claims.update_one(
-            {"_id": idem_key}, {"$set": {"status": "done", "order_id": order_id}}
-        )
+    order_doc = {
+        "id": order_id,
+        "order_number": order_number,
+        "user_id": user["id"] if user else None,
+        "email": (user["email"] if user else None) or (payload.email.lower() if payload.email else None),
+        "items": line_items,
+        "subtotal": subtotal,
+        "discount": discount,
+        "coupon": applied_coupon,
+        "tax_rate": tax_rate,
+        "tax": tax,
+        "shipping": shipping,
+        "total": total,
+        "currency": "CAD",
+        "shipping_address": payload.shipping.model_dump(),
+        "shipping_info": {"carrier": "", "tracking_number": "", "shipped_at": None},
+        "payment_method": payload.payment_method,
+        "payment_status": payment_status,
+        "payment_info": payment_info,
+        "fulfillment_status": "preorder" if has_preorder else "pending",
+        "has_preorder": has_preorder,
+        "notes": [],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "compliance": {
+            "accept_terms": True,
+            "confirm_age": True,
+            "confirm_research_use": True,
+            "ip": request.client.host if request.client else None,
+        },
+    }
+    # --- AFFILIATE: attribution depuis le cookie fn_ref (champ additif) ---
+    await affiliate_attach_to_order(order_doc, request)
+    await db.orders.insert_one(order_doc)
+    order_doc.pop("_id", None)
 
     # Le stock est déjà réservé atomiquement plus haut (_reserve_stock_atomic),
     # avant l'appel au PSP. Rien à faire ici.
@@ -3998,11 +3673,10 @@ async def admin_update_order(
         raise HTTPException(404, "Order not found")
 
     # Auto-transition: when payment becomes paid, move fulfillment to processing
-    # (les précommandes restent "preorder" même payées : on n'expédie qu'à l'arrivée).
     if (
         payment_status == "paid"
         and existing.get("payment_status") != "paid"
-        and existing.get("fulfillment_status") in ("pending", None)
+        and existing.get("fulfillment_status") in ("pending", "preorder", None)
     ):
         update["fulfillment_status"] = "processing"
 
@@ -4081,7 +3755,6 @@ async def _log_action(user: dict, action: str, detail: str = "", area: str = "")
 
 
 def _staff_invite_html(accept_url: str, inviter_name: str, lang: str = "fr") -> str:
-    inviter_name = html.escape(inviter_name)
     if lang == "fr":
         heading = "Vous êtes invité·e à rejoindre l'équipe FIRONOVA"
         body = (f"{inviter_name} vous invite à accéder au panneau d'administration FIRONOVA. "
@@ -5726,107 +5399,6 @@ async def _rollover_watchdog() -> None:
         await asyncio.sleep(3600)
 
 
-# ---------------------------------------------------------------------------
-# Libération des précommandes devenues disponibles
-# ---------------------------------------------------------------------------
-async def _release_ready_preorder_orders() -> int:
-    """Débloque les précommandes payées dont TOUTES les lignes en précommande
-    sont redevenues disponibles (stock suffisant ET plus de badge coming-soon /
-    COA en attente). La commande passe de "preorder" à "processing" (expédiable)
-    et reçoit un lot d'expédition frais (prochain jour ouvrable) pour apparaître
-    dans Dispatch. Idempotent : seules les commandes encore "preorder" sont
-    traitées ; sans impact sur le stock (les précommandes n'en réservent pas)."""
-    orders = await db.orders.find(
-        {"payment_status": "paid", "fulfillment_status": "preorder"},
-        {"_id": 0},
-    ).to_list(500)
-    if not orders:
-        return 0
-
-    product_ids = set()
-    for o in orders:
-        for it in o.get("items", []):
-            if it.get("preorder"):
-                product_ids.add(it["product_id"])
-    products = await db.products.find(
-        {"id": {"$in": list(product_ids)}}, {"_id": 0}
-    ).to_list(len(product_ids))
-    by_id = {p["id"]: p for p in products}
-
-    released = 0
-    now_iso = datetime.now(timezone.utc).isoformat()
-    for o in orders:
-        pre_lines = [it for it in o.get("items", []) if it.get("preorder")]
-        if not pre_lines:
-            continue
-        ready = True
-        for it in pre_lines:
-            p = by_id.get(it.get("product_id"))
-            if not p:
-                ready = False
-                break
-            v = next((vv for vv in (p.get("variants") or []) if vv.get("id") == it.get("variant_id")), None)
-            if v is None:
-                try:
-                    v = _resolve_variant(p, it.get("variant_id"))
-                except HTTPException:
-                    ready = False
-                    break
-            if not v:
-                ready = False
-                break
-            # Coming-soon / COA en attente maintient la précommande même en stock.
-            if v.get("badge_coming_soon") or v.get("badge_coa_pending"):
-                ready = False
-                break
-            if int(v.get("stock", 0) or 0) < int(it.get("qty") or 1):
-                ready = False
-                break
-        if not ready:
-            continue
-
-        batch = compute_dispatch_batch(now_iso)
-        res = await db.orders.update_one(
-            {
-                "id": o["id"],
-                "payment_status": "paid",
-                "fulfillment_status": "preorder",
-            },
-            {
-                "$set": {
-                    "fulfillment_status": "processing",
-                    "dispatch_batch": batch,
-                    "preorder_released_at": now_iso,
-                },
-                "$push": {"notes": {
-                    "id": str(uuid.uuid4()),
-                    "text": f"Précommande disponible : stock reçu, prête à expédier au lot {batch}.",
-                    "author": "system",
-                    "created_at": now_iso,
-                }},
-            },
-        )
-        if res.modified_count:
-            released += 1
-    if released:
-        logging.info("preorder release: %d commande(s) passée(s) à 'processing'", released)
-    return released
-
-
-PREORDER_RELEASE_INTERVAL_SECONDS = int(os.environ.get("PREORDER_RELEASE_INTERVAL_SECONDS", "300"))
-
-
-async def _release_preorders_watchdog() -> None:
-    """Vérifie périodiquement si des précommandes payées sont devenues
-    expédiables (stock reçu hors admin, badge COA débloqué, etc.)."""
-    while True:
-        try:
-            await _release_ready_preorder_orders()
-        except Exception as ex:  # pragma: no cover
-            logging.error("preorder release watchdog failed: %s", ex)
-        await asyncio.sleep(PREORDER_RELEASE_INTERVAL_SECONDS)
-
-
 @api.get("/admin/ops/signals")
 async def admin_ops_signals(_admin: dict = Depends(require_area("orders", "view"))):
     """Compteurs pour les pastilles de navigation (Journée / Dispatch) et
@@ -5908,15 +5480,18 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_
     code = payload.code.upper().strip()
     if await db.coupons.find_one({"code": code}):
         raise HTTPException(409, "Coupon code already exists")
-    doc = payload.model_dump()
-    doc["id"] = str(uuid.uuid4())
-    doc["code"] = code
-    doc["allowed_emails"] = [e.lower().strip() for e in (doc.get("allowed_emails") or []) if e and e.strip()]
-    doc["restrict_products"] = [p for p in (doc.get("restrict_products") or []) if p]
-    doc["restrict_categories"] = [c for c in (doc.get("restrict_categories") or []) if c]
-    doc["used_count"] = 0
-    doc["used_by"] = []  # [{"email": "...", "count": n}] — usage par client
-    doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "code": code,
+        "discount_type": payload.discount_type,
+        "value": payload.value,
+        "min_subtotal": payload.min_subtotal,
+        "usage_limit": payload.usage_limit,
+        "used_count": 0,
+        "active": payload.active,
+        "expires_at": payload.expires_at,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
     await db.coupons.insert_one(doc)
     doc.pop("_id", None)
     return doc
@@ -5924,17 +5499,8 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_
 
 @api.put("/admin/coupons/{coupon_id}")
 async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = Depends(require_area("coupons", "manage"))):
-    # exclude_unset : seuls les champs envoyés par le formulaire sont appliqués,
-    # les compteurs (used_count/used_by) et champs avancés absents sont préservés.
-    update = payload.model_dump(exclude_unset=True)
-    if "code" in update:
-        update["code"] = update["code"].upper().strip()
-    if "allowed_emails" in update:
-        update["allowed_emails"] = [e.lower().strip() for e in (update["allowed_emails"] or []) if e and e.strip()]
-    if "restrict_products" in update:
-        update["restrict_products"] = [p for p in (update["restrict_products"] or []) if p]
-    if "restrict_categories" in update:
-        update["restrict_categories"] = [c for c in (update["restrict_categories"] or []) if c]
+    update = payload.model_dump()
+    update["code"] = update["code"].upper().strip()
     res = await db.coupons.update_one({"id": coupon_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Coupon not found")
@@ -5947,38 +5513,26 @@ async def admin_delete_coupon(coupon_id: str, admin: dict = Depends(require_area
 
 
 @api.post("/coupons/validate")
-async def validate_coupon(code: str, subtotal: float,
-                          email: Optional[str] = None,
-                          items: Optional[str] = None):
-    """Validation côté client. email et items (JSON) sont OPTIONNELS : sans eux,
-    seules les règles de base sont vérifiées (rétrocompatible avec l'appel actuel).
-    La validation finale complète est toujours faite au checkout."""
+async def validate_coupon(code: str, subtotal: float):
     coupon = await db.coupons.find_one({"code": code.upper().strip()}, {"_id": 0})
-    line_items = None
-    if items:
+    if not coupon or not coupon.get("active"):
+        raise HTTPException(400, "Invalid coupon code")
+    if coupon.get("expires_at"):
         try:
-            raw = json.loads(items)
-            if isinstance(raw, list):
-                ids = [str(x.get("product_id")) for x in raw if isinstance(x, dict) and x.get("product_id")]
-                docs = await db.products.find({"id": {"$in": ids}}, {"_id": 0}).to_list(len(ids))
-                by_id = {d["id"]: d for d in docs}
-                line_items = [
-                    {"product_id": str(x.get("product_id")),
-                     "category": (by_id.get(str(x.get("product_id"))) or {}).get("category", "")}
-                    for x in raw if isinstance(x, dict) and x.get("product_id")
-                ]
-        except Exception:
-            line_items = None  # items illisible → on ignore les restrictions produits
-    discount, applied = await _coupon_discount(coupon, subtotal, line_items=line_items, email=email)
-    return {
-        "code": coupon["code"], "discount_type": coupon["discount_type"],
-        "value": coupon["value"], "discount_amount": discount,
-        "min_subtotal": coupon.get("min_subtotal", 0),
-        "free_shipping": bool(coupon.get("free_shipping")),
-        "restricted": bool(coupon.get("allowed_emails") or coupon.get("first_order_only")
-                           or coupon.get("per_customer_limit")
-                           or coupon.get("restrict_products") or coupon.get("restrict_categories")),
-    }
+            if datetime.fromisoformat(coupon["expires_at"].replace("Z", "+00:00")) < datetime.now(timezone.utc):
+                raise HTTPException(400, "Coupon expired")
+        except ValueError:
+            pass
+    if coupon.get("usage_limit") and coupon.get("used_count", 0) >= coupon["usage_limit"]:
+        raise HTTPException(400, "Coupon usage limit reached")
+    if subtotal < coupon.get("min_subtotal", 0):
+        raise HTTPException(400, f"Minimum subtotal of ${coupon['min_subtotal']:.2f} required")
+    if coupon["discount_type"] == "percent":
+        discount = round(subtotal * (coupon["value"] / 100.0), 2)
+    else:
+        discount = round(min(coupon["value"], subtotal), 2)
+    return {"code": coupon["code"], "discount_type": coupon["discount_type"],
+            "value": coupon["value"], "discount_amount": discount, "min_subtotal": coupon.get("min_subtotal", 0)}
 
 
 # ---------------------------------------------------------------------------
@@ -6163,20 +5717,6 @@ async def admin_analytics(_admin: dict = Depends(require_area("dashboard", "view
 # ---------------------------------------------------------------------------
 # Admin — CSV exports
 # ---------------------------------------------------------------------------
-# Neutralisation des cellules commençant par un caractère de formule (= + - @
-# ou contrôle) : sinon un champ utilisateur (email, nom, adresse…) pourrait
-# exécuter une formule DDE/Excel à l'ouverture du fichier (CWE-1236).
-_CSV_FORMULA_CHARS = ("=", "+", "-", "@", "\t", "\r", "\x00")
-
-
-def _csv_safe(value: Any) -> Any:
-    if isinstance(value, str) and value:
-        stripped = value.lstrip()
-        if stripped and stripped[0] in _CSV_FORMULA_CHARS:
-            return "'" + value
-    return value
-
-
 def _csv_response(rows: list, filename: str) -> StreamingResponse:
     buf = io.StringIO()
     if not rows:
@@ -6184,7 +5724,7 @@ def _csv_response(rows: list, filename: str) -> StreamingResponse:
     else:
         writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
         writer.writeheader()
-        writer.writerows([{k: _csv_safe(v) for k, v in r.items()} for r in rows])
+        writer.writerows(rows)
     buf.seek(0)
     return StreamingResponse(
         iter([buf.getvalue()]),
@@ -6240,7 +5780,7 @@ def _xlsx_response(rows: list, filename: str) -> Response:
         cell.font = header_font
         cell.fill = header_fill
     for r in rows:
-        ws.append([_csv_safe(r.get(h, "")) for h in headers])
+        ws.append([r.get(h, "") for h in headers])
     for col_idx, h in enumerate(headers, start=1):
         width = max([len(str(h))] + [len(str(r.get(h, ""))) for r in rows[:500]]) + 2
         ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = min(width, 50)
@@ -6455,9 +5995,62 @@ async def order_invoice_pdf(order_id: str, request: Request):
     )
 
 
+@api.get("/payments/stripe/status/{session_id}")
+async def stripe_status(session_id: str, request: Request):
+    """Poll Stripe checkout session status. Updates payment_transactions + order atomically once paid."""
+    if not _STRIPE_AVAILABLE or not STRIPE_API_KEY:
+        raise HTTPException(503, "Stripe not configured")
+    txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not txn:
+        raise HTTPException(404, "Session not found")
+    # Idempotent: if already paid in our DB, return cached
+    if txn.get("payment_status") == "paid":
+        return {"session_id": session_id, "payment_status": "paid", "status": "complete"}
+
+    origin = str(request.base_url).rstrip("/")
+    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{origin}/api/webhook/stripe")
+    try:
+        status_resp = await stripe_checkout.get_checkout_status(session_id)
+    except Exception as e:
+        logging.error("Stripe status err: %s", e)
+        raise HTTPException(502, "Stripe status unavailable")
+
+    await db.payment_transactions.update_one(
+        {"session_id": session_id},
+        {"$set": {"payment_status": status_resp.payment_status, "status": status_resp.status,
+                  "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    # If paid, mark it paid via the single idempotent entry point. Safe even if
+    # the Stripe webhook already did it concurrently — only one caller wins.
+    if status_resp.payment_status == "paid":
+        await _mark_order_paid(txn["order_id"], "Payment confirmed via Stripe checkout status")
+    # Expired Stripe session = active payment failure → "failed" (distinct from voluntary "cancelled")
+    if status_resp.status == "expired":
+        order = await db.orders.find_one({"id": txn["order_id"]}, {"_id": 0})
+        if order and order.get("payment_status") not in ("paid",) and order.get("fulfillment_status") not in ("cancelled", "failed"):
+            await db.orders.update_one(
+                {"id": txn["order_id"]},
+                {"$set": {"payment_status": "failed", "fulfillment_status": "failed"},
+                 "$push": {"notes": {
+                     "id": str(uuid.uuid4()),
+                     "text": "Payment failed: Stripe checkout session expired",
+                     "author": "system",
+                     "created_at": datetime.now(timezone.utc).isoformat(),
+                 }}},
+            )
+            await _restock_order_items(order)
+    return {
+        "session_id": session_id,
+        "payment_status": status_resp.payment_status,
+        "status": status_resp.status,
+        "amount_total": status_resp.amount_total,
+        "currency": status_resp.currency,
+    }
+
+
 @api.post("/webhook/nowpayments")
 async def nowpayments_ipn(request: Request):
-    """NOWPayments IPN callback. HMAC-SHA512 signature verified over the RAW body."""
+    """NOWPayments IPN callback. HMAC-SHA512 signature verified against sorted JSON payload."""
     if not NOWPAYMENTS_IPN_SECRET:
         raise HTTPException(503, "IPN not configured")
     raw = await request.body()
@@ -6466,12 +6059,9 @@ async def nowpayments_ipn(request: Request):
         payload = json.loads(raw)
     except Exception:
         raise HTTPException(400, "Invalid payload")
-    # NOWPayments signe le corps de requête EXACT tel qu'envoyé (octets bruts).
-    # Re-sérialiser le JSON (sort_keys=True) produit une empreinte différente
-    # et ferait rejeter tous les IPN réels en production.
     expected = hmac.new(
         NOWPAYMENTS_IPN_SECRET.encode(),
-        raw,
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode(),
         hashlib.sha512,
     ).hexdigest()
     if not sig or not hmac.compare_digest(expected, sig):
@@ -6564,163 +6154,50 @@ async def crypto_status(order_id: str):
             {"$set": {"payment_info.provider_response.payment_status": np_status}},
         )
     if np_status == "finished":
-        # Transition via le point d'entrée UNIQUE : décompte coupon, commission
-        # affilié, note système, statut précommande préservé, email envoyé.
-        await _mark_order_paid(
-            order_id,
-            f"Crypto payment confirmed via NOWPayments status poll (payment_id {payment_id})",
+        res = await db.orders.update_one(
+            {"id": order_id, "payment_status": {"$ne": "paid"}},
+            {"$set": {
+                "payment_status": "paid",
+                "fulfillment_status": "processing",
+                "paid_at": (_pa := datetime.now(timezone.utc).isoformat()),
+                "dispatch_batch": compute_dispatch_batch(_pa),
+            }},
         )
+        if res.modified_count:
+            fresh = await db.orders.find_one({"id": order_id}, {"_id": 0})
+            if fresh.get("email"):
+                asyncio.create_task(send_payment_received(fresh))
         return {"order_id": order_id, "payment_status": "paid", "np_status": np_status}
     return {"order_id": order_id, "payment_status": order.get("payment_status"), "np_status": np_status}
 
 
-# ---------------------------------------------------------------------------
-# Confirmation automatique Interac (Autodeposit) — Microsoft Graph API
-# ---------------------------------------------------------------------------
-_GRAPH_TOKEN_URL = "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
-_GRAPH_API_URL = "https://graph.microsoft.com/v1.0"
-
-
-async def _graph_access_token() -> Optional[str]:
-    """Jeton OAuth2 app-only (client credentials) pour Microsoft Graph."""
-    if not (INTERAC_GRAPH_TENANT_ID and INTERAC_GRAPH_CLIENT_ID and INTERAC_GRAPH_CLIENT_SECRET):
-        return None
-    async with httpx.AsyncClient(timeout=20) as cx:
-        r = await cx.post(
-            _GRAPH_TOKEN_URL.format(tenant=INTERAC_GRAPH_TENANT_ID),
-            data={
-                "grant_type": "client_credentials",
-                "client_id": INTERAC_GRAPH_CLIENT_ID,
-                "client_secret": INTERAC_GRAPH_CLIENT_SECRET,
-                "scope": "https://graph.microsoft.com/.default",
-            },
-        )
-        r.raise_for_status()
-        data = r.json()
-    return data.get("access_token")
-
-
-async def _graph_unread_messages(token: str) -> list:
-    """Messages non lus de la boîte Interac (Graph app-only)."""
-    async with httpx.AsyncClient(timeout=30) as cx:
-        r = await cx.get(
-            f"{_GRAPH_API_URL}/users/{INTERAC_GRAPH_USER}/mailFolders/inbox/messages",
-            params={
-                "$filter": "isRead eq false",
-                "$top": 50,
-                "$select": "id,subject,from,body,receivedDateTime",
-            },
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        r.raise_for_status()
-        data = r.json()
-    return data.get("value") or []
-
-
-async def _graph_mark_read(token: str, message_id: str) -> None:
-    async with httpx.AsyncClient(timeout=20) as cx:
-        await cx.patch(
-            f"{_GRAPH_API_URL}/users/{INTERAC_GRAPH_USER}/messages/{message_id}",
-            json={"isRead": True},
-            headers={"Authorization": f"Bearer {token}"},
-        )
-
-
-def _strip_html(html: str) -> str:
-    return re.sub(r"<[^>]+>", " ", html or "")
-
-
-def _extract_interac_refs(text: str) -> list:
-    """Références de commande 'FN-XXXXXX-XXXXXX' trouvées dans un texte (dédupliquées)."""
-    return sorted({r.upper() for r in re.findall(r"FN-\d{6}-[0-9A-F]{6}", text.upper())})
-
-
-def _parse_amounts(text: str) -> list:
-    """Montants '$12.34' / '12.34 CAD' trouvés dans un texte."""
-    amounts = []
-    for m in re.finditer(r"\$\s?(\d[\d.,]*)|(\d[\d.,]*)\s*CAD", text, re.IGNORECASE):
-        raw = m.group(1) or m.group(2)
-        raw = raw.replace(",", "")
-        try:
-            amounts.append(round(float(raw), 2))
-        except ValueError:
-            continue
-    return amounts
-
-
-async def _process_interac_deposit_emails() -> int:
-    """Lit les notifications de dépôt Interac (Autodeposit) dans la boîte
-    orders@..., matche la référence FN-... + le montant, et marque la commande
-    payée via le point d'entrée unique _mark_order_paid. Même logique de défense
-    que l'IPN NowPayments : une notification sans référence ou avec un montant
-    divergent n'est JAMAIS auto-confirmée."""
-    token = await _graph_access_token()
-    if not token:
-        return 0
+@api.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    """Handle Stripe webhook events to mark orders as paid."""
+    if not _STRIPE_AVAILABLE or not STRIPE_API_KEY:
+        return {"ok": False, "reason": "stripe_disabled"}
+    body = await request.body()
+    sig = request.headers.get("Stripe-Signature", "")
+    origin = str(request.base_url).rstrip("/")
+    stripe_checkout = StripeCheckout(api_key=STRIPE_API_KEY, webhook_url=f"{origin}/api/webhook/stripe")
     try:
-        messages = await _graph_unread_messages(token)
-    except Exception as ex:
-        logging.error("Interac Graph: lecture de la boîte échouée: %s", ex)
-        return 0
-
-    processed = 0
-    for msg in messages:
-        from_addr = ((msg.get("from") or {}).get("emailAddress") or {}).get("address") or ""
-        if "interac" not in from_addr.lower():
-            continue  # pas une notification Interac — on laisse en non-lu
-        subject = msg.get("subject") or ""
-        body = msg.get("body") or {}
-        text = f"{subject}\n{_strip_html(body.get('content') or '')}"
-        refs = _extract_interac_refs(text)
-        acted = False
-        for ref in refs:
-            order = await db.orders.find_one(
-                {"order_number": ref, "payment_status": "awaiting_etransfer"}, {"_id": 0}
+        evt = await stripe_checkout.handle_webhook(body, sig)
+    except Exception as e:
+        logging.error("Stripe webhook err: %s", e)
+        return {"ok": False}
+    if evt.payment_status == "paid" and evt.session_id:
+        txn = await db.payment_transactions.find_one({"session_id": evt.session_id})
+        if txn:
+            await db.payment_transactions.update_one(
+                {"session_id": evt.session_id},
+                {"$set": {"payment_status": "paid", "status": "complete",
+                          "updated_at": datetime.now(timezone.utc).isoformat()}},
             )
-            if not order:
-                continue
-            amounts = _parse_amounts(text)
-            order_total = float(order.get("total", 0))
-            if not amounts or not any(abs(a - order_total) <= 0.01 for a in amounts):
-                await db.orders.update_one({"id": order["id"]}, {"$push": {"notes": {
-                    "id": str(uuid.uuid4()),
-                    "text": (f"Notification de dépôt Interac reçue (réf {ref}) avec un montant "
-                             f"divergent — paiement NON auto-confirmé, à vérifier manuellement."),
-                    "author": "system",
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }}})
-                logging.warning("Interac deposit: montant divergent pour %s — revue manuelle", ref)
-                acted = True
-                break
-            fresh = await _mark_order_paid(
-                order["id"],
-                f"Virement Interac confirmé (dépôt auto) — notification de dépôt reçue pour {ref}.",
-            )
-            if fresh:
-                logging.info("Order %s marked paid via Interac Autodeposit notification", ref)
-            acted = True
-            break
-        if acted:
-            try:
-                await _graph_mark_read(token, msg["id"])
-            except Exception:
-                pass
-            processed += 1
-    return processed
-
-
-INTERAC_GRAPH_POLL_SECONDS = int(os.environ.get("INTERAC_GRAPH_POLL_SECONDS", "120"))
-
-
-async def _interac_deposit_watchdog() -> None:
-    """Toutes les INTERAC_GRAPH_POLL_SECONDS : confirme les commandes Interac
-    dont le dépôt (Autodeposit) est notifié par email."""
-    while True:
-        try:
-            await _process_interac_deposit_emails()
-        except Exception as ex:  # pragma: no cover
-            logging.error("interac deposit watchdog failed: %s", ex)
-        await asyncio.sleep(INTERAC_GRAPH_POLL_SECONDS)
+            # Point d'entrée unique et idempotent : que ce webhook arrive avant,
+            # après, ou en même temps que le polling stripe_status, un seul des
+            # deux fera la transition (garde $ne "paid" dans _mark_order_paid).
+            await _mark_order_paid(txn["order_id"], "Payment confirmed via Stripe webhook")
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -6739,7 +6216,6 @@ async def meta():
         "canada_post_enabled": is_canada_post_configured(),
         "prelaunch_enabled": PRELAUNCH_ENABLED,
         "launch_coupon_code": LAUNCH_COUPON_CODE,
-        "unpaid_order_ttl_hours": UNPAID_ORDER_TTL_HOURS,
         "seo": await _seo_get_settings(),
         # PRELAUNCH_PREVIEW_TOKEN n'est JAMAIS exposé ici — il ne se vérifie que
         # côté serveur via GET /prelaunch/preview.
@@ -6774,8 +6250,8 @@ SEED_PRODUCTS = [
         "sequence_length": 15,
         "purity": "≥ 99.0%",
         "dosage_mg": 5.0,
-        "description_en": "Synthetic pentadecapeptide (15 amino acids) derived from a gastric protein. Chemical reference standard for laboratory studies of cell migration, proliferation and tissue-remodeling signaling.",
-        "description_fr": "Pentadécapeptide synthétique (15 acides aminés) dérivé d'une protéine gastrique. Standard de référence chimique pour les études de laboratoire sur la migration, la prolifération cellulaire et la signalisation du remodelage tissulaire.",
+        "description_en": "Body Protection Compound, a 15-amino-acid synthetic peptide derived from gastric protein. Widely studied in research models for tissue repair pathways.",
+        "description_fr": "Composé de protection corporelle, peptide synthétique de 15 acides aminés dérivé d'une protéine gastrique. Étudié dans des modèles de recherche sur les voies de réparation tissulaire.",
         "price_cad": 64.99,
         "stock": 0,
         "image_url": "",
@@ -6794,8 +6270,8 @@ SEED_PRODUCTS = [
         "sequence_length": 43,
         "purity": "≥ 99.0%",
         "dosage_mg": 5.0,
-        "description_en": "Full-length Thymosin Beta-4 (43 amino acids). Chemical reference standard for laboratory research on actin sequestration, cell motility and cytoskeletal dynamics.",
-        "description_fr": "Thymosine bêta-4 complète (43 acides aminés). Standard de référence chimique pour la recherche de laboratoire sur la séquestration de l'actine, la motilité cellulaire et la dynamique du cytosquelette.",
+        "description_en": "Full-length Thymosin Beta-4 (43 amino acids). Investigated in research for actin sequestration and cellular migration studies.",
+        "description_fr": "Thymosine bêta-4 complète (43 acides aminés). Étudiée en recherche pour la séquestration de l'actine et les études de migration cellulaire.",
         "price_cad": 79.99,
         "stock": 0,
         "image_url": "",
@@ -6814,8 +6290,8 @@ SEED_PRODUCTS = [
         "sequence_length": 31,
         "purity": "≥ 98.0%",
         "dosage_mg": 5.0,
-        "description_en": "GLP-1 receptor agonist analog (31 aa, C18 diacid modified). Chemical reference standard for laboratory receptor-binding and metabolic-signaling studies.",
-        "description_fr": "Analogue agoniste du récepteur GLP-1 (31 aa, modifié par diacide C18). Standard de référence chimique pour les études de laboratoire sur la liaison aux récepteurs et la signalisation métabolique.",
+        "description_en": "GLP-1 receptor agonist analog under extensive research in metabolic studies.",
+        "description_fr": "Analogue agoniste du récepteur GLP-1 largement étudié dans les recherches métaboliques.",
         "price_cad": 189.99,
         "stock": 0,
         "image_url": "",
@@ -6834,8 +6310,8 @@ SEED_PRODUCTS = [
         "sequence_length": 39,
         "purity": "≥ 98.0%",
         "dosage_mg": 10.0,
-        "description_en": "Dual GIP/GLP-1 receptor agonist (39 aa, C20 diacid modified). Chemical reference standard for laboratory studies of incretin-receptor binding and signaling.",
-        "description_fr": "Double agoniste des récepteurs GIP/GLP-1 (39 aa, modifié par diacide C20). Standard de référence chimique pour les études de laboratoire sur la liaison et la signalisation des récepteurs des incrétines.",
+        "description_en": "Dual GIP and GLP-1 receptor agonist studied in metabolic and body-weight research models.",
+        "description_fr": "Double agoniste des récepteurs GIP et GLP-1 étudié dans les modèles de recherche métabolique et pondérale.",
         "price_cad": 219.99,
         "stock": 0,
         "image_url": "",
@@ -6854,8 +6330,8 @@ SEED_PRODUCTS = [
         "sequence_length": 5,
         "purity": "≥ 98.0%",
         "dosage_mg": 5.0,
-        "description_en": "Selective growth hormone secretagogue (ghrelin receptor agonist, 5 aa). Chemical reference standard for laboratory endocrine-signaling research.",
-        "description_fr": "Sécrétagogue sélectif de l'hormone de croissance (agoniste du récepteur de la ghréline, 5 aa). Standard de référence chimique pour la recherche de laboratoire sur la signalisation endocrinienne.",
+        "description_en": "Selective growth hormone secretagogue (ghrelin receptor agonist) studied in endocrine research.",
+        "description_fr": "Sécrétagogue sélectif de l'hormone de croissance (agoniste du récepteur de la ghréline) étudié en recherche endocrinienne.",
         "price_cad": 74.99,
         "stock": 0,
         "image_url": "",
@@ -6874,8 +6350,8 @@ SEED_PRODUCTS = [
         "sequence_length": 29,
         "purity": "≥ 98.0%",
         "dosage_mg": 5.0,
-        "description_en": "Modified GRF(1-29), a GHRH analog (29 aa). Chemical reference standard for laboratory research on pulsatile growth-hormone release signaling.",
-        "description_fr": "GRF(1-29) modifié, analogue de la GHRH (29 aa). Standard de référence chimique pour la recherche de laboratoire sur la signalisation de la libération pulsatile de l'hormone de croissance.",
+        "description_en": "Modified GRF (1-29), a GHRH analog studied for pulsatile growth-hormone-release research.",
+        "description_fr": "GRF modifié (1-29), analogue de la GHRH étudié pour la recherche sur la libération pulsatile de l'hormone de croissance.",
         "price_cad": 69.99,
         "stock": 0,
         "image_url": "",
@@ -6894,8 +6370,8 @@ SEED_PRODUCTS = [
         "sequence_length": 7,
         "purity": "≥ 99.0%",
         "dosage_mg": 5.0,
-        "description_en": "Synthetic heptapeptide (7 aa) derived from tuftsin. Chemical reference standard for laboratory studies of neuropeptide-receptor interactions and neurotransmitter signaling.",
-        "description_fr": "Heptapeptide synthétique (7 aa) dérivé de la tuftsine. Standard de référence chimique pour les études de laboratoire sur les interactions avec les récepteurs neuropeptidiques et la signalisation des neurotransmetteurs.",
+        "description_en": "Synthetic heptapeptide derived from tuftsin, studied for anxiolytic and nootropic pathways.",
+        "description_fr": "Heptapeptide synthétique dérivé de la tuftsine, étudié pour les voies anxiolytiques et nootropiques.",
         "price_cad": 59.99,
         "stock": 0,
         "image_url": "",
@@ -6914,8 +6390,8 @@ SEED_PRODUCTS = [
         "sequence_length": 7,
         "purity": "≥ 99.0%",
         "dosage_mg": 10.0,
-        "description_en": "Synthetic heptapeptide (7 aa) ACTH(4-7) analog. Chemical reference standard for laboratory studies of neurotrophin (BDNF) signaling pathways.",
-        "description_fr": "Heptapeptide synthétique (7 aa) analogue de l'ACTH(4-7). Standard de référence chimique pour les études de laboratoire sur les voies de signalisation des neurotrophines (BDNF).",
+        "description_en": "Synthetic heptapeptide ACTH(4-7) analog studied for BDNF modulation and neuroprotection.",
+        "description_fr": "Heptapeptide synthétique analogue de l'ACTH(4-7) étudié pour la modulation du BDNF et la neuroprotection.",
         "price_cad": 84.99,
         "stock": 0,
         "image_url": "",
@@ -6934,8 +6410,8 @@ SEED_PRODUCTS = [
         "sequence_length": 3,
         "purity": "≥ 99.0%",
         "dosage_mg": 50.0,
-        "description_en": "Copper(II) complex of the tripeptide Gly-His-Lys (3 aa). Chemical reference standard for laboratory studies of metal-ion coordination and extracellular-matrix signaling.",
-        "description_fr": "Complexe cuivre(II) du tripeptide Gly-His-Lys (3 aa). Standard de référence chimique pour les études de laboratoire sur la coordination des ions métalliques et la signalisation de la matrice extracellulaire.",
+        "description_en": "Copper(II) complex of the tripeptide Gly-His-Lys, studied for collagen synthesis and matrix remodeling.",
+        "description_fr": "Complexe cuivre(II) du tripeptide Gly-His-Lys, étudié pour la synthèse du collagène et le remodelage matriciel.",
         "price_cad": 89.99,
         "stock": 0,
         "image_url": "",
@@ -6954,8 +6430,8 @@ SEED_PRODUCTS = [
         "sequence_length": 39,
         "purity": "≥ 98.0%",
         "dosage_mg": 10.0,
-        "description_en": "Triple GIP/GLP-1/glucagon receptor agonist (39 aa, lipid diacid modified). Chemical reference standard for laboratory studies of incretin and glucagon-receptor signaling.",
-        "description_fr": "Triple agoniste des récepteurs GIP/GLP-1/glucagon (39 aa, modifié par diacide lipidique). Standard de référence chimique pour les études de laboratoire sur la signalisation des récepteurs des incrétines et du glucagon.",
+        "description_en": "Triple GIP/GLP-1/glucagon receptor agonist studied in metabolic and body-weight research.",
+        "description_fr": "Triple agoniste des récepteurs GIP/GLP-1/glucagon étudié en recherche métabolique et pondérale.",
         "price_cad": 249.99,
         "stock": 0,
         "image_url": "",
@@ -6974,8 +6450,8 @@ SEED_PRODUCTS = [
         "sequence_length": 7,
         "purity": "≥ 98.0%",
         "dosage_mg": 10.0,
-        "description_en": "Cyclic heptapeptide (7 aa) and melanocortin-4 receptor agonist. Chemical reference standard for laboratory neuroscience and receptor-signaling research.",
-        "description_fr": "Heptapeptide cyclique (7 aa) agoniste du récepteur MC4 de la mélanocortine. Standard de référence chimique pour la recherche de laboratoire en neurosciences et sur la signalisation des récepteurs.",
+        "description_en": "Cyclic melanocortin receptor agonist (bremelanotide) studied in neuroscience research.",
+        "description_fr": "Agoniste cyclique des récepteurs de la mélanocortine (bremélanotide) étudié en recherche en neurosciences.",
         "price_cad": 79.99,
         "stock": 0,
         "image_url": "",
@@ -6994,8 +6470,8 @@ SEED_PRODUCTS = [
         "sequence_length": 7,
         "purity": "≥ 98.0%",
         "dosage_mg": 10.0,
-        "description_en": "Cyclic heptapeptide (7 aa) α-MSH analog, non-selective melanocortin receptor agonist. Chemical reference standard for laboratory receptor-pharmacology research.",
-        "description_fr": "Heptapeptide cyclique (7 aa) analogue de l'α-MSH, agoniste non sélectif des récepteurs de la mélanocortine. Standard de référence chimique pour la recherche de laboratoire en pharmacologie des récepteurs.",
+        "description_en": "Cyclic heptapeptide α-MSH analog and non-selective melanocortin receptor agonist studied in research.",
+        "description_fr": "Heptapeptide cyclique analogue de l'α-MSH et agoniste non sélectif des récepteurs de la mélanocortine étudié en recherche.",
         "price_cad": 69.99,
         "stock": 0,
         "image_url": "",
@@ -7014,8 +6490,8 @@ SEED_PRODUCTS = [
         "sequence_length": 16,
         "purity": "≥ 98.0%",
         "dosage_mg": 10.0,
-        "description_en": "Mitochondrial-derived peptide (16 aa). Chemical reference standard for laboratory studies of AMPK-linked metabolic signaling.",
-        "description_fr": "Peptide dérivé de la mitochondrie (16 aa). Standard de référence chimique pour les études de laboratoire sur la signalisation métabolique liée à l'AMPK.",
+        "description_en": "Mitochondrial-derived 16-amino-acid peptide studied for AMPK-linked metabolic regulation.",
+        "description_fr": "Peptide mitochondrial de 16 acides aminés étudié pour la régulation métabolique liée à l'AMPK.",
         "price_cad": 99.99,
         "stock": 0,
         "image_url": "",
@@ -7034,8 +6510,8 @@ SEED_PRODUCTS = [
         "sequence_length": 4,
         "purity": "≥ 99.0%",
         "dosage_mg": 10.0,
-        "description_en": "Synthetic tetrapeptide (4 aa, AEDG). Chemical reference standard for laboratory studies of gene-expression regulation, including circadian-related transcription.",
-        "description_fr": "Tétrapeptide synthétique (4 aa, AEDG). Standard de référence chimique pour les études de laboratoire sur la régulation de l'expression génique, notamment la transcription liée au rythme circadien.",
+        "description_en": "Synthetic tetrapeptide (AEDG) studied for telomerase activity and circadian gene expression.",
+        "description_fr": "Tétrapeptide synthétique (AEDG) étudié pour l'activité télomérase et l'expression des gènes circadiens.",
         "price_cad": 64.99,
         "stock": 0,
         "image_url": "",
@@ -7054,8 +6530,8 @@ SEED_PRODUCTS = [
         "sequence_length": 44,
         "purity": "≥ 98.0%",
         "dosage_mg": 5.0,
-        "description_en": "Stabilized GHRH(1-44) analog (44 aa). Chemical reference standard for laboratory research on growth-hormone-releasing hormone signaling.",
-        "description_fr": "Analogue stabilisé de la GHRH(1-44) (44 aa). Standard de référence chimique pour la recherche de laboratoire sur la signalisation de l'hormone de libération de l'hormone de croissance.",
+        "description_en": "Stabilized GHRH(1-44) analog studied in metabolic and adipose-tissue research models.",
+        "description_fr": "Analogue stabilisé de la GHRH(1-44) étudié dans les modèles de recherche métabolique et adipeuse.",
         "price_cad": 179.99,
         "stock": 0,
         "image_url": "",
@@ -7074,8 +6550,8 @@ SEED_PRODUCTS = [
         "sequence_length": 6,
         "purity": "≥ 98.0%",
         "dosage_mg": 5.0,
-        "description_en": "Synthetic hexapeptide (6 aa) growth hormone secretagogue, GHS-R agonist. Chemical reference standard for laboratory endocrine-signaling research.",
-        "description_fr": "Hexapeptide synthétique (6 aa) sécrétagogue de l'hormone de croissance, agoniste GHS-R. Standard de référence chimique pour la recherche de laboratoire sur la signalisation endocrinienne.",
+        "description_en": "Synthetic hexapeptide growth hormone secretagogue (GHS-R agonist) studied in endocrine research.",
+        "description_fr": "Hexapeptide synthétique sécrétagogue de l'hormone de croissance (agoniste GHS-R) étudié en recherche endocrinienne.",
         "price_cad": 74.99,
         "stock": 0,
         "image_url": "",
@@ -7094,8 +6570,8 @@ SEED_PRODUCTS = [
         "sequence_length": 6,
         "purity": "≥ 98.0%",
         "dosage_mg": 5.0,
-        "description_en": "Synthetic hexapeptide (6 aa) growth hormone secretagogue, GHS-R agonist. Chemical reference standard for laboratory endocrine-signaling research.",
-        "description_fr": "Hexapeptide synthétique (6 aa) sécrétagogue de l'hormone de croissance, agoniste GHS-R. Standard de référence chimique pour la recherche de laboratoire sur la signalisation endocrinienne.",
+        "description_en": "Synthetic hexapeptide (pralmorelin) growth hormone secretagogue studied in endocrine research.",
+        "description_fr": "Hexapeptide synthétique (pralmoréline) sécrétagogue de l'hormone de croissance étudié en recherche endocrinienne.",
         "price_cad": 69.99,
         "stock": 0,
         "image_url": "",
@@ -7114,8 +6590,8 @@ SEED_PRODUCTS = [
         "sequence_length": 6,
         "purity": "≥ 98.0%",
         "dosage_mg": 5.0,
-        "description_en": "Synthetic hexapeptide (6 aa) growth hormone secretagogue and ghrelin receptor agonist. Chemical reference standard for laboratory research.",
-        "description_fr": "Hexapeptide synthétique (6 aa) sécrétagogue de l'hormone de croissance et agoniste du récepteur de la ghréline. Standard de référence chimique pour la recherche de laboratoire.",
+        "description_en": "Synthetic hexapeptide growth hormone secretagogue and ghrelin receptor agonist studied in research.",
+        "description_fr": "Hexapeptide synthétique sécrétagogue de l'hormone de croissance et agoniste du récepteur de la ghréline étudié en recherche.",
         "price_cad": 64.99,
         "stock": 0,
         "image_url": "",
@@ -7134,8 +6610,8 @@ SEED_PRODUCTS = [
         "sequence_length": 16,
         "purity": "≥ 99.0%",
         "dosage_mg": 5.0,
-        "description_en": "Modified hGH fragment (176-191) with N-terminal tyrosine (16 aa, disulfide Cys7-Cys14). Chemical reference standard for laboratory lipid-metabolism research.",
-        "description_fr": "Fragment modifié de l'hGH (176-191) avec tyrosine N-terminale (16 aa, pont disulfure Cys7-Cys14). Standard de référence chimique pour la recherche de laboratoire sur le métabolisme lipidique.",
+        "description_en": "Modified hGH fragment (176-191) with N-terminal tyrosine, studied in lipid-metabolism research.",
+        "description_fr": "Fragment modifié de l'hGH (176-191) avec tyrosine N-terminale, étudié en recherche sur le métabolisme lipidique.",
         "price_cad": 89.99,
         "stock": 0,
         "image_url": "",
@@ -7170,7 +6646,6 @@ async def seed_admin_and_products():
     await db.subscribers.create_index("unsubscribe_token", unique=True)
     await db.subscribers.create_index("status")
     await db.addresses.create_index([("user_id", 1), ("created_at", -1)])
-    await db.wishlist.create_index([("user_id", 1), ("product_id", 1)], unique=True)
     await db.categories.create_index("slug", unique=True)
     await db.menus.create_index("slug", unique=True)
     await db.menus.create_index([("location", 1), ("published", 1), ("display_order", 1)])
@@ -7384,7 +6859,7 @@ async def cancel_stale_unpaid_orders():
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=UNPAID_ORDER_TTL_HOURS)).isoformat()
     stale = await db.orders.find(
         {
-            "payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto"]},
+            "payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto", "awaiting_stripe"]},
             "created_at": {"$lt": cutoff},
         },
         {"_id": 0},
@@ -7413,12 +6888,6 @@ async def cancel_stale_unpaid_orders():
                     {"code": c["code"], "used_count": {"$gt": 0}},
                     {"$inc": {"used_count": -1}},
                 )
-                email_norm = (order.get("email") or "").strip().lower()
-                if email_norm:
-                    await db.coupons.update_one(
-                        {"code": c["code"], "used_by.email": email_norm, "used_by.count": {"$gt": 0}},
-                        {"$inc": {"used_by.$.count": -1}},
-                    )
                 await db.orders.update_one({"id": order["id"]}, {"$set": {"coupon_counted": False}})
             logging.info("Auto-cancelled unpaid order %s", order.get("order_number", order["id"]))
             if order.get("email"):
@@ -7570,6 +7039,8 @@ async def _seed_launch_coupon() -> None:
         logging.error("launch coupon seed failed: %s", e)
 
 
+@app.on_event("startup")
+
 async def _backfill_affiliate_coupons() -> None:
     """Crée le coupon lié pour les affiliés déjà actifs qui n'en ont pas
     (les nouveaux le reçoivent à l'activation). Idempotent, sûr à relancer."""
@@ -7581,8 +7052,7 @@ async def _backfill_affiliate_coupons() -> None:
         ).to_list(1000)
         created = 0
         for a in actives:
-            c = await _affiliate_ensure_coupon(a.get("code"), a["id"],
-                                               percent=a.get("coupon_percent"))
+            c = await _affiliate_ensure_coupon(a.get("code"), a["id"])
             if c:
                 created += 1
         if created:
@@ -7591,7 +7061,6 @@ async def _backfill_affiliate_coupons() -> None:
         logging.warning("[affiliate] backfill coupons échoué: %s", e)
 
 
-@app.on_event("startup")
 async def startup_event():
     await seed_admin_and_products()
     await _seed_categories_from_products()
@@ -7606,8 +7075,6 @@ async def startup_event():
         asyncio.create_task(_auto_sync_delivered_orders_watchdog())
         asyncio.create_task(_trash_auto_purge_watchdog())
         asyncio.create_task(_rollover_watchdog())
-        asyncio.create_task(_release_preorders_watchdog())
-        asyncio.create_task(_interac_deposit_watchdog())
         asyncio.create_task(_magic_tokens_cleanup())
         asyncio.create_task(_abandoned_cart_watchdog())
         asyncio.create_task(affiliate_maintenance_watchdog())
@@ -7734,63 +7201,10 @@ def _affiliate_hash_ip(ip: Optional[str]) -> Optional[str]:
     return hmac.new(_affiliate_ip_salt(), ip.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def _affiliate_referrer_domain(url: str) -> str:
-    """Réduit un référent URL à son domaine (netloc) pour l'analyse des sources."""
-    url = (url or "").strip()
-    if not url:
-        return ""
-    try:
-        from urllib.parse import urlparse
-        net = (urlparse(url if "://" in url else "//" + url).netloc or "").lower()
-        return net[4:] if net.startswith("www.") else net
-    except Exception:
-        return url[:120]
-
-
 def _affiliate_gen_code() -> str:
     # Code de parrainage lisible : FN + 6 caractères base32 sans ambiguïté.
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     return "FN" + "".join(secrets.choice(alphabet) for _ in range(6))
-
-
-async def _affiliate_gen_memorable_code(name: str) -> str:
-    """Code mémorisable basé sur le prénom (MARIE, ALEX...). Suffixe numérique
-    si collision (MARIE, MARIE2...). Repli aléatoire si nom inexploitable."""
-    import re as _rc
-    first = (name or "").strip().split(" ")[0]
-    base = _rc.sub(r"[^A-Za-z]", "", first).upper()[:16]
-    if len(base) < 3:
-        code = _affiliate_gen_code()
-        for _ in range(6):
-            if await _affiliate_code_available(code):
-                return code
-            code = _affiliate_gen_code()
-        return code
-    candidate = base; n = 1
-    while not await _affiliate_code_available(candidate):
-        n += 1; candidate = f"{base}{n}"
-        if n > 999:
-            return _affiliate_gen_code()
-    return candidate
-
-
-def _affiliate_code_valid(code: str) -> bool:
-    """Code promo mémorisable : 3-20 lettres/chiffres (A-Z, 0-9), sans ambiguïté."""
-    return bool(re.fullmatch(r"[A-Z0-9]{3,20}", code or ""))
-
-
-async def _affiliate_code_available(code: str, exclude_id: Optional[str] = None) -> bool:
-    """Unicité du code : ni chez un autre affilié, ni sur un coupon existant
-    (le coupon de l'affilié lui-même porte le même code — on l'exclut)."""
-    if await db.affiliates.find_one(
-        {"code": code, "id": {"$ne": exclude_id}}, {"_id": 0, "id": 1}
-    ):
-        return False
-    if await db.coupons.find_one(
-        {"code": code, "affiliate_id": {"$ne": exclude_id}}, {"_id": 0, "id": 1}
-    ):
-        return False
-    return True
 
 
 def _affiliate_quarter_start(now: Optional[datetime] = None) -> datetime:
@@ -7809,16 +7223,6 @@ def _affiliate_next_quarter_start(now: Optional[datetime] = None) -> datetime:
     return qs.replace(year=year, month=month)
 
 
-def _affiliate_prev_quarter_start(now: Optional[datetime] = None) -> datetime:
-    qs = _affiliate_quarter_start(now)
-    month = qs.month - 3
-    year = qs.year
-    if month <= 0:
-        month += 12
-        year -= 1
-    return qs.replace(year=year, month=month)
-
-
 # ===========================================================================
 # MODÈLES Pydantic
 # ===========================================================================
@@ -7829,8 +7233,6 @@ class AffiliateInviteIn(BaseModel):
     commission_note: Optional[str] = ""        # note interne admin
     payout_currency: Optional[str] = "btc"     # devise crypto de payout par défaut
     lang: str = "fr"
-    code: Optional[str] = None                 # code promo mémorisable (sinon généré)
-    coupon_percent: Optional[float] = None     # rabais par affilié (null = défaut env)
 
 
 class AffiliateJoinIn(BaseModel):
@@ -7850,13 +7252,7 @@ class AffiliateAdminUpdateIn(BaseModel):
     status: Optional[Literal["invited", "active", "suspended"]] = None
     compliance_status: Optional[Literal["compliant", "review", "suspended"]] = None
     manual_tier: Optional[str] = None          # override manuel du palier
-    clear_manual_tier: Optional[bool] = None   # rétablit le calcul automatique
     commission_note: Optional[str] = None
-    code: Optional[str] = None                 # code de parrainage / promo mémorisable
-    coupon_percent: Optional[float] = None     # rabais par affilié (0 = désactivé, null = défaut env)
-    payout_address: Optional[str] = None
-    payout_currency: Optional[str] = None
-    suspension_reason: Optional[str] = None    # raison affichée à l'affilié si suspendu
 
 
 class AffiliatePayoutMarkIn(BaseModel):
@@ -7868,13 +7264,10 @@ class AffiliatePayoutMarkIn(BaseModel):
 # CALCUL DES MÉTRIQUES D'UN AFFILIÉ
 # ===========================================================================
 
-async def _affiliate_compute_metrics(affiliate_id: str, aff: Optional[dict] = None) -> dict:
+async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
     """Agrège les référrals validés (approved|paid) en CA cumulé + trimestriel,
-    calcule le palier avec plancher trimestriel (baisse d'un niveau max).
-    Si un palier manuel (manual_tier) est posé par l'admin, il prime sur tout."""
+    calcule le palier avec plancher trimestriel (baisse d'un niveau max)."""
     q_start = _affiliate_quarter_start()
-    if aff is None:
-        aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0, "manual_tier": 1}) or {}
 
     cumulative = 0.0
     quarter = 0.0
@@ -7913,20 +7306,13 @@ async def _affiliate_compute_metrics(affiliate_id: str, aff: Optional[dict] = No
     # Palier théorique selon CA cumulé
     theoretical = _affiliate_tier_for_revenue(cumulative)
 
-    # Override manuel admin (validé au moment de l'écriture — défense en plus ici)
-    manual = (aff.get("manual_tier") or "").strip().lower()
-    if manual and manual in {t[0] for t in AFFILIATE_TIERS}:
-        effective = manual
-        tier_is_manual = True
-    else:
-        # Plancher trimestriel : si le CA du trimestre est SOUS le seuil du palier
-        # théorique, on descend d'UN niveau max (jamais plus).
-        effective = theoretical
-        tier_is_manual = False
-        floor, _ceil = _affiliate_tier_bounds(theoretical)
-        if quarter < floor and _affiliate_tier_index(theoretical) > 0:
-            prev = AFFILIATE_TIERS[_affiliate_tier_index(theoretical) - 1]
-            effective = prev[0]
+    # Plancher trimestriel : si le CA du trimestre est SOUS le seuil du palier
+    # théorique, on descend d'UN niveau max (jamais plus).
+    floor, _ceil = _affiliate_tier_bounds(theoretical)
+    effective = theoretical
+    if quarter < floor and _affiliate_tier_index(theoretical) > 0:
+        prev = AFFILIATE_TIERS[_affiliate_tier_index(theoretical) - 1]
+        effective = prev[0]
 
     rate = _affiliate_rate_for_tier(effective)
     nxt = _affiliate_next_tier(effective)
@@ -7938,23 +7324,12 @@ async def _affiliate_compute_metrics(affiliate_id: str, aff: Optional[dict] = No
         if span > 0:
             progress = min(1.0, (cumulative - _affiliate_tier_bounds(effective)[0]) / span)
 
-    # Garde-fou trimestriel : pour CONSERVER le palier effectif, il faut que le CA
-    # du trimestre reste >= au plancher du palier (sinon descente d'un niveau max).
-    floor, _ceil = _affiliate_tier_bounds(effective)
-    quarter_target = round(floor, 2)
-    quarter_progress = min(1.0, quarter / floor) if floor > 0 else None
-    quarter_warning = bool(quarter < floor and _affiliate_tier_index(effective) > 0)
-
     return {
         "cumulative_revenue": round(cumulative, 2),
         "quarter_revenue": round(quarter, 2),
-        "quarter_target": quarter_target,
-        "quarter_progress": round(quarter_progress, 4) if quarter_progress is not None else None,
-        "quarter_warning": quarter_warning,
         "validated_orders": validated_orders,
         "tier": effective,
         "tier_theoretical": theoretical,
-        "tier_is_manual": tier_is_manual,
         "commission_rate": rate,
         "next_tier": nxt,
         "remaining_to_next": round(remaining, 2) if remaining is not None else None,
@@ -7977,18 +7352,9 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
         "compliance_status": aff.get("compliance_status", "compliant"),
         "payout_currency": aff.get("payout_currency", "btc"),
         "payout_address": aff.get("payout_address", ""),
-        "manual_tier": aff.get("manual_tier") or None,
         "activated_at": aff.get("activated_at"),
         "created_at": aff.get("created_at"),
     }
-    try:
-        cp = aff.get("coupon_percent")
-        if cp is None:
-            cp = AFFILIATE_COUPON_PERCENT
-        out["coupon_percent"] = round(float(cp), 2)
-    except (TypeError, ValueError):
-        out["coupon_percent"] = 0.0
-    out["coupon_code"] = aff.get("code")
     if metrics:
         out.update(metrics)
         out["tier_label"] = AFFILIATE_TIER_LABELS.get(
@@ -8045,128 +7411,29 @@ async def _affiliate_send_invite(email: str, name: str, link: str, lang: str) ->
     await _send_email(email, subject, html, from_email=from_addr)  # noqa: F821
 
 
-def _affiliate_payout_html(kind: str, name: str, amount: float, period: str,
-                           currency: str, address: str = "", reference: str = "",
-                           lang: str = "fr") -> tuple:
-    """kind = 'ready' | 'paid'. Email bilingue NOVA cohérent avec l'invitation."""
-    fr = (lang or "fr").startswith("fr")
-    if kind == "ready":
-        if fr:
-            subject = f"Votre paiement d'affiliation est prêt — {period}"
-            heading = "Paiement prêt"
-            body = (f"Bonjour {name}, votre commission d'affiliation de la période "
-                    f"{period} est prête à être envoyée.")
-            line1 = f"Montant : <strong>{amount:,.2f} USD</strong>"
-            line2 = (f"Devise de paiement : {currency.upper()}<br>"
-                     f"Adresse de réception : <code>{address or '—'}</code>")
-            note = "Le paiement sera envoyé à l'adresse ci-dessus puis confirmé par courriel."
-        else:
-            subject = f"Your affiliate payout is ready — {period}"
-            heading = "Payout ready"
-            body = (f"Hi {name}, your affiliate commission for {period} is ready to be sent.")
-            line1 = f"Amount: <strong>{amount:,.2f} USD</strong>"
-            line2 = (f"Payout currency: {currency.upper()}<br>"
-                     f"Receiving address: <code>{address or '—'}</code>")
-            note = "Payment will be sent to the address above, then confirmed by email."
-    else:
-        if fr:
-            subject = f"Votre paiement d'affiliation a été envoyé — {period}"
-            heading = "Paiement envoyé"
-            body = (f"Bonjour {name}, votre paiement d'affiliation de la période {period} "
-                    f"a bien été envoyé.")
-            line1 = f"Montant : <strong>{amount:,.2f} USD</strong>"
-            line2 = f"Référence de transaction : <code>{reference or '—'}</code>"
-            note = "Conservez cette référence pour vos relevés. Merci pour votre confiance."
-        else:
-            subject = f"Your affiliate payout has been sent — {period}"
-            heading = "Payout sent"
-            body = (f"Hi {name}, your affiliate payout for {period} has been sent.")
-            line1 = f"Amount: <strong>{amount:,.2f} USD</strong>"
-            line2 = f"Transaction reference: <code>{reference or '—'}</code>"
-            note = "Keep this reference for your records. Thank you for your partnership."
-    html = f"""\
-<div style="font-family:Inter,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;background:#F7FAFC;padding:40px 24px;">
-  <div style="background:#0B2E4F;border-radius:20px 20px 0 0;padding:28px 32px;">
-    <span style="font-family:'Space Grotesk',sans-serif;color:#F7FAFC;font-size:20px;font-weight:700;letter-spacing:-0.02em;">FIRONOVA</span>
-    <span style="color:#00B8D4;font-size:20px;font-weight:700;"> ·</span>
-  </div>
-  <div style="background:#ffffff;border-radius:0 0 20px 20px;padding:36px 32px;border:1px solid #E2E8F0;border-top:none;">
-    <h1 style="font-family:'Space Grotesk',sans-serif;color:#0B2E4F;font-size:24px;font-weight:700;margin:0 0 12px;">{heading}</h1>
-    <p style="color:#334155;font-size:15px;line-height:1.6;margin:0 0 24px;">{body}</p>
-    <p style="color:#0B2E4F;font-size:15px;line-height:1.8;margin:0 0 24px;">{line1}<br>{line2}</p>
-    <p style="color:#64748B;font-size:12px;line-height:1.6;margin:0;">{note}</p>
-    <hr style="border:none;border-top:1px solid #E2E8F0;margin:24px 0 12px;">
-    <p style="color:#94A3B8;font-size:11px;line-height:1.5;margin:0;">Produits destin&eacute;s &agrave; la recherche uniquement (RUO). R&eacute;serv&eacute; aux 18 ans et plus.<br>For Research Use Only. 18+ only.</p>
-  </div>
-</div>"""
-    return subject, html
-
-
-async def _affiliate_notify_payout(aff: dict, payout: dict, kind: str) -> None:
-    """kind = 'ready' | 'paid'. Envoi fire-and-forget, jamais bloquant."""
-    email = (aff.get("email") or "").strip()
-    if not email:
-        return
-    lang = aff.get("lang") or "fr"
-    subject, html = _affiliate_payout_html(
-        kind, aff.get("name") or aff.get("email", "affilié"),
-        float(payout.get("amount", 0.0)), str(payout.get("period", "")),
-        str(payout.get("currency", "btc")), str(payout.get("payout_address", "")),
-        str(payout.get("reference", "")), lang=lang,
-    )
-    from_addr = (globals().get("MAGIC_SENDER_EMAIL") or
-                 globals().get("SENDER_EMAIL") or "orders@fironova.com")
-    try:
-        await _send_email(email, subject, html, from_email=from_addr)  # noqa: F821
-    except Exception as e:  # pragma: no cover
-        logging.warning("[affiliate] échec notification payout %s pour %s: %s",
-                        kind, email, e)
-
-
 # ===========================================================================
 # ATTRIBUTION — appelée depuis checkout() et _mark_order_paid() / refund
 # ===========================================================================
 
 
-async def _affiliate_ensure_coupon(affiliate_code: str, affiliate_id: str,
-                                   percent: Optional[float] = None) -> Optional[dict]:
-    """Crée ou resynchronise le coupon promo lié à l'affilié.
-    - code = code de parrainage (mémorisable, modifiable en admin)
-    - value = rabais en % : coupon_percent de l'affilié, sinon défaut env
-    - percent <= 0 (ou affilié suspendu) → coupon désactivé (active=False).
-    Idempotent et sûr à appeler à chaque modification admin (code, %, statut)."""
-    try:
-        pct = float(percent) if percent is not None else float(AFFILIATE_COUPON_PERCENT)
-    except (TypeError, ValueError):
-        pct = float(AFFILIATE_COUPON_PERCENT)
-    code = (affiliate_code or "").strip().upper()
-    existing = await db.coupons.find_one({"affiliate_id": affiliate_id}, {"_id": 0})
-    if pct <= 0 or not code:
-        if existing and existing.get("active"):
-            await db.coupons.update_one(
-                {"affiliate_id": affiliate_id},
-                {"$set": {"active": False, "value": 0.0}},
-            )
-            logging.info("[affiliate] coupon %s désactivé (affilié %s)",
-                         existing.get("code"), affiliate_id)
+async def _affiliate_ensure_coupon(affiliate_code: str, affiliate_id: str) -> Optional[dict]:
+    """Crée un coupon de rabais lié au code affilié (idempotent).
+    Si AFFILIATE_COUPON_PERCENT <= 0, ne crée rien. Le coupon reste
+    éditable/désactivable depuis l'admin Coupons (c'est un coupon standard,
+    marqué affiliate_id pour le lien et le contrôle)."""
+    if AFFILIATE_COUPON_PERCENT <= 0:
         return None
+    code = (affiliate_code or "").upper().strip()
+    if not code:
+        return None
+    existing = await db.coupons.find_one({"code": code}, {"_id": 0})
     if existing:
-        if (str(existing.get("code", "")).upper() != code
-                or float(existing.get("value", 0.0)) != pct
-                or not existing.get("active")):
-            await db.coupons.update_one(
-                {"affiliate_id": affiliate_id},
-                {"$set": {"code": code, "value": pct, "active": True}},
-            )
-            existing = await db.coupons.find_one({"affiliate_id": affiliate_id}, {"_id": 0})
-            logging.info("[affiliate] coupon %s resynchronisé (%.0f%%) pour affilié %s",
-                         code, pct, affiliate_id)
-        return existing
+        return existing  # déjà présent : on ne l'écrase pas (respecte les réglages admin)
     doc = {
         "id": str(uuid.uuid4()),
         "code": code,
         "discount_type": "percent",
-        "value": pct,
+        "value": AFFILIATE_COUPON_PERCENT,
         "min_subtotal": 0.0,
         "usage_limit": None,
         "used_count": 0,
@@ -8178,22 +7445,17 @@ async def _affiliate_ensure_coupon(affiliate_code: str, affiliate_id: str,
     }
     await db.coupons.insert_one(doc)
     doc.pop("_id", None)
-    logging.info("[affiliate] coupon %s créé (%.0f%%) pour affilié %s", code, pct, affiliate_id)
+    logging.info("[affiliate] coupon %s créé (%.0f%%) pour affilié %s", code, AFFILIATE_COUPON_PERCENT, affiliate_id)
     return doc
 
 
-async def affiliate_capture_click(request: Request, response: Response, code: str,
-                                  page: str = "", referrer: str = "", device: str = "") -> None:
+async def affiliate_capture_click(request: Request, response: Response, code: str) -> None:
     """Pose le cookie d'attribution (httpOnly) + journalise le clic.
-    Attribution au PREMIER clic : si un cookie fn_ref valide est déjà posé,
-    on le conserve (le référent d'origine garde la commande).
-    page/referrer/device sont des métadonnées d'analyse de sources (optionnelles)."""
+    À appeler depuis un endpoint public GET /affiliate/ref/{code} ou au 1er hit
+    du site avec ?ref=CODE (voir wiring frontend)."""
     code = (code or "").strip().upper()
     if not code:
         return
-    existing = request.cookies.get(AFFILIATE_COOKIE_NAME)
-    if existing and existing.strip().upper():
-        return  # premier clic conservé — pas d'écrasement
     affiliate = await db.affiliates.find_one(
         {"code": code, "status": "active"}, {"_id": 0, "id": 1, "code": 1}
     )
@@ -8205,7 +7467,7 @@ async def affiliate_capture_click(request: Request, response: Response, code: st
         max_age=AFFILIATE_COOKIE_DAYS * 86400,
         httponly=True, samesite="lax", secure=True, path="/",
     )
-    click_doc = {
+    await db.affiliate_clicks.insert_one({
         "id": str(uuid.uuid4()),
         "affiliate_id": affiliate["id"],
         "code": code,
@@ -8213,11 +7475,7 @@ async def affiliate_capture_click(request: Request, response: Response, code: st
         "user_agent": (request.headers.get("user-agent", "") or "")[:300],
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(days=AFFILIATE_CLICK_TTL_DAYS)).isoformat(),
-    }
-    click_doc["page"] = (page or "")[:300]
-    click_doc["referrer"] = (referrer or "")[:300]
-    click_doc["device"] = (device or "")[:40]
-    await db.affiliate_clicks.insert_one(click_doc)
+    })
 
 
 async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
@@ -8299,8 +7557,8 @@ async def affiliate_on_order_paid(order: dict) -> None:
     else:
         excluded_reason = None
         status = "pending"
-        # Taux au palier EFFECTIF courant de l'affilié (override manuel compris)
-        metrics = await _affiliate_compute_metrics(affiliate_id, aff=affiliate)
+        # Taux au palier EFFECTIF courant de l'affilié
+        metrics = await _affiliate_compute_metrics(affiliate_id)
         commission = round(base * metrics["commission_rate"], 2)
 
     now = datetime.now(timezone.utc).isoformat()
@@ -8312,7 +7570,6 @@ async def affiliate_on_order_paid(order: dict) -> None:
         "order_number": order.get("order_number"),
         "order_email": order.get("email"),
         "base_amount": base,
-        "order_total": float(order.get("total", 0.0) or 0.0),
         "commission_amount": commission,
         "status": status,                       # pending|approved|paid<reversed|excluded
         "excluded_reason": excluded_reason,
@@ -8462,10 +7719,12 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request):
     if (user.get("email") or "").lower().strip() != (invite.get("email") or "").lower().strip():
         raise HTTPException(403, "This invitation is bound to a different email address")
 
-    code = (invite.get("code") or "").strip().upper()
-    if not code or not _affiliate_code_valid(code) or not await _affiliate_code_available(code, exclude_id=invite["id"]):
-        # Pas de code d'invitation valide -> code mémorisable basé sur le prénom.
-        code = await _affiliate_gen_memorable_code(user.get("name") or invite.get("name") or "")
+    code = _affiliate_gen_code()
+    # collision improbable, mais on garantit l'unicité
+    for _ in range(5):
+        if not await db.affiliates.find_one({"code": code}, {"_id": 1}):
+            break
+        code = _affiliate_gen_code()
 
     known_addresses = []
     # (aucune adresse connue à l'activation ; se remplit via les commandes)
@@ -8493,18 +7752,17 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request):
     aff = await db.affiliates.find_one({"id": invite["id"]}, {"_id": 0})
     # Coupon de rabais auto-lié au code affilié (idempotent, contrôlable en admin).
     try:
-        await _affiliate_ensure_coupon(aff.get("code"), aff["id"],
-                                       percent=aff.get("coupon_percent"))
+        await _affiliate_ensure_coupon(aff.get("code"), aff["id"])
     except Exception as _e:
         logging.warning("[affiliate] échec création coupon pour %s: %s", aff.get("code"), _e)
-    metrics = await _affiliate_compute_metrics(aff["id"], aff=aff)
+    metrics = await _affiliate_compute_metrics(aff["id"])
     return _affiliate_public(aff, metrics)
 
 
 @api.get("/affiliate/me")  # noqa: F821
 async def affiliate_me(request: Request, lang: str = "fr"):
     aff = await get_current_affiliate(request)
-    metrics = await _affiliate_compute_metrics(aff["id"], aff=aff)
+    metrics = await _affiliate_compute_metrics(aff["id"])
     return _affiliate_public(aff, metrics, lang=lang)
 
 
@@ -8541,14 +7799,12 @@ async def affiliate_payout_settings(payload: AffiliatePayoutSettingsIn, request:
 
 @api.get("/affiliate/performance")  # noqa: F821
 async def affiliate_performance(request: Request):
-    """Séries mensuelles (12 derniers mois) de CA validé + commissions pour
-    les graphiques du tableau de bord affilié."""
+    """Séries mensuelles (12 derniers mois) de CA validé pour les graphiques."""
     aff = await get_current_affiliate(request)
     buckets: dict = {}
     cursor = db.affiliate_referrals.find(
         {"affiliate_id": aff["id"], "status": {"$in": ["approved", "paid"]}},
-        {"_id": 0, "base_amount": 1, "commission_amount": 1,
-         "approved_at": 1, "created_at": 1},
+        {"_id": 0, "base_amount": 1, "approved_at": 1, "created_at": 1},
     )
     async for r in cursor:
         ts = r.get("approved_at") or r.get("created_at")
@@ -8559,10 +7815,8 @@ async def affiliate_performance(request: Request):
         except Exception:
             continue
         key = f"{dt.year}-{dt.month:02d}"
-        b = buckets.setdefault(key, {"revenue": 0.0, "commission": 0.0})
-        b["revenue"] = round(b["revenue"] + float(r.get("base_amount", 0.0)), 2)
-        b["commission"] = round(b["commission"] + float(r.get("commission_amount", 0.0)), 2)
-    series = [{"month": k, **v} for k, v in sorted(buckets.items())]
+        buckets[key] = round(buckets.get(key, 0.0) + float(r.get("base_amount", 0.0)), 2)
+    series = [{"month": k, "revenue": v} for k, v in sorted(buckets.items())]
     return {"series": series}
 
 
@@ -8582,8 +7836,7 @@ async def affiliate_insights(request: Request):
     # Referrals non exclus
     referrals = await db.affiliate_referrals.find(
         {"affiliate_id": aff_id, "status": {"$ne": "excluded"}},
-        {"_id": 0, "order_total": 1, "base_amount": 1, "commission_amount": 1,
-         "status": 1, "created_at": 1},
+        {"_id": 0, "order_total": 1, "commission_amount": 1, "status": 1, "created_at": 1},
     ).to_list(2000)
 
     # Un referral "validé" = commande payée (approved/paid/approuvé)
@@ -8594,9 +7847,7 @@ async def affiliate_insights(request: Request):
     for r in referrals:
         st = str(r.get("status", "")).lower()
         comm = float(r.get("commission_amount", 0.0))
-        # order_total absent sur les anciens référentiels → repli sur base_amount
-        ot = r.get("order_total")
-        rev = float(ot if ot not in (None, "") else r.get("base_amount", 0.0))
+        rev = float(r.get("order_total", 0.0))
         ts = str(r.get("created_at", ""))[:7]  # YYYY-MM
         if st in VALIDATED:
             validated_orders += 1
@@ -8632,154 +7883,13 @@ async def affiliate_insights(request: Request):
     }
 
 
-@api.get("/affiliate/clicks")  # noqa: F821
-async def affiliate_clicks_stats(request: Request, days: int = 30):
-    """Série quotidienne clics ↔ conversions (30 derniers jours) pour le
-    tableau de bord affilié. Clics depuis affiliate_clicks, conversions depuis
-    les referrals validés (approved|paid)."""
-    aff = await get_current_affiliate(request)
-    aff_id = aff["id"]
-    days = max(7, min(int(days), 90))
-    today = datetime.now(timezone.utc).date()
-    start = today - timedelta(days=days - 1)
-
-    buckets: dict = {}
-    for i in range(days):
-        buckets[(start + timedelta(days=i)).isoformat()] = {
-            "clicks": 0, "conversions": 0, "revenue": 0.0}
-
-    cstart = start.isoformat() + "T00:00:00"
-    cursor = db.affiliate_clicks.find(
-        {"affiliate_id": aff_id, "created_at": {"$gte": cstart}},
-        {"_id": 0, "created_at": 1},
-    )
-    async for c in cursor:
-        day = str(c.get("created_at", ""))[:10]
-        if day in buckets:
-            buckets[day]["clicks"] += 1
-
-    total_conversions = 0
-    total_revenue = 0.0
-    rcursor = db.affiliate_referrals.find(
-        {"affiliate_id": aff_id, "status": {"$in": ["approved", "paid"]}},
-        {"_id": 0, "approved_at": 1, "created_at": 1, "order_total": 1, "base_amount": 1},
-    )
-    async for r in rcursor:
-        ts = r.get("approved_at") or r.get("created_at")
-        day = str(ts or "")[:10]
-        if day not in buckets:
-            continue
-        ot = r.get("order_total")
-        rev = float(ot if ot not in (None, "") else r.get("base_amount", 0.0))
-        buckets[day]["conversions"] += 1
-        buckets[day]["revenue"] = round(buckets[day]["revenue"] + rev, 2)
-        total_conversions += 1
-        total_revenue += rev
-
-    series = [{"date": d, **v} for d, v in sorted(buckets.items())]
-    total_clicks = sum(v["clicks"] for v in buckets.values())
-    return {
-        "series": series,
-        "summary": {
-            "total_clicks": total_clicks,
-            "total_conversions": total_conversions,
-            "conversion_rate": (total_conversions / total_clicks) if total_clicks else None,
-            "revenue": round(total_revenue, 2),
-        },
-    }
-
-
-@api.get("/affiliate/clicks/sources")  # noqa: F821
-async def affiliate_clicks_sources(request: Request, days: int = 30):
-    """Top sources des clics de l'affilié : pages d'atterrissage, domaines
-    référents et types d'appareil (30 derniers jours par défaut)."""
-    aff = await get_current_affiliate(request)
-    days = max(7, min(int(days), 90))
-    start = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    pages, refs, devices = {}, {}, {}
-    total = 0
-    cursor = db.affiliate_clicks.find(
-        {"affiliate_id": aff["id"], "created_at": {"$gte": start}},
-        {"_id": 0, "page": 1, "referrer": 1, "device": 1},
-    )
-    async for c in cursor:
-        total += 1
-        page = str(c.get("page") or "").strip() or "direct"
-        pages[page] = pages.get(page, 0) + 1
-        ref = _affiliate_referrer_domain(str(c.get("referrer") or "")) or "direct"
-        refs[ref] = refs.get(ref, 0) + 1
-        dev = str(c.get("device") or "").strip() or "unknown"
-        devices[dev] = devices.get(dev, 0) + 1
-
-    def _top(d, n=8):
-        return [{"source": k, "clicks": v}
-                for k, v in sorted(d.items(), key=lambda kv: kv[1], reverse=True)[:n]]
-
-    return {
-        "days": days,
-        "total_clicks": total,
-        "top_pages": _top(pages),
-        "top_referrers": _top(refs),
-        "devices": devices,
-    }
-
-
-@api.get("/affiliate/activity")  # noqa: F821
-async def affiliate_activity(request: Request, limit: int = 20):
-    """Flux d'activité récent de l'affilié : clics, commandes et paiements
-    fusionnés, triés par date décroissante (type/at/label/status/amount)."""
-    aff = await get_current_affiliate(request)
-    limit = max(5, min(int(limit), 50))
-    events = []
-
-    clicks = await db.affiliate_clicks.find(
-        {"affiliate_id": aff["id"]},
-        {"_id": 0, "created_at": 1, "page": 1, "device": 1},
-    ).sort("created_at", -1).to_list(limit)
-    for c in clicks:
-        events.append({
-            "type": "click", "at": c.get("created_at"),
-            "label": str(c.get("page") or ""), "device": str(c.get("device") or ""),
-        })
-
-    referrals = await db.affiliate_referrals.find(
-        {"affiliate_id": aff["id"], "status": {"$ne": "excluded"}},
-        {"_id": 0, "order_number": 1, "status": 1, "commission_amount": 1,
-         "base_amount": 1, "created_at": 1},
-    ).sort("created_at", -1).to_list(limit)
-    for r in referrals:
-        events.append({
-            "type": "referral", "at": r.get("created_at"),
-            "label": str(r.get("order_number") or ""), "status": r.get("status"),
-            "amount": round(float(r.get("commission_amount") or 0), 2),
-            "base": round(float(r.get("base_amount") or 0), 2),
-        })
-
-    payouts = await db.affiliate_payouts.find(
-        {"affiliate_id": aff["id"]},
-        {"_id": 0, "period": 1, "status": 1, "amount": 1, "created_at": 1},
-    ).sort("created_at", -1).to_list(limit)
-    for p in payouts:
-        events.append({
-            "type": "payout", "at": p.get("created_at"),
-            "label": str(p.get("period") or ""), "status": p.get("status"),
-            "amount": round(float(p.get("amount") or 0), 2),
-        })
-
-    events.sort(key=lambda e: str(e.get("at") or ""), reverse=True)
-    return events[:limit]
-
-
 @api.get("/affiliate/ref/{code}")  # noqa: F821
-async def affiliate_ref(code: str, request: Request, response: Response,
-                        page: str = "", referrer: str = "", device: str = ""):
+async def affiliate_ref(code: str, request: Request, response: Response):
     """Endpoint de tracking : pose le cookie et renvoie ok. Le frontend appelle
-    ceci au 1er chargement quand ?ref=CODE est présent dans l'URL.
-    page/referrer/device (optionnels) alimentent l'analyse des sources."""
+    ceci au 1er chargement quand ?ref=CODE est présent dans l'URL."""
     _rate_limit("affiliate_ref", _client_ip(request), 60, 60,  # noqa: F821
                 "Trop de requêtes.")
-    await affiliate_capture_click(request, response, code,
-                                  page=page, referrer=referrer, device=device)
+    await affiliate_capture_click(request, response, code)
     return {"ok": True}
 
 
@@ -8800,44 +7910,19 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
     if existing and existing.get("status") == "active":
         raise HTTPException(409, "This email is already an active affiliate")
 
-    # Code promo mémorisable (optionnel à l'invitation) + rabais par affilié
-    custom_code = None
-    if payload.code:
-        custom_code = (payload.code or "").strip().upper()
-        if not _affiliate_code_valid(custom_code):
-            raise HTTPException(400, "Code must be 3-20 letters/digits (A-Z, 0-9)")
-        if not await _affiliate_code_available(
-            custom_code, exclude_id=(existing or {}).get("id")
-        ):
-            raise HTTPException(400, "This code is already used by another affiliate or coupon")
-    coupon_percent = payload.coupon_percent
-    if coupon_percent is not None:
-        try:
-            coupon_percent = float(coupon_percent)
-        except (TypeError, ValueError):
-            raise HTTPException(400, "coupon_percent must be a number 0-100")
-        if not (0 <= coupon_percent <= 100):
-            raise HTTPException(400, "coupon_percent must be between 0 and 100")
-        coupon_percent = round(coupon_percent, 2)
-
     if existing:
         # ré-invitation : régénère le token, l'ancien meurt
-        re_set = {
-            "invite_token_hash": _affiliate_hash_token(raw),
-            "invite_expires_at": expires,
-            "name": payload.name.strip(),
-            "status": "invited",
-            "lang": payload.lang or "fr",
-            "payout_currency": payload.payout_currency or "btc",
-            "invite_last_sent_at": now.isoformat(),
-        }
-        if custom_code:
-            re_set["code"] = custom_code
-        if coupon_percent is not None:
-            re_set["coupon_percent"] = coupon_percent
         await db.affiliates.update_one(
             {"id": existing["id"]},
-            {"$set": re_set, "$inc": {"invite_sent_count": 1}},
+            {"$set": {
+                "invite_token_hash": _affiliate_hash_token(raw),
+                "invite_expires_at": expires,
+                "name": payload.name.strip(),
+                "status": "invited",
+                "payout_currency": payload.payout_currency or "btc",
+                "invite_last_sent_at": now.isoformat(),
+            },
+             "$inc": {"invite_sent_count": 1}},
         )
         aff_id = existing["id"]
     else:
@@ -8846,14 +7931,12 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
             "id": aff_id,
             "email": email,
             "name": payload.name.strip(),
-            "code": custom_code,
-            "coupon_percent": coupon_percent,
+            "code": None,
             "user_id": None,
             "status": "invited",
             "compliance_status": "compliant",
             "manual_tier": None,
             "commission_note": payload.commission_note or "",
-            "lang": payload.lang or "fr",
             "payout_currency": payload.payout_currency or "btc",
             "payout_address": "",
             "ip_hash": None,
@@ -8902,7 +7985,7 @@ async def admin_affiliate_resend(affiliate_id: str,
     base = (globals().get("PUBLIC_BASE_URL") or "").rstrip("/")
     link = f"{base}/affiliate/join?token={raw}"
     await _affiliate_send_invite(aff["email"], aff.get("name", ""), link,
-                                 aff.get("lang") or "fr")
+                                 "fr")
     return {"ok": True, "invite_link": link, "sent_to": aff["email"]}
 
 
@@ -8913,7 +7996,7 @@ async def admin_affiliates_list(admin: dict = Depends(get_admin_user)):  # noqa:
     ).sort("created_at", -1).to_list(1000)
     out = []
     for aff in rows:
-        metrics = await _affiliate_compute_metrics(aff["id"], aff=aff) if aff.get("status") == "active" else None
+        metrics = await _affiliate_compute_metrics(aff["id"]) if aff.get("status") == "active" else None
         item = dict(aff)
         if metrics:
             item.update({
@@ -8926,22 +8009,6 @@ async def admin_affiliates_list(admin: dict = Depends(get_admin_user)):  # noqa:
                 "paid_commission": metrics["paid_commission"],
             })
         out.append(item)
-
-    # Clics + dernier clic par affilié (colonne liste + tri)
-    click_stats = {}
-    async for grp in db.affiliate_clicks.aggregate([
-        {"$group": {"_id": "$affiliate_id",
-                    "clicks": {"$sum": 1},
-                    "last": {"$max": "$created_at"}}}
-    ]):
-        click_stats[grp["_id"]] = {
-            "clicks": int(grp.get("clicks", 0)),
-            "last": grp.get("last"),
-        }
-    for item in out:
-        cs = click_stats.get(item["id"], {})
-        item["clicks"] = cs.get("clicks", 0)
-        item["last_click_at"] = cs.get("last")
     return out
 
 
@@ -8963,8 +8030,7 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
     # --- Finances (depuis les referrals) ---
     referrals = await db.affiliate_referrals.find(
         {"status": {"$ne": "excluded"}},
-        {"_id": 0, "status": 1, "commission_amount": 1, "order_total": 1,
-         "base_amount": 1, "created_at": 1, "affiliate_id": 1},
+        {"_id": 0, "status": 1, "commission_amount": 1, "order_total": 1, "created_at": 1, "affiliate_id": 1},
     ).to_list(5000)
     commission_pending = commission_due = commission_paid = commission_reversed = 0.0
     validated_orders = 0
@@ -8974,9 +8040,7 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
     for r in referrals:
         st = str(r.get("status", "")).lower()
         comm = float(r.get("commission_amount", 0.0))
-        # order_total absent sur les anciens référentiels → repli sur base_amount
-        ot = r.get("order_total")
-        rev = float(ot if ot not in (None, "") else r.get("base_amount", 0.0))
+        rev = float(r.get("order_total", 0.0))
         if st == "pending":
             commission_pending += comm
         elif st == "approved":
@@ -8992,11 +8056,9 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
             mm = monthly.setdefault(mk, {"month": mk, "revenue": 0.0, "commission": 0.0})
             mm["revenue"] += rev
             mm["commission"] += comm
-            pa = per_aff.setdefault(r.get("affiliate_id"),
-                                    {"revenue": 0.0, "commission": 0.0, "orders": 0})
+            pa = per_aff.setdefault(r.get("affiliate_id"), {"revenue": 0.0, "commission": 0.0})
             pa["revenue"] += rev
             pa["commission"] += comm
-            pa["orders"] += 1
 
     avg_order_value = (validated_revenue / validated_orders) if validated_orders else 0.0
     monthly_series = [monthly[k] for k in sorted(monthly.keys())][-12:]
@@ -9011,8 +8073,7 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
         a = await db.affiliates.find_one({"id": aid}, {"_id": 0, "code": 1, "name": 1})
         if a:
             top_affiliates.append({
-                "id": aid, "code": a.get("code"), "name": a.get("name"),
-                "orders": per_aff[aid]["orders"],
+                "code": a.get("code"), "name": a.get("name"),
                 "revenue": round(per_aff[aid]["revenue"], 2),
                 "commission": round(per_aff[aid]["commission"], 2),
             })
@@ -9021,7 +8082,7 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
     tier_distribution = {}
     async for a in db.affiliates.find({"status": "active"}, {"_id": 0, "id": 1, "manual_tier": 1}):
         try:
-            mt = await _affiliate_compute_metrics(a["id"], aff=a)
+            mt = await _affiliate_compute_metrics(a["id"])
             tier = str(mt.get("tier", "—"))
         except Exception:
             tier = "—"
@@ -9069,216 +8130,19 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
     }
 
 
-@api.get("/admin/affiliates/clicks")  # noqa: F821
-async def admin_affiliates_clicks(admin: dict = Depends(get_admin_user),  # noqa: F821
-                                  days: int = 30):
-    """Analyse d'attribution à l'échelle du programme : volume de clics,
-    tendance quotidienne, top pages/référents/appareils et top affiliés par
-    volume de clics."""
-    days = max(7, min(int(days), 90))
-    start_date = datetime.now(timezone.utc).date() - timedelta(days=days - 1)
-    q = {"created_at": {"$gte": start_date.isoformat() + "T00:00:00"}}
-    trend, per_aff, pages, refs, devices = {}, {}, {}, {}, {}
-    total = 0
-    cursor = db.affiliate_clicks.find(
-        q, {"_id": 0, "created_at": 1, "affiliate_id": 1, "page": 1,
-            "referrer": 1, "device": 1},
-    )
-    async for c in cursor:
-        total += 1
-        day = str(c.get("created_at", ""))[:10]
-        trend[day] = trend.get(day, 0) + 1
-        aid = c.get("affiliate_id")
-        if aid:
-            per_aff[aid] = per_aff.get(aid, 0) + 1
-        page = str(c.get("page") or "").strip() or "direct"
-        pages[page] = pages.get(page, 0) + 1
-        ref = _affiliate_referrer_domain(str(c.get("referrer") or "")) or "direct"
-        refs[ref] = refs.get(ref, 0) + 1
-        dev = str(c.get("device") or "").strip() or "unknown"
-        devices[dev] = devices.get(dev, 0) + 1
-
-    top_affiliates = []
-    for aid, n in sorted(per_aff.items(), key=lambda kv: kv[1], reverse=True)[:10]:
-        a = await db.affiliates.find_one({"id": aid}, {"_id": 0, "name": 1, "code": 1})
-        top_affiliates.append({
-            "id": aid, "name": (a or {}).get("name") or "—",
-            "code": (a or {}).get("code") or "", "clicks": n,
-        })
-
-    series = []
-    for i in range(days):
-        d = (start_date + timedelta(days=i)).isoformat()
-        series.append({"date": d, "clicks": trend.get(d, 0)})
-
-    def _top(d, n=8):
-        return [{"source": k, "clicks": v}
-                for k, v in sorted(d.items(), key=lambda kv: kv[1], reverse=True)[:n]]
-
-    # Conversions validées sur la même fenêtre (approved|paid)
-    conversions_30d = 0
-    rcursor = db.affiliate_referrals.find(
-        {"status": {"$in": ["approved", "paid"]},
-         "$or": [{"approved_at": {"$gte": start_date.isoformat() + "T00:00:00"}},
-                 {"created_at": {"$gte": start_date.isoformat() + "T00:00:00"}}]},
-        {"_id": 0, "approved_at": 1, "created_at": 1},
-    )
-    async for r in rcursor:
-        ts = r.get("approved_at") or r.get("created_at")
-        if str(ts or "")[:10] >= start_date.isoformat():
-            conversions_30d += 1
-
-    return {
-        "days": days,
-        "total_clicks": total,
-        "conversions_30d": conversions_30d,
-        "active_affiliates": len(per_aff),
-        "trend": series,
-        "top_pages": _top(pages),
-        "top_referrers": _top(refs),
-        "devices": devices,
-        "top_affiliates": top_affiliates,
-    }
-
-
 @api.get("/admin/affiliates/risk")  # noqa: F821
 async def admin_affiliates_risk(admin: dict = Depends(get_admin_user)):  # noqa: F821
-    """Détection de risque par affilié : auto-parrainage, taux d'annulation,
-    pics de volume, conformité en révision. La décision reste manuelle —
-    ces signaux ne font que guider l'admin (contrat AdminAffiliates.jsx RiskPanel)."""
-    now = datetime.now(timezone.utc)
-    q_start = _affiliate_quarter_start(now)
-    prev_start = _affiliate_prev_quarter_start(now)
-
-    # ---- Agrégation des referrals en Python (léger pour ≤ quelques k) ----
-    per: dict = {}
-    cursor = db.affiliate_referrals.find(
-        {},
-        {"_id": 0, "status": 1, "excluded_reason": 1, "affiliate_id": 1,
-         "created_at": 1, "approved_at": 1, "base_amount": 1},
-    )
-    async for r in cursor:
-        aid = r.get("affiliate_id")
-        if not aid:
-            continue
-        agg = per.setdefault(aid, {
-            "validated": 0, "reversed": 0, "self": 0, "excluded_other": 0,
-            "referrals": 0, "rev_cur": 0.0, "rev_prev": 0.0,
-        })
-        st = str(r.get("status", "")).lower()
-        agg["referrals"] += 1
-        if st in ("approved", "paid"):
-            agg["validated"] += 1
-        elif st in ("reversed", "refunded"):
-            agg["reversed"] += 1
-        elif st == "excluded" and r.get("excluded_reason") == "self_order":
-            agg["self"] += 1
-        elif st == "excluded":
-            agg["excluded_other"] += 1
-        ts = r.get("approved_at") or r.get("created_at")
-        if not ts or st not in ("approved", "paid"):
-            continue
-        try:
-            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-        except Exception:
-            continue
-        if dt >= q_start:
-            agg["rev_cur"] += float(r.get("base_amount", 0.0))
-        elif dt >= prev_start:
-            agg["rev_prev"] += float(r.get("base_amount", 0.0))
-
-    # ---- Clics par affilié (volume d'activité) ----
-    clicks_agg: dict = {}
-    ccursor = db.affiliate_clicks.find(
-        {}, {"_id": 0, "affiliate_id": 1}
-    )
-    async for c in ccursor:
-        aid = c.get("affiliate_id")
-        if aid:
-            clicks_agg[aid] = clicks_agg.get(aid, 0) + 1
-
-    def _sig(s_type: str, level: str, label_fr: str, label_en: str, value) -> dict:
-        return {"type": s_type, "level": level,
-                "label_fr": label_fr, "label_en": label_en, "value": value}
-
-    flagged: list = []
-    for aid, agg in per.items():
-        aff = await db.affiliates.find_one(
-            {"id": aid}, {"_id": 0, "name": 1, "code": 1, "email": 1,
-                          "status": 1, "compliance_status": 1}
-        )
-        if not aff or aff.get("status") not in ("active", "suspended"):
-            continue
-        signals: list = []
-        risk_level: Optional[str] = None
-        total_settled = agg["validated"] + agg["reversed"]
-
-        # 1) Auto-parrainage (exclusions self_order) — signal fort
-        if agg["self"] > 0:
-            risk_level = "high"
-            signals.append(_sig("self_orders", "high",
-                                "Auto-parrainage bloqué", "Self-referrals blocked",
-                                agg["self"]))
-
-        # 2) Taux d'annulation / remboursement
-        if agg["reversed"] > 0 and total_settled > 0:
-            rate = agg["reversed"] / total_settled
-            level = "high" if rate >= 0.30 else "warning"
-            if risk_level != "high":
-                risk_level = level
-            signals.append(_sig("reversal_rate", level,
-                                "Taux d'annulation", "Reversal rate",
-                                round(rate, 3)))
-
-        # 3) Pic de volume vs trimestre précédent
-        if agg["rev_prev"] > 0 and agg["rev_cur"] >= agg["rev_prev"] * 2:
-            mult = round(agg["rev_cur"] / agg["rev_prev"], 1)
-            level = "high" if (mult >= 3 and agg["rev_cur"] >= 500) else "warning"
-            if risk_level != "high":
-                risk_level = level
-            signals.append(_sig("volume_spike", level,
-                                "Pic de volume", "Volume spike", mult))
-
-        # 4) Conformité en révision
-        if aff.get("compliance_status") == "review":
-            if risk_level != "high":
-                risk_level = "warning"
-            signals.append(_sig("compliance_review", "warning",
-                                "Conformité en révision", "Compliance review", 1))
-
-        # 5) Autres exclusions (IP partagée, etc.)
-        if agg["excluded_other"] > 0:
-            if risk_level != "high":
-                risk_level = "warning"
-            signals.append(_sig("other_exclusions", "warning",
-                                "Commandes exclues", "Excluded orders",
-                                agg["excluded_other"]))
-
-        # 6) Données insuffisantes (aucune vente validée) — à surveiller, pas de verdict
-        if not signals and agg["referrals"] == 0:
-            continue
-        insufficient_data = agg["validated"] == 0 and agg["reversed"] == 0
-        if insufficient_data and not risk_level:
-            risk_level = "warning"
-
-        flagged.append({
-            "id": aid,
-            "name": aff.get("name") or aff.get("email", "—"),
-            "code": aff.get("code"),
-            "email": aff.get("email"),
-            "status": aff.get("status"),
-            "risk_level": risk_level or "warning",
-            "insufficient_data": insufficient_data,
-            "signals": signals,
-            "validated_orders": agg["validated"],
-            "reversed_orders": agg["reversed"],
-            "self_orders_blocked": agg["self"],
-            "clicks": clicks_agg.get(aid, 0),
-        })
-
-    flagged.sort(key=lambda f: 0 if f["risk_level"] == "high" else 1)
+    """Détection de risque : referrals exclus (auto-parrainage, IP partagée)
+    et affiliés à surveiller. Retourne la liste + le compte signalé."""
+    flagged = await db.affiliate_referrals.find(
+        {"status": "excluded"},
+        {"_id": 0, "id": 1, "order_number": 1, "commission_amount": 1,
+         "base_amount": 1, "excluded_reason": 1, "status": 1, "affiliate_id": 1},
+    ).sort("created_at", -1).to_list(200)
+    # Enrichir avec le code affilié
+    for f in flagged:
+        a = await db.affiliates.find_one({"id": f.get("affiliate_id")}, {"_id": 0, "code": 1})
+        f["affiliate_code"] = a.get("code") if a else None
     return {"affiliates": flagged, "flagged_count": len(flagged)}
 # ===== FIRONOVA_AFFILIATE_ADMIN_OVERVIEW_END =====
 
@@ -9291,7 +8155,7 @@ async def admin_affiliate_detail(affiliate_id: str,
     )
     if not aff:
         raise HTTPException(404, "Affiliate not found")
-    metrics = await _affiliate_compute_metrics(affiliate_id, aff=aff) if aff.get("status") == "active" else None
+    metrics = await _affiliate_compute_metrics(affiliate_id) if aff.get("status") == "active" else None
     referrals = await db.affiliate_referrals.find(
         {"affiliate_id": affiliate_id}, {"_id": 0}
     ).sort("created_at", -1).to_list(500)
@@ -9308,66 +8172,9 @@ async def admin_affiliate_update(affiliate_id: str, payload: AffiliateAdminUpdat
     aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
     if not aff:
         raise HTTPException(404, "Affiliate not found")
-    # exclude_unset : seul un champ explicitement envoyé est appliqué (null inclus).
-    update = {k: v for k, v in payload.model_dump(exclude_unset=True).items()}
-    # clear_manual_tier = True → retour au calcul automatique du palier
-    if update.pop("clear_manual_tier", None):
-        update["manual_tier"] = None
-    manual = update.get("manual_tier")
-    if manual is not None and manual.lower() not in {t[0] for t in AFFILIATE_TIERS}:
-        raise HTTPException(400, f"manual_tier must be one of "
-                                 f"{', '.join(t[0] for t in AFFILIATE_TIERS)}")
-    # Code de parrainage / promo : format + unicité
-    coupon_changed = False
-    if "code" in update:
-        new_code = (update["code"] or "").strip().upper()
-        if not _affiliate_code_valid(new_code):
-            raise HTTPException(400, "Code must be 3-20 letters/digits (A-Z, 0-9)")
-        if not await _affiliate_code_available(new_code, exclude_id=affiliate_id):
-            raise HTTPException(400, "This code is already used by another affiliate or coupon")
-        update["code"] = new_code
-        coupon_changed = True
-    # Rabais par affilié : 0 = désactivé, null = retour au défaut env
-    if "coupon_percent" in update:
-        cp = update["coupon_percent"]
-        if cp is not None:
-            try:
-                cp = float(cp)
-            except (TypeError, ValueError):
-                raise HTTPException(400, "coupon_percent must be a number 0-100")
-            if not (0 <= cp <= 100):
-                raise HTTPException(400, "coupon_percent must be between 0 and 100")
-            update["coupon_percent"] = round(cp, 2)
-        else:
-            update["coupon_percent"] = None
-        coupon_changed = True
-    if "payout_address" in update:
-        pa = (update["payout_address"] or "").strip()
-        if pa and len(pa) < 4:
-            raise HTTPException(400, "payout_address too short")
-        update["payout_address"] = pa
-    if "payout_currency" in update:
-        pc = (update["payout_currency"] or "").strip().lower()
-        if pc and len(pc) < 2:
-            raise HTTPException(400, "payout_currency too short")
-        update["payout_currency"] = pc
-    if "suspension_reason" in update:
-        update["suspension_reason"] = (update["suspension_reason"] or "").strip()[:500]
-    # Statut non-suspendu → la raison de suspension n'a plus lieu d'être
-    if update.get("status") is not None and update["status"] != "suspended":
-        update["suspension_reason"] = ""
+    update = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
     if update:
         await db.affiliates.update_one({"id": affiliate_id}, {"$set": update})
-    # Resynchronise le coupon promo dès que code / rabais / statut changent
-    if coupon_changed or update.get("status") in ("active", "suspended"):
-        try:
-            fresh = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
-            pct = fresh.get("coupon_percent")
-            if fresh.get("status") == "suspended":
-                pct = 0.0
-            await _affiliate_ensure_coupon(fresh.get("code"), affiliate_id, percent=pct)
-        except Exception as _e:
-            logging.warning("[affiliate] resync coupon %s: %s", affiliate_id, _e)
     fresh = await db.affiliates.find_one(
         {"id": affiliate_id}, {"_id": 0, "invite_token_hash": 0}
     )
@@ -9401,7 +8208,7 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
         if not aff or aff.get("status") != "active":
             continue
         payout_id = str(uuid.uuid4())
-        payout_doc = {
+        await db.affiliate_payouts.insert_one({
             "id": payout_id,
             "affiliate_id": affiliate_id,
             "affiliate_code": aff.get("code"),
@@ -9416,16 +8223,13 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
             "note": "",
             "created_at": now.isoformat(),
             "paid_at": None,
-        }
-        await db.affiliate_payouts.insert_one(payout_doc)
+        })
         await db.affiliate_referrals.update_many(
             {"id": {"$in": grp["ids"]}},
             {"$set": {"payout_id": payout_id}},
         )
         created.append({"affiliate_id": affiliate_id, "amount": total,
                         "payout_id": payout_id})
-        # Notification "paiement prêt" (fire-and-forget, non bloquant)
-        asyncio.create_task(_affiliate_notify_payout(aff, payout_doc, "ready"))
     return {"ok": True, "period": period, "payouts_created": len(created),
             "detail": created}
 
@@ -9452,12 +8256,6 @@ async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMark
         {"$set": {"status": "paid", "paid_at": now}},
     )
     fresh = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
-    # Notification "paiement envoyé" (fire-and-forget, non bloquant)
-    aff = await db.affiliates.find_one(
-        {"id": payout.get("affiliate_id")}, {"_id": 0}
-    )
-    if aff:
-        asyncio.create_task(_affiliate_notify_payout(aff, fresh, "paid"))
     return fresh
 
 
@@ -9557,7 +8355,7 @@ async def admin_customer_detail(user_id: str, _admin: dict = Depends(require_are
 # ===== FIRONOVA_ANALYTICS_ENHANCED_START =====
 TAX_THRESHOLD_CAD = 30000.0          # seuil d'inscription TPS/TVQ (petit fournisseur)
 TAX_ALERT_RATIO = 0.80               # alerte "approche" à 80 % du seuil
-_UNPAID = ["pending", "awaiting_etransfer", "awaiting_crypto"]
+_UNPAID = ["pending", "awaiting_etransfer", "awaiting_crypto", "awaiting_stripe"]
 
 
 def _pct_change(cur: float, prev: float):
@@ -9705,7 +8503,7 @@ ABANDON_SWEEP_MINUTES = float(os.environ.get("ABANDON_SWEEP_MINUTES", "30"))
 _AUTOMATION_BASE = os.environ.get("PUBLIC_BASE_URL", "https://fironova.com").rstrip("/")
 
 # Statuts considérés « non payés » = panier/checkout abandonné
-_UNPAID_STATUSES = ["pending", "awaiting_etransfer", "awaiting_crypto"]
+_UNPAID_STATUSES = ["pending", "awaiting_etransfer", "awaiting_crypto", "awaiting_stripe"]
 
 
 def _nova_email_shell(heading_fr: str, heading_en: str, body_html: str,
@@ -9734,9 +8532,8 @@ def _nova_email_shell(heading_fr: str, heading_en: str, body_html: str,
       {cta}
     </td></tr>
     <tr><td style="background:#F7FAFC;padding:16px 32px;font-family:monospace;font-size:10px;letter-spacing:1px;color:#94A3B8;border-top:1px solid #E2E8F0">
-      PRODUITS DESTINÉS À LA RECHERCHE UNIQUEMENT (RUO) · 19+ · Ne pas consommer.<br>
-      FOR RESEARCH USE ONLY (RUO) · 19+ · Not for human consumption.<br>
-      FIRONOVA · MONTRÉAL, QUÉBEC, CANADA · INFO@FIRONOVA.COM
+      PRODUITS DESTINÉS À LA RECHERCHE UNIQUEMENT (RUO) · 18+ · Ne pas consommer.<br>
+      FOR RESEARCH USE ONLY (RUO) · 18+ · Not for human consumption.
     </td></tr>
   </table>
 </body></html>"""
@@ -9842,17 +8639,6 @@ def _seo_xml_escape(s: str) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-@app.get("/robots.txt", include_in_schema=False)
-async def robots_txt():
-    """robots.txt réel (il était seulement référencé en commentaire)."""
-    body = (
-        "User-agent: *\n"
-        "Allow: /\n"
-        f"Sitemap: {SEO_ORIGIN}/api/sitemap.xml\n"
-    )
-    return Response(content=body, media_type="text/plain")
-
-
 @api.get("/sitemap.xml")  # noqa: F821
 async def dynamic_sitemap():
     """Sitemap généré à la volée : pages statiques + toutes les fiches produits
@@ -9908,12 +8694,7 @@ async def product_seo(slug: str):
         title = p.get(f"meta_title_{lang}") or f"{name} — Fironova"
         desc = p.get(f"meta_description_{lang}") or ""
         if not desc:
-            cas = p.get("cas_number")
-            cas_txt = f" (n° CAS {cas})" if cas else ""
-            if lang == "fr":
-                raw = f"{name}{cas_txt} — standard de référence chimique pour recherche en laboratoire uniquement. Interdit à tout usage humain ou animal."
-            else:
-                raw = f"{name}{cas_txt} — chemical reference standard for laboratory research only. Not for human or animal use."
+            raw = p.get(f"description_{lang}") or p.get("description_en") or ""
             desc = (raw[:157] + "…") if len(raw) > 158 else raw
         return {"title": title, "description": desc, "name": name}
 
@@ -10561,10 +9342,10 @@ async def admin_email_template_preview(key: str, lang: str = "fr",
         raise HTTPException(404, "Unknown template key")
     sample_order = {
         "payment_info": {"instructions": {"send_to": "orders@fironova.com", "amount_cad": 149.00,
-                          "reference": "FN-26042", "security_question": "What are the first two letters of the reference? (lowercase)",
-                          "security_answer_hint": "fn",
+                          "reference": "FN-26042", "security_question": "What is the brand name? (lowercase)",
+                          "security_answer_hint": "fironova"},
                           "pay_address": "0xA1b2C3d4E5f6...", "pay_amount": "0.0021", "pay_currency": "eth",
-                          "payment_url": "https://nowpayments.io/payment/xyz"}},
+                          "payment_url": "https://nowpayments.io/payment/xyz"},
         "items": [{"name_fr": "BPC-157 5mg", "name_en": "BPC-157 5mg", "qty": 2},
                   {"name_fr": "TB-500 5mg", "name_en": "TB-500 5mg", "qty": 1}],
         "total": 149.00, "tracking_number": "1Z999AA10123456784", "_refund_amount": 149.00,
@@ -10850,7 +9631,7 @@ async def nowpayments_payout_ipn(request: Request):
         raise HTTPException(400, "Invalid payload")
     expected = hmac.new(
         NOWPAYMENTS_IPN_SECRET.encode(),
-        raw,
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode(),
         hashlib.sha512,
     ).hexdigest()
     if not sig or not hmac.compare_digest(expected, sig):
@@ -10899,25 +9680,5 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# ---------------------------------------------------------------------------
-# Anti-CSRF — vérification de l'Origin sur les mutations.
-# Le cookie est posé en SameSite=None + Secure : il part donc aussi sur les
-# requêtes cross-site, et le CORS n'est PAS une protection CSRF. Pour toute
-# requête de mutation portant le cookie de session, si un header Origin est
-# présent (tout navigateur l'envoie sur POST/PUT/PATCH/DELETE), il DOIT faire
-# partie des origines autorisées. Absent d'Origin (curl, back-end, tests,
-# webhooks sans cookie) => autorisé. N'interrompt donc aucun processus légitime.
-# ---------------------------------------------------------------------------
-@app.middleware("http")
-async def _csrf_origin_guard(request: Request, call_next):
-    if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.cookies.get("access_token"):
-        origin = (request.headers.get("origin") or "").lower().rstrip("/")
-        if origin:
-            allowed = {o.lower().rstrip("/") for o in _cors_origins}
-            if origin not in allowed:
-                return Response(status_code=403, content="Origin not allowed", media_type="text/plain")
-    return await call_next(request)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
