@@ -3364,7 +3364,9 @@ async def get_shipping_rates(payload: ShippingRateRequest):
 
 # ---------------------------------------------------------------------------
 # Confirmation de paiement — point d'entrée UNIQUE et idempotent.
-# Le filtre {"payment_status": {"$ne": "paid"}} dans le update_one garantit
+# Le filtre bloque les statuts terminaux (cancelled/failed/refunded) et
+# empêche une confirmation tardive de réactiver une commande déjà clôturée.
+# Le filtre {"payment_status": {"$nin": [...]}} dans le update_one garantit
 # qu'un seul appelant gagne, même avec des callbacks/pollings concurrents
 # arrivent à la milliseconde près. Le coupon est décompté ici (et pas à la
 # création) : un panier abandonné ne doit jamais consommer un usage_limit.
@@ -3372,9 +3374,10 @@ async def get_shipping_rates(payload: ShippingRateRequest):
 async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Optional[dict]:
     """Retourne l'order fraîche si CET appel a fait la transition, sinon None."""
     paid_at = datetime.now(timezone.utc).isoformat()
+    terminal_statuses = {"paid", "cancelled", "failed", "refunded"}
     # Preorder orders retain 'preorder' fulfillment_status until items ship.
     existing = await db.orders.find_one({"id": order_id}, {"_id": 0, "has_preorder": 1, "payment_status": 1})
-    if not existing or existing.get("payment_status") == "paid":
+    if not existing or existing.get("payment_status") in terminal_statuses:
         return None
     new_fulfillment = "preorder" if existing.get("has_preorder") else "processing"
     update: dict = {
@@ -3394,7 +3397,7 @@ async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Op
         }}
 
     res = await db.orders.update_one(
-        {"id": order_id, "payment_status": {"$ne": "paid"}},
+        {"id": order_id, "payment_status": {"$nin": list(terminal_statuses)}},
         update,
     )
     if not res.modified_count:
