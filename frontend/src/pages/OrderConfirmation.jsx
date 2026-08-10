@@ -56,7 +56,7 @@ export default function OrderConfirmation() {
   // Interac (Autodeposit) live status polling — confirmed automatically by backend watchdog
   useEffect(() => {
     if (!order) return;
-    if (order.payment_method !== "interac" || order.payment_status !== "awaiting_etransfer") return;
+    if (order.payment_status !== "awaiting_etransfer") return;
     let attempts = 0;
     const iv = setInterval(async () => {
       attempts += 1;
