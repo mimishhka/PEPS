@@ -298,9 +298,7 @@ function CoaUploader({ value, onChange, test }) {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await api.post("/admin/upload/coa", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const res = await api.post("/admin/upload/coa", form);
       onChange(res.data.url);
       toast.success("COA PDF uploaded");
     } catch (err) {
@@ -361,9 +359,7 @@ function ImageUploader({ value, onChange, test }) {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await api.post("/admin/upload/image", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const res = await api.post("/admin/upload/image", form);
       onChange(res.data.url);
       toast.success("Product image uploaded");
     } catch (err) {

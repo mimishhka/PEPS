@@ -62,6 +62,14 @@ INTERAC_GRAPH_CLIENT_ID = os.environ.get("INTERAC_GRAPH_CLIENT_ID", "")
 INTERAC_GRAPH_CLIENT_SECRET = os.environ.get("INTERAC_GRAPH_CLIENT_SECRET", "")
 INTERAC_GRAPH_USER = os.environ.get("INTERAC_GRAPH_USER", "").strip().lower() or INTERAC_EMAIL.lower()
 
+# Strip placeholder values like <TENANT_ID> that were never replaced.
+def _strip_placeholder(v: str) -> str:
+    return "" if (v.startswith("<") and v.endswith(">")) else v
+
+INTERAC_GRAPH_TENANT_ID = _strip_placeholder(INTERAC_GRAPH_TENANT_ID)
+INTERAC_GRAPH_CLIENT_ID = _strip_placeholder(INTERAC_GRAPH_CLIENT_ID)
+INTERAC_GRAPH_CLIENT_SECRET = _strip_placeholder(INTERAC_GRAPH_CLIENT_SECRET)
+
 # Code d'accès facultatif demandé AVANT même l'écran de login admin, côté SPA
 # publique. Ne remplace pas l'auth (JWT + rôle restent la vraie barrière sur
 # /api/admin/*) — sert seulement à ce qu'un visiteur qui tombe sur l'URL admin
@@ -7586,6 +7594,16 @@ async def _backfill_affiliate_coupons() -> None:
 
 @app.on_event("startup")
 async def startup_event():
+    # Warn about unconfigured optional services so issues are visible in logs.
+    _svc_checks = {
+        "RESEND_API_KEY (emails)": RESEND_API_KEY,
+        "PUBLIC_BASE_URL (email links)": PUBLIC_BASE_URL,
+        "NOWPAYMENTS_API_KEY (crypto)": NOWPAYMENTS_API_KEY,
+        "INTERAC_GRAPH_TENANT_ID (Interac auto-confirm)": INTERAC_GRAPH_TENANT_ID,
+    }
+    for label, val in _svc_checks.items():
+        if not val:
+            logging.warning("[config] %s is not set — related features disabled", label)
     await seed_admin_and_products()
     await _seed_categories_from_products()
     await _seed_default_menus()
