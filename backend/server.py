@@ -540,11 +540,11 @@ class CouponIn(BaseModel):
     usage_limit: Optional[int] = None  # None = unlimited
     active: bool = True
     expires_at: Optional[str] = None  # ISO string
+    # --- Avance (tous optionnels ; vides/desactives = comportement de base) ---
     start_at: Optional[str] = None
     allowed_emails: List[str] = []
     per_customer_limit: Optional[int] = None
     first_order_only: bool = False
-    free_shipping: bool = False
     max_discount_cad: Optional[float] = None
     restrict_products: List[str] = []
     restrict_categories: List[str] = []
@@ -2087,7 +2087,14 @@ async def _release_stock_atomic(line_items: list) -> None:
 
 
 def _coupon_usage_for_email(coupon: dict, email: str) -> int:
-    return sum(e.get("count", 0) for e in (coupon.get("used_by") or []) if e.get("email") == email)
+    """Nombre d'utilisations d'un coupon par un email donne (tableau used_by)."""
+    for entry in coupon.get("used_by") or []:
+        if entry and entry.get("email") == email:
+            try:
+                return int(entry.get("count", 0))
+            except (TypeError, ValueError):
+                return 0
+    return 0
 
 
 def _is_affiliate_coupon(coupon: dict) -> bool:
@@ -2102,20 +2109,25 @@ def _enforce_standard_coupon_percent_limit(discount_type: str, value: float, is_
 
 
 async def _coupon_discount(coupon: dict, subtotal: float,
-                           line_items: list = None, email: str = None) -> tuple:
-    """Validates and computes coupon discount. Returns (discount_amount, applied_dict)."""
-    now = datetime.now(timezone.utc)
+                           line_items: Optional[list] = None,
+                           email: Optional[str] = None) -> tuple[float, dict]:
+    """Valide un coupon et retourne (discount, applied_coupon). Leve 400 si invalide.
+
+    Les restrictions contextuelles (emails autorises, premier achat, limite par
+    client, restriction produit/categorie) ne sont verifiees QUE si le contexte
+    est fourni : le checkout le fournit toujours ; le point public /coupons/validate
+    sans email ni items reste strictement retrocompatible."""
     if not coupon or not coupon.get("active"):
         raise HTTPException(400, "Invalid coupon code")
     if coupon.get("expires_at"):
         try:
-            if datetime.fromisoformat(coupon["expires_at"].replace("Z", "+00:00")) < now:
+            if datetime.fromisoformat(coupon["expires_at"].replace("Z", "+00:00")) < datetime.now(timezone.utc):
                 raise HTTPException(400, "Coupon expired")
         except ValueError:
             pass
     if coupon.get("start_at"):
         try:
-            if datetime.fromisoformat(coupon["start_at"].replace("Z", "+00:00")) > now:
+            if datetime.fromisoformat(coupon["start_at"].replace("Z", "+00:00")) > datetime.now(timezone.utc):
                 raise HTTPException(400, "Coupon not active yet")
         except ValueError:
             pass
@@ -2123,47 +2135,54 @@ async def _coupon_discount(coupon: dict, subtotal: float,
         raise HTTPException(400, "Coupon usage limit reached")
     if subtotal < coupon.get("min_subtotal", 0):
         raise HTTPException(400, f"Minimum subtotal of ${coupon['min_subtotal']:.2f} required for this coupon")
+
+    email_norm = (email or "").strip().lower()
+    allowed = [e.lower().strip() for e in (coupon.get("allowed_emails") or []) if e and e.strip()]
+    if allowed and email_norm:
+        if email_norm not in allowed:
+            raise HTTPException(400, "This coupon is not valid for this account")
+    if coupon.get("first_order_only") and email_norm:
+        prior = await db.orders.count_documents({"email": email_norm, "payment_status": "paid"})
+        if prior > 0:
+            raise HTTPException(400, "This coupon is valid for first orders only")
+    per_limit = coupon.get("per_customer_limit")
+    if per_limit and email_norm:
+        if _coupon_usage_for_email(coupon, email_norm) >= int(per_limit):
+            raise HTTPException(400, "Coupon usage limit reached for this account")
+
+    restrict_products = [p for p in (coupon.get("restrict_products") or []) if p]
+    restrict_categories = [c for c in (coupon.get("restrict_categories") or []) if c]
+    if line_items and (restrict_products or restrict_categories):
+        for it in line_items:
+            if restrict_products and str(it.get("product_id", "")) not in restrict_products:
+                raise HTTPException(400, "This coupon does not apply to all items in your cart")
+            if restrict_categories and (it.get("category") or "") not in restrict_categories:
+                    raise HTTPException(400, "This coupon does not apply to all items in your cart")
+
     _enforce_standard_coupon_percent_limit(
         coupon.get("discount_type", ""),
         float(coupon.get("value", 0)),
         _is_affiliate_coupon(coupon),
     )
-    if email is not None:
-        email_norm = email.strip().lower()
-        if coupon.get("allowed_emails") and email_norm not in [e.lower() for e in coupon["allowed_emails"]]:
-            raise HTTPException(400, "This coupon is not valid for this account")
-        if coupon.get("first_order_only"):
-            past = await db.orders.count_documents({"email": email_norm, "payment_status": "paid"})
-            if past > 0:
-                raise HTTPException(400, "This coupon is valid for first orders only")
-        if coupon.get("per_customer_limit") is not None:
-            usage = _coupon_usage_for_email(coupon, email_norm)
-            if usage >= coupon["per_customer_limit"]:
-                raise HTTPException(400, "Coupon usage limit reached for this account")
-    if line_items is not None and (coupon.get("restrict_products") or coupon.get("restrict_categories")):
-        rp = set(coupon.get("restrict_products") or [])
-        rc = set(coupon.get("restrict_categories") or [])
-        for li in line_items:
-            if rp and li.get("product_id") not in rp:
-                if not rc or li.get("category") not in rc:
-                    raise HTTPException(400, "This coupon does not apply to all items in your cart")
+
     if coupon["discount_type"] == "percent":
-        discount = round(subtotal * coupon["value"] / 100, 2)
+        discount = round(subtotal * (coupon["value"] / 100.0), 2)
     else:
         discount = round(min(coupon["value"], subtotal), 2)
-    if coupon.get("max_discount_cad") is not None:
-        discount = round(min(discount, float(coupon["max_discount_cad"])), 2)
+    max_disc = coupon.get("max_discount_cad")
+    if max_disc is not None:
+        discount = round(min(discount, float(max_disc)), 2)
+
     applied = {
         "code": coupon["code"],
         "discount_type": coupon["discount_type"],
         "value": coupon["value"],
         "discount_amount": discount,
-        "free_shipping": bool(coupon.get("free_shipping")),
     }
     return discount, applied
 
 
-async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] = None):
+async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] = None, customer_email: Optional[str] = None):
     line_items = []
     subtotal = 0.0
     has_preorder = False
@@ -2223,14 +2242,12 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
     applied_coupon = None
     if coupon_code:
         coupon = await db.coupons.find_one({"code": coupon_code.upper().strip()}, {"_id": 0})
-        discount, applied_coupon = await _coupon_discount(coupon, subtotal, line_items=line_items)
+        discount, applied_coupon = await _coupon_discount(
+            coupon, subtotal, line_items=line_items, email=customer_email
+        )
 
     tax_rate = 0.0
     shipping = 0.0 if (subtotal - discount) >= FREE_SHIPPING_THRESHOLD_CAD else SHIPPING_FLAT_CAD
-    if applied_coupon and applied_coupon.get("free_shipping") and shipping > 0:
-        discount = round(discount + shipping, 2)
-        applied_coupon["discount_amount"] = discount
-        shipping = 0.0
     tax = 0.0
     total = round(max(0, subtotal - discount) + shipping, 2)
     return line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder
@@ -3684,9 +3701,10 @@ async def checkout(payload: CheckoutIn, request: Request):
             raise HTTPException(409, "Checkout already in progress")
 
     user = await _resolve_user(request)
+    customer_email = ((user["email"] if user else None) or (payload.email.lower().strip() if payload.email else None))
 
     line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder = await _build_order_totals(
-        payload.items, payload.coupon_code
+        payload.items, payload.coupon_code, customer_email=customer_email
     )
 
     order_id = str(uuid.uuid4())
@@ -5868,27 +5886,15 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_
     if await db.coupons.find_one({"code": code}):
         raise HTTPException(409, "Coupon code already exists")
     _enforce_standard_coupon_percent_limit(payload.discount_type, payload.value, is_affiliate=False)
-    doc = {
-        "id": str(uuid.uuid4()),
-        "code": code,
-        "discount_type": payload.discount_type,
-        "value": payload.value,
-        "min_subtotal": payload.min_subtotal,
-        "usage_limit": payload.usage_limit,
-        "used_count": 0,
-        "used_by": [],
-        "active": payload.active,
-        "expires_at": payload.expires_at,
-        "start_at": payload.start_at,
-        "allowed_emails": [e.lower().strip() for e in payload.allowed_emails if e.strip()],
-        "per_customer_limit": payload.per_customer_limit,
-        "first_order_only": payload.first_order_only,
-        "free_shipping": payload.free_shipping,
-        "max_discount_cad": payload.max_discount_cad,
-        "restrict_products": [p for p in payload.restrict_products if p],
-        "restrict_categories": [c for c in payload.restrict_categories if c],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    doc = payload.model_dump()
+    doc["id"] = str(uuid.uuid4())
+    doc["code"] = code
+    doc["allowed_emails"] = [e.lower().strip() for e in (doc.get("allowed_emails") or []) if e and e.strip()]
+    doc["restrict_products"] = [p for p in (doc.get("restrict_products") or []) if p]
+    doc["restrict_categories"] = [c for c in (doc.get("restrict_categories") or []) if c]
+    doc["used_count"] = 0
+    doc["used_by"] = []
+    doc["created_at"] = datetime.now(timezone.utc).isoformat()
     await db.coupons.insert_one(doc)
     doc.pop("_id", None)
     return doc
@@ -5896,10 +5902,12 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_
 
 @api.put("/admin/coupons/{coupon_id}")
 async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = Depends(require_area("coupons", "manage"))):
+    # exclude_unset : seuls les champs envoyes par le formulaire sont appliques,
+    # les compteurs (used_count/used_by) et champs avances absents sont preserves.
+    update = payload.model_dump(exclude_unset=True)
     existing = await db.coupons.find_one({"id": coupon_id}, {"_id": 0, "affiliate_id": 1, "source": 1})
     if not existing:
         raise HTTPException(404, "Coupon not found")
-    update = payload.model_dump(exclude_unset=True)
     _enforce_standard_coupon_percent_limit(
         update.get("discount_type", payload.discount_type),
         float(update.get("value", payload.value)),
@@ -5908,12 +5916,14 @@ async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = 
     if "code" in update:
         update["code"] = update["code"].upper().strip()
     if "allowed_emails" in update:
-        update["allowed_emails"] = [e.lower().strip() for e in update["allowed_emails"] if e.strip()]
+        update["allowed_emails"] = [e.lower().strip() for e in (update["allowed_emails"] or []) if e and e.strip()]
     if "restrict_products" in update:
-        update["restrict_products"] = [p for p in update["restrict_products"] if p]
+        update["restrict_products"] = [p for p in (update["restrict_products"] or []) if p]
     if "restrict_categories" in update:
-        update["restrict_categories"] = [c for c in update["restrict_categories"] if c]
+        update["restrict_categories"] = [c for c in (update["restrict_categories"] or []) if c]
     res = await db.coupons.update_one({"id": coupon_id}, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Coupon not found")
     return await db.coupons.find_one({"id": coupon_id}, {"_id": 0})
 
 
@@ -5923,10 +5933,37 @@ async def admin_delete_coupon(coupon_id: str, admin: dict = Depends(require_area
 
 
 @api.post("/coupons/validate")
-async def validate_coupon(code: str, subtotal: float):
+async def validate_coupon(code: str, subtotal: float,
+                          email: Optional[str] = None,
+                          items: Optional[str] = None):
+    """Validation cote client. email et items (JSON) sont OPTIONNELS : sans eux,
+    seules les regles de base sont verifiees (retrocompatible avec l'appel actuel).
+    La validation finale complete est toujours faite au checkout."""
     coupon = await db.coupons.find_one({"code": code.upper().strip()}, {"_id": 0})
-    discount, applied = await _coupon_discount(coupon, subtotal)
-    return {**applied, "min_subtotal": coupon.get("min_subtotal", 0)}
+    line_items = None
+    if items:
+        try:
+            raw = json.loads(items)
+            if isinstance(raw, list):
+                ids = [str(x.get("product_id")) for x in raw if isinstance(x, dict) and x.get("product_id")]
+                docs = await db.products.find({"id": {"$in": ids}}, {"_id": 0}).to_list(len(ids))
+                by_id = {d["id"]: d for d in docs}
+                line_items = [
+                    {"product_id": str(x.get("product_id")),
+                     "category": (by_id.get(str(x.get("product_id"))) or {}).get("category", "")}
+                    for x in raw if isinstance(x, dict) and x.get("product_id")
+                ]
+        except Exception:
+            line_items = None
+    discount, applied = await _coupon_discount(coupon, subtotal, line_items=line_items, email=email)
+    return {
+        "code": coupon["code"], "discount_type": coupon["discount_type"],
+        "value": coupon["value"], "discount_amount": discount,
+        "min_subtotal": coupon.get("min_subtotal", 0),
+        "restricted": bool(coupon.get("allowed_emails") or coupon.get("first_order_only")
+                           or coupon.get("per_customer_limit")
+                           or coupon.get("restrict_products") or coupon.get("restrict_categories")),
+    }
 
 
 # ---------------------------------------------------------------------------
