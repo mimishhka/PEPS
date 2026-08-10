@@ -145,7 +145,14 @@ if (isDevServer) {
 }
 
 const configureDevServer = webpackConfig.devServer;
-webpackConfig.devServer = (devServerConfig) =>
-  makeDevServerV5Compatible(configureDevServer(devServerConfig));
+webpackConfig.devServer = (devServerConfig) => {
+  const cfg = makeDevServerV5Compatible(configureDevServer(devServerConfig));
+  // Proxy /api and /uploads to backend so CORS is never an issue in dev/preview
+  cfg.proxy = {
+    "/api": { target: "http://localhost:8001", changeOrigin: false },
+    "/uploads": { target: "http://localhost:8001", changeOrigin: false },
+  };
+  return cfg;
+};
 
 module.exports = webpackConfig;

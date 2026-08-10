@@ -3,12 +3,13 @@ import axios from "axios";
 const ENV_BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const isBrowser = typeof window !== "undefined";
 const isLocalHost = isBrowser && ["localhost", "127.0.0.1"].includes(window.location.hostname);
-const LOCAL_BACKEND_URL = isBrowser
-  ? `http://${window.location.hostname}:8001`
-  : "http://127.0.0.1:8001";
-const BACKEND_URL = isLocalHost
-  ? LOCAL_BACKEND_URL
-  : (ENV_BACKEND_URL || (isBrowser ? window.location.origin : "http://127.0.0.1:8001"));
+// In dev/preview the webpack proxy forwards /api → localhost:8001 (same-origin,
+// no CORS). In production set REACT_APP_BACKEND_URL explicitly.
+const BACKEND_URL = ENV_BACKEND_URL
+  ? ENV_BACKEND_URL
+  : isLocalHost
+    ? `http://${isBrowser ? window.location.hostname : "127.0.0.1"}:8001`
+    : "";
 
 export const API_BASE = `${BACKEND_URL}/api`;
 export const ASSET_BASE = API_BASE.replace(/\/api$/, "");
