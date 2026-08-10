@@ -1937,31 +1937,45 @@ async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(
 
 @api.post("/admin/upload/image")
 async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
-    """Uploads a product image (PNG, JPEG, WebP, GIF) and returns a URL to use in 
-    the image_url field. Content validated by magic bytes (not Content-Type)."""
+    """Uploads a product image (PNG, JPEG, WebP, GIF) and returns a URL to use in
+    the image_url field. Storage is local disk under UPLOAD_DIR/images, served
+    statically at /uploads/images/<file>."""
     filename = file.filename or ""
+
     contents = await file.read()
     size_mb = len(contents) / (1024 * 1024)
     if size_mb > MAX_IMAGE_UPLOAD_MB:
         raise HTTPException(400, f"File too large — max {MAX_IMAGE_UPLOAD_MB:.0f} MB")
-    prev_max = PILImage.MAX_IMAGE_PIXELS
-    PILImage.MAX_IMAGE_PIXELS = 50_000_000
+
+    # Validation PAR LE CONTENU (magic bytes), pas par le Content-Type déclaré
+    # par le client : un Content-Type est triviable, un header de fichier ne l'est pas.
+    _IMAGE_FORMAT_EXT = {
+        "PNG": "png",
+        "JPEG": "jpg",
+        "WEBP": "webp",
+        "GIF": "gif",
+    }
     try:
+        prev_max = PILImage.MAX_IMAGE_PIXELS
+        PILImage.MAX_IMAGE_PIXELS = 50_000_000  # borne anti-decompression-bomb
         try:
             with PILImage.open(io.BytesIO(contents)) as im:
                 fmt = (im.format or "").upper()
                 im.verify()
-        except Exception:
-            raise HTTPException(400, "File is not a valid image")
-    finally:
-        PILImage.MAX_IMAGE_PIXELS = prev_max
+        finally:
+            PILImage.MAX_IMAGE_PIXELS = prev_max
+    except Exception:
+        raise HTTPException(400, "File is not a valid image")
+
     ext = _IMAGE_FORMAT_EXT.get(fmt)
     if not ext:
         raise HTTPException(400, "Only PNG, JPEG, WebP, and GIF images are allowed")
+
     safe_name = f"{uuid.uuid4().hex}.{ext}"
     dest = IMAGE_UPLOAD_DIR / safe_name
     with open(dest, "wb") as f:
         f.write(contents)
+
     rel_path = f"/api/uploads/images/{safe_name}"
     return {"url": rel_path, "original_filename": filename, "size_bytes": len(contents)}
 
@@ -7777,6 +7791,16 @@ def _affiliate_next_quarter_start(now: Optional[datetime] = None) -> datetime:
     month = qs.month + 3
     year = qs.year + (1 if month > 12 else 0)
     month = month - 12 if month > 12 else month
+    return qs.replace(year=year, month=month)
+
+
+def _affiliate_prev_quarter_start(now: Optional[datetime] = None) -> datetime:
+    qs = _affiliate_quarter_start(now)
+    month = qs.month - 3
+    year = qs.year
+    if month <= 0:
+        month += 12
+        year -= 1
     return qs.replace(year=year, month=month)
 
 
