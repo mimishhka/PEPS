@@ -970,6 +970,14 @@ async def admin_gate_verify(payload: AdminGateIn, request: Request):
     return {"ok": True}
 
 
+@api.get("/admin/autologin")
+async def admin_autologin(_admin: dict = Depends(get_admin_user)):
+    """Autologin de la porte admin : si une session admin valide existe déjà
+    (cookie httpOnly access_token), la porte est levée côté frontend sans
+    ressaisir le code — AdminGate.jsx appelle cette route à l'ouverture."""
+    return {"ok": True}
+
+
 @api.post("/auth/login")
 async def login(payload: LoginIn, response: Response, request: Request):
     email = payload.email.lower().strip()
