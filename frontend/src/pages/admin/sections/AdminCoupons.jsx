@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
-import { Plus, Edit, Trash2, X, Save, Ticket } from "lucide-react";
+import { Plus, Edit, Trash2, X, Save, Ticket, Percent, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import { useLang } from "../../../contexts/LanguageContext";
 
 export default function AdminCoupons() {
   const confirm = useConfirm();
+  const { lang } = useLang();
+  const L = (fr, en) => (lang === "fr" ? fr : en);
+
   const [coupons, setCoupons] = useState([]);
   const [editing, setEditing] = useState(null);
 
@@ -46,138 +50,346 @@ export default function AdminCoupons() {
       payload.first_order_only = !!payload.first_order_only;
       if (editing.id) await api.put(`/admin/coupons/${editing.id}`, payload);
       else await api.post("/admin/coupons", payload);
-      toast.success("Saved"); setEditing(null); load();
+      toast.success(L("Coupon enregistré", "Coupon saved"));
+      setEditing(null);
+      load();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
 
   const del = async (id) => {
-    if (!await confirm({ title: "Delete this coupon?", destructive: true })) return;
+    if (!await confirm({ title: L("Supprimer ce coupon ?", "Delete this coupon?"), destructive: true })) return;
     await api.delete(`/admin/coupons/${id}`);
-    toast.success("Deleted"); load();
+    toast.success(L("Supprimé", "Deleted"));
+    load();
   };
 
   return (
     <div className="p-8" data-testid="admin-coupons">
+      {/* Header */}
       <div className="flex items-end justify-between mb-6">
         <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// PROMOTIONS</div>
-          <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">Coupons</h1>
-          <p className="font-mono text-xs text-foreground/60 mt-1">{coupons.length} active codes</p>
+          <p className="font-data text-[11px] uppercase tracking-[0.24em] text-glacier">{L("PROMOTIONS", "PROMOTIONS")}</p>
+          <h1 className="font-display text-3xl font-extrabold uppercase tracking-tight text-nordfjord mt-1">Coupons</h1>
+          <p className="font-data text-xs text-glacier mt-1">
+            {coupons.length} {L("code(s) actif(s)", "active code(s)")}
+          </p>
         </div>
-        <button onClick={() => setEditing(shape({ ...blank }))} data-testid="new-coupon-btn" className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-foreground/80">
-          <Plus size={14} /> New Coupon
+        <button
+          onClick={() => setEditing(shape({ ...blank }))}
+          data-testid="new-coupon-btn"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-nordfjord text-white text-sm font-medium hover:opacity-90 transition"
+        >
+          <Plus size={16} /> {L("Nouveau coupon", "New coupon")}
         </button>
       </div>
 
-      <div className="bg-white border border-ink/10 overflow-x-auto">
+      {/* Table */}
+      <div className="bg-white border border-ash rounded-xl overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-secondary text-foreground/70">
+          <thead className="bg-clinical text-glacier">
             <tr>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Code</th>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Discount</th>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Min subtotal</th>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Usage</th>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Expires</th>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Active</th>
-              <th className="px-6 py-3 text-right font-mono text-[10px] uppercase tracking-[0.2em]"></th>
+              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">Code</th>
+              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Rabais", "Discount")}</th>
+              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Sous-total min.", "Min subtotal")}</th>
+              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Utilisation", "Usage")}</th>
+              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Fenêtre", "Window")}</th>
+              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Actif", "Active")}</th>
+              <th className="px-6 py-3 text-right font-data text-[10px] uppercase tracking-[0.2em]"></th>
             </tr>
           </thead>
           <tbody>
             {coupons.map((c) => (
-              <tr key={c.id} className="border-t border-ink/5" data-testid={`coupon-row-${c.code}`}>
+              <tr key={c.id} className="border-t border-ash/60" data-testid={`coupon-row-${c.code}`}>
                 <td className="px-6 py-3">
-                  <div className="flex items-center gap-2"><Ticket size={14} /> <span className="font-mono font-bold">{c.code}</span></div>
+                  <div className="flex items-center gap-2 text-nordfjord">
+                    <Ticket size={14} className="text-nova" />
+                    <span className="font-data font-bold">{c.code}</span>
+                  </div>
                   {(c.first_order_only || c.allowed_emails?.length || c.restrict_products?.length || c.restrict_categories?.length) && (
-                    <span className="inline-block text-[9px] font-mono uppercase tracking-[0.12em] bg-warning/15 text-warning px-1.5 py-0.5 mt-1">RESTRICTED</span>
+                    <span className="inline-block text-[9px] font-data uppercase tracking-[0.12em] bg-warning/15 text-warning px-1.5 py-0.5 mt-1 rounded">
+                      {L("RESTREINT", "RESTRICTED")}
+                    </span>
                   )}
                 </td>
-                <td className="px-6 py-3 font-mono text-sm">
-                  {c.discount_type === "percent" ? `${c.value}% off` : `$${c.value.toFixed(2)} off`}
+                <td className="px-6 py-3 font-data text-sm text-nordfjord">
+                  {c.discount_type === "percent" ? `${c.value}%` : `$${c.value.toFixed(2)}`}
                 </td>
-                <td className="px-6 py-3 font-mono text-xs">${(c.min_subtotal || 0).toFixed(2)}</td>
-                <td className="px-6 py-3 font-mono text-xs">
+                <td className="px-6 py-3 font-data text-xs text-glacier">${(c.min_subtotal || 0).toFixed(2)}</td>
+                <td className="px-6 py-3 font-data text-xs text-glacier">
                   {c.used_count || 0}{c.usage_limit ? ` / ${c.usage_limit}` : " / ∞"}
                 </td>
-                <td className="px-6 py-3 font-mono text-xs">
+                <td className="px-6 py-3 font-data text-xs text-glacier">
                   {c.start_at || c.expires_at
                     ? `${(c.start_at || "").slice(0, 10) || "…"} → ${(c.expires_at || "").slice(0, 10) || "∞"}`
                     : "—"}
                 </td>
                 <td className="px-6 py-3">
                   {c.active
-                    ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-emerald-600 text-white px-2 py-0.5">ON</span>
-                    : <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-gray-400 text-white px-2 py-0.5">OFF</span>}
+                    ? <span className="text-[10px] font-data uppercase tracking-[0.15em] bg-success/15 text-success px-2 py-0.5 rounded">ON</span>
+                    : <span className="text-[10px] font-data uppercase tracking-[0.15em] bg-glacier/15 text-glacier px-2 py-0.5 rounded">OFF</span>}
                 </td>
                 <td className="px-6 py-3 text-right">
-                  <button onClick={() => setEditing(shape(c))} data-testid={`edit-coupon-${c.code}`} className="border border-ink/30 px-2 py-1 hover:bg-ink hover:text-white mr-1"><Edit size={12} /></button>
-                  <button onClick={() => del(c.id)} data-testid={`delete-coupon-${c.code}`} className="border border-ink/30 px-2 py-1 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={12} /></button>
+                  <button
+                    onClick={() => setEditing(shape(c))}
+                    data-testid={`edit-coupon-${c.code}`}
+                    className="p-1.5 rounded-md border border-ash text-nordfjord hover:bg-clinical mr-1 transition"
+                    title={L("Modifier", "Edit")}
+                  >
+                    <Edit size={13} />
+                  </button>
+                  <button
+                    onClick={() => del(c.id)}
+                    data-testid={`delete-coupon-${c.code}`}
+                    className="p-1.5 rounded-md border border-ash text-error hover:bg-error hover:text-white hover:border-error transition"
+                    title={L("Supprimer", "Delete")}
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </td>
               </tr>
             ))}
             {!coupons.length && (
-              <tr><td colSpan={7} className="px-6 py-12 text-center font-mono text-xs text-foreground/50">No coupons yet</td></tr>
+              <tr>
+                <td colSpan={7} className="px-6 py-12 text-center font-data text-xs text-glacier">
+                  {L("Aucun coupon pour le moment", "No coupons yet")}
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
       </div>
 
-      {editing && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setEditing(null)}>
-          <div className="bg-white border border-ink w-full max-w-md p-6" onClick={(e) => e.stopPropagation()} data-testid="coupon-editor">
-            <div className="flex items-center justify-between mb-4">
-              <div className="font-display text-xl font-bold uppercase tracking-tight">{editing.id ? "Edit Coupon" : "New Coupon"}</div>
-              <button onClick={() => setEditing(null)}><X size={18} /></button>
-            </div>
-            <div className="space-y-3">
-              <F label="Code (uppercase)" value={editing.code} onChange={(v) => setEditing({ ...editing, code: v.toUpperCase() })} test="c-code" />
-              <div className="grid grid-cols-2 gap-3">
-                <F label="Type" select={["percent", "fixed"]} value={editing.discount_type} onChange={(v) => setEditing({ ...editing, discount_type: v })} test="c-type" />
-                <F label={editing.discount_type === "percent" ? "Percent (%)" : "Amount (CAD)"} type="number" value={editing.value} onChange={(v) => setEditing({ ...editing, value: v })} test="c-value" />
-              </div>
-              <F label="Minimum subtotal (CAD)" type="number" value={editing.min_subtotal} onChange={(v) => setEditing({ ...editing, min_subtotal: v })} test="c-min" />
-              <F label="Usage limit (blank = unlimited)" type="number" value={editing.usage_limit ?? ""} onChange={(v) => setEditing({ ...editing, usage_limit: v })} test="c-limit" />
-              <F label="Expires at (YYYY-MM-DD, optional)" value={editing.expires_at?.slice(0, 10) ?? ""} onChange={(v) => setEditing({ ...editing, expires_at: v ? `${v}T23:59:59+00:00` : null })} test="c-expires" />
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={!!editing.active} onChange={(e) => setEditing({ ...editing, active: e.target.checked })} data-testid="c-active" className="accent-ink" />
-                Active
-              </label>
-              <div className="rounded-lg border border-ink/10 p-3 space-y-3 bg-secondary/40">
-                <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50">Advanced (optional)</div>
-                <F label="Starts at (YYYY-MM-DD, optional)" value={editing.start_at?.slice(0, 10) ?? ""} onChange={(v) => setEditing({ ...editing, start_at: v ? `${v}T00:00:00+00:00` : null })} test="c-start" />
-                <div className="grid grid-cols-2 gap-3">
-                  <F label="Per-customer limit (blank = ∞)" type="number" value={editing.per_customer_limit ?? ""} onChange={(v) => setEditing({ ...editing, per_customer_limit: v })} test="c-per-customer" />
-                  <F label="Max discount (CAD, blank = none)" type="number" value={editing.max_discount_cad ?? ""} onChange={(v) => setEditing({ ...editing, max_discount_cad: v })} test="c-max-discount" />
-                </div>
-                <F label="Allowed emails (comma-separated, blank = everyone)" value={editing.allowed_emails} onChange={(v) => setEditing({ ...editing, allowed_emails: v })} test="c-emails" />
-                <F label="Restricted product ids (comma-separated, blank = all)" value={editing.restrict_products} onChange={(v) => setEditing({ ...editing, restrict_products: v })} test="c-products" />
-                <F label="Restricted categories (comma-separated, blank = all)" value={editing.restrict_categories} onChange={(v) => setEditing({ ...editing, restrict_categories: v })} test="c-categories" />
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={!!editing.first_order_only} onChange={(e) => setEditing({ ...editing, first_order_only: e.target.checked })} data-testid="c-first-order" className="accent-ink" />
-                  First order only
-                </label>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button onClick={save} data-testid="save-coupon-btn" className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-5 py-3 flex items-center gap-2"><Save size={14} /> Save</button>
-                <button onClick={() => setEditing(null)} className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-5 py-3">Cancel</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Editor modal */}
+      {editing && <CouponEditor L={L} editing={editing} setEditing={setEditing} save={save} />}
     </div>
   );
 }
 
-function F({ label, value, onChange, type = "text", select, test }) {
+/* ---------- Editor Modal ---------- */
+
+function CouponEditor({ L, editing, setEditing, save }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      onClick={() => setEditing(null)}
+    >
+      <div
+        className="bg-white rounded-2xl border border-ash w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        data-testid="coupon-editor"
+      >
+        {/* Header */}
+        <div className="sticky top-0 z-10 bg-white border-b border-ash px-6 py-4 flex items-center justify-between">
+          <div>
+            <p className="font-data text-[10px] uppercase tracking-[0.28em] text-nova">
+              {editing.id ? L("MODIFIER", "EDIT") : L("NOUVEAU", "NEW")}
+            </p>
+            <h3 className="font-display text-xl font-bold text-nordfjord mt-0.5">
+              {editing.id ? L("Modifier le coupon", "Edit coupon") : L("Nouveau coupon", "New coupon")}
+            </h3>
+          </div>
+          <button onClick={() => setEditing(null)} className="p-1 rounded-md hover:bg-clinical" data-testid="coupon-editor-close">
+            <X size={18} className="text-glacier" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* Section: Basics */}
+          <Section title={L("Général", "Basics")}>
+            <F
+              label={L("Code (majuscules)", "Code (uppercase)")}
+              value={editing.code}
+              onChange={(v) => setEditing({ ...editing, code: v.toUpperCase() })}
+              test="c-code"
+              placeholder="SUMMER20"
+              mono
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <F
+                label={L("Type de rabais", "Discount type")}
+                select={[
+                  { value: "percent", label: L("Pourcentage (%)", "Percent (%)") },
+                  { value: "fixed", label: L("Montant fixe (CAD)", "Fixed amount (CAD)") },
+                ]}
+                value={editing.discount_type}
+                onChange={(v) => setEditing({ ...editing, discount_type: v })}
+                test="c-type"
+              />
+              <F
+                label={editing.discount_type === "percent" ? L("Pourcentage (%)", "Percent (%)") : L("Montant (CAD)", "Amount (CAD)")}
+                type="number"
+                value={editing.value}
+                onChange={(v) => setEditing({ ...editing, value: v })}
+                test="c-value"
+                icon={editing.discount_type === "percent" ? <Percent size={14} /> : <DollarSign size={14} />}
+              />
+            </div>
+            <F
+              label={L("Sous-total minimum (CAD)", "Minimum subtotal (CAD)")}
+              type="number"
+              value={editing.min_subtotal}
+              onChange={(v) => setEditing({ ...editing, min_subtotal: v })}
+              test="c-min"
+              icon={<DollarSign size={14} />}
+            />
+            <label className="flex items-center gap-2 text-sm text-nordfjord cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!editing.active}
+                onChange={(e) => setEditing({ ...editing, active: e.target.checked })}
+                data-testid="c-active"
+                className="w-4 h-4 accent-nova"
+              />
+              {L("Coupon actif", "Coupon active")}
+            </label>
+          </Section>
+
+          {/* Section: Limits & schedule */}
+          <Section title={L("Limites & calendrier", "Limits & schedule")}>
+            <div className="grid grid-cols-2 gap-3">
+              <F
+                label={L("Début (AAAA-MM-JJ)", "Starts at (YYYY-MM-DD)")}
+                type="date"
+                value={editing.start_at?.slice(0, 10) ?? ""}
+                onChange={(v) => setEditing({ ...editing, start_at: v ? `${v}T00:00:00+00:00` : null })}
+                test="c-start"
+              />
+              <F
+                label={L("Expiration (AAAA-MM-JJ)", "Expires at (YYYY-MM-DD)")}
+                type="date"
+                value={editing.expires_at?.slice(0, 10) ?? ""}
+                onChange={(v) => setEditing({ ...editing, expires_at: v ? `${v}T23:59:59+00:00` : null })}
+                test="c-expires"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <F
+                label={L("Limite totale (vide = illimité)", "Total limit (blank = ∞)")}
+                type="number"
+                value={editing.usage_limit ?? ""}
+                onChange={(v) => setEditing({ ...editing, usage_limit: v })}
+                test="c-limit"
+                placeholder="∞"
+              />
+              <F
+                label={L("Par client (vide = ∞)", "Per customer (blank = ∞)")}
+                type="number"
+                value={editing.per_customer_limit ?? ""}
+                onChange={(v) => setEditing({ ...editing, per_customer_limit: v })}
+                test="c-per-customer"
+                placeholder="∞"
+              />
+            </div>
+            <F
+              label={L("Rabais max. (CAD, vide = aucun)", "Max discount (CAD, blank = none)")}
+              type="number"
+              value={editing.max_discount_cad ?? ""}
+              onChange={(v) => setEditing({ ...editing, max_discount_cad: v })}
+              test="c-max-discount"
+              icon={<DollarSign size={14} />}
+            />
+            <label className="flex items-center gap-2 text-sm text-nordfjord cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!editing.first_order_only}
+                onChange={(e) => setEditing({ ...editing, first_order_only: e.target.checked })}
+                data-testid="c-first-order"
+                className="w-4 h-4 accent-nova"
+              />
+              {L("Première commande seulement", "First order only")}
+            </label>
+          </Section>
+
+          {/* Section: Targeting */}
+          <Section title={L("Ciblage (optionnel)", "Targeting (optional)")}>
+            <F
+              label={L("Courriels autorisés (séparés par des virgules)", "Allowed emails (comma-separated)")}
+              value={editing.allowed_emails}
+              onChange={(v) => setEditing({ ...editing, allowed_emails: v })}
+              test="c-emails"
+              placeholder={L("vide = tout le monde", "blank = everyone")}
+            />
+            <F
+              label={L("IDs produits restreints (séparés par des virgules)", "Restricted product IDs (comma-separated)")}
+              value={editing.restrict_products}
+              onChange={(v) => setEditing({ ...editing, restrict_products: v })}
+              test="c-products"
+              placeholder={L("vide = tous", "blank = all")}
+            />
+            <F
+              label={L("Catégories restreintes (séparées par des virgules)", "Restricted categories (comma-separated)")}
+              value={editing.restrict_categories}
+              onChange={(v) => setEditing({ ...editing, restrict_categories: v })}
+              test="c-categories"
+              placeholder={L("vide = toutes", "blank = all")}
+            />
+          </Section>
+        </div>
+
+        {/* Sticky footer */}
+        <div className="sticky bottom-0 bg-white border-t border-ash px-6 py-4 flex gap-2 justify-end">
+          <button
+            onClick={() => setEditing(null)}
+            className="px-4 py-2 rounded-lg border border-ash text-sm font-medium text-nordfjord hover:bg-clinical transition"
+          >
+            {L("Annuler", "Cancel")}
+          </button>
+          <button
+            onClick={save}
+            data-testid="save-coupon-btn"
+            className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-nordfjord text-white text-sm font-medium hover:opacity-90 transition"
+          >
+            <Save size={14} /> {L("Enregistrer", "Save")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Helpers ---------- */
+
+function Section({ title, children }) {
+  return (
+    <div className="rounded-xl border border-ash bg-clinical/40 p-4 space-y-3">
+      <p className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+function F({ label, value, onChange, type = "text", select, test, placeholder, mono, icon }) {
+  const inputCls =
+    "w-full rounded-lg border border-ash bg-white px-3 py-2 text-sm text-nordfjord outline-none focus:border-nova transition" +
+    (mono ? " font-data" : "") +
+    (icon ? " pl-8" : "");
   return (
     <div>
-      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">{label}</label>
+      <label className="block font-data text-[10px] uppercase tracking-[0.2em] mb-1 text-glacier">{label}</label>
       {select ? (
-        <select value={value} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm bg-white">
-          {select.map((s) => <option key={s} value={s}>{s}</option>)}
+        <select
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+          data-testid={test}
+          className="w-full rounded-lg border border-ash bg-white px-3 py-2 text-sm text-nordfjord outline-none focus:border-nova transition"
+        >
+          {select.map((s) => {
+            const opt = typeof s === "string" ? { value: s, label: s } : s;
+            return <option key={opt.value} value={opt.value}>{opt.label}</option>;
+          })}
         </select>
       ) : (
-        <input type={type} value={value ?? ""} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm" />
+        <div className="relative">
+          {icon && <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-glacier">{icon}</span>}
+          <input
+            type={type}
+            value={value ?? ""}
+            onChange={(e) => onChange(e.target.value)}
+            data-testid={test}
+            placeholder={placeholder}
+            className={inputCls}
+          />
+        </div>
       )}
     </div>
   );

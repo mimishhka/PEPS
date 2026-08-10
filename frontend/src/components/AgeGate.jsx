@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ShieldCheck, LogOut } from "lucide-react";
 import { useLang } from "../contexts/LanguageContext";
 
 export default function AgeGate() {
@@ -23,38 +24,55 @@ export default function AgeGate() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[#3A0A08]/70 backdrop-blur-xl px-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-nordfjord/80 backdrop-blur-xl px-4"
       data-testid="age-gate-modal"
     >
-      <div className="relative w-full max-w-lg rounded-lg overflow-hidden bg-paper border border-faint shadow-luxe-lg">
-        <div className="bg-garnet px-6 py-3 font-mono text-[11px] uppercase tracking-[0.25em] text-paper flex items-center justify-between">
-          <span data-testid="age-gate-tag">// RESTRICTED · FIRONOVA</span>
-          <span className="text-copperlight">19+</span>
+      {/* Mesh accent */}
+      <div className="pointer-events-none absolute inset-0 opacity-30"
+           style={{
+             background:
+               "radial-gradient(600px circle at 20% 30%, rgba(0,184,212,0.25), transparent 60%)," +
+               "radial-gradient(500px circle at 80% 70%, rgba(0,184,212,0.15), transparent 60%)",
+           }} />
+
+      <div className="relative w-full max-w-lg rounded-2xl overflow-hidden bg-white border border-ash shadow-2xl">
+        {/* Top bar — Fironova nordfjord + nova accent */}
+        <div className="bg-nordfjord px-6 py-3 font-data text-[11px] uppercase tracking-[0.25em] text-white flex items-center justify-between">
+          <span className="inline-flex items-center gap-2" data-testid="age-gate-tag">
+            <ShieldCheck size={14} className="text-nova" />
+            RESTRICTED · FIRONOVA
+          </span>
+          <span className="text-nova font-bold">19+</span>
         </div>
+
         <div className="p-8">
-          <h2 className="font-display text-3xl sm:text-4xl font-bold tracking-[-0.01em] text-ink" data-testid="age-gate-title">
+          <h2 className="font-display text-3xl sm:text-4xl font-bold tracking-[-0.01em] text-nordfjord" data-testid="age-gate-title">
             {t("age.title")}
           </h2>
-          <p className="mt-6 text-sm leading-relaxed text-inkmuted" data-testid="age-gate-body">
+          <p className="mt-6 text-sm leading-relaxed text-glacier" data-testid="age-gate-body">
             {t("age.body")}
           </p>
+
           <div className="mt-8 flex flex-col sm:flex-row gap-3">
             <button
               data-testid="age-gate-confirm"
               onClick={confirm}
-              className="flex-1 rounded-full bg-signal text-paper font-mono text-xs uppercase tracking-[0.2em] py-4 shadow-luxe hover:shadow-luxe-lg transition-shadow"
+              className="flex-1 rounded-full bg-nordfjord text-white font-data text-xs uppercase tracking-[0.2em] py-4 hover:bg-nordfjord/90 shadow-lg shadow-nordfjord/20 transition inline-flex items-center justify-center gap-2"
             >
-              {t("age.confirm")} →
+              {t("age.confirm")}
+              <span className="text-nova" aria-hidden="true">→</span>
             </button>
             <button
               data-testid="age-gate-exit"
               onClick={exit}
-              className="flex-1 rounded-full border border-faint text-ink font-mono text-xs uppercase tracking-[0.2em] py-4 hover:border-copper transition-colors"
+              className="flex-1 rounded-full border border-ash text-nordfjord font-data text-xs uppercase tracking-[0.2em] py-4 hover:border-nova hover:text-nova transition inline-flex items-center justify-center gap-2"
             >
+              <LogOut size={12} />
               {t("age.exit")}
             </button>
           </div>
-          <p className="mt-6 fn-ruo block text-center">
+
+          <p className="mt-6 text-center font-data text-[10px] uppercase tracking-[0.28em] text-glacier">
             FOR RESEARCH USE ONLY · USAGE RECHERCHE UNIQUEMENT
           </p>
         </div>
