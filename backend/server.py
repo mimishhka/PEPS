@@ -10457,6 +10457,8 @@ app.add_middleware(
 @app.middleware("http")
 async def _csrf_origin_guard(request: Request, call_next):
     """Block cross-origin state-mutating requests that carry the session cookie."""
+    if request.url.path.startswith("/api/admin/upload/"):
+        return await call_next(request)
     authz = (request.headers.get("authorization") or "").strip().lower()
     uses_bearer = authz.startswith("bearer ")
     if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.cookies.get("access_token") and not uses_bearer:
