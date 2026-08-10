@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { Plus, Minus, BellRing, Check, FileText } from "lucide-react";
+import { Plus, Minus, BellRing, Check, FileText, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError, resolveAssetUrl } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
+import useAffiliate from "../hooks/useAffiliate";
 import { useCart } from "../contexts/CartContext";
 import { VialArt, Seal } from "../components/brand";
 import ProductImage from "../components/ProductImage";
@@ -19,6 +20,18 @@ export default function ProductDetail() {
   const { slug } = useParams();
   const { lang, t } = useLang();
   const { add } = useCart();
+  const { affiliate } = useAffiliate();
+
+  const copyAffiliateLink = async () => {
+    if (!affiliate?.code || !product?.slug) return;
+    const url = `${window.location.origin}/product/${product.slug}?ref=${affiliate.code}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success(lang === "fr" ? "Lien affilié copié" : "Affiliate link copied", { description: url });
+    } catch {
+      toast.error(lang === "fr" ? "Impossible de copier" : "Copy failed");
+    }
+  };
   const [product, setProduct] = useState(null);
   const [qty, setQty] = useState(1);
   const [variantId, setVariantId] = useState(null);
@@ -282,6 +295,21 @@ export default function ProductDetail() {
             <div className="rounded-xl bg-nordfjord text-clinical px-5 py-4 font-data text-[11px] uppercase tracking-[0.16em] leading-relaxed" data-testid="research-only-banner">
               {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT — NON DESTINÉ À LA CONSOMMATION HUMAINE" : "FOR RESEARCH USE ONLY — NOT INTENDED FOR HUMAN CONSUMPTION"}
             </div>
+
+            {affiliate?.code && (
+              <button
+                onClick={copyAffiliateLink}
+                data-testid="copy-affiliate-link"
+                className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl border-2 border-nova bg-nova/5 hover:bg-nova/10 px-4 py-3 font-data text-[11px] uppercase tracking-[0.18em] text-nova transition-colors"
+                title={lang === "fr"
+                  ? `Copie l'URL avec votre code ${affiliate.code}`
+                  : `Copies the URL with your code ${affiliate.code}`}
+              >
+                <Share2 size={14} strokeWidth={2} />
+                {lang === "fr" ? "Copier mon lien affilié" : "Copy my affiliate link"}
+                <span className="font-mono text-[10px] text-nova/70 ml-1">?ref={affiliate.code}</span>
+              </button>
+            )}
 
             {coaPending && (
               <div data-testid="coa-pending-warning" className="mt-4 flex items-start gap-2.5 rounded-xl border border-warning/40 bg-warning/5 px-4 py-3">
