@@ -46,6 +46,18 @@ export default function Account() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("orders");
 
+  // Charge le statut affilié s'il existe. Retourne 401/404 pour les non-affiliés
+  // → on ignore silencieusement l'erreur et n'affiche pas la carte.
+  const [affiliate, setAffiliate] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/affiliate/me")
+      .then((r) => { if (!cancelled) setAffiliate(r.data); })
+      .catch(() => { if (!cancelled) setAffiliate(null); });
+    return () => { cancelled = true; };
+  }, []);
+  const isActiveAffiliate = affiliate?.status === "active";
+
   return (
     <div className="bg-clinical min-h-screen">
       <div className="max-w-6xl mx-auto px-6 py-16" data-testid="account-page">
@@ -69,6 +81,34 @@ export default function Account() {
             {t("nav.logout")} →
           </button>
         </div>
+
+        {isActiveAffiliate && (
+          <Link
+            to="/affiliate"
+            data-testid="account-affiliate-link"
+            className="group rounded-2xl border border-nova/40 bg-gradient-to-br from-nova/8 to-transparent p-5 sm:p-6 mb-8 flex items-center gap-4 flex-wrap hover:border-nova hover:shadow-md transition"
+          >
+            <div className="w-11 h-11 rounded-xl bg-nova text-nordfjord flex items-center justify-center font-display font-extrabold text-lg shrink-0" aria-hidden="true">
+              ★
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-data text-[10px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+                {lang === "fr" ? "PROGRAMME AFFILIÉ · ACTIF" : "AFFILIATE PROGRAM · ACTIVE"}
+              </p>
+              <p className="font-display text-lg font-bold text-nordfjord leading-tight">
+                {lang === "fr" ? "Mon programme affilié" : "My affiliate program"}
+              </p>
+              <p className="font-data text-xs text-glacier mt-1">
+                {lang === "fr"
+                  ? <>Code : <span className="text-nordfjord font-bold">{affiliate.code}</span> · Consultez vos revenus, clics et meilleurs produits</>
+                  : <>Code: <span className="text-nordfjord font-bold">{affiliate.code}</span> · Track your earnings, clicks and best-selling products</>}
+              </p>
+            </div>
+            <span className="font-data text-xs font-semibold uppercase tracking-[0.18em] text-nordfjord group-hover:text-nova transition-colors shrink-0">
+              {lang === "fr" ? "Ouvrir le tableau de bord" : "Open dashboard"} →
+            </span>
+          </Link>
+        )}
 
         <div className="flex flex-wrap gap-1 border-b border-ash mb-10" data-testid="account-tabs">
           {[
