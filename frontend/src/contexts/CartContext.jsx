@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { resolveAssetUrl } from "../lib/api";
+import ProductImage from "../components/ProductImage";
 
 const CartContext = createContext(null);
 
@@ -57,13 +58,18 @@ export function CartProvider({ children }) {
     const fr = ((typeof window !== "undefined" && localStorage.getItem("fironova_lang")) || "en").startsWith("fr");
     const name = fr ? (product.name_fr || product.name_en) : (product.name_en || product.name_fr);
     const line = `${name}${v?.name ? ` · ${v.name}` : ""}`;
-    const img = resolveAssetUrl(product.image_url);
     toast.custom((id) => (
       <div className="w-[340px] max-w-[92vw] rounded-2xl border border-ash bg-white shadow-[0_20px_50px_-20px_rgba(11,46,79,.4)] p-4" data-testid="add-to-cart-toast">
         <div className="flex items-start gap-3">
-          {img ? (
-            <img src={img} alt="" className="w-12 h-12 rounded-lg object-cover border border-ash shrink-0" />
-          ) : null}
+          <div className="w-12 h-12 rounded-lg object-cover border border-ash shrink-0 overflow-hidden">
+            <ProductImage
+              src={product.image_url}
+              slug={product.slug}
+              alt=""
+              className="w-full h-full"
+              imgClassName="w-full h-full object-cover"
+            />
+          </div>
           <div className="flex-1 min-w-0">
             <p className="font-data text-[10px] uppercase tracking-[0.18em] text-nova mb-1">{fr ? "✓ Ajouté au panier" : "✓ Added to cart"}</p>
             <p className="font-display font-bold text-nordfjord text-sm truncate">{line}</p>
