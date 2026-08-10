@@ -10375,9 +10375,20 @@ async def _csrf_origin_guard(request: Request, call_next):
         origin = (request.headers.get("origin") or "").lower().rstrip("/")
         allowed = {o.lower().rstrip("/") for o in _cors_origins}
         matches_regex = bool(_cors_origin_re and _cors_origin_re.fullmatch(origin))
+        host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",", 1)[0].strip().lower()
+        origin_host = origin.split("://", 1)[-1].split("/", 1)[0]
+
+        def _strip_default_port(h: str) -> str:
+            if h.endswith(":443"):
+                return h[:-4]
+            if h.endswith(":80"):
+                return h[:-3]
+            return h
+
+        same_origin = _strip_default_port(origin_host) == _strip_default_port(host)
         if not origin:
             return Response(status_code=403, content="Origin required", media_type="text/plain")
-        if origin not in allowed and not matches_regex:
+        if origin not in allowed and not matches_regex and not same_origin:
             return Response(status_code=403, content="Origin not allowed", media_type="text/plain")
     return await call_next(request)
 
