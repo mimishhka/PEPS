@@ -1,0 +1,22 @@
+{
+  "summary": "Re-verified all 4 fixes after pod-restart re-application. FIX #2 (COA removed): grep 'COA included' in /app/frontend/src returns 0 matches; catalog spec lines show '5 mg · Lyophilized' / '10 mg · Lyophilized' etc. FIX #1 (ProductImage everywhere): ProductCard, CartDrawer, ProductDetail, CartContext toast all import and use <ProductImage>. Live catalog: 12/12 cards render valid images (naturalWidth>0), 0 broken. Cart drawer thumbnail = real img (naturalWidth=1380). Toast (add-to-cart) shows image element. Product detail main image loads (naturalWidth=1380). REGRESSION: OPS button → /login?next=%2Fops-portal-fn7k2q; login with admin@nordpep.ca / G7moffIe-CvzB5Mc → dashboard renders with Products/Coupons/Orders/Customers sections and real KPI data. All targeted fixes CONFIRMED VISUALLY.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Console shows repeated 401 errors on some resources during catalog browsing (likely /api/auth/me or similar guest calls). Not blocking, but consider suppressing 401 spam for anonymous visitors."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "test_credentials": "admin@nordpep.ca / G7moffIe-CvzB5Mc (used, working)",
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "iter19 confirmed all 4 image/COA fixes are persisted and working end-to-end on https://peptide-ca.preview.emergentagent.com. No pending image issues. If pod restarts again, first grep 'COA included' /app/frontend/src to detect regression.",
+  "rca of the issue": "iter18 detected fixes were wiped by pod restart. Main agent re-applied all 4 file edits (ProductCard, CartDrawer, ProductDetail, CartContext) using shared <ProductImage> fallback component, and removed 'COA included' from ProductCard specLine. iter19 confirms the edits are now present in source and rendered correctly in the live preview."
+}

@@ -7,6 +7,7 @@ import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { useCart } from "../contexts/CartContext";
 import { VialArt, Seal } from "../components/brand";
+import ProductImage from "../components/ProductImage";
 
 function hueFor(slug = "") {
   let h = 0;
@@ -162,11 +163,13 @@ export default function ProductDetail() {
         <div className="grid lg:grid-cols-2 gap-12">
           <div className="relative">
             <div className="rounded-2xl overflow-hidden aspect-square relative">
-              {imageSrc ? (
-                <img src={imageSrc} alt={name} className="w-full h-full object-cover" />
-              ) : (
-                <VialArt hue={hueFor(product.slug)} className="w-full h-full" />
-              )}
+              <ProductImage
+                src={product.image_url}
+                slug={product.slug}
+                alt={name}
+                className="w-full h-full"
+                imgClassName="w-full h-full object-cover"
+              />
               <div className="absolute bottom-5 right-5"><Seal size={92} /></div>
             </div>
             {coaAvailable ? (
@@ -341,11 +344,13 @@ export default function ProductDetail() {
                     className="group rounded-2xl border border-ash bg-white p-4 hover:border-nova transition">
                     <div className="aspect-square rounded-xl mb-3 flex items-center justify-center overflow-hidden"
                       style={{ background: `hsl(${hueFor(p.slug)} 70% 96%)` }}>
-                      {p.image_url ? (
-                        <img src={resolveAssetUrl(p.image_url)} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <VialArt hue={hueFor(p.slug)} />
-                      )}
+                      <ProductImage
+                        src={p.image_url}
+                        slug={p.slug}
+                        alt=""
+                        className="w-full h-full"
+                        imgClassName="w-full h-full object-cover"
+                      />
                     </div>
                     <div className="font-display font-bold text-sm text-nordfjord leading-tight group-hover:text-nova transition">
                       {lang === "fr" ? p.name_fr : p.name_en}

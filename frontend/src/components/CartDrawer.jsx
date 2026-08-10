@@ -2,14 +2,7 @@ import { X, Plus, Minus, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
-import { VialArt } from "./brand";
-import { resolveAssetUrl } from "../lib/api";
-
-function hueFor(slug = "") {
-  let h = 0;
-  for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) % 360;
-  return 190 + (h % 40);
-}
+import ProductImage from "./ProductImage";
 
 export default function CartDrawer() {
   const { lang, t } = useLang();
@@ -57,11 +50,13 @@ export default function CartDrawer() {
                     data-testid={`cart-item-${it.slug}`}
                   >
                     <div className="aspect-square rounded-lg overflow-hidden border border-ash bg-clinical">
-                      {resolveAssetUrl(it.image_url) ? (
-                        <img src={resolveAssetUrl(it.image_url)} alt={name} className="w-full h-full object-cover" />
-                      ) : (
-                        <VialArt hue={hueFor(it.slug)} className="w-full h-full" />
-                      )}
+                      <ProductImage
+                        src={it.image_url}
+                        slug={it.slug}
+                        alt={name}
+                        className="w-full h-full"
+                        imgClassName="w-full h-full object-cover"
+                      />
                     </div>
                     <div className="flex flex-col gap-1">
                       <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">{it.slug}</div>
