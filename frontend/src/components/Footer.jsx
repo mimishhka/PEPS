@@ -12,6 +12,10 @@ const FALLBACK_COLS = [
     { to: "/catalog?cat=weight-loss", labelKey: "categories.weight-loss" },
     { to: "/catalog?cat=cognitive", labelKey: "categories.cognitive" },
   ]},
+  { key: "program", titleKey: "footer.program", links: [
+    { to: "/affiliate/join", labelKey: "footer.affiliate" },
+    { to: "/affiliate", labelKey: "footer.affiliate_dashboard" },
+  ]},
   { key: "legal", titleKey: "footer.legal", links: [
     { to: "/compliance", labelKey: "footer.terms" },
     { to: "/privacy", labelKey: "footer.privacy" },
@@ -44,13 +48,29 @@ export default function Footer() {
     return () => { cancelled = true; };
   }, [lang]);
 
-  const columns = (cols && cols.length)
+  const affiliateCol = {
+    key: "program",
+    title: t("footer.program") || (lang === "fr" ? "Programme" : "Program"),
+    links: [
+      { to: "/affiliate/join", label: t("footer.affiliate") || (lang === "fr" ? "Programme d'affiliation" : "Affiliate Program"), newTab: false },
+      { to: "/affiliate", label: t("footer.affiliate_dashboard") || (lang === "fr" ? "Tableau de bord affilié" : "Affiliate Dashboard"), newTab: false },
+    ],
+  };
+
+  const baseColumns = (cols && cols.length)
     ? cols
     : FALLBACK_COLS.map((c) => ({
         key: c.key,
         title: t(c.titleKey),
         links: c.links.map((l) => ({ to: l.to, label: t(l.labelKey), newTab: false })),
       }));
+
+  // Always surface the affiliate program on the public site — it's a core
+  // acquisition channel that must not disappear if the DB-stored menus were
+  // seeded without it.
+  const columns = baseColumns.some((c) => c.key === "program")
+    ? baseColumns
+    : [...baseColumns, affiliateCol];
   const { user } = useAuth();
   const navigate = useNavigate();
 

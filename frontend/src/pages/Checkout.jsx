@@ -186,11 +186,13 @@ export default function Checkout() {
       accept_terms: !!acceptPolicy,
       confirm_age: !!confirmAge,
       confirm_research_use: !!acceptRuO,
+      // Passed in the body to avoid a CORS preflight from a custom header.
+      idempotency_key: idempotencyKey,
     };
 
     setSubmitting(true);
     try {
-      const { data } = await api.post("/checkout", payload, { headers: { "Idempotency-Key": idempotencyKey } });
+      const { data } = await api.post("/checkout", payload);
       if (!data?.id) throw new Error(lang === "fr" ? "Réponse de commande invalide" : "Malformed checkout response");
       clear();
       // Interac ET crypto : page de confirmation interne.
