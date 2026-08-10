@@ -157,6 +157,56 @@ export default function AffiliateDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Top products to feature in the "Share" widget — up to 3 featured items,
+  // fallback to the first products in the catalog.
+  const [topProducts, setTopProducts] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.get("/products", { params: { featured: true } }).catch(() => ({ data: [] })),
+      api.get("/products").catch(() => ({ data: [] })),
+    ]).then(([featured, all]) => {
+      if (cancelled) return;
+      const combined = [...(featured.data || []), ...(all.data || [])];
+      const seen = new Set();
+      const dedup = combined.filter((p) => {
+        if (!p?.slug || seen.has(p.slug)) return false;
+        seen.add(p.slug);
+        return true;
+      }).slice(0, 3);
+      setTopProducts(dedup);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const productShareUrl = (slug) => refCode
+    ? `${window.location.origin}/product/${slug}?ref=${refCode}`
+    : "";
+
+  const copyProduct = async (slug) => {
+    const url = productShareUrl(slug);
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success(L("Lien copié", "Link copied"), { description: url });
+    } catch { toast.error(L("Copie impossible", "Copy failed")); }
+  };
+
+  const shareProduct = (slug, kind) => {
+    const url = encodeURIComponent(productShareUrl(slug));
+    const text = encodeURIComponent(
+      L(`Découvrez ce composé Fironova (code ${refCode})`,
+        `Check out this Fironova compound (code ${refCode})`)
+    );
+    const targets = {
+      whatsapp: `https://wa.me/?text=${text}%20${url}`,
+      telegram: `https://t.me/share/url?url=${url}&text=${text}`,
+      email: `mailto:?subject=${encodeURIComponent(L("Découverte Fironova", "Fironova pick"))}&body=${text}%20${url}`,
+    };
+    try { window.open(targets[kind], "_blank", "noopener,noreferrer"); }
+    catch { toast.error(L("Ouverture impossible", "Unable to open")); }
+  };
+
   const refCode = data?.code || "";
   const refLink = refCode
     ? `${window.location.origin}/?ref=${refCode}`
@@ -491,6 +541,72 @@ export default function AffiliateDashboard() {
                 )}
               </p>
             </div>
+
+            {/* Top products share widget */}
+            {topProducts.length > 0 && refCode && (
+              <div className="bg-white rounded-2xl border border-ash p-6" data-testid="affiliate-share-widget">
+                <div className="flex items-baseline justify-between mb-4">
+                  <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+                    {L("MON LIEN DE PARTAGE — TOP PRODUITS", "MY SHARE LINK — TOP PRODUCTS")}
+                  </p>
+                  <p className="font-data text-[10px] text-glacier">
+                    {L("1 clic = attribution automatique à votre code", "1 click = auto-attributed to your code")}
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {topProducts.map((p) => (
+                    <div key={p.slug}
+                      className="rounded-xl border border-ash bg-clinical p-4 flex flex-col"
+                      data-testid={`share-product-${p.slug}`}>
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div className="min-w-0">
+                          <p className="font-display text-[15px] font-bold text-nordfjord leading-tight truncate">
+                            {lang === "fr" ? p.name_fr : p.name_en}
+                          </p>
+                          <p className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier mt-1">
+                            {p.category || "peptide"}
+                          </p>
+                        </div>
+                      </div>
+                      <code className="font-data text-[10px] text-nordfjord bg-white rounded-md px-2 py-1.5 border border-ash break-all mb-3 min-h-[3.4em]">
+                        /product/{p.slug}?ref={refCode}
+                      </code>
+                      <div className="mt-auto flex items-center gap-1.5 flex-wrap">
+                        <button onClick={() => copyProduct(p.slug)}
+                          data-testid={`share-copy-${p.slug}`}
+                          className="flex-1 px-3 py-2 rounded-lg bg-nova text-nordfjord font-data text-[10px] font-bold uppercase tracking-wider hover:opacity-90 transition">
+                          {L("Copier", "Copy")}
+                        </button>
+                        <button onClick={() => shareProduct(p.slug, "whatsapp")}
+                          data-testid={`share-whatsapp-${p.slug}`}
+                          title="WhatsApp"
+                          className="p-2 rounded-lg border border-ash hover:bg-white transition">
+                          <MessageCircle size={13} className="text-success" />
+                        </button>
+                        <button onClick={() => shareProduct(p.slug, "telegram")}
+                          data-testid={`share-telegram-${p.slug}`}
+                          title="Telegram"
+                          className="p-2 rounded-lg border border-ash hover:bg-white transition">
+                          <Send size={13} className="text-nova" />
+                        </button>
+                        <button onClick={() => shareProduct(p.slug, "email")}
+                          data-testid={`share-email-${p.slug}`}
+                          title="Email"
+                          className="p-2 rounded-lg border border-ash hover:bg-white transition">
+                          <Mail size={13} className="text-nordfjord" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="font-data text-[10px] text-glacier mt-3 leading-relaxed">
+                  {L(
+                    "Astuce : ces liens produits convertissent 3-5× mieux que le lien home, car ils atterrissent directement sur un composé précis.",
+                    "Tip: product links convert 3-5× better than the home link because they land directly on a specific compound."
+                  )}
+                </p>
+              </div>
+            )}
           </div>
         )}
 

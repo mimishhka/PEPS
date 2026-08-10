@@ -7963,10 +7963,18 @@ class AffiliatePayoutSettingsIn(BaseModel):
 
 class AffiliateAdminUpdateIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
     status: Optional[Literal["invited", "active", "suspended"]] = None
     compliance_status: Optional[Literal["compliant", "review", "suspended"]] = None
     manual_tier: Optional[str] = None          # override manuel du palier
     commission_note: Optional[str] = None
+    # Détails de paiement (l'admin peut corriger si l'affilié se trompe)
+    payout_address: Optional[str] = Field(default=None, max_length=200)
+    payout_currency: Optional[str] = Field(default=None, max_length=12)
+    # Pourcentage promo affiché sur le code (ex: -10%, -15%)
+    coupon_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    # Notes internes (non visibles par l'affilié)
+    admin_notes: Optional[str] = Field(default=None, max_length=2000)
 
 
 class AffiliatePayoutMarkIn(BaseModel):

@@ -888,11 +888,24 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const [data, setData] = useState(null);
   const [markingId, setMarkingId] = useState(null);
   const [ref, setRef] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({});
+  const [resending, setResending] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const { data } = await api.get(`/admin/affiliates/${affiliateId}`);
       setData(data);
+      const a = data.affiliate || {};
+      setForm({
+        name: a.name || "",
+        payout_address: a.payout_address || "",
+        payout_currency: a.payout_currency || "",
+        coupon_percent: a.coupon_percent ?? "",
+        manual_tier: a.manual_tier || "",
+        commission_note: a.commission_note || "",
+        admin_notes: a.admin_notes || "",
+      });
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     }
@@ -905,6 +918,35 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
       await api.put(`/admin/affiliates/${affiliateId}`, patch);
       toast.success(L("Mis à jour", "Updated")); load(); onChange();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+
+  const saveForm = async () => {
+    const patch = {};
+    Object.entries(form).forEach(([k, v]) => {
+      if (v === "" || v == null) return;
+      if (k === "coupon_percent") { patch[k] = Number(v); return; }
+      patch[k] = v;
+    });
+    await setPatch(patch);
+    setEditing(false);
+  };
+
+  const resendInvite = async () => {
+    setResending(true);
+    try {
+      await api.post(`/admin/affiliates/${affiliateId}/resend-invite`);
+      toast.success(L("Invitation renvoyée", "Invite resent"));
+      load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+    finally { setResending(false); }
+  };
+
+  const copyCode = async () => {
+    if (!data?.affiliate?.code) return;
+    try {
+      await navigator.clipboard.writeText(data.affiliate.code);
+      toast.success(L("Code copié", "Code copied"));
+    } catch { toast.error(L("Copie impossible", "Copy failed")); }
   };
 
   const markPaid = async (payoutId) => {
@@ -921,20 +963,37 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl border border-ash w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl border border-ash w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()} data-testid="affiliate-detail-modal">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="font-display text-lg font-bold text-nordfjord">{a?.name || "—"}</h3>
+          <div>
+            <h3 className="font-display text-lg font-bold text-nordfjord">{a?.name || "—"}</h3>
+            {a?.email && <p className="text-xs text-glacier">{a.email}</p>}
+          </div>
           <button onClick={onClose}><X size={18} className="text-glacier" /></button>
         </div>
         {!data ? (
           <p className="text-sm text-glacier">{L("Chargement…", "Loading…")}</p>
         ) : (
           <div className="space-y-6">
+            {/* Identity + code */}
             <div className="grid grid-cols-2 gap-3 text-sm">
               <Info label={L("Courriel", "Email")} value={a.email} />
-              <Info label={L("Code", "Code")} value={a.code || "—"} mono />
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-glacier">{L("Code", "Code")}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-nordfjord font-mono text-xs">{a.code || "—"}</p>
+                  {a.code && (
+                    <button onClick={copyCode} data-testid="affiliate-copy-code"
+                      className="p-1 rounded hover:bg-clinical" title={L("Copier", "Copy")}>
+                      <Copy size={12} className="text-nova" />
+                    </button>
+                  )}
+                </div>
+              </div>
               <Info label={L("Statut", "Status")} value={a.status} />
               <Info label={L("Conformité", "Compliance")} value={a.compliance_status} />
+              <Info label={L("Créé le", "Created")} value={fmtDate(a.created_at)} />
+              <Info label={L("Activé le", "Activated")} value={fmtDate(a.activated_at)} />
               {m && <>
                 <Info label={L("CA validé", "Validated rev.")} value={money(m.cumulative_revenue)} />
                 <Info label={L("CA trimestre", "Quarter rev.")} value={money(m.quarter_revenue)} />
@@ -942,14 +1001,107 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 <Info label={L("En attente", "Pending")} value={money(m.pending_commission)} />
               </>}
               <Info label={L("Invitations envoyées", "Invites sent")} value={a.invite_sent_count || 0} />
+              {a.coupon_percent != null && <Info label={L("% promo public", "Public promo %")} value={`${a.coupon_percent}%`} />}
             </div>
 
+            {/* Status actions */}
             <div className="flex flex-wrap gap-2">
+              {a.status === "invited" && (
+                <ActBtn onClick={resendInvite} data-testid="affiliate-resend-invite">
+                  {resending ? L("Envoi…", "Sending…") : L("Renvoyer l'invitation", "Resend invite")}
+                </ActBtn>
+              )}
               {a.status === "active" && <ActBtn onClick={() => setPatch({ status: "suspended" })}>{L("Suspendre", "Suspend")}</ActBtn>}
               {a.status === "suspended" && <ActBtn onClick={() => setPatch({ status: "active" })}>{L("Réactiver", "Reactivate")}</ActBtn>}
               {a.compliance_status !== "review" && <ActBtn onClick={() => setPatch({ compliance_status: "review" })}>{L("Marquer en révision", "Flag review")}</ActBtn>}
               {a.compliance_status !== "compliant" && <ActBtn onClick={() => setPatch({ compliance_status: "compliant" })}>{L("Marquer conforme", "Mark compliant")}</ActBtn>}
+              <ActBtn onClick={() => setEditing((v) => !v)} data-testid="affiliate-edit-toggle">
+                {editing ? L("Annuler l'édition", "Cancel edit") : L("Éditer les paramètres", "Edit settings")}
+              </ActBtn>
             </div>
+
+            {/* Editable fields */}
+            {editing && (
+              <div className="rounded-xl border border-nova/40 bg-nova/5 p-4 space-y-3" data-testid="affiliate-edit-form">
+                <p className="font-data text-[11px] uppercase tracking-[0.2em] text-nova">
+                  {L("PARAMÈTRES ÉDITABLES", "EDITABLE SETTINGS")}
+                </p>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <EditField label={L("Nom d'affichage", "Display name")}
+                    value={form.name} onChange={(v) => setForm({ ...form, name: v })}
+                    test="edit-name" />
+                  <EditField label={L("% promo public (coupon)", "Public promo % (coupon)")}
+                    type="number" min={0} max={100} step={1}
+                    value={form.coupon_percent} onChange={(v) => setForm({ ...form, coupon_percent: v })}
+                    test="edit-coupon-percent" />
+                  <EditField label={L("Adresse de paiement", "Payout address")}
+                    value={form.payout_address} onChange={(v) => setForm({ ...form, payout_address: v })}
+                    test="edit-payout-address"
+                    placeholder={L("Interac email, adresse crypto ou IBAN", "Interac email, crypto address, or IBAN")} />
+                  <EditField label={L("Devise / méthode", "Currency / method")}
+                    value={form.payout_currency} onChange={(v) => setForm({ ...form, payout_currency: v })}
+                    test="edit-payout-currency"
+                    placeholder="CAD / USDC / BTC" />
+                  <EditField label={L("Palier manuel (override)", "Manual tier override")}
+                    value={form.manual_tier} onChange={(v) => setForm({ ...form, manual_tier: v })}
+                    test="edit-manual-tier"
+                    placeholder={L("laisser vide pour auto", "leave blank for auto")}
+                    select={["", "standard", "bronze", "silver", "gold", "platinum", "diamond"]} />
+                </div>
+                <div>
+                  <label className="text-[11px] uppercase tracking-wider text-glacier">
+                    {L("Note commission (visible sur relevé)", "Commission note (shown on statements)")}
+                  </label>
+                  <textarea value={form.commission_note} onChange={(e) => setForm({ ...form, commission_note: e.target.value })}
+                    data-testid="edit-commission-note"
+                    className="w-full mt-1 rounded-md border border-ash px-2 py-1.5 text-xs bg-white text-nordfjord outline-none"
+                    rows={2} />
+                </div>
+                <div>
+                  <label className="text-[11px] uppercase tracking-wider text-glacier">
+                    {L("Notes internes (privées, non visibles par l'affilié)", "Internal notes (private, not shown to affiliate)")}
+                  </label>
+                  <textarea value={form.admin_notes} onChange={(e) => setForm({ ...form, admin_notes: e.target.value })}
+                    data-testid="edit-admin-notes"
+                    className="w-full mt-1 rounded-md border border-ash px-2 py-1.5 text-xs bg-white text-nordfjord outline-none"
+                    rows={3} />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <button onClick={() => setEditing(false)}
+                    className="px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical">
+                    {L("Annuler", "Cancel")}
+                  </button>
+                  <button onClick={saveForm} data-testid="affiliate-edit-save"
+                    className="px-4 py-1.5 rounded-md bg-nordfjord text-white text-xs font-medium hover:opacity-90">
+                    {L("Enregistrer", "Save")}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Payout settings display (when not editing) */}
+            {!editing && (a.payout_address || a.payout_currency) && (
+              <div className="rounded-xl border border-ash bg-clinical p-4" data-testid="affiliate-payout-info">
+                <p className="text-[11px] uppercase tracking-wider text-glacier mb-2">
+                  {L("Paramètres de paiement affilié", "Affiliate payout settings")}
+                </p>
+                <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                  <Info label={L("Adresse / destinataire", "Address / recipient")} value={a.payout_address || "—"} mono />
+                  <Info label={L("Devise / méthode", "Currency / method")} value={a.payout_currency || "—"} />
+                </div>
+                {a.commission_note && (
+                  <p className="text-xs text-glacier mt-3 italic">"{a.commission_note}"</p>
+                )}
+              </div>
+            )}
+            {!editing && a.admin_notes && (
+              <div className="rounded-xl border border-warning/40 bg-warning/5 p-4">
+                <p className="text-[11px] uppercase tracking-wider text-warning mb-1">
+                  {L("Notes internes admin", "Internal admin notes")}
+                </p>
+                <p className="text-xs text-nordfjord whitespace-pre-wrap">{a.admin_notes}</p>
+              </div>
+            )}
 
             <div>
               <p className="text-xs uppercase tracking-wider text-glacier mb-2">{L("Relevés de paiement", "Payouts")}</p>
@@ -1014,8 +1166,28 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   );
 }
 
-function ActBtn({ onClick, children }) {
-  return <button onClick={onClick} className="px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical">{children}</button>;
+function EditField({ label, value, onChange, type = "text", test, placeholder, select, min, max, step }) {
+  return (
+    <label className="block">
+      <span className="text-[11px] uppercase tracking-wider text-glacier mb-1 block">{label}</span>
+      {select ? (
+        <select value={value ?? ""} onChange={(e) => onChange(e.target.value)}
+          data-testid={test}
+          className="w-full rounded-md border border-ash px-2 py-1.5 text-xs bg-white text-nordfjord outline-none">
+          {select.map((opt) => <option key={opt} value={opt}>{opt || "—"}</option>)}
+        </select>
+      ) : (
+        <input type={type} value={value ?? ""} onChange={(e) => onChange(e.target.value)}
+          data-testid={test} placeholder={placeholder}
+          min={min} max={max} step={step}
+          className="w-full rounded-md border border-ash px-2 py-1.5 text-xs bg-white text-nordfjord outline-none" />
+      )}
+    </label>
+  );
+}
+
+function ActBtn({ onClick, children, ...rest }) {
+  return <button onClick={onClick} {...rest} className="px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical">{children}</button>;
 }
 function Field({ label, children }) {
   return <label className="block"><span className="text-xs text-glacier mb-1 block">{label}</span>{children}</label>;

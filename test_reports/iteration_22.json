@@ -1,0 +1,34 @@
+{
+  "summary": "Iter22 — Admin Affiliate detail modal bonification. Tested backend PUT /api/admin/affiliates/{id} with new extended fields (name, payout_address, payout_currency, coupon_percent, admin_notes) and full frontend edit flow. All 5 backend pytest tests PASS. Frontend modal enrichment works end-to-end: header (name+email+code), copy-code button (clipboard verified = 'FN7HGWNX'), resend-invite button (visible only for 'invited' status, absent on 'active'), edit form with 5 EditField testids + 2 textareas all present, save persists and reloads modal with Public Promo %=12%, Affiliate Payout Settings block (new-crypto-addr / USDC), Internal Admin Notes block with warning border. Toast 'Updated' shown after save. Toast 'Invite resent' shown when resending. Data rolled back to neutral values after tests.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminAffiliates.jsx ActBtn helper", "issue": "ActBtn wrapper was not forwarding data-testid (or any extra props) to underlying <button>, so 'affiliate-edit-toggle' and 'affiliate-resend-invite' testids never made it to the DOM. Fixed in this iteration by spreading ...rest onto button.", "selector": "function ActBtn", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter22_affiliate_admin_update.py",
+    "/app/test_reports/pytest/iter22_results.xml"
+  ],
+  "action_items": [
+    "None blocking. Optionally add data-testid to Suspend/Reactivate/Flag review/Mark compliant ActBtn buttons and to the 'Details' button per row for future test stability (not required by this task)."
+  ],
+  "critical_code_review_comments": [
+    "ActBtn helper had a props-forwarding bug (fixed) — apply the same {...rest} pattern to Field/Info helpers if additional testids are added later.",
+    "AdminAffiliates.jsx is ~1198 lines — approaching the 700-line guideline; consider splitting DetailModal and payout-related sub-blocks into separate files for maintainability.",
+    "Backend PUT correctly excludes None via model_dump(exclude_none=True); empty-string on payout_address/admin_notes is stored as '' which is desired for clearing. Confirmed persistence via GET."
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/admin/sections/AdminAffiliates.jsx (ActBtn now forwards ...rest so data-testid reaches DOM)",
+    "/app/backend/tests/test_iter22_affiliate_admin_update.py (new pytest module)"
+  ],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% (all modal enrichment checks passed)"},
+  "test_credentials": "admin@nordpep.ca / G7moffIe-CvzB5Mc — demo.affilie@fironova.com (code FN7HGWNX, active) — mireille035@outlook.com (invited)",
+  "seed_data_creation": "None. Rolled back demo affiliate payout_address, payout_currency, coupon_percent, admin_notes to empty/0 after tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "AdminAffiliates.jsx ActBtn helper now forwards ...rest. If future testids on Suspend/Flag review buttons are added, they will work automatically. The Details cell button per row currently has NO data-testid — playwright must use text='Details' inside the row locator. Two seed affiliates: demo.affilie@fironova.com (active, code FN7HGWNX) and mireille035@outlook.com (invited).",
+  "rca of the issue": "During validation of the modal edit flow, data-testid='affiliate-edit-toggle' timed out. RCA: ActBtn was defined as `function ActBtn({ onClick, children })` — it destructured only onClick and children and dropped every other prop (including data-testid). Fix: `function ActBtn({ onClick, children, ...rest })` and spread {...rest} on the underlying <button>. Verified fix: edit-toggle now clickable, resend-invite testid also reaches DOM on the invited affiliate row."
+}
