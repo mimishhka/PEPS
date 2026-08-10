@@ -7,33 +7,18 @@ function normalizeBackendBase(value) {
   return candidate.replace(/\/+$/, "");
 }
 
-function resolveRuntimeOrigin() {
-  if (typeof window === "undefined") return "http://127.0.0.1:8001";
-  return window.location.origin;
-}
-
 export function buildApiBaseUrl() {
   const envValue = normalizeBackendBase(process.env.REACT_APP_BACKEND_URL);
-  const isBrowser = typeof window !== "undefined";
-  const isLocalHost = isBrowser && ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
-  if (isLocalHost) {
-    const localOrigin = normalizeBackendBase(`http://${window.location.hostname}:8001`);
-    return `${localOrigin}/api`;
+  if (typeof window === "undefined") {
+    const base = envValue || "http://127.0.0.1:8001";
+    return base.endsWith("/api") ? base : `${base}/api`;
   }
 
-  const runtimeOrigin = resolveRuntimeOrigin();
-  let base = envValue || runtimeOrigin;
+  const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  const base = envValue || (isLocalHost ? `http://${window.location.hostname}:8001` : window.location.origin);
 
-  if (base === runtimeOrigin) {
-    return `${base}/api`;
-  }
-
-  if (base.endsWith("/api")) {
-    return base;
-  }
-
-  return `${base}/api`;
+  return base.endsWith("/api") ? base : `${base}/api`;
 }
 
 export const API_BASE = buildApiBaseUrl();

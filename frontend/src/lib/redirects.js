@@ -6,7 +6,6 @@ export function sanitizeRedirectTarget(raw, fallback = "/") {
     candidate.startsWith("//") ||
     candidate.startsWith("http://") ||
     candidate.startsWith("https://") ||
-    candidate.startsWith("javascript:") ||
     candidate.startsWith("data:")
   ) {
     return fallback;
