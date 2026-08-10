@@ -11015,7 +11015,13 @@ app.include_router(api)
 # CORS crédentialé : le navigateur refuse Access-Control-Allow-Origin: * dès
 # que des cookies sont envoyés. On échoue vite en cas de mauvaise config.
 _cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
-_cors_origin_regex = os.environ.get("CORS_ORIGIN_REGEX", r"^https://.*\.preview\.emergentagent\.com$").strip() or None
+# Regex par défaut élargi pour couvrir les deux domaines Emergent (preview.emergentagent.com
+# et preview.emergentcf.cloud — ce dernier est parfois injecté comme Origin par le
+# Cloudflare edge de la plateforme, ce qui faisait planter le CSRF guard).
+_cors_origin_regex = os.environ.get(
+    "CORS_ORIGIN_REGEX",
+    r"^https://.*\.preview\.(emergentagent\.com|emergentcf\.cloud)$",
+).strip() or None
 _cors_origin_re = re.compile(_cors_origin_regex, re.IGNORECASE) if _cors_origin_regex else None
 if "*" in _cors_origins:
     raise RuntimeError(
