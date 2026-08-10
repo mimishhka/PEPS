@@ -28,7 +28,7 @@ export default function AuthCallback() {
       if (res.ok) navigate(redirectTo, { replace: true });
       else setStatus("error");
     })();
-  }, [location.search, navigate, verifyMagic]);
+  }, [location.hash, location.pathname, location.search, navigate, verifyMagic]);
 
   return (
     <div className="min-h-[85vh] grid place-items-center bg-clinical px-6" data-testid="auth-callback">

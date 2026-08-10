@@ -87,7 +87,7 @@ function GatedApp() {
       .catch(() => { if (!cancelled) setPreviewOk(false); })
       .finally(() => { if (!cancelled) setPreviewChecked(true); });
     return () => { cancelled = true; };
-  }, [token]);
+  }, [location.hash, location.pathname, location.search, token]);
 
   if (!loaded || authLoading || !previewChecked) return null;
 

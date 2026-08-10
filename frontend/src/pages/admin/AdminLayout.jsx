@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, ShoppingCart, Package, Ticket, Users, Truck, Settings as Cog,
@@ -43,7 +43,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { lang } = useLang();
-  const L = (fr, en) => (lang === "fr" ? fr : en);
+  const L = useCallback((fr, en) => (lang === "fr" ? fr : en), [lang]);
   const [signals, setSignals] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -117,7 +117,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
         ),
       }))
       .filter((g) => g.items.length > 0);
-  }, [user, basePath, lang]);
+  }, [user, basePath, L]);
 
   const landingPath = navGroups[0]?.items[0]?.to || basePath;
 
