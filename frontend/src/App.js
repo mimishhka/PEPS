@@ -144,9 +144,9 @@ function AppRoutes() {
           </AdminGate>
         }
       />
-      {/* L'ancien /admin ne mène plus nulle part de spécial — traité comme
-          n'importe quelle URL inconnue, comme si le panneau n'avait jamais
-          existé à cet endroit. */}
+      <Route path="/admin/*" element={<Navigate to={ADMIN_PATH} replace />} />
+      <Route path="/ops/*" element={<Navigate to={ADMIN_PATH} replace />} />
+        {/* Alias de compatibilité : redirigent vers le portail OPS courant. */}
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
