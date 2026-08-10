@@ -26,9 +26,13 @@ export const ASSET_BASE = API_BASE.replace(/\/api$/, "");
 
 const api = axios.create({
   baseURL: API_BASE,
-  // Auth = cookie httpOnly `access_token` uniquement. Aucun token ne transite
-  // par un stockage accessible au JS, donc une XSS ne peut pas voler la session.
-  withCredentials: true,
+  // Auth = JWT Bearer via `Authorization` header (injecté par l'interceptor
+  // ci-dessous depuis localStorage.fironova_token). `withCredentials` est
+  // volontairement FAUX : ceci évite le blocage CORS des navigateurs stricts
+  // (Safari, Firefox strict tracking, Chrome + extensions) qui rejettent
+  // toute réponse combinant `credentials: true` avec `Access-Control-Allow-Origin: *`.
+  // Le cookie httpOnly reste posé côté backend en fallback mais n'est plus lu ici.
+  withCredentials: false,
 });
 
 api.interceptors.request.use((config) => {
