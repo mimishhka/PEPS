@@ -17,7 +17,7 @@ export default function Login() {
 
   const nextParam = new URLSearchParams(location.search).get("next") || "";
   const isAdminLogin = nextParam.includes("ops-portal");
-  const [mode, setMode] = useState(isAdminLogin ? "password" : "magic"); // magic | password
+  const [mode, setMode] = useState("password"); // magic | password — password est le défaut le plus attendu
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
