@@ -6,7 +6,9 @@ const isLocalHost = isBrowser && ["localhost", "127.0.0.1"].includes(window.loca
 const LOCAL_BACKEND_URL = isBrowser
   ? `http://${window.location.hostname}:8001`
   : "http://127.0.0.1:8001";
-const BACKEND_URL = isLocalHost ? LOCAL_BACKEND_URL : ENV_BACKEND_URL;
+const BACKEND_URL = isLocalHost
+  ? LOCAL_BACKEND_URL
+  : (ENV_BACKEND_URL || (isBrowser ? window.location.origin : "http://127.0.0.1:8001"));
 
 export const API_BASE = `${BACKEND_URL}/api`;
 export const ASSET_BASE = API_BASE.replace(/\/api$/, "");
