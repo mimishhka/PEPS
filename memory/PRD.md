@@ -121,3 +121,9 @@ E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (N
 ### P2 — Backlog technique
 - Refactor `server.py` (10 800+ lignes) → routers modulaires (`routes/orders.py`, `routes/auth.py`, `routes/affiliates.py`, `routes/coupons.py`)
 - Pages admin manquantes (`AdminSubscribers`, `AdminLayoutSettings`)
+
+
+## Update — Février 2026 (session fork, suite)
+- **Meilleurs produits perso pour affiliés** — Nouveau endpoint `GET /api/affiliate/top-products?limit=N` (default 5, max 20) qui agrège les items des commandes payées attribuées à l'affilié courant. Frontend `AffiliateDashboard.jsx` : appel prioritaire, fallback vers `/products?featured=true` si aucune vente. Widget mis à jour avec badge rang (1,2,3) + qté vendue + revenu généré + pluralisation FR/EN. Tests: 100% backend (6/6, `/app/backend/tests/test_affiliate_top_products_and_cf_ip.py`) + 100% frontend (iteration_24.json).
+- **Fix rate limit Cloudflare** — `_client_ip()` étendu pour lire prioritairement `CF-Connecting-IP` (validée), avec fallback `X-Forwarded-For` quand le peer est en IP privée/loopback. Le compteur de brute-force sur `/api/auth/login` distingue à nouveau les vrais visiteurs derrière Cloudflare. Vérifié: 5 tentatives sur même CF-IP → 429; IP fraîche → 401.
+- **AgeGate & Coupons UI** — AgeGate refondu en identité Fironova (nordfjord + nova cyan). Popup édition coupon complètement rebâti : 3 sections (Général / Limites & calendrier / Ciblage), sticky header+footer, bilingue FR/EN, testids préservés.

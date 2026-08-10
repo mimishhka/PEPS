@@ -783,8 +783,38 @@ _LOGIN_WINDOW_SECONDS = 900
 
 def _client_ip(request: Request) -> str:
     peer = request.client.host if request.client else "unknown"
+
+    # Cloudflare : header `CF-Connecting-IP` inséré par CF et strippé sur les
+    # requêtes externes. Il porte l'IP réelle du visiteur. Priorité absolue
+    # car il masque le peer (edge CF) qui rendrait le rate-limit inefficace.
+    cf_ip = (request.headers.get("cf-connecting-ip") or "").strip()
+    if cf_ip:
+        try:
+            ipaddress.ip_address(cf_ip)
+            return cf_ip
+        except ValueError:
+            pass
+
     if not TRUSTED_PROXIES:
+        # X-Forwarded-For défini par un proxy en amont (Kubernetes ingress).
+        # Sans liste de proxys de confiance, on prend prudemment le premier
+        # bond seulement si le peer semble être une IP privée / interne
+        # (indicateur qu'un proxy nous parle réellement).
+        try:
+            peer_addr = ipaddress.ip_address(peer)
+            if peer_addr.is_private or peer_addr.is_loopback:
+                xff = (request.headers.get("x-forwarded-for") or "").strip()
+                if xff:
+                    first = xff.split(",")[0].strip()
+                    try:
+                        ipaddress.ip_address(first)
+                        return first
+                    except ValueError:
+                        pass
+        except ValueError:
+            pass
         return peer
+
     try:
         peer_addr = ipaddress.ip_address(peer)
         trusted = False
@@ -8630,6 +8660,62 @@ async def affiliate_insights(request: Request):
         "conversion_rate": conversion_rate,
         "validated_orders": validated_orders,
         "avg_order_value": round(avg_order_value, 2) if avg_order_value is not None else None,
+    }
+
+
+@api.get("/affiliate/top-products")  # noqa: F821
+async def affiliate_top_products(request: Request, limit: int = 5):
+    """Meilleurs produits de l'affilié : agrège les articles vendus dans les
+    commandes payées attribuées à cet affilié, triés par revenu décroissant.
+    Retourne un lien de partage `?ref=<code>` pour chaque produit."""
+    aff = await get_current_affiliate(request)  # noqa: F821
+    aff_id = aff["id"]
+    limit = max(1, min(int(limit or 5), 20))
+
+    # Commandes payées attribuées à cet affilié (attribution stockée sur la commande).
+    cursor = db.orders.find(
+        {"affiliate_id": aff_id, "payment_status": "paid"},
+        {"_id": 0, "items": 1},
+    ).limit(2000)
+
+    stats: dict = {}
+    total_orders = 0
+    async for order in cursor:
+        total_orders += 1
+        for it in (order.get("items") or []):
+            pid = it.get("product_id") or it.get("slug")
+            if not pid:
+                continue
+            row = stats.setdefault(pid, {
+                "product_id": it.get("product_id"),
+                "slug": it.get("slug") or "",
+                "name_fr": it.get("name_fr") or it.get("name_en") or "",
+                "name_en": it.get("name_en") or it.get("name_fr") or "",
+                "image_url": it.get("image_url") or "",
+                "qty": 0,
+                "revenue": 0.0,
+                "orders": 0,
+            })
+            row["qty"] += int(it.get("qty", 0) or 0)
+            row["revenue"] += float(it.get("line_total", 0.0) or 0.0)
+            row["orders"] += 1
+
+    ranked = sorted(stats.values(), key=lambda r: r["revenue"], reverse=True)[:limit]
+    for r in ranked:
+        r["revenue"] = round(r["revenue"], 2)
+
+    code = aff.get("code") or ""
+    base = _trusted_public_base_url()  # noqa: F821
+    for r in ranked:
+        if r.get("slug") and code:
+            r["share_url"] = f"{base}/product/{r['slug']}?ref={code}"
+        else:
+            r["share_url"] = ""
+
+    return {
+        "items": ranked,
+        "orders_analyzed": total_orders,
+        "code": code,
     }
 
 

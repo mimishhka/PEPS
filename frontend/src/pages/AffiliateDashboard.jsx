@@ -157,25 +157,50 @@ export default function AffiliateDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Top products to feature in the "Share" widget — up to 3 featured items,
-  // fallback to the first products in the catalog.
+  // Top products: prioritise l'affilié (produits qu'IL a vendus) —
+  // fallback vers featured/catalog s'il n'a aucune vente encore.
   const [topProducts, setTopProducts] = useState([]);
+  const [personalTop, setPersonalTop] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      api.get("/products", { params: { featured: true } }).catch(() => ({ data: [] })),
-      api.get("/products").catch(() => ({ data: [] })),
-    ]).then(([featured, all]) => {
-      if (cancelled) return;
-      const combined = [...(featured.data || []), ...(all.data || [])];
-      const seen = new Set();
-      const dedup = combined.filter((p) => {
-        if (!p?.slug || seen.has(p.slug)) return false;
-        seen.add(p.slug);
-        return true;
-      }).slice(0, 3);
-      setTopProducts(dedup);
-    });
+    (async () => {
+      // 1) Essaie les produits personnels de l'affilié
+      try {
+        const { data } = await api.get("/affiliate/top-products", { params: { limit: 3 } });
+        if (!cancelled && data?.items?.length) {
+          setTopProducts(data.items.map((p) => ({
+            slug: p.slug,
+            name_fr: p.name_fr,
+            name_en: p.name_en,
+            image_url: p.image_url,
+            qty: p.qty,
+            revenue: p.revenue,
+            orders: p.orders,
+            _personal: true,
+          })));
+          setPersonalTop(true);
+          return;
+        }
+      } catch { /* fallback ci-dessous */ }
+
+      // 2) Fallback : produits en vedette du catalogue
+      try {
+        const [featured, all] = await Promise.all([
+          api.get("/products", { params: { featured: true } }).catch(() => ({ data: [] })),
+          api.get("/products").catch(() => ({ data: [] })),
+        ]);
+        if (cancelled) return;
+        const combined = [...(featured.data || []), ...(all.data || [])];
+        const seen = new Set();
+        const dedup = combined.filter((p) => {
+          if (!p?.slug || seen.has(p.slug)) return false;
+          seen.add(p.slug);
+          return true;
+        }).slice(0, 3);
+        setTopProducts(dedup);
+        setPersonalTop(false);
+      } catch { /* ignore */ }
+    })();
     return () => { cancelled = true; };
   }, []);
 
@@ -543,28 +568,47 @@ export default function AffiliateDashboard() {
             </div>
 
             {/* Top products share widget */}
-            {topProducts.length > 0 && refCode && (
+            {topProducts.length > 0 && (refCode || "").length > 0 && (
               <div className="bg-white rounded-2xl border border-ash p-6" data-testid="affiliate-share-widget">
-                <div className="flex items-baseline justify-between mb-4">
+                <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
                   <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
-                    {L("MON LIEN DE PARTAGE — TOP PRODUITS", "MY SHARE LINK — TOP PRODUCTS")}
+                    {personalTop
+                      ? L("VOS MEILLEURS PRODUITS", "YOUR BEST-SELLING PRODUCTS")
+                      : L("PRODUITS À METTRE EN AVANT", "PRODUCTS TO PROMOTE")}
                   </p>
                   <p className="font-data text-[10px] text-glacier">
-                    {L("1 clic = attribution automatique à votre code", "1 click = auto-attributed to your code")}
+                    {personalTop
+                      ? L("Classés par revenu généré grâce à votre code",
+                          "Ranked by revenue generated through your code")
+                      : L("1 clic = attribution automatique à votre code",
+                          "1 click = auto-attributed to your code")}
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
-                  {topProducts.map((p) => (
+                  {topProducts.map((p, idx) => (
                     <div key={p.slug}
                       className="rounded-xl border border-ash bg-clinical p-4 flex flex-col"
                       data-testid={`share-product-${p.slug}`}>
                       <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="min-w-0">
-                          <p className="font-display text-[15px] font-bold text-nordfjord leading-tight truncate">
-                            {lang === "fr" ? p.name_fr : p.name_en}
-                          </p>
-                          <p className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier mt-1">
-                            {p.category || "peptide"}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            {personalTop && (
+                              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-nova text-white font-data text-[10px] font-bold shrink-0">
+                                {idx + 1}
+                              </span>
+                            )}
+                            <p className="font-display text-[15px] font-bold text-nordfjord leading-tight truncate">
+                              {lang === "fr" ? p.name_fr : p.name_en}
+                            </p>
+                          </div>
+                          <p className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">
+                            {personalTop
+                              ? `${p.qty || 0} ${
+                                  (p.qty || 0) === 1
+                                    ? L("unité", "unit")
+                                    : L("unités", "units")
+                                } · ${money(p.revenue)}`
+                              : (p.category || "peptide")}
                           </p>
                         </div>
                       </div>
@@ -600,10 +644,11 @@ export default function AffiliateDashboard() {
                   ))}
                 </div>
                 <p className="font-data text-[10px] text-glacier mt-3 leading-relaxed">
-                  {L(
-                    "Astuce : ces liens produits convertissent 3-5× mieux que le lien home, car ils atterrissent directement sur un composé précis.",
-                    "Tip: product links convert 3-5× better than the home link because they land directly on a specific compound."
-                  )}
+                  {personalTop
+                    ? L("Ces produits ont déjà convaincu votre audience. Un rappel bien placé peut relancer les ventes.",
+                        "These products already resonate with your audience. A well-timed reminder can drive repeat sales.")
+                    : L("Astuce : ces liens produits convertissent 3-5× mieux que le lien home, car ils atterrissent directement sur un composé précis.",
+                        "Tip: product links convert 3-5× better than the home link because they land directly on a specific compound.")}
                 </p>
               </div>
             )}
