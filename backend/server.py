@@ -744,9 +744,9 @@ async def register(payload: RegisterIn, response: Response, request: Request):
         "name": user_doc["name"],
         "role": "user",
         "created_at": user_doc["created_at"],
-        # NOTE: le token n'est volontairement PAS renvoyé dans le body —
-        # l'auth passe uniquement par le cookie httpOnly, donc une XSS
-        # future ne peut pas exfiltrer la session.
+        # Token returned as a fallback for browsers that block the HttpOnly
+        # cookie (Emergent preview iframes, strict cookie policies).
+        "access_token": token,
     }
 
 
@@ -996,7 +996,11 @@ async def login(payload: LoginIn, response: Response, request: Request):
         "name": user["name"],
         "role": user["role"],
         "created_at": user["created_at"],
-        # NOTE: auth cookie-only — pas de token dans le body.
+        # Token also returned so the frontend can fall back to Bearer auth in
+        # environments where the browser blocks the cookie (preview iframes,
+        # third-party cookie restrictions, private mode). Cookie remains the
+        # primary mechanism; the token acts as a safety net.
+        "access_token": token,
     }
 
 
@@ -1166,6 +1170,8 @@ async def magic_verify(response: Response, request: Request, token: str = Body(.
     return {
         "id": user["id"], "email": user["email"], "name": user["name"],
         "role": user["role"], "created_at": user["created_at"],
+        # Token also in body as a fallback when the browser blocks cookies.
+        "access_token": token_jwt,
     }
 
 

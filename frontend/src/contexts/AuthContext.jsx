@@ -25,6 +25,13 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     try {
       const { data } = await api.post("/auth/login", { email, password });
+      // Store token as a fallback for browsers that block the HttpOnly cookie
+      // (Emergent preview iframe, strict third-party-cookie policies). Cookie
+      // remains the primary mechanism; this token is a safety net picked up
+      // by the axios request interceptor in lib/api.js.
+      if (data.access_token) {
+        try { window.localStorage.setItem("fironova_token", data.access_token); } catch { /* storage disabled */ }
+      }
       setUser({ id: data.id, email: data.email, name: data.name, role: data.role, created_at: data.created_at });
       return { ok: true };
     } catch (e) {
@@ -35,6 +42,9 @@ export function AuthProvider({ children }) {
   const register = useCallback(async (name, email, password) => {
     try {
       const { data } = await api.post("/auth/register", { name, email, password });
+      if (data.access_token) {
+        try { window.localStorage.setItem("fironova_token", data.access_token); } catch { /* storage disabled */ }
+      }
       setUser({ id: data.id, email: data.email, name: data.name, role: data.role, created_at: data.created_at });
       return { ok: true };
     } catch (e) {
@@ -56,6 +66,9 @@ export function AuthProvider({ children }) {
   const verifyMagic = useCallback(async (token) => {
     try {
       const { data } = await api.post("/auth/magic/verify", { token });
+      if (data.access_token) {
+        try { window.localStorage.setItem("fironova_token", data.access_token); } catch { /* storage disabled */ }
+      }
       setUser({ id: data.id, email: data.email, name: data.name, role: data.role, created_at: data.created_at });
       return { ok: true };
     } catch (e) {
