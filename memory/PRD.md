@@ -106,3 +106,18 @@ E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (N
 - Widget NOWPayments à montant exact : le checkout crypto crée désormais une FACTURE NOWPayments (POST /v1/invoice, montant CAD exact, ipn_callback_url) et la page de confirmation intègre le widget iframe (iid dynamique) + lien vers la page de paiement. Webhook IPN signé (HMAC-SHA512) POST /api/webhook/nowpayments : marque payé sur statut 'finished' (idempotent), note système, courriel. Secret IPN + PUBLIC_BASE_URL en backend/.env. URL webhook donnée à l'utilisateur : {PUBLIC_BASE_URL}/api/webhook/nowpayments.
 - Bug corrigé (trouvé par testing_agent iteration_8) : le widget/instructions crypto et Interac sont maintenant masqués une fois la commande payée ; bandeau vert « Paiement reçu » ajouté. Backend 10/10, frontend revérifié après correctif.
 - Section « Points importants / Key things to note » (4 puces bilingues : rester sur la page, montant exact avant expiration du minuteur, minimum requis, non remboursable) ajoutée sous le widget NOWPayments sur la page de confirmation. Vérifié par capture d'écran FR.
+
+
+## Update — Février 2026 (session fork)
+- **Générateur en masse de codes affiliés (CSV)** — Nouveau endpoint admin `POST /api/admin/affiliates/bulk-invite` accepte `{rows:[{email,name?}], lang, commission_note}` (max 500 lignes). Génère un code unique auto (`FN` + 6 caractères alphabet sûr) pour chaque nouvel affilié, ré-invite les existants en préservant leur code, envoie l'invitation via Resend, et retourne un résumé `{total, sent, skipped[], failed[], results[]}`. Validation email par regex (rejette proprement sans casser le batch). Nouvelle UI `BulkInviteModal` dans `AdminAffiliates.jsx` : dropzone CSV (glisser-déposer), parseur client-side (détection en-tête + séparateurs `,` ou `;`), preview des lignes, résultats avec KPIs (Sent/Skipped/Failed) et téléchargement CSV des codes générés. Tests : 100% backend (8/8) + 100% frontend (iteration_23.json). Fichiers pytest: `/app/backend/tests/test_bulk_invite.py`.
+- **Fix ESLint v9** — Ajout d'un `eslint.config.js` (flat config) à la racine frontend pour supprimer les erreurs « JavaScript linting failed » du checker de la plateforme.
+- **Auth Bearer JWT** — Documenté dans test_credentials.md : le token est retourné dans `POST /api/auth/login` (champ `access_token`) et stocké dans `localStorage.fironova_token`. L'axios interceptor injecte automatiquement `Authorization: Bearer <token>`.
+
+## Prioritized Backlog
+
+### P1 — À suivre
+- Fix rate limiting login : lire `CF-Connecting-IP` / `X-Forwarded-For` dans `_client_ip()` au lieu de `request.client.host` (masqué par Cloudflare)
+
+### P2 — Backlog technique
+- Refactor `server.py` (10 800+ lignes) → routers modulaires (`routes/orders.py`, `routes/auth.py`, `routes/affiliates.py`, `routes/coupons.py`)
+- Pages admin manquantes (`AdminSubscribers`, `AdminLayoutSettings`)

@@ -8817,6 +8817,145 @@ async def admin_affiliate_resend(affiliate_id: str,
     return {"ok": True, "invite_link": link, "sent_to": aff["email"]}
 
 
+class AffiliateBulkInviteRow(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    email: str = Field(min_length=1, max_length=320)
+    name: Optional[str] = ""
+
+
+class AffiliateBulkInviteIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    rows: List[AffiliateBulkInviteRow] = Field(min_length=1, max_length=500)
+    commission_note: Optional[str] = ""
+    payout_currency: Optional[str] = "btc"
+    lang: str = "fr"
+
+
+@api.post("/admin/affiliates/bulk-invite")  # noqa: F821
+async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
+                                      admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Invite en masse depuis un CSV parsé côté client.
+    - Génère un code affilié unique à l'avance (pré-provisionné) pour chaque nouvelle invitation.
+    - Ré-invite si l'email existe déjà en statut invité/suspendu (nouveau token).
+    - Ignore si l'affilié est déjà actif.
+    - Envoie l'email d'invitation via Resend.
+    Retourne un résumé détaillé (succès, ignorés, échecs)."""
+    lang = (payload.lang or "fr").lower()
+    if lang not in ("fr", "en"):
+        lang = "fr"
+    base = _trusted_public_base_url()
+    now = datetime.now(timezone.utc)
+    expires = (now + timedelta(hours=AFFILIATE_INVITE_TTL_HOURS)).isoformat()
+
+    results: list = []
+    skipped: list = []
+    failed: list = []
+    seen_emails: set = set()
+
+    for row in payload.rows:
+        email = (row.email or "").lower().strip()
+        name = (row.name or "").strip() or email.split("@")[0]
+        if not email:
+            failed.append({"email": row.email, "error": "Missing email"})
+            continue
+        # validation email basique (regex simple, robuste et sans lever)
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            failed.append({"email": email, "error": "Invalid email format"})
+            continue
+        if email in seen_emails:
+            skipped.append({"email": email, "reason": "Duplicate in CSV"})
+            continue
+        seen_emails.add(email)
+
+        try:
+            existing = await db.affiliates.find_one({"email": email}, {"_id": 0})
+            if existing and existing.get("status") == "active":
+                skipped.append({"email": email, "reason": "Already active"})
+                continue
+
+            # Pré-génération d'un code unique (utilisé lors de l'activation).
+            code = _affiliate_gen_code()
+            for _ in range(6):
+                if not await db.affiliates.find_one({"code": code}, {"_id": 1}):
+                    break
+                code = _affiliate_gen_code()
+
+            raw = secrets.token_urlsafe(32)
+            token_hash = _affiliate_hash_token(raw)
+
+            if existing:
+                await db.affiliates.update_one(
+                    {"id": existing["id"]},
+                    {"$set": {
+                        "invite_token_hash": token_hash,
+                        "invite_expires_at": expires,
+                        "name": name,
+                        "status": "invited",
+                        "payout_currency": (payload.payout_currency or existing.get("payout_currency") or "btc"),
+                        "invite_last_sent_at": now.isoformat(),
+                        # code pré-provisionné seulement si l'affilié n'en a pas encore
+                        **({"code": code} if not existing.get("code") else {}),
+                     },
+                     "$inc": {"invite_sent_count": 1}},
+                )
+                aff_id = existing["id"]
+                assigned_code = existing.get("code") or code
+            else:
+                aff_id = str(uuid.uuid4())
+                await db.affiliates.insert_one({
+                    "id": aff_id,
+                    "email": email,
+                    "name": name,
+                    "code": code,
+                    "user_id": None,
+                    "status": "invited",
+                    "compliance_status": "compliant",
+                    "manual_tier": None,
+                    "commission_note": payload.commission_note or "",
+                    "payout_currency": payload.payout_currency or "btc",
+                    "payout_address": "",
+                    "ip_hash": None,
+                    "known_addresses": [],
+                    "invite_token_hash": token_hash,
+                    "invite_expires_at": expires,
+                    "invite_sent_count": 1,
+                    "invite_last_sent_at": now.isoformat(),
+                    "created_at": now.isoformat(),
+                    "activated_at": None,
+                    "source": "bulk_csv",
+                })
+                assigned_code = code
+
+            link = f"{base}/affiliate/join?token={raw}"
+            try:
+                await _affiliate_send_invite(email, name, link, lang)
+                email_status = "sent"
+            except Exception as e:
+                logging.warning("[affiliate] bulk-invite email failed for %s: %s", email, e)
+                email_status = f"email_error: {e}"
+
+            results.append({
+                "email": email,
+                "name": name,
+                "affiliate_id": aff_id,
+                "code": assigned_code,
+                "invite_link": link,
+                "email_status": email_status,
+            })
+        except Exception as e:
+            logging.exception("[affiliate] bulk-invite failed for %s", email)
+            failed.append({"email": email, "error": str(e)})
+
+    return {
+        "ok": True,
+        "total": len(payload.rows),
+        "sent": len(results),
+        "skipped": skipped,
+        "failed": failed,
+        "results": results,
+    }
+
+
 @api.get("/admin/affiliates")  # noqa: F821
 async def admin_affiliates_list(admin: dict = Depends(get_admin_user)):  # noqa: F821
     rows = await db.affiliates.find(

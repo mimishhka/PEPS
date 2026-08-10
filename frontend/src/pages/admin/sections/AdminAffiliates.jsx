@@ -7,6 +7,7 @@ import {
   Plus, RefreshCw, Copy, DollarSign, X, Users, TrendingUp, Clock,
   AlertTriangle, MousePointerClick, Award, Wallet, ShieldAlert, Eye,
   Search, Download, BarChart3, Smartphone, Globe, MousePointerClick as CursorClick,
+  Upload, FileText, CheckCircle2, XCircle,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -83,6 +84,7 @@ export default function AdminAffiliates() {
   const [risk, setRisk] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
   const [detail, setDetail] = useState(null);
   const [tab, setTab] = useState("overview");
   const [q, setQ] = useState("");
@@ -204,6 +206,10 @@ export default function AdminAffiliates() {
           <button onClick={runPayouts} data-testid="affiliate-run-payouts"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-ash text-sm font-medium text-nordfjord hover:bg-clinical transition">
             <DollarSign size={16} /> {L("Générer les paiements", "Run payouts")}
+          </button>
+          <button onClick={() => setShowBulk(true)} data-testid="affiliate-bulk-open"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-ash text-sm font-medium text-nordfjord hover:bg-clinical transition">
+            <Upload size={16} /> {L("Import CSV", "Import CSV")}
           </button>
           <button onClick={() => setShowInvite(true)} data-testid="affiliate-invite-open"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-nordfjord text-white text-sm font-medium hover:opacity-90 transition">
@@ -604,6 +610,7 @@ export default function AdminAffiliates() {
       )}
 
       {showInvite && <InviteModal L={L} onClose={() => setShowInvite(false)} onDone={load} />}
+      {showBulk && <BulkInviteModal L={L} onClose={() => setShowBulk(false)} onDone={load} />}
       {detail && <DetailModal affiliateId={detail} L={L} lang={lang} onClose={() => setDetail(null)} onChange={load} />}
     </div>
   );
@@ -879,6 +886,332 @@ function InviteModal({ L, onClose, onDone }) {
           className="w-full mt-6 px-4 py-2.5 rounded-lg bg-nordfjord text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 transition">
           {busy ? L("Envoi…", "Sending…") : L("Envoyer l'invitation", "Send invitation")}
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Bulk CSV Invite ---------- */
+
+// Parse un CSV très simple : détecte les colonnes email/name par en-tête (insensible à la casse
+// et aux variantes FR/EN). Ignore les guillemets et gère les virgules ou points-virgules.
+function parseCsv(text) {
+  const raw = String(text || "").replace(/^\uFEFF/, "").trim();
+  if (!raw) return { rows: [], error: "Empty file" };
+  const lines = raw.split(/\r?\n/).filter((l) => l.trim().length);
+  if (!lines.length) return { rows: [], error: "Empty file" };
+  const sep = lines[0].includes(";") && !lines[0].includes(",") ? ";" : ",";
+  const splitLine = (line) => {
+    const out = [];
+    let cur = "";
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (c === sep && !inQ) { out.push(cur); cur = ""; }
+      else cur += c;
+    }
+    out.push(cur);
+    return out.map((x) => x.trim());
+  };
+  const header = splitLine(lines[0]).map((h) => h.toLowerCase().replace(/^"|"$/g, ""));
+  const emailIdx = header.findIndex((h) => ["email", "courriel", "e-mail", "mail"].includes(h));
+  const nameIdx = header.findIndex((h) => ["name", "nom", "fullname", "full_name", "full name"].includes(h));
+  let rows = [];
+  if (emailIdx === -1) {
+    // Pas d'en-tête reconnu : on suppose que la 1re colonne est l'email, la 2e le nom.
+    rows = lines.map((line) => {
+      const cells = splitLine(line);
+      return { email: cells[0] || "", name: cells[1] || "" };
+    });
+  } else {
+    rows = lines.slice(1).map((line) => {
+      const cells = splitLine(line);
+      return { email: cells[emailIdx] || "", name: nameIdx >= 0 ? cells[nameIdx] || "" : "" };
+    });
+  }
+  rows = rows
+    .map((r) => ({ email: (r.email || "").trim(), name: (r.name || "").trim() }))
+    .filter((r) => r.email.length);
+  return { rows };
+}
+
+function BulkInviteModal({ L, onClose, onDone }) {
+  const [rows, setRows] = useState([]);
+  const [fileName, setFileName] = useState("");
+  const [parseError, setParseError] = useState("");
+  const [lang, setLangSel] = useState("fr");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setFileName(file.name);
+    setResult(null);
+    setParseError("");
+    try {
+      const text = await file.text();
+      const { rows: parsed, error } = parseCsv(text);
+      if (error) { setParseError(error); setRows([]); return; }
+      if (!parsed.length) { setParseError(L("Aucune ligne valide trouvée.", "No valid rows found.")); setRows([]); return; }
+      setRows(parsed);
+    } catch (e) {
+      setParseError(e.message || "Parse error");
+      setRows([]);
+    }
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer?.files?.[0];
+    if (f) handleFile(f);
+  };
+
+  const submit = async () => {
+    if (!rows.length) { toast.error(L("Aucune ligne à envoyer", "No rows to send")); return; }
+    setBusy(true);
+    setResult(null);
+    try {
+      const { data } = await api.post("/admin/affiliates/bulk-invite", {
+        rows, lang, commission_note: note.trim(),
+      });
+      setResult(data);
+      toast.success(L(`${data.sent} invitation(s) envoyée(s)`, `${data.sent} invitation(s) sent`));
+      onDone && onDone();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const downloadResults = () => {
+    if (!result) return;
+    const headers = ["email", "name", "code", "invite_link", "email_status"];
+    const csv = [headers.join(",")].concat(
+      (result.results || []).map((r) => headers.map((h) => `"${String(r[h] || "").replace(/"/g, '""')}"`).join(","))
+    ).join("\r\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `affiliate-bulk-invite-${Date.now()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const reset = () => { setRows([]); setResult(null); setFileName(""); setParseError(""); };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl border border-ash w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto"
+           data-testid="affiliate-bulk-modal"
+           onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="font-display text-lg font-bold text-nordfjord">
+              {L("Import CSV d'affiliés", "Bulk CSV invite")}
+            </h3>
+            <p className="text-[11px] text-glacier mt-0.5">
+              {L("Un code unique est généré automatiquement pour chaque affilié.",
+                 "A unique code is auto-generated for each affiliate.")}
+            </p>
+          </div>
+          <button onClick={onClose} data-testid="affiliate-bulk-close"><X size={18} className="text-glacier" /></button>
+        </div>
+
+        {!result && (
+          <>
+            {/* Dropzone */}
+            <label
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDrop}
+              className={`block rounded-xl border-2 border-dashed p-6 cursor-pointer transition text-center ${
+                dragOver ? "border-nova bg-nova/5" : "border-ash bg-clinical hover:border-nova/40"
+              }`}
+              data-testid="affiliate-bulk-dropzone"
+            >
+              <input type="file" accept=".csv,text/csv"
+                onChange={(e) => handleFile(e.target.files?.[0])}
+                className="hidden" data-testid="affiliate-bulk-file-input" />
+              <Upload size={28} className="mx-auto text-glacier mb-2" />
+              <p className="text-sm font-medium text-nordfjord">
+                {fileName || L("Glissez un fichier CSV ou cliquez pour choisir",
+                              "Drop a CSV file or click to browse")}
+              </p>
+              <p className="text-[11px] text-glacier mt-1">
+                {L("Colonnes: email, name (en-tête optionnel) · max 500 lignes",
+                   "Columns: email, name (header optional) · max 500 rows")}
+              </p>
+            </label>
+
+            {parseError && (
+              <p className="mt-3 text-xs text-error flex items-center gap-1">
+                <AlertTriangle size={12} /> {parseError}
+              </p>
+            )}
+
+            {/* Preview */}
+            {rows.length > 0 && (
+              <div className="mt-4 border border-ash rounded-lg overflow-hidden">
+                <div className="px-4 py-2 bg-clinical border-b border-ash flex items-center justify-between">
+                  <p className="text-xs font-data uppercase tracking-wider text-glacier">
+                    {L("Aperçu", "Preview")} · {rows.length} {L("ligne(s)", "row(s)")}
+                  </p>
+                  <button onClick={reset} className="text-[11px] text-error hover:underline">
+                    {L("Réinitialiser", "Reset")}
+                  </button>
+                </div>
+                <div className="max-h-48 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-white sticky top-0">
+                      <tr className="border-b border-ash">
+                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">Email</th>
+                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">{L("Nom", "Name")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.slice(0, 100).map((r, i) => (
+                        <tr key={i} className="border-b border-ash/40">
+                          <td className="px-3 py-1.5 text-nordfjord truncate">{r.email}</td>
+                          <td className="px-3 py-1.5 text-glacier truncate">{r.name || "—"}</td>
+                        </tr>
+                      ))}
+                      {rows.length > 100 && (
+                        <tr><td colSpan={2} className="px-3 py-1.5 text-center text-glacier">…{rows.length - 100} {L("de plus", "more")}</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <Field label={L("Langue de l'email", "Email language")}>
+                <select value={lang} onChange={(e) => setLangSel(e.target.value)}
+                  className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova"
+                  data-testid="affiliate-bulk-lang">
+                  <option value="fr">Français</option>
+                  <option value="en">English</option>
+                </select>
+              </Field>
+              <Field label={L("Note interne (optionnel)", "Internal note (optional)")}>
+                <input value={note} onChange={(e) => setNote(e.target.value)}
+                  data-testid="affiliate-bulk-note"
+                  className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova" />
+              </Field>
+            </div>
+
+            <button onClick={submit} disabled={busy || !rows.length} data-testid="affiliate-bulk-submit"
+              className="w-full mt-6 px-4 py-2.5 rounded-lg bg-nordfjord text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 transition inline-flex items-center justify-center gap-2">
+              {busy ? <><RefreshCw size={14} className="animate-spin" /> {L("Envoi en cours…", "Sending…")}</>
+                    : <>{L(`Envoyer ${rows.length} invitation(s)`, `Send ${rows.length} invite(s)`)}</>}
+            </button>
+          </>
+        )}
+
+        {result && (
+          <div data-testid="affiliate-bulk-result">
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="rounded-lg border border-success/30 bg-success/5 p-3">
+                <div className="flex items-center gap-1.5 mb-1"><CheckCircle2 size={14} className="text-success" />
+                  <p className="text-[11px] uppercase tracking-wider text-glacier">{L("Envoyés", "Sent")}</p></div>
+                <p className="text-2xl font-bold text-nordfjord tabular-nums">{result.sent}</p>
+              </div>
+              <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
+                <div className="flex items-center gap-1.5 mb-1"><AlertTriangle size={14} className="text-warning" />
+                  <p className="text-[11px] uppercase tracking-wider text-glacier">{L("Ignorés", "Skipped")}</p></div>
+                <p className="text-2xl font-bold text-nordfjord tabular-nums">{result.skipped?.length || 0}</p>
+              </div>
+              <div className="rounded-lg border border-error/30 bg-error/5 p-3">
+                <div className="flex items-center gap-1.5 mb-1"><XCircle size={14} className="text-error" />
+                  <p className="text-[11px] uppercase tracking-wider text-glacier">{L("Échecs", "Failed")}</p></div>
+                <p className="text-2xl font-bold text-nordfjord tabular-nums">{result.failed?.length || 0}</p>
+              </div>
+            </div>
+
+            {(result.results?.length || 0) > 0 && (
+              <div className="border border-ash rounded-lg overflow-hidden mb-3">
+                <div className="px-4 py-2 bg-clinical border-b border-ash flex items-center justify-between">
+                  <p className="text-xs font-data uppercase tracking-wider text-glacier">
+                    {L("Codes générés", "Generated codes")}
+                  </p>
+                  <button onClick={downloadResults} data-testid="affiliate-bulk-download"
+                    className="text-[11px] text-nordfjord hover:underline inline-flex items-center gap-1">
+                    <Download size={11} /> {L("Télécharger CSV", "Download CSV")}
+                  </button>
+                </div>
+                <div className="max-h-56 overflow-y-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-white sticky top-0">
+                      <tr className="border-b border-ash">
+                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">Email</th>
+                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">Code</th>
+                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">{L("Statut", "Status")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.results.map((r, i) => (
+                        <tr key={i} className="border-b border-ash/40">
+                          <td className="px-3 py-1.5 text-nordfjord truncate">{r.email}</td>
+                          <td className="px-3 py-1.5 font-data text-nova">{r.code}</td>
+                          <td className={`px-3 py-1.5 ${r.email_status === "sent" ? "text-success" : "text-warning"}`}>
+                            {r.email_status}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {(result.skipped?.length || 0) > 0 && (
+              <details className="border border-ash rounded-lg mb-3">
+                <summary className="px-4 py-2 bg-clinical text-xs font-data uppercase tracking-wider text-glacier cursor-pointer">
+                  {L("Détails ignorés", "Skipped details")} ({result.skipped.length})
+                </summary>
+                <ul className="px-4 py-2 space-y-1">
+                  {result.skipped.map((s, i) => (
+                    <li key={i} className="text-xs text-glacier">
+                      <span className="text-nordfjord">{s.email}</span> — {s.reason}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            {(result.failed?.length || 0) > 0 && (
+              <details className="border border-error/30 rounded-lg mb-3">
+                <summary className="px-4 py-2 bg-error/5 text-xs font-data uppercase tracking-wider text-error cursor-pointer">
+                  {L("Détails échecs", "Failed details")} ({result.failed.length})
+                </summary>
+                <ul className="px-4 py-2 space-y-1">
+                  {result.failed.map((f, i) => (
+                    <li key={i} className="text-xs text-glacier">
+                      <span className="text-nordfjord">{f.email}</span> — {f.error}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            <div className="flex gap-2 mt-4">
+              <button onClick={reset} data-testid="affiliate-bulk-again"
+                className="flex-1 px-4 py-2.5 rounded-lg border border-ash text-sm font-medium text-nordfjord hover:bg-clinical transition inline-flex items-center justify-center gap-2">
+                <FileText size={14} /> {L("Nouvel import", "New import")}
+              </button>
+              <button onClick={onClose} data-testid="affiliate-bulk-done"
+                className="flex-1 px-4 py-2.5 rounded-lg bg-nordfjord text-white text-sm font-medium hover:opacity-90 transition">
+                {L("Fermer", "Close")}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
