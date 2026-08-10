@@ -34,8 +34,8 @@ if not BASE_URL:
             continue
 assert BASE_URL
 
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin-pass")
+ADMIN_EMAIL = "admin@nordpep.ca"
+ADMIN_PASSWORD = "NordpepAdmin2026!"
 
 VALID_TIERS = {"standard", "bronze", "silver", "gold", "platinum", "diamond"}
 

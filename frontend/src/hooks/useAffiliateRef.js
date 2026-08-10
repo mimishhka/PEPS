@@ -27,6 +27,7 @@ export default function useAffiliateRef() {
     if (done.current) return;
     const code = new URLSearchParams(location.search).get("ref");
     if (!code) return;
+    // evite les appels repetes dans la meme session
     try {
       if (sessionStorage.getItem(SESSION_KEY) === code) {
         done.current = true;
@@ -54,5 +55,5 @@ export default function useAffiliateRef() {
       .catch(() => {
         /* silencieux : l'attribution ne doit jamais bloquer l'UX */
       });
-  }, [location.pathname, location.search]);
+  }, [location.search]);
 }

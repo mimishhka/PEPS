@@ -9,7 +9,7 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import {
   MousePointerClick, ShoppingBag, Wallet, Download, ShieldAlert,
-  MessageCircle, Send, Mail,
+  MessageCircle, Send, Mail, Activity,
 } from "lucide-react";
 import api, { formatApiError } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
@@ -103,6 +103,7 @@ export default function AffiliateDashboard() {
   const [payouts, setPayouts] = useState([]);
   const [series, setSeries] = useState([]);
   const [insights, setInsights] = useState(null);
+  const [, setClicksStats] = useState(null);
   const [sources, setSources] = useState(null);
   const [activity, setActivity] = useState([]);
   const [tab, setTab] = useState("overview");
@@ -123,17 +124,20 @@ export default function AffiliateDashboard() {
       setPayAddr(me.data.payout_address || "");
       setPayCur(me.data.payout_currency || "btc");
       // Résilient : un endpoint qui échoue ne casse pas tout le tableau de bord.
-      const [r, p, perf, ins, src, act] = await Promise.allSettled([
+      setRefPage(1); setPayPage(1);
+      const [r, p, perf, ins, ck, src, act] = await Promise.allSettled([
         api.get("/affiliate/referrals"),
         api.get("/affiliate/payouts"),
         api.get("/affiliate/performance"),
         api.get("/affiliate/insights"),
+        api.get("/affiliate/clicks"),
         api.get("/affiliate/clicks/sources"),
         api.get("/affiliate/activity"),
       ]);
       setReferrals(r.status === "fulfilled" ? (r.value.data || []) : []);
       setPayouts(p.status === "fulfilled" ? (p.value.data || []) : []);
       setInsights(ins.status === "fulfilled" ? (ins.value.data || null) : null);
+      setClicksStats(ck.status === "fulfilled" ? (ck.value.data || null) : null);
       setSources(src.status === "fulfilled" ? (src.value.data || null) : null);
       setActivity(act.status === "fulfilled" ? (act.value.data || []) : []);
       const perfData = perf.status === "fulfilled" ? perf.value.data : null;

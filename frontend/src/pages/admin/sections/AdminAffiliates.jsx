@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import {
   Plus, RefreshCw, Copy, DollarSign, X, Users, TrendingUp, Clock,
   AlertTriangle, MousePointerClick, Award, Wallet, ShieldAlert, Eye,
-  Search, Download, BarChart3, Smartphone, Globe,
+  Search, Download, BarChart3, Smartphone, Globe, MousePointerClick as CursorClick,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -214,8 +214,9 @@ export default function AdminAffiliates() {
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 flex-wrap">
-        {[["overview", L("Vue d'ensemble", "Overview")], ["clicks", L("Attribution", "Attribution")], ["payouts", L("Paiements", "Payouts")]].map(([k, label]) => (
+        {[["overview", L("Aperçu", "Overview")], ["clicks", L("Attribution", "Attribution")], ["payouts", L("Paiements", "Payouts")]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
+            data-testid={`affiliate-tab-${k}`}
             className={`px-4 py-2 rounded-full font-data text-xs font-semibold uppercase tracking-wider transition ${
               tab === k ? "bg-nordfjord text-white" : "bg-white text-glacier border border-ash hover:border-nova"
             }`}>
@@ -465,7 +466,7 @@ export default function AdminAffiliates() {
             ) : (
               <>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  <Kpi icon={MousePointerClick} accent="#00B8D4"
+                  <Kpi icon={CursorClick} accent="#00B8D4"
                     label={L("Clics (30 j)", "Clicks (30d)")} value={int(clicks.total_clicks)}
                     sub={`${int(clicks.active_affiliates)} ${L("affiliés actifs", "active affiliates")}`} />
                   <Kpi icon={Smartphone} accent="#2E9E6B"
