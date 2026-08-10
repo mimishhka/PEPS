@@ -35,7 +35,20 @@ export function AuthProvider({ children }) {
       setUser({ id: data.id, email: data.email, name: data.name, role: data.role, created_at: data.created_at });
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: formatApiError(e.response?.data?.detail) || e.message };
+      // Message d'erreur explicite qui distingue:
+      //  - une vraie réponse HTTP (mauvais mdp, 429…): affiche le detail serveur
+      //  - une absence de réponse (CORS/réseau/cache navigateur): l'utilisateur
+      //    doit vider le cache ou vérifier sa connexion, message clair.
+      if (e.response?.data?.detail) {
+        return { ok: false, error: formatApiError(e.response.data.detail) };
+      }
+      if (e.response) {
+        return { ok: false, error: `Erreur serveur (HTTP ${e.response.status}). Réessayez.` };
+      }
+      return {
+        ok: false,
+        error: "Impossible de contacter le serveur. Rafraîchissez la page (Ctrl+Shift+R / Cmd+Shift+R) puis réessayez. Si le problème persiste, désactivez temporairement les bloqueurs de pub.",
+      };
     }
   }, []);
 
