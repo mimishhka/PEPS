@@ -127,6 +127,7 @@ export default function Login() {
               </div>
             ) : (
               <form onSubmit={onMagicSubmit} className="space-y-5">
+                <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" data-testid="honeypot" />
                 <p className="text-sm text-glacier">
                   {t("auth.magicLinkSub") || "Connexion rapide et sans mot de passe pour clients Fironova."}
                 </p>

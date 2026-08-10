@@ -115,6 +115,11 @@ if COOKIE_SAMESITE not in {"lax", "strict", "none"}:
 if not COOKIE_SECURE and COOKIE_SAMESITE == "none":
     COOKIE_SAMESITE = "lax"
 
+# Si l'API est derrière un reverse-proxy, renseigner les CIDR de confiance ; sinon X-Forwarded-For est ignoré et le rate-limiting se basera sur l'IP partagée du proxy.
+TRUSTED_PROXIES: list[str] = [
+    e for e in (os.environ.get("TRUSTED_PROXIES", "") or "").split(",") if e.strip()
+]
+
 # Feature flags — toggle without deploying new code, just flip the env var and restart.
 COA_PAGE_ENABLED = os.environ.get("COA_PAGE_ENABLED", "false").strip().lower() == "true"
 
@@ -410,7 +415,8 @@ def require_area(area: str, level: str = "view"):
 class RegisterIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
-    name: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=80)
+    website: str = ""  # honeypot anti-bot — doit rester vide
 
     @field_validator("password")
     @classmethod
@@ -717,40 +723,50 @@ PROVINCES_CA = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC"
 async def register(payload: RegisterIn, response: Response, request: Request):
     _rate_limit("register", _client_ip(request), 5, 3600, "Too many registration attempts. Try again later.")
     email = payload.email.lower().strip()
+    name = payload.name.strip()
+
+    # Honeypot : les robots remplissent ce champ, les humains non.
+    if (payload.website or "").strip():
+        return {"ok": True, "verification_sent": True}
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Le nom est requis.")
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=409, detail="Email already registered")
+
     user_doc = {
         "id": str(uuid.uuid4()),
         "email": email,
-        "name": payload.name.strip(),
+        "name": name,
         "password_hash": hash_password(payload.password),
         "role": "user",
         "token_version": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "email_verified": False,
     }
     try:
         await db.users.insert_one(user_doc)
     except DuplicateKeyError as exc:
         raise HTTPException(status_code=409, detail="Email already registered") from exc
-    # Un abonné pré-lancement qui crée son compte : on marque la conversion.
-    # N'interrompt jamais l'inscription si ça échoue.
+
     try:
         await db.subscribers.update_one({"email": email}, {"$set": {"converted": True}})
     except Exception as e:  # pragma: no cover
         logging.warning("subscriber conversion flag failed for %s: %s", email, e)
-    # --- AUTOMATION: email de bienvenue (n'interrompt jamais l'inscription) ---
-    asyncio.create_task(welcome_new_user(email, user_doc.get("name", ""), "fr"))
-    token = create_access_token(user_doc["id"], email, "user", token_version=0)
-    set_auth_cookie(response, token, request)
+
+    raw = await _issue_magic_token(email, name, is_signup=True, lang="fr", ip=_client_ip(request))
+    base = (PUBLIC_BASE_URL or str(request.base_url).rstrip("/"))
+    link = f"{base}/auth/callback?token={raw}"
+    await _send_magic_email(email, link, "fr", is_signup=True)
+
     return {
         "id": user_doc["id"],
         "email": email,
         "name": user_doc["name"],
         "role": "user",
         "created_at": user_doc["created_at"],
-        # Token returned as a fallback for browsers that block the HttpOnly
-        # cookie (Emergent preview iframes, strict cookie policies).
-        "access_token": token,
+        "email_verified": False,
+        "verification_sent": True,
     }
 
 
@@ -761,19 +777,33 @@ _LOGIN_WINDOW_SECONDS = 900
 
 
 def _client_ip(request: Request) -> str:
-    remote_ip = request.client.host if request.client else "unknown"
-    fwd = request.headers.get("x-forwarded-for", "")
-    if not fwd:
-        return remote_ip
-
-    forwarded_ips = [part.strip() for part in fwd.split(",") if part.strip()]
-    if not forwarded_ips:
-        return remote_ip
-
-    if remote_ip in TRUST_PROXY_IPS:
-        return forwarded_ips[-1]
-
-    return remote_ip
+    peer = request.client.host if request.client else "unknown"
+    if not TRUSTED_PROXIES:
+        return peer
+    try:
+        peer_addr = ipaddress.ip_address(peer)
+        trusted = False
+        for entry in TRUSTED_PROXIES:
+            entry = entry.strip()
+            if not entry:
+                continue
+            try:
+                if "/" in entry:
+                    trusted = peer_addr in ipaddress.ip_network(entry, strict=False)
+                else:
+                    trusted = peer.lower() == entry.lower()
+            except ValueError:
+                continue
+            if trusted:
+                break
+    except ValueError:
+        return peer
+    if not trusted:
+        return peer
+    xff = request.headers.get("x-forwarded-for", "").strip()
+    if not xff:
+        return peer
+    return xff.split(",")[0].strip() or peer
 
 
 def _login_throttle_check(key: str):
@@ -991,6 +1021,9 @@ async def login(payload: LoginIn, response: Response, request: Request):
     if not user or not verify_password(payload.password, user["password_hash"]):
         _LOGIN_ATTEMPTS.setdefault(throttle_key, []).append(datetime.now(timezone.utc).timestamp())
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    # Comptes sans le champ (antérieurs) sont considérés vérifiés.
+    if user.get("email_verified", True) is False:
+        raise HTTPException(status_code=403, detail="Veuillez vérifier votre adresse email pour activer votre compte. / Please verify your email address to activate your account.")
     _LOGIN_ATTEMPTS.pop(throttle_key, None)
     token = create_access_token(user["id"], user["email"], user["role"], token_version=user.get("token_version", 0))
     set_auth_cookie(response, token, request)
@@ -1035,6 +1068,8 @@ async def me(user: dict = Depends(get_current_user)):
 MAGIC_TOKEN_TTL_MINUTES = 15
 MAGIC_REQUEST_MAX = 5
 MAGIC_REQUEST_WINDOW = 3600
+MAGIC_VERIFY_MAX = 300
+MAGIC_VERIFY_WINDOW = 3600
 
 
 class MagicRequestIn(BaseModel):
@@ -1042,6 +1077,7 @@ class MagicRequestIn(BaseModel):
     name: Optional[str] = None
     create: bool = False
     lang: str = "fr"
+    website: str = ""  # honeypot anti-bot — doit rester vide
 
 
 class ForgotPasswordIn(BaseModel):
@@ -1061,6 +1097,25 @@ class ResetPasswordIn(BaseModel):
 
 def _hash_magic_token(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+async def _issue_magic_token(email: str, name: str, is_signup: bool,
+                             lang: str, ip: str) -> str:
+    raw = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    await db.magic_tokens.insert_one({
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "token_hash": _hash_magic_token(raw),
+        "is_signup": is_signup,
+        "name": (name or "").strip()[:120],
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=MAGIC_TOKEN_TTL_MINUTES)).isoformat(),
+        "used_at": None,
+        "ip": ip,
+        "lang": lang,
+    })
+    return raw
 
 
 def _hash_token(raw: str) -> str:
@@ -1119,23 +1174,19 @@ async def magic_request(payload: MagicRequestIn, request: Request):
     email = payload.email.lower().strip()
     _rate_limit_email("magic_request", email, MAGIC_REQUEST_MAX,
                       MAGIC_REQUEST_WINDOW, "Trop de demandes. Réessayez plus tard.")
+
+    # Honeypot : réponse neutre sans effet.
+    if (payload.website or "").strip():
+        return {"ok": True}
+
     existing = await db.users.find_one({"email": email})
     is_signup = payload.create and not existing
     # Login demandé sur un email inconnu -> réponse neutre, aucun email (anti-énumération).
     if not payload.create and not existing:
         return {"ok": True}
-    raw = secrets.token_urlsafe(32)
-    await db.magic_tokens.insert_one({
-        "id": str(uuid.uuid4()),
-        "email": email,
-        "token_hash": _hash_magic_token(raw),
-        "is_signup": is_signup,
-        "name": (payload.name or "").strip()[:120],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=MAGIC_TOKEN_TTL_MINUTES)).isoformat(),
-        "used_at": None,
-        "ip": _client_ip(request),
-    })
+
+    raw = await _issue_magic_token(email, payload.name or "", is_signup,
+                                   payload.lang or "fr", _client_ip(request))
     base = _trusted_public_base_url()
     link = f"{base}/auth/callback?token={raw}"
     await _send_magic_email(email, link, payload.lang or "fr", is_signup)
@@ -1145,6 +1196,8 @@ async def magic_request(payload: MagicRequestIn, request: Request):
 @api.post("/auth/magic/verify")
 async def magic_verify(response: Response, request: Request, token: str = Body(..., embed=True)):
     """Vérifie le token (usage unique + TTL), crée le compte si signup, pose le cookie."""
+    _rate_limit("magic_verify", _client_ip(request), MAGIC_VERIFY_MAX,
+                MAGIC_VERIFY_WINDOW, "Trop de tentatives. Réessayez plus tard.")
     token_hash = _hash_magic_token((token or "").strip())
     rec = await db.magic_tokens.find_one({"token_hash": token_hash})
     now = datetime.now(timezone.utc)
@@ -1165,6 +1218,7 @@ async def magic_verify(response: Response, request: Request, token: str = Body(.
     if claimed.modified_count != 1:
         raise invalid
     email = rec["email"]
+    is_signup = bool(rec.get("is_signup"))
     user = await db.users.find_one({"email": email})
     if not user:
         user_doc = {
@@ -1176,13 +1230,20 @@ async def magic_verify(response: Response, request: Request, token: str = Body(.
             "token_version": 0,
             "created_at": now.isoformat(),
             "passwordless": True,
+            "email_verified": True,
         }
         await db.users.insert_one(user_doc)
         try:
             await db.subscribers.update_one({"email": email}, {"$set": {"converted": True}})
         except Exception as e:  # pragma: no cover
             logging.warning("subscriber conversion flag failed for %s: %s", email, e)
+        asyncio.create_task(welcome_new_user(email, user_doc["name"], "fr"))
         user = user_doc
+    else:
+        await db.users.update_one({"email": email}, {"$set": {"email_verified": True}})
+        if is_signup:
+            asyncio.create_task(welcome_new_user(email, user.get("name", ""), "fr"))
+        user = {**user, "email_verified": True}
     token_jwt = create_access_token(user["id"], user["email"], user["role"],
                                     token_version=user.get("token_version", 0))
     set_auth_cookie(response, token_jwt)
@@ -1294,6 +1355,16 @@ async def _magic_tokens_cleanup():
                 logging.info("[magic] purged %d expired tokens", res.deleted_count)
         except Exception as e:
             logging.error("[magic] cleanup error: %s", e)
+        try:
+            unverified_cutoff = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+            res2 = await db.users.delete_many({
+                "email_verified": False,
+                "created_at": {"$lte": unverified_cutoff},
+            })
+            if res2.deleted_count:
+                logging.info("[magic] purged %d unactivated accounts", res2.deleted_count)
+        except Exception as e:
+            logging.error("[magic] unactivated account purge error: %s", e)
         await asyncio.sleep(6 * 3600)
 
 

@@ -18,6 +18,7 @@ export default function Register() {
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [magicSent, setMagicSent] = useState(false);
+  const [verifyPending, setVerifyPending] = useState(false);
 
   const onPasswordSubmit = async (e) => {
     e.preventDefault();
@@ -26,8 +27,10 @@ export default function Register() {
     setBusy(true);
     const res = await register(form.name, form.email, form.password);
     setBusy(false);
-    if (res.ok) navigate(sanitizeRedirectTarget("/account", "/account"), { replace: true });
-    else toast.error(res.error);
+    if (res.ok) {
+      if (res.data?.verification_sent) setVerifyPending(true);
+      else navigate(sanitizeRedirectTarget("/account", "/account"), { replace: true });
+    } else toast.error(res.error);
   };
 
   const onMagicSubmit = async (e) => {
@@ -96,7 +99,20 @@ export default function Register() {
             </button>
           </div>
 
-          {mode === "magic" && magicSent ? (
+          {mode === "password" && verifyPending ? (
+            <div className="rounded-3xl border border-nova/40 bg-nova/5 p-6" data-testid="register-verify-pending">
+              <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-2">Fironova · Activation</p>
+              <h3 className="font-display text-[20px] font-bold text-nordfjord mb-2">
+                {t("auth.magicCheckTitle") || "Vérifiez votre boîte mail"}
+              </h3>
+              <p className="text-sm text-glacier mb-4">
+                {(t("auth.magicCheckSubSignup") || "Un lien d'activation a été envoyé à {email}.").replace("{email}", form.email)}
+              </p>
+              <button type="button" onClick={() => setVerifyPending(false)} className="text-sm font-semibold text-nordfjord hover:text-nova">
+                {t("auth.magicResend") || "Renvoyer ou changer d'email"}
+              </button>
+            </div>
+          ) : mode === "magic" && magicSent ? (
             <div className="rounded-3xl border border-nova/40 bg-nova/5 p-6" data-testid="register-magic-sent">
               <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-2">Fironova · Magic Link</p>
               <h3 className="font-display text-[20px] font-bold text-nordfjord mb-2">
@@ -111,6 +127,7 @@ export default function Register() {
             </div>
           ) : mode === "magic" ? (
             <form onSubmit={onMagicSubmit} className="space-y-5">
+              <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" data-testid="honeypot" />
               <p className="text-sm text-glacier">
                 {t("auth.magicSignupSub") || "Créez votre compte sans mot de passe — on vous envoie un lien d'activation."}
               </p>
@@ -131,6 +148,7 @@ export default function Register() {
             </form>
           ) : (
             <form onSubmit={onPasswordSubmit} className="space-y-5">
+              <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" data-testid="honeypot" />
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.name")}</label>
                 <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="register-name"
