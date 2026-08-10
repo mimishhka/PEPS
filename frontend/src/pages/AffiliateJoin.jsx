@@ -47,8 +47,11 @@ export default function AffiliateJoin() {
       ran.current = true;
       setStatus("error");
       setErrorMsg(L("Lien invalide.", "Invalid link."));
+      return;
     }
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+    const cleanUrl = `${location.pathname}${location.hash}`;
+    window.history.replaceState({}, "", cleanUrl);
+  }, [token, location.pathname, location.hash]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (checking) {
     return (
@@ -60,7 +63,7 @@ export default function AffiliateJoin() {
 
   // Non connecté : on invite à se connecter avec l'email de l'invitation.
   if (!user) {
-    const next = encodeURIComponent(`/affiliate/join?token=${token}`);
+    const next = "/affiliate/join";
     return (
       <div className="min-h-[85vh] grid place-items-center bg-clinical px-6" data-testid="affiliate-join">
         <div className="relative w-full max-w-md rounded-3xl border border-ash bg-white p-10 overflow-hidden text-center">
@@ -77,7 +80,7 @@ export default function AffiliateJoin() {
               {L("Connectez-vous avec l'adresse courriel qui a reçu cette invitation pour continuer.",
                 "Sign in with the email address that received this invitation to continue.")}
             </p>
-            <Link to={`/login?next=${next}`} className="inline-block btn-pill btn-nova" data-testid="affiliate-join-login">
+            <Link to={`/login?next=${encodeURIComponent(next)}`} className="inline-block btn-pill btn-nova" data-testid="affiliate-join-login">
               {L("Se connecter", "Sign in")} &rarr;
             </Link>
           </div>

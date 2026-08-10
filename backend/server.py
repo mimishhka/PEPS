@@ -236,6 +236,15 @@ app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads-
 # ---------------------------------------------------------------------------
 # Helpers: password & JWT
 # ---------------------------------------------------------------------------
+PASSWORD_COMPLEXITY_RE = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$")
+
+
+def _validate_password_strength(password: str) -> str:
+    if not PASSWORD_COMPLEXITY_RE.match(password):
+        raise ValueError("Password must be at least 8 characters and include uppercase, lowercase, a number, and a special character")
+    return password
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
@@ -393,6 +402,11 @@ class RegisterIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
     name: str = Field(min_length=1)
+
+    @field_validator("password")
+    @classmethod
+    def _validate_password(cls, v: str) -> str:
+        return _validate_password_strength(v)
 
 
 class LoginIn(BaseModel):
@@ -638,6 +652,11 @@ class PasswordChangeIn(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8)
 
+    @field_validator("new_password")
+    @classmethod
+    def _validate_new_password(cls, v: str) -> str:
+        return _validate_password_strength(v)
+
 
 class EmailChangeRequestIn(BaseModel):
     new_email: EmailStr
@@ -705,7 +724,10 @@ async def register(payload: RegisterIn, response: Response, request: Request):
         "token_version": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.users.insert_one(user_doc)
+    try:
+        await db.users.insert_one(user_doc)
+    except DuplicateKeyError as exc:
+        raise HTTPException(status_code=409, detail="Email already registered") from exc
     # Un abonné pré-lancement qui crée son compte : on marque la conversion.
     # N'interrompt jamais l'inscription si ça échoue.
     try:
@@ -928,6 +950,11 @@ class StaffInviteIn(BaseModel):
 class StaffAcceptIn(BaseModel):
     token: str
     password: str = Field(min_length=8)
+
+    @field_validator("password")
+    @classmethod
+    def _validate_password(cls, v: str) -> str:
+        return _validate_password_strength(v)
 
 
 @api.post("/admin/gate/verify")
@@ -1358,15 +1385,29 @@ async def account_delete(payload: AccountDeleteIn, response: Response,
             "shipping_address.full_name": "[deleted]",
             "shipping_address.address1": "[deleted]",
             "shipping_address.address2": "",
+            "shipping_address.city": "[deleted]",
+            "shipping_address.province": "[deleted]",
+            "shipping_address.postal_code": "[deleted]",
             "shipping_address.phone": "",
             "anonymized_at": now,
         }},
     )
-    # 2. Purger les données annexes
+    # 2. Purger les données annexes et tokens liés au compte
     await db.addresses.delete_many({"user_id": doc["id"]})
     await db.stock_notifications.delete_many({"email": doc["email"]})
     await db.subscribers.delete_one({"email": doc["email"]})
     await db.email_change_requests.delete_many({"user_id": doc["id"]})
+    await db.magic_tokens.delete_many({"email": doc["email"]})
+    await db.wishlist.delete_many({"user_id": doc["id"]})
+    if hasattr(db, "coupons"):
+        await db.coupons.update_many(
+            {"used_by.email": doc["email"].lower().strip()},
+            {"$pull": {"used_by": {"email": doc["email"].lower().strip()}}},
+        )
+    order_cursor = db.orders.find({"user_id": doc["id"]}, {"_id": 0, "id": 1})
+    order_ids = [o.get("id") for o in order_cursor.to_list(1000) if o.get("id")]
+    if order_ids:
+        await db.order_access_tokens.delete_many({"order_id": {"$in": order_ids}})
     # 3. Supprimer l'utilisateur
     await db.users.delete_one({"id": doc["id"]})
     clear_auth_cookie(response)

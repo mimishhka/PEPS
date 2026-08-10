@@ -36,8 +36,8 @@ assert BASE_URL
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "nordpep_db")
 
-ADMIN_EMAIL = "admin@nordpep.ca"
-ADMIN_PASSWORD = "NordpepAdmin2026!"
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin-pass")
 
 PRODUCT_SLUG = "bpc-157-5mg"
 PRODUCT_ID = "5dc85d91-7089-4e6c-88b5-67ff79c6ef92"

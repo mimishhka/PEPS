@@ -5,6 +5,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { MolecularMesh, Wordmark, FnMark } from "../components/brand";
+import { sanitizeRedirectTarget } from "../lib/redirects";
 
 export default function Register() {
   useDocumentHead({ title: "Register", path: "/register", noindex: true });
@@ -25,7 +26,7 @@ export default function Register() {
     setBusy(true);
     const res = await register(form.name, form.email, form.password);
     setBusy(false);
-    if (res.ok) navigate("/account", { replace: true });
+    if (res.ok) navigate(sanitizeRedirectTarget("/account", "/account"), { replace: true });
     else toast.error(res.error);
   };
 

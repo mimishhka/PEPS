@@ -6,6 +6,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { MolecularMesh, Wordmark, FnMark } from "../components/brand";
+import { sanitizeRedirectTarget } from "../lib/redirects";
 
 export default function Login() {
   useDocumentHead({ title: "Sign in", path: "/login", noindex: true });
@@ -22,8 +23,10 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [magicSent, setMagicSent] = useState(false);
 
-  const nextUrl = () =>
-    new URLSearchParams(location.search).get("next") || location.state?.from || "/account";
+  const nextUrl = () => sanitizeRedirectTarget(
+    new URLSearchParams(location.search).get("next") || location.state?.from || "/account",
+    "/account"
+  );
 
   const onPasswordSubmit = async (e) => {
     e.preventDefault();

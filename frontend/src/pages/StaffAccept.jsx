@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import api from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import useDocumentHead from "../hooks/useDocumentHead";
+import { sanitizeRedirectTarget } from "../lib/redirects";
 
 export default function StaffAccept() {
   useDocumentHead({ title: "Accept invitation", path: "/staff-accept", noindex: true });
@@ -18,6 +19,13 @@ export default function StaffAccept() {
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+
+  if (token) {
+    const cleanUrl = `${window.location.pathname}${window.location.hash}`;
+    if (window.location.search) {
+      window.history.replaceState({}, "", cleanUrl);
+    }
+  }
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -35,7 +43,7 @@ export default function StaffAccept() {
       // Session posée par le cookie httpOnly renvoyé par /staff/accept.
       setDone(true);
       await refresh();
-      setTimeout(() => navigate("/", { replace: true }), 1200);
+      setTimeout(() => navigate(sanitizeRedirectTarget("/", "/"), { replace: true }), 1200);
     } catch (err) {
       toast.error(err.response?.data?.detail || "This invitation link is invalid or has expired.");
     } finally {

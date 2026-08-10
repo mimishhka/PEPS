@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { MolecularMesh, Wordmark, FnMark } from "../components/brand";
+import { sanitizeRedirectTarget } from "../lib/redirects";
 
 export default function AuthCallback() {
   useDocumentHead({ title: "Connexion", path: "/auth/callback", noindex: true });
@@ -19,9 +20,12 @@ export default function AuthCallback() {
     ran.current = true;
     const token = new URLSearchParams(location.search).get("token");
     if (!token) { setStatus("error"); return; }
+    const redirectTo = sanitizeRedirectTarget("/account", "/account");
+    const cleanUrl = `${location.pathname}${location.hash}`;
+    window.history.replaceState({}, "", cleanUrl);
     (async () => {
       const res = await verifyMagic(token);
-      if (res.ok) navigate("/account", { replace: true });
+      if (res.ok) navigate(redirectTo, { replace: true });
       else setStatus("error");
     })();
   }, [location.search, navigate, verifyMagic]);

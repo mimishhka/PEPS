@@ -80,6 +80,8 @@ function GatedApp() {
   useEffect(() => {
     let cancelled = false;
     if (!token) { setPreviewChecked(true); return; }
+    const cleanUrl = `${location.pathname}${location.hash}`;
+    window.history.replaceState({}, "", cleanUrl);
     api.get("/prelaunch/preview", { params: { token } })
       .then((r) => { if (!cancelled) setPreviewOk(!!r.data.ok); })
       .catch(() => { if (!cancelled) setPreviewOk(false); })
