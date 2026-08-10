@@ -9151,11 +9151,6 @@ def _email_shell(order=None, lang="en"):
 
 
 # ===== FIRONOVA_EMAIL_AUTOMATION_START =====
-import os
-import asyncio
-import logging
-from datetime import datetime, timezone, timedelta
-
 ABANDON_MIN_HOURS = float(os.environ.get("ABANDON_MIN_HOURS", "4"))
 ABANDON_MAX_HOURS = float(os.environ.get("ABANDON_MAX_HOURS", "72"))
 ABANDON_COUPON_CODE = os.environ.get("ABANDON_COUPON_CODE", "").strip()
