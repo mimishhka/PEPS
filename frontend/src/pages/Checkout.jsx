@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
+import { useAuth } from "../contexts/AuthContext";
 import api, { formatApiError } from "../lib/api";
 import { toast } from "sonner";
 
@@ -41,7 +42,11 @@ function validateAddress(a, lang) {
 export default function Checkout() {
   const { items, subtotal, clear } = useCart();
   const { lang } = useLang();
+  const { user } = useAuth();
   const nav = useNavigate();
+
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedAddressId, setSelectedAddressId] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [email, setEmail] = useState("");
@@ -63,6 +68,50 @@ export default function Checkout() {
   });
 
   const [idempotencyKey] = useState(() => `chk_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+
+  // A2 — adresses sauvegardées : préremplir email + charger la liste si connecté.
+  useEffect(() => {
+    if (!user) return;
+    if (user.email) setEmail((e) => e || user.email);
+    let cancelled = false;
+    api.get("/account/addresses")
+      .then((r) => {
+        if (cancelled) return;
+        const list = Array.isArray(r.data) ? r.data : [];
+        setSavedAddresses(list);
+        const def = list.find((a) => a.is_default) || list[0];
+        if (def) {
+          setSelectedAddressId(def.id);
+          applySavedAddress(def);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  // Mappe le format backend (address1/address2) vers le formulaire (line1/line2).
+  const applySavedAddress = (a) => {
+    setShip({
+      full_name: a.full_name || "",
+      line1: a.address1 || "",
+      line2: a.address2 || "",
+      city: a.city || "",
+      province: a.province || "",
+      postal_code: a.postal_code || "",
+      country: a.country || "CA",
+    });
+  };
+
+  const onSelectSaved = (id) => {
+    setSelectedAddressId(id);
+    if (id === "") {
+      setShip({ full_name: "", line1: "", line2: "", city: "", province: "", postal_code: "", country: "CA" });
+      return;
+    }
+    const a = savedAddresses.find((x) => x.id === id);
+    if (a) applySavedAddress(a);
+  };
 
   const discount = useMemo(() => {
     if (!coupon) return 0;
@@ -215,6 +264,27 @@ export default function Checkout() {
             <h2 className="font-display text-xl font-bold text-nordfjord mb-4">
               {lang === "fr" ? "Adresse de livraison" : "Shipping address"}
             </h2>
+            {savedAddresses.length > 0 && (
+              <div className="mb-4">
+                <label className="block font-data text-[11px] uppercase tracking-[0.14em] text-glacier mb-1.5">
+                  {lang === "fr" ? "Adresses enregistrées" : "Saved addresses"}
+                </label>
+                <select
+                  value={selectedAddressId}
+                  onChange={(e) => onSelectSaved(e.target.value)}
+                  data-testid="checkout-saved-address"
+                  className="w-full rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova bg-white text-nordfjord"
+                >
+                  <option value="">{lang === "fr" ? "Nouvelle adresse…" : "New address…"}</option>
+                  {savedAddresses.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {[a.label, a.full_name, a.address1, a.city].filter(Boolean).join(" · ")}
+                      {a.is_default ? (lang === "fr" ? " (défaut)" : " (default)") : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <AddressForm value={ship} setValue={setShip} lang={lang} prefix="shipping" />
           </div>
 

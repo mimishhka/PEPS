@@ -93,7 +93,7 @@ export default function Account() {
         {tab === "orders" && <OrdersTab t={t} lang={lang} />}
         {tab === "profile" && <ProfileTab t={t} user={user} refresh={refresh} />}
         {tab === "addresses" && <AddressesTab t={t} />}
-        {tab === "security" && <SecurityTab t={t} logout={logout} navigate={navigate} />}
+        {tab === "security" && <SecurityTab t={t} user={user} logout={logout} navigate={navigate} />}
       </div>
     </div>
   );
@@ -168,6 +168,7 @@ function OrdersTab({ t, lang }) {
 
 /* Profile */
 function ProfileTab({ t, user, refresh }) {
+  const pwLess = !!user?.passwordless;
   const [name, setName] = useState(user?.name || "");
   const [busy, setBusy] = useState(false);
   const [emailForm, setEmailForm] = useState({ new_email: "", current_password: "" });
@@ -192,7 +193,8 @@ function ProfileTab({ t, user, refresh }) {
     e.preventDefault();
     setEmailBusy(true);
     try {
-      const { data } = await api.post("/account/email/request-change", emailForm);
+      const payload = pwLess ? { new_email: emailForm.new_email } : emailForm;
+      const { data } = await api.post("/account/email/request-change", payload);
       setEmailSentTo(data.sent_to);
       setEmailForm({ new_email: "", current_password: "" });
     } catch (err) {
@@ -231,12 +233,14 @@ function ProfileTab({ t, user, refresh }) {
                 onChange={(e) => setEmailForm({ ...emailForm, new_email: e.target.value })} data-testid="email-change-new"
                 className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
             </div>
-            <div>
-              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
-              <input type="password" required value={emailForm.current_password}
-                onChange={(e) => setEmailForm({ ...emailForm, current_password: e.target.value })} data-testid="email-change-password"
-                className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
-            </div>
+            {!pwLess && (
+              <div>
+                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
+                <input type="password" required value={emailForm.current_password}
+                  onChange={(e) => setEmailForm({ ...emailForm, current_password: e.target.value })} data-testid="email-change-password"
+                  className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
+              </div>
+            )}
             <button type="submit" disabled={emailBusy} data-testid="email-change-submit" className="btn-pill btn-outline disabled:opacity-50">
               {emailBusy ? "…" : t("account.sendConfirmation")}
             </button>
@@ -395,8 +399,9 @@ function Field({ label, value, onChange, required = false, className = "", testi
 }
 
 /* Security */
-function SecurityTab({ t, logout, navigate }) {
+function SecurityTab({ t, user, logout, navigate }) {
   const confirm = useConfirm();
+  const pwLess = !!user?.passwordless;
   const [pw, setPw] = useState({ current_password: "", new_password: "", confirm: "" });
   const [pwBusy, setPwBusy] = useState(false);
   const [delPassword, setDelPassword] = useState("");
@@ -412,7 +417,7 @@ function SecurityTab({ t, logout, navigate }) {
     setPwBusy(true);
     try {
       await api.put("/account/password", {
-        current_password: pw.current_password,
+        ...(pwLess ? {} : { current_password: pw.current_password }),
         new_password: pw.new_password,
       });
       setPw({ current_password: "", new_password: "", confirm: "" });
@@ -438,7 +443,7 @@ function SecurityTab({ t, logout, navigate }) {
     if (!await confirm({ title: t("account.deleteConfirm"), destructive: true, confirmLabel: t("common.delete") || "Delete", cancelLabel: t("common.cancel") || "Cancel" })) return;
     setDelBusy(true);
     try {
-      await api.post("/account/delete", { current_password: delPassword });
+      await api.post("/account/delete", pwLess ? {} : { current_password: delPassword });
       localStorage.removeItem("fironova_token");
       toast.success(t("account.deleted"));
       logout();
@@ -453,13 +458,22 @@ function SecurityTab({ t, logout, navigate }) {
   return (
     <div className="max-w-2xl space-y-5">
       <form onSubmit={changePassword} className="rounded-2xl border border-ash bg-white p-6 space-y-5" data-testid="password-form">
-        <h2 className="font-display text-lg font-bold text-nordfjord">{t("account.changePassword")}</h2>
-        <div>
-          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
-          <input type="password" required value={pw.current_password} data-testid="password-current"
-            onChange={(e) => setPw({ ...pw, current_password: e.target.value })}
-            className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
-        </div>
+        <h2 className="font-display text-lg font-bold text-nordfjord">
+          {pwLess ? (t("account.setPassword") || "Définir un mot de passe / Set a password") : t("account.changePassword")}
+        </h2>
+        {pwLess && (
+          <p className="text-sm text-glacier">
+            {t("account.setPasswordHint") || "Votre compte utilise les liens de connexion. Définissez un mot de passe pour aussi vous connecter avec. / Your account uses sign-in links. Set a password to also sign in with one."}
+          </p>
+        )}
+        {!pwLess && (
+          <div>
+            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
+            <input type="password" required value={pw.current_password} data-testid="password-current"
+              onChange={(e) => setPw({ ...pw, current_password: e.target.value })}
+              className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
+          </div>
+        )}
         <div>
           <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.newPassword")}</label>
           <input type="password" required minLength={8} value={pw.new_password} data-testid="password-new"
@@ -473,7 +487,7 @@ function SecurityTab({ t, logout, navigate }) {
             className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
         </div>
         <button type="submit" disabled={pwBusy} data-testid="password-save" className="btn-pill btn-nova disabled:opacity-50">
-          {pwBusy ? "…" : t("account.changePassword")}
+          {pwBusy ? "…" : (pwLess ? (t("account.setPassword") || "Définir / Set") : t("account.changePassword"))}
         </button>
         <p className="text-xs text-glacier">{t("account.passwordHint")}</p>
       </form>
@@ -496,12 +510,14 @@ function SecurityTab({ t, logout, navigate }) {
           </button>
         ) : (
           <form onSubmit={deleteAccount} className="space-y-4" data-testid="delete-account-form">
-            <div>
-              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
-              <input type="password" required value={delPassword} data-testid="delete-account-password"
-                onChange={(e) => setDelPassword(e.target.value)}
-                className="w-full rounded-full border border-error px-5 py-3 bg-white text-nordfjord outline-none" />
-            </div>
+            {!pwLess && (
+              <div>
+                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
+                <input type="password" required value={delPassword} data-testid="delete-account-password"
+                  onChange={(e) => setDelPassword(e.target.value)}
+                  className="w-full rounded-full border border-error px-5 py-3 bg-white text-nordfjord outline-none" />
+              </div>
+            )}
             <div className="flex gap-3">
               <button type="submit" disabled={delBusy} data-testid="delete-account-confirm"
                 className="rounded-full bg-error text-white font-data text-xs uppercase tracking-[0.2em] px-6 py-3 disabled:opacity-50">

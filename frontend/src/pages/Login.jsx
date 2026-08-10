@@ -158,6 +158,14 @@ export default function Login() {
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.password")}</label>
                 <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} data-testid="login-password"
                   className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                {!isAdminLogin && (
+                  <div className="text-right mt-2">
+                    <Link to="/forgot-password" data-testid="login-forgot-password-link"
+                      className="font-data text-[12px] text-nova hover:text-nordfjord transition">
+                      {lang === "fr" ? "Mot de passe oublié ?" : "Forgot password?"}
+                    </Link>
+                  </div>
+                )}
               </div>
               <button type="submit" disabled={busy} data-testid="login-submit" className="w-full btn-pill btn-nova disabled:opacity-50">
                 {busy ? t("common.loading") : `${t("auth.signin")} →`}
