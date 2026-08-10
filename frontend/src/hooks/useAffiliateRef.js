@@ -54,5 +54,5 @@ export default function useAffiliateRef() {
       .catch(() => {
         /* silencieux : l'attribution ne doit jamais bloquer l'UX */
       });
-  }, [location.search]);
+  }, [location.pathname, location.search]);
 }

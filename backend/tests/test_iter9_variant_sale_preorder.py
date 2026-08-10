@@ -19,11 +19,18 @@ from pymongo import MongoClient
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 if not BASE_URL:
-    with open("/app/frontend/.env", "r") as f:
-        for ln in f:
-            if ln.strip().startswith("REACT_APP_BACKEND_URL="):
-                BASE_URL = ln.strip().split("=", 1)[1].strip().rstrip("/")
-                break
+    env_candidates = ["/app/frontend/.env", "/workspaces/PEPS/frontend/.env", "/workspaces/PEPS/.env"]
+    for env_path in env_candidates:
+        try:
+            with open(env_path, "r") as f:
+                for ln in f:
+                    if ln.strip().startswith("REACT_APP_BACKEND_URL="):
+                        BASE_URL = ln.strip().split("=", 1)[1].strip().rstrip("/")
+                        break
+                if BASE_URL:
+                    break
+        except OSError:
+            continue
 assert BASE_URL
 
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
