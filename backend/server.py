@@ -10457,7 +10457,9 @@ app.add_middleware(
 @app.middleware("http")
 async def _csrf_origin_guard(request: Request, call_next):
     """Block cross-origin state-mutating requests that carry the session cookie."""
-    if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.cookies.get("access_token"):
+    authz = (request.headers.get("authorization") or "").strip().lower()
+    uses_bearer = authz.startswith("bearer ")
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.cookies.get("access_token") and not uses_bearer:
         origin = (request.headers.get("origin") or "").lower().rstrip("/")
         allowed = {o.lower().rstrip("/") for o in _cors_origins}
         matches_regex = bool(_cors_origin_re and _cors_origin_re.fullmatch(origin))
