@@ -46,7 +46,7 @@ DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_MINUTES = 60 * 24 * 7  # 7 days for ecommerce UX
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@fironova.com")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@nordpep.ca")
 # Aucun défaut : un mot de passe admin en dur dans le repo est un mot de passe public.
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 if not ADMIN_PASSWORD:

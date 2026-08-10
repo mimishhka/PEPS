@@ -53,12 +53,15 @@ export default function AdminGate({ children }) {
         </div>
         <h1 className="text-center font-display text-xl font-bold text-nordfjord tracking-[0.08em]">FIRONOVA OPS</h1>
         <p className="text-center font-data text-[11px] uppercase tracking-[0.24em] text-nova mt-2 mb-8">Restricted · Restreint</p>
+        <p className="text-center text-sm text-glacier mb-4">
+          Gate code only. The admin password is entered on the next login screen.
+        </p>
         <input
           type="password"
           value={code}
           onChange={(e) => setCode(e.target.value)}
           autoFocus
-          placeholder="Password"
+          placeholder="Gate code"
           data-testid="admin-gate-code"
           className="w-full rounded-full border-[1.5px] border-nova/60 px-5 py-3.5 bg-white text-center text-nordfjord tracking-[0.2em] focus:outline-none focus:border-nova"
         />
@@ -69,7 +72,7 @@ export default function AdminGate({ children }) {
         >
           {busy ? "…" : "Enter"}
         </button>
-        {error && <p className="mt-4 text-center font-data text-[10px] uppercase tracking-[0.2em] text-glacier">{error}</p>}
+        {error && <p className="mt-4 text-center font-data text-[10px] uppercase tracking-[0.2em] text-glacier">Invalid gate code.</p>}
       </form>
     </div>
   );
