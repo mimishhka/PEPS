@@ -1,17 +1,42 @@
 import axios from "axios";
 
-const ENV_BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const isBrowser = typeof window !== "undefined";
-const isLocalHost = isBrowser && ["localhost", "127.0.0.1"].includes(window.location.hostname);
-// In dev/preview the webpack proxy forwards /api → localhost:8001 (same-origin,
-// no CORS). In production set REACT_APP_BACKEND_URL explicitly.
-const BACKEND_URL = ENV_BACKEND_URL
-  ? ENV_BACKEND_URL
-  : isLocalHost
-    ? `http://${isBrowser ? window.location.hostname : "127.0.0.1"}:8001`
-    : "";
+function normalizeBackendBase(value) {
+  if (!value) return "";
+  const candidate = String(value).trim();
+  if (!candidate) return "";
+  return candidate.replace(/\/+$/, "");
+}
 
-export const API_BASE = `${BACKEND_URL}/api`;
+function resolveRuntimeOrigin() {
+  if (typeof window === "undefined") return "http://127.0.0.1:8001";
+  return window.location.origin;
+}
+
+export function buildApiBaseUrl() {
+  const envValue = normalizeBackendBase(process.env.REACT_APP_BACKEND_URL);
+  const isBrowser = typeof window !== "undefined";
+  const isLocalHost = isBrowser && ["localhost", "127.0.0.1"].includes(window.location.hostname);
+
+  if (isLocalHost) {
+    const localOrigin = normalizeBackendBase(`http://${window.location.hostname}:8001`);
+    return `${localOrigin}/api`;
+  }
+
+  const runtimeOrigin = resolveRuntimeOrigin();
+  let base = envValue || runtimeOrigin;
+
+  if (base === runtimeOrigin) {
+    return `${base}/api`;
+  }
+
+  if (base.endsWith("/api")) {
+    return base;
+  }
+
+  return `${base}/api`;
+}
+
+export const API_BASE = buildApiBaseUrl();
 export const ASSET_BASE = API_BASE.replace(/\/api$/, "");
 
 const api = axios.create({
@@ -19,6 +44,18 @@ const api = axios.create({
   // Auth = cookie httpOnly `access_token` uniquement. Aucun token ne transite
   // par un stockage accessible au JS, donc une XSS ne peut pas voler la session.
   withCredentials: true,
+});
+
+api.interceptors.request.use((config) => {
+  const headers = config.headers ?? {};
+  const token = typeof window !== "undefined" ? window.localStorage.getItem("fironova_token") : null;
+
+  if (token && !headers.Authorization) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  config.headers = headers;
+  return config;
 });
 
 export function formatApiError(detail) {
