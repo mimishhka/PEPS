@@ -10350,6 +10350,8 @@ app.include_router(api)
 # CORS crédentialé : le navigateur refuse Access-Control-Allow-Origin: * dès
 # que des cookies sont envoyés. On échoue vite en cas de mauvaise config.
 _cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
+_cors_origin_regex = os.environ.get("CORS_ORIGIN_REGEX", r"^https://.*\.preview\.emergentagent\.com$").strip() or None
+_cors_origin_re = re.compile(_cors_origin_regex, re.IGNORECASE) if _cors_origin_regex else None
 if "*" in _cors_origins:
     raise RuntimeError(
         "CORS_ORIGINS doit lister des origines explicites (ex. https://app.fironova.com) — "
@@ -10359,6 +10361,7 @@ if "*" in _cors_origins:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
+    allow_origin_regex=_cors_origin_regex,
     allow_credentials=True,  # Auth cookie-only : le cookie httpOnly access_token doit traverser
     allow_methods=["*"],
     allow_headers=["*"],
@@ -10371,9 +10374,10 @@ async def _csrf_origin_guard(request: Request, call_next):
     if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.cookies.get("access_token"):
         origin = (request.headers.get("origin") or "").lower().rstrip("/")
         allowed = {o.lower().rstrip("/") for o in _cors_origins}
+        matches_regex = bool(_cors_origin_re and _cors_origin_re.fullmatch(origin))
         if not origin:
             return Response(status_code=403, content="Origin required", media_type="text/plain")
-        if origin not in allowed:
+        if origin not in allowed and not matches_regex:
             return Response(status_code=403, content="Origin not allowed", media_type="text/plain")
     return await call_next(request)
 
