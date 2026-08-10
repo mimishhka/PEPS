@@ -302,7 +302,14 @@ function CoaUploader({ value, onChange, test }) {
       onChange(res.data.url);
       toast.success("COA PDF uploaded");
     } catch (err) {
-      toast.error(formatApiError(err?.response?.data?.detail));
+      const status = err?.response?.status;
+      if (status === 401) {
+        toast.error("Session expired. Please sign in again.");
+      } else if (status === 403) {
+        toast.error("Request blocked (origin/cookie). Open the preview URL directly and sign in there.");
+      } else {
+        toast.error(formatApiError(err?.response?.data?.detail || err?.message));
+      }
     } finally {
       setUploading(false);
     }
@@ -363,7 +370,14 @@ function ImageUploader({ value, onChange, test }) {
       onChange(res.data.url);
       toast.success("Product image uploaded");
     } catch (err) {
-      toast.error(formatApiError(err?.response?.data?.detail));
+      const status = err?.response?.status;
+      if (status === 401) {
+        toast.error("Session expired. Please sign in again.");
+      } else if (status === 403) {
+        toast.error("Request blocked (origin/cookie). Open the preview URL directly and sign in there.");
+      } else {
+        toast.error(formatApiError(err?.response?.data?.detail || err?.message));
+      }
     } finally {
       setUploading(false);
     }
