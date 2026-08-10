@@ -4202,19 +4202,30 @@ async def admin_update_order(
     if not update:
         raise HTTPException(400, "No fields to update")
 
-    # Restock inventory when payment status moves to a terminal cancellation state.
-    if (
-        payment_status in {"cancelled", "failed", "refunded"}
-        and existing.get("payment_status") not in {"cancelled", "failed", "refunded"}
-    ):
-        await _restock_order_items(existing)
-
-    # Restock inventory when fulfillment moves into cancelled/failed from a non-terminal state.
-    if (
+    # GAP 1 & 2 — Effets de bord unifiés lorsque la commande passe à un
+    # statut d'annulation. Restock + coupon + reverse de la commission
+    # affiliée sont désormais centralisés dans `_cancel_order_side_effects()`
+    # pour garantir la cohérence avec l'auto-cancel.
+    now_iso = datetime.now(timezone.utc).isoformat()
+    cancel_terminal = {"cancelled", "failed", "refunded"}
+    payment_going_terminal = (
+        payment_status in cancel_terminal
+        and existing.get("payment_status") not in cancel_terminal
+    )
+    fulfillment_going_cancelled = (
         update.get("fulfillment_status") in ("cancelled", "failed")
         and existing.get("fulfillment_status") not in ("cancelled", "failed")
-    ):
-        await _restock_order_items(existing)
+    )
+    if payment_going_terminal or fulfillment_going_cancelled:
+        # Reverse la commission uniquement si la commande était réellement
+        # payée avant cette transition (cancel d'un awaiting → pas de commission).
+        was_paid = existing.get("payment_status") == "paid"
+        await _cancel_order_side_effects(existing, reverse_affiliate=was_paid)
+        # Métadonnées pour audit / réouverture éventuelle
+        if payment_going_terminal:
+            update["cancelled_at"] = now_iso
+            update["cancelled_reason"] = "admin_manual"
+            update["prev_payment_status"] = existing.get("payment_status")
 
     await db.orders.update_one({"id": order_id}, {"$set": update})
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
@@ -4231,6 +4242,124 @@ async def admin_confirm_payment(order_id: str, _admin: dict = Depends(require_ar
         return existing  # idempotent
     updated = await _mark_order_paid(order_id, "Payment manually confirmed by admin")
     return updated or existing
+
+
+class ReopenOrderIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    mark_paid: bool = False
+    note: Optional[str] = ""
+
+
+@api.post("/admin/orders/{order_id}/reopen")
+async def admin_reopen_order(
+    order_id: str,
+    payload: ReopenOrderIn,
+    admin: dict = Depends(require_area("orders", "manage")),
+):
+    """GAP 3 — Réouvre une commande annulée après réception tardive du paiement.
+    - Ré-décrémente le stock (échoue si un item n'est plus disponible → conseille
+      au staff de contacter le client).
+    - Rétablit le compteur du coupon (best-effort, respecte usage_limit).
+    - Restaure `payment_status` à sa valeur pré-annulation (`prev_payment_status`)
+      ou passe directement à "paid" si `mark_paid=True`.
+    - Enregistre une note d'audit avec l'auteur et le motif fourni."""
+    existing = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Order not found")
+    if existing.get("payment_status") != "cancelled":
+        raise HTTPException(400, "Only cancelled orders can be reopened")
+
+    # 1) Ré-décrément atomique du stock
+    reserved: list[dict] = []
+    for it in (existing.get("items") or []):
+        if it.get("preorder"):
+            continue
+        qty = int(it.get("qty", 1))
+        vid = it.get("variant_id")
+        if vid in (None, "", "_default"):
+            res = await db.products.update_one(
+                {"id": it["product_id"], "stock": {"$gte": qty}},
+                {"$inc": {"stock": -qty}},
+            )
+        else:
+            res = await db.products.update_one(
+                {"id": it["product_id"], "variants": {"$elemMatch": {"id": vid, "stock": {"$gte": qty}}}},
+                {"$inc": {"variants.$[v].stock": -qty}},
+                array_filters=[{"v.id": vid}],
+            )
+        if res.modified_count != 1:
+            # Rollback des réservations déjà faites
+            for rb in reserved:
+                rb_qty = int(rb.get("qty", 1))
+                rb_vid = rb.get("variant_id")
+                if rb_vid in (None, "", "_default"):
+                    await db.products.update_one({"id": rb["product_id"]}, {"$inc": {"stock": rb_qty}})
+                else:
+                    await db.products.update_one(
+                        {"id": rb["product_id"], "variants.id": rb_vid},
+                        {"$inc": {"variants.$.stock": rb_qty}},
+                    )
+            raise HTTPException(
+                409,
+                f"Cannot reopen: insufficient stock for '{it.get('name_en') or it.get('slug') or 'item'}'",
+            )
+        reserved.append(it)
+
+    # 2) Rétablir le compteur du coupon si applicable
+    c = existing.get("coupon")
+    if c and c.get("code") and not existing.get("coupon_counted"):
+        code = c["code"]
+        coupon_doc = await db.coupons.find_one({"code": code}, {"_id": 0, "usage_limit": 1, "used_count": 1})
+        if coupon_doc:
+            limit = coupon_doc.get("usage_limit")
+            used = int(coupon_doc.get("used_count", 0) or 0)
+            if limit is None or used < int(limit):
+                await db.coupons.update_one({"code": code}, {"$inc": {"used_count": 1}})
+                email_norm = (existing.get("email") or "").strip().lower()
+                if email_norm:
+                    r2 = await db.coupons.update_one(
+                        {"code": code, "used_by.email": email_norm},
+                        {"$inc": {"used_by.$.count": 1}},
+                    )
+                    if r2.matched_count == 0:
+                        await db.coupons.update_one(
+                            {"code": code},
+                            {"$push": {"used_by": {"email": email_norm, "count": 1}}},
+                        )
+                await db.orders.update_one({"id": order_id}, {"$set": {"coupon_counted": True}})
+
+    # 3) Rétablir le statut
+    prev = existing.get("prev_payment_status") or "awaiting_etransfer"
+    if prev not in {"awaiting_etransfer", "awaiting_crypto"}:
+        prev = "awaiting_etransfer"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    reopened_note_text = (
+        f"Order reopened by {admin['email']}"
+        + (f" — {payload.note.strip()}" if payload.note and payload.note.strip() else "")
+    )
+    await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {
+            "payment_status": prev,
+            "fulfillment_status": "processing" if existing.get("has_preorder") is False else existing.get("fulfillment_status") or "processing",
+            "reopened_at": now_iso,
+            "late_payment_flagged": False,
+         },
+         "$unset": {"cancelled_at": "", "cancelled_reason": "", "prev_payment_status": ""},
+         "$push": {"notes": {
+            "id": str(uuid.uuid4()),
+            "text": reopened_note_text,
+            "author": admin["email"],
+            "created_at": now_iso,
+         }}},
+    )
+
+    # 4) Si mark_paid, on confirme immédiatement le paiement
+    if payload.mark_paid:
+        paid = await _mark_order_paid(order_id, f"Paid confirmed at reopen by {admin['email']}")
+        return paid or await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+    return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
 
 # ---------------------------------------------------------------------------
@@ -6768,6 +6897,33 @@ async def _process_interac_deposit_emails() -> int:
                 {"order_number": ref, "payment_status": "awaiting_etransfer"}, {"_id": 0}
             )
             if not order:
+                # GAP 3 — Détection paiement tardif : la commande peut avoir été
+                # auto-annulée avant l'arrivée du dépôt. On journalise l'incident
+                # sur la commande pour que l'admin puisse la réouvrir manuellement.
+                late = await db.orders.find_one(
+                    {"order_number": ref, "payment_status": "cancelled"},
+                    {"_id": 0, "id": 1, "order_number": 1, "email": 1, "late_payment_flagged": 1},
+                )
+                if late and not late.get("late_payment_flagged"):
+                    await db.orders.update_one(
+                        {"id": late["id"]},
+                        {"$set": {
+                            "late_payment_flagged": True,
+                            "late_payment_flagged_at": datetime.now(timezone.utc).isoformat(),
+                            "late_payment_reference": ref,
+                        },
+                         "$push": {"notes": {
+                            "id": str(uuid.uuid4()),
+                            "text": (f"⚠️ PAIEMENT TARDIF détecté sur commande annulée — "
+                                     f"notification Interac reçue (réf {ref}). "
+                                     f"Vérifier manuellement avant réouverture éventuelle."),
+                            "author": "system",
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                         }}},
+                    )
+                    logging.warning("Late payment detected on cancelled order %s (ref %s)", late.get("id"), ref)
+                    acted = True
+                    break
                 continue
             amounts = _parse_amounts(text)
             order_total = float(order.get("total", 0))
@@ -7441,6 +7597,48 @@ async def _restock_order_items(order: dict):
         asyncio.create_task(_maybe_notify_restock(it["product_id"], it["variant_id"]))
 
 
+async def _decrement_coupon_usage(order: dict) -> bool:
+    """Rend l'usage global + par-client d'un coupon compté. Idempotent via
+    le flag `coupon_counted` sur la commande. Retourne True si un décrément
+    a réellement eu lieu."""
+    c = order.get("coupon")
+    if not (c and c.get("code") and order.get("coupon_counted")):
+        return False
+    code = c["code"]
+    await db.coupons.update_one(
+        {"code": code, "used_count": {"$gt": 0}},
+        {"$inc": {"used_count": -1}},
+    )
+    email_norm = (order.get("email") or "").strip().lower()
+    if email_norm:
+        await db.coupons.update_one(
+            {"code": code, "used_by.email": email_norm, "used_by.count": {"$gt": 0}},
+            {"$inc": {"used_by.$.count": -1}},
+        )
+    await db.orders.update_one(
+        {"id": order["id"]},
+        {"$set": {"coupon_counted": False}},
+    )
+    return True
+
+
+async def _cancel_order_side_effects(order: dict, *, reverse_affiliate: bool = True) -> None:
+    """Effets de bord standards d'une annulation :
+      1. Restock des lignes non-preorder
+      2. Décrément du coupon (si compté)
+      3. Reverse de la commission affiliée (si commande était payée)
+
+    Idempotent — sûr à appeler plusieurs fois grâce aux gardes internes.
+    À utiliser depuis TOUS les chemins d'annulation (auto-cancel, cancel
+    manuel admin, refund complet) pour garantir cohérence."""
+    await _restock_order_items(order)
+    await _decrement_coupon_usage(order)
+    if reverse_affiliate and order.get("payment_status") == "paid":
+        try:
+            await affiliate_on_order_reversed(order["id"], full=True)  # noqa: F821
+        except Exception as e:
+            logging.warning("[cancel] affiliate reverse failed for %s: %s", order.get("id"), e)
+
 
 PAYMENT_REMINDER_HOURS = float(os.environ.get("PAYMENT_REMINDER_HOURS", "6"))
 
@@ -7485,28 +7683,19 @@ async def cancel_stale_unpaid_orders():
         }
         res = await db.orders.update_one(
             {"id": order["id"], "payment_status": order["payment_status"]},
-            {"$set": {"payment_status": "cancelled", "fulfillment_status": "cancelled"},
+            {"$set": {
+                "payment_status": "cancelled",
+                "fulfillment_status": "cancelled",
+                "cancelled_at": datetime.now(timezone.utc).isoformat(),
+                "cancelled_reason": "auto_unpaid_timeout",
+                "prev_payment_status": order["payment_status"],
+             },
              "$push": {"notes": note}},
         )
         if res.modified_count:
-            await _restock_order_items(order)
-            # Rendre l'usage du coupon s'il avait été décompté (garde de sécurité :
-            # avec le nouveau flux, le coupon n'est normalement compté qu'au
-            # paiement confirmé, donc coupon_counted ne devrait jamais être True
-            # ici — sauf commandes créées avant ce correctif).
-            c = order.get("coupon")
-            if c and c.get("code") and order.get("coupon_counted"):
-                await db.coupons.update_one(
-                    {"code": c["code"], "used_count": {"$gt": 0}},
-                    {"$inc": {"used_count": -1}},
-                )
-                email_norm = (order.get("email") or "").strip().lower()
-                if email_norm:
-                    await db.coupons.update_one(
-                        {"code": c["code"], "used_by.email": email_norm, "used_by.count": {"$gt": 0}},
-                        {"$inc": {"used_by.$.count": -1}},
-                    )
-                await db.orders.update_one({"id": order["id"]}, {"$set": {"coupon_counted": False}})
+            # Effets de bord centralisés (restock + coupon + affiliate reverse).
+            # reverse_affiliate=False car une commande auto-annulée n'était jamais payée.
+            await _cancel_order_side_effects(order, reverse_affiliate=False)
             logging.info("Auto-cancelled unpaid order %s", order.get("order_number", order["id"]))
             if order.get("email"):
                 lang, to, ctx = _order_ctx(order)

@@ -127,3 +127,13 @@ E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (N
 - **Meilleurs produits perso pour affiliés** — Nouveau endpoint `GET /api/affiliate/top-products?limit=N` (default 5, max 20) qui agrège les items des commandes payées attribuées à l'affilié courant. Frontend `AffiliateDashboard.jsx` : appel prioritaire, fallback vers `/products?featured=true` si aucune vente. Widget mis à jour avec badge rang (1,2,3) + qté vendue + revenu généré + pluralisation FR/EN. Tests: 100% backend (6/6, `/app/backend/tests/test_affiliate_top_products_and_cf_ip.py`) + 100% frontend (iteration_24.json).
 - **Fix rate limit Cloudflare** — `_client_ip()` étendu pour lire prioritairement `CF-Connecting-IP` (validée), avec fallback `X-Forwarded-For` quand le peer est en IP privée/loopback. Le compteur de brute-force sur `/api/auth/login` distingue à nouveau les vrais visiteurs derrière Cloudflare. Vérifié: 5 tentatives sur même CF-IP → 429; IP fraîche → 401.
 - **AgeGate & Coupons UI** — AgeGate refondu en identité Fironova (nordfjord + nova cyan). Popup édition coupon complètement rebâti : 3 sections (Général / Limites & calendrier / Ciblage), sticky header+footer, bilingue FR/EN, testids préservés.
+
+
+## Update — Février 2026 (session fork, suite 2)
+- **Cancel/Reopen — 3 gaps fermés**
+  - GAP 1: Cancel manuel admin décrémente désormais le coupon (usage global + par-client) via `_decrement_coupon_usage()`, idempotent grâce au flag `coupon_counted`
+  - GAP 2: Cancel manuel reverse la commission affiliée UNIQUEMENT si la commande était payée avant (via `_cancel_order_side_effects(reverse_affiliate=was_paid)`)
+  - GAP 3a: Détection paiement tardif Interac — quand un e-Transfer arrive pour un `order_number` déjà annulé, une note système `⚠️ PAIEMENT TARDIF` est ajoutée et les flags `late_payment_flagged`, `late_payment_reference` sont posés (idempotent)
+  - GAP 3b: Nouvel endpoint `POST /api/admin/orders/{id}/reopen` (payload `{mark_paid, note}`) — 400 si non-cancelled, 409 si stock insuffisant avec rollback atomique. Sinon: ré-décrément stock, restaure coupon.used_count (respecte usage_limit), remet `payment_status` au `prev_payment_status` et pose `reopened_at`. Si `mark_paid=True` → confirme direct via `_mark_order_paid`.
+- **Métadonnées d'audit** sur toute commande annulée : `cancelled_at`, `cancelled_reason` (`admin_manual` ou `auto_unpaid_timeout`), `prev_payment_status` conservé.
+- **Tests**: 11/11 pass (`/app/backend/tests/test_cancel_reopen_iter25.py`), iteration_25.json.
