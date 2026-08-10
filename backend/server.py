@@ -344,7 +344,7 @@ def _public_user_payload(user: Optional[dict]) -> dict:
         return {}
     return {
         k: v for k, v in user.items()
-        if k not in {"permissions", "passwordless", "password_hash", "token_version"}
+        if k not in {"password_hash", "token_version"}
     }
 
 
@@ -542,11 +542,6 @@ class CouponIn(BaseModel):
     restrict_categories: List[str] = []
 
 
-class WishlistItemIn(BaseModel):
-    product_id: str = Field(min_length=1, max_length=100)
-    variant_id: Optional[str] = None  # None = full product listing
-
-
 class OrderNoteIn(BaseModel):
     text: str = Field(min_length=1)
     visible_to_customer: bool = False
@@ -649,7 +644,7 @@ class ProfileUpdateIn(BaseModel):
 
 
 class PasswordChangeIn(BaseModel):
-    current_password: str
+    current_password: Optional[str] = None
     new_password: str = Field(min_length=8)
 
     @field_validator("new_password")
@@ -660,7 +655,7 @@ class PasswordChangeIn(BaseModel):
 
 class EmailChangeRequestIn(BaseModel):
     new_email: EmailStr
-    current_password: str  # exigé : empêche un token volé de détourner le compte
+    current_password: Optional[str] = None
 
 
 class SavedAddressIn(BaseModel):
@@ -677,7 +672,7 @@ class SavedAddressIn(BaseModel):
 
 
 class AccountDeleteIn(BaseModel):
-    current_password: str  # confirmation forte avant action irréversible
+    current_password: Optional[str] = None
 
 
 class ShippingZoneIn(BaseModel):
@@ -1040,6 +1035,21 @@ class MagicRequestIn(BaseModel):
     lang: str = "fr"
 
 
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+    lang: str = "fr"
+
+
+class ResetPasswordIn(BaseModel):
+    token: str = Field(min_length=10, max_length=200)
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def _pw(cls, v):
+        return _validate_password_strength(v)
+
+
 def _hash_magic_token(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -1170,8 +1180,99 @@ async def magic_verify(response: Response, request: Request, token: str = Body(.
     return {
         "id": user["id"], "email": user["email"], "name": user["name"],
         "role": user["role"], "created_at": user["created_at"],
-        # Token also in body as a fallback when the browser blocks cookies.
-        "access_token": token_jwt,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Réinitialisation de mot de passe (mot de passe oublié)
+# ---------------------------------------------------------------------------
+RESET_TOKEN_TTL_MINUTES = 30
+RESET_REQUEST_MAX = 5
+RESET_REQUEST_WINDOW = 3600
+
+
+async def _send_reset_email(email: str, link: str, lang: str) -> None:
+    fr = lang.startswith("fr")
+    if fr:
+        subject = "FIRONOVA — Réinitialisation du mot de passe"
+        heading = "Réinitialiser votre mot de passe"
+        body = "Vous avez demandé à réinitialiser votre mot de passe. Ce lien expire dans 30 minutes."
+        cta = "Choisir un nouveau mot de passe"
+        ignore = "Si vous n'êtes pas à l'origine de cette demande, ignorez cet email — votre mot de passe reste inchangé."
+    else:
+        subject = "FIRONOVA — Password reset"
+        heading = "Reset your password"
+        body = "You requested a password reset. This link expires in 30 minutes."
+        cta = "Choose a new password"
+        ignore = "If you didn't request this, ignore this email — your password stays unchanged."
+    html = f"""<div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#0B2E4F">
+      <h1 style="font-size:20px;margin:0 0 12px">{heading}</h1>
+      <p style="font-size:14px;line-height:1.6;color:#3E5C76;margin:0 0 24px">{body}</p>
+      <a href="{link}" style="display:inline-block;background:#00B8D4;color:#0B2E4F;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:9999px;font-size:14px">{cta}</a>
+      <p style="font-size:12px;line-height:1.6;color:#7A8CA0;margin:24px 0 0">{ignore}</p>
+      <p style="font-size:11px;color:#A0AEC0;margin:16px 0 0">For Research Use Only · Réservé à la recherche</p>
+    </div>"""
+    from_addr = MAGIC_SENDER_EMAIL or SENDER_EMAIL
+    await _send_email(email, subject, html, from_email=from_addr)
+
+
+@api.post("/auth/forgot-password")
+async def forgot_password(payload: ForgotPasswordIn, request: Request):
+    """Émet un lien de réinitialisation. Réponse uniforme (anti-énumération)."""
+    email = payload.email.lower().strip()
+    _rate_limit_email("reset_request", email, RESET_REQUEST_MAX,
+                      RESET_REQUEST_WINDOW, "Trop de demandes. Réessayez plus tard.")
+    user = await db.users.find_one({"email": email})
+    if user and not user.get("passwordless", False):
+        raw = secrets.token_urlsafe(32)
+        await db.magic_tokens.insert_one({
+            "id": str(uuid.uuid4()),
+            "email": email,
+            "token_hash": _hash_magic_token(raw),
+            "purpose": "reset",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_TTL_MINUTES)).isoformat(),
+            "used_at": None,
+            "ip": _client_ip(request),
+        })
+        base = _trusted_public_base_url()
+        link = f"{base}/reset-password?token={raw}"
+        await _send_reset_email(email, link, payload.lang or "fr")
+    return {"ok": True}
+
+
+@api.post("/auth/reset-password")
+async def reset_password(payload: ResetPasswordIn, response: Response, request: Request):
+    token_hash = _hash_magic_token(payload.token.strip())
+    rec = await db.magic_tokens.find_one({"token_hash": token_hash, "purpose": "reset"})
+    if not rec:
+        raise HTTPException(400, "Invalid or expired reset link")
+    if rec.get("used_at"):
+        raise HTTPException(400, "This reset link has already been used")
+    expires_at = datetime.fromisoformat(rec["expires_at"])
+    if expires_at < datetime.now(timezone.utc):
+        raise HTTPException(400, "This reset link has expired")
+    claimed = await db.magic_tokens.update_one(
+        {"_id": rec["_id"], "used_at": None},
+        {"$set": {"used_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    if claimed.modified_count != 1:
+        raise HTTPException(400, "This reset link has already been used")
+    user = await db.users.find_one({"email": rec["email"]})
+    if not user:
+        raise HTTPException(400, "Invalid or expired reset link")
+    new_hash = hash_password(payload.password)
+    new_tv = user.get("token_version", 0) + 1
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"password_hash": new_hash, "token_version": new_tv, "passwordless": False}},
+    )
+    await db.magic_tokens.delete_many({"email": rec["email"], "purpose": "reset", "used_at": None})
+    token_jwt = create_access_token(user["id"], user["email"], user["role"], token_version=new_tv)
+    set_auth_cookie(response, token_jwt, request)
+    return {
+        "id": user["id"], "email": user["email"], "name": user["name"],
+        "role": user["role"], "created_at": user["created_at"],
     }
 
 
@@ -1203,17 +1304,28 @@ async def account_update_profile(payload: ProfileUpdateIn, user: dict = Depends(
     return {"ok": True, "name": name}
 
 
+def _assert_current_password(doc: dict, provided: Optional[str]) -> None:
+    """Vérifie le mot de passe actuel, sauf pour un compte passwordless où
+    l'auth cookie (déjà exigée) fait foi."""
+    if doc.get("passwordless", False):
+        return
+    if not provided or not verify_password(provided, doc["password_hash"]):
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+
+
 @api.put("/account/password")
 async def account_change_password(payload: PasswordChangeIn, response: Response,
                                   user: dict = Depends(get_current_user)):
     _rate_limit_email("account_password", user["email"], 5, 900, "Too many password attempts. Try again later.")
     doc = await db.users.find_one({"id": user["id"]})
-    if not doc or not verify_password(payload.current_password, doc["password_hash"]):
-        raise HTTPException(status_code=403, detail="Current password is incorrect")
+    if not doc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    _assert_current_password(doc, payload.current_password)
     new_tv = doc.get("token_version", 0) + 1
     await db.users.update_one(
         {"id": user["id"]},
-        {"$set": {"password_hash": hash_password(payload.new_password), "token_version": new_tv}},
+        {"$set": {"password_hash": hash_password(payload.new_password),
+                  "token_version": new_tv, "passwordless": False}},
     )
     # On révoque tous les anciens tokens (token_version+1) mais on ré-émet
     # immédiatement un token frais pour CET appareil : l'utilisateur qui vient
@@ -1257,8 +1369,9 @@ async def account_request_email_change(payload: EmailChangeRequestIn, request: R
                                        user: dict = Depends(get_current_user)):
     _rate_limit_email("email_change", user["email"], 3, 3600, "Too many email change requests. Try again later.")
     doc = await db.users.find_one({"id": user["id"]})
-    if not doc or not verify_password(payload.current_password, doc["password_hash"]):
-        raise HTTPException(status_code=403, detail="Current password is incorrect")
+    if not doc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    _assert_current_password(doc, payload.current_password)
     new_email = payload.new_email.lower().strip()
     if new_email == doc["email"]:
         raise HTTPException(status_code=400, detail="This is already your email address")
@@ -1383,8 +1496,9 @@ async def account_delete(payload: AccountDeleteIn, response: Response,
     les données personnelles y sont remplacées. Irréversible."""
     _rate_limit_email("account_delete", user["email"], 3, 900, "Too many account deletion attempts. Try again later.")
     doc = await db.users.find_one({"id": user["id"]})
-    if not doc or not verify_password(payload.current_password, doc["password_hash"]):
-        raise HTTPException(status_code=403, detail="Current password is incorrect")
+    if not doc:
+        raise HTTPException(status_code=404, detail="Account not found")
+    _assert_current_password(doc, payload.current_password)
     if doc.get("role") == "admin":
         raise HTTPException(status_code=400, detail="Admin accounts cannot be self-deleted")
 
@@ -3668,51 +3782,6 @@ async def my_orders(user: dict = Depends(get_current_user)):
         {"user_id": user["id"], "deleted_at": None}, {"_id": 0}
     ).sort("created_at", -1).to_list(200)
     return items
-
-
-# ---------------------------------------------------------------------------
-# Wishlist / liste d'envies
-# ---------------------------------------------------------------------------
-
-@api.get("/account/wishlist")
-async def account_wishlist(user: dict = Depends(get_current_user)):
-    items = await db.wishlist.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
-    ids = list({it["product_id"] for it in items})
-    prods = {p["id"]: p async for p in db.products.find({"id": {"$in": ids}, "deleted_at": None}, {"_id": 0})}
-    enriched = [
-        {**it, "product": prods[it["product_id"]]}
-        for it in items if it["product_id"] in prods
-    ]
-    return {"items": enriched, "total": len(enriched)}
-
-
-@api.post("/account/wishlist")
-async def account_wishlist_add(payload: WishlistItemIn, user: dict = Depends(get_current_user)):
-    product = await db.products.find_one({"id": payload.product_id, "deleted_at": None})
-    if not product:
-        raise HTTPException(404, "Product not found")
-    if payload.variant_id and not any(v.get("id") == payload.variant_id for v in product.get("variants", [])):
-        raise HTTPException(400, "Variant not found in this product")
-    existing = await db.wishlist.find_one({"user_id": user["id"], "product_id": payload.product_id})
-    if existing:
-        return {"ok": True, "already_in_wishlist": True, "id": existing["id"]}
-    doc = {
-        "id": str(uuid.uuid4()),
-        "user_id": user["id"],
-        "product_id": payload.product_id,
-        "variant_id": payload.variant_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await db.wishlist.insert_one(doc)
-    return {"ok": True, "already_in_wishlist": False, "id": doc["id"]}
-
-
-@api.delete("/account/wishlist/{product_id}")
-async def account_wishlist_remove(product_id: str, user: dict = Depends(get_current_user)):
-    res = await db.wishlist.delete_one({"user_id": user["id"], "product_id": product_id})
-    if res.deleted_count == 0:
-        raise HTTPException(404, "Item not in wishlist")
-    return {"ok": True}
 
 
 @api.get("/orders/{order_id}")
@@ -7022,8 +7091,6 @@ async def seed_admin_and_products():
     await db.shipping_zones.create_index("deleted_at")
     await db.shipping_methods.create_index("deleted_at")
     await db.orders.create_index("deleted_at")
-    await db.wishlist.create_index([("user_id", 1), ("product_id", 1)], unique=True)
-
     # Admin
     existing = await db.users.find_one({"email": ADMIN_EMAIL.lower()})
     hashed = hash_password(ADMIN_PASSWORD)
