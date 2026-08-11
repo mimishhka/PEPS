@@ -6,6 +6,27 @@ import ProductImage from "../components/ProductImage";
 const CartContext = createContext(null);
 
 const STORAGE_KEY = "fironova_cart_v1";
+const SAVED_BY_USER_KEY = "fironova_cart_saved_by_user_v1";
+
+function loadSavedByUser() {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(SAVED_BY_USER_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSavedByUser(map) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SAVED_BY_USER_KEY, JSON.stringify(map || {}));
+  } catch {
+    // Ignore storage failures.
+  }
+}
 
 export function CartProvider({ children }) {
   const [items, setItems] = useState(() => {
@@ -17,6 +38,42 @@ export function CartProvider({ children }) {
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  }, [items]);
+
+  useEffect(() => {
+    const onBeforeSessionClear = (event) => {
+      const email = (event?.detail?.email || "").toLowerCase().trim();
+      if (!email || !Array.isArray(items) || items.length === 0) return;
+      const byUser = loadSavedByUser();
+      byUser[email] = items;
+      saveSavedByUser(byUser);
+    };
+
+    const onSessionCleared = () => {
+      setItems([]);
+      setOpen(false);
+      try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+    };
+
+    const onSessionRestored = (event) => {
+      const email = (event?.detail?.email || "").toLowerCase().trim();
+      if (!email) return;
+      if (Array.isArray(items) && items.length > 0) return;
+      const byUser = loadSavedByUser();
+      const saved = byUser[email];
+      if (Array.isArray(saved) && saved.length > 0) {
+        setItems(saved);
+      }
+    };
+
+    window.addEventListener("fironova:before-session-clear", onBeforeSessionClear);
+    window.addEventListener("fironova:session-cleared", onSessionCleared);
+    window.addEventListener("fironova:session-restored", onSessionRestored);
+    return () => {
+      window.removeEventListener("fironova:before-session-clear", onBeforeSessionClear);
+      window.removeEventListener("fironova:session-cleared", onSessionCleared);
+      window.removeEventListener("fironova:session-restored", onSessionRestored);
+    };
   }, [items]);
 
   const add = useCallback((product, qty = 1, variant = null) => {
