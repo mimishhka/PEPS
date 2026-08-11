@@ -10502,6 +10502,62 @@ def _render_block(block: str, lang: str, order: Optional[dict]) -> str:
     if not block or block == "none" or not order:
         return ""
     L = (lambda fr, en: fr if str(lang).startswith("fr") else en)
+
+    def _order_recap_html() -> str:
+        items = order.get("items", [])
+        rows = ""
+        for it in items[:12]:
+            name = it.get("name_en") or it.get("name_fr") or it.get("slug", "")
+            qty = it.get("qty", 1)
+            rows += (
+                f'<tr><td style="padding:6px 0;color:#1A2A38">{name}</td>'
+                f'<td style="padding:6px 0;text-align:right;color:#3E5C76">× {qty}</td></tr>'
+            )
+
+        subtotal = float(order.get("subtotal", 0) or 0)
+        discount = float(order.get("discount", 0) or 0)
+        shipping = float(order.get("shipping", 0) or 0)
+        total = float(order.get("total", 0) or 0)
+
+        coupon = order.get("coupon") or {}
+        coupon_code = str(coupon.get("code") or "").strip()
+        coupon_line = ""
+        if discount > 0:
+            label = f'{L("Coupon", "Coupon")} ({coupon_code})' if coupon_code else L("Rabais", "Discount")
+            coupon_line = (
+                f'<tr><td style="padding:6px 0;color:#3E5C76">{label}</td>'
+                f'<td style="padding:6px 0;text-align:right;color:#0B2E4F">- {discount:.2f} $ CAD</td></tr>'
+            )
+
+        ship = order.get("shipping_address") or {}
+        ship_name = ship.get("full_name") or ""
+        ship_line1 = ship.get("address1") or ""
+        ship_line2 = ship.get("address2") or ""
+        ship_city = ship.get("city") or ""
+        ship_prov = ship.get("province") or ""
+        ship_postal = ship.get("postal_code") or ""
+        shipping_address_html = ""
+        if ship_name or ship_line1 or ship_city:
+            line_2 = " ".join([p for p in [ship_city, ship_prov, ship_postal] if p]).strip()
+            shipping_address_html = f"""
+          <div style="margin-top:12px;padding-top:12px;border-top:1px dashed #D1D5DB">
+            <div style="font-size:12px;color:#3E5C76;margin-bottom:4px">{L("Livraison vers", "Ship to")}</div>
+            <div style="font-size:13px;color:#1A2A38">{ship_name}</div>
+            <div style="font-size:13px;color:#1A2A38">{ship_line1}{(' · ' + ship_line2) if ship_line2 else ''}</div>
+            <div style="font-size:13px;color:#1A2A38">{line_2}</div>
+          </div>"""
+
+        return f"""
+        <div style="margin:8px 0 20px;border:1px solid #E2E8F0;border-radius:12px;padding:20px;background:#FBFDFE">
+          <table style="width:100%;font-size:14px;border-collapse:collapse">{rows}
+            <tr><td style="padding:10px 0 0;border-top:2px solid #0B2E4F;color:#3E5C76">{L("Sous-total", "Subtotal")}</td><td style="padding:10px 0 0;border-top:2px solid #0B2E4F;text-align:right;color:#0B2E4F">{subtotal:.2f} $ CAD</td></tr>
+            {coupon_line}
+            <tr><td style="padding:6px 0;color:#3E5C76">{L("Livraison", "Shipping")}</td><td style="padding:6px 0;text-align:right;color:#0B2E4F">{shipping:.2f} $ CAD</td></tr>
+            <tr><td style="padding:12px 0 0;border-top:2px solid #0B2E4F;font-weight:bold">{L("Total", "Total")}</td><td style="padding:12px 0 0;border-top:2px solid #0B2E4F;text-align:right;font-weight:bold">{total:.2f} $ CAD</td></tr>
+          </table>
+          {shipping_address_html}
+        </div>"""
+
     if block == "interac":
         pi = (order.get("payment_info") or {}).get("instructions") or {}
         if not pi:
@@ -10516,7 +10572,8 @@ def _render_block(block: str, lang: str, order: Optional[dict]) -> str:
             <tr><td style="padding:7px 0;color:#3E5C76">{L("Question de sécurité","Security question")}</td><td style="padding:7px 0;text-align:right;color:#0B2E4F">{pi.get("security_question","")}</td></tr>
             <tr><td style="padding:7px 0;color:#3E5C76">{L("Réponse de sécurité","Security answer")}</td><td style="padding:7px 0;text-align:right;font-weight:bold;color:#0B2E4F">{pi.get("security_answer_hint","")}</td></tr>
           </table>
-        </div>"""
+                </div>
+                {_order_recap_html()}"""
     if block == "crypto":
         pi = (order.get("payment_info") or {})
         addr = pi.get("pay_address") or pi.get("address") or ""
@@ -10531,21 +10588,10 @@ def _render_block(block: str, lang: str, order: Optional[dict]) -> str:
         <div style="margin:8px 0 20px;border:2px solid #00B8D4;border-radius:12px;padding:20px;background:#F0FBFD">
           <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#0B2E4F;font-weight:bold;margin-bottom:14px">{L("PAIEMENT CRYPTO — INFORMATIONS","CRYPTO PAYMENT — DETAILS")}</div>
           <table style="width:100%;font-size:14px;border-collapse:collapse">{rows}</table>{link}
-        </div>"""
+        </div>
+        {_order_recap_html()}"""
     if block == "items":
-        items = order.get("items", [])
-        rows = ""
-        for it in items[:12]:
-            name = it.get("name_en") or it.get("name_fr") or it.get("slug", "")
-            qty = it.get("qty", 1)
-            rows += f'<tr><td style="padding:6px 0;color:#1A2A38">{name}</td><td style="padding:6px 0;text-align:right;color:#3E5C76">× {qty}</td></tr>'
-        total = order.get("total", 0)
-        return f"""
-        <div style="margin:8px 0 20px;border:1px solid #E2E8F0;border-radius:12px;padding:20px;background:#FBFDFE">
-          <table style="width:100%;font-size:14px;border-collapse:collapse">{rows}
-            <tr><td style="padding:12px 0 0;border-top:2px solid #0B2E4F;font-weight:bold">{L("Total","Total")}</td><td style="padding:12px 0 0;border-top:2px solid #0B2E4F;text-align:right;font-weight:bold">{total:.2f} $ CAD</td></tr>
-          </table>
-        </div>"""
+        return _order_recap_html()
     if block == "tracking":
         tn = order.get("tracking_number") or order.get("tracking") or ""
         if not tn:
