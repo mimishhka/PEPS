@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 const SHIPPING_FLAT_CAD = 20.0;
 const FREE_SHIPPING_THRESHOLD_CAD = 200.0;
+const CHECKOUT_DRAFT_KEY = "fironova_checkout_draft_v1";
 
 function normalizePostal(country, value) {
   const v = String(value || "").trim();
@@ -69,6 +70,66 @@ export default function Checkout() {
 
   const [idempotencyKey] = useState(() => `chk_${Date.now()}_${Math.random().toString(36).slice(2)}`);
 
+  const hasAddressData = (addr) => {
+    if (!addr) return false;
+    return ["full_name", "line1", "line2", "city", "province", "postal_code"].some((k) => String(addr[k] || "").trim());
+  };
+
+  // Restore checkout draft so user can sign in mid-flow without losing progress.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(CHECKOUT_DRAFT_KEY);
+      const draft = raw ? JSON.parse(raw) : null;
+      if (!draft || typeof draft !== "object") return;
+
+      if (typeof draft.email === "string") setEmail((v) => v || draft.email);
+      if (typeof draft.paymentMethod === "string" && ["interac", "nowpayments"].includes(draft.paymentMethod)) {
+        setPaymentMethod(draft.paymentMethod);
+      }
+      if (typeof draft.confirmAge === "boolean") setConfirmAge(draft.confirmAge);
+      if (typeof draft.acceptRuO === "boolean") setAcceptRuO(draft.acceptRuO);
+      if (typeof draft.acceptPolicy === "boolean") setAcceptPolicy(draft.acceptPolicy);
+      if (typeof draft.billSame === "boolean") setBillSame(draft.billSame);
+
+      if (draft.ship && typeof draft.ship === "object") {
+        setShip((curr) => (hasAddressData(curr) ? curr : { ...curr, ...draft.ship }));
+      }
+      if (draft.bill && typeof draft.bill === "object") {
+        setBill((curr) => (hasAddressData(curr) ? curr : { ...curr, ...draft.bill }));
+      }
+      if (typeof draft.couponInput === "string") setCouponInput(draft.couponInput);
+      if (draft.coupon && typeof draft.coupon === "object") setCoupon(draft.coupon);
+    } catch {
+      // Ignore malformed draft.
+    }
+    // Run once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist checkout draft continuously.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const draft = {
+      email,
+      paymentMethod,
+      confirmAge,
+      acceptRuO,
+      acceptPolicy,
+      billSame,
+      ship,
+      bill,
+      couponInput,
+      coupon,
+      savedAt: Date.now(),
+    };
+    try {
+      window.localStorage.setItem(CHECKOUT_DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      // Ignore storage failures.
+    }
+  }, [email, paymentMethod, confirmAge, acceptRuO, acceptPolicy, billSame, ship, bill, couponInput, coupon]);
+
   // A2 — adresses sauvegardées : préremplir email + charger la liste si connecté.
   useEffect(() => {
     if (!user) return;
@@ -81,8 +142,19 @@ export default function Checkout() {
         setSavedAddresses(list);
         const def = list.find((a) => a.is_default) || list[0];
         if (def) {
-          setSelectedAddressId(def.id);
-          applySavedAddress(def);
+          setSelectedAddressId((curr) => curr || def.id);
+          setShip((curr) => {
+            if (hasAddressData(curr)) return curr;
+            return {
+              full_name: def.full_name || "",
+              line1: def.address1 || "",
+              line2: def.address2 || "",
+              city: def.city || "",
+              province: def.province || "",
+              postal_code: def.postal_code || "",
+              country: def.country || "CA",
+            };
+          });
         }
       })
       .catch(() => {});
@@ -195,6 +267,7 @@ export default function Checkout() {
       const { data } = await api.post("/checkout", payload);
       if (!data?.id) throw new Error(lang === "fr" ? "Réponse de commande invalide" : "Malformed checkout response");
       clear();
+      try { window.localStorage.removeItem(CHECKOUT_DRAFT_KEY); } catch { /* ignore */ }
       // Interac ET crypto : page de confirmation interne.
       // Le paiement crypto s'affiche via le widget NOWPayments intégré
       // (iframe) directement sur /order/{id} — aucune redirection externe.

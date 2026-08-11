@@ -1,4 +1,4 @@
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { ShoppingBag, User, Menu, X, Lock } from "lucide-react";
 import { useState, useEffect } from "react";
 import api from "../lib/api";
@@ -15,6 +15,7 @@ export default function Header() {
   const { coaPageEnabled } = useSiteConfig();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   // NOTE: keep in sync with ADMIN_PATH in App.js
   const ADMIN_PATH = "/ops-portal-fn7k2q";
@@ -32,6 +33,8 @@ export default function Header() {
     ...(coaPageEnabled ? [{ to: "/lab", label: t("nav.lab") }] : []),
     { to: "/about", label: t("nav.about") },
   ];
+
+  const loginHref = `/login?next=${encodeURIComponent(`${location.pathname}${location.search || ""}${location.hash || ""}`)}`;
 
   const [menuNav, setMenuNav] = useState(null);
   useEffect(() => {
@@ -138,7 +141,7 @@ export default function Header() {
               </div>
             ) : (
               <Link
-                to="/login"
+                to={loginHref}
                 data-testid="nav-login"
                 className="hidden md:inline-flex items-center gap-1.5 font-data text-xs font-semibold uppercase tracking-[0.18em] text-nordfjord hover:text-nova transition-colors"
               >
@@ -185,7 +188,7 @@ export default function Header() {
                   </button>
                 </>
               ) : (
-                <Link to="/login" onClick={() => setMobileOpen(false)} className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-2 text-nordfjord">
+                <Link to={loginHref} onClick={() => setMobileOpen(false)} className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-2 text-nordfjord">
                   {t("nav.login")} →
                 </Link>
               )}

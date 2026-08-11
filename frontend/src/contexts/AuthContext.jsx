@@ -35,15 +35,23 @@ export function AuthProvider({ children }) {
   const refresh = useCallback(async () => {
     try {
       const { data } = await api.get("/auth/me");
-      setUser(data);
-      if (data?.email) emitSessionRestored(data.email);
+      if (data?.email) {
+        setUser(data);
+        emitSessionRestored(data.email);
+      } else if (!user) {
+        // Guest session at startup: keep explicit null.
+        setUser(null);
+      }
+      // If data is unexpectedly empty while a user is already in memory,
+      // keep current session state to avoid involuntary sign-out.
     } catch {
-      if (user) purgeClientSession();
-      setUser(null);
+      // Never auto-logout on transient API/CORS/network issues.
+      // Keep current in-memory session unless we're already a guest.
+      if (!user) setUser(null);
     } finally {
       setChecking(false);
     }
-  }, [emitSessionRestored, purgeClientSession, user]);
+  }, [emitSessionRestored, user]);
 
   useEffect(() => {
     refresh();
