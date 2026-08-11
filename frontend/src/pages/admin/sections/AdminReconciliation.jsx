@@ -9,6 +9,7 @@ export default function AdminReconciliation() {
   const L = (fr, en) => (lang === "fr" ? fr : en);
 
   const [status, setStatus] = useState("pending");
+  const [provider, setProvider] = useState("all");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
@@ -19,14 +20,16 @@ export default function AdminReconciliation() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get(`/admin/reconciliation/interac?status=${encodeURIComponent(status)}&limit=300`);
+      const { data } = await api.get(
+        `/admin/reconciliation/payments?status=${encodeURIComponent(status)}&provider=${encodeURIComponent(provider)}&limit=300`
+      );
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [status, provider]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -38,7 +41,7 @@ export default function AdminReconciliation() {
     }
     setBusyId(item.id);
     try {
-      await api.post(`/admin/reconciliation/interac/${item.id}/match`, {
+      await api.post(`/admin/reconciliation/payments/${item.id}/match`, {
         order_number: orderNumber,
         mark_paid: markPaidById[item.id] ?? true,
         force_mismatch: !!forceById[item.id],
@@ -56,7 +59,7 @@ export default function AdminReconciliation() {
   const onDismiss = async (item) => {
     setBusyId(item.id);
     try {
-      await api.post(`/admin/reconciliation/interac/${item.id}/dismiss`, {});
+      await api.post(`/admin/reconciliation/payments/${item.id}/dismiss`, {});
       toast.success(L("Élément rejeté", "Item dismissed"));
       load();
     } catch (e) {
@@ -72,12 +75,12 @@ export default function AdminReconciliation() {
         <div>
           <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// ORDERS</div>
           <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2 flex items-center gap-2">
-            <Link2 size={28} /> {L("Réconciliation Interac", "Interac Reconciliation")}
+            <Link2 size={28} /> {L("Réconciliation Paiements", "Payment Reconciliation")}
           </h1>
           <p className="text-sm text-foreground/70 mt-1">
             {L(
-              "Associez manuellement les notifications Interac sans référence de facture.",
-              "Manually match Interac notifications that arrived without an invoice reference."
+              "Associez manuellement les signaux de paiement Interac et Crypto nécessitant une validation.",
+              "Manually match Interac and crypto payment signals that require validation."
             )}
           </p>
         </div>
@@ -103,6 +106,17 @@ export default function AdminReconciliation() {
           <option value="dismissed">{L("Rejeté", "Dismissed")}</option>
           <option value="all">{L("Tous", "All")}</option>
         </select>
+        <label className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/60">{L("Canal", "Provider")}</label>
+        <select
+          value={provider}
+          onChange={(e) => setProvider(e.target.value)}
+          className="border border-ink/15 px-3 py-2 text-sm bg-white"
+          data-testid="reconciliation-provider"
+        >
+          <option value="all">{L("Tous", "All")}</option>
+          <option value="interac">Interac</option>
+          <option value="crypto">Crypto</option>
+        </select>
       </div>
 
       {loading ? (
@@ -115,6 +129,7 @@ export default function AdminReconciliation() {
             <thead className="bg-secondary text-foreground/70">
               <tr>
                 <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">{L("Détection", "Detected")}</th>
+                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">{L("Canal", "Provider")}</th>
                 <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">{L("Montant", "Amount")}</th>
                 <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">{L("Expéditeur", "Sender")}</th>
                 <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Subject</th>
@@ -133,6 +148,7 @@ export default function AdminReconciliation() {
                       <div className="font-mono text-xs">{String(it.detected_at || "").slice(0, 19).replace("T", " ")}</div>
                       <div className="font-mono text-[10px] text-foreground/50">{it.status}</div>
                     </td>
+                    <td className="px-4 py-3 font-mono text-xs uppercase">{it.provider || "interac"}</td>
                     <td className="px-4 py-3 font-semibold">{amount}</td>
                     <td className="px-4 py-3">
                       <div className="text-sm">{it.from_email || "—"}</div>
@@ -204,7 +220,7 @@ export default function AdminReconciliation() {
               })}
               {!items.length && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-foreground/60">
+                  <td colSpan={7} className="px-6 py-10 text-center text-sm text-foreground/60">
                     {L("Aucun élément", "No items")}
                   </td>
                 </tr>

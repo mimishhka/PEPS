@@ -3890,9 +3890,11 @@ async def _send_late_payment_admin_alert(order: dict, provider_label: str, refer
         logging.error("[email] late-payment admin alert failed for %s: %s", order.get("id"), e)
 
 
-async def _send_interac_missing_reference_admin_alert(item: dict) -> None:
-    """Alert admin when an Interac deposit email has no order reference."""
+async def _send_reconciliation_required_admin_alert(item: dict) -> None:
+    """Alert admin when an inbound payment signal needs manual reconciliation."""
     try:
+        provider = str(item.get("provider") or "payment").lower()
+        provider_label = "Interac" if provider == "interac" else "NOWPayments"
         queue_id = item.get("id") or ""
         amount = item.get("amount_cad")
         amount_txt = f"${float(amount):.2f} CAD" if amount is not None else "Unknown"
@@ -3903,9 +3905,11 @@ async def _send_interac_missing_reference_admin_alert(item: dict) -> None:
         if len(preview) > 600:
             preview = preview[:600] + "..."
         body = (
-            "<p><strong>Interac payment email received without invoice reference.</strong></p>"
+            f"<p><strong>{provider_label} payment signal requires manual reconciliation.</strong></p>"
             "<p>Please reconcile this payment manually in Admin > Reconciliation.</p>"
             "<ul style='margin:10px 0 0 18px;padding:0;line-height:1.7'>"
+            f"<li><strong>Provider:</strong> {provider_label}</li>"
+            f"<li><strong>Reason:</strong> {item.get('reason') or 'unknown'}</li>"
             f"<li><strong>Queue ID:</strong> {queue_id}</li>"
             f"<li><strong>Amount:</strong> {amount_txt}</li>"
             f"<li><strong>From:</strong> {sender}</li>"
@@ -3914,14 +3918,14 @@ async def _send_interac_missing_reference_admin_alert(item: dict) -> None:
             "</ul>"
             f"<p style='margin-top:12px'><strong>Email preview</strong><br/>{preview or '(empty)'}</p>"
         )
-        html = _prelaunch_email_html("Admin alert — Interac reconciliation required", body)
+        html = _prelaunch_email_html("Admin alert — payment reconciliation required", body)
         await _send_email(
             ADMIN_NOTIFICATION_EMAIL,
-            "[FIRONOVA ADMIN] Interac payment without reference — reconciliation required",
+            f"[FIRONOVA ADMIN] {provider_label} payment needs reconciliation",
             html,
         )
     except Exception as e:
-        logging.error("[email] interac missing-reference alert failed: %s", e)
+        logging.error("[email] payment reconciliation alert failed: %s", e)
 
 
 async def _queue_interac_reconciliation_item(msg: dict, text: str, reason: str = "missing_reference") -> bool:
@@ -3964,8 +3968,48 @@ async def _queue_interac_reconciliation_item(msg: dict, text: str, reason: str =
         upsert=True,
     )
     if res.upserted_id:
-        asyncio.create_task(_send_interac_missing_reference_admin_alert(item))
+        asyncio.create_task(_send_reconciliation_required_admin_alert(item))
         logging.warning("Interac reconciliation queued for message %s (reason=%s)", message_id, reason)
+    return True
+
+
+async def _queue_crypto_reconciliation_item(payload: dict, reason: str) -> bool:
+    """Queue a NOWPayments signal for manual reconciliation."""
+    raw_order_id = str(payload.get("order_id") or "").strip()
+    payment_id = str(payload.get("payment_id") or "").strip()
+    dedupe_key = f"np:{raw_order_id or 'none'}:{payment_id or 'none'}:{reason}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        amount_cad = float(payload.get("price_amount") or 0)
+    except (TypeError, ValueError):
+        amount_cad = None
+    subject = f"NOWPayments {payload.get('payment_status') or ''}".strip()
+    preview = json.dumps(payload, ensure_ascii=True)[:2000]
+    item = {
+        "id": str(uuid.uuid4()),
+        "graph_message_id": dedupe_key,
+        "provider": "crypto",
+        "status": "pending",
+        "reason": reason,
+        "amount_cad": amount_cad,
+        "currency": str(payload.get("price_currency") or "CAD").upper(),
+        "from_email": "nowpayments-ipn",
+        "subject": subject,
+        "refs": [raw_order_id] if raw_order_id else [],
+        "preview": preview,
+        "received_at": now_iso,
+        "detected_at": now_iso,
+        "payment_id": payment_id,
+        "raw_order_id": raw_order_id,
+    }
+    res = await db.interac_reconciliation_queue.update_one(
+        {"graph_message_id": dedupe_key},
+        {"$setOnInsert": item},
+        upsert=True,
+    )
+    if res.upserted_id:
+        asyncio.create_task(_send_reconciliation_required_admin_alert(item))
+        logging.warning("Crypto reconciliation queued (reason=%s, key=%s)", reason, dedupe_key)
     return True
 
 
@@ -4442,21 +4486,23 @@ class InteracReconcileDismissIn(BaseModel):
     note: Optional[str] = ""
 
 
-@api.get("/admin/reconciliation/interac")
-async def admin_interac_reconciliation_list(
+@api.get("/admin/reconciliation/payments")
+async def admin_payment_reconciliation_list(
     status: str = Query("pending"),
+    provider: str = Query("all"),
     limit: int = Query(200, ge=1, le=1000),
     _admin: dict = Depends(require_area("orders", "view")),
 ):
     filt = {}
     if status != "all":
         filt["status"] = status
+    if provider != "all":
+        filt["provider"] = provider
     rows = await db.interac_reconciliation_queue.find(filt, {"_id": 0}).sort("detected_at", -1).to_list(limit)
     return rows
 
 
-@api.post("/admin/reconciliation/interac/{item_id}/match")
-async def admin_interac_reconciliation_match(
+async def _reconciliation_match_item(
     item_id: str,
     payload: InteracReconcileMatchIn,
     admin: dict = Depends(require_area("orders", "manage")),
@@ -4467,12 +4513,15 @@ async def admin_interac_reconciliation_match(
     if item.get("status") != "pending":
         raise HTTPException(400, "Reconciliation item already processed")
 
+    provider = str(item.get("provider") or "interac").lower()
+    expected_method = "interac" if provider == "interac" else "nowpayments"
+
     order_number = payload.order_number.strip().upper()
     order = await db.orders.find_one({"order_number": order_number}, {"_id": 0})
     if not order:
         raise HTTPException(404, "Order not found")
-    if order.get("payment_method") != "interac":
-        raise HTTPException(400, "Target order is not an Interac order")
+    if order.get("payment_method") != expected_method:
+        raise HTTPException(400, f"Target order is not a {expected_method} order")
 
     amount_cad = item.get("amount_cad")
     amount_matches = True
@@ -4486,7 +4535,7 @@ async def admin_interac_reconciliation_match(
     note = {
         "id": str(uuid.uuid4()),
         "text": (
-            f"Interac reconciliation matched manually by {admin['email']} "
+            f"{provider.upper()} reconciliation matched manually by {admin['email']} "
             f"(queue {item.get('id')}, ref {source_ref})"
             + (f" — {payload.note.strip()}" if payload.note and payload.note.strip() else "")
         ),
@@ -4498,14 +4547,15 @@ async def admin_interac_reconciliation_match(
     paid_marked = False
     late_flagged = False
     if payload.mark_paid:
-        if order.get("payment_status") == "awaiting_etransfer":
+        target_awaiting = "awaiting_etransfer" if expected_method == "interac" else "awaiting_crypto"
+        if order.get("payment_status") == target_awaiting:
             fresh = await _mark_order_paid(
                 order["id"],
-                f"Interac payment manually reconciled by {admin['email']} (queue {item.get('id')})",
+                f"{provider.upper()} payment manually reconciled by {admin['email']} (queue {item.get('id')})",
             )
             paid_marked = bool(fresh)
         elif order.get("payment_status") == "cancelled":
-            late_flagged = await _flag_late_cancelled_payment(order, "interac manual reconcile", source_ref)
+            late_flagged = await _flag_late_cancelled_payment(order, f"{provider} manual reconcile", source_ref)
 
     now_iso = datetime.now(timezone.utc).isoformat()
     await db.interac_reconciliation_queue.update_one(
@@ -4529,8 +4579,7 @@ async def admin_interac_reconciliation_match(
     return {"item": updated_item, "order": updated_order}
 
 
-@api.post("/admin/reconciliation/interac/{item_id}/dismiss")
-async def admin_interac_reconciliation_dismiss(
+async def _reconciliation_dismiss_item(
     item_id: str,
     payload: InteracReconcileDismissIn,
     admin: dict = Depends(require_area("orders", "manage")),
@@ -4551,6 +4600,56 @@ async def admin_interac_reconciliation_dismiss(
         }},
     )
     return await db.interac_reconciliation_queue.find_one({"id": item_id}, {"_id": 0})
+
+
+@api.post("/admin/reconciliation/payments/{item_id}/match")
+async def admin_payment_reconciliation_match(
+    item_id: str,
+    payload: InteracReconcileMatchIn,
+    admin: dict = Depends(require_area("orders", "manage")),
+):
+    return await _reconciliation_match_item(item_id, payload, admin)
+
+
+@api.post("/admin/reconciliation/payments/{item_id}/dismiss")
+async def admin_payment_reconciliation_dismiss(
+    item_id: str,
+    payload: InteracReconcileDismissIn,
+    admin: dict = Depends(require_area("orders", "manage")),
+):
+    return await _reconciliation_dismiss_item(item_id, payload, admin)
+
+
+# Backward-compatible Interac routes.
+@api.get("/admin/reconciliation/interac")
+async def admin_interac_reconciliation_list(
+    status: str = Query("pending"),
+    limit: int = Query(200, ge=1, le=1000),
+    _admin: dict = Depends(require_area("orders", "view")),
+):
+    rows = await db.interac_reconciliation_queue.find(
+        ({"status": status, "provider": "interac"} if status != "all" else {"provider": "interac"}),
+        {"_id": 0},
+    ).sort("detected_at", -1).to_list(limit)
+    return rows
+
+
+@api.post("/admin/reconciliation/interac/{item_id}/match")
+async def admin_interac_reconciliation_match(
+    item_id: str,
+    payload: InteracReconcileMatchIn,
+    admin: dict = Depends(require_area("orders", "manage")),
+):
+    return await _reconciliation_match_item(item_id, payload, admin)
+
+
+@api.post("/admin/reconciliation/interac/{item_id}/dismiss")
+async def admin_interac_reconciliation_dismiss(
+    item_id: str,
+    payload: InteracReconcileDismissIn,
+    admin: dict = Depends(require_area("orders", "manage")),
+):
+    return await _reconciliation_dismiss_item(item_id, payload, admin)
 
 
 @api.post("/admin/orders/{order_id}/reopen")
@@ -7026,6 +7125,7 @@ async def nowpayments_ipn(request: Request):
     order_id = payload.get("order_id")
     np_status = payload.get("payment_status", "")
     if not order_id:
+        await _queue_crypto_reconciliation_item(payload, reason="missing_order_id")
         return {"ok": True}
 
     # Défense en profondeur au-delà du HMAC : on n'agit que sur une commande
@@ -7035,6 +7135,7 @@ async def nowpayments_ipn(request: Request):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order or order.get("payment_method") != "nowpayments":
         logging.warning("NOWPayments IPN: commande inconnue/incohérente %s — ignorée", order_id)
+        await _queue_crypto_reconciliation_item(payload, reason="unknown_or_mismatched_order")
         return {"ok": True}
     try:
         ipn_amount = float(payload.get("price_amount") or 0)
@@ -7054,6 +7155,7 @@ async def nowpayments_ipn(request: Request):
             "author": "system",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }}})
+        await _queue_crypto_reconciliation_item(payload, reason="amount_mismatch")
         return {"ok": True}
 
     if np_status == "finished" and order.get("payment_status") == "cancelled":
