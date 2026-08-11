@@ -3839,9 +3839,55 @@ async def _flag_late_cancelled_payment(order: dict, provider: str, reference: st
         {"$set": updates, "$push": {"notes": note}},
     )
     if res.modified_count:
+        # Alert admin immediately when late payment is flagged.
+        asyncio.create_task(_send_late_payment_admin_alert(order, provider_label, ref))
         logging.warning("Late payment flagged on cancelled order %s via %s", order.get("id"), provider_label)
         return True
     return False
+
+
+async def _send_late_payment_admin_alert(order: dict, provider_label: str, reference: str = "") -> None:
+    """Notify admin when a cancelled order receives a late payment signal."""
+    try:
+        order_id = order.get("id")
+        if not order_id:
+            return
+        fresh = await db.orders.find_one({"id": order_id}, {"_id": 0}) or order
+        order_number = fresh.get("order_number") or order_id
+        method = str(fresh.get("payment_method") or "").upper() or "UNKNOWN"
+        total = float(fresh.get("total") or 0)
+        customer_email = fresh.get("email") or ""
+        ref = (reference or fresh.get("late_payment_reference") or "").strip()
+        detail_ref = f"<li><strong>Reference:</strong> {ref}</li>" if ref else ""
+        customer_html = f"<li><strong>Customer:</strong> {customer_email}</li>" if customer_email else ""
+        order_url = f"{(PUBLIC_BASE_URL or '').rstrip('/')}/order/{order_id}" if PUBLIC_BASE_URL else ""
+        order_link_html = (
+            f"<p style='margin-top:14px'><a href='{order_url}' style='display:inline-block;background:#050505;color:#fff;"
+            f"font-family:monospace;font-size:12px;letter-spacing:1px;padding:10px 14px;text-decoration:none'>"
+            f"OPEN ORDER PAGE →</a></p>"
+            if order_url else ""
+        )
+        body = (
+            f"<p><strong>Late payment flagged</strong> on a cancelled order.</p>"
+            f"<ul style='margin:10px 0 0 18px;padding:0;line-height:1.7'>"
+            f"<li><strong>Order:</strong> {order_number}</li>"
+            f"<li><strong>Payment method:</strong> {method}</li>"
+            f"<li><strong>Detected via:</strong> {provider_label}</li>"
+            f"<li><strong>Total:</strong> ${total:.2f} CAD</li>"
+            f"{customer_html}"
+            f"{detail_ref}"
+            f"</ul>"
+            f"<p style='margin-top:12px'>Please review and reopen manually only after validation.</p>"
+            f"{order_link_html}"
+        )
+        html = _simple_order_email_html(fresh, "Admin alert — late payment flagged", body)
+        await _send_email(
+            ADMIN_NOTIFICATION_EMAIL,
+            f"[FIRONOVA ADMIN] Late payment flagged — {order_number}",
+            html,
+        )
+    except Exception as e:
+        logging.error("[email] late-payment admin alert failed for %s: %s", order.get("id"), e)
 
 
 @api.post("/checkout")
@@ -6987,28 +7033,13 @@ async def _process_interac_deposit_emails() -> int:
                 # sur la commande pour que l'admin puisse la réouvrir manuellement.
                 late = await db.orders.find_one(
                     {"order_number": ref, "payment_status": "cancelled"},
-                    {"_id": 0, "id": 1, "order_number": 1, "email": 1, "late_payment_flagged": 1},
+                    {"_id": 0, "id": 1, "order_number": 1, "email": 1, "payment_status": 1, "late_payment_flagged": 1},
                 )
                 if late and not late.get("late_payment_flagged"):
-                    await db.orders.update_one(
-                        {"id": late["id"]},
-                        {"$set": {
-                            "late_payment_flagged": True,
-                            "late_payment_flagged_at": datetime.now(timezone.utc).isoformat(),
-                            "late_payment_reference": ref,
-                        },
-                         "$push": {"notes": {
-                            "id": str(uuid.uuid4()),
-                            "text": (f"⚠️ PAIEMENT TARDIF détecté sur commande annulée — "
-                                     f"notification Interac reçue (réf {ref}). "
-                                     f"Vérifier manuellement avant réouverture éventuelle."),
-                            "author": "system",
-                            "created_at": datetime.now(timezone.utc).isoformat(),
-                         }}},
-                    )
-                    logging.warning("Late payment detected on cancelled order %s (ref %s)", late.get("id"), ref)
-                    acted = True
-                    break
+                    flagged = await _flag_late_cancelled_payment(late, "interac email", ref)
+                    if flagged:
+                        acted = True
+                        break
                 continue
             amounts = _parse_amounts(text)
             order_total = float(order.get("total", 0))
