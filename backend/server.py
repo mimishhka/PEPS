@@ -3890,6 +3890,85 @@ async def _send_late_payment_admin_alert(order: dict, provider_label: str, refer
         logging.error("[email] late-payment admin alert failed for %s: %s", order.get("id"), e)
 
 
+async def _send_interac_missing_reference_admin_alert(item: dict) -> None:
+    """Alert admin when an Interac deposit email has no order reference."""
+    try:
+        queue_id = item.get("id") or ""
+        amount = item.get("amount_cad")
+        amount_txt = f"${float(amount):.2f} CAD" if amount is not None else "Unknown"
+        sender = item.get("from_email") or "Unknown"
+        received = item.get("received_at") or item.get("detected_at") or ""
+        subject = item.get("subject") or ""
+        preview = (item.get("preview") or "").strip()
+        if len(preview) > 600:
+            preview = preview[:600] + "..."
+        body = (
+            "<p><strong>Interac payment email received without invoice reference.</strong></p>"
+            "<p>Please reconcile this payment manually in Admin > Reconciliation.</p>"
+            "<ul style='margin:10px 0 0 18px;padding:0;line-height:1.7'>"
+            f"<li><strong>Queue ID:</strong> {queue_id}</li>"
+            f"<li><strong>Amount:</strong> {amount_txt}</li>"
+            f"<li><strong>From:</strong> {sender}</li>"
+            f"<li><strong>Received:</strong> {received}</li>"
+            f"<li><strong>Subject:</strong> {subject}</li>"
+            "</ul>"
+            f"<p style='margin-top:12px'><strong>Email preview</strong><br/>{preview or '(empty)'}</p>"
+        )
+        html = _prelaunch_email_html("Admin alert — Interac reconciliation required", body)
+        await _send_email(
+            ADMIN_NOTIFICATION_EMAIL,
+            "[FIRONOVA ADMIN] Interac payment without reference — reconciliation required",
+            html,
+        )
+    except Exception as e:
+        logging.error("[email] interac missing-reference alert failed: %s", e)
+
+
+async def _queue_interac_reconciliation_item(msg: dict, text: str, reason: str = "missing_reference") -> bool:
+    """Queue an Interac deposit email for manual reconciliation.
+
+    Returns True when the email should be considered handled (new or existing
+    queue record), so caller can mark it read.
+    """
+    message_id = (msg.get("id") or "").strip()
+    if not message_id:
+        return False
+    now_iso = datetime.now(timezone.utc).isoformat()
+    from_addr = ((msg.get("from") or {}).get("emailAddress") or {}).get("address") or ""
+    subject = msg.get("subject") or ""
+    received_at = msg.get("receivedDateTime") or now_iso
+    amounts = _parse_amounts(text)
+    amount_cad = amounts[0] if amounts else None
+    refs = _extract_interac_refs(text)
+    preview = re.sub(r"\s+", " ", (text or "").strip())[:2000]
+
+    item = {
+        "id": str(uuid.uuid4()),
+        "graph_message_id": message_id,
+        "provider": "interac",
+        "status": "pending",
+        "reason": reason,
+        "amount_cad": amount_cad,
+        "currency": "CAD",
+        "from_email": from_addr,
+        "subject": subject,
+        "refs": refs,
+        "preview": preview,
+        "received_at": received_at,
+        "detected_at": now_iso,
+    }
+
+    res = await db.interac_reconciliation_queue.update_one(
+        {"graph_message_id": message_id},
+        {"$setOnInsert": item},
+        upsert=True,
+    )
+    if res.upserted_id:
+        asyncio.create_task(_send_interac_missing_reference_admin_alert(item))
+        logging.warning("Interac reconciliation queued for message %s (reason=%s)", message_id, reason)
+    return True
+
+
 @api.post("/checkout")
 async def checkout(payload: CheckoutIn, request: Request):
     if not (payload.accept_terms and payload.confirm_age and payload.confirm_research_use):
@@ -4348,6 +4427,130 @@ class ReopenOrderIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     mark_paid: bool = False
     note: Optional[str] = ""
+
+
+class InteracReconcileMatchIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    order_number: str = Field(min_length=3, max_length=64)
+    mark_paid: bool = True
+    force_mismatch: bool = False
+    note: Optional[str] = ""
+
+
+class InteracReconcileDismissIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    note: Optional[str] = ""
+
+
+@api.get("/admin/reconciliation/interac")
+async def admin_interac_reconciliation_list(
+    status: str = Query("pending"),
+    limit: int = Query(200, ge=1, le=1000),
+    _admin: dict = Depends(require_area("orders", "view")),
+):
+    filt = {}
+    if status != "all":
+        filt["status"] = status
+    rows = await db.interac_reconciliation_queue.find(filt, {"_id": 0}).sort("detected_at", -1).to_list(limit)
+    return rows
+
+
+@api.post("/admin/reconciliation/interac/{item_id}/match")
+async def admin_interac_reconciliation_match(
+    item_id: str,
+    payload: InteracReconcileMatchIn,
+    admin: dict = Depends(require_area("orders", "manage")),
+):
+    item = await db.interac_reconciliation_queue.find_one({"id": item_id}, {"_id": 0})
+    if not item:
+        raise HTTPException(404, "Reconciliation item not found")
+    if item.get("status") != "pending":
+        raise HTTPException(400, "Reconciliation item already processed")
+
+    order_number = payload.order_number.strip().upper()
+    order = await db.orders.find_one({"order_number": order_number}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if order.get("payment_method") != "interac":
+        raise HTTPException(400, "Target order is not an Interac order")
+
+    amount_cad = item.get("amount_cad")
+    amount_matches = True
+    if amount_cad is not None:
+        amount_matches = abs(float(amount_cad) - float(order.get("total", 0))) <= 0.01
+        if not amount_matches and not payload.force_mismatch:
+            raise HTTPException(409, "Amount mismatch: use force_mismatch to override")
+
+    note_time = datetime.now(timezone.utc).isoformat()
+    source_ref = (item.get("graph_message_id") or item.get("id") or "").strip()
+    note = {
+        "id": str(uuid.uuid4()),
+        "text": (
+            f"Interac reconciliation matched manually by {admin['email']} "
+            f"(queue {item.get('id')}, ref {source_ref})"
+            + (f" — {payload.note.strip()}" if payload.note and payload.note.strip() else "")
+        ),
+        "author": admin["email"],
+        "created_at": note_time,
+    }
+    await db.orders.update_one({"id": order["id"]}, {"$push": {"notes": note}})
+
+    paid_marked = False
+    late_flagged = False
+    if payload.mark_paid:
+        if order.get("payment_status") == "awaiting_etransfer":
+            fresh = await _mark_order_paid(
+                order["id"],
+                f"Interac payment manually reconciled by {admin['email']} (queue {item.get('id')})",
+            )
+            paid_marked = bool(fresh)
+        elif order.get("payment_status") == "cancelled":
+            late_flagged = await _flag_late_cancelled_payment(order, "interac manual reconcile", source_ref)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.interac_reconciliation_queue.update_one(
+        {"id": item_id, "status": "pending"},
+        {"$set": {
+            "status": "matched",
+            "matched_at": now_iso,
+            "matched_by": admin["email"],
+            "matched_order_id": order.get("id"),
+            "matched_order_number": order_number,
+            "marked_paid": paid_marked,
+            "late_flagged": late_flagged,
+            "amount_matches": amount_matches,
+            "force_mismatch": bool(payload.force_mismatch),
+            "match_note": (payload.note or "").strip(),
+        }},
+    )
+
+    updated_item = await db.interac_reconciliation_queue.find_one({"id": item_id}, {"_id": 0})
+    updated_order = await db.orders.find_one({"id": order["id"]}, {"_id": 0})
+    return {"item": updated_item, "order": updated_order}
+
+
+@api.post("/admin/reconciliation/interac/{item_id}/dismiss")
+async def admin_interac_reconciliation_dismiss(
+    item_id: str,
+    payload: InteracReconcileDismissIn,
+    admin: dict = Depends(require_area("orders", "manage")),
+):
+    item = await db.interac_reconciliation_queue.find_one({"id": item_id}, {"_id": 0})
+    if not item:
+        raise HTTPException(404, "Reconciliation item not found")
+    if item.get("status") != "pending":
+        raise HTTPException(400, "Reconciliation item already processed")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.interac_reconciliation_queue.update_one(
+        {"id": item_id, "status": "pending"},
+        {"$set": {
+            "status": "dismissed",
+            "dismissed_at": now_iso,
+            "dismissed_by": admin["email"],
+            "dismiss_note": (payload.note or "").strip(),
+        }},
+    )
+    return await db.interac_reconciliation_queue.find_one({"id": item_id}, {"_id": 0})
 
 
 @api.post("/admin/orders/{order_id}/reopen")
@@ -7023,6 +7226,9 @@ async def _process_interac_deposit_emails() -> int:
         text = f"{subject}\n{_strip_html(body.get('content') or '')}"
         refs = _extract_interac_refs(text)
         acted = False
+        if not refs:
+            # Missing FN reference in Interac email: queue for manual matching.
+            acted = await _queue_interac_reconciliation_item(msg, text, reason="missing_reference")
         for ref in refs:
             order = await db.orders.find_one(
                 {"order_number": ref, "payment_status": "awaiting_etransfer"}, {"_id": 0}
@@ -7543,6 +7749,9 @@ async def seed_admin_and_products():
     await db.staff_invites.create_index("email")
     await db.admin_audit_log.create_index([("created_at", -1)])
     await db.admin_audit_log.create_index("user_id")
+    await db.interac_reconciliation_queue.create_index("id", unique=True)
+    await db.interac_reconciliation_queue.create_index("graph_message_id", unique=True)
+    await db.interac_reconciliation_queue.create_index([("status", 1), ("detected_at", -1)])
     await db.products.create_index("deleted_at")
     await db.coupons.create_index("deleted_at")
     await db.shipping_zones.create_index("deleted_at")

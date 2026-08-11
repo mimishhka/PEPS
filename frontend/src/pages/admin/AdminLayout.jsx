@@ -5,6 +5,7 @@ import {
   LogOut, Download, Search, X, Plus, Edit, Trash2, FileText, CheckCircle2, AlertCircle, Clock, UserCog,
   History, FolderTree, ListTree, Mail, Handshake, Globe,
   CalendarCheck, Send, Boxes, LayoutGrid, DollarSign,
+  Link2,
 } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../lib/api";
@@ -30,6 +31,7 @@ import AdminMenus from "./sections/AdminMenus";
 import AdminSubscribers from "./sections/AdminSubscribers";
 import AdminAffiliates from "./sections/AdminAffiliates";
 import AdminPayouts from "./sections/AdminPayouts";
+import AdminReconciliation from "./sections/AdminReconciliation";
 
 function hasAccess(user, area) {
   if (!user) return false;
@@ -65,6 +67,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
         items: [
           { to: basePath, label: L("Tableau de bord", "Dashboard"), icon: LayoutDashboard, end: true, area: "dashboard" },
           { to: `${basePath}/orders`, label: L("Commandes", "Orders"), icon: ShoppingCart, area: "orders" },
+          { to: `${basePath}/reconciliation`, label: L("Réconciliation", "Reconciliation"), icon: Link2, area: "orders" },
           { to: `${basePath}/customers`, label: L("Clients", "Customers"), icon: Users, area: "customers" },
           { to: `${basePath}/coupons`, label: L("Coupons", "Coupons"), icon: Ticket, area: "coupons" },
         ],
@@ -210,6 +213,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
             <Route index element={hasAccess(user, "dashboard") ? <AdminDashboard /> : <Navigate to={landingPath} replace />} />
             <Route path="orders" element={hasAccess(user, "orders") ? <AdminOrders /> : <Navigate to={landingPath} replace />} />
             <Route path="orders/:id" element={hasAccess(user, "orders") ? <AdminOrders /> : <Navigate to={landingPath} replace />} />
+            <Route path="reconciliation" element={hasAccess(user, "orders") ? <AdminReconciliation /> : <Navigate to={landingPath} replace />} />
             <Route path="products" element={hasAccess(user, "products") ? <AdminProducts /> : <Navigate to={landingPath} replace />} />
             <Route path="coupons" element={hasAccess(user, "coupons") ? <AdminCoupons /> : <Navigate to={landingPath} replace />} />
             <Route path="customers" element={hasAccess(user, "customers") ? <AdminCustomers /> : <Navigate to={landingPath} replace />} />
