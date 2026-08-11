@@ -6872,6 +6872,12 @@ def _parse_amounts(text: str) -> list:
     return amounts
 
 
+def _is_full_payment_match(amounts: list, order_total: float) -> bool:
+    """True seulement si un montant détecté correspond exactement au total."""
+    expected = round(float(order_total or 0), 2)
+    return any(abs(float(a) - expected) <= 0.01 for a in (amounts or []))
+
+
 async def _process_interac_deposit_emails() -> int:
     token = await _graph_access_token()
     if not token:
@@ -6927,7 +6933,7 @@ async def _process_interac_deposit_emails() -> int:
                 continue
             amounts = _parse_amounts(text)
             order_total = float(order.get("total", 0))
-            if not amounts or not any(abs(a - order_total) <= 0.01 for a in amounts):
+            if not amounts or not _is_full_payment_match(amounts, order_total):
                 await db.orders.update_one({"id": order["id"]}, {"$push": {"notes": {
                     "id": str(uuid.uuid4()),
                     "text": (f"Notification de dépôt Interac reçue (réf {ref}) avec un montant "
@@ -10574,7 +10580,7 @@ async def send_template_email(key: str, to: str, lang: str, ctx: dict, order: Op
     if not tpl:
         logging.warning("[email] template inconnu: %s", key); return
     subject, html = _email_render(tpl, lang, ctx or {}, order)
-    await _send_email(to, subject, html, email_key=key)
+    await _send_email(to, subject, html)
 
 
 class EmailTemplateIn(BaseModel):
