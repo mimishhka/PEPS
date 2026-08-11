@@ -16,6 +16,7 @@ import logging
 import secrets
 import asyncio
 import ipaddress
+import sys
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal, Any
 
@@ -37,6 +38,9 @@ from reportlab.lib.pagesizes import LETTER
 from reportlab.lib import colors as rl_colors
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas as rl_canvas
+
+sys.modules.setdefault("server", sys.modules[__name__])
+sys.modules.setdefault("backend.server", sys.modules[__name__])
 
 
 # ---------------------------------------------------------------------------
@@ -358,7 +362,7 @@ def _public_user_payload(user: Optional[dict]) -> dict:
         return {}
     payload = {
         k: v for k, v in user.items()
-        if k not in {"password_hash", "token_version"}
+        if k not in {"password_hash", "token_version", "passwordless"}
     }
     # Ne pas exposer les permissions internes pour les comptes clients.
     if payload.get("role") not in {"staff", "admin"}:
@@ -732,7 +736,6 @@ PROVINCES_CA = ["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC"
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
-@api.post("/auth/register")
 async def register(payload: RegisterIn, response: Response, request: Request):
     _rate_limit("register", _client_ip(request), 5, 3600, "Too many registration attempts. Try again later.")
     email = payload.email.lower().strip()
@@ -771,6 +774,13 @@ async def register(payload: RegisterIn, response: Response, request: Request):
     base = (PUBLIC_BASE_URL or str(request.base_url).rstrip("/"))
     link = f"{base}/auth/callback?token={raw}"
     await _send_magic_email(email, link, "fr", is_signup=True)
+    token = create_access_token(
+        user_doc["id"],
+        email,
+        user_doc["role"],
+        token_version=user_doc.get("token_version", 0),
+    )
+    set_auth_cookie(response, token, request)
 
     return {
         "id": user_doc["id"],
@@ -778,6 +788,8 @@ async def register(payload: RegisterIn, response: Response, request: Request):
         "name": user_doc["name"],
         "role": "user",
         "created_at": user_doc["created_at"],
+        "token": token,
+        "access_token": token,
         "email_verified": False,
         "verification_sent": True,
     }
@@ -803,50 +815,43 @@ def _client_ip(request: Request) -> str:
         except ValueError:
             pass
 
-    if not TRUSTED_PROXIES:
-        # X-Forwarded-For défini par un proxy en amont (Kubernetes ingress).
-        # Sans liste de proxys de confiance, on prend prudemment le premier
-        # bond seulement si le peer semble être une IP privée / interne
-        # (indicateur qu'un proxy nous parle réellement).
-        try:
-            peer_addr = ipaddress.ip_address(peer)
-            if peer_addr.is_private or peer_addr.is_loopback:
-                xff = (request.headers.get("x-forwarded-for") or "").strip()
-                if xff:
-                    first = xff.split(",")[0].strip()
-                    try:
-                        ipaddress.ip_address(first)
-                        return first
-                    except ValueError:
-                        pass
-        except ValueError:
-            pass
+    proxy_allowlist = TRUSTED_PROXIES or sorted(TRUST_PROXY_IPS)
+    if not proxy_allowlist:
         return peer
 
     try:
         peer_addr = ipaddress.ip_address(peer)
-        trusted = False
-        for entry in TRUSTED_PROXIES:
-            entry = entry.strip()
-            if not entry:
-                continue
-            try:
-                if "/" in entry:
-                    trusted = peer_addr in ipaddress.ip_network(entry, strict=False)
-                else:
-                    trusted = peer.lower() == entry.lower()
-            except ValueError:
-                continue
-            if trusted:
-                break
     except ValueError:
         return peer
+
+    trusted = False
+    for entry in proxy_allowlist:
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            if "/" in entry:
+                trusted = peer_addr in ipaddress.ip_network(entry, strict=False)
+            else:
+                trusted = peer.lower() == entry.lower()
+        except ValueError:
+            continue
+        if trusted:
+            break
     if not trusted:
         return peer
+
     xff = request.headers.get("x-forwarded-for", "").strip()
     if not xff:
         return peer
-    return xff.split(",")[0].strip() or peer
+    first = xff.split(",")[0].strip()
+    if not first:
+        return peer
+    try:
+        ipaddress.ip_address(first)
+    except ValueError:
+        return peer
+    return first
 
 
 def _login_throttle_check(key: str):
@@ -933,7 +938,6 @@ async def _soft_delete(resource: str, item_id: str, admin: dict) -> dict:
     return {"ok": True}
 
 
-@api.get("/admin/trash/{resource}")
 async def admin_list_trash(resource: str, admin: dict = Depends(get_admin_user)):
     if resource not in TRASH_RESOURCES:
         raise HTTPException(status_code=404, detail="Unknown resource")
@@ -942,7 +946,6 @@ async def admin_list_trash(resource: str, admin: dict = Depends(get_admin_user))
     return items
 
 
-@api.post("/admin/trash/{resource}/restore")
 async def admin_restore_trash(resource: str, payload: TrashIdsIn, admin: dict = Depends(get_admin_user)):
     if resource not in TRASH_RESOURCES:
         raise HTTPException(status_code=404, detail="Unknown resource")
@@ -963,7 +966,6 @@ async def admin_restore_trash(resource: str, payload: TrashIdsIn, admin: dict = 
     return {"ok": True, "restored": restored}
 
 
-@api.post("/admin/trash/{resource}/purge")
 async def admin_purge_trash(resource: str, payload: TrashIdsIn, admin: dict = Depends(get_admin_user)):
     """Suppression DÉFINITIVE et immédiate des éléments sélectionnés — action
     irréversible, y compris pour les commandes (purge manuelle uniquement)."""
@@ -1036,7 +1038,6 @@ class StaffAcceptIn(BaseModel):
         return _validate_password_strength(v)
 
 
-@api.post("/admin/gate/verify")
 async def admin_gate_verify(payload: AdminGateIn, request: Request):
     """Passerelle avant le login admin — voir ADMIN_GATE_CODE plus haut.
     Rate-limit distinct et plus strict que le login (pas de compte à protéger
@@ -1049,7 +1050,6 @@ async def admin_gate_verify(payload: AdminGateIn, request: Request):
     return {"ok": True}
 
 
-@api.get("/admin/autologin")
 async def admin_autologin(_admin: dict = Depends(get_admin_user)):
     """Autologin de la porte admin : si une session admin valide existe déjà
     (cookie httpOnly access_token), la porte est levée côté frontend sans
@@ -1057,7 +1057,6 @@ async def admin_autologin(_admin: dict = Depends(get_admin_user)):
     return {"ok": True}
 
 
-@api.post("/auth/login")
 async def login(payload: LoginIn, response: Response, request: Request):
     email = payload.email.lower().strip()
     throttle_key = f"{_client_ip(request)}:{email}"
@@ -1082,17 +1081,16 @@ async def login(payload: LoginIn, response: Response, request: Request):
         # environments where the browser blocks the cookie (preview iframes,
         # third-party cookie restrictions, private mode). Cookie remains the
         # primary mechanism; the token acts as a safety net.
+        "token": token,
         "access_token": token,
     }
 
 
-@api.post("/auth/logout")
 async def logout(response: Response):
     clear_auth_cookie(response)
     return {"ok": True}
 
 
-@api.post("/auth/logout-all")
 async def logout_all_devices(response: Response, user: dict = Depends(get_current_user)):
     """Révoque tous les tokens émis avant cet appel, sur tous les appareils.
     Utile après un changement de mot de passe suspect ou une perte d'appareil."""
@@ -1101,12 +1099,13 @@ async def logout_all_devices(response: Response, user: dict = Depends(get_curren
     return {"ok": True}
 
 
-@api.get("/auth/me")
 async def me(request: Request):
     """Returns the current user or null (200) for guests, instead of 401.
     Cette version évite les erreurs 401 bruyantes dans la console browser
     lorsque le frontend interroge la session au chargement pour un visiteur
     anonyme — c'est un pattern standard pour un endpoint 'who am I'."""
+    if isinstance(request, dict) and request.get("id") and request.get("email"):
+        return _public_user_payload(request)
     user = await _resolve_user(request)
     if not user:
         return None
@@ -1220,7 +1219,6 @@ async def _send_magic_email(email: str, link: str, lang: str, is_signup: bool) -
     await _send_email(email, subject, html, from_email=from_addr)
 
 
-@api.post("/auth/magic/request")
 async def magic_request(payload: MagicRequestIn, request: Request):
     """Émet un lien magique. Réponse uniforme : ne révèle jamais si l'email existe."""
     email = payload.email.lower().strip()
@@ -1245,7 +1243,6 @@ async def magic_request(payload: MagicRequestIn, request: Request):
     return {"ok": True}
 
 
-@api.post("/auth/magic/verify")
 async def magic_verify(response: Response, request: Request, token: str = Body(..., embed=True)):
     """Vérifie le token (usage unique + TTL), crée le compte si signup, pose le cookie."""
     _rate_limit("magic_verify", _client_ip(request), MAGIC_VERIFY_MAX,
@@ -1338,7 +1335,6 @@ async def _send_reset_email(email: str, link: str, lang: str) -> None:
     await _send_email(email, subject, html, from_email=from_addr)
 
 
-@api.post("/auth/forgot-password")
 async def forgot_password(payload: ForgotPasswordIn, request: Request):
     """Émet un lien de réinitialisation. Réponse uniforme (anti-énumération)."""
     email = payload.email.lower().strip()
@@ -1363,7 +1359,6 @@ async def forgot_password(payload: ForgotPasswordIn, request: Request):
     return {"ok": True}
 
 
-@api.post("/auth/reset-password")
 async def reset_password(payload: ResetPasswordIn, response: Response, request: Request):
     token_hash = _hash_magic_token(payload.token.strip())
     rec = await db.magic_tokens.find_one({"token_hash": token_hash, "purpose": "reset"})
@@ -1429,7 +1424,6 @@ EMAIL_CHANGE_TTL_HOURS = 24
 GUEST_ORDER_ACCESS_TTL_MINUTES = 60 * 24 * 7
 
 
-@api.put("/account/profile")
 async def account_update_profile(payload: ProfileUpdateIn, user: dict = Depends(get_current_user)):
     name = payload.name.strip()
     await db.users.update_one({"id": user["id"]}, {"$set": {"name": name}})
@@ -1445,7 +1439,6 @@ def _assert_current_password(doc: dict, provided: Optional[str]) -> None:
         raise HTTPException(status_code=403, detail="Current password is incorrect")
 
 
-@api.put("/account/password")
 async def account_change_password(payload: PasswordChangeIn, response: Response,
                                   user: dict = Depends(get_current_user)):
     _rate_limit_email("account_password", user["email"], 5, 900, "Too many password attempts. Try again later.")
@@ -1496,7 +1489,6 @@ def _email_change_html(confirm_url: str, lang: str = "fr") -> str:
     """
 
 
-@api.post("/account/email/request-change")
 async def account_request_email_change(payload: EmailChangeRequestIn, request: Request,
                                        user: dict = Depends(get_current_user)):
     _rate_limit_email("email_change", user["email"], 3, 3600, "Too many email change requests. Try again later.")
@@ -1529,7 +1521,6 @@ async def account_request_email_change(payload: EmailChangeRequestIn, request: R
     return {"ok": True, "sent_to": new_email}
 
 
-@api.get("/account/email/confirm")
 async def account_confirm_email_change(token: str):
     """Lien cliqué depuis l'email — pas d'authentification (l'utilisateur peut
     ouvrir le lien sur un autre appareil). Le token à usage unique + TTL fait
@@ -1565,12 +1556,10 @@ async def account_confirm_email_change(token: str):
 
 
 # --- Adresses sauvegardées ---------------------------------------------------
-@api.get("/account/addresses")
 async def account_list_addresses(user: dict = Depends(get_current_user)):
     return await db.addresses.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(20)
 
 
-@api.post("/account/addresses")
 async def account_add_address(payload: SavedAddressIn, user: dict = Depends(get_current_user)):
     count = await db.addresses.count_documents({"user_id": user["id"]})
     if count >= 10:
@@ -1591,7 +1580,6 @@ async def account_add_address(payload: SavedAddressIn, user: dict = Depends(get_
     return doc
 
 
-@api.put("/account/addresses/{address_id}")
 async def account_update_address(address_id: str, payload: SavedAddressIn,
                                  user: dict = Depends(get_current_user)):
     existing = await db.addresses.find_one({"id": address_id, "user_id": user["id"]})
@@ -1605,7 +1593,6 @@ async def account_update_address(address_id: str, payload: SavedAddressIn,
     return fresh
 
 
-@api.delete("/account/addresses/{address_id}")
 async def account_delete_address(address_id: str, user: dict = Depends(get_current_user)):
     res = await db.addresses.delete_one({"id": address_id, "user_id": user["id"]})
     if not res.deleted_count:
@@ -1620,7 +1607,6 @@ async def account_delete_address(address_id: str, user: dict = Depends(get_curre
 
 
 # --- Suppression de compte (PIPEDA / Loi 25) ---------------------------------
-@api.post("/account/delete")
 async def account_delete(payload: AccountDeleteIn, response: Response,
                          user: dict = Depends(get_current_user)):
     """Suppression du compte + anonymisation des commandes.
@@ -1678,7 +1664,6 @@ async def account_delete(payload: AccountDeleteIn, response: Response,
 # ---------------------------------------------------------------------------
 # Product endpoints
 # ---------------------------------------------------------------------------
-@api.get("/products")
 async def list_products(category: Optional[str] = None, q: Optional[str] = None, featured: Optional[bool] = None):
     filt: dict = {"active": True}
     if category and category != "all":
@@ -1698,7 +1683,6 @@ async def list_products(category: Optional[str] = None, q: Optional[str] = None,
     return products
 
 
-@api.get("/products/{slug}")
 async def get_product(slug: str):
     product = await db.products.find_one({"slug": slug}, {"_id": 0})
     if not product:
@@ -1706,7 +1690,6 @@ async def get_product(slug: str):
     return product
 
 
-@api.post("/notify-stock")
 async def notify_stock_request(payload: StockNotifyIn, request: Request):
     _rate_limit("notify_stock", _client_ip(request), 10, 3600, "Too many requests. Try again later.")
     """Public endpoint — a visitor asks to be emailed once a sold-out product/variant is back."""
@@ -1738,18 +1721,15 @@ async def notify_stock_request(payload: StockNotifyIn, request: Request):
 # Les produits continuent de référencer une catégorie par slug (string) : aucune
 # migration produit, aucune rupture des 12 produits seedés.
 # ---------------------------------------------------------------------------
-@api.get("/categories")
 async def list_categories():
     """Vitrine : uniquement les catégories publiées."""
     return await db.categories.find({"published": True}, {"_id": 0}).sort("display_order", 1).to_list(200)
 
 
-@api.get("/admin/categories")
 async def admin_list_categories(_admin: dict = Depends(get_admin_user)):
     return await db.categories.find({}, {"_id": 0}).sort("display_order", 1).to_list(200)
 
 
-@api.post("/admin/categories")
 async def admin_create_category(payload: CategoryIn, _admin: dict = Depends(get_admin_user)):
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
@@ -1762,7 +1742,6 @@ async def admin_create_category(payload: CategoryIn, _admin: dict = Depends(get_
     return doc
 
 
-@api.put("/admin/categories/{cat_id}")
 async def admin_update_category(cat_id: str, payload: CategoryIn, _admin: dict = Depends(get_admin_user)):
     existing = await db.categories.find_one({"id": cat_id}, {"_id": 0})
     if not existing:
@@ -1786,7 +1765,6 @@ async def admin_update_category(cat_id: str, payload: CategoryIn, _admin: dict =
     return out
 
 
-@api.delete("/admin/categories/{cat_id}")
 async def admin_delete_category(cat_id: str, _admin: dict = Depends(get_admin_user)):
     cat = await db.categories.find_one({"id": cat_id}, {"_id": 0})
     if not cat:
@@ -1816,7 +1794,6 @@ def _normalize_menu_items(items: list) -> list:
     return out
 
 
-@api.get("/menus")
 async def list_menus(location: Optional[str] = None):
     """Vitrine : menus publiés, items non publiés retirés."""
     filt: dict = {"published": True}
@@ -1831,12 +1808,10 @@ async def list_menus(location: Optional[str] = None):
     return menus
 
 
-@api.get("/admin/menus")
 async def admin_list_menus(_admin: dict = Depends(get_admin_user)):
     return await db.menus.find({}, {"_id": 0}).sort("display_order", 1).to_list(50)
 
 
-@api.post("/admin/menus")
 async def admin_create_menu(payload: MenuIn, _admin: dict = Depends(get_admin_user)):
     doc = payload.model_dump()
     doc["items"] = _normalize_menu_items(doc.get("items") or [])
@@ -1850,7 +1825,6 @@ async def admin_create_menu(payload: MenuIn, _admin: dict = Depends(get_admin_us
     return doc
 
 
-@api.put("/admin/menus/{menu_id}")
 async def admin_update_menu(menu_id: str, payload: MenuIn, _admin: dict = Depends(get_admin_user)):
     existing = await db.menus.find_one({"id": menu_id}, {"_id": 0})
     if not existing:
@@ -1864,7 +1838,6 @@ async def admin_update_menu(menu_id: str, payload: MenuIn, _admin: dict = Depend
     return {**existing, **new}
 
 
-@api.delete("/admin/menus/{menu_id}")
 async def admin_delete_menu(menu_id: str, _admin: dict = Depends(get_admin_user)):
     res = await db.menus.delete_one({"id": menu_id})
     if not res.deleted_count:
@@ -1876,7 +1849,6 @@ async def admin_delete_menu(menu_id: str, _admin: dict = Depends(get_admin_user)
 # BLOC 3 — Prélancement : vérification du jeton d'aperçu.
 # Le jeton n'est JAMAIS exposé via /meta — seule cette comparaison serveur existe.
 # ---------------------------------------------------------------------------
-@api.get("/prelaunch/preview")
 async def prelaunch_preview(token: str, request: Request):
     _rate_limit("prelaunch_preview", _client_ip(request), 20, 3600, "Too many attempts. Try again later.")
     if not PRELAUNCH_PREVIEW_TOKEN:
@@ -1889,7 +1861,6 @@ async def prelaunch_preview(token: str, request: Request):
 # consentement (date, IP, source) pour chaque inscription, et un lien de
 # désabonnement fonctionne sans authentification (obligatoire par la loi).
 # ---------------------------------------------------------------------------
-@api.post("/newsletter/subscribe")
 async def newsletter_subscribe(payload: NewsletterSubscribeIn, request: Request):
     _rate_limit("newsletter_subscribe", _client_ip(request), 10, 3600, "Too many requests. Try again later.")
     email = payload.email.lower().strip()
@@ -1934,7 +1905,6 @@ async def newsletter_subscribe(payload: NewsletterSubscribeIn, request: Request)
     return {"ok": True, "already_subscribed": False}
 
 
-@api.get("/newsletter/unsubscribe")
 async def newsletter_unsubscribe(token: str):
     """Aucune authentification requise — un lien de désabonnement doit
     fonctionner en un clic, sans login, exigence CASL/LCAP."""
@@ -1985,7 +1955,6 @@ def _ensure_variant_ids(payload_doc: dict) -> dict:
     return payload_doc
 
 
-@api.post("/admin/products")
 async def admin_create_product(payload: ProductIn, _admin: dict = Depends(require_area("products", "manage"))):
     existing = await db.products.find_one({"slug": payload.slug})
     if existing:
@@ -2000,7 +1969,6 @@ async def admin_create_product(payload: ProductIn, _admin: dict = Depends(requir
     return doc
 
 
-@api.put("/admin/products/{product_id}")
 async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict = Depends(require_area("products", "manage"))):
     before = await db.products.find_one({"id": product_id}, {"_id": 0})
     update = payload.model_dump()
@@ -2027,12 +1995,10 @@ async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict
     return after
 
 
-@api.delete("/admin/products/{product_id}")
 async def admin_delete_product(product_id: str, admin: dict = Depends(require_area("products", "manage"))):
     return await _soft_delete("products", product_id, admin)
 
 
-@api.post("/admin/upload/coa")
 async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
     """Uploads a Certificate of Analysis PDF and returns a URL to paste into a
     product's or variant's coa_url field. Storage is local disk under UPLOAD_DIR,
@@ -2059,7 +2025,6 @@ async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(
     return {"url": url, "original_filename": filename, "size_bytes": len(contents)}
 
 
-@api.post("/admin/upload/image")
 async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
     """Uploads a product image (PNG, JPEG, WebP, GIF) and returns a URL to use in
     the image_url field. Storage is local disk under UPLOAD_DIR/images, served
@@ -3702,7 +3667,6 @@ async def _maybe_notify_restock(product_id: str, variant_id: Optional[str] = Non
     )
 
 
-@api.post("/shipping/rates")
 async def get_shipping_rates(payload: ShippingRateRequest):
     """Live Canada Post rates when CANADA_POST_API_KEY is configured; otherwise falls back
     to the existing flat-rate shipping_zones/shipping_methods (same zones used at checkout)."""
@@ -3820,7 +3784,7 @@ async def _flag_late_cancelled_payment(order: dict, provider: str, reference: st
     note = {
         "id": str(uuid.uuid4()),
         "text": (
-            f"⚠️ LATE PAYMENT detected on cancelled order — {provider_label} confirmation received"
+                f"⚠️ PAIEMENT TARDIF / LATE PAYMENT detected on cancelled order — {provider_label} confirmation received"
             f"{ref_txt}. Review manually before reopening."
         ),
         "author": "system",
@@ -4013,7 +3977,6 @@ async def _queue_crypto_reconciliation_item(payload: dict, reason: str) -> bool:
     return True
 
 
-@api.post("/checkout")
 async def checkout(payload: CheckoutIn, request: Request):
     if not (payload.accept_terms and payload.confirm_age and payload.confirm_research_use):
         raise HTTPException(400, "All compliance confirmations are required")
@@ -4023,7 +3986,7 @@ async def checkout(payload: CheckoutIn, request: Request):
     # Priorité au body (évite un préflight CORS déclenché par un en-tête
     # personnalisé, qui échoue derrière certains ingress) — l'en-tête reste
     # accepté pour rétro-compatibilité.
-    idem_key = (payload.idempotency_key or request.headers.get("Idempotency-Key", "")).strip()
+    idem_key = ((getattr(payload, "idempotency_key", None) or request.headers.get("Idempotency-Key", ""))).strip()
     lock_doc = None
     if idem_key:
         try:
@@ -4165,7 +4128,6 @@ async def checkout(payload: CheckoutIn, request: Request):
     return order_doc
 
 
-@api.get("/orders/mine")
 async def my_orders(user: dict = Depends(get_current_user)):
     items = await db.orders.find(
         {"user_id": user["id"], "deleted_at": None}, {"_id": 0}
@@ -4173,7 +4135,6 @@ async def my_orders(user: dict = Depends(get_current_user)):
     return items
 
 
-@api.get("/orders/{order_id}")
 async def get_order(order_id: str, request: Request):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
@@ -4208,7 +4169,6 @@ async def get_order(order_id: str, request: Request):
     return order
 
 
-@api.get("/orders/{order_id}/tracking")
 async def order_tracking(order_id: str, request: Request):
     """Live Canada Post tracking for the order's tracking_number, when configured."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
@@ -4227,7 +4187,6 @@ async def order_tracking(order_id: str, request: Request):
     return {"tracked": False, "reason": "unavailable_or_not_configured", "pin": pin}
 
 
-@api.post("/admin/orders/{order_id}/sync-delivery")
 async def admin_sync_delivery_status(order_id: str,
                                      _admin: dict = Depends(require_area("orders", "manage"))):
     """Vérifie le repérage CP et passe la commande à 'delivered' si la livraison
@@ -4350,14 +4309,12 @@ def _status_group_filter(status_group: Optional[str]) -> dict:
     return dict(_ORDER_STATUS_GROUPS.get(status_group or "", {}))
 
 
-@api.get("/admin/orders")
 async def admin_orders(status_group: Optional[str] = None, _admin: dict = Depends(require_area("orders", "view"))):
     filt = _status_group_filter(status_group)
     filt["deleted_at"] = None
     return await db.orders.find(filt, {"_id": 0}).sort("created_at", -1).to_list(500)
 
 
-@api.delete("/admin/orders/{order_id}")
 async def admin_delete_order(order_id: str, admin: dict = Depends(require_area("orders", "manage"))):
     """Suppression douce — la commande va en corbeille, restaurable, et n'est
     PAS purgée automatiquement (contrairement aux autres types de données),
@@ -4365,7 +4322,6 @@ async def admin_delete_order(order_id: str, admin: dict = Depends(require_area("
     return await _soft_delete("orders", order_id, admin)
 
 
-@api.get("/admin/orders/counts")
 async def admin_order_counts(_admin: dict = Depends(require_area("orders", "view"))):
     out = {}
     for group, filt in _ORDER_STATUS_GROUPS.items():
@@ -4374,7 +4330,6 @@ async def admin_order_counts(_admin: dict = Depends(require_area("orders", "view
     return out
 
 
-@api.get("/admin/orders/dispatch-batch")
 async def admin_dispatch_batch(
     date: Optional[str] = None, _admin: dict = Depends(require_area("orders", "view"))
 ):
@@ -4395,7 +4350,6 @@ async def admin_dispatch_batch(
     return {"batch_date": date, "count": len(orders), "orders": orders}
 
 
-@api.put("/admin/orders/{order_id}/status")
 async def admin_update_order(
     order_id: str,
     payment_status: Optional[str] = None,
@@ -4455,7 +4409,6 @@ async def admin_update_order(
     return updated
 
 
-@api.post("/admin/orders/{order_id}/confirm-payment")
 async def admin_confirm_payment(order_id: str, _admin: dict = Depends(require_area("orders", "manage"))):
     """One-click 'Mark as Paid' — atomically marks order as paid + processing + sends email."""
     existing = await db.orders.find_one({"id": order_id}, {"_id": 0})
@@ -4486,26 +4439,10 @@ class InteracReconcileDismissIn(BaseModel):
     note: Optional[str] = ""
 
 
-@api.get("/admin/reconciliation/payments")
-async def admin_payment_reconciliation_list(
-    status: str = Query("pending"),
-    provider: str = Query("all"),
-    limit: int = Query(200, ge=1, le=1000),
-    _admin: dict = Depends(require_area("orders", "view")),
-):
-    filt = {}
-    if status != "all":
-        filt["status"] = status
-    if provider != "all":
-        filt["provider"] = provider
-    rows = await db.interac_reconciliation_queue.find(filt, {"_id": 0}).sort("detected_at", -1).to_list(limit)
-    return rows
-
-
 async def _reconciliation_match_item(
     item_id: str,
     payload: InteracReconcileMatchIn,
-    admin: dict = Depends(require_area("orders", "manage")),
+    admin: dict,
 ):
     item = await db.interac_reconciliation_queue.find_one({"id": item_id}, {"_id": 0})
     if not item:
@@ -4602,57 +4539,6 @@ async def _reconciliation_dismiss_item(
     return await db.interac_reconciliation_queue.find_one({"id": item_id}, {"_id": 0})
 
 
-@api.post("/admin/reconciliation/payments/{item_id}/match")
-async def admin_payment_reconciliation_match(
-    item_id: str,
-    payload: InteracReconcileMatchIn,
-    admin: dict = Depends(require_area("orders", "manage")),
-):
-    return await _reconciliation_match_item(item_id, payload, admin)
-
-
-@api.post("/admin/reconciliation/payments/{item_id}/dismiss")
-async def admin_payment_reconciliation_dismiss(
-    item_id: str,
-    payload: InteracReconcileDismissIn,
-    admin: dict = Depends(require_area("orders", "manage")),
-):
-    return await _reconciliation_dismiss_item(item_id, payload, admin)
-
-
-# Backward-compatible Interac routes.
-@api.get("/admin/reconciliation/interac")
-async def admin_interac_reconciliation_list(
-    status: str = Query("pending"),
-    limit: int = Query(200, ge=1, le=1000),
-    _admin: dict = Depends(require_area("orders", "view")),
-):
-    rows = await db.interac_reconciliation_queue.find(
-        ({"status": status, "provider": "interac"} if status != "all" else {"provider": "interac"}),
-        {"_id": 0},
-    ).sort("detected_at", -1).to_list(limit)
-    return rows
-
-
-@api.post("/admin/reconciliation/interac/{item_id}/match")
-async def admin_interac_reconciliation_match(
-    item_id: str,
-    payload: InteracReconcileMatchIn,
-    admin: dict = Depends(require_area("orders", "manage")),
-):
-    return await _reconciliation_match_item(item_id, payload, admin)
-
-
-@api.post("/admin/reconciliation/interac/{item_id}/dismiss")
-async def admin_interac_reconciliation_dismiss(
-    item_id: str,
-    payload: InteracReconcileDismissIn,
-    admin: dict = Depends(require_area("orders", "manage")),
-):
-    return await _reconciliation_dismiss_item(item_id, payload, admin)
-
-
-@api.post("/admin/orders/{order_id}/reopen")
 async def admin_reopen_order(
     order_id: str,
     payload: ReopenOrderIn,
@@ -4828,7 +4714,6 @@ def _staff_invite_html(accept_url: str, inviter_name: str, lang: str = "fr") -> 
     """
 
 
-@api.get("/admin/staff")
 async def admin_list_staff(_admin: dict = Depends(get_admin_user)):
     """Membres actifs (admin + staff) — les clients normaux (role=user) sont exclus."""
     staff = await db.users.find(
@@ -4838,7 +4723,6 @@ async def admin_list_staff(_admin: dict = Depends(get_admin_user)):
     return staff
 
 
-@api.get("/admin/staff/invites")
 async def admin_list_staff_invites(_admin: dict = Depends(get_admin_user)):
     """Invitations en attente — équivalent de l'onglet 'Demandes en attente'."""
     now = datetime.now(timezone.utc).isoformat()
@@ -4848,7 +4732,6 @@ async def admin_list_staff_invites(_admin: dict = Depends(get_admin_user)):
     return invites
 
 
-@api.post("/admin/staff/invite")
 async def admin_invite_staff(payload: StaffInviteIn, request: Request, admin: dict = Depends(get_admin_user)):
     email = payload.email.lower().strip()
     if await db.users.find_one({"email": email}):
@@ -4879,7 +4762,6 @@ async def admin_invite_staff(payload: StaffInviteIn, request: Request, admin: di
     return {"ok": True, "sent_to": email}
 
 
-@api.delete("/admin/staff/invites/{invite_id}")
 async def admin_cancel_staff_invite(invite_id: str, admin: dict = Depends(get_admin_user)):
     res = await db.staff_invites.delete_one({"id": invite_id, "used": False})
     if not res.deleted_count:
@@ -4888,7 +4770,6 @@ async def admin_cancel_staff_invite(invite_id: str, admin: dict = Depends(get_ad
     return {"ok": True}
 
 
-@api.post("/staff/accept")
 async def staff_accept_invite(payload: StaffAcceptIn, response: Response):
     """Lien cliqué depuis l'email — pas d'authentification préalable, le
     token à usage unique + TTL sert de preuve. Crée le compte staff (ou
@@ -4925,7 +4806,6 @@ async def staff_accept_invite(payload: StaffAcceptIn, response: Response):
     }
 
 
-@api.put("/admin/staff/{user_id}/permissions")
 async def admin_update_staff_permissions(user_id: str, payload: StaffPermissionsIn,
                                          admin: dict = Depends(get_admin_user)):
     target = await db.users.find_one({"id": user_id})
@@ -4943,7 +4823,6 @@ async def admin_update_staff_permissions(user_id: str, payload: StaffPermissions
     return {"ok": True}
 
 
-@api.post("/admin/staff/{user_id}/promote")
 async def admin_promote_to_owner(user_id: str, admin: dict = Depends(get_admin_user)):
     """Fait passer un membre staff au rang de owner (accès total, y compris
     la gestion des autres membres). Réversible uniquement en révoquant puis
@@ -4962,7 +4841,6 @@ async def admin_promote_to_owner(user_id: str, admin: dict = Depends(get_admin_u
     return {"ok": True}
 
 
-@api.delete("/admin/staff/{user_id}")
 async def admin_revoke_staff(user_id: str, admin: dict = Depends(get_admin_user)):
     """Révoque l'accès admin — le compte redevient un compte client normal,
     n'est PAS supprimé (historique de commandes éventuel préservé)."""
@@ -4981,7 +4859,6 @@ async def admin_revoke_staff(user_id: str, admin: dict = Depends(get_admin_user)
     return {"ok": True}
 
 
-@api.get("/admin/audit-log")
 async def admin_audit_log(limit: int = 200, admin: dict = Depends(get_admin_user)):
     """Journal d'audit — owner only. Couvre automatiquement toute action
     'manage' (mutation) sur les 35 endpoints admin, plus les actions
@@ -4991,7 +4868,6 @@ async def admin_audit_log(limit: int = 200, admin: dict = Depends(get_admin_user
     return entries
 
 
-@api.get("/admin/customers")
 async def admin_customers(_admin: dict = Depends(require_area("customers", "view"))):
     """Clients enrichis : dépenses cumulées, nb de commandes payées, dernière commande,
     et segment de rétention déterministe (nouveau / actif / fidèle / à risque / inactif)."""
@@ -5054,7 +4930,6 @@ async def admin_customers(_admin: dict = Depends(require_area("customers", "view
     return {"customers": out, "segment_counts": seg_counts, "total": len(out)}
 
 
-@api.get("/admin/subscribers")
 async def admin_list_subscribers(status: Optional[str] = None, _admin: dict = Depends(require_area("subscribers", "view"))):
     query = {"status": status} if status else {}
     subs = await db.subscribers.find(
@@ -5063,7 +4938,6 @@ async def admin_list_subscribers(status: Optional[str] = None, _admin: dict = De
     return subs
 
 
-@api.get("/admin/subscribers.csv")
 async def admin_subscribers_csv(status: Optional[str] = None, _admin: dict = Depends(require_area("subscribers", "view"))):
     query = {"status": status} if status else {}
     subs = await db.subscribers.find(query, {"_id": 0, "unsubscribe_token": 0}).to_list(5000)
@@ -5082,7 +4956,6 @@ async def admin_subscribers_csv(status: Optional[str] = None, _admin: dict = Dep
     return _csv_response(rows, f"fironova-subscribers-{datetime.now().strftime('%Y%m%d')}.csv")
 
 
-@api.get("/admin/stats")
 async def admin_stats(_admin: dict = Depends(require_area("dashboard", "view"))):
     total_orders = await db.orders.count_documents({})
     pending = await db.orders.count_documents({"fulfillment_status": "pending"})
@@ -5112,7 +4985,6 @@ async def admin_stats(_admin: dict = Depends(require_area("dashboard", "view")))
 # ---------------------------------------------------------------------------
 # Admin — order notes & shipping & stock
 # ---------------------------------------------------------------------------
-@api.post("/admin/orders/{order_id}/notes")
 async def admin_add_order_note(order_id: str, payload: OrderNoteIn, admin: dict = Depends(require_area("orders", "manage"))):
     note = {
         "text": payload.text,
@@ -5129,7 +5001,6 @@ async def admin_add_order_note(order_id: str, payload: OrderNoteIn, admin: dict 
     return order
 
 
-@api.post("/admin/orders/{order_id}/refund")
 async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Depends(require_area("orders", "manage"))):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
@@ -5178,7 +5049,6 @@ async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Dep
     return updated
 
 
-@api.post("/admin/orders/{order_id}/resend-email")
 async def admin_resend_order_email(order_id: str, _admin: dict = Depends(require_area("orders", "manage"))):
     """Re-sends the order details / payment-instructions email to the customer."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
@@ -5192,7 +5062,6 @@ async def admin_resend_order_email(order_id: str, _admin: dict = Depends(require
     return {"ok": True, "sent_to": order["email"]}
 
 
-@api.put("/admin/orders/{order_id}/shipping")
 async def admin_set_shipping_info(order_id: str, payload: ShippingInfoIn, _admin: dict = Depends(require_area("orders", "manage"))):
     existing_order = await db.orders.find_one({"id": order_id}, {"_id": 0, "shipping_info": 1})
     if not existing_order:
@@ -5235,7 +5104,6 @@ def _order_weight_kg(order: dict) -> float:
     return max(0.1, round(total_g / 1000.0, 3)) if total_g else 0.5
 
 
-@api.get("/admin/orders/{order_id}/shipping-rates")
 async def admin_order_shipping_rates(order_id: str, _admin: dict = Depends(require_area("orders", "view"))):
     """Services disponibles pour CETTE commande, afin de peupler le sélecteur admin."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
@@ -5250,7 +5118,6 @@ async def admin_order_shipping_rates(order_id: str, _admin: dict = Depends(requi
     return {"configured": True, "rates": rates}
 
 
-@api.post("/admin/orders/{order_id}/create-label")
 async def admin_create_label(order_id: str, payload: CreateLabelIn,
                              _admin: dict = Depends(require_area("orders", "manage"))):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
@@ -5298,7 +5165,6 @@ async def admin_create_label(order_id: str, payload: CreateLabelIn,
     return {"already_existed": False, "shipping_info": shipping_info}
 
 
-@api.post("/admin/orders/{order_id}/void-label")
 async def admin_void_label(order_id: str, _admin: dict = Depends(require_area("orders", "manage"))):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
@@ -5323,7 +5189,6 @@ async def admin_void_label(order_id: str, _admin: dict = Depends(require_area("o
     return {"ok": True, "voided": True}
 
 
-@api.get("/admin/shipping/pending-manifest")
 async def admin_pending_manifest(_admin: dict = Depends(require_area("orders", "view"))):
     """Alimente la bannière rouge de l'admin : combien d'étiquettes non transmises."""
     cursor = db.orders.find(
@@ -5343,7 +5208,6 @@ async def admin_pending_manifest(_admin: dict = Depends(require_area("orders", "
     }
 
 
-@api.get("/admin/shipping/config-status")
 async def admin_shipping_config_status(_admin: dict = Depends(require_area("shipping", "view"))):
     """Expose un état lisible de la config Postes Canada (sans secrets)
     pour faciliter le diagnostic côté interface admin."""
@@ -5387,7 +5251,6 @@ async def admin_shipping_config_status(_admin: dict = Depends(require_area("ship
     }
 
 
-@api.post("/admin/shipping/backfill-label-costs")
 async def admin_backfill_label_costs(limit: int = 300,
                                      force: bool = False,
                                      _admin: dict = Depends(require_area("shipping", "manage"))):
@@ -5455,7 +5318,6 @@ async def admin_backfill_label_costs(limit: int = 300,
     }
 
 
-@api.post("/admin/shipping/transmit")
 async def admin_transmit_manifest(_admin: dict = Depends(require_area("orders", "manage"))):
     """À faire CHAQUE JOUR. Oublier = 2 $/article de surcharge + perte du rabais."""
     if not is_canada_post_configured():
@@ -5509,7 +5371,6 @@ async def admin_transmit_manifest(_admin: dict = Depends(require_area("orders", 
     return {"ok": True, "transmitted_groups": done_groups, "manifests": manifests, "orders_marked": marked}
 
 
-@api.get("/admin/dispatch/{date}/manifest.pdf")
 async def admin_dispatch_manifest_pdf(date: str,
                                       _admin: dict = Depends(require_area("orders", "view"))):
     """Manifeste(s) transmis pour la date donnée.
@@ -5613,7 +5474,6 @@ async def admin_dispatch_manifest_pdf(date: str,
     )
 
 
-@api.post("/admin/dispatch/{date}/retry-manifest")
 async def admin_retry_manifest(date: str,
                                _admin: dict = Depends(require_area("orders", "manage"))):
     """Récupère le manifeste officiel Postes Canada pour la date donnée.
@@ -5686,7 +5546,6 @@ async def admin_retry_manifest(date: str,
     }
 
 
-@api.get("/admin/dispatch/{date}/manifest-status")
 async def admin_dispatch_manifest_status(date: str,
                                          _admin: dict = Depends(require_area("orders", "view"))):
     """Indique si un manifeste a été transmis pour cette date (pilote le bouton
@@ -5722,7 +5581,6 @@ class DispatchLabelsIn(BaseModel):
     service_code: str = Field(default="DOM.EP", min_length=1, max_length=40)
 
 
-@api.get("/admin/dispatch/today")
 async def admin_dispatch_today(date: Optional[str] = None,
                                service_code: Optional[str] = None,
                                _admin: dict = Depends(require_area("orders", "view"))):
@@ -5907,7 +5765,6 @@ class OrderShippingBoxIn(BaseModel):
     box_id: Optional[str] = None  # None = réinitialiser à la sélection automatique
 
 
-@api.patch("/admin/orders/{order_id}/shipping-box")
 async def admin_order_set_shipping_box(
     order_id: str,
     payload: OrderShippingBoxIn,
@@ -5929,7 +5786,6 @@ async def admin_order_set_shipping_box(
         return {"order_id": order_id, "box_id": None, "box_name": None}
 
 
-@api.post("/admin/orders/{order_id}/dispatch/refresh-estimate")
 async def admin_order_refresh_dispatch_estimate(
     order_id: str,
     service_code: Optional[str] = None,
@@ -5986,7 +5842,6 @@ async def admin_order_refresh_dispatch_estimate(
     return out
 
 
-@api.post("/admin/dispatch/{date}/labels")
 async def admin_dispatch_labels(date: str, payload: DispatchLabelsIn,
                                 _admin: dict = Depends(require_area("orders", "manage"))):
     """Génère en une passe les étiquettes des commandes payées du lot <date>
@@ -6095,7 +5950,6 @@ async def _dispatch_labeled_orders(date: str) -> list:
     ).sort("created_at", 1).to_list(2000)
 
 
-@api.get("/admin/dispatch/{date}/labels.pdf")
 async def admin_dispatch_labels_pdf(date: str, _admin: dict = Depends(require_area("orders", "view"))):
     """Toutes les étiquettes du lot fusionnées en UN pdf 4x6 (imprimante thermique)."""
     orders = await _dispatch_labeled_orders(date)
@@ -6116,7 +5970,6 @@ async def admin_dispatch_labels_pdf(date: str, _admin: dict = Depends(require_ar
     )
 
 
-@api.get("/admin/dispatch/{date}/packing-slips.pdf")
 async def admin_dispatch_slips_pdf(date: str, _admin: dict = Depends(require_area("orders", "view"))):
     """Tous les bons de commande du lot fusionnés en UN pdf (imprimante papier)."""
     orders = await _dispatch_labeled_orders(date)
@@ -6202,7 +6055,6 @@ async def _fulfillment_backfill_batches(day: str) -> None:
         await db.orders.update_one({"id": o["id"]}, {"$set": {"dispatch_batch": batch}})
 
 
-@api.get("/admin/fulfillment/day")
 async def admin_fulfillment_day(date: Optional[str] = None,
                                 _admin: dict = Depends(require_area("orders", "view"))):
     """Tableau de bord « Journée » : lot du jour ventilé par étape physique."""
@@ -6324,7 +6176,6 @@ async def _advance_one(order: dict, target: str, admin_email: str) -> None:
     )
 
 
-@api.post("/admin/fulfillment/{order_id}/advance")
 async def admin_fulfillment_advance(order_id: str, payload: FulfillmentTransitionIn,
                                     _admin: dict = Depends(require_area("orders", "manage"))):
     """Fait avancer une commande dans le flux physique (jusqu'à empaquetée)."""
@@ -6340,7 +6191,6 @@ async def admin_fulfillment_advance(order_id: str, payload: FulfillmentTransitio
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
 
-@api.post("/admin/fulfillment/bulk-advance")
 async def admin_fulfillment_bulk(payload: FulfillmentBulkIn,
                                  _admin: dict = Depends(require_area("orders", "manage"))):
     """Avance TOUTES les commandes d'une colonne (ex. tout passer « en
@@ -6360,7 +6210,6 @@ async def admin_fulfillment_bulk(payload: FulfillmentBulkIn,
     return {"advanced": len(orders), "to": payload.to}
 
 
-@api.get("/admin/fulfillment/{date}/picking-list.pdf")
 async def admin_fulfillment_picking_pdf(date: str,
                                         _admin: dict = Depends(require_area("orders", "view"))):
     """Liste de prélèvement consolidée : total par article à sortir du stock."""
@@ -6413,7 +6262,6 @@ async def admin_fulfillment_picking_pdf(date: str,
 # ---------------------------------------------------------------------------
 # Report des étiquettes non imprimées + signaux de navigation
 # ---------------------------------------------------------------------------
-@api.post("/admin/dispatch/{date}/mark-printed")
 async def admin_dispatch_mark_printed(date: str,
                                       _admin: dict = Depends(require_area("orders", "manage"))):
     """Marque les étiquettes du lot comme imprimées. Une étiquette imprimée
@@ -6479,7 +6327,6 @@ async def _rollover_watchdog() -> None:
         await asyncio.sleep(3600)
 
 
-@api.get("/admin/ops/signals")
 async def admin_ops_signals(_admin: dict = Depends(require_area("orders", "view"))):
     """Compteurs pour les pastilles de navigation (Journée / Dispatch) et
     l'alerte manifeste du tableau de bord."""
@@ -6532,7 +6379,6 @@ async def admin_ops_signals(_admin: dict = Depends(require_area("orders", "view"
     }
 
 
-@api.put("/admin/products/{product_id}/stock")
 async def admin_adjust_stock(product_id: str, payload: StockAdjustIn, _admin: dict = Depends(require_area("products", "manage"))):
     res = await db.products.update_one({"id": product_id}, {"$inc": {"stock": payload.delta}})
     if res.matched_count == 0:
@@ -6542,7 +6388,6 @@ async def admin_adjust_stock(product_id: str, payload: StockAdjustIn, _admin: di
     return await db.products.find_one({"id": product_id}, {"_id": 0})
 
 
-@api.get("/admin/stock-notifications")
 async def admin_list_stock_notifications(_admin: dict = Depends(require_area("products", "view"))):
     """Overview of pending back-in-stock subscriptions, grouped implicitly by product/variant."""
     pending = await db.stock_notifications.find({"notified": False}, {"_id": 0}).sort("created_at", -1).to_list(2000)
@@ -6552,12 +6397,10 @@ async def admin_list_stock_notifications(_admin: dict = Depends(require_area("pr
 # ---------------------------------------------------------------------------
 # Admin — coupons
 # ---------------------------------------------------------------------------
-@api.get("/admin/coupons")
 async def admin_list_coupons(_admin: dict = Depends(require_area("coupons", "view"))):
     return await db.coupons.find({"deleted_at": None}, {"_id": 0}).sort("created_at", -1).to_list(500)
 
 
-@api.post("/admin/coupons")
 async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_area("coupons", "manage"))):
     code = payload.code.upper().strip()
     if await db.coupons.find_one({"code": code}):
@@ -6577,7 +6420,6 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_
     return doc
 
 
-@api.put("/admin/coupons/{coupon_id}")
 async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = Depends(require_area("coupons", "manage"))):
     # exclude_unset : seuls les champs envoyes par le formulaire sont appliques,
     # les compteurs (used_count/used_by) et champs avances absents sont preserves.
@@ -6604,12 +6446,10 @@ async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = 
     return await db.coupons.find_one({"id": coupon_id}, {"_id": 0})
 
 
-@api.delete("/admin/coupons/{coupon_id}")
 async def admin_delete_coupon(coupon_id: str, admin: dict = Depends(require_area("coupons", "manage"))):
     return await _soft_delete("coupons", coupon_id, admin)
 
 
-@api.post("/coupons/validate")
 async def validate_coupon(code: str, subtotal: float,
                           email: Optional[str] = None,
                           items: Optional[str] = None):
@@ -6646,7 +6486,6 @@ async def validate_coupon(code: str, subtotal: float,
 # ---------------------------------------------------------------------------
 # Admin — shipping zones & methods
 # ---------------------------------------------------------------------------
-@api.get("/admin/shipping/zones")
 async def admin_list_zones(_admin: dict = Depends(require_area("shipping", "view"))):
     zones = await db.shipping_zones.find({"deleted_at": None}, {"_id": 0}).sort("name", 1).to_list(200)
     # attach methods
@@ -6658,7 +6497,6 @@ async def admin_list_zones(_admin: dict = Depends(require_area("shipping", "view
     return out
 
 
-@api.post("/admin/shipping/zones")
 async def admin_create_zone(payload: ShippingZoneIn, _admin: dict = Depends(require_area("shipping", "manage"))):
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
@@ -6668,7 +6506,6 @@ async def admin_create_zone(payload: ShippingZoneIn, _admin: dict = Depends(requ
     return doc
 
 
-@api.put("/admin/shipping/zones/{zone_id}")
 async def admin_update_zone(zone_id: str, payload: ShippingZoneIn, _admin: dict = Depends(require_area("shipping", "manage"))):
     res = await db.shipping_zones.update_one({"id": zone_id}, {"$set": payload.model_dump()})
     if res.matched_count == 0:
@@ -6676,7 +6513,6 @@ async def admin_update_zone(zone_id: str, payload: ShippingZoneIn, _admin: dict 
     return await db.shipping_zones.find_one({"id": zone_id}, {"_id": 0})
 
 
-@api.delete("/admin/shipping/zones/{zone_id}")
 async def admin_delete_zone(zone_id: str, admin: dict = Depends(require_area("shipping", "manage"))):
     # Cascade : les méthodes de cette zone vont aussi en corbeille, pour
     # pouvoir tout restaurer ensemble si la suppression était une erreur.
@@ -6686,7 +6522,6 @@ async def admin_delete_zone(zone_id: str, admin: dict = Depends(require_area("sh
     return await _soft_delete("shipping_zones", zone_id, admin)
 
 
-@api.post("/admin/shipping/methods")
 async def admin_create_method(payload: ShippingMethodIn, _admin: dict = Depends(require_area("shipping", "manage"))):
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
@@ -6696,7 +6531,6 @@ async def admin_create_method(payload: ShippingMethodIn, _admin: dict = Depends(
     return doc
 
 
-@api.put("/admin/shipping/methods/{method_id}")
 async def admin_update_method(method_id: str, payload: ShippingMethodIn, _admin: dict = Depends(require_area("shipping", "manage"))):
     res = await db.shipping_methods.update_one({"id": method_id}, {"$set": payload.model_dump()})
     if res.matched_count == 0:
@@ -6704,7 +6538,6 @@ async def admin_update_method(method_id: str, payload: ShippingMethodIn, _admin:
     return await db.shipping_methods.find_one({"id": method_id}, {"_id": 0})
 
 
-@api.delete("/admin/shipping/methods/{method_id}")
 async def admin_delete_method(method_id: str, admin: dict = Depends(require_area("shipping", "manage"))):
     return await _soft_delete("shipping_methods", method_id, admin)
 
@@ -6727,12 +6560,10 @@ class ShippingBoxIn(BaseModel):
     active: bool = True
 
 
-@api.get("/admin/shipping/boxes")
 async def admin_list_boxes(_admin: dict = Depends(require_area("shipping", "view"))):
     return await db.shipping_boxes.find({"deleted_at": None}, {"_id": 0}).sort("max_units", 1).to_list(200)
 
 
-@api.post("/admin/shipping/boxes")
 async def admin_create_box(payload: ShippingBoxIn, _admin: dict = Depends(require_area("shipping", "manage"))):
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
@@ -6743,7 +6574,6 @@ async def admin_create_box(payload: ShippingBoxIn, _admin: dict = Depends(requir
     return doc
 
 
-@api.put("/admin/shipping/boxes/{box_id}")
 async def admin_update_box(box_id: str, payload: ShippingBoxIn, _admin: dict = Depends(require_area("shipping", "manage"))):
     res = await db.shipping_boxes.update_one({"id": box_id}, {"$set": payload.model_dump()})
     if res.matched_count == 0:
@@ -6751,7 +6581,6 @@ async def admin_update_box(box_id: str, payload: ShippingBoxIn, _admin: dict = D
     return await db.shipping_boxes.find_one({"id": box_id}, {"_id": 0})
 
 
-@api.delete("/admin/shipping/boxes/{box_id}")
 async def admin_delete_box(box_id: str, admin: dict = Depends(require_area("shipping", "manage"))):
     return await _soft_delete("shipping_boxes", box_id, admin)
 
@@ -6784,7 +6613,6 @@ async def _select_box_for_order(order: dict, all_boxes: Optional[list] = None) -
 # ---------------------------------------------------------------------------
 # Admin — Analytics
 # ---------------------------------------------------------------------------
-@api.get("/admin/analytics")
 async def admin_analytics(_admin: dict = Depends(require_area("dashboard", "view"))):
     # Revenue per day (last 30 days)
     since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
@@ -6841,7 +6669,6 @@ def _csv_response(rows: list, filename: str) -> StreamingResponse:
     )
 
 
-@api.get("/admin/orders.csv")
 async def admin_orders_csv(status_group: Optional[str] = None, _admin: dict = Depends(require_area("orders", "view"))):
     orders = await db.orders.find(_status_group_filter(status_group), {"_id": 0}).sort("created_at", -1).to_list(5000)
     return _csv_response(_orders_export_rows(orders), f"fironova-orders-{datetime.now().strftime('%Y%m%d')}.csv")
@@ -6901,13 +6728,11 @@ def _xlsx_response(rows: list, filename: str) -> Response:
     )
 
 
-@api.get("/admin/orders.xlsx")
 async def admin_orders_xlsx(status_group: Optional[str] = None, _admin: dict = Depends(require_area("orders", "view"))):
     orders = await db.orders.find(_status_group_filter(status_group), {"_id": 0}).sort("created_at", -1).to_list(5000)
     return _xlsx_response(_orders_export_rows(orders), f"fironova-orders-{datetime.now().strftime('%Y%m%d')}.xlsx")
 
 
-@api.get("/admin/products.csv")
 async def admin_products_csv(_admin: dict = Depends(require_area("products", "view"))):
     products = await db.products.find({}, {"_id": 0}).sort("name_en", 1).to_list(2000)
     rows = []
@@ -6945,7 +6770,6 @@ async def admin_products_csv(_admin: dict = Depends(require_area("products", "vi
     return _csv_response(rows, f"fironova-products-{datetime.now().strftime('%Y%m%d')}.csv")
 
 
-@api.get("/admin/products.xlsx")
 async def admin_products_xlsx(_admin: dict = Depends(require_area("products", "view"))):
     products = await db.products.find({}, {"_id": 0}).sort("name_en", 1).to_list(2000)
     rows = []
@@ -7086,7 +6910,6 @@ def _generate_invoice_pdf(order: dict) -> bytes:
     return buf.getvalue()
 
 
-@api.get("/orders/{order_id}/invoice.pdf")
 async def order_invoice_pdf(order_id: str, request: Request):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
@@ -7103,7 +6926,6 @@ async def order_invoice_pdf(order_id: str, request: Request):
     )
 
 
-@api.post("/webhook/nowpayments")
 async def nowpayments_ipn(request: Request):
     """NOWPayments IPN callback. HMAC-SHA512 signature verified against sorted JSON payload."""
     if not NOWPAYMENTS_IPN_SECRET:
@@ -7177,7 +6999,6 @@ async def nowpayments_ipn(request: Request):
     return {"ok": True}
 
 
-@api.get("/payments/crypto/status/{order_id}")
 async def crypto_status(order_id: str):
     """Poll NOWPayments payment status. Marks order paid only when np status is 'finished'."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
@@ -7396,30 +7217,6 @@ async def _interac_deposit_watchdog() -> None:
 # ---------------------------------------------------------------------------
 # Public meta
 # ---------------------------------------------------------------------------
-@api.get("/meta")
-async def meta():
-    return {
-        "store": "FIRONOVA",
-        "currency": "CAD",
-        "shipping_flat_cad": SHIPPING_FLAT_CAD,
-        "provinces": PROVINCES_CA,
-        "min_age": 19,
-        "interac_email": INTERAC_EMAIL,
-        "coa_page_enabled": COA_PAGE_ENABLED,
-        "canada_post_enabled": is_canada_post_configured(),
-        "prelaunch_enabled": PRELAUNCH_ENABLED,
-        "launch_coupon_code": LAUNCH_COUPON_CODE,
-        "seo": await _seo_get_settings(),
-        # PRELAUNCH_PREVIEW_TOKEN n'est JAMAIS exposé ici — il ne se vérifie que
-        # côté serveur via GET /prelaunch/preview.
-    }
-
-
-@api.get("/")
-async def root():
-    return {"service": "fironova-api", "status": "ok"}
-
-
 # ---------------------------------------------------------------------------
 # Seed data
 # ---------------------------------------------------------------------------
@@ -7814,6 +7611,132 @@ SEED_PRODUCTS = [
 ]
 
 
+BPC_157_CANONICAL_ID = "5dc85d91-7089-4e6c-88b5-67ff79c6ef92"
+BPC_157_CANONICAL_SLUG = "bpc-157-5mg"
+BPC_157_LEGACY_SLUG = "bpc-157"
+
+
+def _variant_stock_or_default(variants: list[dict], name: str, fallback: int) -> int:
+    for variant in variants:
+        if variant.get("name") == name:
+            try:
+                stock = int(variant.get("stock", fallback) or 0)
+                if stock > 0:
+                    return stock
+            except (TypeError, ValueError):
+                pass
+    return fallback
+
+
+async def _repair_nonprod_bpc_seed() -> None:
+    """Converge legacy preview/demo BPC seed drift to a single canonical doc.
+
+    Older preview data used slug `bpc-157` with the fixed product id, while a
+    later seed inserted a second `bpc-157-5mg` row. Tests and the frontend
+    expect the fixed id and canonical slug to point to the same product.
+    """
+    if IS_PRODUCTION:
+        return
+
+    canonical = await db.products.find_one({"slug": BPC_157_CANONICAL_SLUG})
+    legacy = await db.products.find_one({"id": BPC_157_CANONICAL_ID})
+    legacy_slug = await db.products.find_one({"slug": BPC_157_LEGACY_SLUG})
+
+    source = legacy or legacy_slug or canonical
+    if not source:
+        return
+
+    all_variants = []
+    for doc in (legacy, canonical, legacy_slug):
+        if doc:
+            all_variants.extend(doc.get("variants") or [])
+    five_variant = next((v for v in all_variants if v.get("name") == "5.0mg"), None)
+    ten_variant = next((v for v in all_variants if v.get("name") == "10.0mg"), None)
+    canonical_ok = (
+        source.get("id") == BPC_157_CANONICAL_ID
+        and source.get("slug") == BPC_157_CANONICAL_SLUG
+        and five_variant is not None
+        and ten_variant is not None
+        and bool(ten_variant.get("preorder_enabled"))
+        and bool(ten_variant.get("badge_coa_pending"))
+    )
+    duplicate_slug_doc = canonical and canonical.get("id") != BPC_157_CANONICAL_ID
+    if canonical_ok and not duplicate_slug_doc:
+        return
+
+    bpc_seed = next(p for p in SEED_PRODUCTS if p["slug"] == BPC_157_CANONICAL_SLUG)
+    five_stock = _variant_stock_or_default(all_variants, "5.0mg", 12)
+    ten_stock = _variant_stock_or_default(all_variants, "10.0mg", 6)
+    repaired_variants = [
+        {
+            "id": (five_variant or {}).get("id") or str(uuid.uuid4()),
+            "name": "5.0mg",
+            "price": 64.99,
+            "sale_price": 49.99,
+            "stock": five_stock,
+            "sku": "BPC-157-5MG",
+            "coa_status": "available",
+            "badge_coa_available": True,
+            "badge_coa_pending": False,
+            "badge_coming_soon": False,
+            "preorder_enabled": False,
+            "preorder_delay_message": "",
+            "preorder_price": None,
+            "preorder_note": "",
+            "coa_url": (five_variant or {}).get("coa_url") or "https://example.com/coa-bpc157-5mg.pdf",
+        },
+        {
+            "id": (ten_variant or {}).get("id") or str(uuid.uuid4()),
+            "name": "10.0mg",
+            "price": 100.0,
+            "sale_price": None,
+            "stock": ten_stock,
+            "sku": "BPC-157-10MG",
+            "coa_status": "pending",
+            "badge_coa_available": False,
+            "badge_coa_pending": True,
+            "badge_coming_soon": False,
+            "preorder_enabled": True,
+            "preorder_delay_message": "",
+            "preorder_price": 85.0,
+            "preorder_note": "COA pending",
+            "coa_url": "",
+        },
+    ]
+
+    if canonical and canonical.get("_id") != source.get("_id"):
+        await db.products.delete_one({"_id": canonical["_id"]})
+
+    await db.products.update_one(
+        {"_id": source["_id"]},
+        {"$set": {
+            "id": BPC_157_CANONICAL_ID,
+            "slug": BPC_157_CANONICAL_SLUG,
+            "name_en": bpc_seed["name_en"],
+            "name_fr": bpc_seed["name_fr"],
+            "category": bpc_seed["category"],
+            "sequence": bpc_seed["sequence"],
+            "molecular_formula": bpc_seed["molecular_formula"],
+            "molecular_weight": bpc_seed["molecular_weight"],
+            "cas_number": bpc_seed["cas_number"],
+            "sequence_length": bpc_seed["sequence_length"],
+            "purity": bpc_seed["purity"],
+            "dosage_mg": bpc_seed["dosage_mg"],
+            "description_en": bpc_seed["description_en"],
+            "description_fr": bpc_seed["description_fr"],
+            "price_cad": 64.99,
+            "stock": five_stock + ten_stock,
+            "active": True,
+            "featured": True,
+            "preorder_allowed": False,
+            "coa_url": "",
+            "coa_lot": source.get("coa_lot", ""),
+            "coa_date": source.get("coa_date", ""),
+            "variants": repaired_variants,
+        }},
+    )
+
+
 async def seed_admin_and_products():
     # Indexes
     await db.users.create_index("email", unique=True)
@@ -8007,6 +7930,8 @@ async def seed_admin_and_products():
             changed = True
         if changed:
             await db.products.update_one({"_id": prod["_id"]}, {"$set": {"variants": vs}})
+
+    await _repair_nonprod_bpc_seed()
 
 
 async def _restock_order_items(order: dict):
@@ -9084,7 +9009,6 @@ async def get_current_affiliate(request: Request) -> dict:
 # ENDPOINTS — AFFILIÉ (dashboard)
 # ===========================================================================
 
-@api.post("/affiliate/join")  # noqa: F821
 async def affiliate_join(payload: AffiliateJoinIn, request: Request):
     """Active un compte affilié à partir d'un token d'invitation.
     L'utilisateur DOIT être connecté (auth existante), et son email doit
@@ -9155,14 +9079,12 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request):
     return _affiliate_public(aff, metrics)
 
 
-@api.get("/affiliate/me")  # noqa: F821
 async def affiliate_me(request: Request, lang: str = "fr"):
     aff = await get_current_affiliate(request)
     metrics = await _affiliate_compute_metrics(aff["id"])
     return _affiliate_public(aff, metrics, lang=lang)
 
 
-@api.get("/affiliate/referrals")  # noqa: F821
 async def affiliate_referrals(request: Request, limit: int = 200):
     aff = await get_current_affiliate(request)
     rows = await db.affiliate_referrals.find(
@@ -9172,7 +9094,6 @@ async def affiliate_referrals(request: Request, limit: int = 200):
     return rows
 
 
-@api.get("/affiliate/payouts")  # noqa: F821
 async def affiliate_payouts(request: Request):
     aff = await get_current_affiliate(request)
     rows = await db.affiliate_payouts.find(
@@ -9181,7 +9102,6 @@ async def affiliate_payouts(request: Request):
     return rows
 
 
-@api.put("/affiliate/payout-settings")  # noqa: F821
 async def affiliate_payout_settings(payload: AffiliatePayoutSettingsIn, request: Request):
     aff = await get_current_affiliate(request)
     await db.affiliates.update_one(
@@ -9193,7 +9113,6 @@ async def affiliate_payout_settings(payload: AffiliatePayoutSettingsIn, request:
     return _affiliate_public(fresh)
 
 
-@api.get("/affiliate/performance")  # noqa: F821
 async def affiliate_performance(request: Request):
     """Séries mensuelles (12 derniers mois) de CA validé pour les graphiques."""
     aff = await get_current_affiliate(request)
@@ -9220,7 +9139,6 @@ async def affiliate_performance(request: Request):
 # ENDPOINTS — ATTRIBUTION PUBLIQUE (pose du cookie)
 # ===========================================================================
 
-@api.get("/affiliate/insights")  # noqa: F821
 async def affiliate_insights(request: Request):
     """Indicateurs synthétiques pour le tableau de bord affilié :
     mois courant, meilleur mois, clics, taux de conversion, commandes
@@ -9279,7 +9197,6 @@ async def affiliate_insights(request: Request):
     }
 
 
-@api.get("/affiliate/top-products")  # noqa: F821
 async def affiliate_top_products(request: Request, limit: int = 5):
     """Meilleurs produits de l'affilié : agrège les articles vendus dans les
     commandes payées attribuées à cet affilié, triés par revenu décroissant.
@@ -9335,7 +9252,6 @@ async def affiliate_top_products(request: Request, limit: int = 5):
     }
 
 
-@api.get("/affiliate/clicks/sources")  # noqa: F821
 async def affiliate_clicks_sources(request: Request, days: int = 30):
     """Top sources des clics de l'affilié : pages d'atterrissage, domaines
     référents et types d'appareil (30 derniers jours par défaut)."""
@@ -9370,7 +9286,6 @@ async def affiliate_clicks_sources(request: Request, days: int = 30):
     }
 
 
-@api.get("/affiliate/activity")  # noqa: F821
 async def affiliate_activity(request: Request, limit: int = 20):
     """Flux d'activité récent de l'affilié : clics, commandes et paiements
     fusionnés, triés par date décroissante (type/at/label/status/amount)."""
@@ -9416,7 +9331,6 @@ async def affiliate_activity(request: Request, limit: int = 20):
     return events[:limit]
 
 
-@api.get("/affiliate/ref/{code}")  # noqa: F821
 async def affiliate_ref(code: str, request: Request, response: Response,
                         page: str = "", referrer: str = "", device: str = ""):
     """Endpoint de tracking : pose le cookie et renvoie ok. Le frontend appelle
@@ -9433,7 +9347,6 @@ async def affiliate_ref(code: str, request: Request, response: Response,
 # ENDPOINTS — ADMIN
 # ===========================================================================
 
-@api.post("/admin/affiliates/invite")  # noqa: F821
 async def admin_affiliate_invite(payload: AffiliateInviteIn,
                                  admin: dict = Depends(get_admin_user)):  # noqa: F821
     """Crée (ou ré-invite) un affilié verrouillé à un email. Envoie l'email."""
@@ -9491,7 +9404,6 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
     return {"ok": True, "affiliate_id": aff_id, "invite_link": link}
 
 
-@api.post("/admin/affiliates/{affiliate_id}/resend-invite")  # noqa: F821
 async def admin_affiliate_resend(affiliate_id: str,
                                  admin: dict = Depends(get_admin_user)):  # noqa: F821
     aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
@@ -9533,7 +9445,6 @@ class AffiliateBulkInviteIn(BaseModel):
     lang: str = "fr"
 
 
-@api.post("/admin/affiliates/bulk-invite")  # noqa: F821
 async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
                                       admin: dict = Depends(get_admin_user)):  # noqa: F821
     """Invite en masse depuis un CSV parsé côté client.
@@ -9658,7 +9569,6 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
     }
 
 
-@api.get("/admin/affiliates")  # noqa: F821
 async def admin_affiliates_list(admin: dict = Depends(get_admin_user)):  # noqa: F821
     rows = await db.affiliates.find(
         {}, {"_id": 0, "invite_token_hash": 0}
@@ -9701,7 +9611,6 @@ async def admin_affiliates_list(admin: dict = Depends(get_admin_user)):  # noqa:
 # ===== FIRONOVA_AFFILIATE_ADMIN_OVERVIEW_START =====
 # Endpoints manquants requis par AdminAffiliates.jsx (sinon la page casse).
 
-@api.get("/admin/affiliates/overview")  # noqa: F821
 async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # noqa: F821
     """Vue d'ensemble du programme d'affiliation : finances, effectifs,
     alertes, attribution, série mensuelle, top affiliés, distribution tiers."""
@@ -9815,7 +9724,6 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
     }
 
 
-@api.get("/admin/affiliates/clicks")  # noqa: F821
 async def admin_affiliates_clicks(admin: dict = Depends(get_admin_user),  # noqa: F821
                                   days: int = 30):
     """Analyse d'attribution à l'échelle du programme : volume de clics,
@@ -9887,7 +9795,6 @@ async def admin_affiliates_clicks(admin: dict = Depends(get_admin_user),  # noqa
     }
 
 
-@api.get("/admin/affiliates/risk")  # noqa: F821
 async def admin_affiliates_risk(admin: dict = Depends(get_admin_user)):  # noqa: F821
     """Détection de risque : referrals exclus (auto-parrainage, IP partagée)
     et affiliés à surveiller. Retourne la liste + le compte signalé."""
@@ -9904,7 +9811,6 @@ async def admin_affiliates_risk(admin: dict = Depends(get_admin_user)):  # noqa:
 # ===== FIRONOVA_AFFILIATE_ADMIN_OVERVIEW_END =====
 
 
-@api.get("/admin/affiliates/{affiliate_id}")  # noqa: F821
 async def admin_affiliate_detail(affiliate_id: str,
                                  admin: dict = Depends(get_admin_user)):  # noqa: F821
     aff = await db.affiliates.find_one(
@@ -9923,7 +9829,6 @@ async def admin_affiliate_detail(affiliate_id: str,
             "referrals": referrals, "payouts": payouts}
 
 
-@api.put("/admin/affiliates/{affiliate_id}")  # noqa: F821
 async def admin_affiliate_update(affiliate_id: str, payload: AffiliateAdminUpdateIn,
                                  admin: dict = Depends(get_admin_user)):  # noqa: F821
     aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
@@ -9938,7 +9843,6 @@ async def admin_affiliate_update(affiliate_id: str, payload: AffiliateAdminUpdat
     return fresh
 
 
-@api.post("/admin/affiliates/payouts/run")  # noqa: F821
 async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # noqa: F821
                                       period: Optional[str] = None):
     """Génère les payouts mensuels : agrège les commissions 'approved' par
@@ -9991,7 +9895,6 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
             "detail": created}
 
 
-@api.post("/admin/affiliates/payouts/{payout_id}/mark-paid")  # noqa: F821
 async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMarkIn,
                                     admin: dict = Depends(get_admin_user)):  # noqa: F821
     """Confirme le paiement crypto : enregistre la référence de transaction
@@ -10016,7 +9919,6 @@ async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMark
     return fresh
 
 
-@api.get("/admin/affiliates/payouts/all")  # noqa: F821
 async def admin_affiliate_payouts_all(admin: dict = Depends(get_admin_user),  # noqa: F821
                                       status: Optional[str] = None):
     filt = {}
@@ -10030,11 +9932,9 @@ async def admin_affiliate_payouts_all(admin: dict = Depends(get_admin_user),  # 
 
 
 # ===== FIRONOVA_SEO_BACKEND_START =====
-@api.get("/seo/health")
 async def seo_health():
     return {"ok": True, "source": "fironova"}
 
-@api.get("/seo/sitemap")
 async def seo_sitemap():
     return {"sitemap": ["/", "/catalog", "/about", "/faq", "/privacy", "/compliance"]}
 
@@ -10043,7 +9943,6 @@ async def seo_sitemap():
 
 
 # ===== FIRONOVA_RELATED_PRODUCTS_START =====
-@api.get("/products/{slug}/related")
 async def get_related_products(slug: str, limit: int = 4):
     """Produits reliés : même catégorie d'abord, complétés par des vedettes.
     Déterministe, sans ML. Sert le cross-sell « souvent recherché avec »."""
@@ -10081,7 +9980,6 @@ async def get_related_products(slug: str, limit: int = 4):
 
 
 # ===== FIRONOVA_CUSTOMERS_ENRICHED_START =====
-@api.get("/admin/customers/{user_id}")
 async def admin_customer_detail(user_id: str, _admin: dict = Depends(require_area("customers", "view"))):
     """Fiche client complète avec historique de commandes."""
     u = await db.users.find_one(
@@ -10122,7 +10020,6 @@ def _pct_change(cur: float, prev: float):
     return round((cur - prev) / prev * 100, 1)
 
 
-@api.get("/admin/analytics/enhanced")  # noqa: F821
 async def admin_analytics_enhanced(period: int = 30,
                                    _admin: dict = Depends(require_area("dashboard", "view"))):  # noqa: F821
     """Métriques de pilotage avec comparaison période courante vs précédente."""
@@ -10391,7 +10288,6 @@ def _seo_xml_escape(s: str) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-@api.get("/sitemap.xml")  # noqa: F821
 async def dynamic_sitemap():
     """Sitemap généré à la volée : pages statiques + toutes les fiches produits
     actives. Un produit ajouté apparaît automatiquement — plus de sitemap figé."""
@@ -10425,7 +10321,6 @@ async def dynamic_sitemap():
     return Response(content="\n".join(parts), media_type="application/xml")
 
 
-@api.get("/seo/product/{slug}")  # noqa: F821
 async def product_seo(slug: str):
     """Métadonnées SEO d'un produit : title/description/og + JSON-LD Product
     prêt à injecter. Le front appelle ça et remplit le <head> de la fiche."""
@@ -10533,12 +10428,10 @@ async def _seo_get_settings() -> dict:
     return merged
 
 
-@api.get("/admin/seo/settings")  # noqa: F821
 async def admin_seo_get_settings(admin: dict = Depends(get_admin_user)):  # noqa: F821
     return await _seo_get_settings()
 
 
-@api.put("/admin/seo/settings")  # noqa: F821
 async def admin_seo_set_settings(payload: SeoSettingsIn,
                                  admin: dict = Depends(get_admin_user)):  # noqa: F821
     data = {k: v for k, v in payload.model_dump().items()}
@@ -10551,7 +10444,6 @@ async def admin_seo_set_settings(payload: SeoSettingsIn,
     return await _seo_get_settings()
 
 
-@api.get("/admin/seo/health")  # noqa: F821
 async def admin_seo_health(admin: dict = Depends(get_admin_user)):  # noqa: F821
     """État de santé SEO : combien de produits actifs, combien sans meta."""
     total = await db.products.count_documents({"active": True})  # noqa: F821
@@ -10586,7 +10478,6 @@ async def admin_seo_health(admin: dict = Depends(get_admin_user)):  # noqa: F821
     }
 
 
-@api.get("/admin/seo/products")  # noqa: F821
 async def admin_seo_products(admin: dict = Depends(get_admin_user)):  # noqa: F821
     """SEO de tous les produits, une ligne par produit (pour édition centralisée)."""
     rows = []
@@ -10615,7 +10506,6 @@ async def admin_seo_products(admin: dict = Depends(get_admin_user)):  # noqa: F8
     return {"products": rows}
 
 
-@api.put("/admin/seo/products/{slug}")  # noqa: F821
 async def admin_seo_update_product(slug: str, payload: ProductSeoIn,
                                    admin: dict = Depends(get_admin_user)):  # noqa: F821
     """Édite uniquement les champs SEO d'un produit (sans toucher au reste)."""
@@ -11068,7 +10958,6 @@ class EmailTemplateCreateIn(EmailTemplateIn):
     variables: Optional[list] = None
 
 
-@api.get("/admin/email-templates")
 async def admin_email_templates_list(_admin: dict = Depends(require_area("settings", "view"))):
     keys = list(EMAIL_TEMPLATE_CATALOG.keys())
     custom = await db.email_templates.find({"key": {"$nin": keys}}, {"_id": 0, "key": 1}).to_list(100)
@@ -11077,7 +10966,6 @@ async def admin_email_templates_list(_admin: dict = Depends(require_area("settin
     return {"templates": templates}
 
 
-@api.post("/admin/email-templates")
 async def admin_email_template_create(payload: EmailTemplateCreateIn,
                                       _admin: dict = Depends(require_area("settings", "manage"))):
     key = (payload.key or "").strip().lower().replace(" ", "_")
@@ -11097,7 +10985,6 @@ async def admin_email_template_create(payload: EmailTemplateCreateIn,
     return await _email_template_get(key)
 
 
-@api.put("/admin/email-templates/{key}")
 async def admin_email_template_update(key: str, payload: EmailTemplateIn,
                                       _admin: dict = Depends(require_area("settings", "manage"))):
     exists = key in EMAIL_TEMPLATE_CATALOG or await db.email_templates.find_one({"key": key})
@@ -11112,7 +10999,6 @@ async def admin_email_template_update(key: str, payload: EmailTemplateIn,
     return await _email_template_get(key)
 
 
-@api.delete("/admin/email-templates/{key}")
 async def admin_email_template_delete(key: str, _admin: dict = Depends(require_area("settings", "manage"))):
     if key in EMAIL_TEMPLATE_CATALOG:
         raise HTTPException(400, "Ce courriel est intégré et ne peut pas être supprimé. Utilisez Réinitialiser.")
@@ -11123,7 +11009,6 @@ async def admin_email_template_delete(key: str, _admin: dict = Depends(require_a
     return {"deleted": True, "key": key}
 
 
-@api.post("/admin/email-templates/{key}/reset")
 async def admin_email_template_reset(key: str, _admin: dict = Depends(require_area("settings", "manage"))):
     if key not in EMAIL_TEMPLATE_CATALOG:
         raise HTTPException(400, "Seuls les courriels intégrés peuvent être réinitialisés.")
@@ -11132,7 +11017,6 @@ async def admin_email_template_reset(key: str, _admin: dict = Depends(require_ar
     return await _email_template_get(key)
 
 
-@api.post("/admin/email-templates/{key}/preview")
 async def admin_email_template_preview(key: str, lang: str = "fr",
                                        _admin: dict = Depends(require_area("settings", "view"))):
     tpl = await _email_template_get(key)
@@ -11317,7 +11201,6 @@ class PayoutVerifyIn(BaseModel):
     verification_code: str = Field(min_length=3, max_length=32)
 
 
-@api.post("/admin/affiliates/payouts/{payout_id}/execute")  # noqa: F821
 async def admin_payout_execute(payout_id: str, admin: dict = Depends(get_admin_user)):  # noqa: F821
     """Étape 1/2 — crée le payout crypto via NOWPayments. Un code 2FA est
     envoyé par NOWPayments à l'email marchand. Le payout passe en 'creating'."""
@@ -11376,7 +11259,6 @@ async def admin_payout_execute(payout_id: str, admin: dict = Depends(get_admin_u
             "message": "Payout créé. Un code de vérification 2FA a été envoyé à l'adresse courriel du compte NOWPayments. Saisissez-le pour finaliser."}
 
 
-@api.post("/admin/affiliates/payouts/{payout_id}/verify")  # noqa: F821
 async def admin_payout_verify(payout_id: str, payload: PayoutVerifyIn,
                               admin: dict = Depends(get_admin_user)):  # noqa: F821
     """Étape 2/2 — valide le payout avec le code 2FA reçu par email."""
@@ -11400,7 +11282,6 @@ async def admin_payout_verify(payout_id: str, payload: PayoutVerifyIn,
             "message": "Payout vérifié et en cours de traitement par NOWPayments."}
 
 
-@api.get("/admin/affiliates/payouts/{payout_id}/status")  # noqa: F821
 async def admin_payout_status(payout_id: str, admin: dict = Depends(get_admin_user)):  # noqa: F821
     """Rafraîchit le statut depuis NOWPayments et synchronise l'état interne."""
     payout = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
@@ -11436,7 +11317,6 @@ async def admin_payout_status(payout_id: str, admin: dict = Depends(get_admin_us
     return {"status": mapped, "np_status": np_status}
 
 
-@api.post("/webhook/nowpayments-payout")  # noqa: F821
 async def nowpayments_payout_ipn(request: Request):
     """IPN payout : NOWPayments notifie les changements de statut.
     Signature HMAC-SHA512 vérifiée (même schéma que l'IPN paiement)."""
@@ -11483,6 +11363,54 @@ async def nowpayments_payout_ipn(request: Request):
 
 
 
+try:
+    from routers.admin_trash import router as admin_trash_router
+    from routers.auth_account import router as auth_account_router
+    from routers.affiliate import router as affiliate_router
+    from routers.email_templates import router as email_templates_router
+    from routers.admin_orders import router as admin_orders_router
+    from routers.admin_order_ops import router as admin_order_ops_router
+    from routers.admin_dispatch_fulfillment import router as admin_dispatch_fulfillment_router
+    from routers.admin_misc import router as admin_misc_router
+    from routers.catalog_public import router as catalog_public_router
+    from routers.admin_commerce import router as admin_commerce_router
+    from routers.orders import router as orders_router
+    from routers.payments import router as payments_router
+    from routers.public import router as public_router
+    from routers.reconciliation import router as reconciliation_router
+    from routers.seo import router as seo_router
+except ImportError:
+    from backend.routers.admin_trash import router as admin_trash_router
+    from backend.routers.auth_account import router as auth_account_router
+    from backend.routers.affiliate import router as affiliate_router
+    from backend.routers.email_templates import router as email_templates_router
+    from backend.routers.admin_orders import router as admin_orders_router
+    from backend.routers.admin_order_ops import router as admin_order_ops_router
+    from backend.routers.admin_dispatch_fulfillment import router as admin_dispatch_fulfillment_router
+    from backend.routers.admin_misc import router as admin_misc_router
+    from backend.routers.catalog_public import router as catalog_public_router
+    from backend.routers.admin_commerce import router as admin_commerce_router
+    from backend.routers.orders import router as orders_router
+    from backend.routers.payments import router as payments_router
+    from backend.routers.public import router as public_router
+    from backend.routers.reconciliation import router as reconciliation_router
+    from backend.routers.seo import router as seo_router
+
+app.include_router(admin_trash_router)
+app.include_router(auth_account_router)
+app.include_router(affiliate_router)
+app.include_router(admin_orders_router)
+app.include_router(admin_order_ops_router)
+app.include_router(admin_dispatch_fulfillment_router)
+app.include_router(admin_misc_router)
+app.include_router(email_templates_router)
+app.include_router(catalog_public_router)
+app.include_router(admin_commerce_router)
+app.include_router(orders_router)
+app.include_router(payments_router)
+app.include_router(public_router)
+app.include_router(reconciliation_router)
+app.include_router(seo_router)
 app.include_router(api)
 
 # CORS crédentialé : le navigateur refuse Access-Control-Allow-Origin: * dès
