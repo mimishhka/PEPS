@@ -3800,6 +3800,50 @@ async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Op
     return order
 
 
+async def _flag_late_cancelled_payment(order: dict, provider: str, reference: str = "") -> bool:
+    """Mark cancelled orders that receive a payment after timeout.
+
+    This keeps payment_status terminal (cancelled) but raises a clear flag so
+    staff can review/reopen through the dedicated workflow.
+    """
+    if not order:
+        return False
+    if order.get("payment_status") != "cancelled":
+        return False
+    if order.get("late_payment_flagged"):
+        return False
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    ref = (reference or "").strip()
+    provider_label = (provider or "payment").strip().upper()
+    ref_txt = f" (ref {ref})" if ref else ""
+    note = {
+        "id": str(uuid.uuid4()),
+        "text": (
+            f"⚠️ LATE PAYMENT detected on cancelled order — {provider_label} confirmation received"
+            f"{ref_txt}. Review manually before reopening."
+        ),
+        "author": "system",
+        "created_at": now_iso,
+    }
+
+    updates = {
+        "late_payment_flagged": True,
+        "late_payment_flagged_at": now_iso,
+    }
+    if ref:
+        updates["late_payment_reference"] = ref
+
+    res = await db.orders.update_one(
+        {"id": order["id"], "payment_status": "cancelled", "late_payment_flagged": {"$ne": True}},
+        {"$set": updates, "$push": {"notes": note}},
+    )
+    if res.modified_count:
+        logging.warning("Late payment flagged on cancelled order %s via %s", order.get("id"), provider_label)
+        return True
+    return False
+
+
 @api.post("/checkout")
 async def checkout(payload: CheckoutIn, request: Request):
     if not (payload.accept_terms and payload.confirm_age and payload.confirm_research_use):
@@ -6763,6 +6807,9 @@ async def nowpayments_ipn(request: Request):
         }}})
         return {"ok": True}
 
+    if np_status == "finished" and order.get("payment_status") == "cancelled":
+        await _flag_late_cancelled_payment(order, "nowpayments ipn", str(payload.get("payment_id") or ""))
+
     updates = {"payment_info.provider_response.payment_status": np_status}
     if payload.get("payment_id"):
         updates["payment_info.provider_response.payment_id"] = str(payload["payment_id"])
@@ -6817,6 +6864,8 @@ async def crypto_status(order_id: str):
             {"$set": {"payment_info.provider_response.payment_status": np_status}},
         )
     if np_status == "finished":
+        if order.get("payment_status") == "cancelled":
+            await _flag_late_cancelled_payment(order, "nowpayments poll", str(payment_id or ""))
         fresh = await _mark_order_paid(
             order_id,
             f"Crypto payment confirmed via NOWPayments status poll (payment_id {payment_id})",
