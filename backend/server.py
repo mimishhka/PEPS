@@ -5395,6 +5395,10 @@ async def admin_dispatch_today(date: Optional[str] = None,
             if labeled_today:
                 labeled.append(row)
         else:
+            # Ne montrer en "À étiqueter" que les commandes qui ont terminé
+            # le flux Journée (état packed).
+            if o.get("fulfillment_status") != "packed":
+                continue
             # Estimation du prix Canada Post (avant création réelle d'étiquette)
             # selon le service sélectionné dans l'écran Dispatch.
             row["estimated_cost_due"] = None
@@ -5586,13 +5590,21 @@ async def admin_dispatch_labels(date: str, payload: DispatchLabelsIn,
         {
             "payment_status": "paid",
             "dispatch_batch": date,
-            "fulfillment_status": {"$in": ["processing", "pending", "packed"]},
+            # Garde-fou métier: seule une commande entièrement préparée
+            # (état "packed" dans l'écran Journée) peut passer en Dispatch.
+            "fulfillment_status": "packed",
         },
         {"_id": 0},
     ).sort("created_at", 1).to_list(2000)
 
     created, skipped, failed = [], [], []
     for order in orders:
+        if order.get("fulfillment_status") != "packed":
+            skipped.append({
+                "order_number": order.get("order_number"),
+                "reason": "not_fully_processed_in_today",
+            })
+            continue
         info = order.get("shipping_info") or {}
         if info.get("label_url") and info.get("tracking_number"):
             skipped.append({"order_number": order.get("order_number"),
@@ -6072,7 +6084,8 @@ async def admin_ops_signals(_admin: dict = Depends(require_area("orders", "view"
     to_label = await db.orders.count_documents({
         "payment_status": "paid",
         "dispatch_batch": day,
-        "fulfillment_status": {"$in": ["processing", "pending", "packed"]},
+        # Notification Dispatch: seulement les commandes prêtes (flux Journée complété).
+        "fulfillment_status": "packed",
         "$or": [
             {"shipping_info.label_url": {"$in": [None, ""]}},
             {"shipping_info.label_url": {"$exists": False}},
@@ -6095,7 +6108,8 @@ async def admin_ops_signals(_admin: dict = Depends(require_area("orders", "view"
     overdue = await db.orders.count_documents({
         "payment_status": "paid",
         "dispatch_batch": {"$lt": day},
-        "fulfillment_status": {"$in": ["processing", "pending", "packing", "packed"]},
+        # Retards de Dispatch = commandes prêtes mais non étiquetées sur lot antérieur.
+        "fulfillment_status": "packed",
     })
     return {
         "date": day,
