@@ -21,6 +21,7 @@ export default function AdminOrders() {
   const [query, setQuery] = useState("");
   const [filterPayment, setFilterPayment] = useState("all");
   const [filterFulfill, setFilterFulfill] = useState("all");
+  const [filterLate, setFilterLate] = useState("all");
   const [selected, setSelected] = useState(null);
   const [tab, setTab] = useState("active");
   const [counts, setCounts] = useState({});
@@ -65,6 +66,7 @@ export default function AdminOrders() {
     return orders.filter((o) => {
       if (filterPayment !== "all" && o.payment_status !== filterPayment) return false;
       if (filterFulfill !== "all" && o.fulfillment_status !== filterFulfill) return false;
+      if (filterLate === "late_only" && !o.late_payment_flagged) return false;
       if (query) {
         const q = query.toLowerCase();
         const hay = `${o.order_number} ${o.email || ""} ${o.shipping_address?.full_name || ""}`.toLowerCase();
@@ -72,7 +74,7 @@ export default function AdminOrders() {
       }
       return true;
     });
-  }, [orders, query, filterPayment, filterFulfill]);
+  }, [orders, query, filterPayment, filterFulfill, filterLate]);
 
   return (
     <div className="p-8" data-testid="admin-orders">
@@ -165,6 +167,10 @@ export default function AdminOrders() {
           <option value="all">All fulfillments</option>
           {FULFILLMENT_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
+        <select value={filterLate} onChange={(e) => setFilterLate(e.target.value)} className="border border-ink/15 px-3 py-2 text-sm bg-white" data-testid="filter-late-payment">
+          <option value="all">All payments</option>
+          <option value="late_only">Late payments only</option>
+        </select>
       </div>
 
       {/* Table */}
@@ -186,6 +192,14 @@ export default function AdminOrders() {
               <tr key={o.id} className="border-t border-ink/5 hover:bg-secondary/40" data-testid={`order-row-${o.order_number}`}>
                 <td className="px-6 py-3">
                   <div className="font-mono font-bold text-xs">{o.order_number}</div>
+                  {o.late_payment_flagged && (
+                    <span
+                      className="inline-flex mt-1 items-center rounded-full border border-red-300 bg-red-50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-red-700"
+                      data-testid={`late-payment-badge-${o.order_number}`}
+                    >
+                      Late payment
+                    </span>
+                  )}
                   <div className="font-mono text-[10px] text-foreground/50">{(o.created_at || "").slice(0, 10)}</div>
                   {o.dispatch_batch && (
                     <div className="font-mono text-[10px] text-copper" data-testid={`dispatch-batch-${o.order_number}`}>
