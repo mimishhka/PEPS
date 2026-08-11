@@ -384,8 +384,23 @@ async def get_admin_user(request: Request) -> dict:
 #   - "user"   : client normal, aucun accès admin.
 # Niveaux par zone : none < view < manage (manage inclut view).
 # ---------------------------------------------------------------------------
-STAFF_AREAS = ["orders", "products", "coupons", "customers", "subscribers", "shipping", "dashboard", "settings"]
+STAFF_AREAS = [
+    "orders", "orders_reopen", "products", "coupons", "customers", "subscribers",
+    "shipping", "dashboard", "settings", "categories", "menus", "affiliates",
+    "seo", "emails", "audit", "trash", "staff",
+]
 _PERMISSION_ORDER = {"none": 0, "view": 1, "manage": 2}
+
+
+def _has_area_permission(user: dict, area: str, level: str = "view") -> bool:
+    if user.get("role") == "admin":
+        return True
+    if user.get("role") != "staff":
+        return False
+    perms = user.get("permissions") or {}
+    have = _PERMISSION_ORDER.get(perms.get(area, "none"), 0)
+    need = _PERMISSION_ORDER.get(level, 1)
+    return have >= need
 
 
 def require_area(area: str, level: str = "view"):
@@ -395,14 +410,7 @@ def require_area(area: str, level: str = "view"):
     couvre les 35 endpoints admin existants sans qu'il faille les modifier
     un par un."""
     async def _dep(request: Request, user: dict = Depends(get_current_user)) -> dict:
-        allowed = False
-        if user.get("role") == "admin":
-            allowed = True
-        elif user.get("role") == "staff":
-            perms = user.get("permissions") or {}
-            have = _PERMISSION_ORDER.get(perms.get(area, "none"), 0)
-            need = _PERMISSION_ORDER.get(level, 1)
-            allowed = have >= need
+        allowed = _has_area_permission(user, area, level)
         if not allowed:
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         if level == "manage":
@@ -991,6 +999,8 @@ async def _trash_auto_purge_watchdog():
 
 class StaffPermissionsIn(BaseModel):
     orders: Literal["none", "view", "manage"] = "none"
+    # Permission dédiée: autorise l'action sensible "Réouvrir" après paiement tardif.
+    orders_reopen: Literal["none", "view", "manage"] = "none"
     products: Literal["none", "view", "manage"] = "none"
     coupons: Literal["none", "view", "manage"] = "none"
     customers: Literal["none", "view", "manage"] = "none"
@@ -4266,6 +4276,12 @@ async def admin_reopen_order(
     existing = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not existing:
         raise HTTPException(404, "Order not found")
+
+    # Garde-fou permissions: cette action est plus sensible qu'une édition
+    # commande classique; staff doit avoir le droit dédié.
+    if not _has_area_permission(admin, "orders_reopen", "manage"):
+        raise HTTPException(403, "Insufficient permissions")
+
     if existing.get("payment_status") != "cancelled":
         raise HTTPException(400, "Only cancelled orders can be reopened")
 

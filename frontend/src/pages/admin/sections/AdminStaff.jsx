@@ -13,6 +13,7 @@ import { useConfirm } from "../../../components/ConfirmDialog";
 const AREAS = [
   { key: "dashboard", fr: "Tableau de bord", en: "Dashboard" },
   { key: "orders", fr: "Commandes", en: "Orders" },
+  { key: "orders_reopen", fr: "Réouvrir (paiement tardif)", en: "Reopen (late payment)", sensitive: true },
   { key: "products", fr: "Produits", en: "Products" },
   { key: "categories", fr: "Catégories", en: "Categories" },
   { key: "menus", fr: "Menus", en: "Menus" },

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import { useAuth } from "../../../contexts/AuthContext";
 
 const FULFILLMENT_OPTS = ["pending", "preorder", "processing", "shipped", "delivered", "cancelled", "failed", "refunded"];
 const PAYMENT_OPTS = ["awaiting_etransfer", "awaiting_crypto", "paid", "refunded", "cancelled", "failed"];
@@ -224,6 +225,33 @@ export default function AdminOrders() {
 }
 
 function OrderDetail({ order, onClose, onUpdate }) {
+  const { user } = useAuth();
+  const [reopenBusy, setReopenBusy] = useState(false);
+  const canUseReopenAction =
+    user?.role === "admin"
+    || (user?.role === "staff" && user?.permissions?.orders_reopen === "manage");
+  const canReopenLatePaid =
+    canUseReopenAction
+    && order?.payment_status === "cancelled"
+    && order?.cancelled_reason === "auto_unpaid_timeout"
+    && !!order?.late_payment_flagged;
+
+  const reopenLatePaidOrder = async () => {
+    setReopenBusy(true);
+    try {
+      await api.post(`/admin/orders/${order.id}/reopen`, {
+        mark_paid: true,
+        note: "Late payment received after auto-cancel",
+      });
+      toast.success("Order reopened and marked as paid");
+      onUpdate();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setReopenBusy(false);
+    }
+  };
+
   const deleteOrder = async () => {
     if (!await confirm({ title: `Move order ${order.order_number} to trash?`, description: "It stays recoverable there — nothing is lost." })) return;
     try {
@@ -405,6 +433,17 @@ function OrderDetail({ order, onClose, onUpdate }) {
           <div className="flex items-center gap-3 flex-wrap">
             <StatusBadge status={order.payment_status} />
             <StatusBadge status={order.fulfillment_status} />
+            {canReopenLatePaid && (
+              <button
+                onClick={reopenLatePaidOrder}
+                disabled={reopenBusy}
+                data-testid="reopen-late-paid-btn"
+                className="bg-amber-600 text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-amber-700 disabled:opacity-50"
+                title="Réouvrir la commande annulée automatiquement après paiement tardif"
+              >
+                <Undo2 size={14} /> {reopenBusy ? "Réouverture…" : "Réouvrir"}
+              </button>
+            )}
             {order.payment_status !== "paid" && (
               <button
                 onClick={confirmPayment}
