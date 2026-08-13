@@ -37,6 +37,8 @@ import AffiliateDashboard from "./pages/AffiliateDashboard";
 import AffiliateJoin from "./pages/AffiliateJoin";
 import StaffAccept from "./pages/StaffAccept";
 import { ConfirmProvider } from "./components/ConfirmDialog";
+import ErrorBoundary from "./components/ErrorBoundary";
+import CookieConsent from "./components/CookieConsent";
 import useAffiliateRef from "./hooks/useAffiliateRef";
 import NotFound from "./pages/NotFound";
 
@@ -158,17 +160,23 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <ScrollToTop />
-      <SiteConfigProvider>
-        <LanguageProvider>
-          <AuthProvider>
-            <CartProvider>
-              <GatedApp />
-            </CartProvider>
-          </AuthProvider>
-        </LanguageProvider>
-      </SiteConfigProvider>
-    </BrowserRouter>
+    // ErrorBoundary and CookieConsent both existed but were imported nowhere:
+    // an uncaught render error blanked the page, and the consent banner never
+    // appeared at all (a compliance gap for a Quebec storefront).
+    <ErrorBoundary>
+      <BrowserRouter>
+        <ScrollToTop />
+        <SiteConfigProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              <CartProvider>
+                <GatedApp />
+                <CookieConsent />
+              </CartProvider>
+            </AuthProvider>
+          </LanguageProvider>
+        </SiteConfigProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
