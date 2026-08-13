@@ -13,9 +13,9 @@ import bcrypt
 from motor.motor_asyncio import AsyncIOMotorClient
 
 # ---- Paramètres du compte démo (modifie si tu veux) ----
-DEMO_EMAIL    = "demo.affilie@fironova.com"
+DEMO_EMAIL    = os.environ.get("DEMO_AFFILIATE_EMAIL", "demo.affilie@fironova.com")
 DEMO_NAME     = "Démo Affilié"
-DEMO_PASSWORD = "Fironova!Demo2026"      # <-- ton mot de passe d'accès
+DEMO_PASSWORD = os.environ["DEMO_AFFILIATE_PASSWORD"]
 COUPON_PERCENT = float(os.environ.get("AFFILIATE_COUPON_PERCENT", "10"))
 
 def hash_password(pw: str) -> str:

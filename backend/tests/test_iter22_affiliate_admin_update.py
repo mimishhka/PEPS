@@ -7,8 +7,13 @@ import pytest
 import requests
 
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or "https://peptide-ca.preview.emergentagent.com").rstrip("/")
-ADMIN_EMAIL = "admin@nordpep.ca"
-ADMIN_PASSWORD = "G7moffIe-CvzB5Mc"
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "")
+
+pytestmark = pytest.mark.skipif(
+    not (ADMIN_EMAIL and ADMIN_PASSWORD),
+    reason="Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD to run admin tests",
+)
 DEMO_AFFILIATE_EMAIL = "demo.affilie@fironova.com"
 
 

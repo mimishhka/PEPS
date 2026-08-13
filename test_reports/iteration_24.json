@@ -30,7 +30,7 @@
     "/app/backend/tests/test_affiliate_top_products_and_cf_ip.py (new)"
   ],
   "success_rate": {"backend": "100% (6/6)", "frontend": "100% (widget + 5 tabs load cleanly)"},
-  "test_credentials": "admin@nordpep.ca / G7moffIe-CvzB5Mc — verified via /app/memory/test_credentials.md. For affiliate-specific tests, a temporary user (test_affiliate_top@example.com / TestPass!2026) with an active affiliate (code TESTTOPX, id aff_test_top_1) and two seeded paid orders were created and CLEANED UP at the end.",
+  "test_credentials": "admin@nordpep.ca / [REDACTED-ROTATE-ME] — verified via /app/memory/test_credentials.md. For affiliate-specific tests, a temporary user (test_affiliate_top@example.com / TestPass!2026) with an active affiliate (code TESTTOPX, id aff_test_top_1) and two seeded paid orders were created and CLEANED UP at the end.",
   "seed_data_creation": "Ephemeral: test user + affiliate + 2 orders seeded via motor for both backend and frontend tests, deleted at teardown. No production data affected.",
   "retest_needed": false,
   "main_agent_can_self_test": true,

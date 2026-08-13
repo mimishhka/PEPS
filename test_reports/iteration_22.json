@@ -25,7 +25,7 @@
     "/app/backend/tests/test_iter22_affiliate_admin_update.py (new pytest module)"
   ],
   "success_rate": {"backend": "100% (5/5)", "frontend": "100% (all modal enrichment checks passed)"},
-  "test_credentials": "admin@nordpep.ca / G7moffIe-CvzB5Mc — demo.affilie@fironova.com (code FN7HGWNX, active) — mireille035@outlook.com (invited)",
+  "test_credentials": "admin@nordpep.ca / [REDACTED-ROTATE-ME] — demo.affilie@fironova.com (code FN7HGWNX, active) — mireille035@outlook.com (invited)",
   "seed_data_creation": "None. Rolled back demo affiliate payout_address, payout_currency, coupon_percent, admin_notes to empty/0 after tests.",
   "retest_needed": false,
   "main_agent_can_self_test": true,

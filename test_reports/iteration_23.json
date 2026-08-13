@@ -36,7 +36,7 @@
     "/app/frontend/src/pages/admin/sections/AdminAffiliates.jsx"
   ],
   "success_rate": {"backend": "100% (8/8 executed; 1 skipped as expected)", "frontend": "100% (all critical assertions passed)"},
-  "test_credentials": "admin@nordpep.ca / G7moffIe-CvzB5Mc; AdminGate: any value (ADMIN_GATE_CODE not set)",
+  "test_credentials": "admin@nordpep.ca / [REDACTED-ROTATE-ME]; AdminGate: any value (ADMIN_GATE_CODE not set)",
   "seed_data_creation": "Created TEST_bulk_*, TEST_dup_*, TEST_reinv_*, TEST_ok_*, TEST_fe_a/b@example.com affiliates in DB during tests (marked with TEST_ prefix for cleanup).",
   "retest_needed": false,
   "main_agent_can_self_test": true,

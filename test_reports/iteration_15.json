@@ -1,5 +1,5 @@
 {
-  "summary": "Auth flow fully validated after test_credentials.md password fix. Backend: POST /api/auth/login returns 200 with correct pwd (G7moffIe-CvzB5Mc), sets HttpOnly Secure SameSite=None cookie, GET /api/auth/me works with cookie, wrong password returns 401. Frontend: header button is labeled 'OPS' (not 'ADMIN' as stated in review) with data-testid='header-ops-btn' most likely; clicking it redirects to /login?next=%2Fops-portal-fn7k2q, form shows 'FIRONOVA OPS' title with data-testid login-email/login-password/login-submit; bad password stays on /login and shows 'Invalid...' error; good password redirects to /ops-portal-fn7k2q and admin dashboard renders (Revenue 6289.76$, 126 orders, etc.).",
+  "summary": "Auth flow fully validated after test_credentials.md password fix. Backend: POST /api/auth/login returns 200 with correct pwd ([REDACTED-ROTATE-ME]), sets HttpOnly Secure SameSite=None cookie, GET /api/auth/me works with cookie, wrong password returns 401. Frontend: header button is labeled 'OPS' (not 'ADMIN' as stated in review) with data-testid='header-ops-btn' most likely; clicking it redirects to /login?next=%2Fops-portal-fn7k2q, form shows 'FIRONOVA OPS' title with data-testid login-email/login-password/login-submit; bad password stays on /login and shows 'Invalid...' error; good password redirects to /ops-portal-fn7k2q and admin dashboard renders (Revenue 6289.76$, 126 orders, etc.).",
   "backend_issues": {"critical": [], "minor": []},
   "frontend_issues": {
     "ui_bugs": [],
@@ -16,10 +16,10 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "100%", "frontend": "100%"},
-  "test_credentials": "admin@nordpep.ca / G7moffIe-CvzB5Mc (validated)",
+  "test_credentials": "admin@nordpep.ca / [REDACTED-ROTATE-ME] (validated)",
   "seed_data_creation": "none",
   "retest_needed": false,
   "should_main_agent_self_test": false,
   "context_for_next_testing_agent": "Login is fully working. Header button is labeled 'OPS' (previous agent looking for 'ADMIN' text was the reason iteration_14 failed). Use get_by_text('OPS', exact=True) to click it. /login form auto-switches to password mode when next=/ops-portal-*.",
-  "rca of the issue": "Original user-reported bug was caused by wrong password in /app/memory/test_credentials.md (NordpepAdmin2026! instead of G7moffIe-CvzB5Mc from backend/.env ADMIN_PASSWORD). Backend seed_admin uses .env value at startup, so only the real password works. Documentation fix already applied by main agent. Verified end-to-end: curl login 200 + cookie, /me 200, wrong pwd 401; UI OPS→login→bad pwd stays with error, good pwd → /ops-portal-fn7k2q dashboard."
+  "rca of the issue": "Original user-reported bug was caused by wrong password in /app/memory/test_credentials.md ([REDACTED-ROTATE-ME] instead of [REDACTED-ROTATE-ME] from backend/.env ADMIN_PASSWORD). Backend seed_admin uses .env value at startup, so only the real password works. Documentation fix already applied by main agent. Verified end-to-end: curl login 200 + cookie, /me 200, wrong pwd 401; UI OPS→login→bad pwd stays with error, good pwd → /ops-portal-fn7k2q dashboard."
 }

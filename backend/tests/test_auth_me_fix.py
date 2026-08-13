@@ -4,8 +4,13 @@ import requests
 import pytest
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://peptide-ca.preview.emergentagent.com").rstrip("/")
-ADMIN_EMAIL = "admin@nordpep.ca"
-ADMIN_PASSWORD = "G7moffIe-CvzB5Mc"
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "")
+
+requires_admin = pytest.mark.skipif(
+    not (ADMIN_EMAIL and ADMIN_PASSWORD),
+    reason="Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD to run admin tests",
+)
 
 
 def test_auth_me_guest_no_token():
@@ -29,6 +34,7 @@ def test_auth_me_guest_malformed_jwt():
     assert r.json() is None
 
 
+@requires_admin
 def test_admin_login_and_me():
     """Login admin → /auth/me returns admin object with role=admin."""
     s = requests.Session()
@@ -60,6 +66,7 @@ def test_admin_endpoint_requires_auth():
     assert r.status_code in (401, 403), f"Expected 401/403, got {r.status_code}"
 
 
+@requires_admin
 def test_admin_endpoint_with_admin_session():
     """Login admin → GET /api/admin/orders should be 200 (or at least not 401/403)."""
     s = requests.Session()

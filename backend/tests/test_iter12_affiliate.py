@@ -34,8 +34,13 @@ if not BASE_URL:
             continue
 assert BASE_URL
 
-ADMIN_EMAIL = "admin@nordpep.ca"
-ADMIN_PASSWORD = "NordpepAdmin2026!"
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "")
+
+pytestmark = pytest.mark.skipif(
+    not (ADMIN_EMAIL and ADMIN_PASSWORD),
+    reason="Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD to run admin tests",
+)
 
 VALID_TIERS = {"standard", "bronze", "silver", "gold", "platinum", "diamond"}
 
@@ -54,7 +59,7 @@ def _admin_token():
 def _register(email):
     s = requests.Session()
     r = s.post(f"{BASE_URL}/api/auth/register",
-               json={"email": email, "password": "Affiliate2026!",
+               json={"email": email, "password": os.environ.get("TEST_AFFILIATE_PASSWORD", "Aff!Test2026x"),
                      "name": "Affiliate Tester"}, timeout=20)
     assert r.status_code == 200, f"register failed: {r.status_code} {r.text}"
     body = r.json()

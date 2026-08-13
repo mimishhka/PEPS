@@ -1,5 +1,5 @@
 """Seed d'un compte affilié démo.
-Email: demo.affilie@fironova.com  |  Password: Fironova!Demo2026
+Email et mot de passe fournis via DEMO_AFFILIATE_EMAIL / DEMO_AFFILIATE_PASSWORD.
 
 Crée uniquement:
   - un utilisateur (email_verified=True)
@@ -20,8 +20,8 @@ load_dotenv(Path("/app/backend/.env"))
 from motor.motor_asyncio import AsyncIOMotorClient
 import bcrypt
 
-EMAIL = "demo.affilie@fironova.com"
-PASSWORD = "Fironova!Demo2026"
+EMAIL = os.environ.get("DEMO_AFFILIATE_EMAIL", "demo.affilie@fironova.com")
+PASSWORD = os.environ["DEMO_AFFILIATE_PASSWORD"]
 NAME = "Demo Affiliate"
 CODE = "DEMO2026"
 
