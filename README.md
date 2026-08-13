@@ -21,13 +21,12 @@ Optional sender info:
 
 Do not commit `.env` to source control.
 
-## Google OAuth setup
+## Google Sign-In — not implemented
 
-To enable Google Sign-In for customers, add these variables to your `.env` (see `.env.example`):
+This section previously documented Google OAuth setup as a working feature.
+It is not implemented: the backend contains no `GOOGLE_CLIENT_ID` handling and
+no `/api/auth/google/callback` route. Sign-in is email/password plus magic link.
 
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `GOOGLE_REDIRECT_URI` (must point to the backend callback, e.g. `https://api.fironova.com/api/auth/google/callback`)
-
-When enabled, users can sign in via Google; the backend will create or attach the account and set the same httpOnly session cookie used by email/password login.
+If Google Sign-In is wanted, it needs building; until then there is nothing to
+configure, and the variables that used to be listed here had no effect.
 

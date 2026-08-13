@@ -150,9 +150,20 @@ MAX_IMAGE_UPLOAD_MB = float(os.environ.get("MAX_IMAGE_UPLOAD_MB", "5"))
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 _IMAGE_FORMAT_EXT = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp", "GIF": "gif"}
 
-# Étiquettes d'expédition Postes Canada — servies à /uploads/labels/<file>.
-LABEL_UPLOAD_DIR = UPLOAD_DIR / "labels"
+# Étiquettes d'expédition Postes Canada. Volontairement HORS de UPLOAD_DIR :
+# ce répertoire est monté en statique sans authentification, et une étiquette
+# porte le nom, l'adresse complète et le téléphone du client. Servies via
+# GET /api/admin/labels/<file>, derrière la permission "orders".
+PRIVATE_UPLOAD_DIR = ROOT_DIR / "private_uploads"
+LABEL_UPLOAD_DIR = PRIVATE_UPLOAD_DIR / "labels"
 LABEL_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+LABEL_URL_PREFIX = "/api/admin/labels/"
+_LEGACY_LABEL_URL_PREFIX = "/uploads/labels/"  # commandes antérieures au déplacement
+
+
+def _is_label_url(url: str) -> bool:
+    return url.startswith(LABEL_URL_PREFIX) or url.startswith(_LEGACY_LABEL_URL_PREFIX)
 
 # Postes Canada (Canada Post) rating/tracking API — leave blank to keep using the flat-rate
 # shipping_zones/shipping_methods system already in place.
@@ -422,7 +433,7 @@ def require_area(area: str, level: str = "view"):
         if not allowed:
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         if level == "manage":
-            asyncio.create_task(_log_action(
+            _spawn(_log_action(
                 user, action=f"{request.method} {request.url.path}", area=area,
             ))
         return user
@@ -870,6 +881,34 @@ def _login_throttle_check(key: str):
 _RATE_BUCKETS: dict = {}
 
 
+# ---------------------------------------------------------------------------
+# Tâches détachées
+# ---------------------------------------------------------------------------
+# asyncio ne garde qu'une référence faible sur les tâches : sans conserver le
+# résultat de create_task, une tâche peut être ramassée par le GC avant la fin,
+# et son exception est perdue en silence (un courriel de confirmation qui ne
+# part jamais, sans trace dans les logs).
+_BACKGROUND_TASKS: set = set()
+
+
+def _spawn(coro, label: str = "") -> "asyncio.Task":
+    """Lance une coroutine détachée en gardant une référence forte, et
+    journalise toute exception au lieu de l'avaler."""
+    task = asyncio.ensure_future(coro)
+    _BACKGROUND_TASKS.add(task)
+
+    def _done(t: "asyncio.Task") -> None:
+        _BACKGROUND_TASKS.discard(t)
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            logging.error("[task] %s failed: %r", label or getattr(t, "get_name", lambda: "task")(), exc)
+
+    task.add_done_callback(_done)
+    return task
+
+
 def _sweep_rate_buckets(now: float, window_seconds: int) -> None:
     """Purge immédiatement les clés expirées pour éviter la croissance mémoire."""
     for bname, b in list(_RATE_BUCKETS.items()):
@@ -1290,12 +1329,12 @@ async def magic_verify(response: Response, request: Request, token: str = Body(.
             await db.subscribers.update_one({"email": email}, {"$set": {"converted": True}})
         except Exception as e:  # pragma: no cover
             logging.warning("subscriber conversion flag failed for %s: %s", email, e)
-        asyncio.create_task(welcome_new_user(email, user_doc["name"], "fr"))
+        _spawn(welcome_new_user(email, user_doc["name"], "fr"))
         user = user_doc
     else:
         await db.users.update_one({"email": email}, {"$set": {"email_verified": True}})
         if is_signup:
-            asyncio.create_task(welcome_new_user(email, user.get("name", ""), "fr"))
+            _spawn(welcome_new_user(email, user.get("name", ""), "fr"))
         user = {**user, "email_verified": True}
     token_jwt = create_access_token(user["id"], user["email"], user["role"],
                                     token_version=user.get("token_version", 0))
@@ -1575,7 +1614,7 @@ async def account_request_email_change(payload: EmailChangeRequestIn, request: R
     base = _trusted_public_base_url()
     confirm_url = f"{base}/api/account/email/confirm?token={token}"
     lang = "fr"  # les emails transactionnels suivent la langue du site ; FR par défaut au Québec
-    asyncio.create_task(_send_email(new_email, "FIRONOVA — Confirmez votre nouvelle adresse email",
+    _spawn(_send_email(new_email, "FIRONOVA — Confirmez votre nouvelle adresse email",
                                     _email_change_html(confirm_url, lang)))
     return {"ok": True, "sent_to": new_email}
 
@@ -1958,7 +1997,7 @@ async def newsletter_subscribe(payload: NewsletterSubscribeIn, request: Request)
             "converted": False,  # bascule à True à la création de compte
         })
     fresh = await db.subscribers.find_one({"email": email}, {"_id": 0})
-    asyncio.create_task(
+    _spawn(
         send_prelaunch_welcome(email, payload.lang or "en", (fresh or {}).get("unsubscribe_token", ""))
     )
     return {"ok": True, "already_subscribed": False}
@@ -2044,12 +2083,12 @@ async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict
         for v in after.get("variants", []):
             vid = v.get("id")
             if before_variant_stock.get(vid, 0) <= 0 < v.get("stock", 0):
-                asyncio.create_task(_maybe_notify_restock(product_id, vid))
+                _spawn(_maybe_notify_restock(product_id, vid))
         if before.get("stock", 0) <= 0 < after.get("stock", 0):
-            asyncio.create_task(_maybe_notify_restock(product_id, None))
+            _spawn(_maybe_notify_restock(product_id, None))
 
     # Re-evaluate preorders whenever stock or COA/coming-soon badges change.
-    asyncio.create_task(_release_ready_preorder_orders())
+    _spawn(_release_ready_preorder_orders())
 
     return after
 
@@ -2404,6 +2443,14 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
 async def _nowpayments_create(order_id: str, total_cad: float, pay_currency: str):
     """Create a NOWPayments invoice (embeddable widget, exact amount). Falls back to mock if no API key."""
     if not NOWPAYMENTS_API_KEY:
+        # En production, laisser passer le mock donne au client une commande
+        # réelle dont l'adresse de paiement est la chaîne "TEST_ADDRESS_...".
+        # Mieux vaut refuser le paiement crypto que d'encaisser dans le vide.
+        if IS_PRODUCTION:
+            raise HTTPException(
+                503,
+                "Crypto payment is temporarily unavailable. Please choose Interac e-Transfer.",
+            )
         return {
             "mock": True,
             "payment_id": f"mock-{order_id[:8]}",
@@ -2858,7 +2905,7 @@ async def _canada_post_get_artifact_openapi(href: str, order_id: str) -> Optiona
         return None
     fname = f"{order_id}-{uuid.uuid4().hex[:8]}.pdf"
     (LABEL_UPLOAD_DIR / fname).write_bytes(r.content)
-    return f"/uploads/labels/{fname}"
+    return f"{LABEL_URL_PREFIX}{fname}"
 
 
 async def _canada_post_get_manifest_artifact_openapi(href: str, date_str: str) -> Optional[str]:
@@ -2896,7 +2943,7 @@ async def _canada_post_get_manifest_artifact_openapi(href: str, date_str: str) -
         fname = f"manifest-{date_str}-{uuid.uuid4().hex[:8]}.pdf"
         (LABEL_UPLOAD_DIR / fname).write_bytes(r_pdf.content)
         logging.info("CP manifest PDF saved: %s", fname)
-        return f"/uploads/labels/{fname}"
+        return f"{LABEL_URL_PREFIX}{fname}"
     except HTTPException:
         return None
     except Exception as ex:
@@ -3201,7 +3248,7 @@ async def _canada_post_get_artifact(href: str, order_id: str) -> Optional[str]:
                 return None
             fname = f"{order_id}-{uuid.uuid4().hex[:8]}.pdf"
             (LABEL_UPLOAD_DIR / fname).write_bytes(r.content)
-            return f"/uploads/labels/{fname}"
+            return f"{LABEL_URL_PREFIX}{fname}"
     except Exception as ex:
         logging.error("Canada Post get-artifact failed: %s", ex)
         return None
@@ -3318,7 +3365,7 @@ async def _auto_create_dispatch_label(order_id: str, service_code: Optional[str]
              }}},
         )
         fresh = await db.orders.find_one({"id": order["id"]}, {"_id": 0})
-        asyncio.create_task(send_shipping_notification(fresh))
+        _spawn(send_shipping_notification(fresh))
         return shipping_info
     except Exception as ex:
         logging.error("auto label failed for %s: %s", order["order_number"], ex)
@@ -3719,7 +3766,7 @@ async def _maybe_notify_restock(product_id: str, variant_id: Optional[str] = Non
     if not pending:
         return
     for sub in pending:
-        asyncio.create_task(_send_restock_email(sub["email"], product, variant))
+        _spawn(_send_restock_email(sub["email"], product, variant))
     await db.stock_notifications.update_many(
         {"product_id": product_id, "variant_id": variant_id, "notified": False},
         {"$set": {"notified": True, "notified_at": datetime.now(timezone.utc).isoformat()}},
@@ -3813,11 +3860,11 @@ async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Op
         await db.orders.update_one({"id": order_id}, {"$set": {"coupon_counted": True}})
 
     if order.get("email"):
-        asyncio.create_task(send_payment_received(order))
+        _spawn(send_payment_received(order))
     # Dispatch manuel : l'étiquette n'est PLUS créée automatiquement au paiement.
     # La commande attend dans « À étiqueter » et l'admin génère l'étiquette
     # depuis l'écran Dispatch.
-    # asyncio.create_task(_auto_create_dispatch_label(order_id))
+    # _spawn(_auto_create_dispatch_label(order_id))
     # --- AFFILIATE: commission pending au paiement confirme ---
     await affiliate_on_order_paid(order)
     return order
@@ -3863,7 +3910,7 @@ async def _flag_late_cancelled_payment(order: dict, provider: str, reference: st
     )
     if res.modified_count:
         # Alert admin immediately when late payment is flagged.
-        asyncio.create_task(_send_late_payment_admin_alert(order, provider_label, ref))
+        _spawn(_send_late_payment_admin_alert(order, provider_label, ref))
         logging.warning("Late payment flagged on cancelled order %s via %s", order.get("id"), provider_label)
         return True
     return False
@@ -3991,7 +4038,7 @@ async def _queue_interac_reconciliation_item(msg: dict, text: str, reason: str =
         upsert=True,
     )
     if res.upserted_id:
-        asyncio.create_task(_send_reconciliation_required_admin_alert(item))
+        _spawn(_send_reconciliation_required_admin_alert(item))
         logging.warning("Interac reconciliation queued for message %s (reason=%s)", message_id, reason)
     return True
 
@@ -4031,7 +4078,7 @@ async def _queue_crypto_reconciliation_item(payload: dict, reason: str) -> bool:
         upsert=True,
     )
     if res.upserted_id:
-        asyncio.create_task(_send_reconciliation_required_admin_alert(item))
+        _spawn(_send_reconciliation_required_admin_alert(item))
         logging.warning("Crypto reconciliation queued (reason=%s, key=%s)", reason, dedupe_key)
     return True
 
@@ -4211,7 +4258,7 @@ async def checkout(payload: CheckoutIn, request: Request):
         # (_mark_order_paid), sinon les paniers abandonnés épuisent l'usage_limit.
 
         # Fire-and-forget order confirmation + admin notification
-        asyncio.create_task(send_order_confirmation(order_doc))
+        _spawn(send_order_confirmation(order_doc))
 
         return order_doc
     except Exception:
@@ -4854,7 +4901,7 @@ async def admin_invite_staff(payload: StaffInviteIn, request: Request, admin: di
     })
     base = _trusted_public_base_url()
     accept_url = f"{base}/staff-accept?token={token}"
-    asyncio.create_task(_send_email(
+    _spawn(_send_email(
         email, "FIRONOVA — Invitation à rejoindre l'équipe",
         _staff_invite_html(accept_url, admin.get("name", "L'équipe FIRONOVA")),
     ))
@@ -5097,7 +5144,7 @@ async def admin_add_order_note(order_id: str, payload: OrderNoteIn, admin: dict 
         raise HTTPException(404, "Order not found")
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if payload.visible_to_customer and order.get("email"):
-        asyncio.create_task(send_customer_note_email(order, payload.text))
+        _spawn(send_customer_note_email(order, payload.text))
     return order
 
 
@@ -5145,7 +5192,7 @@ async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Dep
         or ((updated.get("payment_info") or {}).get("provider_response") or {}).get("refund_id")
     )
     if updated.get("email") and provider_refund_id:
-        asyncio.create_task(send_refund_email(updated, amount, new_refunded))
+        _spawn(send_refund_email(updated, amount, new_refunded))
     return updated
 
 
@@ -5261,7 +5308,7 @@ async def admin_create_label(order_id: str, payload: CreateLabelIn,
          }}},
     )
     fresh = await db.orders.find_one({"id": order_id}, {"_id": 0})
-    asyncio.create_task(send_shipping_notification(fresh))
+    _spawn(send_shipping_notification(fresh))
     return {"already_existed": False, "shipping_info": shipping_info}
 
 
@@ -5482,7 +5529,7 @@ async def admin_dispatch_manifest_pdf(date: str,
     # 1) PDF déjà téléchargé localement (par retry-manifest)
     for d in docs:
         local_url = d.get("local_pdf_url") or ""
-        if local_url and local_url.startswith("/uploads/labels/"):
+        if local_url and _is_label_url(local_url):
             fpath = LABEL_UPLOAD_DIR / local_url.split("/")[-1]
             if fpath.exists():
                 return Response(
@@ -6001,7 +6048,7 @@ async def admin_dispatch_labels(date: str, payload: DispatchLabelsIn,
                  }}},
             )
             fresh = await db.orders.find_one({"id": order["id"]}, {"_id": 0})
-            asyncio.create_task(send_shipping_notification(fresh))
+            _spawn(send_shipping_notification(fresh))
             created.append({"order_number": order.get("order_number"),
                             "tracking_number": res["pin"],
                             "label_url": label_url})
@@ -6056,7 +6103,7 @@ async def admin_dispatch_labels_pdf(date: str, _admin: dict = Depends(require_ar
     pdfs = []
     for o in orders:
         url = (o.get("shipping_info") or {}).get("label_url") or ""
-        if url.startswith("/uploads/labels/"):
+        if _is_label_url(url):
             fpath = LABEL_UPLOAD_DIR / url.split("/")[-1]
             if fpath.exists():
                 pdfs.append(fpath.read_bytes())
@@ -6484,7 +6531,7 @@ async def admin_adjust_stock(product_id: str, payload: StockAdjustIn, _admin: di
     if res.matched_count == 0:
         raise HTTPException(404, "Product not found")
     if payload.delta > 0:
-        asyncio.create_task(_maybe_notify_restock(product_id, None))
+        _spawn(_maybe_notify_restock(product_id, None))
     return await db.products.find_one({"id": product_id}, {"_id": 0})
 
 
@@ -8076,13 +8123,13 @@ async def _restock_order_items(order: dict):
             continue
         if it.get("variant_id") in (None, "", "_default"):
             await db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": it["qty"]}})
-            asyncio.create_task(_maybe_notify_restock(it["product_id"], None))
+            _spawn(_maybe_notify_restock(it["product_id"], None))
             continue
         await db.products.update_one(
             {"id": it["product_id"], "variants.id": it["variant_id"]},
             {"$inc": {"variants.$.stock": it["qty"]}},
         )
-        asyncio.create_task(_maybe_notify_restock(it["product_id"], it["variant_id"]))
+        _spawn(_maybe_notify_restock(it["product_id"], it["variant_id"]))
 
 
 async def _decrement_coupon_usage(order: dict) -> bool:
@@ -8187,7 +8234,7 @@ async def cancel_stale_unpaid_orders():
             logging.info("Auto-cancelled unpaid order %s", order.get("order_number", order["id"]))
             if order.get("email"):
                 lang, to, ctx = await _order_ctx(order)
-                asyncio.create_task(send_template_email("order_expired", to, lang, ctx, order))
+                _spawn(send_template_email("order_expired", to, lang, ctx, order))
     return len(stale)
 
 
@@ -8293,21 +8340,57 @@ async def _release_preorders_watchdog():
         await asyncio.sleep(PREORDER_RELEASE_INTERVAL_SECONDS)
 
 
-async def _acquire_worker_lock(name: str, ttl_seconds: int = 120) -> bool:
-    """Verrou coopératif Mongo : un seul worker exécute les tâches de fond.
-    Sans ça, N workers uvicorn lancent N boucles concurrentes sur les mêmes
-    commandes (auto-cancel, backfill)."""
+WORKER_LOCK_TTL_SECONDS = 120
+WORKER_LOCK_RENEW_SECONDS = 40  # < TTL/2 : deux renouvellements peuvent échouer sans perdre le bail
+
+# Identité de CE process pour le bail des tâches de fond.
+_WORKER_ID = str(uuid.uuid4())
+
+
+async def _acquire_worker_lock(name: str, ttl_seconds: int = WORKER_LOCK_TTL_SECONDS) -> bool:
+    """Bail coopératif Mongo : un seul worker exécute les tâches de fond.
+
+    Le bail expire (TTL) pour qu'un worker mort ne bloque pas les autres, et
+    DOIT donc être renouvelé — voir _renew_worker_lock. Sans renouvellement,
+    le bail expirait au bout de 120 s alors que les boucles tournaient encore :
+    tout worker démarrant après ce délai (redéploiement progressif, recyclage)
+    reprenait le verrou et lançait un SECOND jeu de watchdogs, avec deux
+    process rapprochant les virements Interac en parallèle.
+    """
     now = datetime.now(timezone.utc)
+    expiry = (now + timedelta(seconds=ttl_seconds)).isoformat()
     try:
-        await db.locks.update_one(
+        res = await db.locks.update_one(
             {"_id": name, "expires_at": {"$lt": now.isoformat()}},
-            {"$set": {"expires_at": (now + timedelta(seconds=ttl_seconds)).isoformat(),
-                      "owner": str(uuid.uuid4())}},
+            {"$set": {"expires_at": expiry, "owner": _WORKER_ID}},
             upsert=True,
         )
-        return True
+    except DuplicateKeyError:
+        return False  # un autre worker détient un bail encore valide
     except Exception:
-        return False  # duplicate key = un autre worker détient déjà le verrou
+        logging.exception("[worker-lock] acquisition failed for %s", name)
+        return False
+    # upsert -> insertion, ou reprise d'un bail expiré : dans les deux cas on l'a.
+    return bool(res.upserted_id or res.modified_count)
+
+
+async def _renew_worker_lock(name: str) -> None:
+    """Prolonge le bail tant que ce process vit. S'arrête s'il l'a perdu."""
+    while True:
+        await asyncio.sleep(WORKER_LOCK_RENEW_SECONDS)
+        now = datetime.now(timezone.utc)
+        try:
+            res = await db.locks.update_one(
+                {"_id": name, "owner": _WORKER_ID},
+                {"$set": {"expires_at": (now + timedelta(seconds=WORKER_LOCK_TTL_SECONDS)).isoformat()}},
+            )
+            if not res.matched_count:
+                logging.warning(
+                    "[worker-lock] bail %s perdu (repris par un autre worker) — "
+                    "ce process cesse de le renouveler.", name)
+                return
+        except Exception:
+            logging.exception("[worker-lock] renewal failed for %s", name)
 
 
 async def _seed_categories_from_products() -> None:
@@ -8464,18 +8547,22 @@ async def startup_event():
     await _seed_launch_coupon()
     await _backfill_affiliate_coupons()
     if await _acquire_worker_lock("background_tasks"):
-        asyncio.create_task(_unpaid_orders_watchdog())
-        asyncio.create_task(_backfill_dispatch_batch())
-        asyncio.create_task(_release_preorders_watchdog())
-        asyncio.create_task(_interac_deposit_watchdog())
+        # Sans ce renouvellement, le bail expire au bout de 120 s pendant que
+        # les watchdogs ci-dessous tournent encore — et un worker démarré plus
+        # tard en lance un second exemplaire.
+        _spawn(_renew_worker_lock("background_tasks"), "worker-lock-renew")
+        _spawn(_unpaid_orders_watchdog())
+        _spawn(_backfill_dispatch_batch())
+        _spawn(_release_preorders_watchdog())
+        _spawn(_interac_deposit_watchdog())
         # Dispatch manuel : watchdog d'auto-étiquetage désactivé.
-        # asyncio.create_task(_auto_label_paid_orders_watchdog())
-        asyncio.create_task(_auto_sync_delivered_orders_watchdog())
-        asyncio.create_task(_trash_auto_purge_watchdog())
-        asyncio.create_task(_rollover_watchdog())
-        asyncio.create_task(_magic_tokens_cleanup())
-        asyncio.create_task(_abandoned_cart_watchdog())
-        asyncio.create_task(affiliate_maintenance_watchdog())
+        # _spawn(_auto_label_paid_orders_watchdog())
+        _spawn(_auto_sync_delivered_orders_watchdog())
+        _spawn(_trash_auto_purge_watchdog())
+        _spawn(_rollover_watchdog())
+        _spawn(_magic_tokens_cleanup())
+        _spawn(_abandoned_cart_watchdog())
+        _spawn(affiliate_maintenance_watchdog())
 
 
 async def _backfill_dispatch_batch():
@@ -11124,7 +11211,7 @@ async def admin_email_template_create(payload: EmailTemplateCreateIn,
     doc["custom"] = True
     doc["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.email_templates.insert_one(dict(doc))
-    asyncio.create_task(_log_action(_admin, "email_template_create", f"key={key}", "settings"))
+    _spawn(_log_action(_admin, "email_template_create", f"key={key}", "settings"))
     return await _email_template_get(key)
 
 
@@ -11137,7 +11224,7 @@ async def admin_email_template_update(key: str, payload: EmailTemplateIn,
     updates["key"] = key
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.email_templates.update_one({"key": key}, {"$set": updates}, upsert=True)
-    asyncio.create_task(_log_action(_admin, "email_template_update",
+    _spawn(_log_action(_admin, "email_template_update",
                                     f"key={key} fields={list(payload.model_dump(exclude_none=True).keys())}", "settings"))
     return await _email_template_get(key)
 
@@ -11148,7 +11235,7 @@ async def admin_email_template_delete(key: str, _admin: dict = Depends(require_a
     res = await db.email_templates.delete_one({"key": key})
     if res.deleted_count == 0:
         raise HTTPException(404, "Template not found")
-    asyncio.create_task(_log_action(_admin, "email_template_delete", f"key={key}", "settings"))
+    _spawn(_log_action(_admin, "email_template_delete", f"key={key}", "settings"))
     return {"deleted": True, "key": key}
 
 
@@ -11156,7 +11243,7 @@ async def admin_email_template_reset(key: str, _admin: dict = Depends(require_ar
     if key not in EMAIL_TEMPLATE_CATALOG:
         raise HTTPException(400, "Seuls les courriels intégrés peuvent être réinitialisés.")
     await db.email_templates.delete_one({"key": key})
-    asyncio.create_task(_log_action(_admin, "email_template_reset", f"key={key}", "settings"))
+    _spawn(_log_action(_admin, "email_template_reset", f"key={key}", "settings"))
     return await _email_template_get(key)
 
 
@@ -11408,7 +11495,7 @@ async def admin_payout_execute(payout_id: str, admin: dict = Depends(get_admin_u
         "status": "creating", "np_batch_id": batch_id, "np_error": None,
         "executed_by": admin.get("email"), "executed_at": now,
     }})
-    asyncio.create_task(_log_action(admin, "affiliate_payout_execute", f"payout={payout_id} batch={batch_id} amount={amount} {currency}", "settings"))
+    _spawn(_log_action(admin, "affiliate_payout_execute", f"payout={payout_id} batch={batch_id} amount={amount} {currency}", "settings"))
     return {"ok": True, "status": "creating", "np_batch_id": batch_id,
             "message": "Payout créé. Un code de vérification 2FA a été envoyé à l'adresse courriel du compte NOWPayments. Saisissez-le pour finaliser."}
 
@@ -11431,7 +11518,7 @@ async def admin_payout_verify(payout_id: str, payload: PayoutVerifyIn,
     await db.affiliate_payouts.update_one({"id": payout_id}, {"$set": {
         "status": "processing", "verified_by": admin.get("email"), "verified_at": now,
     }})
-    asyncio.create_task(_log_action(admin, "affiliate_payout_verify", f"payout={payout_id} batch={batch_id}", "settings"))
+    _spawn(_log_action(admin, "affiliate_payout_verify", f"payout={payout_id} batch={batch_id}", "settings"))
     return {"ok": True, "status": "processing",
             "message": "Payout vérifié et en cours de traitement par NOWPayments."}
 
@@ -11660,6 +11747,28 @@ async def _csrf_origin_guard(request: Request, call_next):
         if origin not in allowed and not matches_regex and not same_origin:
             return Response(status_code=403, content="Origin not allowed", media_type="text/plain")
     return await call_next(request)
+
+
+@app.get("/api/admin/labels/{filename}", include_in_schema=False)
+async def admin_label_pdf(filename: str, _admin: dict = Depends(require_area("orders", "view"))):
+    """Sert une étiquette d'expédition, authentifié.
+
+    Ces PDF contiennent nom, adresse complète et téléphone du client. Ils
+    étaient auparavant servis en statique via /uploads/labels/, donc lisibles
+    par quiconque connaissait l'URL, sans expiration ni révocation.
+    """
+    # Le nom vient de l'URL : on refuse tout ce qui n'est pas un simple fichier
+    # du répertoire (pas de "..", pas de séparateur, pas de chemin absolu).
+    if filename != os.path.basename(filename) or not filename.lower().endswith(".pdf"):
+        raise HTTPException(400, "Invalid label filename")
+    path = (LABEL_UPLOAD_DIR / filename).resolve()
+    if not path.is_file() or LABEL_UPLOAD_DIR.resolve() not in path.parents:
+        raise HTTPException(404, "Label not found")
+    return Response(
+        content=path.read_bytes(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 @app.get("/api/health", include_in_schema=False)
