@@ -4045,7 +4045,15 @@ async def checkout(payload: CheckoutIn, request: Request):
     lock_doc = None
     if idem_key:
         try:
-            lock_doc = {"_id": idem_key, "status": "processing", "created_at": datetime.now(timezone.utc).isoformat()}
+            lock_doc = {
+                "_id": idem_key,
+                "status": "processing",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                # Date BSON réelle : l'index TTL ne sait pas lire une chaîne ISO.
+                # Filet de sécurité si un process meurt entre la prise du verrou
+                # et le except qui le relâche.
+                "created_dt": datetime.now(timezone.utc),
+            }
             await db.idempotency.insert_one(lock_doc)
         except DuplicateKeyError:
             cached = await db.idempotency.find_one({"_id": idem_key}, {"_id": 0, "response": 1, "status": 1})
@@ -4058,141 +4066,153 @@ async def checkout(payload: CheckoutIn, request: Request):
                     return cached["response"]
             raise HTTPException(409, "Checkout already in progress")
 
-    user = await _resolve_user(request)
-    customer_email = ((user["email"] if user else None) or (payload.email.lower().strip() if payload.email else None))
-
+    # Toute défaillance AVANT que la commande n'existe doit libérer le verrou
+    # d'idempotence. Sinon la clé reste bloquée en 'processing' pour toujours :
+    # le client corrige son panier, resoumet avec la même clé (le frontend la
+    # garde pour la durée du montage) et reçoit 409 en boucle.
     try:
-        line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder = await _build_order_totals(
-            payload.items, payload.coupon_code, customer_email=customer_email
-        )
-    except TypeError as e:
-        # Compat legacy pour les doubles/mocks de tests qui n'acceptent pas le
-        # nouvel argument optionnel customer_email.
-        if "customer_email" not in str(e):
-            raise
-        line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder = await _build_order_totals(
-            payload.items, payload.coupon_code
-        )
+        user = await _resolve_user(request)
+        customer_email = ((user["email"] if user else None) or (payload.email.lower().strip() if payload.email else None))
 
-    order_id = str(uuid.uuid4())
-    # Numérotation Fironova : FN-AAMMJJ-XXXXXX (l'ancien préfixe NP- venait
-    # de NORDPEP ; les commandes existantes gardent leur numéro).
-    order_number = f"FN-{datetime.now(timezone.utc).strftime('%y%m%d')}-{order_id[:6].upper()}"
+        try:
+            line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder = await _build_order_totals(
+                payload.items, payload.coupon_code, customer_email=customer_email
+            )
+        except TypeError as e:
+            # Compat legacy pour les doubles/mocks de tests qui n'acceptent pas le
+            # nouvel argument optionnel customer_email.
+            if "customer_email" not in str(e):
+                raise
+            line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder = await _build_order_totals(
+                payload.items, payload.coupon_code
+            )
 
-    # Réservation atomique AVANT tout appel réseau au PSP. Ferme la fenêtre
-    # check-then-act qui laissait deux clients acheter le même dernier flacon.
-    reserved = await _reserve_stock_atomic(line_items)
+        order_id = str(uuid.uuid4())
+        # Numérotation Fironova : FN-AAMMJJ-XXXXXX (l'ancien préfixe NP- venait
+        # de NORDPEP ; les commandes existantes gardent leur numéro).
+        order_number = f"FN-{datetime.now(timezone.utc).strftime('%y%m%d')}-{order_id[:6].upper()}"
 
-    payment_info: dict = {}
-    if payload.payment_method == "interac":
-        payment_info = {
-            "type": "interac",
-            "instructions": {
-                "send_to": INTERAC_EMAIL,
-                "amount_cad": total,
-                "reference": order_number,
-                "security_question": "What is the brand name? (lowercase)",
-                "security_answer_hint": INTERAC_PASSWORD_HINT.lower(),
+        # Réservation atomique AVANT tout appel réseau au PSP. Ferme la fenêtre
+        # check-then-act qui laissait deux clients acheter le même dernier flacon.
+        reserved = await _reserve_stock_atomic(line_items)
+
+        payment_info: dict = {}
+        if payload.payment_method == "interac":
+            payment_info = {
+                "type": "interac",
+                "instructions": {
+                    "send_to": INTERAC_EMAIL,
+                    "amount_cad": total,
+                    "reference": order_number,
+                    "security_question": "What is the brand name? (lowercase)",
+                    "security_answer_hint": INTERAC_PASSWORD_HINT.lower(),
+                },
+            }
+            payment_status = "awaiting_etransfer"
+        elif payload.payment_method == "nowpayments":
+            try:
+                np = await _nowpayments_create(order_id, total, payload.pay_currency or "btc")
+            except Exception:
+                await _release_stock_atomic(reserved)
+                raise
+            payment_info = {"type": "nowpayments", "provider_response": np}
+            payment_status = "awaiting_crypto"
+        else:  # defensive guard if a client sends an unsupported value
+            await _release_stock_atomic(reserved)
+            raise HTTPException(400, "Unsupported payment method")
+
+        order_doc = {
+            "id": order_id,
+            "order_number": order_number,
+            "user_id": user["id"] if user else None,
+            "email": (user["email"] if user else None) or (payload.email.lower() if payload.email else None),
+            "items": line_items,
+            "subtotal": subtotal,
+            "discount": discount,
+            "coupon": applied_coupon,
+            "tax_rate": tax_rate,
+            "tax": tax,
+            "shipping": shipping,
+            "total": total,
+            "currency": "CAD",
+            "shipping_address": payload.shipping.model_dump(),
+            "shipping_info": {"carrier": "", "tracking_number": "", "shipped_at": None},
+            "payment_method": payload.payment_method,
+            "payment_status": payment_status,
+            "payment_info": payment_info,
+            "fulfillment_status": "preorder" if has_preorder else "pending",
+            "has_preorder": has_preorder,
+            "notes": [],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "payment_ttl_hours": UNPAID_ORDER_TTL_HOURS,
+            "payment_deadline": (datetime.now(timezone.utc) + timedelta(hours=UNPAID_ORDER_TTL_HOURS)).isoformat(),
+            "compliance": {
+                "accept_terms": True,
+                "confirm_age": True,
+                "confirm_research_use": True,
+                "ip": request.client.host if request.client else None,
             },
         }
-        payment_status = "awaiting_etransfer"
-    elif payload.payment_method == "nowpayments":
+        # --- AFFILIATE: attribution depuis le cookie fn_ref (champ additif) ---
+        created_order = False
         try:
-            np = await _nowpayments_create(order_id, total, payload.pay_currency or "btc")
+            await affiliate_attach_to_order(order_doc, request)
+            await db.orders.insert_one(order_doc)
+            created_order = True
+            await db.payment_transactions.insert_one({
+                "id": str(uuid.uuid4()),
+                "order_id": order_id,
+                "session_id": idem_key or order_id,
+                "status": payment_status,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
         except Exception:
+            if created_order:
+                await db.orders.delete_one({"id": order_id})
             await _release_stock_atomic(reserved)
+            if idem_key:
+                await db.idempotency.delete_one({"_id": idem_key})
             raise
-        payment_info = {"type": "nowpayments", "provider_response": np}
-        payment_status = "awaiting_crypto"
-    else:  # defensive guard if a client sends an unsupported value
-        await _release_stock_atomic(reserved)
-        raise HTTPException(400, "Unsupported payment method")
+        order_doc.pop("_id", None)
 
-    order_doc = {
-        "id": order_id,
-        "order_number": order_number,
-        "user_id": user["id"] if user else None,
-        "email": (user["email"] if user else None) or (payload.email.lower() if payload.email else None),
-        "items": line_items,
-        "subtotal": subtotal,
-        "discount": discount,
-        "coupon": applied_coupon,
-        "tax_rate": tax_rate,
-        "tax": tax,
-        "shipping": shipping,
-        "total": total,
-        "currency": "CAD",
-        "shipping_address": payload.shipping.model_dump(),
-        "shipping_info": {"carrier": "", "tracking_number": "", "shipped_at": None},
-        "payment_method": payload.payment_method,
-        "payment_status": payment_status,
-        "payment_info": payment_info,
-        "fulfillment_status": "preorder" if has_preorder else "pending",
-        "has_preorder": has_preorder,
-        "notes": [],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "payment_ttl_hours": UNPAID_ORDER_TTL_HOURS,
-        "payment_deadline": (datetime.now(timezone.utc) + timedelta(hours=UNPAID_ORDER_TTL_HOURS)).isoformat(),
-        "compliance": {
-            "accept_terms": True,
-            "confirm_age": True,
-            "confirm_research_use": True,
-            "ip": request.client.host if request.client else None,
-        },
-    }
-    # --- AFFILIATE: attribution depuis le cookie fn_ref (champ additif) ---
-    created_order = False
-    try:
-        await affiliate_attach_to_order(order_doc, request)
-        await db.orders.insert_one(order_doc)
-        created_order = True
-        await db.payment_transactions.insert_one({
-            "id": str(uuid.uuid4()),
-            "order_id": order_id,
-            "session_id": idem_key or order_id,
-            "status": payment_status,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-    except Exception:
-        if created_order:
-            await db.orders.delete_one({"id": order_id})
-        await _release_stock_atomic(reserved)
+        # Commande invité (sans compte) : émettre le jeton de consultation, sinon
+        # le client ne peut plus jamais revoir sa commande après le premier écran.
+        # Champs transitoires — ajoutés APRÈS l'insert, donc jamais persistés sur
+        # la commande elle-même (seul le hash du jeton est stocké, à part).
+        if not order_doc.get("user_id"):
+            try:
+                raw_access = await _issue_order_access_token(order_id)
+                order_doc["access_token"] = raw_access
+                order_doc["order_url"] = _guest_order_url(order_id, raw_access)
+            except Exception:
+                logging.exception("guest order access token failed for %s", order_id)
+
+        # Persist idempotency key so replay returns same order without re-processing.
         if idem_key:
-            await db.idempotency.delete_one({"_id": idem_key})
+            try:
+                await db.idempotency.update_one(
+                    {"_id": idem_key},
+                    {"$set": {"response": order_doc, "status": "completed"}},
+                )
+            except Exception:
+                pass
+
+        # Le stock est déjà réservé atomiquement plus haut (_reserve_stock_atomic),
+        # avant l'appel au PSP. Rien à faire ici.
+        # Le coupon n'est PAS décompté ici : il l'est à la confirmation de paiement
+        # (_mark_order_paid), sinon les paniers abandonnés épuisent l'usage_limit.
+
+        # Fire-and-forget order confirmation + admin notification
+        asyncio.create_task(send_order_confirmation(order_doc))
+
+        return order_doc
+    except Exception:
+        if idem_key:
+            try:
+                await db.idempotency.delete_one({"_id": idem_key, "response": {"$exists": False}})
+            except Exception:
+                logging.exception("failed to release idempotency lock %s", idem_key)
         raise
-    order_doc.pop("_id", None)
-
-    # Commande invité (sans compte) : émettre le jeton de consultation, sinon
-    # le client ne peut plus jamais revoir sa commande après le premier écran.
-    # Champs transitoires — ajoutés APRÈS l'insert, donc jamais persistés sur
-    # la commande elle-même (seul le hash du jeton est stocké, à part).
-    if not order_doc.get("user_id"):
-        try:
-            raw_access = await _issue_order_access_token(order_id)
-            order_doc["access_token"] = raw_access
-            order_doc["order_url"] = _guest_order_url(order_id, raw_access)
-        except Exception:
-            logging.exception("guest order access token failed for %s", order_id)
-
-    # Persist idempotency key so replay returns same order without re-processing.
-    if idem_key:
-        try:
-            await db.idempotency.update_one(
-                {"_id": idem_key},
-                {"$set": {"response": order_doc, "status": "completed"}},
-            )
-        except Exception:
-            pass
-
-    # Le stock est déjà réservé atomiquement plus haut (_reserve_stock_atomic),
-    # avant l'appel au PSP. Rien à faire ici.
-    # Le coupon n'est PAS décompté ici : il l'est à la confirmation de paiement
-    # (_mark_order_paid), sinon les paniers abandonnés épuisent l'usage_limit.
-
-    # Fire-and-forget order confirmation + admin notification
-    asyncio.create_task(send_order_confirmation(order_doc))
-
-    return order_doc
 
 
 async def my_orders(user: dict = Depends(get_current_user)):
@@ -7828,6 +7848,12 @@ async def seed_admin_and_products():
     await db.orders.create_index([("created_at", -1)])
     await db.coupons.create_index("code", unique=True)
     await db.payment_transactions.create_index("session_id", unique=True)
+    # Idempotence checkout : purge automatique. Les réponses mises en cache
+    # restent rejouables 24 h, et un verrou orphelin ne peut pas bloquer une
+    # clé indéfiniment même si le process meurt au mauvais moment.
+    await db.idempotency.create_index("created_dt", expireAfterSeconds=86400)
+    # Consultation des commandes invité : purge des jetons expirés.
+    await db.order_access_tokens.create_index([("order_id", 1), ("token_hash", 1)])
     await db.payment_transactions.create_index("order_id")
     await db.stock_notifications.create_index([("product_id", 1), ("variant_id", 1), ("notified", 1)])
     await db.subscribers.create_index("email", unique=True)

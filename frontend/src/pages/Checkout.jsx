@@ -68,7 +68,11 @@ export default function Checkout() {
     full_name: "", line1: "", line2: "", city: "", province: "", postal_code: "", country: "CA",
   });
 
-  const [idempotencyKey] = useState(() => `chk_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+  // Protects against a double-submit of the SAME attempt. It must be replaced
+  // after a failed attempt: retrying a corrected cart under the old key made
+  // the backend treat it as a replay and answer 409 for good.
+  const newIdempotencyKey = () => `chk_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
 
   const hasAddressData = (addr) => {
     if (!addr) return false;
@@ -274,6 +278,8 @@ export default function Checkout() {
       nav(`/order/${data.id}`, { state: { order: data } });
     } catch (err) {
       toast.error(formatApiError(err?.response?.data?.detail || err?.message));
+      // Fresh key for the next attempt — the failed one is spent.
+      setIdempotencyKey(newIdempotencyKey());
     } finally {
       setSubmitting(false);
     }
