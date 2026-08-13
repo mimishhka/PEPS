@@ -27,7 +27,7 @@ import jwt
 import httpx
 import resend
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File, Body
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from PIL import Image as PILImage
@@ -805,12 +805,41 @@ _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_WINDOW_SECONDS = 900
 
 
-def _client_ip(request: Request) -> str:
-    peer = request.client.host if request.client else "unknown"
+def _peer_is_trusted_proxy(peer: str, allowlist: list) -> bool:
+    """Le pair immédiat figure-t-il dans l'allowlist de proxys (IP ou CIDR) ?"""
+    try:
+        peer_addr = ipaddress.ip_address(peer)
+    except ValueError:
+        return False
+    for entry in allowlist:
+        entry = (entry or "").strip()
+        if not entry:
+            continue
+        try:
+            if "/" in entry:
+                if peer_addr in ipaddress.ip_network(entry, strict=False):
+                    return True
+            elif peer.lower() == entry.lower():
+                return True
+        except ValueError:
+            continue
+    return False
 
-    # Cloudflare : header `CF-Connecting-IP` inséré par CF et strippé sur les
-    # requêtes externes. Il porte l'IP réelle du visiteur. Priorité absolue
-    # car il masque le peer (edge CF) qui rendrait le rate-limit inefficace.
+
+def _client_ip(request: Request) -> str:
+    """IP réelle du client, pour le rate limiting.
+
+    Un en-tête de transfert n'est cru QUE si le pair immédiat est un proxy
+    connu. Sinon n'importe qui peut se forger une IP par requête et contourner
+    tous les compteurs — y compris ceux qui protègent le code d'accès admin.
+    """
+    peer = request.client.host if request.client else "unknown"
+    proxy_allowlist = TRUSTED_PROXIES or sorted(TRUST_PROXY_IPS)
+    if not proxy_allowlist or not _peer_is_trusted_proxy(peer, proxy_allowlist):
+        return peer
+
+    # Cloudflare place l'IP visiteur dans CF-Connecting-IP et supprime toute
+    # valeur entrante côté edge. Fiable maintenant que le pair est vérifié.
     cf_ip = (request.headers.get("cf-connecting-ip") or "").strip()
     if cf_ip:
         try:
@@ -819,36 +848,8 @@ def _client_ip(request: Request) -> str:
         except ValueError:
             pass
 
-    proxy_allowlist = TRUSTED_PROXIES or sorted(TRUST_PROXY_IPS)
-    if not proxy_allowlist:
-        return peer
-
-    try:
-        peer_addr = ipaddress.ip_address(peer)
-    except ValueError:
-        return peer
-
-    trusted = False
-    for entry in proxy_allowlist:
-        entry = entry.strip()
-        if not entry:
-            continue
-        try:
-            if "/" in entry:
-                trusted = peer_addr in ipaddress.ip_network(entry, strict=False)
-            else:
-                trusted = peer.lower() == entry.lower()
-        except ValueError:
-            continue
-        if trusted:
-            break
-    if not trusted:
-        return peer
-
     xff = request.headers.get("x-forwarded-for", "").strip()
-    if not xff:
-        return peer
-    first = xff.split(",")[0].strip()
+    first = xff.split(",")[0].strip() if xff else ""
     if not first:
         return peer
     try:
@@ -856,7 +857,6 @@ def _client_ip(request: Request) -> str:
     except ValueError:
         return peer
     return first
-
 
 def _login_throttle_check(key: str):
     now = datetime.now(timezone.utc).timestamp()
@@ -4041,6 +4041,10 @@ async def checkout(payload: CheckoutIn, request: Request):
         raise HTTPException(400, "All compliance confirmations are required")
     if not payload.items:
         raise HTTPException(400, "Cart is empty")
+    # Le stock est reserve atomiquement avant tout paiement : sans limite, on
+    # peut vider le catalogue en boucle sans jamais payer.
+    _rate_limit("checkout", _client_ip(request), 15, 600,
+                "Too many checkout attempts. Please wait a moment and try again.")
 
     # Priorité au body (évite un préflight CORS déclenché par un en-tête
     # personnalisé, qui échoue derrière certains ingress) — l'en-tête reste
@@ -6548,10 +6552,16 @@ async def admin_delete_coupon(coupon_id: str, admin: dict = Depends(require_area
 
 async def validate_coupon(code: str, subtotal: float,
                           email: Optional[str] = None,
-                          items: Optional[str] = None):
+                          items: Optional[str] = None,
+                          request: Optional[Request] = None):
     """Validation cote client. email et items (JSON) sont OPTIONNELS : sans eux,
     seules les regles de base sont verifiees (retrocompatible avec l'appel actuel).
     La validation finale complete est toujours faite au checkout."""
+    # Sans limite, ce point public est un oracle : on peut enumerer les codes
+    # de reduction a volonte jusqu'a en trouver un valide.
+    if request is not None:
+        _rate_limit("coupon_validate", _client_ip(request), 30, 600,
+                    "Too many coupon attempts. Try again later.")
     coupon = await db.coupons.find_one({"code": code.upper().strip()}, {"_id": 0})
     line_items = None
     if items:
@@ -8579,8 +8589,9 @@ def _affiliate_hash_token(raw: str) -> str:
 def _affiliate_ip_salt() -> bytes:
     # Dérivé de JWT_SECRET (déjà obligatoire) — pas de nouvelle variable d'env
     # requise. Permet de comparer "même IP ?" sans jamais stocker l'IP en clair.
-    secret = os.environ.get("JWT_SECRET", "fironova-fallback-salt")
-    return hashlib.sha256(("aff-ip::" + secret).encode("utf-8")).digest()
+    # Pas de valeur de repli : un secret en dur dans le dépôt est un secret
+    # public. JWT_SECRET est déjà obligatoire au démarrage (voir plus haut).
+    return hashlib.sha256(("aff-ip::" + JWT_SECRET).encode("utf-8")).digest()
 
 
 def _affiliate_hash_ip(ip: Optional[str]) -> Optional[str]:
@@ -11584,10 +11595,49 @@ app.add_middleware(
 
 
 @app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    """En-têtes de sécurité de base — aucun n'était envoyé jusqu'ici.
+
+    Le jeton de session est actuellement lisible par JS (localStorage, voir
+    api.js) : tant que c'est le cas, la CSP est la principale défense contre
+    le vol de session par XSS. `frame-ancestors` autorise l'aperçu Emergent,
+    qui affiche l'application dans une iframe.
+    """
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy", "geolocation=(), microphone=(), camera=(), payment=()"
+    )
+    if COOKIE_SECURE:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+
+    # Pas de X-Frame-Options : cet en-tête hérité n'accepte qu'une seule origine
+    # et contredirait frame-ancestors, qui doit laisser passer l'aperçu Emergent.
+    frame_ancestors = ("frame-ancestors 'self' https://*.emergentagent.com "
+                       "https://*.emergentcf.cloud")
+
+    # `default-src 'none'` casserait la visionneuse PDF intégrée du navigateur
+    # (COA, factures, étiquettes s'ouvrent en document). On ne verrouille donc
+    # complètement que les réponses JSON de l'API.
+    ctype = (response.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+    if ctype == "application/json":
+        policy = f"default-src 'none'; base-uri 'none'; form-action 'none'; {frame_ancestors}"
+    else:
+        policy = frame_ancestors
+    response.headers.setdefault("Content-Security-Policy", policy)
+    return response
+
+
+@app.middleware("http")
 async def _csrf_origin_guard(request: Request, call_next):
     """Block cross-origin state-mutating requests that carry the session cookie."""
-    if request.url.path.startswith("/api/admin/"):
-        return await call_next(request)
+    # /api/admin/* n'est plus exempté. L'exemption laissait précisément les
+    # routes les plus privilégiées sans la protection que ce garde applique
+    # partout ailleurs — y compris les téléversements multipart, que le
+    # navigateur envoie sans préflight CORS.
     authz = (request.headers.get("authorization") or "").strip().lower()
     uses_bearer = authz.startswith("bearer ")
     if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.cookies.get("access_token") and not uses_bearer:
@@ -11610,6 +11660,21 @@ async def _csrf_origin_guard(request: Request, call_next):
         if origin not in allowed and not matches_regex and not same_origin:
             return Response(status_code=403, content="Origin not allowed", media_type="text/plain")
     return await call_next(request)
+
+
+@app.get("/api/health", include_in_schema=False)
+async def health():
+    """Sonde de disponibilité : vérifie réellement MongoDB.
+
+    Un 200 qui ne teste pas la base ment au load balancer — le process répond
+    alors que l'application ne peut rien servir.
+    """
+    try:
+        await db.command("ping")
+    except Exception as e:
+        logging.error("[health] MongoDB unreachable: %s", e)
+        return JSONResponse(status_code=503, content={"status": "unhealthy", "database": "unreachable"})
+    return {"status": "ok", "database": "ok"}
 
 
 @app.get("/robots.txt", include_in_schema=False)
