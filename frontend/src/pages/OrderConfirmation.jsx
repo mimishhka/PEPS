@@ -5,20 +5,54 @@ import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 
+// Guest orders are not tied to an account, so the only way back into them is
+// the access token issued at checkout. It arrives either in the confirmation
+// email link (?access_token=…) or on the order object returned by /checkout.
+// Kept in sessionStorage so a refresh or an in-app navigation doesn't lock the
+// customer out of their own Interac instructions.
+function guestTokenFor(id, order, search) {
+  const fromUrl = new URLSearchParams(search).get("access_token");
+  const token = fromUrl || order?.access_token || null;
+  if (token) {
+    try { window.sessionStorage.setItem(`order_access_${id}`, token); } catch { /* storage disabled */ }
+    return token;
+  }
+  try { return window.sessionStorage.getItem(`order_access_${id}`); } catch { return null; }
+}
+
 export default function OrderConfirmation() {
   useDocumentHead({ title: "Order", noindex: true });
   const { id } = useParams();
-  const { state } = useLocation();
+  const { state, search } = useLocation();
   const { t, lang } = useLang();
   const [order, setOrder] = useState(state?.order || null);
   const [copied, setCopied] = useState("");
   const [remainingMs, setRemainingMs] = useState(null);
+  const [loadError, setLoadError] = useState("");
+
+  const accessToken = guestTokenFor(id, state?.order, search);
+  const authParams = accessToken ? { params: { access_token: accessToken } } : undefined;
 
   useEffect(() => {
     if (!order) {
-      api.get(`/orders/${id}`).then((r) => setOrder(r.data)).catch(() => {});
+      api.get(`/orders/${id}`, authParams)
+        .then((r) => setOrder(r.data))
+        .catch((err) => {
+          // Previously swallowed, which left the page stuck on "loading"
+          // forever — the customer had no idea what had gone wrong.
+          setLoadError(
+            err?.response?.status === 403
+              ? (lang === "fr"
+                  ? "Ce lien de commande a expiré ou est incomplet. Utilisez le lien du courriel de confirmation, ou connectez-vous si vous avez un compte."
+                  : "This order link has expired or is incomplete. Use the link in your confirmation email, or sign in if you have an account.")
+              : (lang === "fr"
+                  ? "Impossible de charger cette commande. Réessayez dans un instant."
+                  : "Could not load this order. Please try again in a moment.")
+          );
+        });
     }
-  }, [id, order]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, order, accessToken, lang]);
 
   // Countdown uses backend-stored deadline; falls back to 24h if absent.
   useEffect(() => {
@@ -42,10 +76,10 @@ export default function OrderConfirmation() {
       attempts += 1;
       if (attempts > 45) { clearInterval(iv); return; }
       try {
-        const { data } = await api.get(`/payments/crypto/status/${order.id}`);
+        const { data } = await api.get(`/payments/crypto/status/${order.id}`, authParams);
         if (data.payment_status === "paid") {
           clearInterval(iv);
-          const fresh = await api.get(`/orders/${order.id}`);
+          const fresh = await api.get(`/orders/${order.id}`, authParams);
           setOrder(fresh.data);
         }
       } catch { /* ignore */ }
@@ -62,7 +96,7 @@ export default function OrderConfirmation() {
       attempts += 1;
       if (attempts > 45) { clearInterval(iv); return; }
       try {
-        const { data } = await api.get(`/orders/${order.id}`);
+        const { data } = await api.get(`/orders/${order.id}`, authParams);
         if (data.payment_status === "paid") {
           clearInterval(iv);
           setOrder(data);
@@ -72,6 +106,19 @@ export default function OrderConfirmation() {
     return () => clearInterval(iv);
   }, [order]);
 
+  if (!order && loadError) {
+    return (
+      <div className="max-w-2xl mx-auto px-6 py-20 text-center" data-testid="order-load-error">
+        <h1 className="font-display text-2xl font-bold text-nordfjord mb-3">
+          {lang === "fr" ? "Commande introuvable" : "Order unavailable"}
+        </h1>
+        <p className="text-glacier mb-8">{loadError}</p>
+        <Link to="/catalog" className="btn-pill btn-nova">
+          {lang === "fr" ? "Retour au catalogue" : "Back to catalog"}
+        </Link>
+      </div>
+    );
+  }
   if (!order) return <div className="p-16 font-mono text-xs uppercase tracking-[0.25em]">{t("common.loading")}</div>;
 
   const copy = (text, label) => {

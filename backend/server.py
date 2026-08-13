@@ -1424,6 +1424,61 @@ EMAIL_CHANGE_TTL_HOURS = 24
 GUEST_ORDER_ACCESS_TTL_MINUTES = 60 * 24 * 7
 
 
+async def _issue_order_access_token(order_id: str) -> str:
+    """Jeton de consultation pour une commande passée sans compte.
+
+    Sans ça, un invité ne peut jamais revoir sa commande : get_order exige
+    soit un user_id correspondant, soit ce jeton. C'est critique pour Interac,
+    où le client doit revenir consulter ses instructions de virement.
+
+    Réutilisable jusqu'à expiration (le client revient plusieurs fois), à la
+    différence d'un magic link d'authentification qui, lui, est à usage unique.
+    """
+    raw = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    await db.order_access_tokens.insert_one({
+        "id": str(uuid.uuid4()),
+        "order_id": order_id,
+        "token_hash": _hash_token(raw),
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(minutes=GUEST_ORDER_ACCESS_TTL_MINUTES)).isoformat(),
+        "last_used_at": None,
+        "used": False,  # conservé pour compat; la révocation passe par expires_at
+    })
+    return raw
+
+
+async def _resolve_guest_access_token(order: dict) -> Optional[str]:
+    """Jeton de consultation à mettre dans un lien courriel, ou None.
+
+    - Commande rattachée à un compte : rien, le client se connecte.
+    - Commande invité au moment du checkout : le jeton transitoire est déjà là.
+    - Commande invité relue en base (rappel, expédition) : on en émet un neuf,
+      les précédents restant valides jusqu'à leur propre expiration.
+    """
+    if order.get("user_id"):
+        return None
+    existing = order.get("access_token")
+    if existing:
+        return existing
+    order_id = order.get("id")
+    if not order_id:
+        return None
+    try:
+        return await _issue_order_access_token(order_id)
+    except Exception:
+        logging.exception("guest order access token failed for %s", order_id)
+        return None
+
+
+def _guest_order_url(order_id: str, access_token: Optional[str]) -> str:
+    base = (PUBLIC_BASE_URL or "").rstrip("/")
+    if not base:
+        return ""
+    url = f"{base}/order/{order_id}"
+    return f"{url}?access_token={access_token}" if access_token else url
+
+
 async def account_update_profile(payload: ProfileUpdateIn, user: dict = Depends(get_current_user)):
     name = payload.name.strip()
     await db.users.update_one({"id": user["id"]}, {"$set": {"name": name}})
@@ -3458,7 +3513,7 @@ async def send_order_confirmation(order: dict) -> None:
     if not order.get("email"):
         logging.info("[email] skip customer confirm: no email on order %s", order["order_number"])
     else:
-        lang, to, ctx = _order_ctx(order)
+        lang, to, ctx = await _order_ctx(order)
         key = "order_confirmation_crypto" if order.get("payment_method") == "nowpayments" else "order_confirmation_interac"
         await send_template_email(key, to, lang, ctx, order)
 
@@ -3475,7 +3530,7 @@ async def send_payment_received(order: dict) -> None:
     if not order.get("email"):
         logging.info("[email] skip payment-received: no email on order %s", order["order_number"])
         return
-    lang, to, ctx = _order_ctx(order)
+    lang, to, ctx = await _order_ctx(order)
     await send_template_email("payment_received", to, lang, ctx, order)
 
 
@@ -3572,7 +3627,7 @@ async def send_shipping_notification(order: dict) -> None:
         f"style='display:inline-block;background:#050505;color:#fff;font-family:monospace;font-size:12px;"
         f"letter-spacing:2px;padding:12px 24px;text-decoration:none'>TRACK PARCEL / SUIVRE →</a></p>"
     )
-    lang, to, ctx = _order_ctx(order)
+    lang, to, ctx = await _order_ctx(order)
     ctx["tracking_number"] = pin or ctx.get("tracking_number", "")
     order = {**order, "tracking_number": ctx["tracking_number"]}
     await send_template_email("shipping", to, lang, ctx, order)
@@ -3600,7 +3655,7 @@ async def send_refund_email(order: dict, amount: float, total_refunded: float) -
         f"Total refunded to date / Total remboursé à ce jour : <b>${total_refunded:.2f} CAD</b> "
         f"(order total / total de la commande : ${float(order.get('total',0)):.2f} CAD)"
     )
-    lang, to, ctx = _order_ctx({**order, "_refund_amount": amount})
+    lang, to, ctx = await _order_ctx({**order, "_refund_amount": amount})
     ctx["amount"] = f"{amount:.2f} $"
     await send_template_email("refund", to, lang, ctx, {**order, "_refund_amount": amount})
 
@@ -4107,6 +4162,18 @@ async def checkout(payload: CheckoutIn, request: Request):
         raise
     order_doc.pop("_id", None)
 
+    # Commande invité (sans compte) : émettre le jeton de consultation, sinon
+    # le client ne peut plus jamais revoir sa commande après le premier écran.
+    # Champs transitoires — ajoutés APRÈS l'insert, donc jamais persistés sur
+    # la commande elle-même (seul le hash du jeton est stocké, à part).
+    if not order_doc.get("user_id"):
+        try:
+            raw_access = await _issue_order_access_token(order_id)
+            order_doc["access_token"] = raw_access
+            order_doc["order_url"] = _guest_order_url(order_id, raw_access)
+        except Exception:
+            logging.exception("guest order access token failed for %s", order_id)
+
     # Persist idempotency key so replay returns same order without re-processing.
     if idem_key:
         try:
@@ -4155,13 +4222,18 @@ async def get_order(order_id: str, request: Request):
         raise HTTPException(403, "Forbidden")
 
     token_hash = _hash_token(access_token)
-    token_doc = await db.order_access_tokens.find_one({"token_hash": token_hash, "order_id": order_id, "used": False})
+    token_doc = await db.order_access_tokens.find_one({"token_hash": token_hash, "order_id": order_id})
     if not token_doc:
         raise HTTPException(403, "Forbidden")
     if datetime.fromisoformat(token_doc["expires_at"]) < datetime.now(timezone.utc):
         raise HTTPException(403, "Forbidden")
 
-    await db.order_access_tokens.update_one({"_id": token_doc["_id"]}, {"$set": {"used": True}})
+    # Réutilisable jusqu'à expiration : le client invité revient plusieurs fois
+    # (instructions Interac, suivi). On journalise le dernier accès sans invalider.
+    await db.order_access_tokens.update_one(
+        {"_id": token_doc["_id"]},
+        {"$set": {"last_used_at": datetime.now(timezone.utc).isoformat()}},
+    )
     if isinstance(order.get("compliance"), dict):
         order["compliance"].pop("ip", None)
     order["notes"] = [n for n in (order.get("notes") or []) if n.get("visible_to_customer")]
@@ -8013,7 +8085,7 @@ async def send_payment_reminders():
             {"$set": {"payment_reminder_sent": True}},
         )
         if marked.modified_count and order.get("email"):
-            lang, to, ctx = _order_ctx(order)
+            lang, to, ctx = await _order_ctx(order)
             await send_template_email("payment_reminder", to, lang, ctx, order)
     return len(pending)
 
@@ -8050,7 +8122,7 @@ async def cancel_stale_unpaid_orders():
             await _cancel_order_side_effects(order, reverse_affiliate=False)
             logging.info("Auto-cancelled unpaid order %s", order.get("order_number", order["id"]))
             if order.get("email"):
-                lang, to, ctx = _order_ctx(order)
+                lang, to, ctx = await _order_ctx(order)
                 asyncio.create_task(send_template_email("order_expired", to, lang, ctx, order))
     return len(stale)
 
@@ -10542,7 +10614,7 @@ EMAIL_BLOCKS = ("none", "interac", "crypto", "items", "tracking", "refund_detail
 EMAIL_TEMPLATE_CATALOG = {
     "order_confirmation_interac": {
         "label": "Commande reçue — Interac / Order received — Interac",
-        "variables": ["{{order_number}}", "{{customer_name}}", "{{total}}"],
+        "variables": ["{{order_number}}", "{{customer_name}}", "{{total}}", "{{order_url}}"],
         "block": "interac",
         "default": {
             "subject_fr": "FIRONOVA — Votre commande {{order_number}} est réservée",
@@ -10555,12 +10627,14 @@ EMAIL_TEMPLATE_CATALOG = {
             "body_en": "Below you'll find everything you need to complete your transfer. <strong>One essential detail:</strong> please include your order number <strong>{{order_number}}</strong> in the transfer message — that's how we match your payment to your order quickly.",
             "outro_fr": "Votre commande reste réservée pendant 12 heures. Une question, un doute ? Répondez simplement à ce courriel, une vraie personne vous lira.",
             "outro_en": "Your order stays reserved for 12 hours. Any question or hesitation? Just reply to this email — a real person will read it.",
-            "cta_url": "", "cta_label_fr": "", "cta_label_en": "",
+            "cta_url": "{{order_url}}",
+            "cta_label_fr": "Voir ma commande",
+            "cta_label_en": "View my order",
         },
     },
     "order_confirmation_crypto": {
         "label": "Commande reçue — Crypto / Order received — Crypto",
-        "variables": ["{{order_number}}", "{{customer_name}}", "{{total}}"],
+        "variables": ["{{order_number}}", "{{customer_name}}", "{{total}}", "{{order_url}}"],
         "block": "crypto",
         "default": {
             "subject_fr": "FIRONOVA — Votre commande {{order_number}} est réservée",
@@ -10573,12 +10647,14 @@ EMAIL_TEMPLATE_CATALOG = {
             "body_en": "The amount and payment address are generated specifically for your order. Once the transaction is confirmed on the blockchain, your payment reaches us automatically — nothing more for you to do.",
             "outro_fr": "Une question sur le processus ? Répondez à ce courriel, nous sommes là pour vous accompagner.",
             "outro_en": "Any question about the process? Reply to this email — we're here to help.",
-            "cta_url": "", "cta_label_fr": "", "cta_label_en": "",
+            "cta_url": "{{order_url}}",
+            "cta_label_fr": "Voir ma commande",
+            "cta_label_en": "View my order",
         },
     },
     "payment_reminder": {
         "label": "Rappel de paiement (6h) / Payment reminder (6h)",
-        "variables": ["{{order_number}}", "{{customer_name}}", "{{total}}"],
+        "variables": ["{{order_number}}", "{{customer_name}}", "{{total}}", "{{order_url}}"],
         "block": "interac",
         "default": {
             "subject_fr": "FIRONOVA — Petit rappel pour votre commande {{order_number}}",
@@ -10591,7 +10667,9 @@ EMAIL_TEMPLATE_CATALOG = {
             "body_en": "There's still a little time to complete your Interac e-transfer using the details below. After the 12-hour window, the order will be released automatically — but nothing is lost, you can always place it again.",
             "outro_fr": "Un empêchement, une hésitation ? Écrivez-nous, nous trouverons une solution ensemble.",
             "outro_en": "Ran into something, or hesitating? Write to us — we'll find a solution together.",
-            "cta_url": "", "cta_label_fr": "", "cta_label_en": "",
+            "cta_url": "{{order_url}}",
+            "cta_label_fr": "Régler ma commande",
+            "cta_label_en": "Complete my order",
         },
     },
     "order_expired": {
@@ -11042,8 +11120,15 @@ async def admin_email_template_preview(key: str, lang: str = "fr",
 # ===== FIRONOVA_EMAIL_ENGINE_END =====
 
 # ===== FIRONOVA_EMAIL_WIRING_START =====
-def _order_ctx(order: dict) -> tuple:
-    """Construit (lang, to, ctx) à partir d'une commande."""
+async def _order_ctx(order: dict) -> tuple:
+    """Construit (lang, to, ctx) à partir d'une commande.
+
+    Async car une commande invité doit disposer d'un jeton de consultation pour
+    que {{order_url}} soit utilisable : les courriels envoyés plus tard (rappel
+    de paiement, expédition) repartent d'une commande relue en base, où le
+    jeton transitoire du checkout n'existe plus. On en émet un à la demande —
+    seul le hash est stocké, donc l'ancien n'est pas récupérable.
+    """
     lang = (order.get("lang") or "fr").lower()
     name = order.get("customer_name") or order.get("name") or (order.get("shipping_address") or {}).get("name") or ""
     ctx = {
@@ -11055,6 +11140,10 @@ def _order_ctx(order: dict) -> tuple:
         "tracking_url": order.get("tracking_url") or "",
         "catalog_url": (PUBLIC_BASE_URL or "").rstrip("/") + "/catalog",
         "cart_url": (PUBLIC_BASE_URL or "").rstrip("/") + "/cart",
+        # Lien de retour vers la commande. Pour un invité, il porte le jeton
+        # d'accès (transitoire sur le dict, jamais stocké sur la commande) —
+        # sans lui le client n'a aucun moyen de revenir à ses instructions.
+        "order_url": _guest_order_url(order.get("id", ""), await _resolve_guest_access_token(order)),
     }
     return lang, order.get("email"), ctx
 # ===== FIRONOVA_EMAIL_WIRING_END =====
