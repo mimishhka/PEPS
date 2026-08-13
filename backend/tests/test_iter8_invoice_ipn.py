@@ -1,4 +1,4 @@
-"""NORDPEP iteration 8 tests — NOWPayments INVOICE + widget + signed IPN webhook.
+"""FIRONOVA iteration 8 tests — NOWPayments INVOICE + widget + signed IPN webhook.
 
 Coverage:
 - POST /api/checkout (nowpayments) → payment_info.provider_response has invoice_id/invoice_url/price_amount/payment_status=waiting, NO pay_address
@@ -34,7 +34,7 @@ if not BASE_URL:
 assert BASE_URL, "REACT_APP_BACKEND_URL must be set"
 
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-DB_NAME = os.environ.get("DB_NAME", "nordpep_db")
+DB_NAME = os.environ.get("DB_NAME", "fironova")
 
 # Read IPN secret from backend .env (never printed)
 IPN_SECRET = None

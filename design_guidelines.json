@@ -1,6 +1,6 @@
 {
   "project_name": "FIRONOVA",
-  "_status": "SOURCE DE VÉRITÉ UI. Aligné sur frontend/src/styles/tokens.css (v1.0.0 « LE SIGNAL »), frontend/tailwind.config.js et frontend/src/index.css. Toute modification ici doit être répercutée dans ces trois fichiers — et inversement. Remplace l'ancienne spec NORDPEP / Archetype 4 (Swiss & High-Contrast), qui est OBSOLÈTE et ne doit plus être appliquée.",
+  "_status": "SOURCE DE VÉRITÉ UI. Aligné sur frontend/src/styles/tokens.css (v1.0.0 « LE SIGNAL »), frontend/tailwind.config.js et frontend/src/index.css. Toute modification ici doit être répercutée dans ces trois fichiers — et inversement. Remplace l'ancienne spec de la marque précédente / Archetype 4 (Swiss & High-Contrast), qui est OBSOLÈTE et ne doit plus être appliquée.",
   "theme_and_archetype": {
     "theme": "light",
     "archetype": "Maison de luxe editorial — « LE SIGNAL »",
@@ -121,7 +121,7 @@
     "newsletter": "Panneau grenat arrondi. Champ + CTA dans une pilule bg-paper. Consentement LCAP/CASL via case à cocher data-testid=\"newsletter-consent\", JAMAIS pré-cochée, avec texte de consentement explicite (i18n home.newsletterConsent). Soumission → POST /api/newsletter/subscribe {email, lang, source}. Retour via toast sonner. Lien de désabonnement obligatoire dans chaque envoi."
   },
   "media": {
-    "note": "Le chromatogramme HPLC et le sceau de certification sont des SVG inline — ce sont eux la signature visuelle, pas la photographie. Les photos de catégories restent des visuels labo/santé sous voile grenat (from-garnet/85). Pas de filtre grayscale (direction NORDPEP), pas de photo glaciaire nordique."
+    "note": "Le chromatogramme HPLC et le sceau de certification sont des SVG inline — ce sont eux la signature visuelle, pas la photographie. Les photos de catégories restent des visuels labo/santé sous voile grenat (from-garnet/85). Pas de filtre grayscale (direction de la marque précédente), pas de photo glaciaire nordique."
   },
   "tech_stack_instructions": {
     "frontend": "React (CRA + craco), Tailwind, Shadcn UI, axios.",

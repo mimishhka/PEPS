@@ -51,7 +51,11 @@ DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_MINUTES = 60 * 24 * 7  # 7 days for ecommerce UX
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@nordpep.ca")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@fironova.com")
+# Compte admin de l'ancienne marque. Conservé uniquement pour la migration
+# ci-dessous (seed_admin_and_products) : il est renommé au premier démarrage,
+# pas recréé. Voir _LEGACY_ADMIN_EMAIL dans seed_admin_and_products.
+_LEGACY_ADMIN_EMAIL = "admin@nordpep.ca"  # ne pas "rebrander" : c'est la valeur à retrouver en base
 # Aucun défaut : un mot de passe admin en dur dans le repo est un mot de passe public.
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 if not ADMIN_PASSWORD:
@@ -4089,7 +4093,7 @@ async def checkout(payload: CheckoutIn, request: Request):
 
         order_id = str(uuid.uuid4())
         # Numérotation Fironova : FN-AAMMJJ-XXXXXX (l'ancien préfixe NP- venait
-        # de NORDPEP ; les commandes existantes gardent leur numéro).
+        # de la marque précédente ; les commandes existantes gardent leur numéro).
         order_number = f"FN-{datetime.now(timezone.utc).strftime('%y%m%d')}-{order_id[:6].upper()}"
 
         # Réservation atomique AVANT tout appel réseau au PSP. Ferme la fenêtre
@@ -7880,7 +7884,31 @@ async def seed_admin_and_products():
     await db.shipping_zones.create_index("deleted_at")
     await db.shipping_methods.create_index("deleted_at")
     await db.orders.create_index("deleted_at")
-    # Admin
+    # Admin — migration d'identité NORDPEP -> FIRONOVA.
+    # Le compte admin historique portait une adresse @nordpep.ca. Sans reprise
+    # explicite, changer ADMIN_EMAIL créerait un SECOND admin et laisserait
+    # l'ancien actif avec son ancien mot de passe (qui a fuité). On renomme
+    # donc le compte existant au lieu d'en créer un nouveau. Idempotent.
+    if ADMIN_EMAIL.lower() != _LEGACY_ADMIN_EMAIL:
+        legacy = await db.users.find_one({"email": _LEGACY_ADMIN_EMAIL})
+        if legacy:
+            clash = await db.users.find_one({"email": ADMIN_EMAIL.lower()})
+            if clash:
+                logging.warning(
+                    "[migration] comptes admin en double : %s et %s coexistent. "
+                    "Le compte hérité n'a pas été renommé — résolvez-le manuellement.",
+                    _LEGACY_ADMIN_EMAIL, ADMIN_EMAIL.lower(),
+                )
+            else:
+                await db.users.update_one(
+                    {"id": legacy["id"]},
+                    {"$set": {"email": ADMIN_EMAIL.lower(), "name": "FIRONOVA Admin"},
+                     # Révoque toute session ouverte sous l'ancienne identité.
+                     "$inc": {"token_version": 1}},
+                )
+                logging.info("[migration] compte admin %s renommé en %s",
+                             _LEGACY_ADMIN_EMAIL, ADMIN_EMAIL.lower())
+
     existing = await db.users.find_one({"email": ADMIN_EMAIL.lower()})
     hashed = hash_password(ADMIN_PASSWORD)
     if not existing:

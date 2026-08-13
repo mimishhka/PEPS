@@ -1,9 +1,9 @@
-# NORDPEP — Product Requirements Document
+# FIRONOVA — Product Requirements Document
 
 **Last updated**: 2026-06-29
 
 ## Original Problem Statement
-E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (NORDPEP brand).
+E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (FIRONOVA brand).
 
 ## Stack
 - Backend: FastAPI 0.110 · Motor · bcrypt · PyJWT · httpx · resend · reportlab
@@ -34,7 +34,7 @@ E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (N
   - `GET /api/admin/shipping/zones` + `methods` CRUD.
   - `GET /api/admin/analytics` (daily revenue 30d, top products, recent orders).
   - `GET /api/admin/orders.csv` + `GET /api/admin/products.csv` exports.
-  - `GET /api/orders/{id}/invoice.pdf` — reportlab-generated branded invoice with NORDPEP logo, items table, totals, footer disclaimer.
+  - `GET /api/orders/{id}/invoice.pdf` — reportlab-generated branded invoice with FIRONOVA logo, items table, totals, footer disclaimer.
 - Stock auto-decrement on checkout. Coupon usage auto-increment. Pre-order line items don't decrement stock below 0.
 - Payment status → "paid" automatically transitions fulfillment to "processing".
 - Featured filter on `/products?featured=true`. 6 products seeded as featured.
@@ -59,7 +59,7 @@ E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (N
 
 ## Prioritized Backlog
 ### P0 (provided keys needed)
-- Resend `RESEND_API_KEY` + nordpep.ca domain verification → live emails.
+- Resend `RESEND_API_KEY` + fironova.com domain verification → live emails.
 - NOWPayments API key + IPN webhook for live crypto.
 - Real `INTERAC_EMAIL` for actual e-Transfer recipient.
 
@@ -86,7 +86,7 @@ E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (N
 - `REACT_APP_BACKEND_URL` (frontend)
 
 ## Admin
-- Email: `admin@nordpep.ca`
+- Email: `admin@fironova.com`
 - Password: `[REDACTED-ROTATE-ME]`
 - One-click entry via ADMIN button in header (auto-login) or hidden dot in footer.
 
@@ -96,7 +96,7 @@ E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (N
 - Lien retiré du menu du haut ; accessible uniquement via le pied de page, section renommée « Informations ».
 - Politique d'expédition complète ajoutée à la page Conditions Générales (section #shipping) : 7 sous-sections bilingues (livraison gratuite 200 $+, délais par région, expédition avant 14 h HE, retards, erreurs d'adresse, colis perdus, retours). Inspirée de peptidewarehouse.ca, reformulée sans plagiat.
 - Page dédiée /privacy créée (Politique de confidentialité, 11 sections bilingues FR/EN inspirées de peptidewarehouse.ca, reformulées) : collecte/utilisation, données de journal, témoins, DNT, fournisseurs, communications, divulgation légale, sécurité, transfert international, liens tiers, modifications. Mention LPRPDE + Loi 25 conservée. Lien pied de page mis à jour ; ancienne section privacy retirée de /compliance.
-- Page FAQ dédiée /faq créée (accordéons Shadcn, 5 catégories, 22 questions bilingues FR/EN) alignée sur les Conditions Générales, la Politique d'expédition (200 $ gratuit, 14 h HE, délais régionaux, colis perdus, erreurs d'adresse) et les paiements (Interac, NOWPayments). Sections : Expédition, Entreposage & manipulation, Paiement, Commandes/retours/remboursements, Produits & usage permis (19+, recherche uniquement, liens vers CG). Bloc contact info@nordpep.ca. Lien pied de page mis à jour ; ancienne section FAQ retirée de /compliance.
+- Page FAQ dédiée /faq créée (accordéons Shadcn, 5 catégories, 22 questions bilingues FR/EN) alignée sur les Conditions Générales, la Politique d'expédition (200 $ gratuit, 14 h HE, délais régionaux, colis perdus, erreurs d'adresse) et les paiements (Interac, NOWPayments). Sections : Expédition, Entreposage & manipulation, Paiement, Commandes/retours/remboursements, Produits & usage permis (19+, recherche uniquement, liens vers CG). Bloc contact info@fironova.com. Lien pied de page mis à jour ; ancienne section FAQ retirée de /compliance.
 - Livraison : tarif fixe 20 $ sous 200 $, GRATUITE dès 200 $ (backend _build_order_totals + checkout frontend avec indice « plus que X $ »). Env: FREE_SHIPPING_THRESHOLD_CAD=200.
 - Annulation automatique des commandes impayées après 48 h (watchdog asyncio horaire + au démarrage) : statuts cancelled, note système, remise en stock des variantes. Env: UNPAID_ORDER_TTL_HOURS=48.
 - Textes mis à jour : politique d'expédition (tarif fixe + section Commandes impayées) et FAQ (2 réponses). Testé par testing_agent (iteration_5.json — 100 % backend & frontend).

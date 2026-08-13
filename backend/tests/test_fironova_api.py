@@ -1,4 +1,4 @@
-"""NORDPEP API backend tests"""
+"""FIRONOVA API backend tests"""
 import os
 import time
 import uuid
@@ -36,10 +36,10 @@ def test_meta(s):
     r = s.get(f"{BASE_URL}/api/meta")
     assert r.status_code == 200
     data = r.json()
-    assert data["store"] == "NORDPEP"
+    assert data["store"] == "FIRONOVA"
     assert data["currency"] == "CAD"
     assert data["min_age"] == 19
-    assert data["interac_email"] == "orders@nordpep.ca"
+    assert data["interac_email"] == "orders@fironova.com"
     assert "QC" in data["provinces"]
     # Iteration 2: shipping flat changed to $20
     assert data["shipping_flat_cad"] == 20.0
@@ -131,7 +131,7 @@ def test_checkout_interac_qc(user_session):
     assert r.status_code == 200, r.text
     order = r.json()
     assert order["payment_status"] == "awaiting_etransfer"
-    assert order["payment_info"]["instructions"]["send_to"] == "orders@nordpep.ca"
+    assert order["payment_info"]["instructions"]["send_to"] == "orders@fironova.com"
     assert order["order_number"].startswith("NP-")
     # Taxes removed in iteration 2
     assert order["tax_rate"] == 0.0
@@ -385,7 +385,7 @@ def test_iter2_checkout_logs_two_emails():
     # Customer Order received email (logged because RESEND_API_KEY empty)
     assert "[email-log] would send" in logs, "No [email-log] entries found in backend logs"
     assert test_email.lower() in logs.lower(), f"Customer email {test_email} not in log"
-    assert "admin@nordpep.ca" in logs, "Admin email recipient not in log"
+    assert "admin@fironova.com" in logs, "Admin email recipient not in log"
     assert "received" in logs.lower() or order_no in logs
 
 

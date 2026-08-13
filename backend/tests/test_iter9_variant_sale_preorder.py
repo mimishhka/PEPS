@@ -1,4 +1,4 @@
-"""NORDPEP iteration 9 — variant sale_price, coa_url, and pre-order (COA pending) pricing.
+"""FIRONOVA iteration 9 — variant sale_price, coa_url, and pre-order (COA pending) pricing.
 
 Coverage:
 - GET /api/products/bpc-157-5mg exposes sale_price + coa_url per variant.
@@ -34,7 +34,7 @@ if not BASE_URL:
 assert BASE_URL
 
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-DB_NAME = os.environ.get("DB_NAME", "nordpep_db")
+DB_NAME = os.environ.get("DB_NAME", "fironova")
 
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin-pass")

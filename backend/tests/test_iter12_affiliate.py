@@ -1,4 +1,4 @@
-"""NORDPEP iteration 12 — affiliate program (dashboard data + admin controls).
+"""FIRONOVA iteration 12 — affiliate program (dashboard data + admin controls).
 
 Coverage:
 - Admin invite -> user join (token) -> affiliate active with code + coupon.

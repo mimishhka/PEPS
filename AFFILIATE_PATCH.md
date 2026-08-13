@@ -1208,7 +1208,7 @@ function AdminDevicesCard({ devices, L }) {
 > Coller ce fichier entier dans `backend/tests/test_iter12_affiliate.py`.
 
 ```python
-"""NORDPEP iteration 12 — affiliate program (dashboard data + admin controls).
+"""FIRONOVA iteration 12 — affiliate program (dashboard data + admin controls).
 
 Coverage:
 - Admin invite -> user join (token) -> affiliate active with code + coupon.

@@ -1,4 +1,4 @@
-"""NORDPEP iteration 7 tests — NOWPayments LIVE integration + countdown backend support.
+"""FIRONOVA iteration 7 tests — NOWPayments LIVE integration + countdown backend support.
 
 Coverage:
 - POST /api/checkout with nowpayments/btc → real payment_id, real pay_address, no mock flag
@@ -19,7 +19,7 @@ BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 assert BASE_URL, "REACT_APP_BACKEND_URL must be set"
 
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
-DB_NAME = os.environ.get("DB_NAME", "nordpep_db")
+DB_NAME = os.environ.get("DB_NAME", "fironova")
 
 # Track created orders for cleanup
 CREATED_ORDERS = []  # list of (order_id, items) tuples

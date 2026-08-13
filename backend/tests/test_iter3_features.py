@@ -1,4 +1,4 @@
-"""NORDPEP iteration 3 — featured/preorder/COA, coupons, shipping zones, analytics,
+"""FIRONOVA iteration 3 — featured/preorder/COA, coupons, shipping zones, analytics,
 CSV exports, invoice PDF, atomic confirm-payment.
 
 Runs against the public REACT_APP_BACKEND_URL (no /api default), uses the seeded admin.
@@ -143,8 +143,8 @@ def test_checkout_rejects_when_stock_zero_no_preorder(admin_headers, user_sessio
 
 # ----------------------- coupons -----------------------
 @pytest.fixture(scope="session")
-def nordpep10_coupon(admin_headers):
-    code = "NORDPEP10"
+def fironova10_coupon(admin_headers):
+    code = "FIRONOVA10"
     # delete pre-existing if any (idempotency)
     existing = requests.get(f"{BASE_URL}/api/admin/coupons", headers=admin_headers).json()
     for c in existing:
@@ -158,22 +158,22 @@ def nordpep10_coupon(admin_headers):
     requests.delete(f"{BASE_URL}/api/admin/coupons/{r.json()['id']}", headers=admin_headers)
 
 
-def test_validate_coupon_valid(nordpep10_coupon):
+def test_validate_coupon_valid(fironova10_coupon):
     r = requests.post(f"{BASE_URL}/api/coupons/validate",
-                      params={"code": "NORDPEP10", "subtotal": 100})
+                      params={"code": "FIRONOVA10", "subtotal": 100})
     assert r.status_code == 200, r.text
     j = r.json()
     assert j["discount_amount"] == 10.0
-    assert j["code"] == "NORDPEP10"
+    assert j["code"] == "FIRONOVA10"
 
 
-def test_validate_coupon_invalid(nordpep10_coupon):
+def test_validate_coupon_invalid(fironova10_coupon):
     r = requests.post(f"{BASE_URL}/api/coupons/validate",
                       params={"code": "NOPE_BAD_CODE", "subtotal": 100})
     assert r.status_code == 400
 
 
-def test_checkout_applies_coupon(nordpep10_coupon, user_session):
+def test_checkout_applies_coupon(fironova10_coupon, user_session):
     # find a product priced so that subtotal >=50
     products = requests.get(f"{BASE_URL}/api/products").json()
     target = next((p for p in products if p["price_cad"] >= 60 and p.get("stock", 0) > 0), None)
@@ -182,14 +182,14 @@ def test_checkout_applies_coupon(nordpep10_coupon, user_session):
         "items": [{"product_id": target["id"], "qty": 1}],
         "shipping": {"full_name": "C", "address1": "1", "city": "T",
                      "province": "ON", "postal_code": "M5H2N2", "country": "CA"},
-        "payment_method": "interac", "coupon_code": "NORDPEP10",
+        "payment_method": "interac", "coupon_code": "FIRONOVA10",
         "accept_terms": True, "confirm_age": True, "confirm_research_use": True,
     }
     r = requests.post(f"{BASE_URL}/api/checkout", json=co, headers=user_session["headers"])
     assert r.status_code == 200, r.text
     o = r.json()
     assert o["discount"] > 0
-    assert o["coupon"]["code"] == "NORDPEP10"
+    assert o["coupon"]["code"] == "FIRONOVA10"
     expected = round(o["subtotal"] - o["discount"] + 20.0, 2)
     assert abs(o["total"] - expected) < 1e-6
 
