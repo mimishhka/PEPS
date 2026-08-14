@@ -1310,6 +1310,24 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [resending, setResending] = useState(false);
+  const [aliasBusy, setAliasBusy] = useState(null);
+
+  const toggleAlias = async (aliasCode, nextActive) => {
+    setAliasBusy(aliasCode);
+    try {
+      await api.put(`/admin/affiliates/${affiliateId}/aliases/${aliasCode}`,
+                    { active: nextActive });
+      toast.success(nextActive
+        ? L(`Alias ${aliasCode} réactivé`, `Alias ${aliasCode} reactivated`)
+        : L(`Alias ${aliasCode} désactivé`, `Alias ${aliasCode} deactivated`));
+      load();
+      onChange();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setAliasBusy(null);
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -1438,6 +1456,66 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 {editing ? L("Annuler l'édition", "Cancel edit") : L("Éditer les paramètres", "Edit settings")}
               </ActBtn>
             </div>
+
+            {/* Aliases historiques (codes précédents suite à changement de rabais) */}
+            {(a.aliases || []).length > 0 && (
+              <div className="rounded-xl border border-ash bg-clinical p-4" data-testid="affiliate-aliases">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="font-data text-[11px] uppercase tracking-[0.24em] text-nordfjord">
+                    {L("Codes précédents", "Historical codes")}
+                    <span className="ml-2 text-glacier normal-case tracking-normal font-normal">
+                      ({(a.aliases || []).length})
+                    </span>
+                  </p>
+                  <p className="font-data text-[10px] text-glacier">
+                    {L("Un alias actif préserve l'attribution des liens partagés dans le passé.",
+                       "An active alias preserves attribution for previously-shared links.")}
+                  </p>
+                </div>
+                <ul className="space-y-1.5">
+                  {(a.aliases || [])
+                    .slice()
+                    .sort((x, y) => (y.archived_at || "").localeCompare(x.archived_at || ""))
+                    .map((al) => (
+                    <li key={al.code} className="flex items-center gap-3 py-1.5 border-b border-ash/50 last:border-0"
+                        data-testid={`affiliate-alias-${al.code}`}>
+                      <code className="font-data text-sm font-bold text-nordfjord">{al.code}</code>
+                      {al.discount_percent_at_creation != null && (
+                        <span className="font-data text-[10px] uppercase tracking-wider text-glacier">
+                          {al.discount_percent_at_creation}%
+                        </span>
+                      )}
+                      <span className="font-data text-[10px] text-glacier flex-1">
+                        {al.archived_at
+                          ? L(`archivé ${fmtDate(al.archived_at)}`, `archived ${fmtDate(al.archived_at)}`)
+                          : ""}
+                      </span>
+                      <button
+                        onClick={() => toggleAlias(al.code, !al.active)}
+                        disabled={aliasBusy === al.code}
+                        data-testid={`affiliate-alias-toggle-${al.code}`}
+                        className={`px-3 py-1 rounded-full font-data text-[10px] font-bold uppercase tracking-wider transition disabled:opacity-50 ${
+                          al.active
+                            ? "bg-success/15 text-success hover:bg-success/25"
+                            : "bg-glacier/15 text-glacier hover:bg-glacier/25"
+                        }`}
+                        title={al.active
+                          ? L("Désactiver — les liens ?ref=<alias> ne créditeront plus l'affilié",
+                              "Deactivate — ?ref=<alias> links will no longer credit the affiliate")
+                          : L("Réactiver — l'attribution reprend pour les liens ?ref=<alias>",
+                              "Reactivate — ?ref=<alias> links resume crediting")}
+                      >
+                        {aliasBusy === al.code
+                          ? "…"
+                          : al.active
+                            ? L("Actif", "Active")
+                            : L("Inactif", "Inactive")}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Editable fields */}
             {editing && (

@@ -141,6 +141,21 @@ async def admin_payout_verify(payout_id: str, payload: s.PayoutVerifyIn, admin: 
     return await s.admin_payout_verify(payout_id, payload, admin)
 
 
+@router.post("/admin/affiliates/payouts/batch")
+async def admin_affiliate_batch_payout(payload: s.AffiliatePayoutBatchIn,
+                                        admin: dict = Depends(s.get_admin_user)):
+    """Envoie un lot de payouts via NOWPayments Mass Payouts (1 seul 2FA).
+    Fallback en file d'attente manuelle si NOWPAYMENTS_PAYOUT_ENABLED != true."""
+    return await s.admin_affiliate_batch_payout(payload, admin)
+
+
+@router.get("/admin/affiliates/payouts/export.csv")
+async def admin_affiliate_payouts_csv(admin: dict = Depends(s.get_admin_user)):
+    """Exporte les payouts 'ready' + 'queued_manual' au format NOWPayments
+    Mass Payouts (import CSV manuel via dashboard NOWPayments)."""
+    return await s.admin_affiliate_payouts_csv(admin)
+
+
 @router.get("/admin/affiliates/payouts/{payout_id}/status")
 async def admin_payout_status(payout_id: str, admin: dict = Depends(s.get_admin_user)):
     return await s.admin_payout_status(payout_id, admin)

@@ -8329,6 +8329,7 @@ async def startup_event():
     await _backfill_affiliate_coupons()
     if await _acquire_worker_lock("background_tasks"):
         asyncio.create_task(_unpaid_orders_watchdog())
+        asyncio.create_task(_monthly_payouts_scheduler())
         asyncio.create_task(_backfill_dispatch_batch())
         asyncio.create_task(_release_preorders_watchdog())
         asyncio.create_task(_interac_deposit_watchdog())
@@ -10397,6 +10398,271 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
     return {"ok": True, "period": period, "payouts_created": len(created),
             "fx_rate_cad_to_usd": fx_rate, "fx_source": fx_source,
             "detail": created}
+
+
+# =============================================================================
+# NOWPayments Mass Payouts — envoi crypto batch (1 seul 2FA)
+# =============================================================================
+NOWPAYMENTS_PAYOUT_ENABLED = os.environ.get("NOWPAYMENTS_PAYOUT_ENABLED", "false").lower() == "true"
+NOWPAYMENTS_JWT = os.environ.get("NOWPAYMENTS_JWT", "")   # session token JWT payout API
+
+
+class AffiliatePayoutBatchIn(BaseModel):
+    payout_ids: List[str] = Field(min_length=1, max_length=200)
+    # 2FA/OTP obligatoire pour Mass Payouts NOWPayments — passé au vol par l'admin.
+    otp: Optional[str] = None
+
+
+async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
+                                        admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Envoie plusieurs payouts USDT/USDC en lot via NOWPayments Mass Payouts.
+    - Filtre les payouts sans adresse configurée → renvoyés dans `skipped`.
+    - Marque les envoyés comme `status: 'processing'` avec `np_batch_id`.
+    - Nécessite `NOWPAYMENTS_PAYOUT_ENABLED=true` + `NOWPAYMENTS_JWT` en env.
+    - Le webhook `/api/webhook/nowpayments-payout` (déjà en place) confirmera
+      le passage à `paid`."""
+    # Charge les payouts demandés
+    payouts = await db.affiliate_payouts.find(
+        {"id": {"$in": payload.payout_ids}, "status": "ready"},
+        {"_id": 0},
+    ).to_list(200)
+    if not payouts:
+        raise HTTPException(400, "No eligible payouts (status must be 'ready')")
+
+    withdrawals = []
+    skipped = []
+    for p in payouts:
+        addr = (p.get("payout_address") or "").strip()
+        cur = (p.get("currency") or "").lower()
+        amt = p.get("amount")
+        if not addr or cur not in AFFILIATE_PAYOUT_CURRENCIES or not amt:
+            skipped.append({"payout_id": p["id"], "reason": "missing address or unsupported currency"})
+            continue
+        # Format NOWPayments Mass Payouts : usdterc20 / usdcerc20
+        np_currency = "usdterc20" if cur == "usdt" else "usdcerc20"
+        withdrawals.append({
+            "address": addr,
+            "currency": np_currency,
+            "amount": float(amt),
+            "ipn_callback_url": f"{PUBLIC_BASE_URL}/api/webhook/nowpayments-payout",
+            "unique_external_id": p["id"],
+        })
+
+    if not withdrawals:
+        return {"ok": False, "batch_id": None, "sent": 0, "skipped": skipped,
+                "error": "No withdrawable payouts (missing addresses or invalid currency)"}
+
+    if not NOWPAYMENTS_PAYOUT_ENABLED or not NOWPAYMENTS_JWT:
+        # Mode démo/manuel : on marque les payouts comme "queued_manual" pour que
+        # l'admin sache qu'ils sont prêts à être envoyés via l'export CSV.
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await db.affiliate_payouts.update_many(
+            {"id": {"$in": [w["unique_external_id"] for w in withdrawals]}},
+            {"$set": {"status": "queued_manual", "queued_at": now_iso}},
+        )
+        return {
+            "ok": False,
+            "batch_id": None,
+            "sent": 0,
+            "queued_manual": len(withdrawals),
+            "skipped": skipped,
+            "error": ("NOWPayments Mass Payouts non activé — les payouts ont été mis "
+                      "en file d'attente manuelle. Utilisez le lien 'Exporter CSV' pour "
+                      "les envoyer via le dashboard NOWPayments."),
+        }
+
+    # Appel réel NOWPayments Mass Payouts
+    try:
+        import httpx
+        headers = {
+            "x-api-key": NOWPAYMENTS_API_KEY,
+            "Authorization": f"Bearer {NOWPAYMENTS_JWT}",
+            "Content-Type": "application/json",
+        }
+        if payload.otp:
+            headers["ncw-verify"] = payload.otp
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post(
+                f"{NOWPAYMENTS_BASE_URL}/payout",
+                headers=headers,
+                json={"ipn_callback_url": f"{PUBLIC_BASE_URL}/api/webhook/nowpayments-payout",
+                      "withdrawals": withdrawals},
+            )
+            r.raise_for_status()
+            resp = r.json()
+    except Exception as e:
+        logging.error("[nowpayments payout] batch failed: %s", e)
+        raise HTTPException(502, f"NOWPayments Mass Payouts error: {e}")
+
+    batch_id = str(resp.get("id") or resp.get("batch_id") or f"np_{uuid.uuid4().hex[:12]}")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    ids_sent = [w["unique_external_id"] for w in withdrawals]
+    await db.affiliate_payouts.update_many(
+        {"id": {"$in": ids_sent}},
+        {"$set": {"status": "processing", "np_batch_id": batch_id,
+                  "np_dispatched_at": now_iso, "np_dispatched_by": admin.get("email")}},
+    )
+    return {"ok": True, "batch_id": batch_id, "sent": len(ids_sent),
+            "skipped": skipped, "response": resp}
+
+
+async def admin_affiliate_payouts_csv(admin: dict = Depends(get_admin_user)) -> Response:  # noqa: F821
+    """Export CSV format NOWPayments (Mass Payouts import) pour envoi manuel.
+    Colonnes : Address, Currency, Amount, ExternalId
+    Ne prend que les payouts status 'ready' ou 'queued_manual' avec adresse valide."""
+    cursor = db.affiliate_payouts.find(
+        {"status": {"$in": ["ready", "queued_manual"]}},
+        {"_id": 0, "id": 1, "payout_address": 1, "currency": 1, "amount": 1,
+         "affiliate_code": 1, "period": 1},
+    )
+    rows = [["Address", "Currency", "Amount", "ExternalId", "AffiliateCode", "Period"]]
+    async for p in cursor:
+        addr = (p.get("payout_address") or "").strip()
+        cur = (p.get("currency") or "").lower()
+        amt = p.get("amount")
+        if not addr or cur not in AFFILIATE_PAYOUT_CURRENCIES or not amt:
+            continue
+        np_currency = "usdterc20" if cur == "usdt" else "usdcerc20"
+        rows.append([addr, np_currency, f"{float(amt):.2f}", p["id"],
+                     p.get("affiliate_code", ""), p.get("period", "")])
+    import io, csv
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerows(rows)
+    return Response(
+        content="\ufeff" + buf.getvalue(),   # BOM UTF-8 pour Excel
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=fironova-payouts-nowpayments.csv"},
+    )
+
+
+# ---- Scheduler mensuel (America/Toronto minuit local) ------------------------
+async def _monthly_payouts_scheduler():
+    """Génère automatiquement les payouts le 1er de chaque mois à minuit
+    America/Toronto (heure locale québécoise). Anti-double via collection
+    `payout_runs`."""
+    from zoneinfo import ZoneInfo
+    tz_montreal = ZoneInfo("America/Toronto")
+
+    # Assure l'index unique (idempotent)
+    try:
+        await db.payout_runs.create_index([("period", 1), ("auto", 1)], unique=True)
+    except Exception:
+        pass
+
+    while True:
+        try:
+            now_local = datetime.now(tz_montreal)
+            # Prochain 1er du mois à 00:05 locale (buffer 5 min pour éviter jitter cron)
+            if now_local.month == 12:
+                next_run = now_local.replace(year=now_local.year + 1, month=1, day=1,
+                                              hour=0, minute=5, second=0, microsecond=0)
+            else:
+                next_run = now_local.replace(month=now_local.month + 1, day=1,
+                                              hour=0, minute=5, second=0, microsecond=0)
+            wait_s = (next_run - now_local).total_seconds()
+            logging.info("[monthly-payouts] next auto-run: %s (in %.0f min)",
+                         next_run.isoformat(), wait_s / 60)
+            await asyncio.sleep(max(60, wait_s))
+
+            # Le mois qu'on paie est le PRÉCÉDENT
+            paid_local = datetime.now(tz_montreal)
+            if paid_local.month == 1:
+                period = f"{paid_local.year - 1}-12"
+            else:
+                period = f"{paid_local.year}-{paid_local.month - 1:02d}"
+
+            try:
+                await db.payout_runs.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "period": period,
+                    "auto": True,
+                    "started_at": datetime.now(timezone.utc).isoformat(),
+                    "status": "running",
+                })
+            except Exception:
+                logging.info("[monthly-payouts] period %s already ran, skip", period)
+                continue
+
+            try:
+                # Appelle la génération existante (crée les payouts 'ready')
+                fx_rate, fx_source = await _fetch_cad_to_usd_rate()
+                fx_captured_at = datetime.now(timezone.utc).isoformat()
+                await _generate_payouts_for_period(period, fx_rate, fx_source, fx_captured_at)
+                await db.payout_runs.update_one(
+                    {"period": period, "auto": True},
+                    {"$set": {"status": "done",
+                              "ended_at": datetime.now(timezone.utc).isoformat()}},
+                )
+                logging.info("[monthly-payouts] period %s generated", period)
+            except Exception as e:
+                await db.payout_runs.update_one(
+                    {"period": period, "auto": True},
+                    {"$set": {"status": "failed", "error": str(e)}},
+                )
+                logging.error("[monthly-payouts] period %s failed: %s", period, e)
+        except Exception as e:
+            logging.error("[monthly-payouts] scheduler loop error: %s", e)
+            await asyncio.sleep(3600)
+
+
+async def _generate_payouts_for_period(period: str, fx_rate: float,
+                                        fx_source: str, fx_captured_at: str) -> int:
+    """Extraction du corps de admin_affiliate_run_payouts en fonction réutilisable
+    par le scheduler."""
+    now = datetime.now(timezone.utc)
+    pipeline = [
+        {"$match": {"status": "approved", "payout_id": None}},
+        {"$group": {"_id": "$affiliate_id",
+                    "total": {"$sum": "$commission_amount"},
+                    "ids": {"$push": "$id"}}},
+    ]
+    count = 0
+    async for grp in db.affiliate_referrals.aggregate(pipeline):
+        affiliate_id = grp["_id"]
+        total = round(float(grp["total"]), 2)
+        if total <= 0:
+            continue
+        aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
+        if not aff or aff.get("status") != "active":
+            continue
+        payout_currency = (aff.get("payout_currency") or "usdt").lower()
+        amount_cad = total
+        if payout_currency in AFFILIATE_PAYOUT_CURRENCIES:
+            amount_usd = round(amount_cad * fx_rate, 2)
+            amount_target = amount_usd
+        else:
+            amount_usd = None
+            amount_target = amount_cad
+        payout_id = str(uuid.uuid4())
+        await db.affiliate_payouts.insert_one({
+            "id": payout_id,
+            "affiliate_id": affiliate_id,
+            "affiliate_code": aff.get("code"),
+            "period": period,
+            "amount": amount_target,
+            "amount_cad": amount_cad,
+            "amount_usd": amount_usd,
+            "currency": payout_currency,
+            "fx_rate_cad_to_usd": fx_rate if payout_currency in AFFILIATE_PAYOUT_CURRENCIES else None,
+            "fx_source": fx_source if payout_currency in AFFILIATE_PAYOUT_CURRENCIES else None,
+            "fx_captured_at": fx_captured_at,
+            "payout_address": aff.get("payout_address", ""),
+            "referral_ids": grp["ids"],
+            "referral_count": len(grp["ids"]),
+            "status": "ready",
+            "reference": None,
+            "note": "",
+            "created_at": now.isoformat(),
+            "paid_at": None,
+            "auto_generated": True,
+        })
+        await db.affiliate_referrals.update_many(
+            {"id": {"$in": grp["ids"]}},
+            {"$set": {"payout_id": payout_id}},
+        )
+        count += 1
+    return count
 
 
 async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMarkIn,

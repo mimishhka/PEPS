@@ -167,3 +167,14 @@ Patch reçu contenant : scheduler mensuel avec `payout_runs` anti-double, FX BoC
   - GAP 3b: Nouvel endpoint `POST /api/admin/orders/{id}/reopen` (payload `{mark_paid, note}`) — 400 si non-cancelled, 409 si stock insuffisant avec rollback atomique. Sinon: ré-décrément stock, restaure coupon.used_count (respecte usage_limit), remet `payment_status` au `prev_payment_status` et pose `reopened_at`. Si `mark_paid=True` → confirme direct via `_mark_order_paid`.
 - **Métadonnées d'audit** sur toute commande annulée : `cancelled_at`, `cancelled_reason` (`admin_manual` ou `auto_unpaid_timeout`), `prev_payment_status` conservé.
 - **Tests**: 11/11 pass (`/app/backend/tests/test_cancel_reopen_iter25.py`), iteration_25.json.
+
+## Sprint B — Août 2026 (NOWPayments batch + UI aliases + late alert)
+- **Alerte email paiement tardif** — Déjà en place via `_send_late_payment_admin_alert()` (déclenché par `_flag_late_cancelled_payment` dans le watchdog Interac). Email HTML admin avec CTA "OPEN ORDER PAGE →". Aucun code ajouté.
+- **UI Aliases admin** — Nouvelle section dans le `DetailModal` de `AdminAffiliates.jsx` (testid `affiliate-aliases`). Liste triée par date d'archivage desc, chaque alias affiche code + rabais historique + timestamp archived. Bouton toggle Actif/Inactif (`affiliate-alias-toggle-<code>`) qui appelle `PUT /admin/affiliates/{id}/aliases/{code}` en réel. Confirmations toast + refresh. Section masquée si aucun alias.
+- **NOWPayments Batch Payout**
+  - Nouveau modèle `AffiliatePayoutBatchIn { payout_ids: List[str], otp: Optional[str] }`.
+  - Endpoint `POST /api/admin/affiliates/payouts/batch` — filtre payouts sans adresse/devise valide (renvoyés en `skipped[]`), formate en `usdterc20`/`usdcerc20`, appelle NOWPayments Mass Payouts si `NOWPAYMENTS_PAYOUT_ENABLED=true` + `NOWPAYMENTS_JWT` config (avec header `ncw-verify` OTP), sinon marque `status='queued_manual'` et retourne message clair invitant à l'export CSV. Payouts envoyés : `status='processing'` + `np_batch_id`. Webhook `/api/webhook/nowpayments-payout` existant confirmera → `paid`.
+  - Endpoint `GET /api/admin/affiliates/payouts/export.csv` — export CSV format NOWPayments Mass Payouts (Address, Currency, Amount, ExternalId, AffiliateCode, Period) pour les `ready` + `queued_manual`. BOM UTF-8 pour Excel.
+  - Scheduler mensuel `_monthly_payouts_scheduler()` — timezone `America/Toronto`, se réveille le 1er du mois à 00:05 locale, génère les payouts du mois précédent via `_generate_payouts_for_period()`. Anti-double via collection `payout_runs` (unique idx sur `(period, auto)`). Exécuté seulement par le worker qui détient `background_tasks` lock (safe en multi-pod).
+- **Tests curl** : CSV export → 200, batch endpoint → 400 avec message clair sans payouts éligibles. Scheduler démarre correctement en background sans warning.
+
