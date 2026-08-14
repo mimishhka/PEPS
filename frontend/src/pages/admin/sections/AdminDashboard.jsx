@@ -15,14 +15,31 @@ export default function AdminDashboard() {
   const [analytics, setAnalytics] = useState(null);
   const [enhanced, setEnhanced] = useState(null);
   const [period, setPeriod] = useState(30);
+  // Sans ça, un échec réseau laissait les compteurs à zéro sans rien dire :
+  // un tableau de bord qui affiche 0 $ de revenu par erreur est pire qu'une
+  // erreur visible — il fait tirer de fausses conclusions.
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
-    api.get("/admin/stats").then((r) => setStats(r.data)).catch(() => {});
-    api.get("/admin/analytics").then((r) => setAnalytics(r.data)).catch(() => {});
+    setLoadError("");
+    Promise.all([
+      api.get("/admin/stats").then((r) => setStats(r.data)),
+      api.get("/admin/analytics").then((r) => setAnalytics(r.data)),
+    ]).catch(() => setLoadError(L(
+      "Impossible de charger les statistiques. Les chiffres affichés peuvent être incomplets.",
+      "Could not load statistics. The figures shown may be incomplete.",
+    )));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    api.get(`/admin/analytics/enhanced?period=${period}`).then((r) => setEnhanced(r.data)).catch(() => {});
+    api.get(`/admin/analytics/enhanced?period=${period}`)
+      .then((r) => setEnhanced(r.data))
+      .catch(() => setLoadError(L(
+        "Impossible de charger les statistiques. Les chiffres affichés peuvent être incomplets.",
+        "Could not load statistics. The figures shown may be incomplete.",
+      )));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
 
   const cards = stats ? [
@@ -38,6 +55,15 @@ export default function AdminDashboard() {
 
   return (
     <div className="p-8" data-testid="admin-dashboard">
+      {loadError && (
+        <div
+          role="alert"
+          className="mb-6 border border-[#a3231c] bg-[#f7e6e5] text-[#a3231c] px-4 py-3 rounded-md font-data text-[12px]"
+          data-testid="dashboard-load-error"
+        >
+          {loadError}
+        </div>
+      )}
       <div className="flex items-end justify-between mb-8">
         <div>
           <div className="font-data text-[11px] uppercase tracking-[0.3em] text-nova">// {L("APERÇU", "OVERVIEW")}</div>

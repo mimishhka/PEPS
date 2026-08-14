@@ -3,6 +3,7 @@ import { Download, Plus, Edit, Trash2, Star, X, Save, AlertTriangle, CheckCircle
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError, resolveAssetUrl } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import useEscapeKey from "../../../hooks/useEscapeKey";
 
 const CATEGORIES = ["healing", "gh-secretagogues", "weight-loss", "cognitive", "longevity"];
 
@@ -128,6 +129,8 @@ function newVariant(name = "") {
 }
 
 function ProductEditor({ product, setProduct, onSave, onCancel }) {
+  // Échap ferme la modale — le fond cliquable ne marche qu'à la souris.
+  useEscapeKey(true, onCancel);
   const setVariant = (i, patch) => {
     const next = [...product.variants];
     next[i] = { ...next[i], ...patch };
@@ -137,7 +140,7 @@ function ProductEditor({ product, setProduct, onSave, onCancel }) {
   const removeVariant = (i) => setProduct({ ...product, variants: product.variants.filter((_, idx) => idx !== i) });
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex justify-end" onClick={onCancel}>
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex justify-end" aria-hidden="true" onClick={onCancel}>
       <div className="bg-[#fafafa] w-full max-w-3xl h-full overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="product-editor">
         <div className="bg-ink text-white px-6 py-4 sticky top-0 z-10 flex items-center justify-between">
           <div>

@@ -3,6 +3,7 @@ import { Plus, Trash2, X, Save, MapPin, Edit } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import useEscapeKey from "../../../hooks/useEscapeKey";
 
 export default function AdminShipping() {
   const confirm = useConfirm();
@@ -121,8 +122,10 @@ export default function AdminShipping() {
 }
 
 function Modal({ children, onClose, title, test }) {
+  // Échap ferme la modale — le fond cliquable ne marche qu'à la souris.
+  useEscapeKey(true, onClose);
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" aria-hidden="true" onClick={onClose}>
       <div className="bg-white border border-ink w-full max-w-md p-6 space-y-3" onClick={(e) => e.stopPropagation()} data-testid={test}>
         <div className="flex items-center justify-between mb-2">
           <div className="font-display text-xl font-bold uppercase tracking-tight">{title}</div>

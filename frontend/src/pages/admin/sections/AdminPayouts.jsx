@@ -5,6 +5,7 @@ import { DollarSign, Zap, ShieldCheck, RefreshCw, CheckCircle2, X } from "lucide
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
+import useEscapeKey from "../../../hooks/useEscapeKey";
 
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
 
@@ -227,8 +228,10 @@ function Stat({ label, value }) {
 }
 
 function Modal({ title, children, onClose }) {
+  // Échap ferme la modale — le fond cliquable ne marche qu'à la souris.
+  useEscapeKey(true, onClose);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-nordfjord/40 backdrop-blur-sm p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-nordfjord/40 backdrop-blur-sm p-4" aria-hidden="true" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-display text-lg font-bold text-nordfjord">{title}</h3>

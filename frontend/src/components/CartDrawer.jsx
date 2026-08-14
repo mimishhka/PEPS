@@ -3,11 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
 import ProductImage from "./ProductImage";
+import useEscapeKey from "../hooks/useEscapeKey";
 
 export default function CartDrawer() {
   const { lang, t } = useLang();
   const { items, remove, setQty, subtotal, open, setOpen } = useCart();
   const navigate = useNavigate();
+
+  // Le fond cliquable ne ferme le panier qu'à la souris. Échap rétablit
+  // le raccourci attendu et évite de piéger un utilisateur au clavier.
+  useEscapeKey(open, () => setOpen(false));
 
   if (!open) return null;
 
@@ -16,6 +21,7 @@ export default function CartDrawer() {
       <div
         className="fixed inset-0 z-40 bg-nordfjord/40 backdrop-blur-sm"
         onClick={() => setOpen(false)}
+        aria-hidden="true"
         data-testid="cart-overlay"
       />
       <aside

@@ -421,7 +421,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
   const addr = order.shipping_address || {};
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex justify-end" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex justify-end" aria-hidden="true" onClick={onClose}>
       <div className="bg-[#fafafa] w-full max-w-3xl h-full overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="order-detail-drawer">
         <div className="bg-ink text-white px-6 py-4 sticky top-0 z-10 flex items-center justify-between">
           <div>

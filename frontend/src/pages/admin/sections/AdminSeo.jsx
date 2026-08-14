@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Search as SearchIcon, ExternalLink, Check, AlertTriangle, Save, X } from "lucide-react";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
+import useEscapeKey from "../../../hooks/useEscapeKey";
 
 export default function AdminSeo() {
   const { lang } = useLang();
@@ -256,6 +257,8 @@ function TextArea({ label, value, onChange, hint }) {
 }
 
 function ProductSeoModal({ product, L, lang, onClose, onSaved }) {
+  // Échap ferme la modale — le fond cliquable ne marche qu'à la souris.
+  useEscapeKey(true, onClose);
   const [form, setForm] = useState({
     meta_title_en: product.meta_title_en || "",
     meta_title_fr: product.meta_title_fr || "",
@@ -279,7 +282,7 @@ function ProductSeoModal({ product, L, lang, onClose, onSaved }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" aria-hidden="true" onClick={onClose}>
       <div className="bg-white rounded-2xl border border-ash w-full max-w-lg max-h-[85vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-display text-lg font-bold">{lang === "fr" ? product.name_fr : product.name_en}</h3>

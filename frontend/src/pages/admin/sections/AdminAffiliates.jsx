@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
+import useEscapeKey from "../../../hooks/useEscapeKey";
 
 const money = (n) => `$${Number(n || 0).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const int = (n) => Number(n || 0).toLocaleString("en-CA");
@@ -816,6 +817,8 @@ function ResendButton({ affiliateId, L }) {
 /* ---------- Modales ---------- */
 
 function InviteModal({ L, onClose, onDone }) {
+  // Échap ferme la modale — le fond cliquable ne marche qu'à la souris.
+  useEscapeKey(true, onClose);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
@@ -846,7 +849,7 @@ function InviteModal({ L, onClose, onDone }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" aria-hidden="true" onClick={onClose}>
       <div className="bg-white rounded-2xl border border-ash w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="font-display text-lg font-bold text-nordfjord">{L("Inviter un affilié", "Invite an affiliate")}</h3>
@@ -939,6 +942,8 @@ function parseCsv(text) {
 }
 
 function BulkInviteModal({ L, onClose, onDone }) {
+  // Échap ferme la modale — le fond cliquable ne marche qu'à la souris.
+  useEscapeKey(true, onClose);
   const [rows, setRows] = useState([]);
   const [fileName, setFileName] = useState("");
   const [parseError, setParseError] = useState("");
@@ -1006,7 +1011,7 @@ function BulkInviteModal({ L, onClose, onDone }) {
   const reset = () => { setRows([]); setResult(null); setFileName(""); setParseError(""); };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" aria-hidden="true" onClick={onClose}>
       <div className="bg-white rounded-2xl border border-ash w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto"
            data-testid="affiliate-bulk-modal"
            onClick={(e) => e.stopPropagation()}>
@@ -1218,6 +1223,8 @@ function BulkInviteModal({ L, onClose, onDone }) {
 }
 
 function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
+  // Échap ferme la modale — le fond cliquable ne marche qu'à la souris.
+  useEscapeKey(true, onClose);
   const [data, setData] = useState(null);
   const [markingId, setMarkingId] = useState(null);
   const [ref, setRef] = useState("");
@@ -1295,7 +1302,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const m = data?.metrics;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" aria-hidden="true" onClick={onClose}>
       <div className="bg-white rounded-2xl border border-ash w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()} data-testid="affiliate-detail-modal">
         <div className="flex items-center justify-between mb-5">
           <div>
