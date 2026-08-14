@@ -156,6 +156,13 @@ async def admin_affiliate_payouts_csv(admin: dict = Depends(s.get_admin_user)):
     return await s.admin_affiliate_payouts_csv(admin)
 
 
+@router.post("/admin/affiliates/payouts/force-run")
+async def admin_affiliate_force_monthly_run(payload: s.AffiliatePayoutRunForceIn,
+                                             admin: dict = Depends(s.get_admin_user)):
+    """Force un run manuel du scheduler mensuel pour une période donnée (test)."""
+    return await s.admin_affiliate_force_monthly_run(payload, admin)
+
+
 @router.get("/admin/affiliates/payouts/{payout_id}/status")
 async def admin_payout_status(payout_id: str, admin: dict = Depends(s.get_admin_user)):
     return await s.admin_payout_status(payout_id, admin)

@@ -178,3 +178,9 @@ Patch reçu contenant : scheduler mensuel avec `payout_runs` anti-double, FX BoC
   - Scheduler mensuel `_monthly_payouts_scheduler()` — timezone `America/Toronto`, se réveille le 1er du mois à 00:05 locale, génère les payouts du mois précédent via `_generate_payouts_for_period()`. Anti-double via collection `payout_runs` (unique idx sur `(period, auto)`). Exécuté seulement par le worker qui détient `background_tasks` lock (safe en multi-pod).
 - **Tests curl** : CSV export → 200, batch endpoint → 400 avec message clair sans payouts éligibles. Scheduler démarre correctement en background sans warning.
 
+
+
+## Sprint C — Août 2026 (Frontend Payouts + JWT doc + Force-run scheduler)
+- **Frontend Payouts admin (tab Paiements de AdminAffiliates)** — Cases à cocher par ligne (`payout-select-<id>`) et sélection globale (`payouts-select-all`) sur les payouts `status="ready"` uniquement. Compteur "N sélectionné(s)" en tag nova. Trois boutons header : **"Batch → NOWPayments"** (`batch-send-nowpayments`, prompt OTP + `POST /admin/affiliates/payouts/batch`), **"Export NOWPayments"** (`export-nowpayments-csv`, fetch axios blob → download), **"CSV complet"** (legacy). Statuts : paid=vert, processing=nova, queued_manual=warning. Colonne Réf. affiche `p.reference || p.np_batch_id`.
+- **Documentation JWT** — `/app/backend/docs/NOWPAYMENTS_JWT_SETUP.md` : procédure 4 étapes (activation Mass Payouts + 2FA, POST /v1/auth pour JWT, config env, OTP par batch, rotation 24h, fallback CSV) + liens officiels.
+- **Force-run scheduler** — Endpoint `POST /admin/affiliates/payouts/force-run` body `{period: "YYYY-MM"}`. Utilise `_generate_payouts_for_period()`. Rejouable indéfiniment (fallback `auto: "manual_<hex8>"` si conflit). Testé sur 2026-07 : 200 OK, FX 0.720721 BoC, 0 payouts créés, 2nd run OK.

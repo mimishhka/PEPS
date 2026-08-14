@@ -10665,6 +10665,53 @@ async def _generate_payouts_for_period(period: str, fx_rate: float,
     return count
 
 
+class AffiliatePayoutRunForceIn(BaseModel):
+    period: str = Field(pattern=r"^\d{4}-\d{2}$", description="YYYY-MM")
+
+
+async def admin_affiliate_force_monthly_run(payload: AffiliatePayoutRunForceIn,
+                                             admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Force un run manuel du scheduler pour une période donnée.
+    Utilise `payout_runs` avec `auto: False` pour ne PAS bloquer un run auto ultérieur."""
+    fx_rate, fx_source = await _fetch_cad_to_usd_rate()
+    fx_captured_at = datetime.now(timezone.utc).isoformat()
+    run_id = str(uuid.uuid4())
+    # `auto: False` autorise plusieurs re-runs manuels de la même période
+    # (utile pour tester la génération itérativement). Le suffixe run_id
+    # garantit l'unicité malgré l'index (period, auto).
+    from pymongo.errors import DuplicateKeyError as _DupKey
+    try:
+        await db.payout_runs.insert_one({
+            "id": run_id, "period": payload.period, "auto": False,
+            "started_at": fx_captured_at, "status": "running",
+            "triggered_by": admin.get("email", ""),
+        })
+    except _DupKey:
+        # Rejoue en injectant un discriminant unique dans la clé `auto`
+        await db.payout_runs.insert_one({
+            "id": run_id, "period": payload.period,
+            "auto": f"manual_{run_id[:8]}",
+            "started_at": fx_captured_at, "status": "running",
+            "triggered_by": admin.get("email", ""),
+        })
+    try:
+        count = await _generate_payouts_for_period(payload.period, fx_rate,
+                                                    fx_source, fx_captured_at)
+        await db.payout_runs.update_one(
+            {"id": run_id},
+            {"$set": {"status": "done", "payouts_created": count,
+                      "ended_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        return {"ok": True, "period": payload.period, "payouts_created": count,
+                "fx_rate_cad_to_usd": fx_rate, "fx_source": fx_source, "run_id": run_id}
+    except Exception as e:
+        await db.payout_runs.update_one(
+            {"id": run_id}, {"$set": {"status": "failed", "error": str(e)}},
+        )
+        raise HTTPException(500, f"Force run failed: {e}")
+
+
+
 async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMarkIn,
                                     admin: dict = Depends(get_admin_user)):  # noqa: F821
     """Confirme le paiement crypto : enregistre la référence de transaction
