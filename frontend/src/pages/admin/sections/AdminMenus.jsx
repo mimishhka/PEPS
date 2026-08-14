@@ -155,8 +155,8 @@ export default function AdminMenus() {
               <div className="grid sm:grid-cols-2 gap-4">
                 {[{ k: "name_en", l: "Name (EN)" }, { k: "name_fr", l: "Nom (FR)" }, { k: "slug", l: "Slug" }].map((f) => (
                   <div key={f.k}>
-                    <label className="font-mono text-[10px] uppercase tracking-[0.2em] text-copper">{f.l}</label>
-                    <input
+                    <label className="font-mono text-[10px] uppercase tracking-[0.2em] text-copper" htmlFor="adminmenus-f1">{f.l}</label>
+                    <input id="adminmenus-f1"
                       data-testid={`menu-field-${f.k}`}
                       value={editing[f.k] || ""}
                       onChange={(e) => setEditing({ ...editing, [f.k]: e.target.value })}
@@ -165,8 +165,8 @@ export default function AdminMenus() {
                   </div>
                 ))}
                 <div>
-                  <label className="font-mono text-[10px] uppercase tracking-[0.2em] text-copper">Location</label>
-                  <select
+                  <label className="font-mono text-[10px] uppercase tracking-[0.2em] text-copper" htmlFor="adminmenus-f2">Location</label>
+                  <select id="adminmenus-f2"
                     data-testid="menu-field-location"
                     value={editing.location}
                     onChange={(e) => setEditing({ ...editing, location: e.target.value })}

@@ -534,12 +534,12 @@ function OrderDetail({ order, onClose, onUpdate }) {
             <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3 flex items-center gap-2"><Truck size={12} /> Shipping & Tracking</div>
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
-                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Carrier</label>
-                <input value={carrier} onChange={(e) => setCarrier(e.target.value)} data-testid="shipping-carrier" className="w-full border border-ink/20 px-3 py-2 text-sm" />
+                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1" htmlFor="adminorders-f1">Carrier</label>
+                <input id="adminorders-f1" value={carrier} onChange={(e) => setCarrier(e.target.value)} data-testid="shipping-carrier" className="w-full border border-ink/20 px-3 py-2 text-sm" />
               </div>
               <div>
-                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Tracking Number</label>
-                <input value={tracking} onChange={(e) => setTracking(e.target.value)} data-testid="shipping-tracking" className="w-full border border-ink/20 px-3 py-2 text-sm" />
+                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1" htmlFor="adminorders-f2">Tracking Number</label>
+                <input id="adminorders-f2" value={tracking} onChange={(e) => setTracking(e.target.value)} data-testid="shipping-tracking" className="w-full border border-ink/20 px-3 py-2 text-sm" />
               </div>
             </div>
             <div className="flex items-center gap-3 mt-3">
@@ -643,8 +643,8 @@ function OrderDetail({ order, onClose, onUpdate }) {
                   ) : (
                     <div className="flex flex-wrap items-end gap-3">
                       <div className="flex-1 min-w-[220px]">
-                        <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Canada Post service</label>
-                        <select
+                        <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1" htmlFor="adminorders-f3">Canada Post service</label>
+                        <select id="adminorders-f3"
                           value={cpService}
                           onChange={(e) => setCpService(e.target.value)}
                           data-testid="cp-service-select"
@@ -676,14 +676,14 @@ function OrderDetail({ order, onClose, onUpdate }) {
           {/* Status quick switches */}
           <div className="bg-white border border-ink/10 p-4 grid sm:grid-cols-2 gap-3">
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Payment Status</label>
-              <select value={order.payment_status} onChange={(e) => updateStatus("payment_status", e.target.value)} data-testid="payment-status-select" className="w-full border border-ink/20 px-3 py-2 text-sm bg-white">
+              <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1" htmlFor="adminorders-f4">Payment Status</label>
+              <select id="adminorders-f4" value={order.payment_status} onChange={(e) => updateStatus("payment_status", e.target.value)} data-testid="payment-status-select" className="w-full border border-ink/20 px-3 py-2 text-sm bg-white">
                 {PAYMENT_OPTS.map((s) => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Fulfillment Status</label>
-              <select value={order.fulfillment_status} onChange={(e) => updateStatus("fulfillment_status", e.target.value)} data-testid="fulfillment-status-select" className="w-full border border-ink/20 px-3 py-2 text-sm bg-white">
+              <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1" htmlFor="adminorders-f5">Fulfillment Status</label>
+              <select id="adminorders-f5" value={order.fulfillment_status} onChange={(e) => updateStatus("fulfillment_status", e.target.value)} data-testid="fulfillment-status-select" className="w-full border border-ink/20 px-3 py-2 text-sm bg-white">
                 {FULFILLMENT_OPTS.map((s) => <option key={s}>{s}</option>)}
               </select>
             </div>

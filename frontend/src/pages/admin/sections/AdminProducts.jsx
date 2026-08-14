@@ -321,9 +321,10 @@ function CoaUploader({ value, onChange, test }) {
 
   return (
     <div>
-      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">COA PDF</label>
+      <label htmlFor="product-coa-url" className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">COA PDF</label>
       <div className="flex items-center gap-2">
         <input
+          id="product-coa-url"
           value={value ?? ""}
           placeholder="https://…/coa.pdf"
           onChange={(e) => onChange(e.target.value)}
@@ -390,7 +391,9 @@ function ImageUploader({ value, onChange, test }) {
 
   return (
     <div>
-      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">Main image</label>
+      {/* Chapeaute un groupe (bouton de televersement + champ URL), pas un
+          champ unique : un <label> y designerait le mauvais controle. */}
+      <p className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">Main image</p>
       <div className="flex items-center gap-2">
         <label
           htmlFor={inputId}
@@ -443,8 +446,8 @@ function CoaStatusField({ value, hasFile, onChange, test }) {
   const warnNoFile = value === "available" && !hasFile;
   return (
     <div>
-      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">COA Status</label>
-      <select value={value} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm bg-white">
+      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60" htmlFor="adminproducts-f1">COA Status</label>
+      <select id="adminproducts-f1" value={value} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm bg-white">
         {opts.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
       </select>
       {warnNoFile && (
@@ -454,15 +457,18 @@ function CoaStatusField({ value, hasFile, onChange, test }) {
   );
 }
 function F({ label, value, onChange, type = "text", select, test, placeholder }) {
+  // Relie l'etiquette au champ. Derive du libelle : stable d'un rendu a
+  // l'autre et unique dans le formulaire, ou chaque libelle est distinct.
+  const fieldId = `product-${String(label).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
   return (
     <div>
-      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">{label}</label>
+      <label htmlFor={fieldId} className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">{label}</label>
       {select ? (
-        <select value={value} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm bg-white">
+        <select id={fieldId} value={value} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm bg-white">
           {select.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       ) : (
-        <input type={type} value={value ?? ""} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm" />
+        <input id={fieldId} type={type} value={value ?? ""} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm" />
       )}
     </div>
   );
@@ -470,8 +476,8 @@ function F({ label, value, onChange, type = "text", select, test, placeholder })
 function TA({ label, value, onChange, test }) {
   return (
     <div>
-      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">{label}</label>
-      <textarea value={value ?? ""} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm h-20" />
+      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60" htmlFor="adminproducts-f2">{label}</label>
+      <textarea id="adminproducts-f2" value={value ?? ""} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm h-20" />
     </div>
   );
 }

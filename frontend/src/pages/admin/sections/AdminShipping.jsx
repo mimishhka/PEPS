@@ -139,8 +139,8 @@ function Modal({ children, onClose, title, test }) {
 function F({ label, value, onChange, type = "text", test }) {
   return (
     <div>
-      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">{label}</label>
-      <input type={type} value={value ?? ""} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm" />
+      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60" htmlFor="adminshipping-f1">{label}</label>
+      <input id="adminshipping-f1" type={type} value={value ?? ""} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm" />
     </div>
   );
 }

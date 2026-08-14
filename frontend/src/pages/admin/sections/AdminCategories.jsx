@@ -165,8 +165,8 @@ export default function AdminCategories() {
                 { k: "slug", label: "Slug — lowercase, digits, hyphens only" },
               ].map((f) => (
                 <div key={f.k}>
-                  <label className="font-mono text-[10px] uppercase tracking-[0.2em] text-copper">{f.label}</label>
-                  <input
+                  <label className="font-mono text-[10px] uppercase tracking-[0.2em] text-copper" htmlFor="admincategories-f1">{f.label}</label>
+                  <input id="admincategories-f1"
                     data-testid={`category-field-${f.k}`}
                     value={editing[f.k] || ""}
                     onChange={(e) => setEditing({ ...editing, [f.k]: e.target.value })}
@@ -175,8 +175,8 @@ export default function AdminCategories() {
                 </div>
               ))}
               <div>
-                <label className="font-mono text-[10px] uppercase tracking-[0.2em] text-copper">Display order</label>
-                <input
+                <label className="font-mono text-[10px] uppercase tracking-[0.2em] text-copper" htmlFor="admincategories-f2">Display order</label>
+                <input id="admincategories-f2"
                   type="number"
                   data-testid="category-field-display_order"
                   value={editing.display_order ?? 0}

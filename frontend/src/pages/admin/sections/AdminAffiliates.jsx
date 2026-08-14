@@ -1389,19 +1389,19 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     select={["", "standard", "bronze", "silver", "gold", "platinum", "diamond"]} />
                 </div>
                 <div>
-                  <label className="text-[11px] uppercase tracking-wider text-glacier">
+                  <label className="text-[11px] uppercase tracking-wider text-glacier" htmlFor="adminaffiliates-f1">
                     {L("Note commission (visible sur relevé)", "Commission note (shown on statements)")}
                   </label>
-                  <textarea value={form.commission_note} onChange={(e) => setForm({ ...form, commission_note: e.target.value })}
+                  <textarea id="adminaffiliates-f1" value={form.commission_note} onChange={(e) => setForm({ ...form, commission_note: e.target.value })}
                     data-testid="edit-commission-note"
                     className="w-full mt-1 rounded-md border border-ash px-2 py-1.5 text-xs bg-white text-nordfjord outline-none"
                     rows={2} />
                 </div>
                 <div>
-                  <label className="text-[11px] uppercase tracking-wider text-glacier">
+                  <label className="text-[11px] uppercase tracking-wider text-glacier" htmlFor="adminaffiliates-f2">
                     {L("Notes internes (privées, non visibles par l'affilié)", "Internal notes (private, not shown to affiliate)")}
                   </label>
-                  <textarea value={form.admin_notes} onChange={(e) => setForm({ ...form, admin_notes: e.target.value })}
+                  <textarea id="adminaffiliates-f2" value={form.admin_notes} onChange={(e) => setForm({ ...form, admin_notes: e.target.value })}
                     data-testid="edit-admin-notes"
                     className="w-full mt-1 rounded-md border border-ash px-2 py-1.5 text-xs bg-white text-nordfjord outline-none"
                     rows={3} />

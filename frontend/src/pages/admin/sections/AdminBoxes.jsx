@@ -140,8 +140,8 @@ export default function AdminBoxes() {
 function Field({ label, value, onChange, type = "text", testid, full }) {
   return (
     <div className={full ? "col-span-2 sm:col-span-3" : ""}>
-      <label className="block font-mono text-[10px] uppercase tracking-wider text-foreground/60 mb-1">{label}</label>
-      <input type={type} step="any" value={value} onChange={(e) => onChange(e.target.value)} data-testid={testid}
+      <label className="block font-mono text-[10px] uppercase tracking-wider text-foreground/60 mb-1" htmlFor="adminboxes-f1">{label}</label>
+      <input id="adminboxes-f1" type={type} step="any" value={value} onChange={(e) => onChange(e.target.value)} data-testid={testid}
         className="w-full border border-ink/20 px-3 py-2 font-mono text-sm" />
     </div>
   );

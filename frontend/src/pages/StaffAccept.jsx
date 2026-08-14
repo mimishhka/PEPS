@@ -76,14 +76,14 @@ export default function StaffAccept() {
           <div className="space-y-5">
             <p className="text-sm text-foreground/70">Set a password to activate your access.</p>
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60 mb-1">Password</label>
-              <input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)}
+              <label className="block font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60 mb-1" htmlFor="staffaccept-f1">Password</label>
+              <input id="staffaccept-f1" type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)}
                 data-testid="staff-accept-password"
                 className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal" />
             </div>
             <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60 mb-1">Confirm password</label>
-              <input type="password" required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)}
+              <label className="block font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60 mb-1" htmlFor="staffaccept-f2">Confirm password</label>
+              <input id="staffaccept-f2" type="password" required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)}
                 data-testid="staff-accept-confirm"
                 className="w-full border-b border-ink px-1 py-3 bg-transparent focus:outline-none focus:border-signal" />
             </div>

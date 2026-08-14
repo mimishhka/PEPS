@@ -269,8 +269,8 @@ export default function AdminDispatch() {
       )}
 
       <div className="mt-6 flex flex-wrap items-center gap-3 bg-white border border-ink/10 p-4">
-        <label className="font-mono text-xs text-foreground/60">Service</label>
-        <select value={serviceCode} onChange={(e) => setServiceCode(e.target.value)} data-testid="dispatch-service"
+        <label className="font-mono text-xs text-foreground/60" htmlFor="admindispatch-f1">Service</label>
+        <select id="admindispatch-f1" value={serviceCode} onChange={(e) => setServiceCode(e.target.value)} data-testid="dispatch-service"
           className="border border-ink/20 px-3 py-2 font-mono text-sm">
           <option value="DOM.XP">DOM.XP — Xpresspost</option>
           <option value="DOM.EP">DOM.EP — Expedited Parcel</option>

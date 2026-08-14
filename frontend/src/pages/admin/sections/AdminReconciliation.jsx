@@ -94,8 +94,8 @@ export default function AdminReconciliation() {
       </div>
 
       <div className="bg-white border border-ink/10 p-4 mb-4 flex items-center gap-3" data-testid="reconciliation-filters">
-        <label className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/60">{L("Statut", "Status")}</label>
-        <select
+        <label className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/60" htmlFor="adminreconciliation-f1">{L("Statut", "Status")}</label>
+        <select id="adminreconciliation-f1"
           value={status}
           onChange={(e) => setStatus(e.target.value)}
           className="border border-ink/15 px-3 py-2 text-sm bg-white"
@@ -106,8 +106,8 @@ export default function AdminReconciliation() {
           <option value="dismissed">{L("Rejeté", "Dismissed")}</option>
           <option value="all">{L("Tous", "All")}</option>
         </select>
-        <label className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/60">{L("Canal", "Provider")}</label>
-        <select
+        <label className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/60" htmlFor="adminreconciliation-f2">{L("Canal", "Provider")}</label>
+        <select id="adminreconciliation-f2"
           value={provider}
           onChange={(e) => setProvider(e.target.value)}
           className="border border-ink/15 px-3 py-2 text-sm bg-white"

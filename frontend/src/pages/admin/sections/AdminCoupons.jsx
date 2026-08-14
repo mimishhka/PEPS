@@ -359,15 +359,19 @@ function Section({ title, children }) {
 }
 
 function F({ label, value, onChange, type = "text", select, test, placeholder, mono, icon }) {
+  // Relie l'etiquette au champ. Derive du libelle : stable d'un rendu a
+  // l'autre et unique dans le formulaire, ou chaque libelle est distinct.
+  const fieldId = `coupon-${String(label).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
   const inputCls =
     "w-full rounded-lg border border-ash bg-white px-3 py-2 text-sm text-nordfjord outline-none focus:border-nova transition" +
     (mono ? " font-data" : "") +
     (icon ? " pl-8" : "");
   return (
     <div>
-      <label className="block font-data text-[10px] uppercase tracking-[0.2em] mb-1 text-glacier">{label}</label>
+      <label htmlFor={fieldId} className="block font-data text-[10px] uppercase tracking-[0.2em] mb-1 text-glacier">{label}</label>
       {select ? (
         <select
+          id={fieldId}
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
           data-testid={test}
@@ -382,6 +386,7 @@ function F({ label, value, onChange, type = "text", select, test, placeholder, m
         <div className="relative">
           {icon && <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-glacier">{icon}</span>}
           <input
+            id={fieldId}
             type={type}
             value={value ?? ""}
             onChange={(e) => onChange(e.target.value)}

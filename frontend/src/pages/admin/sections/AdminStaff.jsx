@@ -129,14 +129,14 @@ export default function AdminStaff() {
         <form onSubmit={sendInvite} className="bg-white border border-ash p-6 mb-8" data-testid="staff-invite-form">
           <div className="grid sm:grid-cols-2 gap-4 mb-5">
             <div>
-              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-1">Name</label>
-              <input required value={inviting.name} onChange={(e) => setInviting({ ...inviting, name: e.target.value })}
+              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-1" htmlFor="adminstaff-f1">Name</label>
+              <input id="adminstaff-f1" required value={inviting.name} onChange={(e) => setInviting({ ...inviting, name: e.target.value })}
                 data-testid="staff-invite-name"
                 className="w-full border-b border-nordfjord px-1 py-2.5 bg-transparent focus:outline-none focus:border-signal" />
             </div>
             <div>
-              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-1">Email</label>
-              <input required type="email" value={inviting.email} onChange={(e) => setInviting({ ...inviting, email: e.target.value })}
+              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-1" htmlFor="adminstaff-f2">Email</label>
+              <input id="adminstaff-f2" required type="email" value={inviting.email} onChange={(e) => setInviting({ ...inviting, email: e.target.value })}
                 data-testid="staff-invite-email"
                 className="w-full border-b border-nordfjord px-1 py-2.5 bg-transparent focus:outline-none focus:border-signal" />
             </div>
@@ -307,9 +307,11 @@ function PermissionGrid({ permissions, onChange, testPrefix, canGrantSensitive =
   const set = (area, level) => onChange({ ...permissions, [area]: level });
   return (
     <div>
-      <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-3">
+      {/* Titre d'un GROUPE de cases a cocher, pas l'etiquette d'un champ :
+          un <label> ici ne designe rien et ment au lecteur d'ecran. */}
+      <p className="block font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-3">
         {L("Accès par section", "Access by section")}
-      </label>
+      </p>
       <div className="grid sm:grid-cols-2 gap-3">
         {AREAS.map((a) => {
           const locked = a.sensitive && !canGrantSensitive;
