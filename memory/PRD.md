@@ -129,6 +129,18 @@ E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (N
 - **AgeGate & Coupons UI** — AgeGate refondu en identité Fironova (nordfjord + nova cyan). Popup édition coupon complètement rebâti : 3 sections (Général / Limites & calendrier / Ciblage), sticky header+footer, bilingue FR/EN, testids préservés.
 
 
+## Update — Août 2026 (session fork, suite : refonte onboarding affilié)
+- **Invitation admin — nouveaux champs** : `first_name` + `last_name` obligatoires, `company` optionnel. Rétrocompat conservée sur `name`. Devise payout par défaut = `usdt`.
+- **Activation magic-link 1-clic** (`POST /api/affiliate/join`) : plus aucune auth préalable requise. Crée le compte passwordless (email_verified=True), active l'affilié, retourne le JWT dans le body + pose cookie httpOnly. Frontend `AffiliateJoin.jsx` réécrite : auto-post du token à l'arrivée, storage `localStorage.fironova_token`, redirect `/affiliate` en 1.2s.
+- **Génération de code v2** : `_affiliate_gen_code_v2(base, discount, email, exclude_id)`. Base = entreprise si fournie sinon prénom, normalisée (accents supprimés, upper, alphanum, max 6 chars). Suffixe = pourcentage entier. Anti-collision déterministe (2 chars stables du hash email) puis random en dernier recours. Ex: `MARIE10`, `FITNES10`, `MARIE10TP` pour un homonyme.
+- **Rename + aliases** : quand l'admin change `coupon_percent` via `PUT /api/admin/affiliates/{id}`, le code est régénéré (nouvelle base × nouveau %), l'ancien code archivé dans `aliases[]` avec `active: true` par défaut. Attribution `?ref=<code>` accepte le code principal OU un alias actif. L'ancien coupon est désactivé (single source of truth = coupon courant). Endpoint `PUT /api/admin/affiliates/{id}/aliases/{alias_code}` pour activer/désactiver un alias individuellement.
+- **Payout USDT/USDC ERC-20 uniquement** : nouvelles constantes `AFFILIATE_PAYOUT_CURRENCIES = ("usdt","usdc")`, validation Ethereum + checksum EIP-55 pure-Python (`_keccak256`, `_eth_to_checksum`, `_is_valid_eth_address`). `_normalize_payout()` lève HTTPException 422 sur devise non supportée ou adresse invalide. Adresse stockée canoniquement en checksum. Applique à `affiliate_payout_settings`, `affiliate_join`, `admin_affiliate_update`.
+- **Index MongoDB `affiliates.code`** : reconverti en `partialFilterExpression: {code: {$type: "string"}}` pour permettre plusieurs invités simultanés avec `code: None`.
+- **Modèle enrichi `_affiliate_public`** : expose `first_name`, `last_name`, `company`, `coupon_percent`, `payout_configured`, `aliases[]`.
+- **Frontend admin InviteModal** : champs Prénom/Nom (obligatoires) + Entreprise (optionnel, prioritaire pour le code) + note interne + langue. Testids: `invite-first-name`, `invite-last-name`, `invite-company`, `invite-email`.
+- **Tests E2E validés via curl** : 8 scenarios (invite/reinvite/collision/rename/aliases/toggle/payout invalide/payout valide). Aucune régression sur le demo affilié.
+
+
 ## Update — Février 2026 (session fork, suite 2)
 - **Cancel/Reopen — 3 gaps fermés**
   - GAP 1: Cancel manuel admin décrémente désormais le coupon (usage global + par-client) via `_decrement_coupon_usage()`, idempotent grâce au flag `coupon_counted`

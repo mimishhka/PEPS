@@ -8478,8 +8478,178 @@ def _affiliate_referrer_domain(url: str) -> str:
 
 def _affiliate_gen_code() -> str:
     # Code de parrainage lisible : FN + 6 caractères base32 sans ambiguïté.
+    # (Conservé pour la génération legacy et le fallback anti-collision.)
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     return "FN" + "".join(secrets.choice(alphabet) for _ in range(6))
+
+
+# ===========================================================================
+# GÉNÉRATEUR DE CODE V2 — base + suffixe rabais
+# Ex.: prénom "Marie" + rabais 10% → "MARIE10"
+#      entreprise "Fitness & Nutrition" + rabais 15% → "FITNESS15"
+# Anti-collision déterministe basé sur le hash email (2 chars ajoutés).
+# ===========================================================================
+_AFFILIATE_SAFE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def _affiliate_slugify_base(raw: str, max_len: int = 6) -> str:
+    """Normalise un prénom ou nom d'entreprise en base ASCII majuscule
+    alphanumérique, tronquée à `max_len`. Ex.: "Jean-Baptiste" → "JEANBA",
+    "Fitness & Nutrition" → "FITNES". Retourne "AFF" si la string est vide."""
+    if not raw:
+        return "AFF"
+    import unicodedata
+    s = unicodedata.normalize("NFKD", str(raw))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r"[^A-Za-z0-9]", "", s).upper()
+    return (s[:max_len] or "AFF")
+
+
+def _affiliate_collision_suffix(email: str) -> str:
+    """2 chars alphanum stables issus du hash email — même email = même suffixe.
+    Utile pour désambiguïser deux Marie avec le même prénom (base identique)."""
+    h = hashlib.sha256((email or "").lower().encode("utf-8")).digest()
+    a = _AFFILIATE_SAFE_ALPHABET[h[0] % len(_AFFILIATE_SAFE_ALPHABET)]
+    b = _AFFILIATE_SAFE_ALPHABET[h[1] % len(_AFFILIATE_SAFE_ALPHABET)]
+    return a + b
+
+
+async def _affiliate_gen_code_v2(base_source: str, discount_percent: float,
+                                 email: str = "", exclude_id: Optional[str] = None) -> str:
+    """Génère un code affilié `BASE + PCT`, avec anti-collision déterministe.
+    - base_source: prénom OU entreprise (déjà choisi par l'appelant)
+    - discount_percent: 0-100 (int(round))
+    - email: pour le suffixe anti-collision stable
+    - exclude_id: ne compte pas ce document comme collision (utile au rename)
+    """
+    base = _affiliate_slugify_base(base_source, 6)
+    pct = int(round(max(0.0, min(100.0, float(discount_percent or 0)))))
+    pct_str = f"{pct}" if pct >= 10 else f"0{pct}"
+    candidate = f"{base}{pct_str}"
+
+    async def _exists(c: str) -> bool:
+        q = {
+            "$or": [{"code": c}, {"aliases.code": c}],
+        }
+        if exclude_id:
+            q["id"] = {"$ne": exclude_id}
+        return await db.affiliates.find_one(q, {"_id": 1}) is not None
+
+    if not await _exists(candidate):
+        return candidate
+
+    # Collision → append suffixe déterministe email
+    suffix = _affiliate_collision_suffix(email)
+    candidate = f"{base}{pct_str}{suffix}"
+    if not await _exists(candidate):
+        return candidate
+
+    # Encore collision → append 2 chars aléatoires jusqu'à 5 essais
+    for _ in range(5):
+        rnd = "".join(secrets.choice(_AFFILIATE_SAFE_ALPHABET) for _ in range(2))
+        candidate = f"{base}{pct_str}{rnd}"
+        if not await _exists(candidate):
+            return candidate
+
+    # Extrême rare : fallback legacy random
+    return _affiliate_gen_code()
+
+
+# ===========================================================================
+# PAYOUT — USDT/USDC (ERC-20) + validation Ethereum EIP-55
+# ===========================================================================
+AFFILIATE_PAYOUT_CURRENCIES = ("usdt", "usdc")
+
+
+def _keccak256(data: bytes) -> bytes:
+    """Keccak-256 (variante Ethereum, distincte de SHA3-256 finalisé).
+    Pure-Python, uniquement appelée à la validation d'une adresse — donc rare."""
+    RC = [0x1, 0x8082, 0x800000000000808A, 0x8000000080008000, 0x808B,
+          0x80000001, 0x8000000080008081, 0x8000000000008009, 0x8A, 0x88,
+          0x80008009, 0x8000000A, 0x8000808B, 0x800000000000008B,
+          0x8000000000008089, 0x8000000000008003, 0x8000000000008002,
+          0x8000000000000080, 0x800A, 0x800000008000000A,
+          0x8000000080008081, 0x8000000000008080, 0x80000001,
+          0x8000000080008008]
+    R = [[0, 36, 3, 41, 18], [1, 44, 10, 45, 2], [62, 6, 43, 15, 61],
+         [28, 55, 25, 21, 56], [27, 20, 39, 8, 14]]
+
+    def rol(x, n):
+        return ((x << n) | (x >> (64 - n))) & 0xFFFFFFFFFFFFFFFF
+
+    rate = 136
+    st = [[0] * 5 for _ in range(5)]
+    msg = bytearray(data)
+    msg.append(0x01)
+    while len(msg) % rate != 0:
+        msg.append(0)
+    msg[-1] |= 0x80
+    for off in range(0, len(msg), rate):
+        blk = msg[off:off + rate]
+        for i in range(rate // 8):
+            st[i % 5][i // 5] ^= int.from_bytes(blk[i * 8:i * 8 + 8], "little")
+        for rnd in range(24):
+            C = [st[x][0] ^ st[x][1] ^ st[x][2] ^ st[x][3] ^ st[x][4] for x in range(5)]
+            D = [C[(x - 1) % 5] ^ rol(C[(x + 1) % 5], 1) for x in range(5)]
+            for x in range(5):
+                for y in range(5):
+                    st[x][y] ^= D[x]
+            B = [[0] * 5 for _ in range(5)]
+            for x in range(5):
+                for y in range(5):
+                    B[y][(2 * x + 3 * y) % 5] = rol(st[x][y], R[x][y])
+            for x in range(5):
+                for y in range(5):
+                    st[x][y] = B[x][y] ^ ((~B[(x + 1) % 5][y]) & B[(x + 2) % 5][y])
+            st[0][0] ^= RC[rnd]
+    out = b""
+    for i in range(4):
+        out += st[i % 5][i // 5].to_bytes(8, "little")
+    return out[:32]
+
+
+def _eth_to_checksum(addr40_lower: str) -> str:
+    """Applique le checksum EIP-55 à 40 hex minuscules (sans le préfixe 0x)."""
+    h = _keccak256(addr40_lower.encode()).hex()
+    return "0x" + "".join(
+        c.upper() if int(h[i], 16) >= 8 else c
+        for i, c in enumerate(addr40_lower)
+    )
+
+
+def _is_valid_eth_address(addr: str) -> bool:
+    """Valide une adresse Ethereum (ERC-20). Format 0x + 40 hex."""
+    if not isinstance(addr, str):
+        return False
+    addr = addr.strip()
+    if not re.fullmatch(r"0x[0-9a-fA-F]{40}", addr):
+        return False
+    body = addr[2:]
+    if body == body.lower() or body == body.upper():
+        return True
+    return addr == _eth_to_checksum(body.lower())
+
+
+def _normalize_payout(address: str, currency: str) -> tuple:
+    """Valide (devise, adresse) pour un payout affilié. HTTPException 422 sinon.
+    Retourne (adresse_checksummée, devise_normalisée)."""
+    cur = (currency or "").strip().lower()
+    if cur not in AFFILIATE_PAYOUT_CURRENCIES:
+        raise HTTPException(
+            422,
+            "Devise de versement non supportée. Choix : USDT ou USDC (Ethereum).",
+        )
+    addr = (address or "").strip()
+    if not _is_valid_eth_address(addr):
+        raise HTTPException(
+            422,
+            "Adresse Ethereum invalide. Attendu : 0x suivi de 40 caractères "
+            "hexadécimaux (adresse ERC-20 pour USDT/USDC).",
+        )
+    body = addr[2:]
+    canonical = addr if (body != body.lower() and body != body.upper()) \
+        else _eth_to_checksum(body.lower())
+    return canonical, cur
 
 
 def _affiliate_quarter_start(now: Optional[datetime] = None) -> datetime:
@@ -8513,17 +8683,30 @@ def _affiliate_prev_quarter_start(now: Optional[datetime] = None) -> datetime:
 # ===========================================================================
 
 class AffiliateInviteIn(BaseModel):
+    """Fiche d'invitation admin — nouveau schéma :
+    Prénom + Nom obligatoires, Entreprise optionnelle. Le code affilié sera
+    généré automatiquement à l'activation : `BASE + 10` par défaut
+    (BASE = entreprise si fournie sinon prénom). L'admin peut modifier
+    le rabais ensuite ; le code sera renommé et l'ancien archivé en alias."""
     email: EmailStr
-    name: str = Field(min_length=1, max_length=160)
+    first_name: str = Field(min_length=1, max_length=80)
+    last_name: str = Field(min_length=1, max_length=80)
+    company: Optional[str] = Field(default="", max_length=120)
     commission_note: Optional[str] = ""        # note interne admin
-    payout_currency: Optional[str] = "btc"     # devise crypto de payout par défaut
+    payout_currency: Optional[str] = "usdt"    # USDT par défaut (ERC-20)
     lang: str = "fr"
+
+    # Rétrocompat : accepte encore `name` sur le wire — on le splittera si
+    # les nouveaux champs sont absents (pour ne pas casser l'ancien front).
+    name: Optional[str] = None
 
 
 class AffiliateJoinIn(BaseModel):
+    """Payload magic-link : SEUL le token est requis. Aucune auth préalable.
+    L'email et le nom viennent de l'invitation. L'adresse de payout est
+    optionnelle (on la demandera plus tard depuis le dashboard)."""
     token: str = Field(min_length=10)
-    # L'email n'est PAS fourni par le client : il est lu depuis l'invitation.
-    payout_address: Optional[str] = ""         # adresse crypto de réception
+    payout_address: Optional[str] = ""
     payout_currency: Optional[str] = None
 
 
@@ -8534,17 +8717,22 @@ class AffiliatePayoutSettingsIn(BaseModel):
 
 class AffiliateAdminUpdateIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    # Identité
+    first_name: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    last_name: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    company: Optional[str] = Field(default=None, max_length=120)
+    name: Optional[str] = Field(default=None, min_length=1, max_length=160)   # legacy
+    # Statut
     status: Optional[Literal["invited", "active", "suspended"]] = None
     compliance_status: Optional[Literal["compliant", "review", "suspended"]] = None
-    manual_tier: Optional[str] = None          # override manuel du palier
+    manual_tier: Optional[str] = None
     commission_note: Optional[str] = None
-    # Détails de paiement (l'admin peut corriger si l'affilié se trompe)
+    # Payout
     payout_address: Optional[str] = Field(default=None, max_length=200)
     payout_currency: Optional[str] = Field(default=None, max_length=12)
-    # Pourcentage promo affiché sur le code (ex: -10%, -15%)
+    # Rabais client — DÉCLENCHE un rename de code si modifié
     coupon_percent: Optional[float] = Field(default=None, ge=0, le=100)
-    # Notes internes (non visibles par l'affilié)
+    # Notes internes
     admin_notes: Optional[str] = Field(default=None, max_length=2000)
 
 
@@ -8650,11 +8838,20 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
         "id": aff.get("id"),
         "code": aff.get("code"),
         "name": aff.get("name"),
+        "first_name": aff.get("first_name", ""),
+        "last_name": aff.get("last_name", ""),
+        "company": aff.get("company", ""),
         "email": aff.get("email"),
         "status": aff.get("status"),
         "compliance_status": aff.get("compliance_status", "compliant"),
-        "payout_currency": aff.get("payout_currency", "btc"),
+        "payout_currency": aff.get("payout_currency", "usdt"),
         "payout_address": aff.get("payout_address", ""),
+        "payout_configured": bool(
+            (aff.get("payout_address") or "").strip()
+            and _is_valid_eth_address(aff.get("payout_address") or "")
+        ),
+        "coupon_percent": aff.get("coupon_percent"),
+        "aliases": aff.get("aliases", []),
         "activated_at": aff.get("activated_at"),
         "created_at": aff.get("created_at"),
     }
@@ -8719,36 +8916,39 @@ async def _affiliate_send_invite(email: str, name: str, link: str, lang: str) ->
 # ===========================================================================
 
 
-async def _affiliate_ensure_coupon(affiliate_code: str, affiliate_id: str) -> Optional[dict]:
+async def _affiliate_ensure_coupon(affiliate_code: str, affiliate_id: str,
+                                    percent: Optional[float] = None) -> Optional[dict]:
     """Crée un coupon de rabais lié au code affilié (idempotent).
-    Si AFFILIATE_COUPON_PERCENT <= 0, ne crée rien. Le coupon reste
-    éditable/désactivable depuis l'admin Coupons (c'est un coupon standard,
-    marqué affiliate_id pour le lien et le contrôle)."""
-    if AFFILIATE_COUPON_PERCENT <= 0:
+    - percent explicite (nouveau flux) : pourcentage à créer ;
+    - percent None : fallback vers AFFILIATE_COUPON_PERCENT (legacy).
+    Si <=0 → aucune création. Le coupon reste éditable/désactivable en admin."""
+    effective = float(percent) if (percent is not None) else float(AFFILIATE_COUPON_PERCENT)
+    if effective <= 0:
         return None
     code = (affiliate_code or "").upper().strip()
     if not code:
         return None
     existing = await db.coupons.find_one({"code": code}, {"_id": 0})
     if existing:
-        return existing  # déjà présent : on ne l'écrase pas (respecte les réglages admin)
+        return existing
     doc = {
         "id": str(uuid.uuid4()),
         "code": code,
         "discount_type": "percent",
-        "value": AFFILIATE_COUPON_PERCENT,
+        "value": effective,
         "min_subtotal": 0.0,
         "usage_limit": None,
         "used_count": 0,
         "active": True,
         "expires_at": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "affiliate_id": affiliate_id,   # lien affilié (permet le contrôle/filtrage)
+        "affiliate_id": affiliate_id,
         "source": "affiliate",
     }
     await db.coupons.insert_one(doc)
     doc.pop("_id", None)
-    logging.info("[affiliate] coupon %s créé (%.0f%%) pour affilié %s", code, AFFILIATE_COUPON_PERCENT, affiliate_id)
+    logging.info("[affiliate] coupon %s créé (%.0f%%) pour affilié %s",
+                 code, effective, affiliate_id)
     return doc
 
 
@@ -8765,7 +8965,14 @@ async def affiliate_capture_click(request: Request, response: Response, code: st
     if existing and existing.strip().upper():
         return  # premier clic conservé — pas d'écrasement
     affiliate = await db.affiliates.find_one(
-        {"code": code, "status": "active"}, {"_id": 0, "id": 1, "code": 1}
+        {
+            "status": "active",
+            "$or": [
+                {"code": code},
+                {"aliases": {"$elemMatch": {"code": code, "active": True}}},
+            ],
+        },
+        {"_id": 0, "id": 1, "code": 1},
     )
     if not affiliate:
         return
@@ -9009,20 +9216,25 @@ async def get_current_affiliate(request: Request) -> dict:
 # ENDPOINTS — AFFILIÉ (dashboard)
 # ===========================================================================
 
-async def affiliate_join(payload: AffiliateJoinIn, request: Request):
-    """Active un compte affilié à partir d'un token d'invitation.
-    L'utilisateur DOIT être connecté (auth existante), et son email doit
-    correspondre à l'email de l'invitation. Token consommé atomiquement."""
-    user = await get_current_user(request)  # noqa: F821
+async def affiliate_join(payload: AffiliateJoinIn, request: Request,
+                          response: Response):
+    """Active un affilié via son token d'invitation — MAGIC-LINK 1-CLIC.
+
+    Ne requiert AUCUNE auth préalable. Le clic vaut connexion :
+      - crée un compte passwordless si aucun n'existe pour l'email invité
+        (email vérifié : l'admin a invité) ;
+      - bascule l'affilié `invited` → `active`, génère son code à partir du
+        prénom (ou entreprise si fournie) + suffixe 10 (rabais par défaut) ;
+      - pose la session (cookie + JWT retourné dans le body).
+    Token d'invitation consommé atomiquement."""
     token_hash = _affiliate_hash_token(payload.token.strip())
     now = datetime.now(timezone.utc)
-
     invite = await db.affiliates.find_one(
         {"invite_token_hash": token_hash, "status": "invited"}, {"_id": 0}
     )
     if not invite:
         raise HTTPException(400, "Invalid or already-used invitation")
-    # Expiration
+
     exp = invite.get("invite_expires_at")
     if exp:
         try:
@@ -9035,30 +9247,92 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request):
             raise
         except Exception:
             pass
-    # Verrou email : l'email connecté doit matcher l'email invité
-    if (user.get("email") or "").lower().strip() != (invite.get("email") or "").lower().strip():
-        raise HTTPException(403, "This invitation is bound to a different email address")
 
-    code = _affiliate_gen_code()
-    # collision improbable, mais on garantit l'unicité
-    for _ in range(5):
-        if not await db.affiliates.find_one({"code": code}, {"_id": 1}):
-            break
-        code = _affiliate_gen_code()
+    invite_email = (invite.get("email") or "").lower().strip()
+    if not invite_email:
+        raise HTTPException(400, "Invitation is missing an email")
 
-    known_addresses = []
-    # (aucune adresse connue à l'activation ; se remplit via les commandes)
+    # --- Compte user cible : créé passwordless si absent (magic-link) -------
+    from pymongo.errors import DuplicateKeyError as _DupKey
+    user = await db.users.find_one({"email": invite_email})
+    if not user:
+        display_name = (invite.get("name")
+                        or f"{invite.get('first_name','')} {invite.get('last_name','')}".strip()
+                        or invite_email.split("@")[0]).strip()
+        user_doc = {
+            "id": str(uuid.uuid4()),
+            "email": invite_email,
+            "name": display_name,
+            "password_hash": hash_password(secrets.token_urlsafe(32)),
+            "role": "user",
+            "token_version": 0,
+            "created_at": now.isoformat(),
+            "passwordless": True,
+            "email_verified": True,     # invitation admin = email vérifié
+        }
+        try:
+            await db.users.insert_one(user_doc)
+            user = user_doc
+            try:
+                await db.subscribers.update_one(
+                    {"email": invite_email}, {"$set": {"converted": True}}
+                )
+            except Exception as _e:  # pragma: no cover
+                logging.warning("subscriber conversion flag failed for %s: %s",
+                                invite_email, _e)
+            try:
+                asyncio.create_task(welcome_new_user(invite_email, display_name, "fr"))
+            except Exception:
+                pass
+        except _DupKey:
+            user = await db.users.find_one({"email": invite_email})
+    else:
+        await db.users.update_one(
+            {"email": invite_email}, {"$set": {"email_verified": True}}
+        )
+        user = {**user, "email_verified": True}
+
+    # --- Un même compte ne peut pas être déjà lié à un autre affilié actif --
+    other = await db.affiliates.find_one(
+        {"user_id": user["id"], "status": {"$in": ["active", "suspended"]}},
+        {"_id": 1, "id": 1},
+    )
+    if other and other.get("id") != invite["id"]:
+        raise HTTPException(409, "This account is already linked to an affiliate")
+
+    # --- Payout optionnel à l'activation (0 friction) -----------------------
+    _payout_addr = (payload.payout_address or "").strip()
+    if _payout_addr:
+        _payout_addr, _payout_cur = _normalize_payout(
+            _payout_addr,
+            payload.payout_currency or invite.get("payout_currency") or "usdt",
+        )
+    else:
+        _payout_cur = ((payload.payout_currency or invite.get("payout_currency") or "usdt")
+                       .strip().lower())
+        if _payout_cur not in AFFILIATE_PAYOUT_CURRENCIES:
+            _payout_cur = "usdt"
+
+    # --- Génération du code v2 : BASE + 10 (rabais par défaut) --------------
+    base_source = (invite.get("company") or "").strip() or (invite.get("first_name") or "").strip()
+    if not base_source:
+        # Fallback : dérive du champ name legacy
+        base_source = (invite.get("name") or invite_email.split("@")[0]).split()[0]
+    default_discount = float(os.environ.get("AFFILIATE_DEFAULT_DISCOUNT_PERCENT", "10"))
+    code = await _affiliate_gen_code_v2(base_source, default_discount,
+                                        email=invite_email, exclude_id=invite["id"])
+
     update = {
         "$set": {
             "status": "active",
             "user_id": user["id"],
             "code": code,
+            "coupon_percent": default_discount,
             "activated_at": now.isoformat(),
-            "ip_hash": _affiliate_hash_ip(_client_ip(request)),  # noqa: F821
-            "known_addresses": known_addresses,
-            "payout_address": (payload.payout_address or "").strip(),
-            "payout_currency": (payload.payout_currency or invite.get("payout_currency") or "btc"),
-            # invalide le token (consommation atomique)
+            "ip_hash": _affiliate_hash_ip(_client_ip(request)),
+            "known_addresses": [],
+            "payout_address": _payout_addr,
+            "payout_currency": _payout_cur,
             "invite_token_hash": None,
             "invite_expires_at": None,
         }
@@ -9069,14 +9343,27 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request):
     if not res.modified_count:
         raise HTTPException(409, "Invitation already consumed")
 
+    # --- Pose la session (cookie httpOnly) + retourne le JWT dans le body ---
+    token = create_access_token(
+        user["id"], user["email"], user.get("role", "user"),
+        token_version=user.get("token_version", 0),
+    )
+    set_auth_cookie(response, token, request)
+
     aff = await db.affiliates.find_one({"id": invite["id"]}, {"_id": 0})
-    # Coupon de rabais auto-lié au code affilié (idempotent, contrôlable en admin).
+    # Coupon lié auto (idempotent) — utilise le rabais courant de l'affilié.
     try:
-        await _affiliate_ensure_coupon(aff.get("code"), aff["id"])
+        await _affiliate_ensure_coupon(aff.get("code"), aff["id"],
+                                       percent=default_discount)
     except Exception as _e:
-        logging.warning("[affiliate] échec création coupon pour %s: %s", aff.get("code"), _e)
+        logging.warning("[affiliate] échec création coupon pour %s: %s",
+                        aff.get("code"), _e)
     metrics = await _affiliate_compute_metrics(aff["id"])
-    return _affiliate_public(aff, metrics)
+    result = _affiliate_public(aff, metrics)
+    if isinstance(result, dict):
+        result["access_token"] = token
+        result["token"] = token
+    return result
 
 
 async def affiliate_me(request: Request, lang: str = "fr"):
@@ -9104,10 +9391,10 @@ async def affiliate_payouts(request: Request):
 
 async def affiliate_payout_settings(payload: AffiliatePayoutSettingsIn, request: Request):
     aff = await get_current_affiliate(request)
+    address, currency = _normalize_payout(payload.payout_address, payload.payout_currency)
     await db.affiliates.update_one(
         {"id": aff["id"]},
-        {"$set": {"payout_address": payload.payout_address.strip(),
-                  "payout_currency": payload.payout_currency.strip().lower()}},
+        {"$set": {"payout_address": address, "payout_currency": currency}},
     )
     fresh = await db.affiliates.find_one({"id": aff["id"]}, {"_id": 0})
     return _affiliate_public(fresh)
@@ -9349,8 +9636,26 @@ async def affiliate_ref(code: str, request: Request, response: Response,
 
 async def admin_affiliate_invite(payload: AffiliateInviteIn,
                                  admin: dict = Depends(get_admin_user)):  # noqa: F821
-    """Crée (ou ré-invite) un affilié verrouillé à un email. Envoie l'email."""
+    """Crée (ou ré-invite) un affilié verrouillé à un email.
+    Nouveau schéma : Prénom + Nom obligatoires, Entreprise optionnelle.
+    Rétrocompat : accepte encore `name` seul (ancien front) — auto-split."""
     email = payload.email.lower().strip()
+    # Réconciliation prénom / nom : nouveau schéma prioritaire, fallback sur legacy `name`.
+    first_name = (payload.first_name or "").strip()
+    last_name = (payload.last_name or "").strip()
+    if not first_name and payload.name:
+        parts = payload.name.strip().split(None, 1)
+        first_name = parts[0] if parts else ""
+        last_name = parts[1] if len(parts) > 1 else ""
+    if not first_name or not last_name:
+        raise HTTPException(422, "Prénom et nom sont obligatoires")
+    company = (payload.company or "").strip()
+    display_name = f"{first_name} {last_name}".strip()
+
+    payout_currency = (payload.payout_currency or "usdt").strip().lower()
+    if payout_currency not in AFFILIATE_PAYOUT_CURRENCIES:
+        payout_currency = "usdt"
+
     raw = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
     expires = (now + timedelta(hours=AFFILIATE_INVITE_TTL_HOURS)).isoformat()
@@ -9360,15 +9665,17 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
         raise HTTPException(409, "This email is already an active affiliate")
 
     if existing:
-        # ré-invitation : régénère le token, l'ancien meurt
         await db.affiliates.update_one(
             {"id": existing["id"]},
             {"$set": {
                 "invite_token_hash": _affiliate_hash_token(raw),
                 "invite_expires_at": expires,
-                "name": payload.name.strip(),
+                "name": display_name,
+                "first_name": first_name,
+                "last_name": last_name,
+                "company": company,
                 "status": "invited",
-                "payout_currency": payload.payout_currency or "btc",
+                "payout_currency": payout_currency,
                 "invite_last_sent_at": now.isoformat(),
             },
              "$inc": {"invite_sent_count": 1}},
@@ -9379,17 +9686,21 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
         await db.affiliates.insert_one({
             "id": aff_id,
             "email": email,
-            "name": payload.name.strip(),
+            "name": display_name,
+            "first_name": first_name,
+            "last_name": last_name,
+            "company": company,
             "code": None,
             "user_id": None,
             "status": "invited",
             "compliance_status": "compliant",
             "manual_tier": None,
             "commission_note": payload.commission_note or "",
-            "payout_currency": payload.payout_currency or "btc",
+            "payout_currency": payout_currency,
             "payout_address": "",
             "ip_hash": None,
             "known_addresses": [],
+            "aliases": [],
             "invite_token_hash": _affiliate_hash_token(raw),
             "invite_expires_at": expires,
             "invite_sent_count": 1,
@@ -9400,7 +9711,7 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
 
     base = _trusted_public_base_url()
     link = f"{base}/affiliate/join?token={raw}"
-    await _affiliate_send_invite(email, payload.name.strip(), link, payload.lang or "fr")
+    await _affiliate_send_invite(email, display_name, link, payload.lang or "fr")
     return {"ok": True, "affiliate_id": aff_id, "invite_link": link}
 
 
@@ -9835,12 +10146,100 @@ async def admin_affiliate_update(affiliate_id: str, payload: AffiliateAdminUpdat
     if not aff:
         raise HTTPException(404, "Affiliate not found")
     update = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
+
+    # Payout : validation stricte (USDT/USDC + Ethereum EIP-55)
+    if "payout_address" in update or "payout_currency" in update:
+        addr, cur = _normalize_payout(
+            update.get("payout_address", aff.get("payout_address", "")),
+            update.get("payout_currency", aff.get("payout_currency", "usdt")),
+        )
+        update["payout_address"] = addr
+        update["payout_currency"] = cur
+
+    # Rename atomique du code affilié si le rabais (coupon_percent) change.
+    # L'ancien code passe dans `aliases[]` (actif par défaut → attribution
+    # continue de fonctionner sur les vieux liens partagés).
+    new_pct = update.get("coupon_percent")
+    old_pct = aff.get("coupon_percent")
+    if (new_pct is not None
+            and aff.get("status") == "active"
+            and aff.get("code")
+            and float(new_pct) != float(old_pct or 0)):
+        base_source = (update.get("company", aff.get("company") or "").strip()
+                       or update.get("first_name", aff.get("first_name") or "").strip()
+                       or (aff.get("name") or aff.get("email", "")).split()[0])
+        new_code = await _affiliate_gen_code_v2(
+            base_source, float(new_pct),
+            email=aff.get("email", ""), exclude_id=affiliate_id,
+        )
+        if new_code != aff.get("code"):
+            old_code = aff["code"]
+            old_alias = {
+                "code": old_code,
+                "active": True,
+                "discount_percent_at_creation": float(old_pct or 0),
+                "archived_at": datetime.now(timezone.utc).isoformat(),
+                "archived_by": admin.get("email", ""),
+            }
+            update["code"] = new_code
+            # Désactive l'ancien coupon (single source of truth = coupon actuel).
+            try:
+                await db.coupons.update_one(
+                    {"code": old_code, "source": "affiliate"},
+                    {"$set": {"active": False,
+                              "deactivated_at": datetime.now(timezone.utc).isoformat(),
+                              "deactivated_reason": "code_renamed"}},
+                )
+            except Exception as e:
+                logging.warning("[affiliate] désactivation coupon %s: %s", old_code, e)
+            # Crée / réactive le coupon au nouveau code + nouveau %
+            try:
+                await _affiliate_ensure_coupon(new_code, affiliate_id, percent=float(new_pct))
+            except Exception as e:
+                logging.warning("[affiliate] création coupon %s: %s", new_code, e)
+            # Push alias (dédup si déjà présent)
+            await db.affiliates.update_one(
+                {"id": affiliate_id, "aliases.code": {"$ne": old_code}},
+                {"$push": {"aliases": old_alias}},
+            )
+
+    # Reconstruit `name` legacy si first/last changent
+    if "first_name" in update or "last_name" in update:
+        fn = update.get("first_name", aff.get("first_name", ""))
+        ln = update.get("last_name", aff.get("last_name", ""))
+        update["name"] = f"{fn} {ln}".strip() or aff.get("name") or ""
+
     if update:
         await db.affiliates.update_one({"id": affiliate_id}, {"$set": update})
     fresh = await db.affiliates.find_one(
         {"id": affiliate_id}, {"_id": 0, "invite_token_hash": 0}
     )
     return fresh
+
+
+class AffiliateAliasToggleIn(BaseModel):
+    active: bool
+
+
+async def admin_affiliate_alias_toggle(affiliate_id: str, alias_code: str,
+                                        payload: AffiliateAliasToggleIn,
+                                        admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Active/désactive un alias historique. Un alias inactif ne permet plus
+    l'attribution ni l'application du rabais."""
+    aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
+    if not aff:
+        raise HTTPException(404, "Affiliate not found")
+    res = await db.affiliates.update_one(
+        {"id": affiliate_id, "aliases.code": alias_code.upper()},
+        {"$set": {"aliases.$.active": bool(payload.active),
+                  "aliases.$.toggled_at": datetime.now(timezone.utc).isoformat(),
+                  "aliases.$.toggled_by": admin.get("email", "")}},
+    )
+    if not res.matched_count:
+        raise HTTPException(404, "Alias not found")
+    return await db.affiliates.find_one(
+        {"id": affiliate_id}, {"_id": 0, "invite_token_hash": 0}
+    )
 
 
 async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # noqa: F821

@@ -817,18 +817,29 @@ function ResendButton({ affiliateId, L }) {
 
 function InviteModal({ L, onClose, onDone }) {
   const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [company, setCompany] = useState("");
   const [note, setNote] = useState("");
   const [lang, setLangSel] = useState("fr");
   const [busy, setBusy] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
 
   const submit = async () => {
-    if (!email.trim() || !name.trim()) { toast.error(L("Nom et courriel requis", "Name and email required")); return; }
+    if (!email.trim() || !firstName.trim() || !lastName.trim()) {
+      toast.error(L("Prénom, nom et courriel sont obligatoires",
+                    "First name, last name and email are required"));
+      return;
+    }
     setBusy(true);
     try {
       const { data } = await api.post("/admin/affiliates/invite", {
-        email: email.trim(), name: name.trim(), commission_note: note.trim(), lang,
+        email: email.trim(),
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        company: company.trim(),
+        commission_note: note.trim(),
+        lang,
       });
       setInviteLink(data.invite_link || "");
       toast.success(L("Invitation envoyée", "Invitation sent"));
@@ -847,17 +858,39 @@ function InviteModal({ L, onClose, onDone }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl border border-ash w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl border border-ash w-full max-w-md p-6 max-h-[90vh] overflow-y-auto"
+           onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h3 className="font-display text-lg font-bold text-nordfjord">{L("Inviter un affilié", "Invite an affiliate")}</h3>
+          <div>
+            <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova">
+              {L("NOUVELLE INVITATION", "NEW INVITATION")}
+            </p>
+            <h3 className="font-display text-lg font-bold text-nordfjord mt-0.5">
+              {L("Inviter un affilié", "Invite an affiliate")}
+            </h3>
+          </div>
           <button onClick={onClose}><X size={18} className="text-glacier" /></button>
         </div>
-        <div className="space-y-4">
-          <Field label={L("Nom", "Name")}>
-            <input value={name} onChange={(e) => setName(e.target.value)} data-testid="invite-name"
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={L("Prénom *", "First name *")}>
+              <input value={firstName} onChange={(e) => setFirstName(e.target.value)} data-testid="invite-first-name"
+                placeholder={L("Marie", "Marie")}
+                className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova" />
+            </Field>
+            <Field label={L("Nom *", "Last name *")}>
+              <input value={lastName} onChange={(e) => setLastName(e.target.value)} data-testid="invite-last-name"
+                placeholder={L("Dupont", "Dupont")}
+                className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova" />
+            </Field>
+          </div>
+          <Field label={L("Entreprise (optionnel — prioritaire pour le code)",
+                         "Company (optional — takes priority for code)")}>
+            <input value={company} onChange={(e) => setCompany(e.target.value)} data-testid="invite-company"
+              placeholder={L("Fitness Studio", "Fitness Studio")}
               className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova" />
           </Field>
-          <Field label={L("Courriel", "Email")}>
+          <Field label={L("Courriel *", "Email *")}>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} data-testid="invite-email"
               className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova" />
           </Field>
@@ -873,6 +906,10 @@ function InviteModal({ L, onClose, onDone }) {
             </select>
           </Field>
         </div>
+        <p className="font-data text-[11px] text-glacier mt-4 leading-relaxed">
+          {L("Le code affilié sera généré automatiquement à l'activation (base + rabais 10% par défaut). Vous pourrez le modifier depuis la fiche.",
+             "Affiliate code will be auto-generated on activation (base + 10% default discount). Editable from the detail view.")}
+        </p>
         {inviteLink && (
           <div className="mt-4 rounded-lg border border-ash bg-clinical p-3">
             <p className="text-[11px] uppercase tracking-wider text-glacier mb-1">{L("Lien d'invitation", "Invite link")}</p>

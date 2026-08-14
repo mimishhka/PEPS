@@ -8,8 +8,8 @@ router = APIRouter(prefix="/api")
 
 
 @router.post("/affiliate/join")
-async def affiliate_join(payload: s.AffiliateJoinIn, request: Request):
-    return await s.affiliate_join(payload, request)
+async def affiliate_join(payload: s.AffiliateJoinIn, request: Request, response: Response):
+    return await s.affiliate_join(payload, request, response)
 
 
 @router.get("/affiliate/me")
@@ -105,6 +105,15 @@ async def admin_affiliate_detail(affiliate_id: str, admin: dict = Depends(s.get_
 @router.put("/admin/affiliates/{affiliate_id}")
 async def admin_affiliate_update(affiliate_id: str, payload: s.AffiliateAdminUpdateIn, admin: dict = Depends(s.get_admin_user)):
     return await s.admin_affiliate_update(affiliate_id, payload, admin)
+
+
+@router.put("/admin/affiliates/{affiliate_id}/aliases/{alias_code}")
+async def admin_affiliate_alias_toggle(
+    affiliate_id: str, alias_code: str,
+    payload: s.AffiliateAliasToggleIn,
+    admin: dict = Depends(s.get_admin_user),
+):
+    return await s.admin_affiliate_alias_toggle(affiliate_id, alias_code, payload, admin)
 
 
 @router.post("/admin/affiliates/payouts/run")
