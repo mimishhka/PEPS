@@ -7343,6 +7343,33 @@ async def crypto_status(order_id: str, request: Request):
             {"$set": {"payment_info.provider_response.payment_status": np_status}},
         )
     if np_status == "finished":
+        # Defense en profondeur, alignee sur le webhook IPN : ce chemin de
+        # polling marquait paye sur le seul statut "finished", sans jamais
+        # comparer le montant. Un paiement partiel ou divergent y passait,
+        # alors que l'IPN l'aurait refuse et mis en reconciliation.
+        try:
+            poll_amount = float(data.get("price_amount") or 0)
+        except (TypeError, ValueError):
+            poll_amount = 0.0
+        order_total_poll = float(order.get("total", 0))
+        if abs(poll_amount - order_total_poll) > 0.01:
+            logging.warning(
+                "NOWPayments poll: montant divergent commande %s (poll %.2f vs commande %.2f)"
+                " - NON marquee payee", order_id, poll_amount, order_total_poll,
+            )
+            await db.orders.update_one({"id": order_id}, {"$push": {"notes": {
+                "id": str(uuid.uuid4()),
+                "text": (f"Statut crypto finished recu avec un montant divergent "
+                         f"(${poll_amount:.2f} vs ${order_total_poll:.2f}) - paiement NON "
+                         f"auto-confirme, a verifier manuellement."),
+                "author": "system",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }}})
+            await _queue_crypto_reconciliation_item(
+                {**data, "order_id": order_id}, reason="amount_mismatch_poll"
+            )
+            return {"order_id": order_id, "payment_status": order.get("payment_status"),
+                    "np_status": np_status, "requires_review": True}
         if order.get("payment_status") == "cancelled":
             await _flag_late_cancelled_payment(order, "nowpayments poll", str(payment_id or ""))
         fresh = await _mark_order_paid(
@@ -8761,6 +8788,29 @@ async def startup_event():
             "Cloudflare ou un reverse proxy, tous les visiteurs partagent l'IP de l'edge "
             "et se bloquent mutuellement sur les limites de debit. Declarez les plages "
             "IP du proxy dans TRUSTED_PROXIES."
+        )
+
+    # --- Gardes de configuration production (rapport externe P0.3 / P0.4) ---
+    # Ces reglages ne cassent rien en developpement mais sont dangereux ou
+    # couteux en production, et rien ne les signalait au demarrage.
+    if IS_PRODUCTION and CANADA_POST_SANDBOX_DELIVERY_FALLBACK:
+        # Refus net : ce repli fabrique de FAUSSES confirmations de livraison.
+        # Un client non livre verrait sa commande marquee livree.
+        raise RuntimeError(
+            "CANADA_POST_SANDBOX_DELIVERY_FALLBACK=true est interdit en production : "
+            "ce repli simule des livraisons et marquerait des commandes livrees a tort."
+        )
+    if IS_PRODUCTION and CANADA_POST_ENVIRONMENT != "prod":
+        logging.error(
+            "[config] CANADA_POST_ENVIRONMENT=%r en production. Les tarifs et les "
+            "etiquettes sortiront de l'environnement de test Postes Canada. "
+            "Attendu : CANADA_POST_ENVIRONMENT=prod.", CANADA_POST_ENVIRONMENT,
+        )
+    if IS_PRODUCTION and not (NOWPAYMENTS_API_KEY and NOWPAYMENTS_IPN_SECRET):
+        logging.error(
+            "[config] NOWPAYMENTS_API_KEY et/ou NOWPAYMENTS_IPN_SECRET manquants en "
+            "production : le paiement crypto renverra 503 et le webhook de "
+            "confirmation sera refuse. Les ventes crypto sont donc desactivees."
         )
     await seed_admin_and_products()
     await _seed_categories_from_products()

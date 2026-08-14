@@ -68,6 +68,17 @@ agenthub/agents/youtube/db
 /backend/uploads/labels/*
 !/backend/uploads/labels/.gitkeep
 
+# Contenu televerse par l'admin (images produit, certificats d'analyse).
+# Les fichiers deja suivis restent versionnes : le catalogue en ligne les
+# reference et les retirer casserait les fiches produit. En revanche les
+# NOUVEAUX uploads ne doivent plus atterrir dans le depot par accident.
+# Consequence a retenir : git n'est plus la copie de secours de ce dossier,
+# il faut une sauvegarde disque de backend/uploads/ en production.
+/backend/uploads/images/*
+!/backend/uploads/images/.gitkeep
+/backend/uploads/coa/*
+!/backend/uploads/coa/.gitkeep
+
 # Archive files and large assets
 **/*.zip
 **/*.tar.gz
