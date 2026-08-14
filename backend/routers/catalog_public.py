@@ -113,8 +113,8 @@ async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depend
 
 
 @router.post("/shipping/rates")
-async def get_shipping_rates(payload: s.ShippingRateRequest):
-    return await s.get_shipping_rates(payload)
+async def get_shipping_rates(payload: s.ShippingRateRequest, request: Request):
+    return await s.get_shipping_rates(payload, request)
 
 
 @router.post("/checkout")

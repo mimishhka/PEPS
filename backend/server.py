@@ -3773,9 +3773,15 @@ async def _maybe_notify_restock(product_id: str, variant_id: Optional[str] = Non
     )
 
 
-async def get_shipping_rates(payload: ShippingRateRequest):
+async def get_shipping_rates(payload: ShippingRateRequest, request: Optional[Request] = None):
     """Live Canada Post rates when CANADA_POST_API_KEY is configured; otherwise falls back
     to the existing flat-rate shipping_zones/shipping_methods (same zones used at checkout)."""
+    # Chaque appel interroge l'API PAYANTE de Postes Canada avec nos identifiants
+    # marchands. Sans limite, cette route publique est un proxy gratuit vers notre
+    # compte : quota épuisé au pire moment, et fuite de nos conditions tarifaires.
+    if request is not None:
+        _rate_limit("shipping_rates", _client_ip(request), 30, 600,
+                    "Too many shipping rate requests. Please wait a moment.")
     weight_kg = await _estimate_parcel_weight_kg(payload.items)
     live_rates = await _canada_post_get_rates(payload.postal_code, payload.country, weight_kg)
     if live_rates:
@@ -4250,7 +4256,10 @@ async def checkout(payload: CheckoutIn, request: Request):
                     {"$set": {"response": order_doc, "status": "completed"}},
                 )
             except Exception:
-                pass
+                # Non bloquant : la commande existe. Mais sans cette réponse en
+                # cache, un renvoi avec la même clé ne sera pas reconnu comme
+                # rejeu — d'où la trace.
+                logging.exception("[checkout] mise en cache idempotence échouée (%s)", idem_key)
 
         # Le stock est déjà réservé atomiquement plus haut (_reserve_stock_atomic),
         # avant l'appel au PSP. Rien à faire ici.
@@ -4753,9 +4762,19 @@ async def admin_reopen_order(
         coupon_doc = await db.coupons.find_one({"code": code}, {"_id": 0, "usage_limit": 1, "used_count": 1})
         if coupon_doc:
             limit = coupon_doc.get("usage_limit")
-            used = int(coupon_doc.get("used_count", 0) or 0)
-            if limit is None or used < int(limit):
-                await db.coupons.update_one({"code": code}, {"$inc": {"used_count": 1}})
+            # Incrément CONDITIONNEL en une seule écriture. L'ancienne version
+            # lisait used_count, le comparait à la limite, puis incrémentait :
+            # deux confirmations simultanées pouvaient toutes deux lire 9/10,
+            # toutes deux passer le test, et dépasser la limite. Même motif que
+            # _reserve_stock_atomic, qui lui était déjà correct.
+            if limit is None:
+                res_c = await db.coupons.update_one({"code": code}, {"$inc": {"used_count": 1}})
+            else:
+                res_c = await db.coupons.update_one(
+                    {"code": code, "used_count": {"$lt": int(limit)}},
+                    {"$inc": {"used_count": 1}},
+                )
+            if res_c.modified_count:
                 email_norm = (existing.get("email") or "").strip().lower()
                 if email_norm:
                     r2 = await db.coupons.update_one(
@@ -7348,7 +7367,10 @@ async def _process_interac_deposit_emails() -> int:
             try:
                 await _graph_mark_read(token, msg["id"])
             except Exception:
-                pass
+                # Le courriel restera non lu et sera retraité au prochain
+                # passage. _mark_order_paid est idempotent, donc pas de double
+                # encaissement — mais une boucle silencieuse mérite une trace.
+                logging.exception("[interac] impossible de marquer le courriel %s comme lu", msg.get("id"))
             processed += 1
     return processed
 
@@ -7922,6 +7944,35 @@ async def seed_admin_and_products():
     await db.subscribers.create_index("status")
     await db.addresses.create_index([("user_id", 1), ("created_at", -1)])
     await db.categories.create_index("slug", unique=True)
+
+    # --- Index manquants (audit A3) --------------------------------------
+    # Ajoutés en NON BLOQUANT : un index unique sur une collection contenant
+    # déjà des doublons échoue, et ferait planter tout le démarrage. Mieux
+    # vaut une requête lente qu'une application qui refuse de démarrer.
+    async def _try_index(coll, keys, **opts):
+        try:
+            await coll.create_index(keys, **opts)
+        except Exception as e:
+            logging.warning("[index] %s sur %s ignoré : %s", keys, coll.name, e)
+
+    # Chemins d'AUTHENTIFICATION : sans index, chaque vérification de lien
+    # magique ou d'invitation lit toute la collection. La dégradation est
+    # linéaire et invisible tant que le volume est faible.
+    await _try_index(db.magic_tokens, "token_hash", unique=True)
+    await _try_index(db.magic_tokens, "expires_at")
+    await _try_index(db.affiliates, "invite_token_hash")
+    # Clés primaires applicatives : interrogées par id un peu partout.
+    await _try_index(db.categories, "id", unique=True)
+    await _try_index(db.addresses, "id", unique=True)
+    await _try_index(db.affiliate_referrals, "id", unique=True)
+    await _try_index(db.affiliate_payouts, "id", unique=True)
+    # Champs de filtrage fréquents relevés par l'audit.
+    await _try_index(db.affiliates, "status")
+    await _try_index(db.affiliate_referrals, "payout_id")
+    await _try_index(db.affiliate_payouts, "status")
+    await _try_index(db.coupons, "used_by.email")
+    await _try_index(db.orders, "email")
+    await _try_index(db.users, "role")
     await db.menus.create_index("slug", unique=True)
     await db.menus.create_index([("location", 1), ("published", 1), ("display_order", 1)])
     # Bannière « manifeste non transmis » : sans index, chaque chargement de
@@ -9258,7 +9309,12 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request):
         except HTTPException:
             raise
         except Exception:
-            pass
+            # Date d'expiration illisible : la vérification est SAUTÉE, donc une
+            # invitation périmée passerait. On ne bloque pas (ça verrouillerait
+            # des affiliés légitimes sur une donnée malformée) mais on trace en
+            # warning pour que ce soit visible.
+            logging.warning("[affiliate] expiration d'invitation illisible (%r) — contrôle sauté",
+                            invite.get("expires_at"))
     # Verrou email : l'email connecté doit matcher l'email invité
     if (user.get("email") or "").lower().strip() != (invite.get("email") or "").lower().strip():
         raise HTTPException(403, "This invitation is bound to a different email address")
