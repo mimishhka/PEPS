@@ -122,7 +122,7 @@ export default function AffiliateDashboard() {
       const me = await api.get("/affiliate/me", { params: { lang } });
       setData(me.data);
       setPayAddr(me.data.payout_address || "");
-      setPayCur(me.data.payout_currency || "btc");
+      setPayCur(me.data.payout_currency || "usdt");
       // Résilient : un endpoint qui échoue ne casse pas tout le tableau de bord.
       setRefPage(1); setPayPage(1);
       const [r, p, perf, ins, ck, src, act] = await Promise.allSettled([
@@ -274,8 +274,18 @@ export default function AffiliateDashboard() {
   const exportPayouts = () =>
     downloadCsv(
       `fironova-payouts-${refCode}.csv`,
-      ["Period", "Amount", "Currency", "Status", "Reference"],
-      payouts.map((p) => [p.period, p.amount, p.currency, p.status, p.reference])
+      ["Period", "Amount CAD", "FX CAD to USD", "FX source", "Amount received", "Currency", "Status", "Paid at", "Reference"],
+      payouts.map((p) => [
+        p.period,
+        p.amount_cad ?? p.amount,
+        p.fx_rate_cad_to_usd || "",
+        p.fx_source || "",
+        p.amount,
+        p.currency,
+        p.status,
+        p.paid_at || "",
+        p.reference || "",
+      ])
     );
 
   const refPageRows = referrals.slice((refPage - 1) * PAGE_SIZE, refPage * PAGE_SIZE);
@@ -746,29 +756,63 @@ export default function AffiliateDashboard() {
                       <thead>
                         <tr className="text-left font-data text-[11px] uppercase tracking-wider text-glacier border-b border-ash">
                           <th className="px-6 py-3">{L("Période", "Period")}</th>
-                          <th className="px-6 py-3">{L("Montant", "Amount")}</th>
-                          <th className="px-6 py-3">{L("Devise", "Currency")}</th>
+                          <th className="px-6 py-3">{L("Montant CAD", "Amount CAD")}</th>
+                          <th className="px-6 py-3">{L("Taux CAD→USD", "CAD→USD rate")}</th>
+                          <th className="px-6 py-3">{L("Reçu", "Received")}</th>
                           <th className="px-6 py-3">{L("Statut", "Status")}</th>
                           <th className="px-6 py-3">{L("Référence", "Reference")}</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {payPageRows.map((p) => (
-                          <tr key={p.id} className="border-b border-ash/60">
-                            <td className="px-6 py-3 font-data text-nordfjord">{p.period}</td>
-                            <td className="px-6 py-3 font-semibold text-nordfjord">{money(p.amount)}</td>
-                            <td className="px-6 py-3 uppercase text-glacier">{p.currency}</td>
-                            <td className="px-6 py-3">
-                              <PayoutStatus status={p.status} L={L} />
-                            </td>
-                            <td className="px-6 py-3 font-data text-[11px] text-glacier break-all max-w-[200px]">
-                              {p.reference || "—"}
-                            </td>
-                          </tr>
-                        ))}
+                        {payPageRows.map((p) => {
+                          // Fallback pour les payouts legacy sans champs de conversion.
+                          const amountCad = p.amount_cad ?? p.amount;
+                          const fxRate = p.fx_rate_cad_to_usd;
+                          const currency = (p.currency || "").toLowerCase();
+                          const targetKnown = ["usdt", "usdc"].includes(currency);
+                          return (
+                            <tr key={p.id} className="border-b border-ash/60">
+                              <td className="px-6 py-3 font-data text-nordfjord align-top">{p.period}</td>
+                              <td className="px-6 py-3 font-semibold text-nordfjord align-top">
+                                {money(amountCad)}
+                              </td>
+                              <td className="px-6 py-3 font-data text-[12px] text-glacier align-top">
+                                {fxRate
+                                  ? (
+                                    <>
+                                      <span className="text-nordfjord">{Number(fxRate).toFixed(4)}</span>
+                                      <span className="block text-[10px] text-glacier/70">
+                                        {p.fx_source === "bank_of_canada"
+                                          ? L("Banque du Canada", "Bank of Canada")
+                                          : p.fx_source === "fallback"
+                                            ? L("Estimation", "Fallback")
+                                            : p.fx_source || "—"}
+                                      </span>
+                                    </>
+                                  )
+                                  : <span className="text-glacier/50">—</span>}
+                              </td>
+                              <td className="px-6 py-3 font-semibold text-nova align-top">
+                                {targetKnown && p.amount != null
+                                  ? <>{Number(p.amount).toFixed(2)}<span className="ml-1 text-[10px] uppercase text-glacier">{currency}</span></>
+                                  : <span className="text-glacier">{money(p.amount)} {currency ? <span className="text-[10px] uppercase">{currency}</span> : null}</span>}
+                              </td>
+                              <td className="px-6 py-3 align-top">
+                                <PayoutStatus status={p.status} L={L} />
+                              </td>
+                              <td className="px-6 py-3 font-data text-[11px] text-glacier break-all max-w-[200px] align-top">
+                                {p.reference || "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
+                  <p className="px-6 pt-4 pb-1 font-data text-[10px] text-glacier/80 leading-relaxed border-t border-ash/60">
+                    {L("Les commissions sont calculées en CAD puis converties au moment du paiement au taux officiel de la Banque du Canada. USDT et USDC sont indexés 1:1 sur le dollar américain (USD).",
+                       "Commissions are computed in CAD then converted at payout time at the Bank of Canada official rate. USDT and USDC are pegged 1:1 to the US dollar (USD).")}
+                  </p>
                   <Pagination page={payPage} total={payouts.length} pageSize={PAGE_SIZE}
                     onChange={setPayPage} L={L} />
                 </>
@@ -818,26 +862,52 @@ export default function AffiliateDashboard() {
         {tab === "settings" && (
           <div className="space-y-6 max-w-xl" data-testid="affiliate-settings">
             <div className="bg-white rounded-2xl border border-ash p-6">
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
-                {L("PARAMÈTRES DE PAIEMENT (CRYPTO)", "PAYOUT SETTINGS (CRYPTO)")}
+              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+                {L("PARAMÈTRES DE PAIEMENT — USDT / USDC (ERC-20)", "PAYOUT SETTINGS — USDT / USDC (ERC-20)")}
+              </p>
+              <p className="text-xs text-glacier mb-5 leading-relaxed">
+                {L("Fironova verse vos commissions en USDT ou USDC sur le réseau Ethereum (ERC-20). Le montant est converti à partir du CAD au taux officiel de la Banque du Canada le jour de l'exécution du paiement.",
+                   "Fironova pays your commissions in USDT or USDC on the Ethereum network (ERC-20). Amounts are converted from CAD at the official Bank of Canada rate on the payout date.")}
               </p>
               <label className="block mb-4">
-                <span className="font-data text-xs text-glacier">{L("Adresse de réception", "Receiving address")}</span>
+                <span className="font-data text-xs text-glacier">{L("Adresse Ethereum (ERC-20)", "Ethereum address (ERC-20)")}</span>
                 <input value={payAddr} onChange={(e) => setPayAddr(e.target.value)}
                   data-testid="affiliate-payout-address"
                   className="mt-1 w-full rounded-lg border border-ash px-4 py-3 font-data text-sm text-nordfjord focus:border-nova outline-none"
-                  placeholder="bc1q…" />
+                  placeholder="0x…" />
+                {(() => {
+                  const raw = (payAddr || "").trim();
+                  if (!raw) return null;
+                  const isFormat = /^0x[0-9a-fA-F]{40}$/.test(raw);
+                  if (!isFormat) {
+                    return (
+                      <p className="mt-1.5 text-[11px] text-error">
+                        {L("Format invalide. Attendu : 0x suivi de 40 caractères hexadécimaux.",
+                           "Invalid format. Expected: 0x followed by 40 hex characters.")}
+                      </p>
+                    );
+                  }
+                  // Preview checksum EIP-55 (approximation client — le serveur valide définitivement).
+                  const body = raw.slice(2);
+                  const isChecksummed = body !== body.toLowerCase() && body !== body.toUpperCase();
+                  return (
+                    <p className={`mt-1.5 text-[11px] ${isChecksummed ? "text-success" : "text-warning"}`}>
+                      {isChecksummed
+                        ? L("✓ Format checksummé détecté — vérification EIP-55 côté serveur à l'enregistrement.",
+                            "✓ Checksummed format detected — EIP-55 verification on save.")
+                        : L("Adresse en minuscules acceptée : le serveur la convertira au format checksummé EIP-55 automatiquement.",
+                            "Lowercase address accepted: server will auto-normalize to EIP-55 checksummed format.")}
+                    </p>
+                  );
+                })()}
               </label>
               <label className="block mb-6">
                 <span className="font-data text-xs text-glacier">{L("Devise", "Currency")}</span>
                 <select value={payCur} onChange={(e) => setPayCur(e.target.value)}
                   data-testid="affiliate-payout-currency"
                   className="mt-1 w-full rounded-lg border border-ash px-4 py-3 font-data text-sm text-nordfjord focus:border-nova outline-none">
-                  <option value="btc">BTC</option>
-                  <option value="eth">ETH</option>
-                  <option value="usdttrc20">USDT (TRC20)</option>
-                  <option value="usdterc20">USDT (ERC20)</option>
-                  <option value="ltc">LTC</option>
+                  <option value="usdt">USDT (Tether — Ethereum ERC-20)</option>
+                  <option value="usdc">USDC (Circle — Ethereum ERC-20)</option>
                 </select>
               </label>
               <button onClick={savePayout} disabled={savingPay}
@@ -845,6 +915,10 @@ export default function AffiliateDashboard() {
                 className="px-6 py-3 rounded-full bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50">
                 {savingPay ? L("Enregistrement…", "Saving…") : L("Enregistrer", "Save")}
               </button>
+              <p className="text-[10px] text-glacier/80 mt-4 leading-relaxed">
+                {L("⚠️ Envoyer USDT/USDC sur un autre réseau (BSC, Polygon, Tron) entraînera une perte définitive des fonds. Assurez-vous que votre portefeuille supporte l'ERC-20.",
+                   "⚠️ Sending USDT/USDC on another network (BSC, Polygon, Tron) will result in permanent loss. Ensure your wallet supports ERC-20.")}
+              </p>
             </div>
             <div className="bg-white rounded-2xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">

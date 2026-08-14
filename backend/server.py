@@ -8560,6 +8560,46 @@ async def _affiliate_gen_code_v2(base_source: str, discount_percent: float,
 # ===========================================================================
 AFFILIATE_PAYOUT_CURRENCIES = ("usdt", "usdc")
 
+# ---- Taux CAD → USD (Bank of Canada Valet API — gratuit, source officielle) ---
+_CAD_USD_CACHE: dict = {"rate": None, "fetched_at": 0.0, "source": ""}
+_CAD_USD_CACHE_TTL_S = 4 * 3600  # 4h
+
+
+async def _fetch_cad_to_usd_rate() -> tuple:
+    """Retourne (rate_cad_to_usd, source_str) — combien vaut 1 CAD en USD.
+    Utilise le Valet API de la Banque du Canada (source officielle CAD).
+    Cache 4h en mémoire. Fallback conservateur 0.72 si l'API échoue."""
+    import time
+    now_ts = time.time()
+    if (_CAD_USD_CACHE["rate"] is not None
+            and (now_ts - _CAD_USD_CACHE["fetched_at"]) < _CAD_USD_CACHE_TTL_S):
+        return _CAD_USD_CACHE["rate"], _CAD_USD_CACHE["source"]
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            r = await client.get(
+                "https://www.bankofcanada.ca/valet/observations/FXUSDCAD/json?recent=1",
+                headers={"User-Agent": "Fironova/1.0"},
+            )
+            r.raise_for_status()
+            data = r.json()
+            obs = (data.get("observations") or [])
+            if obs:
+                # FXUSDCAD = combien de CAD pour 1 USD. Inverse pour CAD→USD.
+                usd_to_cad = float(obs[-1]["FXUSDCAD"]["v"])
+                cad_to_usd = round(1.0 / usd_to_cad, 6)
+                _CAD_USD_CACHE.update({
+                    "rate": cad_to_usd, "fetched_at": now_ts, "source": "bank_of_canada",
+                })
+                return cad_to_usd, "bank_of_canada"
+    except Exception as e:
+        logging.warning("[fx] Bank of Canada FX fetch failed: %s", e)
+    # Fallback conservateur : 1 CAD ≈ 0.72 USD (l'affilié ne perd jamais si l'API tombe)
+    _CAD_USD_CACHE.update({
+        "rate": 0.72, "fetched_at": now_ts, "source": "fallback",
+    })
+    return 0.72, "fallback"
+
 
 def _keccak256(data: bytes) -> bytes:
     """Keccak-256 (variante Ethereum, distincte de SHA3-256 finalisé).
@@ -9183,7 +9223,20 @@ async def affiliate_maintenance_watchdog():
 async def affiliate_ensure_indexes():
     """Index — à appeler dans seed_admin_and_products() ou au startup."""
     await db.affiliates.create_index("id", unique=True)
-    await db.affiliates.create_index("code", unique=True, sparse=True)
+    # Unique uniquement quand `code` est présent et de type string : permet
+    # plusieurs invités concurrents avec code:null sans conflit d'index.
+    try:
+        # Purge l'ancien index strict s'il existe (migration one-shot).
+        info = await db.affiliates.index_information()
+        if "code_1" in info and not info["code_1"].get("partialFilterExpression"):
+            await db.affiliates.drop_index("code_1")
+    except Exception:
+        pass
+    await db.affiliates.create_index(
+        "code", unique=True,
+        partialFilterExpression={"code": {"$type": "string"}},
+        name="code_1_partial",
+    )
     await db.affiliates.create_index("email", unique=True)
     await db.affiliates.create_index("user_id", sparse=True)
     await db.affiliate_referrals.create_index("order_id", unique=True)
@@ -9313,13 +9366,21 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request,
         if _payout_cur not in AFFILIATE_PAYOUT_CURRENCIES:
             _payout_cur = "usdt"
 
-    # --- Génération du code v2 : BASE + 10 (rabais par défaut) --------------
+    # --- Génération du code v2 : BASE + rabais ------------------------------
+    # Priorité : coupon_percent pré-défini sur la fiche (ex. via bulk CSV),
+    # sinon AFFILIATE_DEFAULT_DISCOUNT_PERCENT (10% par défaut).
     base_source = (invite.get("company") or "").strip() or (invite.get("first_name") or "").strip()
     if not base_source:
         # Fallback : dérive du champ name legacy
         base_source = (invite.get("name") or invite_email.split("@")[0]).split()[0]
-    default_discount = float(os.environ.get("AFFILIATE_DEFAULT_DISCOUNT_PERCENT", "10"))
-    code = await _affiliate_gen_code_v2(base_source, default_discount,
+    if invite.get("coupon_percent") is not None:
+        try:
+            discount_percent_effective = float(invite["coupon_percent"])
+        except Exception:
+            discount_percent_effective = float(os.environ.get("AFFILIATE_DEFAULT_DISCOUNT_PERCENT", "10"))
+    else:
+        discount_percent_effective = float(os.environ.get("AFFILIATE_DEFAULT_DISCOUNT_PERCENT", "10"))
+    code = await _affiliate_gen_code_v2(base_source, discount_percent_effective,
                                         email=invite_email, exclude_id=invite["id"])
 
     update = {
@@ -9327,7 +9388,7 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request,
             "status": "active",
             "user_id": user["id"],
             "code": code,
-            "coupon_percent": default_discount,
+            "coupon_percent": discount_percent_effective,
             "activated_at": now.isoformat(),
             "ip_hash": _affiliate_hash_ip(_client_ip(request)),
             "known_addresses": [],
@@ -9354,7 +9415,7 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request,
     # Coupon lié auto (idempotent) — utilise le rabais courant de l'affilié.
     try:
         await _affiliate_ensure_coupon(aff.get("code"), aff["id"],
-                                       percent=default_discount)
+                                       percent=discount_percent_effective)
     except Exception as _e:
         logging.warning("[affiliate] échec création coupon pour %s: %s",
                         aff.get("code"), _e)
@@ -9745,6 +9806,11 @@ async def admin_affiliate_resend(affiliate_id: str,
 class AffiliateBulkInviteRow(BaseModel):
     model_config = ConfigDict(extra="ignore")
     email: str = Field(min_length=1, max_length=320)
+    first_name: Optional[str] = ""
+    last_name: Optional[str] = ""
+    company: Optional[str] = ""
+    discount_percent: Optional[float] = None
+    # Rétrocompat ancien CSV : accepte encore `name` unique (auto-split)
     name: Optional[str] = ""
 
 
@@ -9752,21 +9818,27 @@ class AffiliateBulkInviteIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     rows: List[AffiliateBulkInviteRow] = Field(min_length=1, max_length=500)
     commission_note: Optional[str] = ""
-    payout_currency: Optional[str] = "btc"
+    payout_currency: Optional[str] = "usdt"
     lang: str = "fr"
+    # Rabais par défaut appliqué aux lignes sans `discount_percent` explicite.
+    default_discount_percent: float = 10.0
 
 
 async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
                                       admin: dict = Depends(get_admin_user)):  # noqa: F821
     """Invite en masse depuis un CSV parsé côté client.
-    - Génère un code affilié unique à l'avance (pré-provisionné) pour chaque nouvelle invitation.
-    - Ré-invite si l'email existe déjà en statut invité/suspendu (nouveau token).
-    - Ignore si l'affilié est déjà actif.
-    - Envoie l'email d'invitation via Resend.
-    Retourne un résumé détaillé (succès, ignorés, échecs)."""
+    Nouveau schéma 5 colonnes : first_name, last_name, company, email, discount_percent.
+    - Rétrocompat : si l'ancien champ `name` est fourni, il est splitté.
+    - Le rabais renseigné (ou default_discount_percent) sera appliqué à
+      l'activation via le code v2 `BASE + %`.
+    """
     lang = (payload.lang or "fr").lower()
     if lang not in ("fr", "en"):
         lang = "fr"
+    payout_currency = (payload.payout_currency or "usdt").lower()
+    if payout_currency not in AFFILIATE_PAYOUT_CURRENCIES:
+        payout_currency = "usdt"
+
     base = _trusted_public_base_url()
     now = datetime.now(timezone.utc)
     expires = (now + timedelta(hours=AFFILIATE_INVITE_TTL_HOURS)).isoformat()
@@ -9778,13 +9850,34 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
 
     for row in payload.rows:
         email = (row.email or "").lower().strip()
-        name = (row.name or "").strip() or email.split("@")[0]
+        # Résolution prénom/nom : nouveau schéma prioritaire, fallback sur legacy `name`.
+        fn = (row.first_name or "").strip()
+        ln = (row.last_name or "").strip()
+        if (not fn or not ln) and row.name:
+            parts = (row.name or "").strip().split(None, 1)
+            fn = fn or (parts[0] if parts else "")
+            ln = ln or (parts[1] if len(parts) > 1 else "")
+        company = (row.company or "").strip()
+        display_name = f"{fn} {ln}".strip() or email.split("@")[0]
+        # Rabais utilisé pour ce futur affilié (persisté sur la fiche pour l'activation).
+        raw_pct = row.discount_percent
+        if raw_pct is None:
+            discount_percent = float(payload.default_discount_percent or 10.0)
+        else:
+            try:
+                discount_percent = float(raw_pct)
+            except Exception:
+                discount_percent = float(payload.default_discount_percent or 10.0)
+        discount_percent = max(0.0, min(100.0, discount_percent))
+
         if not email:
             failed.append({"email": row.email, "error": "Missing email"})
             continue
-        # validation email basique (regex simple, robuste et sans lever)
         if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
             failed.append({"email": email, "error": "Invalid email format"})
+            continue
+        if not fn or not ln:
+            failed.append({"email": email, "error": "first_name and last_name are required"})
             continue
         if email in seen_emails:
             skipped.append({"email": email, "reason": "Duplicate in CSV"})
@@ -9797,62 +9890,51 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
                 skipped.append({"email": email, "reason": "Already active"})
                 continue
 
-            # Pré-génération d'un code unique (utilisé lors de l'activation).
-            code = _affiliate_gen_code()
-            for _ in range(6):
-                if not await db.affiliates.find_one({"code": code}, {"_id": 1}):
-                    break
-                code = _affiliate_gen_code()
-
             raw = secrets.token_urlsafe(32)
             token_hash = _affiliate_hash_token(raw)
 
+            common_fields = {
+                "invite_token_hash": token_hash,
+                "invite_expires_at": expires,
+                "name": display_name,
+                "first_name": fn,
+                "last_name": ln,
+                "company": company,
+                "coupon_percent": discount_percent,
+                "status": "invited",
+                "payout_currency": payout_currency,
+                "invite_last_sent_at": now.isoformat(),
+            }
             if existing:
                 await db.affiliates.update_one(
                     {"id": existing["id"]},
-                    {"$set": {
-                        "invite_token_hash": token_hash,
-                        "invite_expires_at": expires,
-                        "name": name,
-                        "status": "invited",
-                        "payout_currency": (payload.payout_currency or existing.get("payout_currency") or "btc"),
-                        "invite_last_sent_at": now.isoformat(),
-                        # code pré-provisionné seulement si l'affilié n'en a pas encore
-                        **({"code": code} if not existing.get("code") else {}),
-                     },
-                     "$inc": {"invite_sent_count": 1}},
+                    {"$set": common_fields, "$inc": {"invite_sent_count": 1}},
                 )
                 aff_id = existing["id"]
-                assigned_code = existing.get("code") or code
             else:
                 aff_id = str(uuid.uuid4())
                 await db.affiliates.insert_one({
                     "id": aff_id,
                     "email": email,
-                    "name": name,
-                    "code": code,
+                    **common_fields,
+                    "code": None,      # sera généré à l'activation par _affiliate_gen_code_v2
                     "user_id": None,
-                    "status": "invited",
                     "compliance_status": "compliant",
                     "manual_tier": None,
                     "commission_note": payload.commission_note or "",
-                    "payout_currency": payload.payout_currency or "btc",
                     "payout_address": "",
                     "ip_hash": None,
                     "known_addresses": [],
-                    "invite_token_hash": token_hash,
-                    "invite_expires_at": expires,
+                    "aliases": [],
                     "invite_sent_count": 1,
-                    "invite_last_sent_at": now.isoformat(),
                     "created_at": now.isoformat(),
                     "activated_at": None,
                     "source": "bulk_csv",
                 })
-                assigned_code = code
 
             link = f"{base}/affiliate/join?token={raw}"
             try:
-                await _affiliate_send_invite(email, name, link, lang)
+                await _affiliate_send_invite(email, display_name, link, lang)
                 email_status = "sent"
             except Exception as e:
                 logging.warning("[affiliate] bulk-invite email failed for %s: %s", email, e)
@@ -9860,9 +9942,12 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
 
             results.append({
                 "email": email,
-                "name": name,
+                "name": display_name,
+                "first_name": fn,
+                "last_name": ln,
+                "company": company,
+                "discount_percent": discount_percent,
                 "affiliate_id": aff_id,
-                "code": assigned_code,
                 "invite_link": link,
                 "email_status": email_status,
             })
@@ -10259,6 +10344,10 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
                     "total": {"$sum": "$commission_amount"},
                     "ids": {"$push": "$id"}}},
     ]
+    # Taux de change unique pour tout le batch (transparence + cohérence intra-batch)
+    fx_rate, fx_source = await _fetch_cad_to_usd_rate()
+    fx_captured_at = now.isoformat()
+
     async for grp in db.affiliate_referrals.aggregate(pipeline):
         affiliate_id = grp["_id"]
         total = round(float(grp["total"]), 2)
@@ -10267,14 +10356,28 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
         aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
         if not aff or aff.get("status") != "active":
             continue
+        # Devise cible : USDT/USDC → 1:1 avec USD (peggé). Sinon on garde la valeur legacy.
+        payout_currency = (aff.get("payout_currency") or "usdt").lower()
+        amount_cad = total
+        if payout_currency in AFFILIATE_PAYOUT_CURRENCIES:
+            amount_usd = round(amount_cad * fx_rate, 2)
+            amount_target = amount_usd    # USDT/USDC ≈ USD
+        else:
+            amount_usd = None
+            amount_target = amount_cad
         payout_id = str(uuid.uuid4())
         await db.affiliate_payouts.insert_one({
             "id": payout_id,
             "affiliate_id": affiliate_id,
             "affiliate_code": aff.get("code"),
             "period": period,
-            "amount": total,
-            "currency": aff.get("payout_currency", "btc"),
+            "amount": amount_target,             # montant à envoyer dans la devise cible
+            "amount_cad": amount_cad,            # référence brute CAD (transparence)
+            "amount_usd": amount_usd,            # équivalent USD (pour USDT/USDC)
+            "currency": payout_currency,
+            "fx_rate_cad_to_usd": fx_rate if payout_currency in AFFILIATE_PAYOUT_CURRENCIES else None,
+            "fx_source": fx_source if payout_currency in AFFILIATE_PAYOUT_CURRENCIES else None,
+            "fx_captured_at": fx_captured_at,
             "payout_address": aff.get("payout_address", ""),
             "referral_ids": grp["ids"],
             "referral_count": len(grp["ids"]),
@@ -10288,9 +10391,11 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
             {"id": {"$in": grp["ids"]}},
             {"$set": {"payout_id": payout_id}},
         )
-        created.append({"affiliate_id": affiliate_id, "amount": total,
+        created.append({"affiliate_id": affiliate_id, "amount": amount_target,
+                        "amount_cad": amount_cad, "currency": payout_currency,
                         "payout_id": payout_id})
     return {"ok": True, "period": period, "payouts_created": len(created),
+            "fx_rate_cad_to_usd": fx_rate, "fx_source": fx_source,
             "detail": created}
 
 

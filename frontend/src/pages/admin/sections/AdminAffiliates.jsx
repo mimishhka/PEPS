@@ -932,6 +932,10 @@ function InviteModal({ L, onClose, onDone }) {
 
 // Parse un CSV très simple : détecte les colonnes email/name par en-tête (insensible à la casse
 // et aux variantes FR/EN). Ignore les guillemets et gère les virgules ou points-virgules.
+// Parse un CSV avec le NOUVEAU schéma 5 colonnes :
+//   first_name, last_name, company, email, discount_percent
+// Rétrocompat : accepte encore l'ancien schéma { email, name } — auto-split.
+// Détection insensible à la casse + variantes FR/EN, séparateur `,` ou `;`.
 function parseCsv(text) {
   const raw = String(text || "").replace(/^\uFEFF/, "").trim();
   if (!raw) return { rows: [], error: "Empty file" };
@@ -954,11 +958,17 @@ function parseCsv(text) {
     return out.map((x) => x.trim());
   };
   const header = splitLine(lines[0]).map((h) => h.toLowerCase().replace(/^"|"$/g, ""));
-  const emailIdx = header.findIndex((h) => ["email", "courriel", "e-mail", "mail"].includes(h));
-  const nameIdx = header.findIndex((h) => ["name", "nom", "fullname", "full_name", "full name"].includes(h));
+  const findIdx = (aliases) => header.findIndex((h) => aliases.includes(h));
+  const emailIdx    = findIdx(["email", "courriel", "e-mail", "mail"]);
+  const firstIdx    = findIdx(["first_name", "firstname", "prenom", "prénom", "first name"]);
+  const lastIdx     = findIdx(["last_name", "lastname", "nom", "last name", "surname"]);
+  const companyIdx  = findIdx(["company", "entreprise", "société", "societe", "business"]);
+  const discountIdx = findIdx(["discount_percent", "discount", "rabais", "percent", "pourcentage", "%"]);
+  const nameIdx     = findIdx(["name", "fullname", "full_name", "full name"]);
+
   let rows = [];
   if (emailIdx === -1) {
-    // Pas d'en-tête reconnu : on suppose que la 1re colonne est l'email, la 2e le nom.
+    // Pas d'en-tête reconnu : 1re colonne = email, 2e = name (rétrocompat old CSV).
     rows = lines.map((line) => {
       const cells = splitLine(line);
       return { email: cells[0] || "", name: cells[1] || "" };
@@ -966,12 +976,39 @@ function parseCsv(text) {
   } else {
     rows = lines.slice(1).map((line) => {
       const cells = splitLine(line);
-      return { email: cells[emailIdx] || "", name: nameIdx >= 0 ? cells[nameIdx] || "" : "" };
+      const row = {
+        email:            cells[emailIdx]    || "",
+        first_name:       firstIdx    >= 0 ? cells[firstIdx]    || "" : "",
+        last_name:        lastIdx     >= 0 ? cells[lastIdx]     || "" : "",
+        company:          companyIdx  >= 0 ? cells[companyIdx]  || "" : "",
+        discount_percent: discountIdx >= 0 ? cells[discountIdx] || "" : "",
+        name:             nameIdx     >= 0 ? cells[nameIdx]     || "" : "",
+      };
+      return row;
     });
   }
-  rows = rows
-    .map((r) => ({ email: (r.email || "").trim(), name: (r.name || "").trim() }))
-    .filter((r) => r.email.length);
+  rows = rows.map((r) => {
+    const out = {
+      email: (r.email || "").trim(),
+      first_name: (r.first_name || "").trim(),
+      last_name: (r.last_name || "").trim(),
+      company: (r.company || "").trim(),
+      name: (r.name || "").trim(),
+    };
+    // Rétrocompat auto-split : name → first + last si first/last absents
+    if ((!out.first_name || !out.last_name) && out.name) {
+      const parts = out.name.split(/\s+/, 2);
+      if (!out.first_name) out.first_name = parts[0] || "";
+      if (!out.last_name)  out.last_name  = parts[1] || "";
+    }
+    // Parse percent : "15%" / "15" / "15.5" → 15 / 15 / 15.5
+    if (r.discount_percent != null && String(r.discount_percent).trim().length) {
+      const clean = String(r.discount_percent).replace(/[^\d.-]/g, "");
+      const n = parseFloat(clean);
+      if (!Number.isNaN(n)) out.discount_percent = Math.max(0, Math.min(100, n));
+    }
+    return out;
+  }).filter((r) => r.email.length);
   return { rows };
 }
 
@@ -1081,8 +1118,12 @@ function BulkInviteModal({ L, onClose, onDone }) {
                               "Drop a CSV file or click to browse")}
               </p>
               <p className="text-[11px] text-glacier mt-1">
-                {L("Colonnes: email, name (en-tête optionnel) · max 500 lignes",
-                   "Columns: email, name (header optional) · max 500 rows")}
+                {L("5 colonnes attendues : first_name, last_name, company, email, discount_percent · max 500 lignes",
+                   "5 columns expected: first_name, last_name, company, email, discount_percent · max 500 rows")}
+              </p>
+              <p className="text-[10px] text-glacier/70 mt-0.5">
+                {L("Rétrocompatible avec l'ancien format (email, name).",
+                   "Backwards compatible with the old format (email, name).")}
               </p>
             </label>
 
@@ -1107,19 +1148,27 @@ function BulkInviteModal({ L, onClose, onDone }) {
                   <table className="w-full text-xs">
                     <thead className="bg-white sticky top-0">
                       <tr className="border-b border-ash">
+                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">{L("Prénom", "First")}</th>
+                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">{L("Nom", "Last")}</th>
+                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">{L("Entreprise", "Company")}</th>
                         <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">Email</th>
-                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">{L("Nom", "Name")}</th>
+                        <th className="px-3 py-1.5 text-right text-glacier font-data uppercase tracking-wider">%</th>
                       </tr>
                     </thead>
                     <tbody>
                       {rows.slice(0, 100).map((r, i) => (
                         <tr key={i} className="border-b border-ash/40">
+                          <td className="px-3 py-1.5 text-nordfjord truncate">{r.first_name || "—"}</td>
+                          <td className="px-3 py-1.5 text-nordfjord truncate">{r.last_name || "—"}</td>
+                          <td className="px-3 py-1.5 text-glacier truncate">{r.company || "—"}</td>
                           <td className="px-3 py-1.5 text-nordfjord truncate">{r.email}</td>
-                          <td className="px-3 py-1.5 text-glacier truncate">{r.name || "—"}</td>
+                          <td className="px-3 py-1.5 text-right font-data text-nova">
+                            {r.discount_percent != null ? `${r.discount_percent}%` : "—"}
+                          </td>
                         </tr>
                       ))}
                       {rows.length > 100 && (
-                        <tr><td colSpan={2} className="px-3 py-1.5 text-center text-glacier">…{rows.length - 100} {L("de plus", "more")}</td></tr>
+                        <tr><td colSpan={5} className="px-3 py-1.5 text-center text-glacier">…{rows.length - 100} {L("de plus", "more")}</td></tr>
                       )}
                     </tbody>
                   </table>
