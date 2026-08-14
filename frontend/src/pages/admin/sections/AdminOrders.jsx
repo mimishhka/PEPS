@@ -250,6 +250,13 @@ function OrderDetail({ order, onClose, onUpdate }) {
     && order?.cancelled_reason === "auto_unpaid_timeout"
     && !!order?.late_payment_flagged;
 
+  // Réouverture générale : toute commande annulée peut être réouverte par un admin
+  // (couvre les cancel manuels et les auto-cancels sans paiement tardif détecté).
+  const canReopenGeneric =
+    canUseReopenAction
+    && order?.payment_status === "cancelled"
+    && !canReopenLatePaid;
+
   const reopenLatePaidOrder = async () => {
     setReopenBusy(true);
     try {
@@ -258,6 +265,24 @@ function OrderDetail({ order, onClose, onUpdate }) {
         note: "Late payment received after auto-cancel",
       });
       toast.success("Order reopened and marked as paid");
+      onUpdate();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setReopenBusy(false);
+    }
+  };
+
+  const reopenOrder = async () => {
+    const note = window.prompt("Motif de réouverture (optionnel — trace dans l'historique) :", "") || "";
+    if (!await confirm({
+      title: "Réouvrir cette commande annulée ?",
+      description: "Le stock sera à nouveau décrémenté (409 si un article n'est plus disponible). La commande repasse en attente de paiement.",
+    })) return;
+    setReopenBusy(true);
+    try {
+      await api.post(`/admin/orders/${order.id}/reopen`, { mark_paid: false, note });
+      toast.success("Commande réouverte");
       onUpdate();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
@@ -453,7 +478,18 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 disabled={reopenBusy}
                 data-testid="reopen-late-paid-btn"
                 className="bg-amber-600 text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-amber-700 disabled:opacity-50"
-                title="Réouvrir la commande annulée automatiquement après paiement tardif"
+                title="Réouvrir la commande annulée automatiquement après paiement tardif détecté"
+              >
+                <Undo2 size={14} /> {reopenBusy ? "Réouverture…" : "Réouvrir + marquer payé"}
+              </button>
+            )}
+            {canReopenGeneric && (
+              <button
+                onClick={reopenOrder}
+                disabled={reopenBusy}
+                data-testid="reopen-order-btn"
+                className="bg-nordfjord text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
+                title="Réouvrir cette commande annulée (repasse en attente de paiement)"
               >
                 <Undo2 size={14} /> {reopenBusy ? "Réouverture…" : "Réouvrir"}
               </button>

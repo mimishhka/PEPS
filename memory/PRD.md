@@ -156,6 +156,14 @@ E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (N
 
   - GAP 2: Cancel manuel reverse la commission affiliée UNIQUEMENT si la commande était payée avant (via `_cancel_order_side_effects(reverse_affiliate=was_paid)`)
   - GAP 3a: Détection paiement tardif Interac — quand un e-Transfer arrive pour un `order_number` déjà annulé, une note système `⚠️ PAIEMENT TARDIF` est ajoutée et les flags `late_payment_flagged`, `late_payment_reference` sont posés (idempotent)
+
+## Sprint A — Août 2026 (quick wins)
+- **Backfill first_name/last_name** — Script one-shot `/app/backend/scripts/backfill_affiliate_names.py` (idempotent). Splitte le `name` legacy sur le premier espace : "Marie Dubois" → first="Marie" last="Dubois". Nom vide → fallback email prefix comme first_name. Exécuté : 22 affiliés migrés, 22 no-op au 2nd run.
+- **UI Réouverture commande (généralisée)** — Le bouton "Réouvrir" existant dans `AdminOrders.jsx` était trop restrictif (seulement `late_payment_flagged=true` + `auto_unpaid_timeout`). Ajout d'un second bouton "Réouvrir" (bleu nordfjord, testid `reopen-order-btn`) pour **toute commande cancelled** — prompt de motif optionnel + confirmation dialog. Appelle `POST /admin/orders/{id}/reopen` avec `mark_paid: false` (repasse en attente). Le bouton amber "Réouvrir + marquer payé" reste dédié aux cas de paiement tardif détecté (dernière défense côté staff).
+
+## Analyse du patch payout admin fourni (non appliqué — Sprint B)
+Patch reçu contenant : scheduler mensuel avec `payout_runs` anti-double, FX BoC avec refus si aucune source, batch NOWPayments 1×2FA, CSV NOWPayments fallback, frontend admin. **Non appliqué en Sprint A** car : (1) le frontend fourni utilise des composants inexistants dans le codebase (`useAPI`, `useModal`, `Table`, `StatusBadge`…), (2) dépendances backend fantômes (`_np_create_payout`, `_np_verify_payout`, `NOWPAYMENTS_PAYOUT_ENABLED`, `PayoutVerifyIn`), (3) FX doublonné avec `_fetch_cad_to_usd_rate()` existant, (4) scheduler UTC minuit = 20h Montréal la veille. À réécrire proprement en session dédiée sur notre stack Tailwind/shadcn avec consolidation FX et scheduler timezone-aware.
+
   - GAP 3b: Nouvel endpoint `POST /api/admin/orders/{id}/reopen` (payload `{mark_paid, note}`) — 400 si non-cancelled, 409 si stock insuffisant avec rollback atomique. Sinon: ré-décrément stock, restaure coupon.used_count (respecte usage_limit), remet `payment_status` au `prev_payment_status` et pose `reopened_at`. Si `mark_paid=True` → confirme direct via `_mark_order_paid`.
 - **Métadonnées d'audit** sur toute commande annulée : `cancelled_at`, `cancelled_reason` (`admin_manual` ou `auto_unpaid_timeout`), `prev_payment_status` conservé.
 - **Tests**: 11/11 pass (`/app/backend/tests/test_cancel_reopen_iter25.py`), iteration_25.json.
