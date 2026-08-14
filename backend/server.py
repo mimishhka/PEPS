@@ -71,33 +71,26 @@ INTERAC_GRAPH_TENANT_ID = os.environ.get("INTERAC_GRAPH_TENANT_ID", "")
 INTERAC_GRAPH_CLIENT_ID = os.environ.get("INTERAC_GRAPH_CLIENT_ID", "")
 INTERAC_GRAPH_CLIENT_SECRET = os.environ.get("INTERAC_GRAPH_CLIENT_SECRET", "")
 INTERAC_GRAPH_USER = os.environ.get("INTERAC_GRAPH_USER", "").strip().lower() or INTERAC_EMAIL.lower()
-# Domaines expediteurs acceptes pour une notification de depot Interac.
-# L'ancien controle se contentait de chercher la sous-chaine "interac" dans
-# l'adresse : "paiement-interac@attaquant.com" la franchissait, et il suffisait
-# alors d'un numero de commande valide et du bon montant — tous deux connus de
-# l'acheteur — pour faire marquer sa propre commande comme payee.
-INTERAC_ALLOWED_SENDER_DOMAINS = {
-    d.strip().lower().lstrip("@")
-    for d in os.environ.get(
-        "INTERAC_ALLOWED_SENDER_DOMAINS",
-        "payments.interac.ca,interac.ca,notify.payments.interac.ca",
-    ).split(",")
-    if d.strip()
+# Adresses expeditrices acceptees pour une notification de depot Interac.
+# Interac notifie depuis une adresse unique et connue : on compare l'ADRESSE
+# COMPLETE, pas le domaine. Une allowlist de domaine accepterait encore
+# n'importe quelle boite de ce domaine (et ses sous-domaines) ; l'egalite
+# stricte ne laisse rien passer.
+#
+# Historique : le controle d'origine cherchait la sous-chaine "interac" dans
+# l'adresse. "paiement-interac@attaquant.com" la franchissait, et il suffisait
+# ensuite d'un numero de commande valide et du montant exact — tous deux connus
+# de l'acheteur, ce sont les siens — pour faire marquer sa commande payee.
+INTERAC_ALLOWED_SENDERS = {
+    a.strip().lower()
+    for a in os.environ.get("INTERAC_ALLOWED_SENDERS", "notify@payments.interac.ca").split(",")
+    if a.strip()
 }
 
 
 def _is_trusted_interac_sender(from_addr: str) -> bool:
-    """L'adresse appartient-elle a un domaine Interac autorise ?
-
-    On compare le DOMAINE exact (ou un sous-domaine), jamais une sous-chaine :
-    "interac.ca.attaquant.com" doit echouer.
-    """
-    addr = (from_addr or "").strip().lower()
-    if "@" not in addr:
-        return False
-    domain = addr.rsplit("@", 1)[1].strip(" >")
-    return any(domain == d or domain.endswith("." + d)
-               for d in INTERAC_ALLOWED_SENDER_DOMAINS)
+    """L'adresse est-elle EXACTEMENT une adresse de notification Interac ?"""
+    return (from_addr or "").strip().lower().strip("<>") in INTERAC_ALLOWED_SENDERS
 
 # Strip placeholder values like <TENANT_ID> that were never replaced.
 def _strip_placeholder(v: str) -> str:
@@ -7457,11 +7450,29 @@ async def _process_interac_deposit_emails() -> int:
     for msg in messages:
         from_addr = ((msg.get("from") or {}).get("emailAddress") or {}).get("address") or ""
         if not _is_trusted_interac_sender(from_addr):
-            # Journalise : une notification de depot venant d'un domaine non
-            # autorise est soit un faux positif de configuration, soit une
-            # tentative de faire confirmer une commande sans paiement.
-            logging.warning("[interac] expediteur refuse : %r — message ignore", from_addr)
-            continue  # laisse en non-lu pour revue manuelle
+            # Deux cas possibles, traites differemment :
+            #  - le message ne porte AUCUNE reference de commande : bruit de
+            #    boite aux lettres, on ignore sans faire de vague ;
+            #  - il en porte une : soit Interac a change d'adresse d'envoi,
+            #    soit quelqu'un tente de faire confirmer une commande sans
+            #    payer. Dans les deux cas il faut un humain — on met en file
+            #    de reconciliation plutot que de laisser disparaitre un
+            #    paiement legitime dans un simple journal.
+            subject_r = msg.get("subject") or ""
+            body_r = _strip_html((msg.get("body") or {}).get("content") or "")
+            text_r = subject_r + chr(10) + body_r
+            if _extract_interac_refs(text_r):
+                logging.error(
+                    "[interac] expediteur NON autorise (%r) portant une reference de "
+                    "commande — mis en reconciliation manuelle, PAS auto-confirme.",
+                    from_addr,
+                )
+                await _queue_interac_reconciliation_item(
+                    msg, text_r, reason="untrusted_sender"
+                )
+            else:
+                logging.info("[interac] message ignore, expediteur non autorise : %r", from_addr)
+            continue
         subject = msg.get("subject") or ""
         body = msg.get("body") or {}
         text = f"{subject}\n{_strip_html(body.get('content') or '')}"
