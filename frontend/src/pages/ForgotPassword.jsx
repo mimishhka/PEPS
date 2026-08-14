@@ -67,10 +67,10 @@ export default function ForgotPassword() {
               </p>
               <form onSubmit={submit} className="space-y-5">
                 <div>
-                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
+                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="forgotpassword-f1">
                     {lang === "fr" ? "Courriel" : "Email"}
                   </label>
-                  <input
+                  <input id="forgotpassword-f1"
                     type="email"
                     required
                     value={email}

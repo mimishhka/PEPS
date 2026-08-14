@@ -249,8 +249,8 @@ function ProfileTab({ t, user, refresh }) {
       <form onSubmit={saveName} className="rounded-2xl border border-ash bg-white p-6 space-y-5 self-start" data-testid="profile-form">
         <h2 className="font-display text-lg font-bold text-nordfjord">{t("account.profile")}</h2>
         <div>
-          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.fullName")}</label>
-          <input required value={name} onChange={(e) => setName(e.target.value)} data-testid="profile-name"
+          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="account-f1">{t("account.fullName")}</label>
+          <input id="account-f1" required value={name} onChange={(e) => setName(e.target.value)} data-testid="profile-name"
             className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
         </div>
         <button type="submit" disabled={busy} data-testid="profile-save" className="btn-pill btn-nova disabled:opacity-50">
@@ -268,15 +268,15 @@ function ProfileTab({ t, user, refresh }) {
         ) : (
           <>
             <div>
-              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.newEmail")}</label>
-              <input type="email" required value={emailForm.new_email}
+              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="account-f2">{t("account.newEmail")}</label>
+              <input id="account-f2" type="email" required value={emailForm.new_email}
                 onChange={(e) => setEmailForm({ ...emailForm, new_email: e.target.value })} data-testid="email-change-new"
                 className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
             </div>
             {!pwLess && (
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
-                <input type="password" required value={emailForm.current_password}
+                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="account-f3">{t("account.currentPassword")}</label>
+                <input id="account-f3" type="password" required value={emailForm.current_password}
                   onChange={(e) => setEmailForm({ ...emailForm, current_password: e.target.value })} data-testid="email-change-password"
                   className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
               </div>
@@ -362,8 +362,8 @@ function AddressesTab({ t }) {
           <Field label={t("checkout.address2")} value={editing.address2} className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address2: v })} testid="address-address2" />
           <Field label={t("checkout.city")} value={editing.city} required onChange={(v) => setEditing({ ...editing, city: v })} testid="address-city" />
           <div>
-            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("checkout.province")}</label>
-            <select value={editing.province} data-testid="address-province"
+            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="account-f4">{t("checkout.province")}</label>
+            <select id="account-f4" value={editing.province} data-testid="address-province"
               onChange={(e) => setEditing({ ...editing, province: e.target.value })}
               className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord focus:outline-none focus:border-nova">
               {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
@@ -431,8 +431,8 @@ function AddressesTab({ t }) {
 function Field({ label, value, onChange, required = false, className = "", testid }) {
   return (
     <div className={className}>
-      <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{label}</label>
-      <input required={required} value={value || ""} onChange={(e) => onChange(e.target.value)} data-testid={testid}
+      <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="account-f5">{label}</label>
+      <input id="account-f5" required={required} value={value || ""} onChange={(e) => onChange(e.target.value)} data-testid={testid}
         className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
     </div>
   );
@@ -508,21 +508,21 @@ function SecurityTab({ t, user, logout, navigate }) {
         )}
         {!pwLess && (
           <div>
-            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
-            <input type="password" required value={pw.current_password} data-testid="password-current"
+            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="account-f6">{t("account.currentPassword")}</label>
+            <input id="account-f6" type="password" required value={pw.current_password} data-testid="password-current"
               onChange={(e) => setPw({ ...pw, current_password: e.target.value })}
               className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
           </div>
         )}
         <div>
-          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.newPassword")}</label>
-          <input type="password" required minLength={8} value={pw.new_password} data-testid="password-new"
+          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="account-f7">{t("account.newPassword")}</label>
+          <input id="account-f7" type="password" required minLength={8} value={pw.new_password} data-testid="password-new"
             onChange={(e) => setPw({ ...pw, new_password: e.target.value })}
             className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
         </div>
         <div>
-          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.confirmPassword")}</label>
-          <input type="password" required minLength={8} value={pw.confirm} data-testid="password-confirm"
+          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="account-f8">{t("account.confirmPassword")}</label>
+          <input id="account-f8" type="password" required minLength={8} value={pw.confirm} data-testid="password-confirm"
             onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
             className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
         </div>
@@ -552,8 +552,8 @@ function SecurityTab({ t, user, logout, navigate }) {
           <form onSubmit={deleteAccount} className="space-y-4" data-testid="delete-account-form">
             {!pwLess && (
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
-                <input type="password" required value={delPassword} data-testid="delete-account-password"
+                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="account-f9">{t("account.currentPassword")}</label>
+                <input id="account-f9" type="password" required value={delPassword} data-testid="delete-account-password"
                   onChange={(e) => setDelPassword(e.target.value)}
                   className="w-full rounded-full border border-error px-5 py-3 bg-white text-nordfjord outline-none" />
               </div>

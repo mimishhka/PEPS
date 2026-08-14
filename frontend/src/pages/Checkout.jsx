@@ -347,10 +347,10 @@ export default function Checkout() {
             </h2>
             {savedAddresses.length > 0 && (
               <div className="mb-4">
-                <label className="block font-data text-[11px] uppercase tracking-[0.14em] text-glacier mb-1.5">
+                <label className="block font-data text-[11px] uppercase tracking-[0.14em] text-glacier mb-1.5" htmlFor="checkout-f1">
                   {lang === "fr" ? "Adresses enregistrées" : "Saved addresses"}
                 </label>
-                <select
+                <select id="checkout-f1"
                   value={selectedAddressId}
                   onChange={(e) => onSelectSaved(e.target.value)}
                   data-testid="checkout-saved-address"

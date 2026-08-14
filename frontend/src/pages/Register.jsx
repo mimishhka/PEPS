@@ -132,13 +132,13 @@ export default function Register() {
                 {t("auth.magicSignupSub") || "Créez votre compte sans mot de passe — on vous envoie un lien d'activation."}
               </p>
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.name")}</label>
-                <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="register-magic-name"
+                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="register-f1">{t("auth.name")}</label>
+                <input id="register-f1" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="register-magic-name"
                   className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
               </div>
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
-                <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-magic-email"
+                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="register-f2">{t("auth.email")}</label>
+                <input id="register-f2" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-magic-email"
                   className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
               </div>
               {consent}
@@ -150,18 +150,18 @@ export default function Register() {
             <form onSubmit={onPasswordSubmit} className="space-y-5">
               <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" data-testid="honeypot" />
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.name")}</label>
-                <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="register-name"
+                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="register-f3">{t("auth.name")}</label>
+                <input id="register-f3" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="register-name"
                   className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
               </div>
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
-                <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-email"
+                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="register-f4">{t("auth.email")}</label>
+                <input id="register-f4" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-email"
                   className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
               </div>
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.password")} (≥ 8)</label>
-                <input type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="register-password"
+                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="register-f5">{t("auth.password")} (≥ 8)</label>
+                <input id="register-f5" type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="register-password"
                   className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
               </div>
               {consent}

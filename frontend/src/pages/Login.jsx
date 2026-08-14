@@ -132,8 +132,8 @@ export default function Login() {
                   {t("auth.magicLinkSub") || "Connexion rapide et sans mot de passe pour clients Fironova."}
                 </p>
                 <div>
-                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
-                  <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-magic-email"
+                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="login-f1">{t("auth.email")}</label>
+                  <input id="login-f1" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-magic-email"
                     className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
                 </div>
                 <button type="submit" disabled={busy} data-testid="login-magic-submit" className="w-full btn-pill btn-nova disabled:opacity-50">
@@ -151,13 +151,13 @@ export default function Login() {
                 </p>
               )}
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
-                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-email"
+                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="login-f2">{t("auth.email")}</label>
+                <input id="login-f2" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-email"
                   className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
               </div>
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.password")}</label>
-                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} data-testid="login-password"
+                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="login-f3">{t("auth.password")}</label>
+                <input id="login-f3" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} data-testid="login-password"
                   className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
                 {!isAdminLogin && (
                   <div className="text-right mt-2">

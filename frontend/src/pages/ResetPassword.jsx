@@ -87,10 +87,10 @@ export default function ResetPassword() {
               </p>
               <form onSubmit={submit} className="space-y-5">
                 <div>
-                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
+                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="resetpassword-f1">
                     {lang === "fr" ? "Nouveau mot de passe" : "New password"}
                   </label>
-                  <input
+                  <input id="resetpassword-f1"
                     type="password"
                     required
                     value={password}
@@ -101,10 +101,10 @@ export default function ResetPassword() {
                   />
                 </div>
                 <div>
-                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
+                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2" htmlFor="resetpassword-f2">
                     {lang === "fr" ? "Confirmer le mot de passe" : "Confirm password"}
                   </label>
-                  <input
+                  <input id="resetpassword-f2"
                     type="password"
                     required
                     value={confirm}
