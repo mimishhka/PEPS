@@ -11,6 +11,7 @@ import csv
 import json
 import hmac
 import hashlib
+import html as _html
 import uuid
 import logging
 import secrets
@@ -70,6 +71,33 @@ INTERAC_GRAPH_TENANT_ID = os.environ.get("INTERAC_GRAPH_TENANT_ID", "")
 INTERAC_GRAPH_CLIENT_ID = os.environ.get("INTERAC_GRAPH_CLIENT_ID", "")
 INTERAC_GRAPH_CLIENT_SECRET = os.environ.get("INTERAC_GRAPH_CLIENT_SECRET", "")
 INTERAC_GRAPH_USER = os.environ.get("INTERAC_GRAPH_USER", "").strip().lower() or INTERAC_EMAIL.lower()
+# Domaines expediteurs acceptes pour une notification de depot Interac.
+# L'ancien controle se contentait de chercher la sous-chaine "interac" dans
+# l'adresse : "paiement-interac@attaquant.com" la franchissait, et il suffisait
+# alors d'un numero de commande valide et du bon montant — tous deux connus de
+# l'acheteur — pour faire marquer sa propre commande comme payee.
+INTERAC_ALLOWED_SENDER_DOMAINS = {
+    d.strip().lower().lstrip("@")
+    for d in os.environ.get(
+        "INTERAC_ALLOWED_SENDER_DOMAINS",
+        "payments.interac.ca,interac.ca,notify.payments.interac.ca",
+    ).split(",")
+    if d.strip()
+}
+
+
+def _is_trusted_interac_sender(from_addr: str) -> bool:
+    """L'adresse appartient-elle a un domaine Interac autorise ?
+
+    On compare le DOMAINE exact (ou un sous-domaine), jamais une sous-chaine :
+    "interac.ca.attaquant.com" doit echouer.
+    """
+    addr = (from_addr or "").strip().lower()
+    if "@" not in addr:
+        return False
+    domain = addr.rsplit("@", 1)[1].strip(" >")
+    return any(domain == d or domain.endswith("." + d)
+               for d in INTERAC_ALLOWED_SENDER_DOMAINS)
 
 # Strip placeholder values like <TENANT_ID> that were never replaced.
 def _strip_placeholder(v: str) -> str:
@@ -762,8 +790,17 @@ async def register(payload: RegisterIn, response: Response, request: Request):
 
     if not name:
         raise HTTPException(status_code=400, detail="Le nom est requis.")
+    # Reponse UNIFORME : un 409 distinct revele quelles adresses possedent un
+    # compte chez vous. On repond comme pour une inscription reussie et on
+    # previent le titulaire par courriel — il saura que quelqu'un a essaye,
+    # l'attaquant n'apprend rien. Meme forme que le honeypot ci-dessus.
     if await db.users.find_one({"email": email}):
-        raise HTTPException(status_code=409, detail="Email already registered")
+        logging.info("[register] tentative sur une adresse deja inscrite")
+        try:
+            await _send_existing_account_notice(email)
+        except Exception:
+            logging.exception("[register] notification compte existant echouee")
+        return {"ok": True, "verification_sent": True}
 
     user_doc = {
         "id": str(uuid.uuid4()),
@@ -777,8 +814,10 @@ async def register(payload: RegisterIn, response: Response, request: Request):
     }
     try:
         await db.users.insert_one(user_doc)
-    except DuplicateKeyError as exc:
-        raise HTTPException(status_code=409, detail="Email already registered") from exc
+    except DuplicateKeyError:
+        # Course entre la verification ci-dessus et l'insertion : meme reponse
+        # uniforme, sinon le 409 reintroduit l'enumeration par la bande.
+        return {"ok": True, "verification_sent": True}
 
     try:
         await db.subscribers.update_one({"email": email}, {"$set": {"converted": True}})
@@ -786,7 +825,11 @@ async def register(payload: RegisterIn, response: Response, request: Request):
         logging.warning("subscriber conversion flag failed for %s: %s", email, e)
 
     raw = await _issue_magic_token(email, name, is_signup=True, lang="fr", ip=_client_ip(request))
-    base = (PUBLIC_BASE_URL or str(request.base_url).rstrip("/"))
+    # JAMAIS request.base_url : il vient de l'en-tete Host, que le client
+    # controle. Un Host forge redirige le lien d'activation vers un domaine
+    # attaquant. _trusted_public_base_url() echoue plutot que de deviner —
+    # c'est deja la regle partout ailleurs dans ce fichier.
+    base = _trusted_public_base_url()
     link = f"{base}/auth/callback?token={raw}"
     await _send_magic_email(email, link, "fr", is_signup=True)
     token = create_access_token(
@@ -1262,6 +1305,38 @@ async def _send_magic_email(email: str, link: str, lang: str, is_signup: bool) -
     await _send_email(email, subject, html, from_email=from_addr)
 
 
+async def _send_existing_account_notice(email: str) -> None:
+    """Previent le titulaire qu'une inscription a ete tentee avec son adresse.
+
+    Contrepartie de la reponse uniforme de `register` : puisqu'on ne dit plus a
+    l'inscrivant que l'adresse est prise, on le dit a son proprietaire legitime.
+    Il apprend que quelqu'un a essaye ; l'attaquant, lui, n'apprend rien.
+    """
+    try:
+        base = _trusted_public_base_url()
+    except HTTPException:
+        # PUBLIC_BASE_URL absent : on envoie le courriel sans lien plutot que
+        # d'en fabriquer un depuis une source non fiable.
+        base = ""
+    login_url = f"{base}/login" if base else ""
+    subject = "FIRONOVA — Une inscription a ete tentee avec votre adresse"
+    cta = (f'<p style="margin:16px 0"><a href="{login_url}" '
+           f'style="display:inline-block;background:#050505;color:#fff;padding:10px 18px;'
+           f'text-decoration:none">Se connecter</a></p>') if login_url else ""
+    html = f"""<div style="font-family:system-ui,-apple-system,sans-serif;color:#1A2A38">
+  <p>Bonjour,</p>
+  <p>Quelqu'un vient d'essayer de creer un compte FIRONOVA avec cette adresse.
+     Vous en avez deja un, nous n'avons donc rien cree de nouveau.</p>
+  <p><strong>Si c'etait vous</strong>, connectez-vous simplement avec vos identifiants
+     habituels, ou utilisez « mot de passe oublie ».</p>
+  <p><strong>Si ce n'etait pas vous</strong>, aucune action n'est requise : votre compte
+     et votre mot de passe sont inchanges.</p>
+  {cta}
+</div>"""
+    from_addr = MAGIC_SENDER_EMAIL or SENDER_EMAIL
+    await _send_email(email, subject, html, from_email=from_addr)
+
+
 async def magic_request(payload: MagicRequestIn, request: Request):
     """Émet un lien magique. Réponse uniforme : ne révèle jamais si l'email existe."""
     email = payload.email.lower().strip()
@@ -1489,6 +1564,47 @@ async def _issue_order_access_token(order_id: str) -> str:
         "used": False,  # conservé pour compat; la révocation passe par expires_at
     })
     return raw
+
+
+async def _assert_order_access(order: dict, request: Request) -> dict:
+    """Autorise la lecture d'une commande, ou lève 403.
+
+    Garde UNIQUE, parce que le contrôle était dupliqué endpoint par endpoint et
+    que trois copies sur quatre avaient le même trou : elles ne vérifiaient
+    l'identité QUE pour les commandes rattachées à un compte. Pour une commande
+    invité — le cas par défaut — la condition était fausse et on servait la
+    commande à quiconque connaissait son UUID (facture PDF complète comprise).
+
+    Règles :
+      - commande rattachée : le propriétaire ou un admin ;
+      - commande invité    : jeton d'accès valide et non expiré, en en-tête
+                             X-Order-Token de préférence, en query string sinon.
+    Retourne l'utilisateur résolu (ou None pour un accès par jeton).
+    """
+    user = await _resolve_user(request)
+    if order.get("user_id"):
+        if not user or (user["id"] != order["user_id"] and user.get("role") != "admin"):
+            raise HTTPException(403, "Forbidden")
+        return user
+    if user and user.get("role") == "admin":
+        return user
+
+    raw = (request.headers.get("x-order-token")
+           or request.query_params.get("access_token") or "").strip()
+    if not raw:
+        raise HTTPException(403, "Forbidden")
+    token_doc = await db.order_access_tokens.find_one(
+        {"token_hash": _hash_token(raw), "order_id": order.get("id")}
+    )
+    if not token_doc:
+        raise HTTPException(403, "Forbidden")
+    if datetime.fromisoformat(token_doc["expires_at"]) < datetime.now(timezone.utc):
+        raise HTTPException(403, "Forbidden")
+    await db.order_access_tokens.update_one(
+        {"_id": token_doc["_id"]},
+        {"$set": {"last_used_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return None
 
 
 async def _resolve_guest_access_token(order: dict) -> Optional[str]:
@@ -1782,7 +1898,11 @@ async def list_products(category: Optional[str] = None, q: Optional[str] = None,
 
 
 async def get_product(slug: str):
-    product = await db.products.find_one({"slug": slug}, {"_id": 0})
+    # Sans ces filtres, un produit desactive ou mis a la corbeille restait
+    # servi a l'unite : il suffisait d'en connaitre le slug.
+    product = await db.products.find_one(
+        {"slug": slug, "active": True, "deleted_at": None}, {"_id": 0}
+    )
     if not product:
         raise HTTPException(404, "Product not found")
     return product
@@ -4330,10 +4450,7 @@ async def order_tracking(order_id: str, request: Request):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(404, "Order not found")
-    user = await _resolve_user(request)
-    if order.get("user_id"):
-        if not user or (user["id"] != order["user_id"] and user.get("role") != "admin"):
-            raise HTTPException(403, "Forbidden")
+    await _assert_order_access(order, request)
     pin = (order.get("shipping_info") or {}).get("tracking_number")
     if not pin:
         return {"tracked": False, "reason": "no_tracking_number"}
@@ -6825,6 +6942,25 @@ async def admin_analytics(_admin: dict = Depends(require_area("dashboard", "view
 # ---------------------------------------------------------------------------
 # Admin — CSV exports
 # ---------------------------------------------------------------------------
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value):
+    """Neutralise l'injection de formule dans un tableur.
+
+    Excel et Sheets exécutent le contenu d'une cellule commençant par =, +, -
+    ou @. Un client nommé `=HYPERLINK("http://x";"cliquez")` transforme donc
+    l'export admin en piège, ouvert par vous. On préfixe d'une apostrophe, que
+    le tableur n'affiche pas mais qui force l'interprétation en texte.
+    """
+    if value is None:
+        return ""
+    text = str(value)
+    if text.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + text
+    return text
+
+
 def _csv_response(rows: list, filename: str) -> StreamingResponse:
     buf = io.StringIO()
     if not rows:
@@ -6832,7 +6968,7 @@ def _csv_response(rows: list, filename: str) -> StreamingResponse:
     else:
         writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows({k: _csv_safe(v) for k, v in row.items()} for row in rows)
     buf.seek(0)
     return StreamingResponse(
         iter([buf.getvalue()]),
@@ -6887,7 +7023,9 @@ def _xlsx_response(rows: list, filename: str) -> Response:
         cell.font = header_font
         cell.fill = header_fill
     for r in rows:
-        ws.append([r.get(h, "") for h in headers])
+        # Meme piege que le CSV : openpyxl ecrit la valeur telle quelle et
+        # Excel interprete une cellule commencant par =, +, - ou @.
+        ws.append([_csv_safe(r.get(h, "")) for h in headers])
     for col_idx, h in enumerate(headers, start=1):
         width = max([len(str(h))] + [len(str(r.get(h, ""))) for r in rows[:500]]) + 2
         ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = min(width, 50)
@@ -7086,10 +7224,9 @@ async def order_invoice_pdf(order_id: str, request: Request):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(404, "Order not found")
-    user = await _resolve_user(request)
-    if order.get("user_id"):
-        if not user or (user["id"] != order["user_id"] and user.get("role") != "admin"):
-            raise HTTPException(403, "Forbidden")
+    # La facture porte nom, adresse complete, courriel et articles : c'est le
+    # document le plus sensible expose par l'API.
+    await _assert_order_access(order, request)
     pdf = _generate_invoice_pdf(order)
     return Response(
         content=pdf,
@@ -7171,11 +7308,16 @@ async def nowpayments_ipn(request: Request):
     return {"ok": True}
 
 
-async def crypto_status(order_id: str):
+async def crypto_status(order_id: str, request: Request):
     """Poll NOWPayments payment status. Marks order paid only when np status is 'finished'."""
+    _rate_limit("crypto_status", _client_ip(request), 30, 60,
+                "Too many status checks. Please wait a moment.")
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order or order.get("payment_method") != "nowpayments":
         raise HTTPException(404, "Order not found")
+    # Sans ce garde, l'endpoint confirmait l'existence d'une commande et son
+    # statut de paiement pour n'importe quel UUID.
+    await _assert_order_access(order, request)
     if order.get("payment_status") == "paid":
         return {"order_id": order_id, "payment_status": "paid", "np_status": "finished"}
     np_info = (order.get("payment_info") or {}).get("provider_response") or {}
@@ -7314,8 +7456,12 @@ async def _process_interac_deposit_emails() -> int:
     processed = 0
     for msg in messages:
         from_addr = ((msg.get("from") or {}).get("emailAddress") or {}).get("address") or ""
-        if "interac" not in from_addr.lower():
-            continue  # pas une notification Interac — on laisse en non-lu
+        if not _is_trusted_interac_sender(from_addr):
+            # Journalise : une notification de depot venant d'un domaine non
+            # autorise est soit un faux positif de configuration, soit une
+            # tentative de faire confirmer une commande sans paiement.
+            logging.warning("[interac] expediteur refuse : %r — message ignore", from_addr)
+            continue  # laisse en non-lu pour revue manuelle
         subject = msg.get("subject") or ""
         body = msg.get("body") or {}
         text = f"{subject}\n{_strip_html(body.get('content') or '')}"
@@ -8592,6 +8738,19 @@ async def startup_event():
     for label, val in _svc_checks.items():
         if not val:
             logging.warning("[config] %s is not set — related features disabled", label)
+
+    # Derriere Cloudflare, TOUTES les requetes arrivent depuis une IP edge. Si
+    # aucun proxy n'est declare de confiance, _client_ip renvoie cette IP unique
+    # pour tout le monde : les compteurs de rate limit deviennent COLLECTIFS et
+    # cinq inscriptions suffisent a fermer le formulaire pour tous les
+    # visiteurs. C'est une panne, pas une faille — d'ou l'avertissement fort.
+    if IS_PRODUCTION and not TRUSTED_PROXIES:
+        logging.error(
+            "[config] TRUSTED_PROXIES est VIDE en production. Si le trafic passe par "
+            "Cloudflare ou un reverse proxy, tous les visiteurs partagent l'IP de l'edge "
+            "et se bloquent mutuellement sur les limites de debit. Declarez les plages "
+            "IP du proxy dans TRUSTED_PROXIES."
+        )
     await seed_admin_and_products()
     await _seed_categories_from_products()
     await _seed_default_menus()
@@ -11103,7 +11262,7 @@ def _render_block(block: str, lang: str, order: Optional[dict]) -> str:
         total = float(order.get("total", 0) or 0)
 
         coupon = order.get("coupon") or {}
-        coupon_code = str(coupon.get("code") or "").strip()
+        coupon_code = _html_escape(str(coupon.get("code") or "").strip())
         coupon_line = ""
         if discount > 0:
             label = f'{L("Coupon", "Coupon")} ({coupon_code})' if coupon_code else L("Rabais", "Discount")
@@ -11113,12 +11272,12 @@ def _render_block(block: str, lang: str, order: Optional[dict]) -> str:
             )
 
         ship = order.get("shipping_address") or {}
-        ship_name = ship.get("full_name") or ""
-        ship_line1 = ship.get("address1") or ""
-        ship_line2 = ship.get("address2") or ""
-        ship_city = ship.get("city") or ""
-        ship_prov = ship.get("province") or ""
-        ship_postal = ship.get("postal_code") or ""
+        ship_name = _html_escape(ship.get("full_name") or "")
+        ship_line1 = _html_escape(ship.get("address1") or "")
+        ship_line2 = _html_escape(ship.get("address2") or "")
+        ship_city = _html_escape(ship.get("city") or "")
+        ship_prov = _html_escape(ship.get("province") or "")
+        ship_postal = _html_escape(ship.get("postal_code") or "")
         shipping_address_html = ""
         if ship_name or ship_line1 or ship_city:
             line_2 = " ".join([p for p in [ship_city, ship_prov, ship_postal] if p]).strip()
@@ -11193,12 +11352,25 @@ def _render_block(block: str, lang: str, order: Optional[dict]) -> str:
     return ""
 
 
+def _html_escape(value) -> str:
+    """Echappe une valeur avant interpolation dans du HTML (courriel, PDF)."""
+    if value is None:
+        return ""
+    return _html.escape(str(value), quote=True)
+
+
 def _email_render(tpl: dict, lang: str, ctx: dict, order: Optional[dict] = None) -> tuple:
     lang = "fr" if str(lang).lower().startswith("fr") else "en"
     def sub(txt):
+        # ECHAPPEMENT OBLIGATOIRE : ctx contient des donnees saisies par le
+        # client (customer_name vient de shipping_address.name). Sans ca, un
+        # client nomme `<img src=x onerror=...>` injecte du HTML dans le
+        # courriel de confirmation — et dans la notification envoyee a l'admin.
+        # Les URL construites par le serveur (order_url, catalog_url...) sont
+        # sures mais restent echappees : &amp; reste valide dans un href.
         out = txt or ""
         for k, v in (ctx or {}).items():
-            out = out.replace("{{" + k + "}}", str(v))
+            out = out.replace("{{" + k + "}}", _html_escape(v))
         return out
     subject = sub(tpl.get(f"subject_{lang}") or tpl.get("subject_en") or "FIRONOVA")
     parts = []

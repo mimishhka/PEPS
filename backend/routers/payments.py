@@ -11,8 +11,8 @@ async def nowpayments_ipn(request: Request):
 
 
 @router.get("/payments/crypto/status/{order_id}")
-async def crypto_status(order_id: str):
-    return await s.crypto_status(order_id)
+async def crypto_status(order_id: str, request: Request):
+    return await s.crypto_status(order_id, request)
 
 
 @router.post("/webhook/nowpayments-payout")
