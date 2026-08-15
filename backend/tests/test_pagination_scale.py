@@ -68,6 +68,65 @@ def test_csv_cursor_response_streams_every_row(server_module):
     assert lines[-1] == "1004"
 
 
+def test_admin_orders_page_uses_bounded_database_pagination(server_module):
+    class PageCursor:
+        def __init__(self):
+            self.offset = None
+            self.limit = None
+            self.sort_spec = None
+
+        def sort(self, spec):
+            self.sort_spec = spec
+            return self
+
+        def skip(self, offset):
+            self.offset = offset
+            return self
+
+        async def to_list(self, limit):
+            self.limit = limit
+            return [{"id": f"order-{self.offset + index}"} for index in range(limit)]
+
+    class Orders:
+        def __init__(self):
+            self.cursor = PageCursor()
+            self.filter = None
+
+        async def count_documents(self, query):
+            self.filter = query
+            return 1005
+
+        def find(self, query, projection):
+            assert query == self.filter
+            assert projection == {"_id": 0}
+            return self.cursor
+
+    orders = Orders()
+    server_module.db = SimpleNamespace(orders=orders)
+
+    result = asyncio.run(server_module.admin_orders_page(
+        page=3,
+        limit=500,
+        status_group="active",
+        query="FN-123",
+        payment_status="paid",
+        fulfillment_status=None,
+        late_only=True,
+        _admin={},
+    ))
+
+    assert result["total"] == 1005
+    assert result["page"] == 3
+    assert result["limit"] == 100
+    assert len(result["items"]) == 100
+    assert orders.cursor.offset == 200
+    assert orders.cursor.limit == 100
+    assert orders.cursor.sort_spec == [("created_at", -1), ("id", -1)]
+    assert orders.filter["payment_status"] == "paid"
+    assert orders.filter["late_payment_flagged"] is True
+    assert "$or" in orders.filter
+
+
 def test_affiliate_overview_totals_more_than_one_thousand_rows(server_module):
     referrals = [
         {

@@ -53,7 +53,8 @@ MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_MINUTES = 60 * 24 * 7  # 7 days for ecommerce UX
+ACCESS_TOKEN_MINUTES = max(5, int(os.environ.get("ACCESS_TOKEN_MINUTES", "15")))
+REFRESH_TOKEN_DAYS = max(1, int(os.environ.get("REFRESH_TOKEN_DAYS", "30")))
 
 
 def _private_ref(value: Any) -> str:
@@ -309,6 +310,28 @@ def create_access_token(user_id: str, email: str, role: str, token_version: int 
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
+def _is_trusted_proxy_peer(request: Request) -> bool:
+    peer = request.client.host if request.client else ""
+    try:
+        peer_addr = ipaddress.ip_address(peer)
+    except ValueError:
+        return False
+    for entry in TRUSTED_PROXIES or sorted(TRUST_PROXY_IPS):
+        try:
+            if "/" in entry:
+                if peer_addr in ipaddress.ip_network(entry.strip(), strict=False):
+                    return True
+            elif peer.lower() == entry.strip().lower():
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _trusted_forwarded_header(request: Request, name: str) -> str:
+    return request.headers.get(name, "") if _is_trusted_proxy_peer(request) else ""
+
+
 def _cookie_secure_for_request(request: Optional[Request]) -> bool:
     """Keep secure cookies in production, but allow local HTTP development.
 
@@ -320,7 +343,7 @@ def _cookie_secure_for_request(request: Optional[Request]) -> bool:
     if request is None:
         return COOKIE_SECURE
     host = (request.headers.get("host") or "").split(":", 1)[0].strip().lower()
-    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "").lower()
+    proto = (_trusted_forwarded_header(request, "x-forwarded-proto") or request.url.scheme or "").lower()
     if proto != "https" and host in {"localhost", "127.0.0.1"}:
         return False
     return COOKIE_SECURE
@@ -342,8 +365,87 @@ def set_auth_cookie(response: Response, token: str, request: Optional[Request] =
     )
 
 
+def _hash_refresh_token(token: str) -> str:
+    return hmac.new(JWT_SECRET.encode(), token.encode(), hashlib.sha256).hexdigest()
+
+
+def _set_refresh_cookie(response: Response, token: str, request: Optional[Request] = None) -> None:
+    secure_flag = _cookie_secure_for_request(request)
+    samesite_flag = COOKIE_SAMESITE
+    if not secure_flag and samesite_flag == "none":
+        samesite_flag = "lax"
+    response.set_cookie(
+        key="refresh_token",
+        value=token,
+        httponly=True,
+        secure=secure_flag,
+        samesite=samesite_flag,
+        max_age=REFRESH_TOKEN_DAYS * 86400,
+        path="/api/auth",
+    )
+
+
 def clear_auth_cookie(response: Response) -> None:
     response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(key="refresh_token", path="/api/auth")
+
+
+async def _start_session(response: Response, request: Request, user: dict, family_id: Optional[str] = None) -> None:
+    now = datetime.now(timezone.utc)
+    raw_refresh = secrets.token_urlsafe(48)
+    await db.refresh_sessions.insert_one({
+        "id": str(uuid.uuid4()),
+        "family_id": family_id or str(uuid.uuid4()),
+        "user_id": user["id"],
+        "token_hash": _hash_refresh_token(raw_refresh),
+        "token_version": user.get("token_version", 0),
+        "created_at": now,
+        "expires_at": now + timedelta(days=REFRESH_TOKEN_DAYS),
+        "revoked_at": None,
+    })
+    access_token = create_access_token(
+        user["id"], user["email"], user["role"], user.get("token_version", 0),
+    )
+    set_auth_cookie(response, access_token, request)
+    _set_refresh_cookie(response, raw_refresh, request)
+
+
+def _reject_refresh(detail: str) -> JSONResponse:
+    response = JSONResponse(status_code=401, content={"detail": detail})
+    clear_auth_cookie(response)
+    return response
+
+
+async def refresh_session(response: Response, request: Request):
+    raw_refresh = request.cookies.get("refresh_token")
+    if not raw_refresh:
+        return _reject_refresh("Refresh session required")
+
+    token_hash = _hash_refresh_token(raw_refresh)
+    now = datetime.now(timezone.utc)
+    existing = await db.refresh_sessions.find_one({"token_hash": token_hash})
+    if not existing:
+        return _reject_refresh("Invalid refresh session")
+    if existing.get("revoked_at") is not None:
+        await db.refresh_sessions.update_many(
+            {"family_id": existing["family_id"], "revoked_at": None},
+            {"$set": {"revoked_at": now, "revoke_reason": "reuse_detected"}},
+        )
+        return _reject_refresh("Refresh session reuse detected")
+
+    session = await db.refresh_sessions.find_one_and_update(
+        {"token_hash": token_hash, "revoked_at": None, "expires_at": {"$gt": now}},
+        {"$set": {"revoked_at": now, "revoke_reason": "rotated"}},
+        return_document=ReturnDocument.BEFORE,
+    )
+    if not session:
+        return _reject_refresh("Refresh session expired")
+
+    user = await db.users.find_one({"id": session["user_id"]})
+    if not user or session.get("token_version", 0) != user.get("token_version", 0):
+        return _reject_refresh("Refresh session revoked")
+    await _start_session(response, request, user, family_id=session["family_id"])
+    return {"ok": True}
 
 
 async def _resolve_user(request: Request) -> Optional[dict]:
@@ -803,16 +905,9 @@ async def register(payload: RegisterIn, response: Response, request: Request):
         logging.warning("subscriber conversion flag failed ref=%s error_type=%s", _private_ref(email), type(e).__name__)
 
     raw = await _issue_magic_token(email, name, is_signup=True, lang="fr", ip=_client_ip(request))
-    base = (PUBLIC_BASE_URL or str(request.base_url).rstrip("/"))
+    base = _trusted_public_base_url()
     link = f"{base}/auth/callback?token={raw}"
     await _send_magic_email(email, link, "fr", is_signup=True)
-    token = create_access_token(
-        user_doc["id"],
-        email,
-        user_doc["role"],
-        token_version=user_doc.get("token_version", 0),
-    )
-    set_auth_cookie(response, token, request)
 
     return {
         "id": user_doc["id"],
@@ -820,8 +915,6 @@ async def register(payload: RegisterIn, response: Response, request: Request):
         "name": user_doc["name"],
         "role": "user",
         "created_at": user_doc["created_at"],
-        "token": token,
-        "access_token": token,
         "email_verified": False,
         "verification_sent": True,
     }
@@ -833,31 +926,7 @@ _LOGIN_WINDOW_SECONDS = 900
 
 def _client_ip(request: Request) -> str:
     peer = request.client.host if request.client else "unknown"
-
-    proxy_allowlist = TRUSTED_PROXIES or sorted(TRUST_PROXY_IPS)
-    if not proxy_allowlist:
-        return peer
-
-    try:
-        peer_addr = ipaddress.ip_address(peer)
-    except ValueError:
-        return peer
-
-    trusted = False
-    for entry in proxy_allowlist:
-        entry = entry.strip()
-        if not entry:
-            continue
-        try:
-            if "/" in entry:
-                trusted = peer_addr in ipaddress.ip_network(entry, strict=False)
-            else:
-                trusted = peer.lower() == entry.lower()
-        except ValueError:
-            continue
-        if trusted:
-            break
-    if not trusted:
+    if not _is_trusted_proxy_peer(request):
         return peer
 
     # Cloudflare : ce header n'est fiable que si le pair immédiat est un
@@ -1148,24 +1217,23 @@ async def login(payload: LoginIn, response: Response, request: Request):
     # Comptes sans le champ (antérieurs) sont considérés vérifiés.
     if user.get("email_verified", True) is False:
         raise HTTPException(status_code=403, detail="Veuillez vérifier votre adresse email pour activer votre compte. / Please verify your email address to activate your account.")
-    token = create_access_token(user["id"], user["email"], user["role"], token_version=user.get("token_version", 0))
-    set_auth_cookie(response, token, request)
+    await _start_session(response, request, user)
     return {
         "id": user["id"],
         "email": user["email"],
         "name": user["name"],
         "role": user["role"],
         "created_at": user["created_at"],
-        # Token also returned so the frontend can fall back to Bearer auth in
-        # environments where the browser blocks the cookie (preview iframes,
-        # third-party cookie restrictions, private mode). Cookie remains the
-        # primary mechanism; the token acts as a safety net.
-        "token": token,
-        "access_token": token,
     }
 
 
-async def logout(response: Response):
+async def logout(response: Response, request: Request):
+    raw_refresh = request.cookies.get("refresh_token")
+    if raw_refresh:
+        await db.refresh_sessions.update_one(
+            {"token_hash": _hash_refresh_token(raw_refresh), "revoked_at": None},
+            {"$set": {"revoked_at": datetime.now(timezone.utc), "revoke_reason": "logout"}},
+        )
     clear_auth_cookie(response)
     return {"ok": True}
 
@@ -1174,6 +1242,10 @@ async def logout_all_devices(response: Response, user: dict = Depends(get_curren
     """Révoque tous les tokens émis avant cet appel, sur tous les appareils.
     Utile après un changement de mot de passe suspect ou une perte d'appareil."""
     await db.users.update_one({"id": user["id"]}, {"$inc": {"token_version": 1}})
+    await db.refresh_sessions.update_many(
+        {"user_id": user["id"], "revoked_at": None},
+        {"$set": {"revoked_at": datetime.now(timezone.utc), "revoke_reason": "logout_all"}},
+    )
     clear_auth_cookie(response)
     return {"ok": True}
 
@@ -1372,9 +1444,7 @@ async def magic_verify(response: Response, request: Request, token: str = Body(.
         if is_signup:
             asyncio.create_task(welcome_new_user(email, user.get("name", ""), "fr"))
         user = {**user, "email_verified": True}
-    token_jwt = create_access_token(user["id"], user["email"], user["role"],
-                                    token_version=user.get("token_version", 0))
-    set_auth_cookie(response, token_jwt)
+    await _start_session(response, request, user)
     return {
         "id": user["id"], "email": user["email"], "name": user["name"],
         "role": user["role"], "created_at": user["created_at"],
@@ -1464,8 +1534,11 @@ async def reset_password(payload: ResetPasswordIn, response: Response, request: 
         {"$set": {"password_hash": new_hash, "token_version": new_tv, "passwordless": False}},
     )
     await db.magic_tokens.delete_many({"email": rec["email"], "purpose": "reset", "used_at": None})
-    token_jwt = create_access_token(user["id"], user["email"], user["role"], token_version=new_tv)
-    set_auth_cookie(response, token_jwt, request)
+    await db.refresh_sessions.update_many(
+        {"user_id": user["id"], "revoked_at": None},
+        {"$set": {"revoked_at": datetime.now(timezone.utc), "revoke_reason": "password_reset"}},
+    )
+    await _start_session(response, request, {**user, "token_version": new_tv})
     return {
         "id": user["id"], "email": user["email"], "name": user["name"],
         "role": user["role"], "created_at": user["created_at"],
@@ -1518,7 +1591,7 @@ def _assert_current_password(doc: dict, provided: Optional[str]) -> None:
         raise HTTPException(status_code=403, detail="Current password is incorrect")
 
 
-async def account_change_password(payload: PasswordChangeIn, response: Response,
+async def account_change_password(payload: PasswordChangeIn, response: Response, request: Request,
                                   user: dict = Depends(get_current_user)):
     await _rate_limit_email("account_password", user["email"], 5, 900,
                              "Too many password attempts. Try again later.")
@@ -1532,11 +1605,11 @@ async def account_change_password(payload: PasswordChangeIn, response: Response,
         {"$set": {"password_hash": hash_password(payload.new_password),
                   "token_version": new_tv, "passwordless": False}},
     )
-    # On révoque tous les anciens tokens (token_version+1) mais on ré-émet
-    # immédiatement un token frais pour CET appareil : l'utilisateur qui vient
-    # de changer son mot de passe ne doit pas être déconnecté lui-même.
-    token = create_access_token(doc["id"], doc["email"], doc["role"], token_version=new_tv)
-    set_auth_cookie(response, token)
+    await db.refresh_sessions.update_many(
+        {"user_id": doc["id"], "revoked_at": None},
+        {"$set": {"revoked_at": datetime.now(timezone.utc), "revoke_reason": "password_change"}},
+    )
+    await _start_session(response, request, {**doc, "token_version": new_tv})
     # Le cookie httpOnly frais suffit — pas de token dans le body.
     return {"ok": True}
 
@@ -1736,6 +1809,7 @@ async def account_delete(payload: AccountDeleteIn, response: Response,
     await db.subscribers.delete_one({"email": doc["email"]})
     await db.email_change_requests.delete_many({"user_id": doc["id"]})
     await db.magic_tokens.delete_many({"email": doc["email"]})
+    await db.refresh_sessions.delete_many({"user_id": doc["id"]})
     await db.wishlist.delete_many({"user_id": doc["id"]})
     if hasattr(db, "coupons"):
         await db.coupons.update_many(
@@ -3563,8 +3637,7 @@ def _order_email_html(order: dict, body_intro: str) -> str:
 
 
 async def _send_email(to: str | list, subject: str, html: str, from_email: str | None = None) -> None:
-    """Sends via Resend; logs and continues silently on any failure (no API key, send error, etc.).
-    from_email permet de surcharger l'expéditeur (ex. auth vs commandes). Défaut : SENDER_EMAIL."""
+    """Persist an email for delivery by the outbox worker."""
     def sanitize_header(value: Any) -> str:
         return re.sub(r"[\r\n]+", " ", str(value or "")).strip()
 
@@ -3576,11 +3649,85 @@ async def _send_email(to: str | list, subject: str, html: str, from_email: str |
         logging.info("[email] skipped recipients=%s reason=not-configured", recipient_refs)
         return
     try:
-        params = {"from": safe_from, "to": to_list, "subject": safe_subject, "html": html}
-        result = await asyncio.to_thread(resend.Emails.send, params)
-        logging.info("[email] sent id=%s recipients=%s", result.get("id") if isinstance(result, dict) else result, recipient_refs)
+        now = datetime.now(timezone.utc)
+        await db.email_outbox.insert_one({
+            "id": str(uuid.uuid4()),
+            "status": "pending",
+            "from": safe_from,
+            "to": to_list,
+            "subject": safe_subject,
+            "html": html,
+            "attempts": 0,
+            "available_at": now.isoformat(),
+            "created_at": now.isoformat(),
+            "expires_at": now + timedelta(days=30),
+        })
+        logging.info("[email] queued recipients=%s", recipient_refs)
     except Exception as e:
-        logging.error("[email] failed recipients=%s error_type=%s", recipient_refs, type(e).__name__)
+        logging.error("[email] queue failed recipients=%s error_type=%s", recipient_refs, type(e).__name__)
+
+
+async def _process_email_outbox_job() -> bool:
+    if not RESEND_API_KEY:
+        return False
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    job = await db.email_outbox.find_one_and_update(
+        {"$or": [
+            {"status": {"$in": ["pending", "retry"]}, "available_at": {"$lte": now_iso}},
+            {"status": "sending", "lease_expires_at": {"$lte": now_iso}},
+        ]},
+        {"$set": {
+            "status": "sending",
+            "started_at": now_iso,
+            "lease_expires_at": (now + timedelta(minutes=5)).isoformat(),
+        }, "$inc": {"attempts": 1}},
+        sort=[("created_at", 1)],
+        return_document=ReturnDocument.AFTER,
+    )
+    if not job:
+        return False
+    try:
+        params = {
+            "from": job["from"], "to": job["to"],
+            "subject": job["subject"], "html": job["html"],
+        }
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        await db.email_outbox.update_one(
+            {"id": job["id"], "status": "sending"},
+            {"$set": {
+                "status": "sent",
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "provider_id": result.get("id") if isinstance(result, dict) else str(result),
+            }, "$unset": {"html": "", "lease_expires_at": ""}},
+        )
+    except Exception as exc:
+        attempts = int(job.get("attempts", 1))
+        terminal = attempts >= 5
+        delay_seconds = min(3600, 30 * (2 ** max(0, attempts - 1)))
+        await db.email_outbox.update_one(
+            {"id": job["id"], "status": "sending"},
+            {"$set": {
+                "status": "failed" if terminal else "retry",
+                "available_at": (datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)).isoformat(),
+                "error_type": type(exc).__name__,
+            }, "$unset": {"lease_expires_at": ""}},
+        )
+        logging.error(
+            "[email] delivery failed job=%s attempt=%d terminal=%s error_type=%s",
+            job["id"], attempts, terminal, type(exc).__name__,
+        )
+    return True
+
+
+async def _email_outbox_worker():
+    while True:
+        try:
+            processed = await _process_email_outbox_job()
+        except Exception as exc:  # pragma: no cover
+            logging.error("[email] outbox worker error_type=%s", type(exc).__name__)
+            processed = False
+        await asyncio.sleep(0 if processed else 2)
 
 
 async def send_order_confirmation(order: dict) -> None:
@@ -4289,7 +4436,7 @@ async def checkout(payload: CheckoutIn, request: Request):
 
     # Fire-and-forget order confirmation + admin notification
     response_doc = _checkout_response(order_doc)
-    asyncio.create_task(send_order_confirmation(order_doc))
+    await send_order_confirmation(order_doc)
 
     return response_doc
 
@@ -4545,6 +4692,44 @@ async def admin_orders(status_group: Optional[str] = None, _admin: dict = Depend
     filt = _status_group_filter(status_group)
     filt["deleted_at"] = None
     return await db.orders.find(filt, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+async def admin_orders_page(
+    page: int = 1,
+    limit: int = 50,
+    status_group: Optional[str] = None,
+    query: Optional[str] = None,
+    payment_status: Optional[str] = None,
+    fulfillment_status: Optional[str] = None,
+    late_only: bool = False,
+    _admin: dict = Depends(require_area("orders", "view")),
+):
+    page = max(1, int(page))
+    limit = max(1, min(int(limit), 100))
+    filt = _status_group_filter(status_group)
+    filt["deleted_at"] = None
+    if payment_status:
+        filt["payment_status"] = payment_status
+    if fulfillment_status:
+        filt["fulfillment_status"] = fulfillment_status
+    if late_only:
+        filt["late_payment_flagged"] = True
+    search = (query or "").strip()
+    if search:
+        pattern = re.escape(search)
+        filt["$or"] = [
+            {"order_number": {"$regex": pattern, "$options": "i"}},
+            {"email": {"$regex": pattern, "$options": "i"}},
+            {"shipping_address.full_name": {"$regex": pattern, "$options": "i"}},
+        ]
+    total = await db.orders.count_documents(filt)
+    items = await (
+        db.orders.find(filt, {"_id": 0})
+        .sort([("created_at", -1), ("id", -1)])
+        .skip((page - 1) * limit)
+        .to_list(limit)
+    )
+    return {"items": items, "total": total, "page": page, "limit": limit}
 
 
 async def admin_delete_order(order_id: str, admin: dict = Depends(require_area("orders", "manage"))):
@@ -4982,7 +5167,7 @@ async def admin_cancel_staff_invite(invite_id: str, admin: dict = Depends(get_ad
     return {"ok": True}
 
 
-async def staff_accept_invite(payload: StaffAcceptIn, response: Response):
+async def staff_accept_invite(payload: StaffAcceptIn, response: Response, request: Request):
     """Lien cliqué depuis l'email — pas d'authentification préalable, le
     token à usage unique + TTL sert de preuve. Crée le compte staff (ou
     owner, si l'invitation le précisait)."""
@@ -5009,8 +5194,7 @@ async def staff_accept_invite(payload: StaffAcceptIn, response: Response):
     await db.staff_invites.update_one({"token": payload.token}, {"$set": {"used": True, "used_at": now}})
 
     role = user_doc["role"]
-    token = create_access_token(user_doc["id"], user_doc["email"], role, token_version=0)
-    set_auth_cookie(response, token)
+    await _start_session(response, request, user_doc)
     return {
         "id": user_doc["id"], "email": user_doc["email"], "name": user_doc["name"],
         "role": role, "permissions": user_doc.get("permissions"),
@@ -8003,6 +8187,10 @@ async def seed_admin_and_products():
     await db.rate_limit_counters.create_index("expires_at", expireAfterSeconds=0)
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
+    await db.refresh_sessions.create_index("token_hash", unique=True)
+    await db.refresh_sessions.create_index([("user_id", 1), ("revoked_at", 1)])
+    await db.refresh_sessions.create_index([("family_id", 1), ("revoked_at", 1)])
+    await db.refresh_sessions.create_index("expires_at", expireAfterSeconds=0)
     await db.products.create_index("slug", unique=True)
     await affiliate_ensure_indexes()
     await db.products.create_index("id", unique=True)
@@ -8042,6 +8230,9 @@ async def seed_admin_and_products():
     await db.interac_reconciliation_queue.create_index([("status", 1), ("detected_at", -1)])
     await db.webhook_events.create_index("event_key", unique=True)
     await db.webhook_events.create_index("created_at_dt", expireAfterSeconds=172800)
+    await db.email_outbox.create_index("id", unique=True)
+    await db.email_outbox.create_index([("status", 1), ("available_at", 1), ("created_at", 1)])
+    await db.email_outbox.create_index("expires_at", expireAfterSeconds=0)
     await db.products.create_index("deleted_at")
     await db.coupons.create_index("deleted_at")
     await db.shipping_zones.create_index("deleted_at")
@@ -8653,6 +8844,7 @@ async def startup_event():
         asyncio.create_task(_abandoned_cart_watchdog())
         asyncio.create_task(affiliate_maintenance_watchdog())
         asyncio.create_task(_affiliate_email_worker())
+        asyncio.create_task(_email_outbox_worker())
 
 
 async def _backfill_dispatch_batch():
@@ -9865,12 +10057,7 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request,
     if not res.modified_count:
         raise HTTPException(409, "Invitation already consumed")
 
-    # --- Pose la session (cookie httpOnly) + retourne le JWT dans le body ---
-    token = create_access_token(
-        user["id"], user["email"], user.get("role", "user"),
-        token_version=user.get("token_version", 0),
-    )
-    set_auth_cookie(response, token, request)
+    await _start_session(response, request, user)
 
     aff = await db.affiliates.find_one({"id": invite["id"]}, {"_id": 0})
     # Coupon lié auto (idempotent) — utilise le rabais courant de l'affilié.
@@ -9881,11 +10068,7 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request,
         logging.warning("[affiliate] échec création coupon pour %s: %s",
                         aff.get("code"), _e)
     metrics = await _affiliate_compute_metrics(aff["id"])
-    result = _affiliate_public(aff, metrics)
-    if isinstance(result, dict):
-        result["access_token"] = token
-        result["token"] = token
-    return result
+    return _affiliate_public(aff, metrics)
 
 
 async def affiliate_me(request: Request, lang: str = "fr"):
@@ -13061,11 +13244,16 @@ async def _csrf_origin_guard(request: Request, call_next):
     """Block cross-origin state-mutating requests that carry the session cookie."""
     authz = (request.headers.get("authorization") or "").strip().lower()
     uses_bearer = authz.startswith("bearer ")
-    if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.cookies.get("access_token") and not uses_bearer:
+    has_auth_cookie = request.cookies.get("access_token") or request.cookies.get("refresh_token")
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and has_auth_cookie and not uses_bearer:
         origin = (request.headers.get("origin") or "").lower().rstrip("/")
         allowed = {o.lower().rstrip("/") for o in _cors_origins}
         matches_regex = bool(_cors_origin_re and _cors_origin_re.fullmatch(origin))
-        host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",", 1)[0].strip().lower()
+        host = (
+            _trusted_forwarded_header(request, "x-forwarded-host")
+            or request.headers.get("host")
+            or ""
+        ).split(",", 1)[0].strip().lower()
         origin_host = origin.split("://", 1)[-1].split("/", 1)[0]
 
         def _strip_default_port(h: str) -> str:
@@ -13097,7 +13285,7 @@ async def _security_headers(request: Request, call_next):
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
         response.headers.setdefault("Pragma", "no-cache")
-    if request.url.scheme == "https" or (request.headers.get("x-forwarded-proto", "").lower() == "https"):
+    if request.url.scheme == "https" or _trusted_forwarded_header(request, "x-forwarded-proto").lower() == "https":
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
 

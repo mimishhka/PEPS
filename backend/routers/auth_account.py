@@ -40,9 +40,14 @@ async def login(payload: LoginIn, response: Response, request: Request):
     return await s.login(payload, response, request)
 
 
+@router.post("/auth/refresh")
+async def refresh_session(response: Response, request: Request):
+    return await s.refresh_session(response, request)
+
+
 @router.post("/auth/logout")
-async def logout_route(response: Response):
-    return await s.logout(response)
+async def logout_route(response: Response, request: Request):
+    return await s.logout(response, request)
 
 
 @router.post("/auth/logout-all")

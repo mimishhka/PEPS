@@ -1,6 +1,6 @@
 // frontend/src/pages/AffiliateJoin.jsx — Activation MAGIC-LINK 1-CLIC.
 // Le clic sur le lien d'invitation active le compte (passwordless),
-// pose la session (JWT dans localStorage + cookie), et redirige sur /affiliate.
+// pose la session dans un cookie httpOnly et redirige sur /affiliate.
 // Aucun gate connexion, aucun mot de passe.
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -37,12 +37,7 @@ export default function AffiliateJoin() {
 
     (async () => {
       try {
-        const { data } = await api.post("/affiliate/join", { token });
-        // Persist le JWT retourné par le backend — indispensable puisque
-        // axios est configuré withCredentials:false (Bearer via localStorage).
-        if (data?.access_token) {
-          try { window.localStorage.setItem("fironova_token", data.access_token); } catch { /* ignore */ }
-        }
+        await api.post("/affiliate/join", { token });
         await refresh();
         setStatus("success");
         setTimeout(() => navigate("/affiliate", { replace: true }), 1200);

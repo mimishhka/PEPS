@@ -138,3 +138,61 @@ def test_admin_affiliate_metrics_are_aggregated_once(server_module, monkeypatch)
     assert result[0]["cumulative_revenue"] == 1250.0
     assert result[0]["pending_commission"] == 15.0
     assert result[1]["cumulative_revenue"] == 0.0
+
+
+def test_email_outbox_worker_marks_sent_and_removes_html(server_module, monkeypatch):
+    class Outbox:
+        def __init__(self):
+            self.update = None
+
+        async def find_one_and_update(self, query, update, **kwargs):
+            return {
+                "id": "email-1", "from": "orders@send.example.com",
+                "to": ["customer@example.com"], "subject": "Order",
+                "html": "<p>Private</p>", "attempts": 1,
+            }
+
+        async def update_one(self, query, update):
+            self.update = update
+
+    outbox = Outbox()
+    server_module.RESEND_API_KEY = "configured"
+    server_module.db = SimpleNamespace(email_outbox=outbox)
+    monkeypatch.setattr(server_module.resend.Emails, "send", lambda params: {"id": "provider-1"})
+
+    processed = asyncio.run(server_module._process_email_outbox_job())
+
+    assert processed is True
+    assert outbox.update["$set"]["status"] == "sent"
+    assert outbox.update["$set"]["provider_id"] == "provider-1"
+    assert "html" in outbox.update["$unset"]
+
+
+def test_email_outbox_worker_retries_provider_failure(server_module, monkeypatch):
+    class Outbox:
+        def __init__(self):
+            self.update = None
+
+        async def find_one_and_update(self, query, update, **kwargs):
+            return {
+                "id": "email-2", "from": "orders@send.example.com",
+                "to": ["customer@example.com"], "subject": "Order",
+                "html": "<p>Private</p>", "attempts": 2,
+            }
+
+        async def update_one(self, query, update):
+            self.update = update
+
+    def fail_send(params):
+        raise RuntimeError("provider unavailable")
+
+    outbox = Outbox()
+    server_module.RESEND_API_KEY = "configured"
+    server_module.db = SimpleNamespace(email_outbox=outbox)
+    monkeypatch.setattr(server_module.resend.Emails, "send", fail_send)
+
+    processed = asyncio.run(server_module._process_email_outbox_job())
+
+    assert processed is True
+    assert outbox.update["$set"]["status"] == "retry"
+    assert outbox.update["$set"]["error_type"] == "RuntimeError"

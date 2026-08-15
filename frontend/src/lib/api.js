@@ -29,26 +29,29 @@ export const ASSET_BASE = API_BASE.replace(/\/api$/, "");
 
 const api = axios.create({
   baseURL: API_BASE,
-  // Auth = JWT Bearer via `Authorization` header (injecté par l'interceptor
-  // ci-dessous depuis localStorage.fironova_token). `withCredentials` est
-  // volontairement FAUX : ceci évite le blocage CORS des navigateurs stricts
-  // (Safari, Firefox strict tracking, Chrome + extensions) qui rejettent
-  // toute réponse combinant `credentials: true` avec `Access-Control-Allow-Origin: *`.
-  // Le cookie httpOnly reste posé côté backend en fallback mais n'est plus lu ici.
-  withCredentials: false,
+  withCredentials: true,
 });
 
-api.interceptors.request.use((config) => {
-  const headers = config.headers ?? {};
-  const token = typeof window !== "undefined" ? window.localStorage.getItem("fironova_token") : null;
+let refreshRequest = null;
 
-  if (token && !headers.Authorization) {
-    headers.Authorization = `Bearer ${token}`;
-  }
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const request = error.config;
+    const isAuthRoute = String(request?.url || "").includes("/auth/");
+    if (error.response?.status !== 401 || !request || request._refreshAttempted || isAuthRoute) {
+      return Promise.reject(error);
+    }
 
-  config.headers = headers;
-  return config;
-});
+    request._refreshAttempted = true;
+    if (!refreshRequest) {
+      refreshRequest = axios.post(`${API_BASE}/auth/refresh`, {}, { withCredentials: true })
+        .finally(() => { refreshRequest = null; });
+    }
+    await refreshRequest;
+    return api(request);
+  },
+);
 
 export function formatApiError(detail) {
   if (detail == null) return "Something went wrong. Please try again.";

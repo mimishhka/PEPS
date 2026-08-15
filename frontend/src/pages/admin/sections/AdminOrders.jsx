@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useState } from "react";
 import { Download, Search, X, FileText, CheckCircle2, Save, Truck, MessageSquarePlus, Mail, Undo2, Trash2, AlertTriangle, Send, Tag } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
@@ -29,6 +29,8 @@ export default function AdminOrders() {
   const [manifest, setManifest] = useState(null);   // {configured, pending_count, groups}
   const [txBusy, setTxBusy] = useState(false);
   const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const deferredQuery = useDeferredValue(query);
 
   // Étiquettes créées mais non transmises = 2 $/article de surcharge et perte
   // du rabais d'automatisation. On le met sous les yeux, en haut de l'écran.
@@ -57,28 +59,26 @@ export default function AdminOrders() {
     }
   };
 
-  const load = () => {
-    const qs = tab === "all" ? "" : `?status_group=${tab}`;
-    api.get(`/admin/orders${qs}`).then((r) => setOrders(r.data));
-    api.get("/admin/orders/counts").then((r) => setCounts(r.data));
-  };
-  useEffect(() => { load(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const filtered = useMemo(() => {
-    return orders.filter((o) => {
-      if (filterPayment !== "all" && o.payment_status !== filterPayment) return false;
-      if (filterFulfill !== "all" && o.fulfillment_status !== filterFulfill) return false;
-      if (filterLate === "late_only" && !o.late_payment_flagged) return false;
-      if (query) {
-        const q = query.toLowerCase();
-        const hay = `${o.order_number} ${o.email || ""} ${o.shipping_address?.full_name || ""}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
+  const load = useCallback(() => {
+    const params = {
+      page,
+      limit: PAGE_SIZE,
+      ...(tab === "all" ? {} : { status_group: tab }),
+      ...(deferredQuery ? { query: deferredQuery } : {}),
+      ...(filterPayment === "all" ? {} : { payment_status: filterPayment }),
+      ...(filterFulfill === "all" ? {} : { fulfillment_status: filterFulfill }),
+      ...(filterLate === "late_only" ? { late_only: true } : {}),
+    };
+    api.get("/admin/orders/page", { params }).then((r) => {
+      setOrders(r.data.items || []);
+      setTotal(r.data.total || 0);
     });
-  }, [orders, query, filterPayment, filterFulfill, filterLate]);
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    api.get("/admin/orders/counts").then((r) => setCounts(r.data));
+  }, [deferredQuery, filterFulfill, filterLate, filterPayment, page, tab]);
+  useEffect(() => { load(); }, [load]);
+
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageRows = orders;
 
   useEffect(() => {
     setPage(1);
@@ -117,7 +117,7 @@ export default function AdminOrders() {
         <div>
           <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// ORDERS</div>
           <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">Orders</h1>
-          <p className="font-mono text-xs text-foreground/60 mt-1">{filtered.length} of {orders.length}</p>
+          <p className="font-mono text-xs text-foreground/60 mt-1">{total}</p>
         </div>
         <div className="flex items-center gap-2">
           <a

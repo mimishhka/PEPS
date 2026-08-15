@@ -17,6 +17,23 @@ async def admin_orders(status_group: Optional[str] = None, _admin: dict = Depend
     return await s.admin_orders(status_group, _admin)
 
 
+@router.get("/admin/orders/page")
+async def admin_orders_page(
+    page: int = 1,
+    limit: int = 50,
+    status_group: Optional[str] = None,
+    query: Optional[str] = None,
+    payment_status: Optional[str] = None,
+    fulfillment_status: Optional[str] = None,
+    late_only: bool = False,
+    _admin: dict = Depends(s.require_area("orders", "view")),
+):
+    return await s.admin_orders_page(
+        page, limit, status_group, query, payment_status, fulfillment_status,
+        late_only, _admin,
+    )
+
+
 @router.delete("/admin/orders/{order_id}")
 async def admin_delete_order(order_id: str, admin: dict = Depends(s.require_area("orders", "manage"))):
     return await s.admin_delete_order(order_id, admin)

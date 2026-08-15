@@ -465,7 +465,6 @@ function SecurityTab({ t, user, logout, navigate }) {
     try {
       await api.post("/auth/logout-all");
     } catch { /* ignore */ }
-    localStorage.removeItem("fironova_token");
     logout();
     navigate("/login");
   };
@@ -476,7 +475,6 @@ function SecurityTab({ t, user, logout, navigate }) {
     setDelBusy(true);
     try {
       await api.post("/account/delete", pwLess ? {} : { current_password: delPassword });
-      localStorage.removeItem("fironova_token");
       toast.success(t("account.deleted"));
       logout();
       navigate("/");
