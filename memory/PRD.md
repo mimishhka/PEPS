@@ -86,8 +86,8 @@ E-commerce website for peptides, bilingual FR/EN, compliance-ready for Canada (N
 - `REACT_APP_BACKEND_URL` (frontend)
 
 ## Admin
-- Email: `admin@nordpep.ca`
-- Password: `NordpepAdmin2026!`
+- Email: configured with `ADMIN_EMAIL` in the backend environment
+- Password: configured with `ADMIN_PASSWORD` in the backend environment
 - One-click entry via ADMIN button in header (auto-login) or hidden dot in footer.
 
 ## Update — Juin 2026 (session fork)

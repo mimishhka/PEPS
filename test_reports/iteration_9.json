@@ -40,7 +40,7 @@
     "/app/backend/tests/test_iter9_variant_sale_preorder.py (new)"
   ],
   "success_rate": {"backend": "100% (5/5)", "frontend": "100% (visual+testid confirmed for product/catalog/admin/FR)"},
-  "test_credentials": "Admin: admin@nordpep.ca / NordpepAdmin2026! (ADMIN header button auto-logs in). Guest checkout — no credentials required.",
+  "test_credentials": "Admin: admin@fironova.com / [REDACTED] (ADMIN header button auto-logs in). Guest checkout — no credentials required.",
   "seed_data_creation": "Created 2 test orders (5mg interac sale + 10mg interac preorder) via backend pytest — both deleted in test_zzz_cleanup. 5mg stock restored (+1). 10mg stock never decremented so no restore needed. Admin sale_price/coa_url edit reverted to original values (49.99 / example.com/coa-bpc157-5mg.pdf).",
   "retest_needed": false,
   "main_agent_can_self_test": true,

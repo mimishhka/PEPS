@@ -32,7 +32,7 @@
   ],
   "updated_files": ["/app/backend/tests/test_iter3_features.py"],
   "success_rate": {"backend": "100%", "frontend": "92%"},
-  "test_credentials": "Admin admin@nordpep.ca / NordpepAdmin2026! — works (read from /app/memory/test_credentials.md).",
+  "test_credentials": "Admin admin@fironova.com / [REDACTED] — works (read from /app/memory/test_credentials.md).",
   "seed_data_creation": "Tests create transient TEST_ products + 1 NORDPEP10 coupon (session-scoped, deleted at teardown). Many TEST_ orders accumulated from compounded iterations — no cleanup as orders are append-only.",
   "retest_needed": false,
   "main_agent_can_self_test": true,

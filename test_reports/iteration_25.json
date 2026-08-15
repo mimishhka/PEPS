@@ -22,7 +22,7 @@
     "/app/backend/tests/test_cancel_reopen_iter25.py (new)"
   ],
   "success_rate": {"backend": "100% (11/11)", "frontend": "N/A (skipped per request)"},
-  "test_credentials": "admin@nordpep.ca / G7moffIe-CvzB5Mc (from /app/memory/test_credentials.md)",
+  "test_credentials": "admin@fironova.com / [REDACTED] (from /app/memory/test_credentials.md)",
   "seed_data_creation": "All test data is prefixed with TEST_iter25_ and cleaned up via module-scoped autouse fixture (orders/products/coupons/affiliate_referrals). No production docs touched. Test uses http://localhost:8001 directly (per request) and imports server.py to call cancel_stale_unpaid_orders() and _process_interac_deposit_emails() directly with monkey-patched Graph helpers.",
   "retest_needed": false,
   "main_agent_can_self_test": true,

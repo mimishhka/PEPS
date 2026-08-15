@@ -62,7 +62,7 @@ def _private_ref(value: Any) -> str:
     return digest[:12]
 
 
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@nordpep.ca")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@fironova.com")
 # Aucun défaut : un mot de passe admin en dur dans le repo est un mot de passe public.
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 if not ADMIN_PASSWORD:

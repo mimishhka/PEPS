@@ -1,5 +1,5 @@
 {
-  "summary": "Validated cookie+Bearer-token fallback fix. Backend endpoints /api/auth/login and /api/auth/register now return access_token (JWT ~252 chars) in the response body in addition to setting the HttpOnly cookie. Frontend correctly stores JWT in localStorage as 'fironova_token' and uses it via Authorization: Bearer header. E2E login flow succeeds (admin@nordpep.ca → redirect to /ops-portal-fn7k2q → dashboard renders Revenue $6289.76 / Orders 126 / Customers 24). CRITICAL: Verified Bearer-only auth works after clearing all cookies — user remains authenticated on reload, dashboard still loads (confirms the cookie-less browser scenario the user was hitting is now resolved).",
+  "summary": "Validated cookie+Bearer-token fallback fix. Backend endpoints /api/auth/login and /api/auth/register now return access_token (JWT ~252 chars) in the response body in addition to setting the HttpOnly cookie. Frontend correctly stores JWT in localStorage as 'fironova_token' and uses it via Authorization: Bearer header. E2E login flow succeeds (admin@fironova.com → redirect to /ops-portal-fn7k2q → dashboard renders Revenue $6289.76 / Orders 126 / Customers 24). CRITICAL: Verified Bearer-only auth works after clearing all cookies — user remains authenticated on reload, dashboard still loads (confirms the cookie-less browser scenario the user was hitting is now resolved).",
   "backend_issues": {
     "critical": [],
     "minor": [
@@ -21,7 +21,7 @@
   ],
   "updated_files": [],
   "success_rate": {"backend": "95%", "frontend": "100%"},
-  "test_credentials": "admin@nordpep.ca / G7moffIe-CvzB5Mc (from /app/memory/test_credentials.md)",
+  "test_credentials": "admin@fironova.com / [REDACTED] (from /app/memory/test_credentials.md)",
   "seed_data_creation": "None",
   "retest_needed": false,
   "main_agent_can_self_test": true,

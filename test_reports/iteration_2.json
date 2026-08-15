@@ -1,5 +1,5 @@
 {
-  "summary": "NORDPEP iteration 2 (taxes removed, $20 flat shipping, Resend email log-only, Health Canada wording removed) fully verified. Backend: 20/20 pytest cases pass (15 existing updated for no-tax + 5 new iter2 tests: meta shipping=20, QC $64.99→total $84.99 with tax=0, guest checkout stores email, every province tax=0, checkout logs customer+admin emails, payment-received email logged on admin status flip to paid). Frontend: checkout summary shows only Subtotal+Shipping rows ($20.00), summary-tax testid absent, Interac order placed successfully (NP-260628-3EA028 at /order/{id} with orders@nordpep.ca instructions), home/header/footer/compliance all free of 'Health Canada'/'Santé Canada' in both EN and FR, new footer text 'FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION · 19+ ONLY' rendered, admin login (admin@nordpep.ca) reaches /admin dashboard with stats (Revenue/Orders/Pending/Customers/Products) and Orders/Products/Customers tabs functional.",
+  "summary": "NORDPEP iteration 2 (taxes removed, $20 flat shipping, Resend email log-only, Health Canada wording removed) fully verified. Backend: 20/20 pytest cases pass (15 existing updated for no-tax + 5 new iter2 tests: meta shipping=20, QC $64.99→total $84.99 with tax=0, guest checkout stores email, every province tax=0, checkout logs customer+admin emails, payment-received email logged on admin status flip to paid). Frontend: checkout summary shows only Subtotal+Shipping rows ($20.00), summary-tax testid absent, Interac order placed successfully (NP-260628-3EA028 at /order/{id} with orders@nordpep.ca instructions), home/header/footer/compliance all free of 'Health Canada'/'Santé Canada' in both EN and FR, new footer text 'FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION · 19+ ONLY' rendered, admin login (admin@fironova.com) reaches /admin dashboard with stats (Revenue/Orders/Pending/Customers/Products) and Orders/Products/Customers tabs functional.",
   "backend_issues": {"critical": [], "minor": []},
   "frontend_issues": {
     "ui_bugs": [],
@@ -24,7 +24,7 @@
   ],
   "updated_files": ["/app/backend/tests/test_nordpep_api.py"],
   "success_rate": {"backend": "100%", "frontend": "100%"},
-  "test_credentials": "Admin admin@nordpep.ca / NordpepAdmin2026! works as expected.",
+  "test_credentials": "Admin admin@fironova.com / [REDACTED] works as expected.",
   "seed_data_creation": "Tests created several TEST_ guest orders for email-log verification (no cleanup needed — orders are append-only). 1 TEST_ product created and deleted in CRUD test.",
   "retest_needed": false,
   "main_agent_can_self_test": true,

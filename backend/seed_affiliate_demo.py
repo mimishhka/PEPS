@@ -92,7 +92,7 @@ async def main():
     args = ap.parse_args()
 
     if args.use_admin:
-        email = os.environ.get("ADMIN_EMAIL", "admin@nordpep.ca").lower().strip()
+        email = os.environ.get("ADMIN_EMAIL", "admin@fironova.com").lower().strip()
         print(f"Cible : compte admin (ADMIN_EMAIL = {email})")
     elif args.email:
         email = args.email.lower().strip()

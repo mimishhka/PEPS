@@ -1244,8 +1244,8 @@ if not BASE_URL:
             continue
 assert BASE_URL
 
-ADMIN_EMAIL = "admin@nordpep.ca"
-ADMIN_PASSWORD = "NordpepAdmin2026!"
+ADMIN_EMAIL = os.environ["ADMIN_EMAIL"]
+ADMIN_PASSWORD = os.environ["ADMIN_PASSWORD"]
 
 VALID_TIERS = {"standard", "bronze", "silver", "gold", "platinum", "diamond"}
 

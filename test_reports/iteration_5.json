@@ -23,7 +23,7 @@
   ],
   "updated_files": ["/app/backend/tests/test_iter5_shipping_autocancel.py"],
   "success_rate": {"backend": "100% (3/3 new + 40/41 overall, 1 pre-existing unrelated flake)", "frontend": "100% (all 3 pages, 5 assertions)"},
-  "test_credentials": "Admin admin@nordpep.ca / NordpepAdmin2026! (from /app/memory/test_credentials.md). Guest checkout used for iter5 tests — no auth required.",
+  "test_credentials": "Admin admin@fironova.com / [REDACTED] (from /app/memory/test_credentials.md). Guest checkout used for iter5 tests — no auth required.",
   "seed_data_creation": "Test creates transient orders (deleted at test end) and briefly decrements/re-increments variant stock. All test data cleaned up in fixtures.",
   "retest_needed": false,
   "main_agent_can_self_test": true,
