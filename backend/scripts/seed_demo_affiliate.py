@@ -1,5 +1,4 @@
-"""Seed d'un compte affilié démo.
-Email: demo.affilie@fironova.com  |  Password: Fironova!Demo2026
+"""Seed d'un compte affilié démo dans une base non-production.
 
 Crée uniquement:
   - un utilisateur (email_verified=True)
@@ -21,9 +20,20 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import bcrypt
 
 EMAIL = "demo.affilie@fironova.com"
-PASSWORD = "Fironova!Demo2026"
+PASSWORD = os.environ.get("DEMO_PASSWORD", "")
 NAME = "Demo Affiliate"
 CODE = "DEMO2026"
+
+
+def require_demo_database() -> None:
+    db_name = os.environ.get("DB_NAME", "").lower()
+    app_env = os.environ.get("APP_ENV", "").lower()
+    if os.environ.get("ALLOW_DEMO_DATA", "").lower() != "true":
+        raise SystemExit("Refusing demo seed: set ALLOW_DEMO_DATA=true explicitly")
+    if app_env in {"prod", "production"} or not any(tag in db_name for tag in ("dev", "test", "demo", "local")):
+        raise SystemExit("Refusing demo seed: DB_NAME must clearly identify a non-production database")
+    if not PASSWORD:
+        raise SystemExit("Refusing demo seed: DEMO_PASSWORD is required")
 
 
 def hash_password(p: str) -> str:
@@ -31,6 +41,7 @@ def hash_password(p: str) -> str:
 
 
 async def main():
+    require_demo_database()
     db = AsyncIOMotorClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
     now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -104,7 +115,7 @@ async def main():
     print("")
     print("=" * 60)
     print(f"  Email     : {EMAIL}")
-    print(f"  Password  : {PASSWORD}")
+    print("  Password  : supplied via DEMO_PASSWORD")
     print(f"  Code Aff  : {CODE}")
     print("=" * 60)
 

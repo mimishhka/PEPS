@@ -29,7 +29,7 @@ import jwt
 import httpx
 import resend
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File, Body
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from PIL import Image as PILImage
@@ -78,9 +78,10 @@ INTERAC_GRAPH_TENANT_ID = os.environ.get("INTERAC_GRAPH_TENANT_ID", "")
 INTERAC_GRAPH_CLIENT_ID = os.environ.get("INTERAC_GRAPH_CLIENT_ID", "")
 INTERAC_GRAPH_CLIENT_SECRET = os.environ.get("INTERAC_GRAPH_CLIENT_SECRET", "")
 INTERAC_GRAPH_USER = os.environ.get("INTERAC_GRAPH_USER", "").strip().lower() or INTERAC_EMAIL.lower()
-INTERAC_AUTOCONFIRM_MODE = os.environ.get("INTERAC_AUTOCONFIRM_MODE", "strict").strip().lower()
+INTERAC_AUTOCONFIRM_MODE = os.environ.get("INTERAC_AUTOCONFIRM_MODE", "off").strip().lower()
 if INTERAC_AUTOCONFIRM_MODE not in {"off", "strict"}:
-    INTERAC_AUTOCONFIRM_MODE = "strict"
+    INTERAC_AUTOCONFIRM_MODE = "off"
+INTERAC_TRUSTED_SENDER = os.environ.get("INTERAC_TRUSTED_SENDER", "").strip().lower()
 
 # Strip placeholder values like <TENANT_ID> that were never replaced.
 def _strip_placeholder(v: str) -> str:
@@ -98,7 +99,7 @@ INTERAC_GRAPH_CLIENT_SECRET = _strip_placeholder(INTERAC_GRAPH_CLIENT_SECRET)
 ADMIN_GATE_CODE = os.environ.get("ADMIN_GATE_CODE")
 TRUST_PROXY_IPS = {
     ip.strip()
-    for ip in os.environ.get("TRUST_PROXY_IPS", "127.0.0.1,::1").split(",")
+    for ip in os.environ.get("TRUST_PROXY_IPS", "").split(",")
     if ip.strip()
 }
 INTERAC_PASSWORD_HINT = os.environ.get("INTERAC_PASSWORD_HINT", "FIRONOVA")
@@ -147,6 +148,7 @@ COA_PAGE_ENABLED = os.environ.get("COA_PAGE_ENABLED", "false").strip().lower() =
 PRELAUNCH_ENABLED = os.environ.get("PRELAUNCH_ENABLED", "false").strip().lower() == "true"
 PRELAUNCH_PREVIEW_TOKEN = os.environ.get("PRELAUNCH_PREVIEW_TOKEN", "")  # ?preview=<token> contourne la porte
 LAUNCH_COUPON_CODE = os.environ.get("LAUNCH_COUPON_CODE", "LAUNCH15").strip().upper()
+LAUNCH_COUPON_ENABLED = os.environ.get("LAUNCH_COUPON_ENABLED", "false").strip().lower() == "true"
 
 # File uploads (COA PDFs). Served statically at /uploads/coa/<file>.
 UPLOAD_DIR = ROOT_DIR / "uploads"
@@ -256,7 +258,13 @@ if RESEND_API_KEY:
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
-app = FastAPI(title="FIRONOVA API", version="1.0.0")
+app = FastAPI(
+    title="FIRONOVA API",
+    version="1.0.0",
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+)
 api = APIRouter(prefix="/api")
 
 
@@ -268,11 +276,12 @@ class ImmutableStaticFiles(StaticFiles):
         return response
 
 
-# Serve uploaded files (COA PDFs, images, etc.) at /uploads/...
-app.mount("/uploads", ImmutableStaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
-# Also serve under /api/uploads so assets pass the platform ingress (only /api is
-# routed to the backend on Emergent). Product/COA URLs use the /api/uploads form.
-app.mount("/api/uploads", ImmutableStaticFiles(directory=str(UPLOAD_DIR)), name="uploads-api")
+# Only non-sensitive catalog assets are public. Shipping labels contain customer
+# PII and are served through an authenticated admin route below.
+app.mount("/uploads/coa", ImmutableStaticFiles(directory=str(COA_UPLOAD_DIR)), name="uploads-coa")
+app.mount("/uploads/images", ImmutableStaticFiles(directory=str(IMAGE_UPLOAD_DIR)), name="uploads-images")
+app.mount("/api/uploads/coa", ImmutableStaticFiles(directory=str(COA_UPLOAD_DIR)), name="uploads-api-coa")
+app.mount("/api/uploads/images", ImmutableStaticFiles(directory=str(IMAGE_UPLOAD_DIR)), name="uploads-api-images")
 
 
 # ---------------------------------------------------------------------------
@@ -658,14 +667,14 @@ class CartItem(BaseModel):
 
 
 class ShippingAddress(BaseModel):
-    full_name: str
-    address1: str
-    address2: Optional[str] = ""
-    city: str
-    province: str  # QC, ON, BC, AB, ...
-    postal_code: str
+    full_name: str = Field(min_length=1, max_length=120)
+    address1: str = Field(min_length=1, max_length=160)
+    address2: Optional[str] = Field(default="", max_length=160)
+    city: str = Field(min_length=1, max_length=100)
+    province: str = Field(min_length=2, max_length=64)  # QC, ON, BC, AB, ...
+    postal_code: str = Field(min_length=3, max_length=20)
     country: str = "CA"
-    phone: Optional[str] = ""
+    phone: Optional[str] = Field(default="", max_length=32)
 
 
 class CheckoutIn(BaseModel):
@@ -1209,6 +1218,10 @@ async def login(payload: LoginIn, response: Response, request: Request):
     throttle_key = f"{_client_ip(request)}:{email}"
     await _rate_limit(
         "login", throttle_key, _LOGIN_MAX_ATTEMPTS, _LOGIN_WINDOW_SECONDS,
+        "Too many login attempts. Try again in 15 minutes.",
+    )
+    await _rate_limit(
+        "login_account", email, 20, _LOGIN_WINDOW_SECONDS,
         "Too many login attempts. Try again in 15 minutes.",
     )
     user = await db.users.find_one({"email": email})
@@ -2406,15 +2419,17 @@ async def _coupon_discount(coupon: dict, subtotal: float,
 
     email_norm = (email or "").strip().lower()
     allowed = [e.lower().strip() for e in (coupon.get("allowed_emails") or []) if e and e.strip()]
-    if allowed and email_norm:
-        if email_norm not in allowed:
-            raise HTTPException(400, "This coupon is not valid for this account")
-    if coupon.get("first_order_only") and email_norm:
+    requires_identity = bool(allowed or coupon.get("first_order_only") or coupon.get("per_customer_limit"))
+    if requires_identity and not email_norm:
+        raise HTTPException(400, "An email address is required for this coupon")
+    if allowed and email_norm not in allowed:
+        raise HTTPException(400, "This coupon is not valid for this account")
+    if coupon.get("first_order_only"):
         prior = await db.orders.count_documents({"email": email_norm, "payment_status": "paid"})
         if prior > 0:
             raise HTTPException(400, "This coupon is valid for first orders only")
     per_limit = coupon.get("per_customer_limit")
-    if per_limit and email_norm:
+    if per_limit:
         if _coupon_usage_for_email(coupon, email_norm) >= int(per_limit):
             raise HTTPException(400, "Coupon usage limit reached for this account")
 
@@ -2986,7 +3001,7 @@ async def _canada_post_get_artifact_openapi(href: str, order_id: str) -> Optiona
         return None
     fname = f"{order_id}-{uuid.uuid4().hex[:8]}.pdf"
     (LABEL_UPLOAD_DIR / fname).write_bytes(r.content)
-    return f"/uploads/labels/{fname}"
+    return f"/api/admin/shipping-labels/{fname}"
 
 
 async def _canada_post_get_manifest_artifact_openapi(href: str, date_str: str) -> Optional[str]:
@@ -3024,7 +3039,7 @@ async def _canada_post_get_manifest_artifact_openapi(href: str, date_str: str) -
         fname = f"manifest-{date_str}-{uuid.uuid4().hex[:8]}.pdf"
         (LABEL_UPLOAD_DIR / fname).write_bytes(r_pdf.content)
         logging.info("CP manifest PDF saved: %s", fname)
-        return f"/uploads/labels/{fname}"
+        return f"/api/admin/shipping-labels/{fname}"
     except HTTPException:
         return None
     except Exception as ex:
@@ -3329,7 +3344,7 @@ async def _canada_post_get_artifact(href: str, order_id: str) -> Optional[str]:
                 return None
             fname = f"{order_id}-{uuid.uuid4().hex[:8]}.pdf"
             (LABEL_UPLOAD_DIR / fname).write_bytes(r.content)
-            return f"/uploads/labels/{fname}"
+            return f"/api/admin/shipping-labels/{fname}"
     except Exception as ex:
         logging.error("Canada Post get-artifact failed: %s", ex)
         return None
@@ -4017,7 +4032,15 @@ async def _claim_coupon_usage(order: dict) -> bool:
             }
         }
     coupon_claim = await db.coupons.update_one(
-        {"code": coupon["code"], "counted_order_ids": {"$ne": order_id}},
+        {
+            "code": coupon["code"],
+            "counted_order_ids": {"$ne": order_id},
+            "$or": [
+                {"usage_limit": None},
+                {"usage_limit": {"$exists": False}},
+                {"$expr": {"$lt": [{"$ifNull": ["$used_count", 0]}, "$usage_limit"]}},
+            ],
+        },
         [{"$set": set_stage}],
     )
     if not coupon_claim.modified_count:
@@ -4298,11 +4321,26 @@ async def checkout(payload: CheckoutIn, request: Request):
     # Priorité au body (évite un préflight CORS déclenché par un en-tête
     # personnalisé, qui échoue derrière certains ingress) — l'en-tête reste
     # accepté pour rétro-compatibilité.
-    idem_key = ((getattr(payload, "idempotency_key", None) or request.headers.get("Idempotency-Key", ""))).strip()
+    raw_idem_key = ((getattr(payload, "idempotency_key", None) or request.headers.get("Idempotency-Key", ""))).strip()
+    if len(raw_idem_key) > 200:
+        raise HTTPException(400, "Idempotency key is too long")
+    user = await _resolve_user(request)
+    customer_email = ((user["email"] if user else None) or (payload.email.lower().strip() if payload.email else None))
+    actor_key = (user or {}).get("id") or customer_email or _client_ip(request)
+    idem_key = (
+        hmac.new(JWT_SECRET.encode(), f"{actor_key}:{raw_idem_key}".encode(), hashlib.sha256).hexdigest()
+        if raw_idem_key else ""
+    )
     lock_doc = None
     if idem_key:
         try:
-            lock_doc = {"_id": idem_key, "status": "processing", "created_at": datetime.now(timezone.utc).isoformat()}
+            now = datetime.now(timezone.utc)
+            lock_doc = {
+                "_id": idem_key,
+                "status": "processing",
+                "created_at": now.isoformat(),
+                "expires_at": now + timedelta(hours=24),
+            }
             await db.idempotency.insert_one(lock_doc)
         except DuplicateKeyError:
             cached = await db.idempotency.find_one({"_id": idem_key}, {"_id": 0, "response": 1, "status": 1})
@@ -4314,9 +4352,6 @@ async def checkout(payload: CheckoutIn, request: Request):
                 if cached and cached.get("response"):
                     return _checkout_response(cached["response"])
             raise HTTPException(409, "Checkout already in progress")
-
-    user = await _resolve_user(request)
-    customer_email = ((user["email"] if user else None) or (payload.email.lower().strip() if payload.email else None))
 
     try:
         line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder = await _build_order_totals(
@@ -4441,11 +4476,34 @@ async def checkout(payload: CheckoutIn, request: Request):
     return response_doc
 
 
+def _customer_order_payload(order: dict) -> dict:
+    public_order = dict(order)
+    compliance = dict(public_order.get("compliance") or {})
+    compliance.pop("ip", None)
+    public_order["compliance"] = compliance
+    public_order["notes"] = [
+        dict(note) for note in (public_order.get("notes") or [])
+        if note.get("visible_to_customer")
+    ]
+    payment_info = dict(public_order.get("payment_info") or {})
+    provider = payment_info.get("provider_response")
+    if isinstance(provider, dict):
+        allowed_provider_fields = {
+            "invoice_id", "invoice_url", "payment_id", "pay_address",
+            "pay_amount", "pay_currency", "payment_status",
+        }
+        payment_info["provider_response"] = {
+            key: value for key, value in provider.items() if key in allowed_provider_fields
+        }
+    public_order["payment_info"] = payment_info
+    return public_order
+
+
 async def my_orders(user: dict = Depends(get_current_user)):
     items = await db.orders.find(
         {"user_id": user["id"], "deleted_at": None}, {"_id": 0}
     ).sort("created_at", -1).to_list(200)
-    return items
+    return [_customer_order_payload(order) for order in items]
 
 
 def _guest_order_access_token(order: dict) -> str:
@@ -4532,16 +4590,12 @@ async def get_order(order_id: str, request: Request):
         if not user or (user["id"] != order["user_id"] and user.get("role") != "admin"):
             raise HTTPException(403, "Forbidden")
         if not (user and user.get("role") == "admin"):
-            if isinstance(order.get("compliance"), dict):
-                order["compliance"].pop("ip", None)
-            order["notes"] = [n for n in (order.get("notes") or []) if n.get("visible_to_customer")]
+            return _customer_order_payload(order)
         return order
 
     if not _guest_order_accessible(order, request):
         raise HTTPException(403, "Forbidden")
-    if isinstance(order.get("compliance"), dict):
-        order["compliance"].pop("ip", None)
-    order["notes"] = [n for n in (order.get("notes") or []) if n.get("visible_to_customer")]
+    order = _customer_order_payload(order)
     order["guest_access_used"] = True
     return order
 
@@ -5136,6 +5190,7 @@ async def admin_invite_staff(payload: StaffInviteIn, request: Request, admin: di
     await _rate_limit("staff_invite", admin["id"], 20, 3600, "Too many invitations sent. Try again later.")
 
     token = secrets.token_urlsafe(32)
+    token_hash = _hash_refresh_token(token)
     now = datetime.now(timezone.utc)
     await db.staff_invites.insert_one({
         "id": str(uuid.uuid4()),
@@ -5144,7 +5199,7 @@ async def admin_invite_staff(payload: StaffInviteIn, request: Request, admin: di
         "permissions": payload.permissions.model_dump(),
         "as_owner": payload.as_owner,
         "invited_by": admin["id"],
-        "token": token,
+        "token_hash": token_hash,
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(hours=STAFF_INVITE_TTL_HOURS)).isoformat(),
         "used": False,
@@ -5172,7 +5227,8 @@ async def staff_accept_invite(payload: StaffAcceptIn, response: Response, reques
     token à usage unique + TTL sert de preuve. Crée le compte staff (ou
     owner, si l'invitation le précisait)."""
     now = datetime.now(timezone.utc).isoformat()
-    invite = await db.staff_invites.find_one({"token": payload.token, "used": False})
+    token_hash = _hash_refresh_token(payload.token)
+    invite = await db.staff_invites.find_one({"token_hash": token_hash, "used": False})
     if not invite or invite["expires_at"] < now:
         raise HTTPException(status_code=400, detail="Invalid or expired invitation")
     if await db.users.find_one({"email": invite["email"]}):
@@ -5190,8 +5246,14 @@ async def staff_accept_invite(payload: StaffAcceptIn, response: Response, reques
     }
     if not as_owner:
         user_doc["permissions"] = invite["permissions"]
+    consumed = await db.staff_invites.find_one_and_update(
+        {"token_hash": token_hash, "used": False},
+        {"$set": {"used": True, "used_at": now}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not consumed:
+        raise HTTPException(status_code=400, detail="Invalid or expired invitation")
     await db.users.insert_one(user_doc)
-    await db.staff_invites.update_one({"token": payload.token}, {"$set": {"used": True, "used_at": now}})
 
     role = user_doc["role"]
     await _start_session(response, request, user_doc)
@@ -5402,6 +5464,8 @@ async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Dep
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(404, "Order not found")
+    if order.get("payment_status") != "paid":
+        raise HTTPException(409, "Only paid orders can be refunded")
     already = float(order.get("refunded_amount", 0) or 0)
     total = float(order.get("total", 0))
     amount = round(payload.amount, 2)
@@ -5419,22 +5483,31 @@ async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Dep
         "ts": datetime.now(timezone.utc).isoformat(),
     }
     await db.orders.update_one({"id": order_id}, {"$set": update, "$push": {"notes": note}})
-    await affiliate_on_order_reversed(order_id, full=(new_refunded >= total))
-    # Coupon decrement on full refund.
     if new_refunded >= total:
-        c = order.get("coupon")
-        if c and c.get("code") and order.get("coupon_counted"):
-            await db.coupons.update_one(
-                {"code": c["code"], "used_count": {"$gt": 0}},
-                {"$inc": {"used_count": -1}},
-            )
-            email_norm = (order.get("email") or "").strip().lower()
-            if email_norm:
-                await db.coupons.update_one(
-                    {"code": c["code"], "used_by.email": email_norm, "used_by.count": {"$gt": 0}},
-                    {"$inc": {"used_by.$.count": -1}},
-                )
-            await db.orders.update_one({"id": order_id}, {"$set": {"coupon_counted": False}})
+        if order.get("fulfillment_status") not in {"shipped", "delivered"}:
+            await _restock_order_items(order)
+            await db.orders.update_one({"id": order_id}, {"$set": {"refund_restocked": True}})
+        await _decrement_coupon_usage(order)
+        await affiliate_on_order_reversed(order_id, full=True)
+    elif total > 0:
+        remaining_ratio = max(0.0, (total - new_refunded) / total)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await db.affiliate_referrals.update_many(
+            {"order_id": order_id, "status": {"$in": ["pending", "approved"]}},
+            [
+                {"$set": {
+                    "original_commission_amount": {
+                        "$ifNull": ["$original_commission_amount", "$commission_amount"]
+                    },
+                }},
+                {"$set": {
+                    "commission_amount": {
+                        "$round": [{"$multiply": ["$original_commission_amount", remaining_ratio]}, 2]
+                    },
+                    "refund_adjusted_at": now_iso,
+                }},
+            ],
+        )
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
     provider_refund_id = (
         updated.get("provider_refund_id")
@@ -5460,9 +5533,13 @@ async def admin_resend_order_email(order_id: str, _admin: dict = Depends(require
 
 
 async def admin_set_shipping_info(order_id: str, payload: ShippingInfoIn, _admin: dict = Depends(require_area("orders", "manage"))):
-    existing_order = await db.orders.find_one({"id": order_id}, {"_id": 0, "shipping_info": 1})
+    existing_order = await db.orders.find_one(
+        {"id": order_id}, {"_id": 0, "shipping_info": 1, "payment_status": 1},
+    )
     if not existing_order:
         raise HTTPException(404, "Order not found")
+    if payload.tracking_number and existing_order.get("payment_status") != "paid":
+        raise HTTPException(409, "Cannot ship an unpaid order")
     prev = existing_order.get("shipping_info") or {}
 
     shipped_at = payload.shipped_at or (datetime.now(timezone.utc).isoformat() if payload.tracking_number else None)
@@ -5520,6 +5597,8 @@ async def admin_create_label(order_id: str, payload: CreateLabelIn,
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(404, "Order not found")
+    if order.get("payment_status") != "paid":
+        raise HTTPException(409, "Cannot create a label for an unpaid order")
 
     info = order.get("shipping_info") or {}
     # Idempotence exigée : ne jamais recréer une étiquette déjà émise —
@@ -5560,6 +5639,20 @@ async def admin_create_label(order_id: str, payload: CreateLabelIn,
     fresh = await db.orders.find_one({"id": order_id}, {"_id": 0})
     asyncio.create_task(send_shipping_notification(fresh))
     return {"already_existed": False, "shipping_info": shipping_info}
+
+
+async def admin_shipping_label(filename: str, _admin: dict = Depends(require_area("orders", "view"))):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.pdf", filename or ""):
+        raise HTTPException(404, "Label not found")
+    label_path = LABEL_UPLOAD_DIR / filename
+    if not label_path.is_file():
+        raise HTTPException(404, "Label not found")
+    return FileResponse(
+        label_path,
+        media_type="application/pdf",
+        filename=filename,
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 async def admin_void_label(order_id: str, _admin: dict = Depends(require_area("orders", "manage"))):
@@ -7059,6 +7152,18 @@ async def admin_analytics(_admin: dict = Depends(require_area("dashboard", "view
 # ---------------------------------------------------------------------------
 # Admin — CSV exports
 # ---------------------------------------------------------------------------
+def _csv_safe_value(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    if value.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
+def _csv_safe_row(row: dict) -> dict:
+    return {key: _csv_safe_value(value) for key, value in row.items()}
+
+
 def _csv_response(rows: list, filename: str) -> StreamingResponse:
     buf = io.StringIO()
     if not rows:
@@ -7066,7 +7171,7 @@ def _csv_response(rows: list, filename: str) -> StreamingResponse:
     else:
         writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(_csv_safe_row(row) for row in rows)
     buf.seek(0)
     return StreamingResponse(
         iter([buf.getvalue()]),
@@ -7084,7 +7189,7 @@ def _csv_cursor_response(cursor, row_mapper, fieldnames: list[str], filename: st
         async for document in cursor:
             buffer.seek(0)
             buffer.truncate(0)
-            writer.writerow(row_mapper(document))
+            writer.writerow(_csv_safe_row(row_mapper(document)))
             yield buffer.getvalue()
 
     return StreamingResponse(
@@ -7528,7 +7633,7 @@ async def _graph_unread_messages(token: str) -> list:
             params={
                 "$filter": "isRead eq false",
                 "$top": 50,
-                "$select": "id,subject,from,body,receivedDateTime",
+                "$select": "id,subject,from,body,receivedDateTime,internetMessageHeaders",
             },
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -7574,7 +7679,22 @@ def _is_full_payment_match(amounts: list, order_total: float) -> bool:
     return any(abs(float(a) - expected) <= 0.01 for a in (amounts or []))
 
 
+def _interac_message_authenticated(message: dict) -> bool:
+    headers = {
+        str(item.get("name") or "").strip().lower(): str(item.get("value") or "").lower()
+        for item in (message.get("internetMessageHeaders") or [])
+    }
+    auth_results = " ".join(
+        value for name, value in headers.items()
+        if name in {"authentication-results", "arc-authentication-results"}
+    )
+    return all(f"{mechanism}=pass" in auth_results for mechanism in ("spf", "dkim", "dmarc"))
+
+
 async def _process_interac_deposit_emails() -> int:
+    if not INTERAC_TRUSTED_SENDER:
+        logging.error("Interac auto-confirm disabled: INTERAC_TRUSTED_SENDER is not configured")
+        return 0
     token = await _graph_access_token()
     if not token:
         return 0
@@ -7587,8 +7707,11 @@ async def _process_interac_deposit_emails() -> int:
     processed = 0
     for msg in messages:
         from_addr = ((msg.get("from") or {}).get("emailAddress") or {}).get("address") or ""
-        if "interac" not in from_addr.lower():
+        if from_addr.strip().lower() != INTERAC_TRUSTED_SENDER:
             continue  # pas une notification Interac — on laisse en non-lu
+        if not _interac_message_authenticated(msg):
+            logging.warning("Interac notification rejected: email authentication did not pass")
+            continue
         subject = msg.get("subject") or ""
         body = msg.get("body") or {}
         text = f"{subject}\n{_strip_html(body.get('content') or '')}"
@@ -8185,6 +8308,7 @@ async def _repair_nonprod_bpc_seed() -> None:
 async def seed_admin_and_products():
     # Indexes
     await db.rate_limit_counters.create_index("expires_at", expireAfterSeconds=0)
+    await db.idempotency.create_index("expires_at", expireAfterSeconds=0)
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
     await db.refresh_sessions.create_index("token_hash", unique=True)
@@ -8219,9 +8343,9 @@ async def seed_admin_and_products():
     # Bannière « manifeste non transmis » : sans index, chaque chargement de
     # l'admin scanne toute la collection orders.
     await db.orders.create_index([("shipping_info.cp_transmitted", 1), ("shipping_info.cp_group_id", 1)])
-    await db.email_change_requests.create_index("token", unique=True)
+    await db.email_change_requests.create_index("token_hash", unique=True)
     await db.email_change_requests.create_index("user_id")
-    await db.staff_invites.create_index("token", unique=True)
+    await db.staff_invites.create_index("token_hash", unique=True)
     await db.staff_invites.create_index("email")
     await db.admin_audit_log.create_index([("created_at", -1)])
     await db.admin_audit_log.create_index("user_id")
@@ -8765,6 +8889,8 @@ async def _seed_default_menus() -> None:
 async def _seed_launch_coupon() -> None:
     """Provisionne le coupon de lancement 15 %. $setOnInsert : si tu l'édites
     ensuite dans l'admin, le redéploiement ne l'écrase pas."""
+    if not LAUNCH_COUPON_ENABLED:
+        return
     try:
         await db.coupons.update_one(
             {"code": LAUNCH_COUPON_CODE},
@@ -12589,7 +12715,7 @@ def _render_block(block: str, lang: str, order: Optional[dict]) -> str:
         items = order.get("items", [])
         rows = ""
         for it in items[:12]:
-            name = it.get("name_en") or it.get("name_fr") or it.get("slug", "")
+            name = html.escape(str(it.get("name_en") or it.get("name_fr") or it.get("slug", "")))
             qty = it.get("qty", 1)
             rows += (
                 f'<tr><td style="padding:6px 0;color:#1A2A38">{name}</td>'
@@ -12602,7 +12728,7 @@ def _render_block(block: str, lang: str, order: Optional[dict]) -> str:
         total = float(order.get("total", 0) or 0)
 
         coupon = order.get("coupon") or {}
-        coupon_code = str(coupon.get("code") or "").strip()
+        coupon_code = html.escape(str(coupon.get("code") or "").strip())
         coupon_line = ""
         if discount > 0:
             label = f'{L("Coupon", "Coupon")} ({coupon_code})' if coupon_code else L("Rabais", "Discount")
@@ -12612,12 +12738,12 @@ def _render_block(block: str, lang: str, order: Optional[dict]) -> str:
             )
 
         ship = order.get("shipping_address") or {}
-        ship_name = ship.get("full_name") or ""
-        ship_line1 = ship.get("address1") or ""
-        ship_line2 = ship.get("address2") or ""
-        ship_city = ship.get("city") or ""
-        ship_prov = ship.get("province") or ""
-        ship_postal = ship.get("postal_code") or ""
+        ship_name = html.escape(str(ship.get("full_name") or ""))
+        ship_line1 = html.escape(str(ship.get("address1") or ""))
+        ship_line2 = html.escape(str(ship.get("address2") or ""))
+        ship_city = html.escape(str(ship.get("city") or ""))
+        ship_prov = html.escape(str(ship.get("province") or ""))
+        ship_postal = html.escape(str(ship.get("postal_code") or ""))
         shipping_address_html = ""
         if ship_name or ship_line1 or ship_city:
             line_2 = " ".join([p for p in [ship_city, ship_prov, ship_postal] if p]).strip()
@@ -12697,7 +12823,7 @@ def _email_render(tpl: dict, lang: str, ctx: dict, order: Optional[dict] = None)
     def sub(txt):
         out = txt or ""
         for k, v in (ctx or {}).items():
-            out = out.replace("{{" + k + "}}", str(v))
+            out = out.replace("{{" + k + "}}", html.escape(str(v)))
         return out
     subject = sub(tpl.get(f"subject_{lang}") or tpl.get("subject_en") or "FIRONOVA")
     parts = []

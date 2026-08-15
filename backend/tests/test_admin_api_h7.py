@@ -213,6 +213,80 @@ def test_checkout_idempotency_blocks_parallel_duplicate_orders(server_module, mo
 
     assert len(orders.inserted) == 1
     assert len({r["id"] for r in results}) == 1
+    assert "same-key" not in idempotency.docs
+    assert all(document.get("expires_at") for document in idempotency.docs.values())
+
+
+def test_unpaid_order_cannot_ship_or_refund(server_module):
+    class Orders:
+        async def find_one(self, query, *args, **kwargs):
+            return {
+                "id": "o-unpaid",
+                "payment_status": "awaiting_etransfer",
+                "fulfillment_status": "pending",
+                "shipping_info": {},
+                "total": 50,
+            }
+
+    server_module.db = types.SimpleNamespace(orders=Orders())
+    shipping = server_module.ShippingInfoIn(carrier="Canada Post", tracking_number="TRACK123")
+
+    with pytest.raises(server_module.HTTPException) as shipping_error:
+        asyncio.run(server_module.admin_set_shipping_info("o-unpaid", shipping, {}))
+    with pytest.raises(server_module.HTTPException) as refund_error:
+        asyncio.run(server_module.admin_refund_order(
+            "o-unpaid", server_module.RefundIn(amount=10), {"email": "admin@example.com"},
+        ))
+
+    assert shipping_error.value.status_code == 409
+    assert refund_error.value.status_code == 409
+
+
+def test_full_unshipped_refund_restocks_and_reverses(server_module, monkeypatch):
+    order = {
+        "id": "o-paid",
+        "email": "buyer@example.com",
+        "payment_status": "paid",
+        "fulfillment_status": "processing",
+        "total": 50.0,
+        "refunded_amount": 0.0,
+        "items": [{"product_id": "p1", "variant_id": None, "qty": 1}],
+    }
+
+    class Orders:
+        async def find_one(self, query, *args, **kwargs):
+            return dict(order)
+
+        async def update_one(self, query, update, **kwargs):
+            order.update(update.get("$set", {}))
+            return DummyUpdateResult(1)
+
+    class Referrals:
+        async def update_many(self, *args, **kwargs):
+            return DummyUpdateResult(1)
+
+    server_module.db = types.SimpleNamespace(orders=Orders(), affiliate_referrals=Referrals())
+    calls = []
+
+    async def restock(refund_order):
+        calls.append(("restock", refund_order["id"]))
+
+    async def coupon(refund_order):
+        calls.append(("coupon", refund_order["id"]))
+
+    async def affiliate(order_id, full=True):
+        calls.append(("affiliate", order_id))
+
+    monkeypatch.setattr(server_module, "_restock_order_items", restock)
+    monkeypatch.setattr(server_module, "_decrement_coupon_usage", coupon)
+    monkeypatch.setattr(server_module, "affiliate_on_order_reversed", affiliate)
+
+    result = asyncio.run(server_module.admin_refund_order(
+        "o-paid", server_module.RefundIn(amount=50), {"email": "admin@example.com"},
+    ))
+
+    assert result["payment_status"] == "refunded"
+    assert calls == [("restock", "o-paid"), ("coupon", "o-paid"), ("affiliate", "o-paid")]
 
 
 def test_me_sanitizes_internal_fields(server_module):

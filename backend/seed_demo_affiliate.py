@@ -15,8 +15,19 @@ from motor.motor_asyncio import AsyncIOMotorClient
 # ---- Paramètres du compte démo (modifie si tu veux) ----
 DEMO_EMAIL    = "demo.affilie@fironova.com"
 DEMO_NAME     = "Démo Affilié"
-DEMO_PASSWORD = "Fironova!Demo2026"      # <-- ton mot de passe d'accès
+DEMO_PASSWORD = os.environ.get("DEMO_PASSWORD", "")
 COUPON_PERCENT = float(os.environ.get("AFFILIATE_COUPON_PERCENT", "10"))
+
+
+def require_demo_database() -> None:
+    db_name = os.environ.get("DB_NAME", "").lower()
+    app_env = os.environ.get("APP_ENV", "").lower()
+    if os.environ.get("ALLOW_DEMO_DATA", "").lower() != "true":
+        raise SystemExit("Refusing demo seed: set ALLOW_DEMO_DATA=true explicitly")
+    if app_env in {"prod", "production"} or not any(tag in db_name for tag in ("dev", "test", "demo", "local")):
+        raise SystemExit("Refusing demo seed: DB_NAME must clearly identify a non-production database")
+    if not DEMO_PASSWORD:
+        raise SystemExit("Refusing demo seed: DEMO_PASSWORD is required")
 
 def hash_password(pw: str) -> str:
     return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
@@ -26,6 +37,7 @@ def gen_code() -> str:
     return "FN" + "".join(secrets.choice(alphabet) for _ in range(6))
 
 async def main():
+    require_demo_database()
     MONGO_URL = os.environ["MONGO_URL"]
     DB_NAME = os.environ["DB_NAME"]
     db = AsyncIOMotorClient(MONGO_URL)[DB_NAME]
@@ -97,7 +109,7 @@ async def main():
     print("=" * 48)
     print(f"  URL connexion : /login")
     print(f"  Courriel      : {DEMO_EMAIL}")
-    print(f"  Mot de passe  : {DEMO_PASSWORD}")
+    print("  Mot de passe  : fourni via DEMO_PASSWORD")
     print(f"  Code affilié  : {code}")
     print(f"  Dashboard     : /affiliate")
     print(f"  Lien parrain. : /?ref={code}")

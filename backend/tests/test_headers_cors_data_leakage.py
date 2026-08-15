@@ -112,3 +112,118 @@ def test_email_boundary_strips_crlf_from_headers(server_module, monkeypatch):
     assert "\r" not in captured["to"][0] and "\n" not in captured["to"][0]
     assert "\r" not in captured["subject"] and "\n" not in captured["subject"]
     assert "\r" not in captured["from"] and "\n" not in captured["from"]
+
+
+def test_order_email_escapes_customer_controlled_html(server_module):
+    order = {
+        "items": [{"name_en": "<img src=x onerror=alert(1)>", "qty": 1}],
+        "shipping_address": {
+            "full_name": "<script>alert(1)</script>",
+            "address1": "1 <b>Main</b>",
+            "city": "Montreal",
+            "province": "QC",
+            "postal_code": "H2X 1Y4",
+        },
+        "subtotal": 10,
+        "shipping": 20,
+        "total": 30,
+    }
+    rendered = server_module._render_block("items", "en", order)
+
+    assert "<script>" not in rendered
+    assert "<img src=x onerror=" not in rendered
+    assert "&lt;script&gt;" in rendered
+    assert "&lt;img src=x onerror=alert(1)&gt;" in rendered
+
+
+def test_customer_order_payload_redacts_internal_fields(server_module):
+    public = server_module._customer_order_payload({
+        "id": "order-1",
+        "compliance": {"ip": "203.0.113.4", "accept_terms": True},
+        "notes": [
+            {"text": "internal", "visible_to_customer": False},
+            {"text": "visible", "visible_to_customer": True},
+        ],
+        "payment_info": {"provider_response": {
+            "invoice_id": "invoice-1",
+            "api_secret": "must-not-leak",
+        }},
+    })
+
+    assert "ip" not in public["compliance"]
+    assert [note["text"] for note in public["notes"]] == ["visible"]
+    assert public["payment_info"]["provider_response"] == {"invoice_id": "invoice-1"}
+
+
+def test_csv_values_neutralize_spreadsheet_formulas(server_module):
+    row = server_module._csv_safe_row({
+        "email": "victim@example.com",
+        "source": " =HYPERLINK(\"https://attacker.example\")",
+    })
+
+    assert row["email"] == "victim@example.com"
+    assert row["source"].startswith("'")
+
+
+def test_coupon_claim_rechecks_usage_limit_atomically(server_module):
+    captured = {}
+
+    class Coupons:
+        async def update_one(self, query, update):
+            captured.update(query)
+            return SimpleNamespace(modified_count=0)
+
+    server_module.db = SimpleNamespace(coupons=Coupons())
+    claimed = asyncio.run(server_module._claim_coupon_usage({
+        "id": "order-1",
+        "email": "buyer@example.com",
+        "coupon": {"code": "LIMITED"},
+        "coupon_counted": False,
+    }))
+
+    assert claimed is False
+    assert "$or" in captured
+    assert any("$expr" in branch for branch in captured["$or"])
+
+
+def test_interac_rejects_non_exact_sender(server_module, monkeypatch):
+    server_module.INTERAC_TRUSTED_SENDER = "notify@payments.interac.ca"
+
+    async def graph_token():
+        return "graph-token"
+
+    async def unread_messages(token):
+        return [{
+            "id": "message-1",
+            "from": {"emailAddress": {"address": "interac@attacker.example"}},
+            "subject": "FN-123456-ABCDEF $10.00",
+            "body": {"content": ""},
+        }]
+
+    class Orders:
+        async def find_one(self, *args, **kwargs):
+            raise AssertionError("Untrusted sender must not reach order matching")
+
+    server_module.db = SimpleNamespace(orders=Orders())
+    monkeypatch.setattr(server_module, "_graph_access_token", graph_token)
+    monkeypatch.setattr(server_module, "_graph_unread_messages", unread_messages)
+
+    assert asyncio.run(server_module._process_interac_deposit_emails()) == 0
+
+
+def test_production_disables_api_schema(monkeypatch):
+    monkeypatch.setenv("MONGO_URL", "mongodb://localhost:27017")
+    monkeypatch.setenv("DB_NAME", "testdb")
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", "admin-pass")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://api.example.com")
+    monkeypatch.setenv("CORS_ORIGINS", "https://shop.example.com")
+    monkeypatch.setenv("APP_ENV", "production")
+
+    import server
+    production_server = importlib.reload(server)
+    paths = {route.path for route in production_server.app.routes}
+
+    assert "/docs" not in paths
+    assert "/redoc" not in paths
+    assert "/openapi.json" not in paths

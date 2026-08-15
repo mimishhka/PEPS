@@ -3,14 +3,13 @@
 Coverage:
 - Checkout shipping = $20 when subtotal < $200
 - Checkout shipping = $0 when subtotal >= $200
-- Auto-cancel watchdog: backdate an interac order, restart backend, verify:
+- Auto-cancel watchdog: backdate an interac order, run the worker, verify:
     payment_status='cancelled', fulfillment_status='cancelled', system note,
     variant stock restocked.
 """
 import os
-import time
+import asyncio
 import uuid
-import subprocess
 import pytest
 import requests
 from datetime import datetime, timezone, timedelta
@@ -119,6 +118,8 @@ def test_shipping_free_when_subtotal_at_or_above_200(products, db):
 # ================= Feature 2: auto-cancel unpaid orders =================
 
 def test_auto_cancel_stale_unpaid_order_restocks(products, db):
+    if not any(tag in DB_NAME.lower() for tag in ("dev", "test", "ci", "local")):
+        pytest.skip("Auto-cancel mutation test requires an explicitly non-production database")
     p, v = _pick(products, want_variant_price_max=150, min_stock=2)
     assert p and v
     qty = 1
@@ -140,25 +141,8 @@ def test_auto_cancel_stale_unpaid_order_restocks(products, db):
         past = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
         db.orders.update_one({"id": order_id}, {"$set": {"created_at": past}})
 
-        # Restart backend so watchdog runs at startup
-        subprocess.run(["sudo", "supervisorctl", "restart", "backend"], check=True, capture_output=True)
-
-        # Wait for backend + startup task
-        deadline = time.time() + 45
-        cancelled = False
-        while time.time() < deadline:
-            try:
-                hc = requests.get(f"{BASE_URL}/api/products", timeout=5)
-                if hc.status_code == 200:
-                    o2 = db.orders.find_one({"id": order_id})
-                    if o2 and o2.get("payment_status") == "cancelled":
-                        cancelled = True
-                        break
-            except Exception:
-                pass
-            time.sleep(2)
-
-        assert cancelled, "order was not auto-cancelled within 45s of backend restart"
+        import server
+        asyncio.run(server.cancel_stale_unpaid_orders())
 
         o2 = db.orders.find_one({"id": order_id})
         assert o2["fulfillment_status"] == "cancelled"

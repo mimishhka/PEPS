@@ -210,6 +210,58 @@ def test_profile_update_rejects_privilege_fields(server_module, field):
         server_module.ProfileUpdateIn(name="Test User", **{field: "admin"})
 
 
+def test_staff_invitation_stores_only_token_hash(server_module, monkeypatch):
+    captured = {}
+
+    class Users:
+        async def find_one(self, query):
+            return None
+
+    class StaffInvites:
+        async def insert_one(self, document):
+            captured.update(document)
+
+    async def allow(*args, **kwargs):
+        return None
+
+    async def log_action(*args, **kwargs):
+        return None
+
+    def discard_task(coro):
+        coro.close()
+        return None
+
+    server_module.db = SimpleNamespace(users=Users(), staff_invites=StaffInvites())
+    monkeypatch.setattr(server_module, "_rate_limit", allow)
+    monkeypatch.setattr(server_module, "_log_action", log_action)
+    monkeypatch.setattr(server_module.asyncio, "create_task", discard_task)
+
+    payload = server_module.StaffInviteIn(
+        email="staff@example.com",
+        name="Staff User",
+        permissions=server_module.StaffPermissionsIn(orders="view"),
+    )
+    asyncio.run(server_module.admin_invite_staff(
+        payload,
+        _request("/api/admin/staff/invite"),
+        {"id": "admin-1", "name": "Admin", "role": "admin"},
+    ))
+
+    assert "token" not in captured
+    assert captured["token_hash"]
+
+
+def test_shipping_address_rejects_unbounded_fields(server_module):
+    with pytest.raises(ValidationError):
+        server_module.ShippingAddress(
+            full_name="A" * 121,
+            address1="1 Main Street",
+            city="Montreal",
+            province="QC",
+            postal_code="H2X 1Y4",
+        )
+
+
 def test_account_delete_cleans_up_related_tokens(server_module, monkeypatch):
     class _Collection:
         def __init__(self):

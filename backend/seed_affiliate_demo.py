@@ -38,6 +38,12 @@ if not MONGO_URL or not DB_NAME:
     print("ERREUR : MONGO_URL / DB_NAME absents de l'environnement.")
     print("Lance ce script depuis le même env que le backend (variables .env chargées).")
     sys.exit(1)
+if os.environ.get("ALLOW_DEMO_DATA", "").lower() != "true":
+    raise SystemExit("Refusing demo seed: set ALLOW_DEMO_DATA=true explicitly")
+if os.environ.get("APP_ENV", "").lower() in {"prod", "production"} or not any(
+    tag in DB_NAME.lower() for tag in ("dev", "test", "demo", "local")
+):
+    raise SystemExit("Refusing demo seed: DB_NAME must clearly identify a non-production database")
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]

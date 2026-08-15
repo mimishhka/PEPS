@@ -14,7 +14,17 @@ EMAIL = "demo.affilie@fironova.com"
 CODE = "DEMO2026"
 
 
+def require_demo_database() -> None:
+    db_name = os.environ.get("DB_NAME", "").lower()
+    app_env = os.environ.get("APP_ENV", "").lower()
+    if os.environ.get("ALLOW_DEMO_DATA", "").lower() != "true":
+        raise SystemExit("Refusing demo cleanup: set ALLOW_DEMO_DATA=true explicitly")
+    if app_env in {"prod", "production"} or not any(tag in db_name for tag in ("dev", "test", "demo", "local")):
+        raise SystemExit("Refusing demo cleanup: DB_NAME must clearly identify a non-production database")
+
+
 async def main():
+    require_demo_database()
     db = AsyncIOMotorClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
     aff = await db.affiliates.find_one({"email": EMAIL}, {"_id": 0, "id": 1})
     if not aff:

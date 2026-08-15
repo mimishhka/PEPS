@@ -51,6 +51,11 @@ async def admin_dispatch_labels_pdf(date: str, _admin: dict = Depends(s.require_
     return await s.admin_dispatch_labels_pdf(date, _admin)
 
 
+@router.get("/admin/shipping-labels/{filename}")
+async def admin_shipping_label(filename: str, _admin: dict = Depends(s.require_area("orders", "view"))):
+    return await s.admin_shipping_label(filename, _admin)
+
+
 @router.get("/admin/dispatch/{date}/packing-slips.pdf")
 async def admin_dispatch_slips_pdf(date: str, _admin: dict = Depends(s.require_area("orders", "view"))):
     return await s.admin_dispatch_slips_pdf(date, _admin)
