@@ -7,16 +7,19 @@ function normalizeBackendBase(value) {
   return candidate.replace(/\/+$/, "");
 }
 
-export function buildApiBaseUrl() {
-  const envValue = normalizeBackendBase(process.env.REACT_APP_BACKEND_URL);
+export function buildApiBaseUrl(
+  configuredBackend = import.meta.env.REACT_APP_BACKEND_URL || import.meta.env.VITE_BACKEND_URL,
+  location = typeof window === "undefined" ? null : window.location,
+) {
+  const envValue = normalizeBackendBase(configuredBackend);
 
-  if (typeof window === "undefined") {
+  if (!location) {
     const base = envValue || "http://127.0.0.1:8001";
     return base.endsWith("/api") ? base : `${base}/api`;
   }
 
-  const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-  const base = envValue || (isLocalHost ? `http://${window.location.hostname}:8001` : window.location.origin);
+  const isLocalHost = ["localhost", "127.0.0.1"].includes(location.hostname);
+  const base = envValue || (isLocalHost ? `http://${location.hostname}:8001` : location.origin);
 
   return base.endsWith("/api") ? base : `${base}/api`;
 }

@@ -124,7 +124,7 @@
     "note": "Le chromatogramme HPLC et le sceau de certification sont des SVG inline — ce sont eux la signature visuelle, pas la photographie. Les photos de catégories restent des visuels labo/santé sous voile grenat (from-garnet/85). Pas de filtre grayscale (direction NORDPEP), pas de photo glaciaire nordique."
   },
   "tech_stack_instructions": {
-    "frontend": "React (CRA + craco), Tailwind, Shadcn UI, axios.",
+    "frontend": "React (Vite), Tailwind, Shadcn UI, axios.",
     "backend": "FastAPI + MongoDB (Motor), backend/server.py.",
     "auth": "Cookie httpOnly `access_token` UNIQUEMENT. Ne jamais renvoyer le JWT dans le corps d'une réponse, ne jamais l'écrire dans localStorage. axios : withCredentials: true, aucun intercepteur Authorization. CORS : origines explicites via CORS_ORIGINS, allow_credentials=True, '*' interdit.",
     "language_toggle": "LanguageContext + i18n.js, persistance localStorage (fironova_lang).",
