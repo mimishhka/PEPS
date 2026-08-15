@@ -12835,11 +12835,11 @@ def _email_render(tpl: dict, lang: str, ctx: dict, order: Optional[dict] = None)
     if body: parts.append(f'<p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#1A2A38">{body}</p>')
     outro = sub(tpl.get(f"outro_{lang}") or "")
     if outro: parts.append(f'<p style="margin:16px 0 0;font-size:14px;line-height:1.7;color:#3E5C76">{outro}</p>')
-    body_html = "\n".join(parts)
-    html = _nova_email_shell(sub(tpl.get("heading_fr", "")), sub(tpl.get("heading_en", "")),
-                             body_html, cta_url=sub(tpl.get("cta_url", "")),
+    body_html_shell = "\n".join(parts)
+    rendered_html = _nova_email_shell(sub(tpl.get("heading_fr", "")), sub(tpl.get("heading_en", "")),
+                             body_html_shell, cta_url=sub(tpl.get("cta_url", "")),
                              cta_label_fr=tpl.get("cta_label_fr", ""), cta_label_en=tpl.get("cta_label_en", ""))
-    return subject, html
+    return subject, rendered_html
 
 
 async def send_template_email(key: str, to: str, lang: str, ctx: dict, order: Optional[dict] = None):
