@@ -8336,7 +8336,20 @@ async def seed_admin_and_products():
     # Filtrage admin par rôle (staff, affiliés, clients) — évite un scan complet users.
     await db.users.create_index("role")
     await db.coupons.create_index("code", unique=True)
-    await db.coupons.create_index("counted_order_ids", unique=True, sparse=True)
+    # counted_order_ids : lookup index (non-unique).
+    # L'ancienne définition `unique=True, sparse=True` plantait au cancel :
+    # $setDifference sur le dernier order_id produit `[]`, MongoDB indexait
+    # cela comme `null`, et deux coupons avec `[]` violaient l'unique multikey
+    # (`E11000 dup key: counted_order_ids: undefined`).
+    # L'invariant "un même order_id n'apparaît que dans un seul coupon" est
+    # déjà garanti par le filtre `counted_order_ids: {$ne: order_id}` dans
+    # `_apply_coupon_usage`. L'index reste utile pour retrouver rapidement
+    # le coupon lors du décrément — pas besoin d'unicité au niveau BDD.
+    try:
+        await db.coupons.drop_index("counted_order_ids_1")
+    except Exception:
+        pass  # index absent : silencieux
+    await db.coupons.create_index("counted_order_ids")
     await db.payment_transactions.create_index("session_id", unique=True)
     await db.payment_transactions.create_index("order_id")
     await db.stock_notifications.create_index([("product_id", 1), ("variant_id", 1), ("notified", 1)])
