@@ -122,8 +122,12 @@ async def admin_affiliate_alias_toggle(
 
 
 @router.post("/admin/affiliates/payouts/run")
-async def admin_affiliate_run_payouts(admin: dict = Depends(s.get_admin_user), period: Optional[str] = None):
-    return await s.admin_affiliate_run_payouts(admin, period)
+async def admin_affiliate_run_payouts(
+    admin: dict = Depends(s.get_admin_user),
+    period: Optional[str] = None,
+    dry_run: bool = False,
+):
+    return await s.admin_affiliate_run_payouts(admin, period, dry_run)
 
 
 @router.post("/admin/affiliates/payouts/{payout_id}/mark-paid")

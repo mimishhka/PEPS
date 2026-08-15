@@ -9339,26 +9339,59 @@ def _is_valid_eth_address(addr: str) -> bool:
     return addr == _eth_to_checksum(body.lower())
 
 
+# Base58 sans les caractères ambigus (0, O, I, l).
+_TRON_BASE58_RE = re.compile(r"^T[1-9A-HJ-NP-Za-km-z]{33}$")
+
+
+def _is_valid_tron_address(addr: str) -> bool:
+    """Valide une adresse Tron (TRC-20). Format T + 33 base58 (34 total).
+
+    Note : on ne vérifie pas le checksum SHA256 (double), le format regex
+    couvre déjà 99% des collisions accidentelles et NOWPayments rejettera
+    à l'exécution si le checksum est invalide.
+    """
+    if not isinstance(addr, str):
+        return False
+    return bool(_TRON_BASE58_RE.fullmatch(addr.strip()))
+
+
+def _detect_payout_network(addr: str) -> Optional[str]:
+    """Retourne 'erc20', 'trc20' ou None selon le format de l'adresse."""
+    a = (addr or "").strip()
+    if _is_valid_eth_address(a):
+        return "erc20"
+    if _is_valid_tron_address(a):
+        return "trc20"
+    return None
+
+
 def _normalize_payout(address: str, currency: str) -> tuple:
     """Valide (devise, adresse) pour un payout affilié. HTTPException 422 sinon.
-    Retourne (adresse_checksummée, devise_normalisée)."""
+
+    Retourne (adresse_normalisée, devise_normalisée, network).
+    - USDT / USDC acceptent Ethereum (ERC-20, checksum EIP-55) ou Tron (TRC-20).
+    - network est 'erc20' ou 'trc20', propagé au CSV NOWPayments Mass Payouts.
+    """
     cur = (currency or "").strip().lower()
     if cur not in AFFILIATE_PAYOUT_CURRENCIES:
         raise HTTPException(
             422,
-            "Devise de versement non supportée. Choix : USDT ou USDC (Ethereum).",
+            "Devise de versement non supportée. Choix : USDT ou USDC (Ethereum ou Tron).",
         )
     addr = (address or "").strip()
-    if not _is_valid_eth_address(addr):
-        raise HTTPException(
-            422,
-            "Adresse Ethereum invalide. Attendu : 0x suivi de 40 caractères "
-            "hexadécimaux (adresse ERC-20 pour USDT/USDC).",
-        )
-    body = addr[2:]
-    canonical = addr if (body != body.lower() and body != body.upper()) \
-        else _eth_to_checksum(body.lower())
-    return canonical, cur
+    network = _detect_payout_network(addr)
+    if network == "erc20":
+        body = addr[2:]
+        canonical = addr if (body != body.lower() and body != body.upper()) \
+            else _eth_to_checksum(body.lower())
+        return canonical, cur, "erc20"
+    if network == "trc20":
+        return addr, cur, "trc20"
+    raise HTTPException(
+        422,
+        "Adresse invalide. Attendu : ERC-20 (0x + 40 hex, checksum EIP-55) "
+        "ou TRC-20 (T + 33 caractères base58) pour USDT/USDC.",
+    )
 
 
 def _affiliate_quarter_start(now: Optional[datetime] = None) -> datetime:
@@ -9630,9 +9663,10 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
         "compliance_status": aff.get("compliance_status", "compliant"),
         "payout_currency": aff.get("payout_currency", "usdt"),
         "payout_address": aff.get("payout_address", ""),
+        "payout_network": aff.get("payout_network", ""),
         "payout_configured": bool(
             (aff.get("payout_address") or "").strip()
-            and _is_valid_eth_address(aff.get("payout_address") or "")
+            and _detect_payout_network(aff.get("payout_address") or "")
         ),
         "coupon_percent": aff.get("coupon_percent"),
         "aliases": aff.get("aliases", []),
@@ -10163,8 +10197,9 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request,
 
     # --- Payout optionnel à l'activation (0 friction) -----------------------
     _payout_addr = (payload.payout_address or "").strip()
+    _payout_network = ""
     if _payout_addr:
-        _payout_addr, _payout_cur = _normalize_payout(
+        _payout_addr, _payout_cur, _payout_network = _normalize_payout(
             _payout_addr,
             payload.payout_currency or invite.get("payout_currency") or "usdt",
         )
@@ -10231,7 +10266,18 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request,
 async def affiliate_me(request: Request, lang: str = "fr"):
     aff = await get_current_affiliate(request)
     metrics = await _affiliate_compute_metrics(aff["id"])
-    return _affiliate_public(aff, metrics, lang=lang)
+    out = _affiliate_public(aff, metrics, lang=lang)
+    # Taux de change CAD→USD transparent (Banque du Canada) — utilisé dans
+    # l'aperçu Payments pour montrer combien 1 CAD = X USDT/USDC.
+    try:
+        fx_rate, fx_source = await _fetch_cad_to_usd_rate()
+        out["fx_rate_cad_to_usd"] = fx_rate
+        out["fx_source"] = fx_source
+        out["fx_captured_at"] = datetime.now(timezone.utc).isoformat()
+    except Exception:
+        # ne bloque pas le dashboard si l'API Banque du Canada est down
+        pass
+    return out
 
 
 async def affiliate_referrals(request: Request, limit: int = 200):
@@ -10253,10 +10299,14 @@ async def affiliate_payouts(request: Request):
 
 async def affiliate_payout_settings(payload: AffiliatePayoutSettingsIn, request: Request):
     aff = await get_current_affiliate(request)
-    address, currency = _normalize_payout(payload.payout_address, payload.payout_currency)
+    address, currency, network = _normalize_payout(payload.payout_address, payload.payout_currency)
     await db.affiliates.update_one(
         {"id": aff["id"]},
-        {"$set": {"payout_address": address, "payout_currency": currency}},
+        {"$set": {
+            "payout_address": address,
+            "payout_currency": currency,
+            "payout_network": network,
+        }},
     )
     fresh = await db.affiliates.find_one({"id": aff["id"]}, {"_id": 0})
     return _affiliate_public(fresh)
@@ -10522,7 +10572,24 @@ async def affiliate_ref(code: str, request: Request, response: Response,
     page/referrer/device (optionnels) alimentent l'analyse des sources."""
     await _rate_limit("affiliate_ref", _client_ip(request), 60, 60,  # noqa: F821
                 "Trop de requêtes.")
-    await affiliate_capture_click(request, response, code,
+    normalized = (code or "").strip().upper()
+    if not normalized:
+        raise HTTPException(404, "Referral code missing")
+    # 404 explicite pour code inconnu — évite la pollution analytique et permet
+    # au frontend de fallback proprement (masquer le badge / prévenir l'affilié).
+    matched = await db.affiliates.find_one(
+        {
+            "status": "active",
+            "$or": [
+                {"code": normalized},
+                {"aliases": {"$elemMatch": {"code": normalized, "active": True}}},
+            ],
+        },
+        {"_id": 1},
+    )
+    if not matched:
+        raise HTTPException(404, "Referral code not found or inactive")
+    await affiliate_capture_click(request, response, normalized,
                                   page=page, referrer=referrer, device=device)
     return {"ok": True}
 
@@ -11193,14 +11260,15 @@ async def admin_affiliate_update(affiliate_id: str, payload: AffiliateAdminUpdat
             raise HTTPException(409, "Affiliate code already in use")
         update["code"] = explicit_code
 
-    # Payout : validation stricte (USDT/USDC + Ethereum EIP-55)
+    # Payout : validation stricte (USDT/USDC + Ethereum EIP-55 OU Tron TRC-20)
     if "payout_address" in update or "payout_currency" in update:
-        addr, cur = _normalize_payout(
+        addr, cur, net = _normalize_payout(
             update.get("payout_address", aff.get("payout_address", "")),
             update.get("payout_currency", aff.get("payout_currency", "usdt")),
         )
         update["payout_address"] = addr
         update["payout_currency"] = cur
+        update["payout_network"] = net
 
     # Rename atomique du code affilié si le rabais (coupon_percent) change.
     # L'ancien code passe dans `aliases[]` (actif par défaut → attribution
@@ -11308,11 +11376,15 @@ async def admin_affiliate_alias_toggle(affiliate_id: str, alias_code: str,
 
 
 async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # noqa: F821
-                                      period: Optional[str] = None):
+                                      period: Optional[str] = None,
+                                      dry_run: bool = False):
     """Génère les payouts mensuels : agrège les commissions 'approved' par
     affilié en un relevé de payout (status 'ready'), marque les référrals
     comme rattachés. Le paiement crypto réel se fait ensuite hors-système,
-    puis l'admin confirme via /mark-paid avec la référence de transaction."""
+    puis l'admin confirme via /mark-paid avec la référence de transaction.
+
+    dry_run=true : retourne l'aperçu (montants, FX, groupes) SANS écrire
+    en base — utilisé pour valider la sortie avant un vrai run mensuel."""
     now = datetime.now(timezone.utc)
     period = period or now.strftime("%Y-%m")
     created = []
@@ -11355,6 +11427,20 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
             amount_usd = None
             amount_target = amount_cad
         payout_id = str(uuid.uuid4())
+        if dry_run:
+            # aperçu uniquement — pas d'écriture BDD, pas de payout_id assigné
+            created.append({
+                "affiliate_id": affiliate_id,
+                "affiliate_code": aff.get("code"),
+                "amount": amount_target,
+                "amount_cad": amount_cad,
+                "amount_usd": amount_usd,
+                "currency": payout_currency,
+                "referral_count": len(grp["ids"]),
+                "payout_id": None,
+                "dry_run": True,
+            })
+            continue
         try:
             await db.affiliate_payouts.insert_one({
                 "id": payout_id,
@@ -11398,6 +11484,8 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
                         "payout_id": payout_id})
     return {"ok": True, "period": period, "payouts_created": len(created),
             "fx_rate_cad_to_usd": fx_rate, "fx_source": fx_source,
+            "fx_captured_at": fx_captured_at,
+            "dry_run": bool(dry_run),
             "detail": created}
 
 
@@ -11839,17 +11927,18 @@ async def admin_affiliate_payout_runs(admin: dict = Depends(get_admin_user),  # 
 
 async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMarkIn,
                                     admin: dict = Depends(get_admin_user)):  # noqa: F821
-    """Confirme le paiement crypto : enregistre la référence de transaction
-    (traçabilité), passe le payout + ses référrals à 'paid'."""
+    """Confirme le paiement crypto manuellement : enregistre la référence de
+    transaction (tx hash) — statut `paid_manual` pour distinguer d'un paiement
+    confirmé automatiquement via NOWPayments (statut `paid`)."""
     payout = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
     if not payout:
         raise HTTPException(404, "Payout not found")
-    if payout.get("status") == "paid":
+    if payout.get("status") in ("paid", "paid_manual"):
         raise HTTPException(400, "Payout already marked paid")
     now = datetime.now(timezone.utc).isoformat()
     await db.affiliate_payouts.update_one(
         {"id": payout_id},
-        {"$set": {"status": "paid", "reference": payload.reference.strip(),
+        {"$set": {"status": "paid_manual", "reference": payload.reference.strip(),
                   "note": payload.note or "", "paid_at": now,
                   "paid_by": admin.get("email")}},
     )
