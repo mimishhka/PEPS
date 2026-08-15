@@ -4,6 +4,7 @@ import time
 import uuid
 import pytest
 import requests
+from pymongo import MongoClient
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://peptide-ca.preview.emergentagent.com").rstrip("/")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
@@ -19,16 +20,31 @@ def s():
 def admin_token(s):
     r = s.post(f"{BASE_URL}/api/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
     assert r.status_code == 200, r.text
-    return r.json()["token"]
+    token = s.cookies.get("access_token")
+    assert token
+    return token
 
 
 @pytest.fixture(scope="session")
-def user_session(s):
+def user_session():
     email = f"test_{uuid.uuid4().hex[:8]}@example.com"
-    r = s.post(f"{BASE_URL}/api/auth/register", json={"email": email, "password": "Testpass123!", "name": "Test User"})
+    password = "Testpass123!"
+    session = requests.Session()
+    r = session.post(f"{BASE_URL}/api/auth/register", json={"email": email, "password": password, "name": "Test User"})
     assert r.status_code == 200, r.text
     data = r.json()
-    return {"email": email, "token": data["token"], "id": data["id"]}
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    try:
+        client[os.environ.get("DB_NAME", "nordpep_db")].users.update_one(
+            {"id": data["id"]}, {"$set": {"email_verified": True}},
+        )
+    finally:
+        client.close()
+    login = session.post(f"{BASE_URL}/api/auth/login", json={"email": email, "password": password})
+    assert login.status_code == 200, login.text
+    access_cookie = session.cookies.get("access_token")
+    assert access_cookie
+    return {"email": email, "access_cookie": access_cookie, "id": data["id"]}
 
 
 # ---------------- Meta ----------------
@@ -76,12 +92,14 @@ def test_product_detail_bpc157(s):
 # ---------------- Auth ----------------
 def test_register_and_duplicate(s):
     email = f"dup_{uuid.uuid4().hex[:8]}@example.com"
-    r1 = s.post(f"{BASE_URL}/api/auth/register", json={"email": email, "password": "Pass12345!", "name": "Dup"})
+    session = requests.Session()
+    r1 = session.post(f"{BASE_URL}/api/auth/register", json={"email": email, "password": "Pass12345!", "name": "Dup"})
     assert r1.status_code == 200
     body = r1.json()
     assert body["email"] == email
-    assert "token" in body
-    r2 = s.post(f"{BASE_URL}/api/auth/register", json={"email": email, "password": "Pass12345!", "name": "Dup"})
+    assert "token" not in body and "access_token" not in body
+    assert session.cookies.get("access_token") is None
+    r2 = session.post(f"{BASE_URL}/api/auth/register", json={"email": email, "password": "Pass12345!", "name": "Dup"})
     assert r2.status_code == 409
 
 
@@ -94,7 +112,7 @@ def test_login_admin_and_wrong_password(s):
 
 
 def test_me_with_and_without_token(s, admin_token):
-    r = requests.get(f"{BASE_URL}/api/auth/me", headers={"Authorization": f"Bearer {admin_token}"})
+    r = requests.get(f"{BASE_URL}/api/auth/me", headers={"Cookie": f"access_token={admin_token}"})
     assert r.status_code == 200
     assert r.json()["email"] == ADMIN_EMAIL
     # Without token (use a fresh session to avoid cookie carryover)
@@ -163,7 +181,7 @@ def test_checkout_interac_qc(user_session):
         "confirm_age": True,
         "confirm_research_use": True,
     }
-    headers = {"Authorization": f"Bearer {user_session['token']}"}
+    headers = {"Cookie": f"access_token={user_session['access_cookie']}"}
     r = requests.post(f"{BASE_URL}/api/checkout", json=payload, headers=headers)
     assert r.status_code == 200, r.text
     order = r.json()
@@ -221,7 +239,7 @@ def test_checkout_fails_without_compliance():
 
 
 def test_orders_mine(user_session):
-    headers = {"Authorization": f"Bearer {user_session['token']}"}
+    headers = {"Cookie": f"access_token={user_session['access_cookie']}"}
     r = requests.get(f"{BASE_URL}/api/orders/mine", headers=headers)
     assert r.status_code == 200
     assert isinstance(r.json(), list)
@@ -229,13 +247,13 @@ def test_orders_mine(user_session):
 
 # ---------------- Admin ----------------
 def test_admin_forbidden_for_user(user_session):
-    headers = {"Authorization": f"Bearer {user_session['token']}"}
+    headers = {"Cookie": f"access_token={user_session['access_cookie']}"}
     r = requests.get(f"{BASE_URL}/api/admin/orders", headers=headers)
     assert r.status_code == 403
 
 
 def test_admin_lists(admin_token):
-    h = {"Authorization": f"Bearer {admin_token}"}
+    h = {"Cookie": f"access_token={admin_token}"}
     r1 = requests.get(f"{BASE_URL}/api/admin/orders", headers=h)
     assert r1.status_code == 200
     r2 = requests.get(f"{BASE_URL}/api/admin/customers", headers=h)
@@ -256,16 +274,16 @@ def test_admin_update_order_status(admin_token, user_session):
         "payment_method": "interac",
         "accept_terms": True, "confirm_age": True, "confirm_research_use": True,
     }
-    headers = {"Authorization": f"Bearer {user_session['token']}"}
+    headers = {"Cookie": f"access_token={user_session['access_cookie']}"}
     o = requests.post(f"{BASE_URL}/api/checkout", json=payload, headers=headers).json()
-    h = {"Authorization": f"Bearer {admin_token}"}
+    h = {"Cookie": f"access_token={admin_token}"}
     r = requests.put(f"{BASE_URL}/api/admin/orders/{o['id']}/status", params={"payment_status": "paid"}, headers=h)
     assert r.status_code == 200
     assert r.json()["payment_status"] == "paid"
 
 
 def test_admin_product_crud(admin_token):
-    h = {"Authorization": f"Bearer {admin_token}"}
+    h = {"Cookie": f"access_token={admin_token}"}
     slug = f"test-prod-{uuid.uuid4().hex[:6]}"
     payload = {
         "slug": slug, "name_en": "TEST_Prod", "name_fr": "TEST_Prod",
@@ -439,11 +457,11 @@ def test_iter2_payment_received_email_on_status_paid(admin_token, user_session):
         "payment_method": "interac",
         "accept_terms": True, "confirm_age": True, "confirm_research_use": True,
     }
-    headers = {"Authorization": f"Bearer {user_session['token']}"}
+    headers = {"Cookie": f"access_token={user_session['access_cookie']}"}
     o = requests.post(f"{BASE_URL}/api/checkout", json=payload, headers=headers).json()
     user_email = user_session["email"].lower()
     # Now flip to paid via admin
-    h = {"Authorization": f"Bearer {admin_token}"}
+    h = {"Cookie": f"access_token={admin_token}"}
     r = requests.put(f"{BASE_URL}/api/admin/orders/{o['id']}/status",
                      params={"payment_status": "paid"}, headers=h)
     assert r.status_code == 200

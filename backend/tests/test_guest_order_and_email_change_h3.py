@@ -139,6 +139,11 @@ def test_guest_access_recovery_is_generic_and_sends_only_to_stored_email(server_
 def test_email_change_token_is_hashed_and_not_exposed(server_module, monkeypatch):
     server_module.db = _DummyDB()
 
+    async def allow_rate_limit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(server_module, "_rate_limit", allow_rate_limit)
+
     class DummyUser:
         id = "u1"
         email = "old@example.com"

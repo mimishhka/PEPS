@@ -46,12 +46,12 @@ def _load_env(path: str) -> dict:
 _BE = _load_env("/app/backend/.env")
 _FE = _load_env("/app/frontend/.env")
 
-BASE_URL = "http://localhost:8001"
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "http://localhost:8001").rstrip("/")
 PUBLIC_URL = (_FE.get("REACT_APP_BACKEND_URL") or "").rstrip("/")
-MONGO_URL = _BE.get("MONGO_URL") or os.environ.get("MONGO_URL")
-DB_NAME = _BE.get("DB_NAME") or os.environ.get("DB_NAME")
-ADMIN_EMAIL = _BE.get("ADMIN_EMAIL")
-ADMIN_PASSWORD = _BE.get("ADMIN_PASSWORD")
+MONGO_URL = os.environ.get("MONGO_URL") or _BE.get("MONGO_URL")
+DB_NAME = os.environ.get("DB_NAME") or _BE.get("DB_NAME")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL") or _BE.get("ADMIN_EMAIL")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or _BE.get("ADMIN_PASSWORD")
 assert MONGO_URL and DB_NAME, "MONGO_URL/DB_NAME missing"
 assert ADMIN_EMAIL and ADMIN_PASSWORD
 
@@ -69,18 +69,18 @@ def _mongo():
 
 # ---------------------------------------------------------------------------
 @pytest.fixture(scope="module")
-def admin_token():
-    r = requests.post(f"{BASE_URL}/api/auth/login",
-                      json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}, timeout=15)
+def admin_session():
+    session = requests.Session()
+    r = session.post(f"{BASE_URL}/api/auth/login",
+                     json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}, timeout=15)
     assert r.status_code == 200, f"admin login failed: {r.status_code} {r.text}"
-    tok = r.json().get("access_token")
-    assert tok
-    return tok
+    assert session.cookies.get("access_token")
+    return session
 
 
 @pytest.fixture(scope="module")
-def h(admin_token):
-    return {"Authorization": f"Bearer {admin_token}"}
+def h(admin_session):
+    return {"Cookie": f"access_token={admin_session.cookies['access_token']}"}
 
 
 # ---------------------------------------------------------------------------
@@ -197,13 +197,25 @@ async def _cleanup_all():
 
 @pytest.fixture(scope="module", autouse=True)
 def _seed_module():
-    asyncio.get_event_loop().run_until_complete(_cleanup_all())
-    yield
-    asyncio.get_event_loop().run_until_complete(_cleanup_all())
+    global _TEST_LOOP
+    _TEST_LOOP = asyncio.new_event_loop()
+    asyncio.set_event_loop(_TEST_LOOP)
+    _run(_cleanup_all())
+    try:
+        yield
+    finally:
+        _run(_cleanup_all())
+        _TEST_LOOP.close()
+        _TEST_LOOP = None
+        asyncio.set_event_loop(None)
+
+
+_TEST_LOOP = None
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    assert _TEST_LOOP is not None
+    return _TEST_LOOP.run_until_complete(coro)
 
 
 # ===========================================================================

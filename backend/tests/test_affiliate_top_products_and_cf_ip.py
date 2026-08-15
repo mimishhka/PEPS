@@ -43,12 +43,12 @@ _FE_ENV = _load_env_file("/app/frontend/.env")
 _BE_ENV = _load_env_file("/app/backend/.env")
 
 PUBLIC_URL = os.environ.get("REACT_APP_BACKEND_URL", "http://127.0.0.1:8001").rstrip("/")
-LOCAL_URL = "http://localhost:8001"
-MONGO_URL = _BE_ENV.get("MONGO_URL") or os.environ.get("MONGO_URL")
-DB_NAME = _BE_ENV.get("DB_NAME") or os.environ.get("DB_NAME")
+LOCAL_URL = os.environ.get("LOCAL_BACKEND_URL", PUBLIC_URL).rstrip("/")
+MONGO_URL = os.environ.get("MONGO_URL") or _BE_ENV.get("MONGO_URL")
+DB_NAME = os.environ.get("DB_NAME") or _BE_ENV.get("DB_NAME")
 
-ADMIN_EMAIL = _BE_ENV.get("ADMIN_EMAIL")
-ADMIN_PASSWORD = _BE_ENV.get("ADMIN_PASSWORD")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL") or _BE_ENV.get("ADMIN_EMAIL")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or _BE_ENV.get("ADMIN_PASSWORD")
 
 assert PUBLIC_URL, "REACT_APP_BACKEND_URL missing"
 assert MONGO_URL and DB_NAME, "MONGO_URL/DB_NAME missing"
@@ -58,14 +58,15 @@ assert MONGO_URL and DB_NAME, "MONGO_URL/DB_NAME missing"
 # Helpers
 # ---------------------------------------------------------------------------
 def _login(base: str, email: str, password: str) -> str | None:
-    r = requests.post(
+    session = requests.Session()
+    r = session.post(
         f"{base}/api/auth/login",
         json={"email": email, "password": password},
         timeout=15,
     )
     if r.status_code != 200:
         return None
-    return r.json().get("access_token")
+    return session.cookies.get("access_token")
 
 
 def _register_and_get_token(email: str, password: str, name: str) -> str | None:
@@ -235,7 +236,7 @@ class TestAffiliateTopProducts:
         assert token, "Failed to login non-affiliate test user"
         r = requests.get(
             f"{PUBLIC_URL}/api/affiliate/top-products",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Cookie": f"access_token={token}"},
             timeout=15,
         )
         assert r.status_code == 403, f"expected 403, got {r.status_code} {r.text[:200]}"
@@ -245,7 +246,7 @@ class TestAffiliateTopProducts:
         assert token, "Failed to login affiliate test user"
         r = requests.get(
             f"{PUBLIC_URL}/api/affiliate/top-products",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Cookie": f"access_token={token}"},
             timeout=15,
         )
         assert r.status_code == 200, f"got {r.status_code} {r.text[:200]}"
@@ -278,7 +279,7 @@ class TestAffiliateTopProducts:
         # limit=1 → single item
         r = requests.get(
             f"{PUBLIC_URL}/api/affiliate/top-products?limit=1",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Cookie": f"access_token={token}"},
             timeout=15,
         )
         assert r.status_code == 200
@@ -287,7 +288,7 @@ class TestAffiliateTopProducts:
         # limit=0 should be clamped to 1
         r2 = requests.get(
             f"{PUBLIC_URL}/api/affiliate/top-products?limit=0",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Cookie": f"access_token={token}"},
             timeout=15,
         )
         assert r2.status_code == 200
@@ -296,7 +297,7 @@ class TestAffiliateTopProducts:
         # limit=999 should be clamped ≤ 20 (we only have 2 seeded, so just verify no error)
         r3 = requests.get(
             f"{PUBLIC_URL}/api/affiliate/top-products?limit=999",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Cookie": f"access_token={token}"},
             timeout=15,
         )
         assert r3.status_code == 200

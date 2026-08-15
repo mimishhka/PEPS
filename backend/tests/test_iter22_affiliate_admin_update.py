@@ -19,9 +19,7 @@ def admin_session():
                json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
                timeout=15)
     assert r.status_code == 200, f"Admin login failed: {r.status_code} {r.text}"
-    token = r.json().get("token") or r.json().get("access_token")
-    assert token, "Admin login returned no bearer token"
-    s.headers.update({"Authorization": f"Bearer {token}"})
+    assert s.cookies.get("access_token"), "Admin login returned no session cookie"
     return s
 
 

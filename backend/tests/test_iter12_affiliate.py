@@ -51,28 +51,9 @@ def _admin_token():
     return tok
 
 
-def _register(email):
-    s = requests.Session()
-    r = s.post(f"{BASE_URL}/api/auth/register",
-               json={"email": email, "password": "Affiliate2026!",
-                     "name": "Affiliate Tester"}, timeout=20)
-    assert r.status_code == 200, f"register failed: {r.status_code} {r.text}"
-    body = r.json()
-    access_token = body.get("access_token") or body.get("token") or s.cookies.get("access_token")
-    if access_token:
-        return access_token
-    raw = body.get("debug_magic_token")
-    assert raw, "register: no debug_magic_token — set MAGIC_LINK_DEBUG=1 in backend env"
-    vr = s.post(f"{BASE_URL}/api/auth/magic/verify", json={"token": raw}, timeout=20)
-    assert vr.status_code == 200, f"magic verify failed: {vr.status_code} {vr.text}"
-    tok = s.cookies.get("access_token")
-    assert tok, "magic verify: no access_token cookie"
-    return tok
-
-
 def _invite(admin_tok, email):
     r = requests.post(f"{BASE_URL}/api/admin/affiliates/invite",
-                      headers={"Authorization": f"Bearer {admin_tok}"},
+                      headers={"Cookie": f"access_token={admin_tok}"},
                       json={"email": email, "name": "Affiliate Tester",
                             "lang": "fr", "payout_currency": "btc"}, timeout=20)
     assert r.status_code == 200, f"invite failed: {r.status_code} {r.text}"
@@ -92,14 +73,15 @@ def affiliate(admin_tok):
     """Crée un affilié actif frais : invite admin -> join passwordless."""
     email = f"iter12_{uuid.uuid4().hex[:8]}@example.com"
     token = _invite(admin_tok, email)
-    r = requests.post(f"{BASE_URL}/api/affiliate/join",
-                      json={"token": token, "payout_address": "", "payout_currency": "usdt"},
-                      timeout=20)
+    session = requests.Session()
+    r = session.post(f"{BASE_URL}/api/affiliate/join",
+                     json={"token": token, "payout_address": "", "payout_currency": "usdt"},
+                     timeout=20)
     assert r.status_code == 200, f"join failed: {r.status_code} {r.text}"
-    user_tok = r.json().get("access_token") or r.json().get("token")
-    assert user_tok, "join returned no access token"
+    user_tok = session.cookies.get("access_token")
+    assert user_tok, "join returned no access cookie"
     me = requests.get(f"{BASE_URL}/api/affiliate/me",
-                      headers={"Authorization": f"Bearer {user_tok}"}, timeout=20)
+                      headers={"Cookie": f"access_token={user_tok}"}, timeout=20)
     assert me.status_code == 200, me.text
     return {"email": email, "user_tok": user_tok, "me": me.json()}
 
@@ -117,7 +99,7 @@ def test_affiliate_join_activates_profile(affiliate):
 
 
 def test_affiliate_dashboard_endpoints(affiliate):
-    h = {"Authorization": f"Bearer {affiliate['user_tok']}"}
+    h = {"Cookie": f"access_token={affiliate['user_tok']}"}
     # Referrals
     r = requests.get(f"{BASE_URL}/api/affiliate/referrals", headers=h, timeout=20)
     assert r.status_code == 200
@@ -150,7 +132,7 @@ def test_affiliate_dashboard_endpoints(affiliate):
 
 # ----------------------- admin views -----------------------
 def test_admin_affiliates_list_overview_risk(admin_tok):
-    h = {"Authorization": f"Bearer {admin_tok}"}
+    h = {"Cookie": f"access_token={admin_tok}"}
     r = requests.get(f"{BASE_URL}/api/admin/affiliates", headers=h, timeout=20)
     assert r.status_code == 200, r.text
     assert isinstance(r.json(), list)
@@ -175,7 +157,7 @@ def test_admin_affiliates_list_overview_risk(admin_tok):
 
 # ----------------------- manual tier override -----------------------
 def test_manual_tier_override_cycle(admin_tok, affiliate):
-    h = {"Authorization": f"Bearer {admin_tok}"}
+    h = {"Cookie": f"access_token={admin_tok}"}
     aid = affiliate["me"]["id"]
 
     # Applique un palier manuel
@@ -186,7 +168,7 @@ def test_manual_tier_override_cycle(admin_tok, affiliate):
 
     # L'affilié voit le palier forcé + flag
     me = requests.get(f"{BASE_URL}/api/affiliate/me",
-                      headers={"Authorization": f"Bearer {affiliate['user_tok']}"}, timeout=20)
+                      headers={"Cookie": f"access_token={affiliate['user_tok']}"}, timeout=20)
     assert me.status_code == 200
     j = me.json()
     assert j["tier"] == "gold"
@@ -201,7 +183,7 @@ def test_manual_tier_override_cycle(admin_tok, affiliate):
     assert r.json().get("manual_tier") is None
 
     me = requests.get(f"{BASE_URL}/api/affiliate/me",
-                      headers={"Authorization": f"Bearer {affiliate['user_tok']}"}, timeout=20)
+                      headers={"Cookie": f"access_token={affiliate['user_tok']}"}, timeout=20)
     assert me.status_code == 200
     j = me.json()
     assert j["tier_is_manual"] is False
@@ -210,7 +192,7 @@ def test_manual_tier_override_cycle(admin_tok, affiliate):
 
 
 def test_manual_tier_validation_rejects_unknown(admin_tok, affiliate):
-    h = {"Authorization": f"Bearer {admin_tok}"}
+    h = {"Cookie": f"access_token={admin_tok}"}
     aid = affiliate["me"]["id"]
     r = requests.put(f"{BASE_URL}/api/admin/affiliates/{aid}",
                      headers=h, json={"manual_tier": "not-a-tier"}, timeout=20)
@@ -221,7 +203,7 @@ def test_manual_tier_validation_rejects_unknown(admin_tok, affiliate):
 def test_admin_record_edit_and_coupon_resync(admin_tok, affiliate):
     """Code promo mémorisable + rabais par affilié : la fiche est modifiée ET le
     coupon promo est resynchronisé (code + valeur), visible côté admin et affilié."""
-    h = {"Authorization": f"Bearer {admin_tok}"}
+    h = {"Cookie": f"access_token={admin_tok}"}
     aid = affiliate["me"]["id"]
     old_code = affiliate["me"].get("code") or ""
     new_code = f"JULIE{aid.replace('-', '')[:8]}".upper()
@@ -254,7 +236,7 @@ def test_admin_record_edit_and_coupon_resync(admin_tok, affiliate):
 
     # L'affilié voit son code promo + le rabais effectif
     me = requests.get(f"{BASE_URL}/api/affiliate/me",
-                      headers={"Authorization": f"Bearer {affiliate['user_tok']}"}, timeout=20)
+                      headers={"Cookie": f"access_token={affiliate['user_tok']}"}, timeout=20)
     assert me.status_code == 200, me.text
     j = me.json()
     assert j["coupon_code"] == new_code
@@ -272,7 +254,7 @@ def test_admin_record_edit_and_coupon_resync(admin_tok, affiliate):
 
 
 def test_admin_record_validation(admin_tok, affiliate):
-    h = {"Authorization": f"Bearer {admin_tok}"}
+    h = {"Cookie": f"access_token={admin_tok}"}
     aid = affiliate["me"]["id"]
     # Code illisible / trop court
     r = requests.put(f"{BASE_URL}/api/admin/affiliates/{aid}",
@@ -296,7 +278,7 @@ def test_admin_invite_with_memorable_code(admin_tok):
     email = f"iter12_{uuid.uuid4().hex[:8]}@example.com"
     custom_code = f"FIRON{uuid.uuid4().hex[:8]}".upper()
     r = requests.post(f"{BASE_URL}/api/admin/affiliates/invite",
-                      headers={"Authorization": f"Bearer {admin_tok}"},
+                      headers={"Cookie": f"access_token={admin_tok}"},
                       json={"email": email, "name": "Invite Memo",
                             "lang": "fr", "code": custom_code, "coupon_percent": 10},
                       timeout=20)
@@ -315,7 +297,7 @@ def test_admin_invite_with_memorable_code(admin_tok):
 
 # ----------------------- sources, activité, garde-fou trimestriel -----------------------
 def test_affiliate_clicks_sources_shape(affiliate):
-    h = {"Authorization": f"Bearer {affiliate['user_tok']}"}
+    h = {"Cookie": f"access_token={affiliate['user_tok']}"}
     r = requests.get(f"{BASE_URL}/api/affiliate/clicks/sources", headers=h, timeout=20)
     assert r.status_code == 200, r.text
     s = r.json()
@@ -326,7 +308,7 @@ def test_affiliate_clicks_sources_shape(affiliate):
 
 
 def test_affiliate_activity_feed_shape(affiliate):
-    h = {"Authorization": f"Bearer {affiliate['user_tok']}"}
+    h = {"Cookie": f"access_token={affiliate['user_tok']}"}
     r = requests.get(f"{BASE_URL}/api/affiliate/activity", headers=h, timeout=20)
     assert r.status_code == 200, r.text
     feed = r.json()
@@ -337,7 +319,7 @@ def test_affiliate_activity_feed_shape(affiliate):
 
 
 def test_affiliate_me_quarter_guard(affiliate):
-    h = {"Authorization": f"Bearer {affiliate['user_tok']}"}
+    h = {"Cookie": f"access_token={affiliate['user_tok']}"}
     r = requests.get(f"{BASE_URL}/api/affiliate/me", headers=h, timeout=20)
     assert r.status_code == 200, r.text
     j = r.json()
@@ -347,7 +329,7 @@ def test_affiliate_me_quarter_guard(affiliate):
 
 
 def test_admin_clicks_analytics_and_list(admin_tok):
-    h = {"Authorization": f"Bearer {admin_tok}"}
+    h = {"Cookie": f"access_token={admin_tok}"}
     r = requests.get(f"{BASE_URL}/api/admin/affiliates/clicks", headers=h, timeout=20)
     assert r.status_code == 200, r.text
     c = r.json()

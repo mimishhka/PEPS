@@ -34,9 +34,7 @@ def test_admin_login_and_me():
     s = requests.Session()
     r = s.post(f"{BASE_URL}/api/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
     assert r.status_code == 200, f"Login failed: {r.status_code} {r.text}"
-    data = r.json()
-    # token maybe returned or set only as cookie
-    token = data.get("access_token") or data.get("token")
+    assert s.cookies.get("access_token")
 
     # Use cookie session
     me = s.get(f"{BASE_URL}/api/auth/me")
@@ -46,12 +44,6 @@ def test_admin_login_and_me():
     assert body.get("email") == ADMIN_EMAIL
     assert body.get("role") == "admin"
     assert "id" in body
-
-    # If token available, also test bearer header
-    if token:
-        r2 = requests.get(f"{BASE_URL}/api/auth/me", headers={"Authorization": f"Bearer {token}"})
-        assert r2.status_code == 200
-        assert r2.json().get("role") == "admin"
 
 
 def test_admin_endpoint_requires_auth():

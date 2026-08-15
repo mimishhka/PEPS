@@ -61,16 +61,16 @@ def product():
 
 
 @pytest.fixture(scope="module")
-def admin_token():
-    r = requests.post(
+def admin_session():
+    session = requests.Session()
+    r = session.post(
         f"{BASE_URL}/api/auth/login",
         json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
         timeout=15,
     )
     assert r.status_code == 200, f"admin login failed: {r.status_code} {r.text}"
-    tok = r.json().get("token")
-    assert tok
-    return tok
+    assert session.cookies.get("access_token")
+    return session
 
 
 def _variant(product_obj, name):
@@ -171,9 +171,8 @@ def test_checkout_10mg_is_preorder_no_stock_decrement(product, db):
 
 # ==================== Admin PUT persists sale_price + coa_url ====================
 
-def test_admin_update_persists_sale_and_coa(admin_token, db):
+def test_admin_update_persists_sale_and_coa(admin_session, db):
     # Fetch current product via public endpoint (no admin GET /products exists)
-    headers = {"Authorization": f"Bearer {admin_token}"}
     r = requests.get(f"{BASE_URL}/api/products/{PRODUCT_SLUG}", timeout=15)
     assert r.status_code == 200, r.text
     target = r.json()
@@ -191,9 +190,8 @@ def test_admin_update_persists_sale_and_coa(admin_token, db):
             v["sale_price"] = NEW_SALE
             v["coa_url"] = NEW_COA
 
-    put = requests.put(
+    put = admin_session.put(
         f"{BASE_URL}/api/admin/products/{PRODUCT_ID}",
-        headers=headers,
         json=payload,
         timeout=15,
     )
@@ -208,9 +206,8 @@ def test_admin_update_persists_sale_and_coa(admin_token, db):
 
     # Restore original
     payload["variants"] = original_variants
-    restore = requests.put(
+    restore = admin_session.put(
         f"{BASE_URL}/api/admin/products/{PRODUCT_ID}",
-        headers=headers,
         json=payload,
         timeout=15,
     )

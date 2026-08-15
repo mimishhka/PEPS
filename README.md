@@ -21,6 +21,9 @@ Optional sender info:
 
 Do not commit `.env` to source control.
 
+Production cookie, proxy, CSP, CDN, and verification requirements are documented in
+[`backend/docs/PRODUCTION_SECURITY.md`](backend/docs/PRODUCTION_SECURITY.md).
+
 ## Google OAuth setup
 
 To enable Google Sign-In for customers, add these variables to your `.env` (see `.env.example`):

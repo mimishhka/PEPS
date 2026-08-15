@@ -3,6 +3,7 @@ import os
 import uuid
 import pytest
 import requests
+from pymongo import MongoClient
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
@@ -12,11 +13,12 @@ BULK_URL = f"{BASE_URL}/api/admin/affiliates/bulk-invite"
 
 @pytest.fixture(scope="module")
 def admin_token():
-    r = requests.post(f"{BASE_URL}/api/auth/login",
-                      json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
-                      timeout=30)
+    session = requests.Session()
+    r = session.post(f"{BASE_URL}/api/auth/login",
+                     json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+                     timeout=30)
     assert r.status_code == 200, f"Admin login failed: {r.status_code} {r.text}"
-    tok = r.json().get("access_token")
+    tok = session.cookies.get("access_token")
     assert tok
     return tok
 
@@ -25,26 +27,31 @@ def admin_token():
 def non_admin_token():
     # Create a regular user via signup
     email = f"TEST_user_{uuid.uuid4().hex[:8]}@example.com"
-    r = requests.post(f"{BASE_URL}/api/auth/register",
-                      json={"email": email, "password": "Str0ngP@ss!23", "name": "TestUser"},
-                      timeout=30)
+    password = "Str0ngP@ss!23"
+    session = requests.Session()
+    r = session.post(f"{BASE_URL}/api/auth/register",
+                     json={"email": email, "password": password, "name": "TestUser"},
+                     timeout=30)
     if r.status_code not in (200, 201):
         # try login endpoint if signup unavailable
         pytest.skip(f"Cannot create non-admin user: {r.status_code} {r.text[:120]}")
-    data = r.json()
-    tok = data.get("access_token") or data.get("token")
-    if not tok:
-        # try login
-        rl = requests.post(f"{BASE_URL}/api/auth/login",
-                           json={"email": email, "password": "Str0ngP@ss!23"}, timeout=30)
-        tok = rl.json().get("access_token")
-    if not tok:
-        pytest.skip("Cannot obtain non-admin token (email verification required)")
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    try:
+        client[os.environ.get("DB_NAME", "nordpep_db")].users.update_one(
+            {"email": email.lower()}, {"$set": {"email_verified": True}},
+        )
+    finally:
+        client.close()
+    login = session.post(f"{BASE_URL}/api/auth/login",
+                         json={"email": email, "password": password}, timeout=30)
+    assert login.status_code == 200, login.text
+    tok = session.cookies.get("access_token")
+    assert tok
     return tok
 
 
 def _headers(token):
-    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    return {"Cookie": f"access_token={token}", "Content-Type": "application/json"}
 
 
 class TestBulkInviteAuth:

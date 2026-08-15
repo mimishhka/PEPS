@@ -150,6 +150,11 @@ def test_checkout_idempotency_blocks_parallel_duplicate_orders(server_module, mo
         payment_transactions=DummyPaymentTransactionsCollection(),
     )
 
+    async def allow_rate_limit(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(server_module, "_rate_limit", allow_rate_limit)
+
     async def fake_resolve_user(request):
         return None
 
@@ -172,6 +177,11 @@ def test_checkout_idempotency_blocks_parallel_duplicate_orders(server_module, mo
         return None
 
     monkeypatch.setattr(server_module, "affiliate_attach_to_order", fake_affiliate_attach)
+
+    async def fake_send_order_confirmation(order):
+        return None
+
+    monkeypatch.setattr(server_module, "send_order_confirmation", fake_send_order_confirmation)
 
     class DummyRequest:
         def __init__(self):

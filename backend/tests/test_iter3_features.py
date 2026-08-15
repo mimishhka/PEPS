@@ -20,19 +20,35 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin-pass")
 # ----------------------- fixtures -----------------------
 @pytest.fixture(scope="session")
 def admin_headers():
-    r = requests.post(f"{BASE_URL}/api/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+    session = requests.Session()
+    r = session.post(f"{BASE_URL}/api/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
     assert r.status_code == 200, r.text
-    return {"Authorization": f"Bearer {r.json()['token']}"}
+    token = session.cookies.get("access_token")
+    assert token
+    return {"Cookie": f"access_token={token}"}
 
 
 @pytest.fixture(scope="session")
 def user_session():
     email = f"iter3_{uuid.uuid4().hex[:8]}@example.com"
-    r = requests.post(f"{BASE_URL}/api/auth/register",
-                      json={"email": email, "password": "Pass12345!", "name": "Iter3 User"})
+    password = "Pass12345!"
+    session = requests.Session()
+    r = session.post(f"{BASE_URL}/api/auth/register",
+                     json={"email": email, "password": password, "name": "Iter3 User"})
     assert r.status_code == 200, r.text
     j = r.json()
-    return {"email": email, "token": j["token"], "id": j["id"], "headers": {"Authorization": f"Bearer {j['token']}"}}
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    try:
+        client[os.environ.get("DB_NAME", "nordpep_db")].users.update_one(
+            {"id": j["id"]}, {"$set": {"email_verified": True}},
+        )
+    finally:
+        client.close()
+    login = session.post(f"{BASE_URL}/api/auth/login", json={"email": email, "password": password})
+    assert login.status_code == 200, login.text
+    token = session.cookies.get("access_token")
+    assert token
+    return {"email": email, "id": j["id"], "headers": {"Cookie": f"access_token={token}"}}
 
 
 def _first_product():
