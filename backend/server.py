@@ -8652,6 +8652,7 @@ async def startup_event():
         asyncio.create_task(_magic_tokens_cleanup())
         asyncio.create_task(_abandoned_cart_watchdog())
         asyncio.create_task(affiliate_maintenance_watchdog())
+        asyncio.create_task(_affiliate_email_worker())
 
 
 async def _backfill_dispatch_batch():
@@ -9204,6 +9205,67 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
     }
 
 
+async def _affiliate_compute_list_metrics(affiliates: list[dict]) -> dict[str, dict]:
+    active = [affiliate for affiliate in affiliates if affiliate.get("status") == "active"]
+    if not active:
+        return {}
+
+    quarter_start = _affiliate_quarter_start().isoformat()
+    grouped = {}
+    async for row in db.affiliate_referrals.aggregate([
+        {"$match": {"affiliate_id": {"$in": [affiliate["id"] for affiliate in active]}}},
+        {"$group": {
+            "_id": "$affiliate_id",
+            "cumulative_revenue": {"$sum": {"$cond": [
+                {"$in": ["$status", ["approved", "paid"]]},
+                {"$ifNull": ["$base_amount", 0]}, 0,
+            ]}},
+            "quarter_revenue": {"$sum": {"$cond": [
+                {"$and": [
+                    {"$in": ["$status", ["approved", "paid"]]},
+                    {"$gte": [{"$ifNull": ["$approved_at", "$created_at"]}, quarter_start]},
+                ]},
+                {"$ifNull": ["$base_amount", 0]}, 0,
+            ]}},
+            "pending_commission": {"$sum": {"$cond": [
+                {"$eq": ["$status", "pending"]}, {"$ifNull": ["$commission_amount", 0]}, 0,
+            ]}},
+            "approved_commission": {"$sum": {"$cond": [
+                {"$eq": ["$status", "approved"]}, {"$ifNull": ["$commission_amount", 0]}, 0,
+            ]}},
+            "paid_commission": {"$sum": {"$cond": [
+                {"$eq": ["$status", "paid"]}, {"$ifNull": ["$commission_amount", 0]}, 0,
+            ]}},
+        }},
+    ]):
+        grouped[row["_id"]] = row
+
+    metrics = {}
+    valid_tiers = {tier[0] for tier in AFFILIATE_TIERS}
+    for affiliate in active:
+        totals = grouped.get(affiliate["id"], {})
+        cumulative = float(totals.get("cumulative_revenue", 0))
+        quarter = float(totals.get("quarter_revenue", 0))
+        manual_tier = str(affiliate.get("manual_tier") or "").strip().lower() or None
+        if manual_tier not in valid_tiers:
+            manual_tier = None
+        theoretical = _affiliate_tier_for_revenue(cumulative)
+        effective = manual_tier or theoretical
+        floor, _ceil = _affiliate_tier_bounds(theoretical)
+        if not manual_tier and quarter < floor and _affiliate_tier_index(theoretical) > 0:
+            effective = AFFILIATE_TIERS[_affiliate_tier_index(theoretical) - 1][0]
+        metrics[affiliate["id"]] = {
+            "cumulative_revenue": round(cumulative, 2),
+            "quarter_revenue": round(quarter, 2),
+            "tier": effective,
+            "commission_rate": _affiliate_rate_for_tier(effective),
+            "pending_commission": round(float(totals.get("pending_commission", 0)), 2),
+            "approved_commission": round(float(totals.get("approved_commission", 0)), 2),
+            "paid_commission": round(float(totals.get("paid_commission", 0)), 2),
+        }
+    return metrics
+
+
 def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr") -> dict:
     """Représentation exposée à l'affilié (jamais de champs internes sensibles)."""
     out = {
@@ -9553,6 +9615,64 @@ async def affiliate_maintenance_watchdog():
         await asyncio.sleep(3600)  # toutes les heures
 
 
+async def _process_affiliate_email_job() -> bool:
+    """Claim and process one durable affiliate email job."""
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    job = await db.affiliate_email_jobs.find_one_and_update(
+        {"$or": [
+            {"status": {"$in": ["pending", "retry"]}, "available_at": {"$lte": now_iso}},
+            {"status": "sending", "lease_expires_at": {"$lte": now_iso}},
+        ]},
+        {"$set": {
+            "status": "sending",
+            "started_at": now_iso,
+            "lease_expires_at": (now + timedelta(minutes=5)).isoformat(),
+        }, "$inc": {"attempts": 1}},
+        sort=[("created_at", 1)],
+        return_document=ReturnDocument.AFTER,
+    )
+    if not job:
+        return False
+
+    try:
+        await _affiliate_send_invite(
+            job["email"], job.get("name", ""), job["link"], job.get("lang", "fr")
+        )
+        await db.affiliate_email_jobs.update_one(
+            {"id": job["id"], "status": "sending"},
+            {"$set": {"status": "sent", "sent_at": datetime.now(timezone.utc).isoformat()},
+             "$unset": {"link": "", "lease_expires_at": ""}},
+        )
+    except Exception as exc:
+        attempts = int(job.get("attempts", 1))
+        terminal = attempts >= 5
+        delay_seconds = min(3600, 30 * (2 ** max(0, attempts - 1)))
+        await db.affiliate_email_jobs.update_one(
+            {"id": job["id"], "status": "sending"},
+            {"$set": {
+                "status": "failed" if terminal else "retry",
+                "available_at": (datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)).isoformat(),
+                "error_type": type(exc).__name__,
+            }, "$unset": {"lease_expires_at": ""}},
+        )
+        logging.warning(
+            "[affiliate] queued email failed job=%s attempt=%d error_type=%s",
+            job["id"], attempts, type(exc).__name__,
+        )
+    return True
+
+
+async def _affiliate_email_worker():
+    while True:
+        try:
+            processed = await _process_affiliate_email_job()
+        except Exception as exc:  # pragma: no cover
+            logging.error("[affiliate] email worker error_type=%s", type(exc).__name__)
+            processed = False
+        await asyncio.sleep(0 if processed else 2)
+
+
 async def affiliate_ensure_indexes():
     """Index — à appeler dans seed_admin_and_products() ou au startup."""
     await db.affiliates.create_index("id", unique=True)
@@ -9582,6 +9702,9 @@ async def affiliate_ensure_indexes():
         [("affiliate_id", 1), ("period", 1)], unique=True,
     )
     await db.affiliate_payouts.create_index("affiliate_id")
+    await db.affiliate_email_jobs.create_index("id", unique=True)
+    await db.affiliate_email_jobs.create_index([("status", 1), ("available_at", 1), ("created_at", 1)])
+    await db.affiliate_email_jobs.create_index("expires_at", expireAfterSeconds=0)
 
 
 # ===========================================================================
@@ -10319,15 +10442,27 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
 
             link = f"{base}/affiliate/join?token={raw}"
             try:
-                await _affiliate_send_invite(email, display_name, link, lang)
-                email_status = "sent"
+                await db.affiliate_email_jobs.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "kind": "bulk_invite",
+                    "status": "pending",
+                    "email": email,
+                    "name": display_name,
+                    "link": link,
+                    "lang": lang,
+                    "attempts": 0,
+                    "available_at": now.isoformat(),
+                    "created_at": now.isoformat(),
+                    "expires_at": now + timedelta(days=7),
+                })
+                email_status = "queued"
             except Exception as e:
                 logging.warning(
-                    "[affiliate] bulk-invite email failed ref=%s error_type=%s",
+                    "[affiliate] bulk-invite email queue failed ref=%s error_type=%s",
                     _private_ref(email),
                     type(e).__name__,
                 )
-                email_status = "email_error"
+                email_status = "queue_error"
 
             results.append({
                 "email": email,
@@ -10352,6 +10487,7 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
         "ok": True,
         "total": len(payload.rows),
         "sent": len(results),
+        "queued": sum(1 for row in results if row["email_status"] == "queued"),
         "skipped": skipped,
         "failed": failed,
         "results": results,
@@ -10362,9 +10498,10 @@ async def admin_affiliates_list(admin: dict = Depends(get_admin_user)):  # noqa:
     rows = await _cursor_all(db.affiliates.find(
         {}, {"_id": 0, "invite_token_hash": 0}
     ).sort("created_at", -1))
+    metrics_by_affiliate = await _affiliate_compute_list_metrics(rows)
     out = []
     for aff in rows:
-        metrics = await _affiliate_compute_metrics(aff["id"]) if aff.get("status") == "active" else None
+        metrics = metrics_by_affiliate.get(aff["id"])
         item = dict(aff)
         if metrics:
             item.update({

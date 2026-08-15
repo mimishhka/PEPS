@@ -87,3 +87,54 @@ def test_uploaded_files_receive_immutable_cache_headers(server_module, tmp_path)
     assert found.headers["cache-control"] == "public, max-age=31536000, immutable"
     assert missing.status_code == 404
     assert "cache-control" not in missing.headers
+
+
+def test_admin_affiliate_metrics_are_aggregated_once(server_module, monkeypatch):
+    class SortableCursor(AsyncCursor):
+        def sort(self, *args):
+            return self
+
+    class Affiliates:
+        def find(self, query, projection):
+            return SortableCursor([
+                {"id": "affiliate-a", "status": "active", "manual_tier": None},
+                {"id": "affiliate-b", "status": "active", "manual_tier": None},
+            ])
+
+        async def find_one(self, *args, **kwargs):
+            raise AssertionError("affiliate list must not query metrics per affiliate")
+
+    class Referrals:
+        def __init__(self):
+            self.aggregate_calls = 0
+
+        def aggregate(self, pipeline):
+            self.aggregate_calls += 1
+            return AsyncCursor([
+                {
+                    "_id": "affiliate-a",
+                    "cumulative_revenue": 1250.0,
+                    "quarter_revenue": 250.0,
+                    "validated_orders": 2,
+                    "pending_commission": 15.0,
+                    "approved_commission": 30.0,
+                    "paid_commission": 40.0,
+                },
+            ])
+
+        def find(self, *args, **kwargs):
+            raise AssertionError("affiliate list must aggregate referrals once")
+
+    referrals = Referrals()
+    server_module.db = SimpleNamespace(
+        affiliates=Affiliates(),
+        affiliate_referrals=referrals,
+        affiliate_clicks=SimpleNamespace(aggregate=lambda pipeline: AsyncCursor([])),
+    )
+
+    result = asyncio.run(server_module.admin_affiliates_list({}))
+
+    assert referrals.aggregate_calls == 1
+    assert result[0]["cumulative_revenue"] == 1250.0
+    assert result[0]["pending_commission"] == 15.0
+    assert result[1]["cumulative_revenue"] == 0.0

@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
 
+const PAGE_SIZE = 50;
+
 function labelHref(url) {
   if (!url) return "#";
   if (/^https?:\/\//.test(url)) return url;
@@ -419,6 +421,14 @@ function Stat({ label, value, accent, testid }) {
 }
 
 function Section({ title, rows, render, empty, testid, headers }) {
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil((rows?.length || 0) / PAGE_SIZE));
+  const pageRows = rows?.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE) || [];
+
+  useEffect(() => {
+    setPage(1);
+  }, [rows]);
+
   return (
     <div className="mt-8">
       <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 mb-3">{title}</h2>
@@ -434,12 +444,35 @@ function Section({ title, rows, render, empty, testid, headers }) {
                 </tr>
               </thead>
             )}
-            <tbody>{rows.map(render)}</tbody>
+            <tbody>{pageRows.map(render)}</tbody>
           </table>
         ) : (
           <div className="px-6 py-10 text-center font-mono text-xs text-foreground/50">{empty}</div>
         )}
       </div>
+      {pageCount > 1 && (
+        <div className="mt-3 flex items-center justify-end gap-3 font-mono text-xs">
+          <button
+            type="button"
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            disabled={page === 1}
+            className="border border-ink/15 px-3 py-2 disabled:opacity-40"
+            aria-label="Page précédente"
+          >
+            ←
+          </button>
+          <span>{page} / {pageCount}</span>
+          <button
+            type="button"
+            onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+            disabled={page === pageCount}
+            className="border border-ink/15 px-3 py-2 disabled:opacity-40"
+            aria-label="Page suivante"
+          >
+            →
+          </button>
+        </div>
+      )}
     </div>
   );
 }

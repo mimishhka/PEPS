@@ -8,6 +8,7 @@ import { useAuth } from "../../../contexts/AuthContext";
 
 const FULFILLMENT_OPTS = ["pending", "preorder", "processing", "shipped", "delivered", "cancelled", "failed", "refunded"];
 const PAYMENT_OPTS = ["awaiting_etransfer", "awaiting_crypto", "paid", "refunded", "cancelled", "failed"];
+const PAGE_SIZE = 50;
 const TABS = [
   { key: "active", label: "Active" },
   { key: "completed", label: "Completed" },
@@ -27,6 +28,7 @@ export default function AdminOrders() {
   const [counts, setCounts] = useState({});
   const [manifest, setManifest] = useState(null);   // {configured, pending_count, groups}
   const [txBusy, setTxBusy] = useState(false);
+  const [page, setPage] = useState(1);
 
   // Étiquettes créées mais non transmises = 2 $/article de surcharge et perte
   // du rabais d'automatisation. On le met sous les yeux, en haut de l'écran.
@@ -75,6 +77,12 @@ export default function AdminOrders() {
       return true;
     });
   }, [orders, query, filterPayment, filterFulfill, filterLate]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [tab, query, filterPayment, filterFulfill, filterLate]);
 
   return (
     <div className="p-8" data-testid="admin-orders">
@@ -188,7 +196,7 @@ export default function AdminOrders() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((o) => (
+            {pageRows.map((o) => (
               <tr key={o.id} className="border-t border-ink/5 hover:bg-secondary/40" data-testid={`order-row-${o.order_number}`}>
                 <td className="px-6 py-3">
                   <div className="font-mono font-bold text-xs">{o.order_number}</div>
@@ -232,6 +240,29 @@ export default function AdminOrders() {
           </tbody>
         </table>
       </div>
+      {pageCount > 1 && (
+        <div className="mt-4 flex items-center justify-end gap-3 font-mono text-xs">
+          <button
+            type="button"
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            disabled={page === 1}
+            className="border border-ink/15 px-3 py-2 disabled:opacity-40"
+            aria-label="Previous orders page"
+          >
+            ←
+          </button>
+          <span>{page} / {pageCount}</span>
+          <button
+            type="button"
+            onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+            disabled={page === pageCount}
+            className="border border-ink/15 px-3 py-2 disabled:opacity-40"
+            aria-label="Next orders page"
+          >
+            →
+          </button>
+        </div>
+      )}
 
       {selected && <OrderDetail order={selected} onClose={() => setSelected(null)} onUpdate={() => { load(); api.get(`/admin/orders`).then(r => setSelected(r.data.find(x => x.id === selected.id) || null)); }} />}
     </div>

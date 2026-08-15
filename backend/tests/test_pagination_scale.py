@@ -91,8 +91,20 @@ def test_affiliate_overview_totals_more_than_one_thousand_rows(server_module):
             return {"code": "AFF", "name": "Affiliate"}
 
     class Referrals:
-        def find(self, query, projection):
-            return Cursor(referrals)
+        def aggregate(self, pipeline):
+            assert "$facet" in pipeline[-1]
+            return Cursor([{
+                "financial": [{
+                    "commission_pending": 0.0,
+                    "commission_due": 1005.0,
+                    "commission_paid": 0.0,
+                    "commission_reversed": 0.0,
+                    "validated_orders": 1005,
+                    "validated_revenue": 10050.0,
+                }],
+                "monthly": [],
+                "per_affiliate": [],
+            }])
 
         async def count_documents(self, query):
             return 0
@@ -164,6 +176,63 @@ def test_restock_notifications_claim_every_subscriber(server_module, monkeypatch
     asyncio.run(server_module._maybe_notify_restock("product-1"))
 
     assert len(notifications.claimed) == 1005
+
+
+def test_affiliate_email_worker_marks_sent_and_removes_link(server_module, monkeypatch):
+    class EmailJobs:
+        def __init__(self):
+            self.update = None
+
+        async def find_one_and_update(self, query, update, **kwargs):
+            return {
+                "id": "job-1", "email": "affiliate@example.com", "name": "Affiliate",
+                "link": "https://example.com/invite?token=secret", "lang": "fr", "attempts": 1,
+            }
+
+        async def update_one(self, query, update):
+            self.update = update
+
+    async def send_invite(email, name, link, lang):
+        assert email == "affiliate@example.com"
+        assert link.endswith("token=secret")
+
+    jobs = EmailJobs()
+    server_module.db = SimpleNamespace(affiliate_email_jobs=jobs)
+    monkeypatch.setattr(server_module, "_affiliate_send_invite", send_invite)
+
+    processed = asyncio.run(server_module._process_affiliate_email_job())
+
+    assert processed is True
+    assert jobs.update["$set"]["status"] == "sent"
+    assert "link" in jobs.update["$unset"]
+
+
+def test_affiliate_email_worker_retries_failed_send(server_module, monkeypatch):
+    class EmailJobs:
+        def __init__(self):
+            self.update = None
+
+        async def find_one_and_update(self, query, update, **kwargs):
+            return {
+                "id": "job-2", "email": "affiliate@example.com", "name": "Affiliate",
+                "link": "https://example.com/invite?token=secret", "lang": "en", "attempts": 2,
+            }
+
+        async def update_one(self, query, update):
+            self.update = update
+
+    async def fail_send(*args, **kwargs):
+        raise RuntimeError("provider unavailable")
+
+    jobs = EmailJobs()
+    server_module.db = SimpleNamespace(affiliate_email_jobs=jobs)
+    monkeypatch.setattr(server_module, "_affiliate_send_invite", fail_send)
+
+    processed = asyncio.run(server_module._process_affiliate_email_job())
+
+    assert processed is True
+    assert jobs.update["$set"]["status"] == "retry"
+    assert jobs.update["$set"]["error_type"] == "RuntimeError"
 
 
 def test_unpaid_watchdog_drains_full_batches(server_module, monkeypatch):

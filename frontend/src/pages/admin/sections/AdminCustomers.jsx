@@ -14,6 +14,7 @@ const SEGMENTS = {
   dormant:  { fr: "Inactifs",  en: "Dormant",  color: "bg-red-100 text-red-700 border-red-300" },
   prospect: { fr: "Sans achat", en: "No purchase", color: "bg-slate-100 text-slate-500 border-slate-300" },
 };
+const PAGE_SIZE = 50;
 
 export default function AdminCustomers() {
   const { lang } = useLang();
@@ -25,6 +26,7 @@ export default function AdminCustomers() {
   const [q, setQ] = useState("");
   const [seg, setSeg] = useState("all");
   const [sort, setSort] = useState("spent");
+  const [page, setPage] = useState(1);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
@@ -72,6 +74,10 @@ export default function AdminCustomers() {
 
   const money = (n) => `$${Number(n || 0).toFixed(2)}`;
   const dateShort = (iso) => (iso ? iso.slice(0, 10) : "—");
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  useEffect(() => { setPage(1); }, [q, seg, sort]);
 
   return (
     <div data-testid="admin-customers">
@@ -124,7 +130,7 @@ export default function AdminCustomers() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c) => {
+              {pageRows.map((c) => {
                 const meta = SEGMENTS[c.segment] || SEGMENTS.prospect;
                 return (
                   <tr key={c.id} className="border-t border-ash/50 hover:bg-clinical/50 cursor-pointer"
@@ -157,6 +163,23 @@ export default function AdminCustomers() {
               )}
             </tbody>
           </table>
+          {pageCount > 1 && (
+            <div className="flex items-center justify-between border-t border-ash px-4 py-3">
+              <span className="font-data text-xs text-glacier">
+                {L("Page", "Page")} {page} / {pageCount}
+              </span>
+              <div className="flex gap-2">
+                <button type="button" disabled={page === 1} onClick={() => setPage((value) => value - 1)}
+                  className="rounded-md border border-ash px-3 py-1.5 text-xs disabled:opacity-40">
+                  {L("Précédent", "Previous")}
+                </button>
+                <button type="button" disabled={page === pageCount} onClick={() => setPage((value) => value + 1)}
+                  className="rounded-md border border-ash px-3 py-1.5 text-xs disabled:opacity-40">
+                  {L("Suivant", "Next")}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

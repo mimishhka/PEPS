@@ -15,6 +15,7 @@ import api, { formatApiError } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import { DashboardSkeleton } from "../components/LoadingSkeletons";
+import useAffiliate from "../hooks/useAffiliate";
 import useDocumentHead from "../hooks/useDocumentHead";
 
 const TIER_META = {
@@ -96,10 +97,14 @@ export default function AffiliateDashboard() {
   const { user } = useAuth();
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
+  const {
+    affiliate: data,
+    loading: affiliateLoading,
+    error: affiliateError,
+    mutate: refreshAffiliate,
+  } = useAffiliate(lang);
 
   const [loading, setLoading] = useState(true);
-  const [notAffiliate, setNotAffiliate] = useState(false);
-  const [data, setData] = useState(null);
   const [referrals, setReferrals] = useState([]);
   const [payouts, setPayouts] = useState([]);
   const [series, setSeries] = useState([]);
@@ -120,10 +125,6 @@ export default function AffiliateDashboard() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const me = await api.get("/affiliate/me", { params: { lang } });
-      setData(me.data);
-      setPayAddr(me.data.payout_address || "");
-      setPayCur(me.data.payout_currency || "usdt");
       // Résilient : un endpoint qui échoue ne casse pas tout le tableau de bord.
       setRefPage(1); setPayPage(1);
       const [r, p, perf, ins, ck, src, act] = await Promise.allSettled([
@@ -147,16 +148,26 @@ export default function AffiliateDashboard() {
         revenue: s.revenue,
         commission: s.commission,
       })));
-      setNotAffiliate(false);
     } catch (e) {
-      if (e.response?.status === 403) setNotAffiliate(true);
-      else toast.error(formatApiError(e.response?.data?.detail) || e.message);
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
       setLoading(false);
     }
-  }, [lang]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!data) return;
+    setPayAddr(data.payout_address || "");
+    setPayCur(data.payout_currency || "usdt");
+  }, [data]);
+
+  useEffect(() => {
+    if (affiliateError && affiliateError.response?.status !== 403) {
+      toast.error(formatApiError(affiliateError.response?.data?.detail) || affiliateError.message);
+    }
+  }, [affiliateError]);
 
   // Top products: prioritise l'affilié (produits qu'IL a vendus) —
   // fallback vers featured/catalog s'il n'a aucune vente encore.
@@ -304,7 +315,7 @@ export default function AffiliateDashboard() {
         payout_currency: payCur.trim().toLowerCase(),
       });
       toast.success(L("Préférences enregistrées", "Settings saved"));
-      load();
+      await refreshAffiliate();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
@@ -312,11 +323,11 @@ export default function AffiliateDashboard() {
     }
   };
 
-  if (loading) {
+  if (loading || affiliateLoading) {
     return <DashboardSkeleton />;
   }
 
-  if (notAffiliate) {
+  if (affiliateError?.response?.status === 403) {
     return (
       <div className="bg-clinical min-h-screen">
         <div className="max-w-2xl mx-auto px-6 py-24 text-center" data-testid="affiliate-not-member">
