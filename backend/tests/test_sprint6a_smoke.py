@@ -283,25 +283,31 @@ class TestRateLimiting:
     def test_login_rate_limit(self):
         """The login endpoint declares a 5/15min limit keyed on (client_ip, email).
 
-        In the current preview deployment, TRUSTED_PROXIES is not set, so _client_ip()
-        falls back to the K8s ingress peer IP which varies between requests (multiple
-        pod egress IPs). This makes the rate-limit trivially bypassable.
-
-        The test flags the issue rather than skipping so the main agent sees the failure.
+        Bypasses the conftest requests-monkeypatch (which injects a rotating
+        X-Forwarded-For to allow parallel auth tests) by using urllib directly.
+        This ensures every attempt shares the same client IP, so the per-(ip, email)
+        throttle is actually exercised.
         """
+        import urllib.request
+        import urllib.error
+        import json as _json
         email = f"TEST_rl_{uuid.uuid4().hex[:8]}@{TEST_EMAIL_DOMAIN}"
         codes = []
         for i in range(15):
-            r = requests.post(
+            req = urllib.request.Request(
                 f"{BASE_URL}/api/auth/login",
-                json={"email": email, "password": "WrongPass!123"},
-                headers=_hdr(),
-                timeout=10,
+                data=_json.dumps({"email": email, "password": "WrongPass!123"}).encode(),
+                headers={"Content-Type": "application/json", "Origin": BASE_URL},
+                method="POST",
             )
-            codes.append(r.status_code)
-            if r.status_code == 429:
+            try:
+                urllib.request.urlopen(req, timeout=10)
+                codes.append(200)
+            except urllib.error.HTTPError as e:
+                codes.append(e.code)
+            if codes[-1] == 429:
                 break
         assert 429 in codes, (
-            f"P0 rate-limit bypass: 15 wrong logins on same email got only {sorted(set(codes))}. "
-            f"TRUSTED_PROXIES likely empty → _client_ip returns rotating K8s ingress IPs → per-IP throttle never trips."
+            f"Rate limit did not trip in 15 attempts: {codes}. "
+            "TRUSTED_PROXIES must include Cloudflare CIDRs + K8s ingress RFC1918."
         )

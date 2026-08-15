@@ -8328,6 +8328,13 @@ async def seed_admin_and_products():
     await db.orders.create_index([("fulfillment_status", 1), ("created_at", -1)])
     await db.orders.create_index([("dispatch_batch", 1), ("payment_status", 1)])
     await db.orders.create_index([("created_at", -1)])
+    # Recherche par email client (admin customers screen) & filtre par affilié
+    # (dashboard commissions, calcul de payouts) : sans index chaque appel = COLLSCAN.
+    await db.orders.create_index("email")
+    await db.orders.create_index([("affiliate_id", 1), ("payment_status", 1)])
+    await db.orders.create_index([("paid_at", -1), ("payment_status", 1)])
+    # Filtrage admin par rôle (staff, affiliés, clients) — évite un scan complet users.
+    await db.users.create_index("role")
     await db.coupons.create_index("code", unique=True)
     await db.coupons.create_index("counted_order_ids", unique=True, sparse=True)
     await db.payment_transactions.create_index("session_id", unique=True)
@@ -8935,6 +8942,14 @@ async def _backfill_affiliate_coupons() -> None:
 
 @app.on_event("startup")
 async def startup_event():
+    # Warn if APP_ENV is not set — /docs and /openapi.json remain public, and
+    # any other production-only guards keyed on IS_PRODUCTION stay off.
+    if not APP_ENV:
+        logging.warning(
+            "[config] APP_ENV is not set — running in DEV mode. "
+            "/docs, /redoc and /openapi.json are publicly exposed. "
+            "Set APP_ENV=production before deploying."
+        )
     # Warn about unconfigured optional services so issues are visible in logs.
     _svc_checks = {
         "RESEND_API_KEY (emails)": RESEND_API_KEY,
