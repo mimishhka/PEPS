@@ -50,10 +50,22 @@ class _DummyMagicTokens:
         self.inserted.append(doc)
 
 
+class _DummyRateLimitCounters:
+    def __init__(self):
+        self.docs = {}
+
+    async def find_one_and_update(self, query, update, **kwargs):
+        doc_id = query["_id"]
+        document = self.docs.setdefault(doc_id, {"_id": doc_id, "count": 0})
+        document["count"] += update["$inc"]["count"]
+        return dict(document)
+
+
 class _DummyDB:
     def __init__(self):
         self.users = _DummyUsers()
         self.magic_tokens = _DummyMagicTokens()
+        self.rate_limit_counters = _DummyRateLimitCounters()
 
 
 class _DummyRequest:
@@ -68,8 +80,13 @@ def test_client_ip_ignores_untrusted_forwarded_for(server_module, monkeypatch):
     assert server_module._client_ip(request) == "203.0.113.10"
 
 
+def test_client_ip_ignores_spoofed_cloudflare_header_from_untrusted_peer(server_module):
+    request = _DummyRequest("203.0.113.10", {"cf-connecting-ip": "8.8.8.8"})
+
+    assert server_module._client_ip(request) == "203.0.113.10"
+
+
 def test_magic_request_is_rate_limited_per_email(server_module, monkeypatch):
-    server_module._RATE_BUCKETS.clear()
     server_module.db = _DummyDB()
     monkeypatch.setattr(server_module, "_send_magic_email", _AsyncDummy())
     monkeypatch.setattr(server_module, "_trusted_public_base_url", lambda: "https://example.com")
@@ -87,3 +104,60 @@ def test_magic_request_is_rate_limited_per_email(server_module, monkeypatch):
         asyncio.run(server_module.magic_request(payload, request))
 
     assert excinfo.value.status_code == 429
+
+
+def test_shared_limiter_fails_closed_when_mongo_is_unavailable(server_module):
+    class BrokenCounters:
+        async def find_one_and_update(self, *args, **kwargs):
+            raise RuntimeError("mongo unavailable")
+
+    server_module.db = SimpleNamespace(rate_limit_counters=BrokenCounters())
+
+    with pytest.raises(server_module.HTTPException) as excinfo:
+        asyncio.run(server_module._rate_limit("test", "client", 10, 60, "limited"))
+
+    assert excinfo.value.status_code == 503
+
+
+def test_mutation_middleware_returns_503_without_calling_endpoint(server_module):
+    class BrokenCounters:
+        async def find_one_and_update(self, *args, **kwargs):
+            raise RuntimeError("mongo unavailable")
+
+    server_module.db = SimpleNamespace(rate_limit_counters=BrokenCounters())
+    request = _DummyRequest("127.0.0.1")
+    request.method = "POST"
+    request.url = SimpleNamespace(path="/api/newsletter/subscribe")
+    endpoint_called = False
+
+    async def call_next(_request):
+        nonlocal endpoint_called
+        endpoint_called = True
+        return None
+
+    response = asyncio.run(server_module._shared_mutation_rate_limit(request, call_next))
+
+    assert response.status_code == 503
+    assert endpoint_called is False
+
+
+def test_mutation_middleware_returns_429_at_shared_limit(server_module):
+    database = _DummyDB()
+    server_module.db = database
+    server_module.PUBLIC_MUTATION_MAX_PER_MINUTE = 1
+    request = _DummyRequest("127.0.0.1")
+    request.method = "POST"
+    request.url = SimpleNamespace(path="/api/checkout")
+    calls = 0
+
+    async def call_next(_request):
+        nonlocal calls
+        calls += 1
+        return SimpleNamespace(status_code=200)
+
+    first = asyncio.run(server_module._shared_mutation_rate_limit(request, call_next))
+    second = asyncio.run(server_module._shared_mutation_rate_limit(request, call_next))
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert calls == 1

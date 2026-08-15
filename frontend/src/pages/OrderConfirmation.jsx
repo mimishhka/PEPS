@@ -8,17 +8,30 @@ import useDocumentHead from "../hooks/useDocumentHead";
 export default function OrderConfirmation() {
   useDocumentHead({ title: "Order", noindex: true });
   const { id } = useParams();
-  const { state } = useLocation();
+  const { state, search } = useLocation();
   const { t, lang } = useLang();
   const [order, setOrder] = useState(state?.order || null);
   const [copied, setCopied] = useState("");
   const [remainingMs, setRemainingMs] = useState(null);
+  const storedGuestEmail = typeof window !== "undefined"
+    ? window.sessionStorage.getItem(`fironova_guest_order_email:${id}`) || ""
+    : "";
+  const guestEmail = new URLSearchParams(search).get("email") || order?.email || storedGuestEmail || "";
+
+  const guestQuery = guestEmail && !order?.user_id ? `?email=${encodeURIComponent(guestEmail)}` : "";
+
+  useEffect(() => {
+    if (!order?.email || order?.user_id || typeof window === "undefined") return;
+    try {
+      window.sessionStorage.setItem(`fironova_guest_order_email:${id}`, order.email);
+    } catch { /* ignore */ }
+  }, [id, order]);
 
   useEffect(() => {
     if (!order) {
-      api.get(`/orders/${id}`).then((r) => setOrder(r.data)).catch(() => {});
+      api.get(`/orders/${id}${guestQuery}`).then((r) => setOrder(r.data)).catch(() => {});
     }
-  }, [id, order]);
+  }, [id, order, guestQuery]);
 
   // Countdown uses backend-stored deadline; falls back to 24h if absent.
   useEffect(() => {
@@ -30,7 +43,7 @@ export default function OrderConfirmation() {
     tick();
     const iv = setInterval(tick, 30000);
     return () => clearInterval(iv);
-  }, [order]);
+  }, [order, guestQuery]);
 
   // NOWPayments live status polling
   useEffect(() => {
@@ -42,16 +55,16 @@ export default function OrderConfirmation() {
       attempts += 1;
       if (attempts > 45) { clearInterval(iv); return; }
       try {
-        const { data } = await api.get(`/payments/crypto/status/${order.id}`);
+        const { data } = await api.get(`/payments/crypto/status/${order.id}${guestQuery}`);
         if (data.payment_status === "paid") {
           clearInterval(iv);
-          const fresh = await api.get(`/orders/${order.id}`);
+          const fresh = await api.get(`/orders/${order.id}${guestQuery}`);
           setOrder(fresh.data);
         }
       } catch { /* ignore */ }
     }, 20000);
     return () => clearInterval(iv);
-  }, [order]);
+  }, [order, guestQuery]);
 
   // Interac (Autodeposit) live status polling — confirmed automatically by backend watchdog
   useEffect(() => {
@@ -62,7 +75,7 @@ export default function OrderConfirmation() {
       attempts += 1;
       if (attempts > 45) { clearInterval(iv); return; }
       try {
-        const { data } = await api.get(`/orders/${order.id}`);
+        const { data } = await api.get(`/orders/${order.id}${guestQuery}`);
         if (data.payment_status === "paid") {
           clearInterval(iv);
           setOrder(data);
@@ -70,7 +83,7 @@ export default function OrderConfirmation() {
       } catch { /* ignore */ }
     }, 20000);
     return () => clearInterval(iv);
-  }, [order]);
+  }, [order, guestQuery]);
 
   if (!order) return <div className="p-16 font-mono text-xs uppercase tracking-[0.25em]">{t("common.loading")}</div>;
 

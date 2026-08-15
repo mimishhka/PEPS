@@ -2,11 +2,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
-import { useSiteConfig } from "../contexts/SiteConfigContext";
 
 export default function ComingSoon() {
   const { t, lang } = useLang();
-  const { launchCouponCode } = useSiteConfig();
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -21,7 +19,7 @@ export default function ComingSoon() {
     }
     setBusy(true);
     try {
-      await api.post("/newsletter/subscribe", { email: email.trim(), lang, source: "prelaunch" });
+      await api.post("/newsletter/subscribe", { email: email.trim(), consent, lang, source: "prelaunch" });
       setDone(true);
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || t("home.newsletterError"));
@@ -61,9 +59,6 @@ export default function ComingSoon() {
               {t("prelaunch.confirmedTag")}
             </div>
             <p className="mt-3 text-ink">{t("prelaunch.confirmed")}</p>
-            <div className="mt-4 inline-block rounded-full border border-faint px-4 py-2 font-mono text-sm text-signal tracking-[0.1em]">
-              {launchCouponCode}
-            </div>
           </div>
         ) : (
           <form onSubmit={submit} className="mt-10 text-left max-w-md mx-auto" data-testid="coming-soon-form">

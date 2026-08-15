@@ -8,6 +8,16 @@ import pytest
 from pydantic import ValidationError
 
 
+class _RateLimitCounters:
+    def __init__(self):
+        self.counts = {}
+
+    async def find_one_and_update(self, query, update, **kwargs):
+        doc_id = query["_id"]
+        self.counts[doc_id] = self.counts.get(doc_id, 0) + update["$inc"]["count"]
+        return {"_id": doc_id, "count": self.counts[doc_id]}
+
+
 @pytest.fixture
 def server_module(monkeypatch):
     monkeypatch.setenv("MONGO_URL", "mongodb://localhost:27017")
@@ -24,6 +34,12 @@ def server_module(monkeypatch):
 def test_register_password_must_meet_complexity(server_module):
     with pytest.raises(ValidationError):
         server_module.RegisterIn(email="user@example.com", password="weakpass", name="Test User")
+
+
+@pytest.mark.parametrize("field", ["role", "is_admin"])
+def test_profile_update_rejects_privilege_fields(server_module, field):
+    with pytest.raises(ValidationError):
+        server_module.ProfileUpdateIn(name="Test User", **{field: "admin"})
 
 
 def test_account_delete_cleans_up_related_tokens(server_module, monkeypatch):
@@ -59,14 +75,17 @@ def test_account_delete_cleans_up_related_tokens(server_module, monkeypatch):
 
         def find(self, query, projection):
             class _Cursor:
-                def to_list(self, limit):
-                    return [{"id": "order-1"}]
+                def __aiter__(self):
+                    async def iterate():
+                        yield {"id": "order-1"}
+                    return iterate()
             return _Cursor()
 
     orders = _Orders()
     db = SimpleNamespace(
         users=users,
         orders=orders,
+        rate_limit_counters=_RateLimitCounters(),
         addresses=_Collection(),
         stock_notifications=_Collection(),
         subscribers=_Collection(),
@@ -124,13 +143,16 @@ def test_account_delete_anonymizes_coupon_usage_and_order_pii(server_module, mon
 
         def find(self, query, projection):
             class _Cursor:
-                def to_list(self, limit):
-                    return [{"id": "order-2"}]
+                def __aiter__(self):
+                    async def iterate():
+                        yield {"id": "order-2"}
+                    return iterate()
             return _Cursor()
 
     db = SimpleNamespace(
         users=_Users(),
         orders=_Orders(),
+        rate_limit_counters=_RateLimitCounters(),
         addresses=_Collection(),
         stock_notifications=_Collection(),
         subscribers=_Collection(),

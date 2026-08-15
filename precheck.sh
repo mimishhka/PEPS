@@ -45,10 +45,9 @@ if [[ "$SKIP_FRONTEND" -eq 0 ]]; then
   echo "==> [2/4] Frontend dependencies"
   cd frontend
 
-  if [[ ! -d node_modules ]]; then
-    echo "node_modules missing: installing with yarn"
-    COREPACK_ENABLE_DOWNLOAD_PROMPT=0 yarn install
-  elif [[ ! -x node_modules/.bin/craco ]]; then
+  echo "Installing the exact locked frontend dependency tree"
+  COREPACK_ENABLE_DOWNLOAD_PROMPT=0 yarn install --frozen-lockfile --ignore-scripts --non-interactive
+  if [[ ! -x node_modules/.bin/craco ]]; then
     chmod +x node_modules/.bin/craco || true
   fi
 

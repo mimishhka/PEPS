@@ -47,6 +47,11 @@ async def affiliate_top_products(request: Request, limit: int = 5):
     return await s.affiliate_top_products(request, limit)
 
 
+@router.get("/affiliate/clicks")
+async def affiliate_clicks(request: Request, days: int = 30):
+    return await s.affiliate_clicks(request, days)
+
+
 @router.get("/affiliate/clicks/sources")
 async def affiliate_clicks_sources(request: Request, days: int = 30):
     return await s.affiliate_clicks_sources(request, days)
@@ -161,6 +166,13 @@ async def admin_affiliate_force_monthly_run(payload: s.AffiliatePayoutRunForceIn
                                              admin: dict = Depends(s.get_admin_user)):
     """Force un run manuel du scheduler mensuel pour une période donnée (test)."""
     return await s.admin_affiliate_force_monthly_run(payload, admin)
+
+
+@router.get("/admin/affiliates/payouts/runs")
+async def admin_affiliate_payout_runs(admin: dict = Depends(s.get_admin_user),
+                                       limit: int = 50):
+    """Historique des runs du scheduler (audit)."""
+    return await s.admin_affiliate_payout_runs(admin, limit)
 
 
 @router.get("/admin/affiliates/payouts/{payout_id}/status")

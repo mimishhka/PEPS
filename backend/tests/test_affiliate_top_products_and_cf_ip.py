@@ -42,7 +42,7 @@ def _load_env_file(path: str) -> dict:
 _FE_ENV = _load_env_file("/app/frontend/.env")
 _BE_ENV = _load_env_file("/app/backend/.env")
 
-PUBLIC_URL = (_FE_ENV.get("REACT_APP_BACKEND_URL") or "").rstrip("/")
+PUBLIC_URL = os.environ.get("REACT_APP_BACKEND_URL", "http://127.0.0.1:8001").rstrip("/")
 LOCAL_URL = "http://localhost:8001"
 MONGO_URL = _BE_ENV.get("MONGO_URL") or os.environ.get("MONGO_URL")
 DB_NAME = _BE_ENV.get("DB_NAME") or os.environ.get("DB_NAME")

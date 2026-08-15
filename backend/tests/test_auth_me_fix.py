@@ -1,11 +1,11 @@
-"""Tests for /api/auth/me fix — returns 200+null for guests, not 401."""
+"""FIRONOVA tests for /api/auth/me fix — returns 200+null for guests, not 401."""
 import os
 import requests
 import pytest
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://peptide-ca.preview.emergentagent.com").rstrip("/")
-ADMIN_EMAIL = "admin@nordpep.ca"
-ADMIN_PASSWORD = "G7moffIe-CvzB5Mc"
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin-pass")
 
 
 def test_auth_me_guest_no_token():

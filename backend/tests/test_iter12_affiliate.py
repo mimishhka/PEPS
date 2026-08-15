@@ -1,4 +1,4 @@
-"""NORDPEP iteration 12 — affiliate program (dashboard data + admin controls).
+"""FIRONOVA iteration 12 — affiliate program (dashboard data + admin controls).
 
 Coverage:
 - Admin invite -> user join (token) -> affiliate active with code + coupon.
@@ -34,8 +34,8 @@ if not BASE_URL:
             continue
 assert BASE_URL
 
-ADMIN_EMAIL = "admin@nordpep.ca"
-ADMIN_PASSWORD = "NordpepAdmin2026!"
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin-pass")
 
 VALID_TIERS = {"standard", "bronze", "silver", "gold", "platinum", "diamond"}
 
@@ -58,6 +58,9 @@ def _register(email):
                      "name": "Affiliate Tester"}, timeout=20)
     assert r.status_code == 200, f"register failed: {r.status_code} {r.text}"
     body = r.json()
+    access_token = body.get("access_token") or body.get("token") or s.cookies.get("access_token")
+    if access_token:
+        return access_token
     raw = body.get("debug_magic_token")
     assert raw, "register: no debug_magic_token — set MAGIC_LINK_DEBUG=1 in backend env"
     vr = s.post(f"{BASE_URL}/api/auth/magic/verify", json={"token": raw}, timeout=20)
@@ -86,15 +89,15 @@ def admin_tok():
 
 @pytest.fixture(scope="module")
 def affiliate(admin_tok):
-    """Crée un affilié actif frais : invite admin -> registre -> join."""
+    """Crée un affilié actif frais : invite admin -> join passwordless."""
     email = f"iter12_{uuid.uuid4().hex[:8]}@example.com"
     token = _invite(admin_tok, email)
-    user_tok = _register(email)
     r = requests.post(f"{BASE_URL}/api/affiliate/join",
-                      headers={"Authorization": f"Bearer {user_tok}"},
-                      json={"token": token, "payout_address": "", "payout_currency": "btc"},
+                      json={"token": token, "payout_address": "", "payout_currency": "usdt"},
                       timeout=20)
     assert r.status_code == 200, f"join failed: {r.status_code} {r.text}"
+    user_tok = r.json().get("access_token") or r.json().get("token")
+    assert user_tok, "join returned no access token"
     me = requests.get(f"{BASE_URL}/api/affiliate/me",
                       headers={"Authorization": f"Bearer {user_tok}"}, timeout=20)
     assert me.status_code == 200, me.text
@@ -221,13 +224,13 @@ def test_admin_record_edit_and_coupon_resync(admin_tok, affiliate):
     h = {"Authorization": f"Bearer {admin_tok}"}
     aid = affiliate["me"]["id"]
     old_code = affiliate["me"].get("code") or ""
-    new_code = "JULIE15"
+    new_code = f"JULIE{aid.replace('-', '')[:8]}".upper()
 
     r = requests.put(f"{BASE_URL}/api/admin/affiliates/{aid}",
                      headers=h,
                      json={"code": new_code, "coupon_percent": 15,
-                           "payout_address": "bc1qtest0000000000000000000000000test0",
-                           "payout_currency": "btc", "suspension_reason": ""},
+                           "payout_address": "0x0000000000000000000000000000000000000012",
+                           "payout_currency": "usdt", "suspension_reason": ""},
                      timeout=20)
     assert r.status_code == 200, r.text
     assert r.json().get("code") == new_code
@@ -239,7 +242,7 @@ def test_admin_record_edit_and_coupon_resync(admin_tok, affiliate):
     aff = r.json()["affiliate"]
     assert aff["code"] == new_code
     assert aff["coupon_percent"] == 15
-    assert aff["payout_address"].startswith("bc1qtest")
+    assert aff["payout_address"].startswith("0x")
 
     # Le coupon promo est resynchronisé : même code + même valeur
     r = requests.get(f"{BASE_URL}/api/admin/coupons", headers=h, timeout=20)
@@ -282,32 +285,31 @@ def test_admin_record_validation(admin_tok, affiliate):
     # Rabais hors bornes
     r = requests.put(f"{BASE_URL}/api/admin/affiliates/{aid}",
                      headers=h, json={"coupon_percent": 150}, timeout=20)
-    assert r.status_code == 400, f"expected 400 for coupon_percent > 100, got {r.status_code} {r.text}"
+    assert r.status_code == 422, f"expected 422 for coupon_percent > 100, got {r.status_code} {r.text}"
     r = requests.put(f"{BASE_URL}/api/admin/affiliates/{aid}",
                      headers=h, json={"coupon_percent": -5}, timeout=20)
-    assert r.status_code == 400, f"expected 400 for coupon_percent < 0, got {r.status_code} {r.text}"
+    assert r.status_code == 422, f"expected 422 for coupon_percent < 0, got {r.status_code} {r.text}"
 
 
 def test_admin_invite_with_memorable_code(admin_tok):
     """L'invitation peut fixer d'emblée un code promo mémorisable + rabais."""
     email = f"iter12_{uuid.uuid4().hex[:8]}@example.com"
+    custom_code = f"FIRON{uuid.uuid4().hex[:8]}".upper()
     r = requests.post(f"{BASE_URL}/api/admin/affiliates/invite",
                       headers={"Authorization": f"Bearer {admin_tok}"},
                       json={"email": email, "name": "Invite Memo",
-                            "lang": "fr", "code": "NORD10", "coupon_percent": 10},
+                            "lang": "fr", "code": custom_code, "coupon_percent": 10},
                       timeout=20)
     assert r.status_code == 200, r.text
     link = r.json().get("invite_link", "")
     token = link.split("token=", 1)[1] if "token=" in link else ""
     assert token
-    user_tok = _register(email)
     r = requests.post(f"{BASE_URL}/api/affiliate/join",
-                      headers={"Authorization": f"Bearer {user_tok}"},
-                      json={"token": token, "payout_address": "", "payout_currency": "btc"},
+                      json={"token": token, "payout_address": "", "payout_currency": "usdt"},
                       timeout=20)
     assert r.status_code == 200, r.text
     j = r.json()
-    assert j.get("code") == "NORD10", f"expected code NORD10, got {j.get('code')}"
+    assert j.get("code") == custom_code, f"expected code {custom_code}, got {j.get('code')}"
     assert j.get("coupon_percent") == pytest.approx(10.0)
 
 

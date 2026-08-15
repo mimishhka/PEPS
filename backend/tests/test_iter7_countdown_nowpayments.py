@@ -47,7 +47,9 @@ def products():
 def _pick(products, min_stock=2, max_price=150):
     for p in products:
         for v in (p.get("variants") or []):
-            if int(v.get("stock", 0)) >= min_stock and float(v.get("price", 0)) <= max_price:
+            if (not v.get("preorder_enabled")
+                    and int(v.get("stock", 0)) >= min_stock
+                    and float(v.get("sale_price") or v.get("price", 0)) <= max_price):
                 return p, v
     return None, None
 
@@ -91,22 +93,18 @@ def test_nowpayments_live_creation_no_mock_flag(crypto_order):
     assert "mock" not in pr or pr.get("mock") in (False, None), f"provider_response should have NO mock flag, got: {pr}"
 
 
-def test_nowpayments_live_payment_id_numeric(crypto_order):
+def test_nowpayments_live_invoice_id_numeric(crypto_order):
     pr = crypto_order["payment_info"]["provider_response"]
-    pid = pr.get("payment_id")
-    assert pid is not None and pid != "", "payment_id must be present"
-    # Real NOWPayments payment ids are numeric strings
-    assert re.match(r"^\d+$", str(pid)), f"payment_id should be numeric string, got: {pid}"
+    invoice_id = pr.get("invoice_id")
+    assert invoice_id is not None and invoice_id != "", "invoice_id must be present"
+    assert re.match(r"^\d+$", str(invoice_id)), f"invoice_id should be numeric, got: {invoice_id}"
 
 
-def test_nowpayments_live_pay_address_real_btc(crypto_order):
+def test_nowpayments_live_invoice_url(crypto_order):
     pr = crypto_order["payment_info"]["provider_response"]
-    addr = pr.get("pay_address")
-    assert addr, "pay_address must be present"
-    assert "TEST_ADDRESS" not in addr, f"Should be real BTC address, got mock: {addr}"
-    # Real BTC addresses either start with '1', '3', or 'bc1'
-    assert (addr.startswith("bc1") or addr.startswith("1") or addr.startswith("3")), \
-        f"Should look like a real BTC address, got: {addr}"
+    invoice_url = pr.get("invoice_url", "")
+    assert invoice_url.startswith("https://nowpayments.io/payment/?iid=")
+    assert str(pr["invoice_id"]) in invoice_url
 
 
 def test_nowpayments_live_payment_status_waiting(crypto_order):
@@ -119,7 +117,7 @@ def test_nowpayments_live_payment_status_waiting(crypto_order):
 def test_crypto_status_returns_awaiting_and_waiting(crypto_order):
     """GET /api/payments/crypto/status/{order_id} for crypto order → 200 with np_status='waiting'."""
     oid = crypto_order["id"]
-    r = requests.get(f"{BASE_URL}/api/payments/crypto/status/{oid}", timeout=30)
+    r = requests.get(f"{BASE_URL}/api/payments/crypto/status/{oid}", params={"email": TEST_EMAIL}, timeout=30)
     assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text}"
     body = r.json()
     assert body["payment_status"] == "awaiting_crypto", f"Got: {body}"
@@ -134,7 +132,7 @@ def test_crypto_status_for_non_crypto_order_returns_404(products, db):
     oid = r.json()["id"]
     CREATED_ORDERS.append((oid, [(v["id"], 1)]))
 
-    resp = requests.get(f"{BASE_URL}/api/payments/crypto/status/{oid}", timeout=15)
+    resp = requests.get(f"{BASE_URL}/api/payments/crypto/status/{oid}", params={"email": TEST_EMAIL}, timeout=15)
     assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.text}"
 
 
@@ -150,7 +148,7 @@ def test_crypto_status_paid_order_short_circuits(crypto_order, db):
     # Flip to paid
     db.orders.update_one({"id": oid}, {"$set": {"payment_status": "paid"}})
     try:
-        r = requests.get(f"{BASE_URL}/api/payments/crypto/status/{oid}", timeout=15)
+        r = requests.get(f"{BASE_URL}/api/payments/crypto/status/{oid}", params={"email": TEST_EMAIL}, timeout=15)
         assert r.status_code == 200
         body = r.json()
         assert body["payment_status"] == "paid", f"Got: {body}"

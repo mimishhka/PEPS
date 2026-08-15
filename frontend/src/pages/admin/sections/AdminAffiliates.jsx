@@ -154,6 +154,15 @@ export default function AdminAffiliates() {
     })();
   };
 
+  const [payoutRuns, setPayoutRuns] = useState([]);
+  const loadPayoutRuns = async () => {
+    try {
+      const r = await api.get("/admin/affiliates/payouts/runs?limit=20");
+      setPayoutRuns(r.data?.runs || []);
+    } catch { /* ignore */ }
+  };
+  useEffect(() => { if (tab === "payouts") loadPayoutRuns(); }, [tab]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -708,6 +717,74 @@ export default function AdminAffiliates() {
                   </div>
                   <AdminPagination page={payPage} total={payouts.length} onChange={setPayPage} L={L} />
                 </>
+              )}
+            </div>
+
+            {/* Historique des runs scheduler (audit) */}
+            <div className="bg-white border border-ash rounded-xl overflow-hidden mt-6"
+                 data-testid="payout-runs-history">
+              <div className="px-5 py-3 border-b border-ash flex items-center justify-between">
+                <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier">
+                  {L("HISTORIQUE DES RUNS (SCHEDULER + MANUELS)",
+                     "SCHEDULER RUNS HISTORY (AUTO + MANUAL)")}
+                </p>
+                <button onClick={loadPayoutRuns}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-ash text-[11px] text-nordfjord hover:bg-clinical transition">
+                  <RefreshCw size={11} /> {L("Actualiser", "Refresh")}
+                </button>
+              </div>
+              {payoutRuns.length === 0 ? (
+                <p className="text-sm text-glacier py-8 text-center">
+                  {L("Aucun run enregistré.", "No runs recorded.")}
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
+                        <th className="px-4 py-2">{L("Période", "Period")}</th>
+                        <th className="px-4 py-2">{L("Type", "Kind")}</th>
+                        <th className="px-4 py-2">{L("Statut", "Status")}</th>
+                        <th className="px-4 py-2 text-right">{L("Créés", "Created")}</th>
+                        <th className="px-4 py-2">{L("Démarré", "Started")}</th>
+                        <th className="px-4 py-2">{L("Déclenché par", "Triggered by")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {payoutRuns.map((r) => (
+                        <tr key={r.id} className="border-b border-ash/60"
+                            data-testid={`payout-run-${r.id}`}>
+                          <td className="px-4 py-2 font-data text-nordfjord">{r.period}</td>
+                          <td className="px-4 py-2">
+                            <span className={`text-[10px] font-data uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                              r.is_auto ? "bg-nova/15 text-nova" : "bg-glacier/15 text-glacier"
+                            }`}>
+                              {r.is_auto ? L("AUTO", "AUTO") : L("MANUEL", "MANUAL")}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2">
+                            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                              r.status === "done" ? "bg-success/15 text-success"
+                                : r.status === "failed" ? "bg-error/15 text-error"
+                                : "bg-warning/15 text-warning"
+                            }`}>
+                              {r.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-right font-data text-nordfjord tabular-nums">
+                            {r.payouts_created ?? "—"}
+                          </td>
+                          <td className="px-4 py-2 font-data text-[11px] text-glacier">
+                            {r.started_at ? new Date(r.started_at).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA") : "—"}
+                          </td>
+                          <td className="px-4 py-2 font-data text-[11px] text-glacier truncate max-w-[180px]">
+                            {r.triggered_by || (r.is_auto ? "system" : "—")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>

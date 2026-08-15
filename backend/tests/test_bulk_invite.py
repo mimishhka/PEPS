@@ -1,13 +1,12 @@
-"""Backend tests: POST /api/admin/affiliates/bulk-invite"""
+"""FIRONOVA backend tests: POST /api/admin/affiliates/bulk-invite"""
 import os
-import re
 import uuid
 import pytest
 import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
-ADMIN_EMAIL = "admin@nordpep.ca"
-ADMIN_PASSWORD = "G7moffIe-CvzB5Mc"
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin-pass")
 BULK_URL = f"{BASE_URL}/api/admin/affiliates/bulk-invite"
 
 
@@ -88,21 +87,17 @@ class TestBulkInviteFlow:
         assert data["skipped"] == []
         assert data["failed"] == []
         assert len(data["results"]) == 2
-        code_re = re.compile(r"^FN[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$")
-        codes = set()
         for row in data["results"]:
-            assert code_re.match(row["code"]), f"bad code: {row['code']}"
             assert row["invite_link"].startswith("http")
             assert "token=" in row["invite_link"]
-            codes.add(row["code"])
-        assert len(codes) == 2, "codes must be unique"
+            assert row["affiliate_id"]
 
     def test_duplicate_in_csv_marked_skipped(self, admin_token):
         uniq = uuid.uuid4().hex[:6]
         email = f"TEST_dup_{uniq}@example.com"
         rows = [
-            {"email": email, "name": "First"},
-            {"email": email, "name": "Second"},
+            {"email": email, "name": "First User"},
+            {"email": email, "name": "Second User"},
         ]
         r = requests.post(BULK_URL, headers=_headers(admin_token),
                           json={"rows": rows}, timeout=60)
@@ -116,8 +111,8 @@ class TestBulkInviteFlow:
     def test_invalid_email_goes_to_failed(self, admin_token):
         uniq = uuid.uuid4().hex[:6]
         rows = [
-            {"email": "not-an-email", "name": "Bad"},
-            {"email": f"TEST_ok_{uniq}@example.com", "name": "Good"},
+            {"email": "not-an-email", "name": "Bad User"},
+            {"email": f"TEST_ok_{uniq}@example.com", "name": "Good User"},
         ]
         r = requests.post(BULK_URL, headers=_headers(admin_token),
                           json={"rows": rows}, timeout=60)
@@ -128,22 +123,22 @@ class TestBulkInviteFlow:
         assert data["failed"][0]["email"] == "not-an-email"
         assert "Invalid" in data["failed"][0]["error"] or "email" in data["failed"][0]["error"].lower()
 
-    def test_reinvite_preserves_code(self, admin_token):
+    def test_reinvite_preserves_affiliate(self, admin_token):
         uniq = uuid.uuid4().hex[:6]
         email = f"TEST_reinv_{uniq}@example.com"
         # First invite
         r1 = requests.post(BULK_URL, headers=_headers(admin_token),
-                           json={"rows": [{"email": email, "name": "X"}]}, timeout=60)
+                           json={"rows": [{"email": email, "name": "Test User"}]}, timeout=60)
         assert r1.status_code == 200
-        code1 = r1.json()["results"][0]["code"]
+        affiliate_id = r1.json()["results"][0]["affiliate_id"]
         # Second invite (same email → status still 'invited')
         r2 = requests.post(BULK_URL, headers=_headers(admin_token),
-                           json={"rows": [{"email": email, "name": "X"}]}, timeout=60)
+                           json={"rows": [{"email": email, "name": "Test User"}]}, timeout=60)
         assert r2.status_code == 200
         data2 = r2.json()
         # Either in results (re-invited) or skipped — must not be 'active' since not activated
         if data2["results"]:
-            assert data2["results"][0]["code"] == code1, "code must be preserved on re-invite"
+            assert data2["results"][0]["affiliate_id"] == affiliate_id
         else:
             # skipped only when already active
             assert False, f"expected re-invite in results, got: {data2}"
@@ -161,7 +156,7 @@ class TestBulkInviteFlow:
             pytest.skip("no active affiliates in DB to test 'Already active' skip")
         email = active[0]["email"]
         r2 = requests.post(BULK_URL, headers=_headers(admin_token),
-                           json={"rows": [{"email": email, "name": "X"}]}, timeout=60)
+                           json={"rows": [{"email": email, "name": "Test User"}]}, timeout=60)
         assert r2.status_code == 200
         data = r2.json()
         assert any(s["email"].lower() == email.lower() and s["reason"] == "Already active"

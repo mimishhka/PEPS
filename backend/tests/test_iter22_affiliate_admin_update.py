@@ -1,4 +1,4 @@
-"""Iteration 22 — Bonification modal admin affiliate.
+"""FIRONOVA iteration 22 — Bonification modal admin affiliate.
 Tests PUT /api/admin/affiliates/{id} with extended fields:
 name, payout_address, payout_currency, coupon_percent (0-100), admin_notes.
 """
@@ -7,8 +7,8 @@ import pytest
 import requests
 
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or "https://peptide-ca.preview.emergentagent.com").rstrip("/")
-ADMIN_EMAIL = "admin@nordpep.ca"
-ADMIN_PASSWORD = "G7moffIe-CvzB5Mc"
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin-pass")
 DEMO_AFFILIATE_EMAIL = "demo.affilie@fironova.com"
 
 
@@ -19,6 +19,9 @@ def admin_session():
                json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
                timeout=15)
     assert r.status_code == 200, f"Admin login failed: {r.status_code} {r.text}"
+    token = r.json().get("token") or r.json().get("access_token")
+    assert token, "Admin login returned no bearer token"
+    s.headers.update({"Authorization": f"Bearer {token}"})
     return s
 
 
@@ -37,8 +40,8 @@ def demo_affiliate_id(admin_session):
 class TestAdminAffiliateExtendedUpdate:
     def test_extended_fields_accepted_and_persisted(self, admin_session, demo_affiliate_id):
         payload = {
-            "payout_address": "test-crypto-addr-iter22@example.com",
-            "payout_currency": "CAD",
+            "payout_address": "0x0000000000000000000000000000000000000022",
+            "payout_currency": "usdt",
             "coupon_percent": 15,
             "admin_notes": "Test note iter22",
         }

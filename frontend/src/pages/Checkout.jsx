@@ -268,6 +268,11 @@ export default function Checkout() {
       if (!data?.id) throw new Error(lang === "fr" ? "Réponse de commande invalide" : "Malformed checkout response");
       clear();
       try { window.localStorage.removeItem(CHECKOUT_DRAFT_KEY); } catch { /* ignore */ }
+      try {
+        if (data?.email && !data?.user_id && typeof window !== "undefined") {
+          window.sessionStorage.setItem(`fironova_guest_order_email:${data.id}`, data.email);
+        }
+      } catch { /* ignore */ }
       // Interac ET crypto : page de confirmation interne.
       // Le paiement crypto s'affiche via le widget NOWPayments intégré
       // (iframe) directement sur /order/{id} — aucune redirection externe.

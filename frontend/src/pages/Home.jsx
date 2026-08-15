@@ -51,6 +51,7 @@ export default function Home() {
     try {
       const { data } = await api.post("/newsletter/subscribe", {
         email: email.trim(),
+        consent,
         lang,
         source: "home",
       });

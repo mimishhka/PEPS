@@ -47,10 +47,15 @@ export default function Lab() {
   const doTrack = async () => {
     const id = orderId.trim();
     if (!id) return;
+    if (!trackEmail.trim()) {
+      toast.error(isFr ? "Courriel requis" : "Email required");
+      return;
+    }
     setTracking(true);
     setTrack(null);
     try {
-      const { data } = await api.get(`/orders/${encodeURIComponent(id)}/tracking`);
+      const params = new URLSearchParams({ email: trackEmail.trim() });
+      const { data } = await api.get(`/orders/${encodeURIComponent(id)}/tracking?${params.toString()}`);
       setTrack(data);
     } catch {
       setTrack({ tracked: false, reason: "not_found" });

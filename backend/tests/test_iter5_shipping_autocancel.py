@@ -43,7 +43,9 @@ def _pick(products, want_variant_price_min=None, want_variant_price_max=None, mi
     """Return (product, variant) matching price constraints."""
     for p in products:
         for v in (p.get("variants") or []):
-            price = float(v.get("price", 0))
+            if v.get("preorder_enabled"):
+                continue
+            price = float(v.get("sale_price") or v.get("price", 0))
             stock = int(v.get("stock", 0))
             if stock < min_stock:
                 continue
@@ -74,7 +76,7 @@ def test_shipping_flat_20_when_subtotal_under_200(products, db):
     # Pick product with price < $200 to make a small order
     p, v = _pick(products, want_variant_price_max=150, min_stock=2)
     assert p and v, "need a variant priced <=150 with stock"
-    price = float(v["price"])
+    price = float(v.get("sale_price") or v["price"])
     qty = 1  # ensure subtotal < 200
     subtotal = round(price * qty, 2)
     assert subtotal < 200, f"expected subtotal < 200 got {subtotal}"
@@ -97,7 +99,7 @@ def test_shipping_free_when_subtotal_at_or_above_200(products, db):
     # Pick a variant that we can push subtotal >= 200 with qty
     p, v = _pick(products, want_variant_price_min=50, min_stock=4)
     assert p and v
-    price = float(v["price"])
+    price = float(v.get("sale_price") or v["price"])
     qty = max(4, int(200 // price) + 1)
     subtotal = round(price * qty, 2)
     assert subtotal >= 200, f"expected subtotal >= 200 got {subtotal}"
@@ -161,7 +163,8 @@ def test_auto_cancel_stale_unpaid_order_restocks(products, db):
         o2 = db.orders.find_one({"id": order_id})
         assert o2["fulfillment_status"] == "cancelled"
         notes = o2.get("notes", [])
-        assert any("Auto-cancelled: payment not received within 48h" in (n.get("text") or "") for n in notes), \
+        ttl_hours = int(order.get("payment_ttl_hours", 24))
+        assert any(f"Auto-cancelled: payment not received within {ttl_hours}h" in (n.get("text") or "") for n in notes), \
             f"missing system note; got: {[n.get('text') for n in notes]}"
         # Verify system-authored note
         sys_notes = [n for n in notes if "Auto-cancelled" in (n.get("text") or "")]

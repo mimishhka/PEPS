@@ -83,8 +83,8 @@ async def newsletter_subscribe(payload: s.NewsletterSubscribeIn, request: Reques
 
 
 @router.get("/newsletter/unsubscribe")
-async def newsletter_unsubscribe(token: str):
-    return await s.newsletter_unsubscribe(token)
+async def newsletter_unsubscribe(token: str, request: Request):
+    return await s.newsletter_unsubscribe(token, request)
 
 
 @router.post("/admin/products")
@@ -113,8 +113,8 @@ async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depend
 
 
 @router.post("/shipping/rates")
-async def get_shipping_rates(payload: s.ShippingRateRequest):
-    return await s.get_shipping_rates(payload)
+async def get_shipping_rates(payload: s.ShippingRateRequest, request: Request):
+    return await s.get_shipping_rates(payload, request)
 
 
 @router.post("/checkout")

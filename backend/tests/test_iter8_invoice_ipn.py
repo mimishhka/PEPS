@@ -69,7 +69,9 @@ def products():
 def _pick(products, min_stock=2, max_price=150):
     for p in products:
         for v in (p.get("variants") or []):
-            if int(v.get("stock", 0)) >= min_stock and float(v.get("price", 0)) <= max_price:
+            if (not v.get("preorder_enabled")
+                    and int(v.get("stock", 0)) >= min_stock
+                    and float(v.get("sale_price") or v.get("price", 0)) <= max_price):
                 return p, v
     return None, None
 
@@ -130,7 +132,7 @@ def test_invoice_shape(invoice_order):
 
 def test_crypto_status_pre_ipn(invoice_order):
     """Pre-IPN: no payment_id → returns DB status without provider call."""
-    r = requests.get(f"{BASE_URL}/api/payments/crypto/status/{invoice_order['id']}", timeout=15)
+    r = requests.get(f"{BASE_URL}/api/payments/crypto/status/{invoice_order['id']}", params={"email": TEST_EMAIL}, timeout=15)
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["payment_status"] == "awaiting_crypto"
@@ -223,7 +225,7 @@ def test_ipn_finished_marks_paid(invoice_order, db):
 
 def test_crypto_status_after_finished_ipn(invoice_order):
     """After 'finished' IPN → crypto/status returns paid."""
-    r = requests.get(f"{BASE_URL}/api/payments/crypto/status/{invoice_order['id']}", timeout=15)
+    r = requests.get(f"{BASE_URL}/api/payments/crypto/status/{invoice_order['id']}", params={"email": TEST_EMAIL}, timeout=15)
     assert r.status_code == 200
     d = r.json()
     assert d["payment_status"] == "paid"

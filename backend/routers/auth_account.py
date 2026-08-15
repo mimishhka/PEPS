@@ -91,8 +91,8 @@ async def account_request_email_change(payload: EmailChangeRequestIn, request: R
 
 
 @router.get("/account/email/confirm")
-async def account_confirm_email_change(token: str):
-    return await s.account_confirm_email_change(token)
+async def account_confirm_email_change(token: str, request: Request):
+    return await s.account_confirm_email_change(token, request)
 
 
 @router.get("/account/addresses")
