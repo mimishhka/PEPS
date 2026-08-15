@@ -8,7 +8,7 @@ function normalizeBackendBase(value) {
 }
 
 export function buildApiBaseUrl(
-  configuredBackend = import.meta.env.REACT_APP_BACKEND_URL || import.meta.env.VITE_BACKEND_URL,
+  configuredBackend = process.env.REACT_APP_BACKEND_URL,
   location = typeof window === "undefined" ? null : window.location,
 ) {
   const envValue = normalizeBackendBase(configuredBackend);

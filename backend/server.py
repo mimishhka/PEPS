@@ -9,6 +9,7 @@ import io
 import re
 import csv
 import json
+import html
 import hmac
 import hashlib
 import uuid
@@ -19,6 +20,7 @@ import ipaddress
 import sys
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal, Any
+from urllib.parse import quote
 
 import xml.etree.ElementTree as ET
 
@@ -52,6 +54,14 @@ DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_MINUTES = 60 * 24 * 7  # 7 days for ecommerce UX
+
+
+def _private_ref(value: Any) -> str:
+    """Return a stable correlation token without logging the source value."""
+    digest = hmac.new(JWT_SECRET.encode(), str(value).encode(), hashlib.sha256).hexdigest()
+    return digest[:12]
+
+
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@nordpep.ca")
 # Aucun défaut : un mot de passe admin en dur dans le repo est un mot de passe public.
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
@@ -248,11 +258,20 @@ db = client[DB_NAME]
 app = FastAPI(title="FIRONOVA API", version="1.0.0")
 api = APIRouter(prefix="/api")
 
+
+class ImmutableStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope: dict) -> Response:
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 # Serve uploaded files (COA PDFs, images, etc.) at /uploads/...
-app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+app.mount("/uploads", ImmutableStaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 # Also serve under /api/uploads so assets pass the platform ingress (only /api is
 # routed to the backend on Emergent). Product/COA URLs use the /api/uploads form.
-app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads-api")
+app.mount("/api/uploads", ImmutableStaticFiles(directory=str(UPLOAD_DIR)), name="uploads-api")
 
 
 # ---------------------------------------------------------------------------
@@ -608,6 +627,10 @@ class StockNotifyIn(BaseModel):
     website: str = ""  # honeypot anti-bot — doit rester vide
 
 
+class GuestOrderAccessIn(BaseModel):
+    email: EmailStr
+
+
 # --- Catégories (BLOC 1) ----------------------------------------------------
 # Les produits référencent une catégorie par SLUG (string), pas par id : aucune
 # migration de données sur les produits existants.
@@ -777,7 +800,7 @@ async def register(payload: RegisterIn, response: Response, request: Request):
     try:
         await db.subscribers.update_one({"email": email}, {"$set": {"converted": True}})
     except Exception as e:  # pragma: no cover
-        logging.warning("subscriber conversion flag failed for %s: %s", email, e)
+        logging.warning("subscriber conversion flag failed ref=%s error_type=%s", _private_ref(email), type(e).__name__)
 
     raw = await _issue_magic_token(email, name, is_signup=True, lang="fr", ip=_client_ip(request))
     base = (PUBLIC_BASE_URL or str(request.base_url).rstrip("/"))
@@ -1341,7 +1364,7 @@ async def magic_verify(response: Response, request: Request, token: str = Body(.
         try:
             await db.subscribers.update_one({"email": email}, {"$set": {"converted": True}})
         except Exception as e:  # pragma: no cover
-            logging.warning("subscriber conversion flag failed for %s: %s", email, e)
+            logging.warning("subscriber conversion flag failed ref=%s error_type=%s", _private_ref(email), type(e).__name__)
         asyncio.create_task(welcome_new_user(email, user_doc["name"], "fr"))
         user = user_doc
     else:
@@ -1651,7 +1674,10 @@ async def account_update_address(address_id: str, payload: SavedAddressIn,
     if doc["is_default"]:
         await db.addresses.update_many({"user_id": user["id"]}, {"$set": {"is_default": False}})
     await db.addresses.update_one({"id": address_id, "user_id": user["id"]}, {"$set": doc})
-    fresh = await db.addresses.find_one({"id": address_id}, {"_id": 0})
+    fresh = await db.addresses.find_one(
+        {"id": address_id, "user_id": user["id"]},
+        {"_id": 0},
+    )
     return fresh
 
 
@@ -1664,7 +1690,10 @@ async def account_delete_address(address_id: str, user: dict = Depends(get_curre
     if not remaining_default:
         newest = await db.addresses.find_one({"user_id": user["id"]}, sort=[("created_at", -1)])
         if newest:
-            await db.addresses.update_one({"id": newest["id"]}, {"$set": {"is_default": True}})
+            await db.addresses.update_one(
+                {"id": newest["id"], "user_id": user["id"]},
+                {"$set": {"is_default": True}},
+            )
     return {"ok": True}
 
 
@@ -2543,11 +2572,11 @@ async def _cp_get_oauth_token(force_refresh: bool = False) -> str:
                 headers={"Accept": "application/json"},
             )
     except Exception as ex:
-        logging.error("Canada Post OAuth token request failed: %s", ex)
+        logging.error("Canada Post OAuth token request failed: %s", type(ex).__name__)
         raise HTTPException(502, "Canada Post OAuth token endpoint unreachable")
 
     if r.status_code >= 400:
-        logging.error("Canada Post OAuth token %s: %s", r.status_code, r.text[:800])
+        logging.error("Canada Post OAuth token status=%s response_ref=%s", r.status_code, _private_ref(r.text))
         raise HTTPException(502, f"Canada Post OAuth rejected credentials ({r.status_code})")
 
     payload = _cp_safe_json(r)
@@ -2586,9 +2615,17 @@ async def _cp_openapi_call(method: str, url_or_path: str, *, json_body: Optional
 async def _estimate_parcel_weight_kg(items: Optional[List["CartItem"]]) -> float:
     if not items:
         return 0.5
+    product_ids = list({item.product_id for item in items})
+    products = {
+        product["id"]: product
+        async for product in db.products.find(
+            {"id": {"$in": product_ids}},
+            {"_id": 0},
+        )
+    }
     total_g = 0.0
     for it in items:
-        p = await db.products.find_one({"id": it.product_id}, {"_id": 0})
+        p = products.get(it.product_id)
         if not p:
             continue
         v = _resolve_variant(p, it.variant_id)
@@ -2636,7 +2673,7 @@ async def _canada_post_get_rates(destination_postal_code: str, destination_count
                 },
             )
             if r.status_code >= 400:
-                logging.error("Canada Post rating error %s: %s", r.status_code, r.text[:500])
+                logging.error("Canada Post rating status=%s response_ref=%s", r.status_code, _private_ref(r.text))
                 return []
             root = ET.fromstring(r.text)
             quotes = []
@@ -2669,7 +2706,7 @@ async def _canada_post_track(pin: str) -> Optional[dict]:
                 headers={"Accept": "application/vnd.cpc.track+xml"},
             )
             if r.status_code >= 400:
-                logging.error("Canada Post tracking error %s: %s", r.status_code, r.text[:400])
+                logging.error("Canada Post tracking status=%s response_ref=%s", r.status_code, _private_ref(r.text))
                 return None
             root = ET.fromstring(r.text)
             events = []
@@ -2871,7 +2908,7 @@ async def _canada_post_get_artifact_openapi(href: str, order_id: str) -> Optiona
         logging.error("Canada Post OpenAPI get-artifact failed: %s", ex)
         return None
     if r.status_code >= 400:
-        logging.error("Canada Post OpenAPI get-artifact %s: %s", r.status_code, _cp_error_detail(r))
+        logging.error("Canada Post OpenAPI get-artifact status=%s response_ref=%s", r.status_code, _private_ref(r.text))
         return None
     fname = f"{order_id}-{uuid.uuid4().hex[:8]}.pdf"
     (LABEL_UPLOAD_DIR / fname).write_bytes(r.content)
@@ -2889,7 +2926,7 @@ async def _canada_post_get_manifest_artifact_openapi(href: str, date_str: str) -
         # Étape 1: récupérer le JSON du manifeste pour trouver le lien artifact
         r_json = await _cp_openapi_call("GET", href, accept="application/json")
         if r_json.status_code >= 400:
-            logging.error("CP manifest-artifact step1 %s: %s", r_json.status_code, _cp_error_detail(r_json))
+            logging.error("CP manifest-artifact step1 status=%s response_ref=%s", r_json.status_code, _private_ref(r_json.text))
             return None
         manifest_data = _cp_safe_json(r_json)
         links = manifest_data.get("links") or []
@@ -2905,7 +2942,7 @@ async def _canada_post_get_manifest_artifact_openapi(href: str, date_str: str) -
         # Étape 2: télécharger le PDF via le lien artifact
         r_pdf = await _cp_openapi_call("GET", artifact_href, accept="application/pdf")
         if r_pdf.status_code >= 400:
-            logging.error("CP manifest-artifact step2 %s: %s", r_pdf.status_code, _cp_error_detail(r_pdf))
+            logging.error("CP manifest-artifact step2 status=%s response_ref=%s", r_pdf.status_code, _private_ref(r_pdf.text))
             return None
         if r_pdf.content[:4] != b"%PDF":
             logging.error("CP manifest-artifact: response is not a PDF (%d bytes)", len(r_pdf.content))
@@ -2933,7 +2970,7 @@ async def _canada_post_shipment_price(shipment_id: str, preferred_service_code: 
         logging.error("Canada Post get-price failed (%s): %s", shipment_id, ex)
         return None
     if r.status_code >= 400:
-        logging.error("Canada Post get-price %s: %s", r.status_code, _cp_error_detail(r))
+        logging.error("Canada Post get-price status=%s response_ref=%s", r.status_code, _private_ref(r.text))
         return None
     # L'endpoint /price retourne une LISTE de devis, pas un objet unique.
     # _cp_safe_json() ne gère que les dicts; on parse directement ici.
@@ -2948,7 +2985,7 @@ async def _canada_post_shipment_price(shipment_id: str, preferred_service_code: 
     elif isinstance(raw, dict):
         quotes = [raw]
     if not quotes:
-        logging.error("Canada Post get-price: unexpected payload for %s: %s", shipment_id, str(raw)[:200])
+        logging.error("Canada Post get-price unexpected payload shipment_ref=%s response_ref=%s", _private_ref(shipment_id), _private_ref(raw))
         return None
 
     selected = None
@@ -3025,7 +3062,7 @@ async def _canada_post_manifest_details(manifest_href: str) -> Optional[dict]:
         logging.error("Canada Post manifest-details failed: %s", ex)
         return None
     if r.status_code >= 400:
-        logging.error("Canada Post manifest-details %s: %s", r.status_code, _cp_error_detail(r))
+        logging.error("Canada Post manifest-details status=%s response_ref=%s", r.status_code, _private_ref(r.text))
         return None
     d = _cp_safe_json(r) or {}
     p = d.get("manifestPricingInfo") or {}
@@ -3174,7 +3211,7 @@ async def _canada_post_create_shipment(order: dict, service_code: str, weight_kg
         raise HTTPException(502, "Canada Post unreachable")
 
     if r.status_code >= 400:
-        logging.error("Canada Post create-shipment %s: %s", r.status_code, r.text[:800])
+        logging.error("Canada Post create-shipment status=%s response_ref=%s", r.status_code, _private_ref(r.text))
         raise HTTPException(502, f"Canada Post rejected the shipment ({r.status_code})")
 
     root = ET.fromstring(r.text)
@@ -3198,7 +3235,7 @@ async def _canada_post_create_shipment(order: dict, service_code: str, weight_kg
             break
 
     if not pin:
-        logging.error("Canada Post create-shipment: no tracking-pin in response: %s", r.text[:600])
+        logging.error("Canada Post create-shipment missing tracking-pin response_ref=%s", _private_ref(r.text))
         raise HTTPException(502, "Canada Post returned no tracking number")
 
     return {"pin": pin, "label_href": label_href, "shipment_id": shipment_id, "group_id": group_id}
@@ -3214,7 +3251,7 @@ async def _canada_post_get_artifact(href: str, order_id: str) -> Optional[str]:
         async with httpx.AsyncClient(timeout=30) as cx:
             r = await cx.get(href, auth=_cp_auth_tuple(), headers={"Accept": "application/pdf"})
             if r.status_code >= 400:
-                logging.error("Canada Post get-artifact %s: %s", r.status_code, r.text[:300])
+                logging.error("Canada Post get-artifact status=%s response_ref=%s", r.status_code, _private_ref(r.text))
                 return None
             fname = f"{order_id}-{uuid.uuid4().hex[:8]}.pdf"
             (LABEL_UPLOAD_DIR / fname).write_bytes(r.content)
@@ -3268,7 +3305,7 @@ async def _canada_post_transmit(group_id: str) -> list:
         raise HTTPException(502, "Canada Post unreachable")
 
     if r.status_code >= 400:
-        logging.error("Canada Post transmit %s: %s", r.status_code, r.text[:800])
+        logging.error("Canada Post transmit status=%s response_ref=%s", r.status_code, _private_ref(r.text))
         raise HTTPException(502, f"Canada Post rejected the transmission ({r.status_code})")
 
     root = ET.fromstring(r.text)
@@ -3528,16 +3565,22 @@ def _order_email_html(order: dict, body_intro: str) -> str:
 async def _send_email(to: str | list, subject: str, html: str, from_email: str | None = None) -> None:
     """Sends via Resend; logs and continues silently on any failure (no API key, send error, etc.).
     from_email permet de surcharger l'expéditeur (ex. auth vs commandes). Défaut : SENDER_EMAIL."""
-    to_list = to if isinstance(to, list) else [to]
+    def sanitize_header(value: Any) -> str:
+        return re.sub(r"[\r\n]+", " ", str(value or "")).strip()
+
+    to_list = [sanitize_header(value) for value in (to if isinstance(to, list) else [to])]
+    safe_subject = sanitize_header(subject)
+    safe_from = sanitize_header(from_email or SENDER_EMAIL)
+    recipient_refs = [_private_ref(address) for address in to_list]
     if not RESEND_API_KEY:
-        logging.info("[email-log] would send to %s subj=%r (no RESEND_API_KEY configured)", to_list, subject)
+        logging.info("[email] skipped recipients=%s reason=not-configured", recipient_refs)
         return
     try:
-        params = {"from": from_email or SENDER_EMAIL, "to": to_list, "subject": subject, "html": html}
+        params = {"from": safe_from, "to": to_list, "subject": safe_subject, "html": html}
         result = await asyncio.to_thread(resend.Emails.send, params)
-        logging.info("[email] sent id=%s to=%s", result.get("id") if isinstance(result, dict) else result, to_list)
+        logging.info("[email] sent id=%s recipients=%s", result.get("id") if isinstance(result, dict) else result, recipient_refs)
     except Exception as e:
-        logging.error("[email] failed to send to=%s err=%s", to_list, e)
+        logging.error("[email] failed recipients=%s error_type=%s", recipient_refs, type(e).__name__)
 
 
 async def send_order_confirmation(order: dict) -> None:
@@ -3972,7 +4015,7 @@ async def _send_late_payment_admin_alert(order: dict, provider_label: str, refer
             html,
         )
     except Exception as e:
-        logging.error("[email] late-payment admin alert failed for %s: %s", order.get("id"), e)
+        logging.error("[email] late-payment admin alert failed order_ref=%s error_type=%s", _private_ref(order.get("id")), type(e).__name__)
 
 
 async def _send_reconciliation_required_admin_alert(item: dict) -> None:
@@ -4010,7 +4053,7 @@ async def _send_reconciliation_required_admin_alert(item: dict) -> None:
             html,
         )
     except Exception as e:
-        logging.error("[email] payment reconciliation alert failed: %s", e)
+        logging.error("[email] payment reconciliation alert failed: %s", type(e).__name__)
 
 
 async def _queue_interac_reconciliation_item(msg: dict, text: str, reason: str = "missing_reference") -> bool:
@@ -4117,12 +4160,12 @@ async def checkout(payload: CheckoutIn, request: Request):
         except DuplicateKeyError:
             cached = await db.idempotency.find_one({"_id": idem_key}, {"_id": 0, "response": 1, "status": 1})
             if cached and cached.get("response"):
-                return cached["response"]
+                return _checkout_response(cached["response"])
             for _ in range(50):
                 await asyncio.sleep(0.05)
                 cached = await db.idempotency.find_one({"_id": idem_key}, {"_id": 0, "response": 1, "status": 1})
                 if cached and cached.get("response"):
-                    return cached["response"]
+                    return _checkout_response(cached["response"])
             raise HTTPException(409, "Checkout already in progress")
 
     user = await _resolve_user(request)
@@ -4245,9 +4288,10 @@ async def checkout(payload: CheckoutIn, request: Request):
     # (_mark_order_paid), sinon les paniers abandonnés épuisent l'usage_limit.
 
     # Fire-and-forget order confirmation + admin notification
+    response_doc = _checkout_response(order_doc)
     asyncio.create_task(send_order_confirmation(order_doc))
 
-    return order_doc
+    return response_doc
 
 
 async def my_orders(user: dict = Depends(get_current_user)):
@@ -4257,10 +4301,78 @@ async def my_orders(user: dict = Depends(get_current_user)):
     return items
 
 
+def _guest_order_access_token(order: dict) -> str:
+    message = "\0".join([
+        str(order.get("id") or ""),
+        str(order.get("created_at") or ""),
+        str(order.get("email") or "").strip().lower(),
+    ])
+    return hmac.new(JWT_SECRET.encode(), message.encode(), hashlib.sha256).hexdigest()
+
+
+def _checkout_response(order: dict) -> dict:
+    response = dict(order)
+    if not response.get("user_id") and response.get("email"):
+        response["guest_access_token"] = _guest_order_access_token(response)
+    return response
+
+
 def _guest_order_accessible(order: dict, request: Request) -> bool:
+    provided = (request.headers.get("x-order-access-token") or "").strip()
+    if not provided or not order.get("id") or not order.get("email") or not order.get("created_at"):
+        return False
+    try:
+        created_at = datetime.fromisoformat(str(order["created_at"]).replace("Z", "+00:00"))
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        expires_at = created_at + timedelta(minutes=GUEST_ORDER_ACCESS_TTL_MINUTES)
+        if datetime.now(timezone.utc) > expires_at:
+            return False
+    except (TypeError, ValueError):
+        return False
+    return secrets.compare_digest(_guest_order_access_token(order), provided)
+
+
+async def request_guest_order_access(order_id: str, payload: GuestOrderAccessIn, request: Request):
+    await _rate_limit(
+        "guest_order_access_ip",
+        _client_ip(request),
+        5,
+        3600,
+        "Too many access requests. Try again later.",
+    )
+    await _rate_limit(
+        "guest_order_access_order",
+        _private_ref(order_id),
+        5,
+        3600,
+        "Too many access requests. Try again later.",
+    )
+    response = {
+        "ok": True,
+        "message": "If the order and email match, an access link will be sent.",
+    }
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order or order.get("user_id"):
+        return response
     expected_email = str(order.get("email") or "").strip().lower()
-    provided_email = str(request.query_params.get("email") or "").strip().lower()
-    return bool(expected_email and provided_email and secrets.compare_digest(expected_email, provided_email))
+    provided_email = str(payload.email).strip().lower()
+    if not expected_email or not secrets.compare_digest(expected_email, provided_email):
+        return response
+
+    token = _guest_order_access_token(order)
+    order_url = (
+        f"{_trusted_public_base_url()}/order/{quote(str(order['id']), safe='')}"
+        f"#access_token={token}"
+    )
+    safe_url = html.escape(order_url, quote=True)
+    body = (
+        "<p>Use this private link to view your order and tracking details.</p>"
+        f'<p><a href="{safe_url}">View order</a></p>'
+        "<p>This link expires seven days after checkout.</p>"
+    )
+    await _send_email(expected_email, "FIRONOVA - Private order access", body)
+    return response
 
 
 async def get_order(order_id: str, request: Request):
@@ -5597,9 +5709,11 @@ async def admin_retry_manifest(date: str,
     try:
         r = await _cp_openapi_call("GET", f"/{mailed_by}/{mobo}/manifests")
     except Exception as ex:
-        raise HTTPException(502, f"Impossible de contacter Canada Post: {ex}")
+        logging.error("Canada Post manifest lookup failed: %s", type(ex).__name__)
+        raise HTTPException(502, "Impossible de contacter Canada Post") from ex
     if r.status_code >= 400:
-        raise HTTPException(502, f"Canada Post GET /manifests {r.status_code}: {_cp_error_detail(r)}")
+        logging.error("Canada Post GET /manifests status=%s response_ref=%s", r.status_code, _private_ref(r.text))
+        raise HTTPException(502, f"Canada Post GET /manifests failed ({r.status_code})")
 
     raw = r.json() if r.headers.get("content-type","").startswith("application/json") else []
     if not isinstance(raw, list):
@@ -10208,8 +10322,12 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
                 await _affiliate_send_invite(email, display_name, link, lang)
                 email_status = "sent"
             except Exception as e:
-                logging.warning("[affiliate] bulk-invite email failed for %s: %s", email, e)
-                email_status = f"email_error: {e}"
+                logging.warning(
+                    "[affiliate] bulk-invite email failed ref=%s error_type=%s",
+                    _private_ref(email),
+                    type(e).__name__,
+                )
+                email_status = "email_error"
 
             results.append({
                 "email": email,
@@ -10223,8 +10341,12 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
                 "email_status": email_status,
             })
         except Exception as e:
-            logging.exception("[affiliate] bulk-invite failed for %s", email)
-            failed.append({"email": email, "error": str(e)})
+            logging.error(
+                "[affiliate] bulk-invite failed ref=%s error_type=%s",
+                _private_ref(email),
+                type(e).__name__,
+            )
+            failed.append({"email": email, "error": "invite_processing_failed"})
 
     return {
         "ok": True,
@@ -10282,56 +10404,115 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
     """Vue d'ensemble du programme d'affiliation : finances, effectifs,
     alertes, attribution, série mensuelle, top affiliés, distribution tiers."""
     now = datetime.now(timezone.utc)
+    quarter_start = _affiliate_quarter_start()
 
     # --- Effectifs ---
     active = await db.affiliates.count_documents({"status": "active"})
     invited = await db.affiliates.count_documents({"status": "invited"})
     suspended = await db.affiliates.count_documents({"status": "suspended"})
-
-    # --- Finances (depuis les referrals) ---
-    referrals = await _cursor_all(db.affiliate_referrals.find(
-        {"status": {"$ne": "excluded"}},
-        {"_id": 0, "status": 1, "commission_amount": 1, "order_total": 1, "created_at": 1, "affiliate_id": 1},
+    active_affiliates = await _cursor_all(db.affiliates.find(
+        {"status": "active"}, {"_id": 0, "id": 1, "manual_tier": 1}
     ))
-    commission_pending = commission_due = commission_paid = commission_reversed = 0.0
-    validated_orders = 0
-    validated_revenue = 0.0
-    monthly = {}
-    per_aff = {}
-    for r in referrals:
-        st = str(r.get("status", "")).lower()
-        comm = float(r.get("commission_amount", 0.0))
-        rev = float(r.get("order_total", 0.0))
-        if st == "pending":
-            commission_pending += comm
-        elif st == "approved":
-            commission_due += comm
-        elif st == "paid":
-            commission_paid += comm
-        elif st in ("reversed", "refunded"):
-            commission_reversed += comm
-        if st in ("approved", "paid"):
-            validated_orders += 1
-            validated_revenue += rev
-            mk = str(r.get("created_at", ""))[:7]
-            mm = monthly.setdefault(mk, {"month": mk, "revenue": 0.0, "commission": 0.0})
-            mm["revenue"] += rev
-            mm["commission"] += comm
-            pa = per_aff.setdefault(r.get("affiliate_id"), {"revenue": 0.0, "commission": 0.0})
-            pa["revenue"] += rev
-            pa["commission"] += comm
 
+    # --- Finances (agrégées dans MongoDB) ---
+    validated_statuses = ["approved", "paid"]
+    referral_facets = await _cursor_all(db.affiliate_referrals.aggregate([
+        {"$match": {"status": {"$ne": "excluded"}}},
+        {"$facet": {
+            "financial": [{"$group": {
+                "_id": None,
+                "commission_pending": {"$sum": {"$cond": [
+                    {"$eq": ["$status", "pending"]}, {"$ifNull": ["$commission_amount", 0]}, 0
+                ]}},
+                "commission_due": {"$sum": {"$cond": [
+                    {"$eq": ["$status", "approved"]}, {"$ifNull": ["$commission_amount", 0]}, 0
+                ]}},
+                "commission_paid": {"$sum": {"$cond": [
+                    {"$eq": ["$status", "paid"]}, {"$ifNull": ["$commission_amount", 0]}, 0
+                ]}},
+                "commission_reversed": {"$sum": {"$cond": [
+                    {"$in": ["$status", ["reversed", "refunded"]]},
+                    {"$ifNull": ["$commission_amount", 0]}, 0
+                ]}},
+                "validated_orders": {"$sum": {"$cond": [
+                    {"$in": ["$status", validated_statuses]}, 1, 0
+                ]}},
+                "validated_revenue": {"$sum": {"$cond": [
+                    {"$in": ["$status", validated_statuses]},
+                    {"$ifNull": ["$order_total", 0]}, 0
+                ]}},
+            }}],
+            "monthly": [
+                {"$match": {"status": {"$in": validated_statuses}}},
+                {"$group": {
+                    "_id": {"$substrBytes": [{"$ifNull": ["$created_at", ""]}, 0, 7]},
+                    "revenue": {"$sum": {"$ifNull": ["$order_total", 0]}},
+                    "commission": {"$sum": {"$ifNull": ["$commission_amount", 0]}},
+                }},
+                {"$sort": {"_id": -1}},
+                {"$limit": 12},
+                {"$sort": {"_id": 1}},
+            ],
+            "per_affiliate": [
+                {"$match": {"status": {"$in": validated_statuses}}},
+                {"$group": {
+                    "_id": "$affiliate_id",
+                    "revenue": {"$sum": {"$ifNull": ["$order_total", 0]}},
+                    "commission": {"$sum": {"$ifNull": ["$commission_amount", 0]}},
+                    "cumulative": {"$sum": {"$ifNull": ["$base_amount", 0]}},
+                    "quarter": {"$sum": {"$cond": [
+                        {"$gte": [
+                            {"$ifNull": ["$approved_at", "$created_at"]},
+                            quarter_start.isoformat(),
+                        ]},
+                        {"$ifNull": ["$base_amount", 0]}, 0,
+                    ]}},
+                }},
+            ],
+        }},
+    ]))
+    facets = referral_facets[0] if referral_facets else {}
+    financial = (facets.get("financial") or [{}])[0]
+    commission_pending = float(financial.get("commission_pending", 0.0))
+    commission_due = float(financial.get("commission_due", 0.0))
+    commission_paid = float(financial.get("commission_paid", 0.0))
+    commission_reversed = float(financial.get("commission_reversed", 0.0))
+    validated_orders = int(financial.get("validated_orders", 0))
+    validated_revenue = float(financial.get("validated_revenue", 0.0))
     avg_order_value = (validated_revenue / validated_orders) if validated_orders else 0.0
-    monthly_series = [monthly[k] for k in sorted(monthly.keys())][-12:]
+    monthly_series = [
+        {"month": row.get("_id", ""), "revenue": row.get("revenue", 0.0),
+         "commission": row.get("commission", 0.0)}
+        for row in facets.get("monthly", [])
+    ]
     for m in monthly_series:
         m["revenue"] = round(m["revenue"], 2)
         m["commission"] = round(m["commission"], 2)
 
+    per_aff = {
+        row.get("_id"): {
+            "revenue": float(row.get("revenue", 0.0)),
+            "commission": float(row.get("commission", 0.0)),
+        }
+        for row in facets.get("per_affiliate", []) if row.get("_id")
+    }
+    tier_revenue = {
+        row.get("_id"): {
+            "cumulative": float(row.get("cumulative", 0.0)),
+            "quarter": float(row.get("quarter", 0.0)),
+        }
+        for row in facets.get("per_affiliate", []) if row.get("_id")
+    }
+
     # --- Top affiliés (par revenu validé) ---
     top_ids = sorted(per_aff.keys(), key=lambda k: per_aff[k]["revenue"], reverse=True)[:5]
+    top_documents = await _cursor_all(db.affiliates.find(
+        {"id": {"$in": top_ids}}, {"_id": 0, "id": 1, "code": 1, "name": 1}
+    )) if top_ids else []
+    affiliates_by_id = {affiliate.get("id"): affiliate for affiliate in top_documents}
     top_affiliates = []
     for aid in top_ids:
-        a = await db.affiliates.find_one({"id": aid}, {"_id": 0, "code": 1, "name": 1})
+        a = affiliates_by_id.get(aid)
         if a:
             top_affiliates.append({
                 "code": a.get("code"), "name": a.get("name"),
@@ -10341,12 +10522,19 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
 
     # --- Distribution des tiers ---
     tier_distribution = {}
-    async for a in db.affiliates.find({"status": "active"}, {"_id": 0, "id": 1, "manual_tier": 1}):
-        try:
-            mt = await _affiliate_compute_metrics(a["id"])
-            tier = str(mt.get("tier", "—"))
-        except Exception:
-            tier = "—"
+    valid_tiers = {tier[0] for tier in AFFILIATE_TIERS}
+    for affiliate in active_affiliates:
+        values = tier_revenue.get(affiliate.get("id"), {})
+        cumulative = float(values.get("cumulative", 0.0))
+        quarter = float(values.get("quarter", 0.0))
+        manual_tier = str(affiliate.get("manual_tier") or "").strip().lower() or None
+        if manual_tier not in valid_tiers:
+            manual_tier = None
+        theoretical = _affiliate_tier_for_revenue(cumulative)
+        tier = manual_tier or theoretical
+        floor, _ceil = _affiliate_tier_bounds(theoretical)
+        if not manual_tier and quarter < floor and _affiliate_tier_index(theoretical) > 0:
+            tier = AFFILIATE_TIERS[_affiliate_tier_index(theoretical) - 1][0]
         tier_distribution[tier] = tier_distribution.get(tier, 0) + 1
 
     # --- Attribution (clics / conversion) ---
@@ -10663,12 +10851,21 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
     fx_rate, fx_source = await _fetch_cad_to_usd_rate()
     fx_captured_at = now.isoformat()
 
-    async for grp in db.affiliate_referrals.aggregate(pipeline):
+    payout_groups = await _cursor_all(db.affiliate_referrals.aggregate(pipeline))
+    affiliate_ids = [group.get("_id") for group in payout_groups if group.get("_id")]
+    affiliate_documents = await _cursor_all(db.affiliates.find(
+        {"id": {"$in": affiliate_ids}}, {"_id": 0}
+    )) if affiliate_ids else []
+    affiliates_by_id = {
+        affiliate.get("id"): affiliate for affiliate in affiliate_documents
+    }
+
+    for grp in payout_groups:
         affiliate_id = grp["_id"]
         total = round(float(grp["total"]), 2)
         if total <= 0:
             continue
-        aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
+        aff = affiliates_by_id.get(affiliate_id)
         if not aff or aff.get("status") != "active":
             continue
         # Devise cible : USDT/USDC → 1:1 avec USD (peggé). Sinon on garde la valeur legacy.
@@ -10785,7 +10982,8 @@ async def _refresh_np_jwt(force: bool = False) -> str:
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(503, f"NOWPayments JWT refresh failed: {e}")
+        logging.error("NOWPayments JWT refresh failed: %s", type(e).__name__)
+        raise HTTPException(503, "NOWPayments authentication unavailable") from e
 
 
 class AffiliatePayoutBatchIn(BaseModel):
@@ -10909,10 +11107,10 @@ async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
     except Exception as e:
         await db.affiliate_payouts.update_many(
             {"id": {"$in": ids_sent}, "status": "dispatching"},
-            {"$set": {"status": "ready", "np_dispatch_error": str(e)}},
+            {"$set": {"status": "ready", "np_dispatch_error": "NOWPayments request failed"}},
         )
-        logging.error("[nowpayments payout] batch failed: %s", e)
-        raise HTTPException(502, f"NOWPayments Mass Payouts error: {e}")
+        logging.error("[nowpayments payout] batch failed: %s", type(e).__name__)
+        raise HTTPException(502, "NOWPayments Mass Payouts request failed") from e
 
     batch_id = str(resp.get("id") or resp.get("batch_id") or f"np_{uuid.uuid4().hex[:12]}")
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -11137,9 +11335,10 @@ async def admin_affiliate_force_monthly_run(payload: AffiliatePayoutRunForceIn,
                 "fx_rate_cad_to_usd": fx_rate, "fx_source": fx_source, "run_id": run_id}
     except Exception as e:
         await db.payout_runs.update_one(
-            {"id": run_id}, {"$set": {"status": "failed", "error": str(e)}},
+            {"id": run_id}, {"$set": {"status": "failed", "error": "Payout generation failed"}},
         )
-        raise HTTPException(500, f"Force run failed: {e}")
+        logging.error("Manual payout run failed run=%s error_type=%s", run_id, type(e).__name__)
+        raise HTTPException(500, "Payout generation failed") from e
 
 
 
@@ -12508,8 +12707,8 @@ async def admin_payout_execute(payout_id: str, admin: dict = Depends(get_admin_u
         resp = await _np_create_payout(withdrawals, description=desc)
     except NowPaymentsPayoutError as e:
         await db.affiliate_payouts.update_one({"id": payout_id},
-            {"$set": {"status": "failed", "np_error": str(e), "updated_at": datetime.now(timezone.utc).isoformat()}})
-        raise HTTPException(502, str(e))
+            {"$set": {"status": "failed", "np_error": "NOWPayments payout request failed", "updated_at": datetime.now(timezone.utc).isoformat()}})
+        raise HTTPException(502, "NOWPayments payout request failed") from e
 
     batch_id = str(resp.get("id") or resp.get("batch_withdrawal_id") or "")
     if not batch_id:
@@ -12537,7 +12736,7 @@ async def admin_payout_verify(payout_id: str, payload: PayoutVerifyIn,
     try:
         await _np_verify_payout(batch_id, payload.verification_code)
     except NowPaymentsPayoutError as e:
-        raise HTTPException(502, str(e))
+        raise HTTPException(502, "NOWPayments payout verification failed") from e
 
     now = datetime.now(timezone.utc).isoformat()
     await db.affiliate_payouts.update_one({"id": payout_id}, {"$set": {
@@ -12559,7 +12758,7 @@ async def admin_payout_status(payout_id: str, admin: dict = Depends(get_admin_us
     try:
         data = await _np_payout_status(batch_id)
     except NowPaymentsPayoutError as e:
-        raise HTTPException(502, str(e))
+        raise HTTPException(502, "NOWPayments payout status unavailable") from e
     np_status = str(data.get("status", "")).lower()
     # Mappe le statut NOWPayments vers l'état interne + finalise si terminé.
     mapped = payout.get("status")
@@ -12676,16 +12875,17 @@ app.include_router(reconciliation_router)
 app.include_router(seo_router)
 app.include_router(api)
 
-# CORS crédentialé : le navigateur refuse Access-Control-Allow-Origin: * dès
-# que des cookies sont envoyés. On échoue vite en cas de mauvaise config.
-_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
-# Regex par défaut élargi pour couvrir les deux domaines Emergent (preview.emergentagent.com
-# et preview.emergentcf.cloud — ce dernier est parfois injecté comme Origin par le
-# Cloudflare edge de la plateforme, ce qui faisait planter le CSRF guard).
-_cors_origin_regex = os.environ.get(
-    "CORS_ORIGIN_REGEX",
-    r"^https://.*\.preview\.(emergentagent\.com|emergentcf\.cloud)$",
-).strip() or None
+# Credentialed CORS must use an explicit allowlist. Regex support is opt-in for
+# ephemeral preview hosts and should remain unset in production.
+_cors_raw = os.environ.get("CORS_ORIGINS", "").strip()
+if not _cors_raw:
+    _cors_raw = os.environ.get("FRONTEND_URL", "").strip()
+if not _cors_raw and not IS_PRODUCTION:
+    _cors_raw = "http://localhost:3000,http://localhost:5173"
+if not _cors_raw:
+    raise RuntimeError("CORS_ORIGINS ou FRONTEND_URL est obligatoire en production")
+_cors_origins = [o.strip().rstrip("/") for o in _cors_raw.split(",") if o.strip()]
+_cors_origin_regex = os.environ.get("CORS_ORIGIN_REGEX", "").strip() or None
 _cors_origin_re = re.compile(_cors_origin_regex, re.IGNORECASE) if _cors_origin_regex else None
 if "*" in _cors_origins:
     raise RuntimeError(
@@ -12698,8 +12898,8 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_origin_regex=_cors_origin_regex,
     allow_credentials=True,  # Auth cookie-only : le cookie httpOnly access_token doit traverser
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Accept", "Authorization", "Content-Type", "X-Order-Access-Token"],
 )
 
 
@@ -12753,6 +12953,13 @@ async def _security_headers(request: Request, call_next):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    )
+    if request.url.path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+        response.headers.setdefault("Pragma", "no-cache")
     if request.url.scheme == "https" or (request.headers.get("x-forwarded-proto", "").lower() == "https"):
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response

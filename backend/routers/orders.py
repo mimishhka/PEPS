@@ -15,6 +15,11 @@ async def get_order(order_id: str, request: Request):
     return await s.get_order(order_id, request)
 
 
+@router.post("/orders/{order_id}/guest-access")
+async def request_guest_order_access(order_id: str, payload: s.GuestOrderAccessIn, request: Request):
+    return await s.request_guest_order_access(order_id, payload, request)
+
+
 @router.get("/orders/{order_id}/tracking")
 async def order_tracking(order_id: str, request: Request):
     return await s.order_tracking(order_id, request)

@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -28,6 +29,7 @@ class _DummyOrders:
             "email": "guest@example.com",
             "payment_method": "interac",
             "payment_status": "awaiting_etransfer",
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "payment_info": {
                 "type": "interac",
                 "instructions": {
@@ -76,9 +78,9 @@ class _DummyDB:
 
 
 class _DummyRequest:
-    def __init__(self, host="127.0.0.1"):
+    def __init__(self, host="127.0.0.1", headers=None):
         self.client = SimpleNamespace(host=host)
-        self.headers = {}
+        self.headers = headers or {}
         self.cookies = {}
         self.query_params = {}
 
@@ -90,6 +92,48 @@ def test_guest_order_requires_access_token(server_module, monkeypatch):
         asyncio.run(server_module.get_order("order-1", _DummyRequest()))
 
     assert excinfo.value.status_code == 403
+
+    order = server_module.db.orders.docs[0]
+    token = server_module._guest_order_access_token(order)
+    result = asyncio.run(server_module.get_order(
+        "order-1",
+        _DummyRequest(headers={"x-order-access-token": token}),
+    ))
+    assert result["id"] == "order-1"
+    assert "guest_access_token" not in result
+
+
+def test_guest_access_recovery_is_generic_and_sends_only_to_stored_email(server_module, monkeypatch):
+    server_module.db = _DummyDB()
+    sent = []
+
+    async def allow_rate_limit(*args, **kwargs):
+        return None
+
+    async def capture_email(to, subject, body, **kwargs):
+        sent.append((to, subject, body))
+
+    monkeypatch.setattr(server_module, "_rate_limit", allow_rate_limit)
+    monkeypatch.setattr(server_module, "_send_email", capture_email)
+    request = _DummyRequest()
+
+    wrong = asyncio.run(server_module.request_guest_order_access(
+        "order-1",
+        SimpleNamespace(email="wrong@example.com"),
+        request,
+    ))
+    right = asyncio.run(server_module.request_guest_order_access(
+        "order-1",
+        SimpleNamespace(email="guest@example.com"),
+        request,
+    ))
+
+    assert wrong == right
+    assert wrong["ok"] is True
+    assert len(sent) == 1
+    assert sent[0][0] == "guest@example.com"
+    assert "#access_token=" in sent[0][2]
+    assert "wrong@example.com" not in sent[0][2]
 
 
 def test_email_change_token_is_hashed_and_not_exposed(server_module, monkeypatch):

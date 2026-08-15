@@ -6,6 +6,7 @@ import api, { formatApiError } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
+import useAffiliate from "../hooks/useAffiliate";
 import { useConfirm } from "../components/ConfirmDialog";
 
 // Statuts de paiement : couleur + libellé lisible bilingue.
@@ -46,16 +47,7 @@ export default function Account() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("orders");
 
-  // Charge le statut affilié s'il existe. Retourne 401/404 pour les non-affiliés
-  // → on ignore silencieusement l'erreur et n'affiche pas la carte.
-  const [affiliate, setAffiliate] = useState(null);
-  useEffect(() => {
-    let cancelled = false;
-    api.get("/affiliate/me")
-      .then((r) => { if (!cancelled) setAffiliate(r.data); })
-      .catch(() => { if (!cancelled) setAffiliate(null); });
-    return () => { cancelled = true; };
-  }, []);
+  const { affiliate } = useAffiliate(lang);
   const isActiveAffiliate = affiliate?.status === "active";
 
   return (

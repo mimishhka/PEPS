@@ -6,6 +6,7 @@ import {
 import api from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
 import { useLang } from "../../../contexts/LanguageContext";
+import { DashboardSkeleton } from "../../../components/LoadingSkeletons";
 
 export default function AdminDashboard() {
   const { lang } = useLang();
@@ -15,10 +16,15 @@ export default function AdminDashboard() {
   const [analytics, setAnalytics] = useState(null);
   const [enhanced, setEnhanced] = useState(null);
   const [period, setPeriod] = useState(30);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
-    api.get("/admin/stats").then((r) => setStats(r.data)).catch(() => {});
-    api.get("/admin/analytics").then((r) => setAnalytics(r.data)).catch(() => {});
+    let active = true;
+    Promise.allSettled([
+      api.get("/admin/stats").then((r) => { if (active) setStats(r.data); }),
+      api.get("/admin/analytics").then((r) => { if (active) setAnalytics(r.data); }),
+    ]).finally(() => { if (active) setInitialLoading(false); });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -35,6 +41,8 @@ export default function AdminDashboard() {
   const dailyMax = analytics?.daily_revenue?.length
     ? Math.max(...analytics.daily_revenue.map(d => d.revenue), 1)
     : 1;
+
+  if (initialLoading) return <DashboardSkeleton />;
 
   return (
     <div className="p-8" data-testid="admin-dashboard">

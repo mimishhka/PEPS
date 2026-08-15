@@ -82,7 +82,16 @@ export default function AdminProducts() {
                 <tr key={p.id} className="border-t border-ink/5" data-testid={`product-row-${p.slug}`}>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-3">
-                      <img src={resolveAssetUrl(p.image_url)} alt={p.name_en} className="w-10 h-10 object-cover" style={{ filter: "grayscale(0.4)" }} />
+                      <img
+                        src={resolveAssetUrl(p.image_url)}
+                        alt={p.name_en}
+                        width="40"
+                        height="40"
+                        loading="lazy"
+                        decoding="async"
+                        className="w-10 h-10 object-cover"
+                        style={{ filter: "grayscale(0.4)" }}
+                      />
                       <div>
                         <div className="font-bold">{p.name_en}</div>
                         <div className="font-mono text-[10px] text-foreground/50">{p.slug} · from ${(lowest === Infinity ? 0 : lowest).toFixed(2)}</div>
@@ -413,6 +422,10 @@ function ImageUploader({ value, onChange, test }) {
           <img
             src={imageSrc}
             alt="Product preview"
+            width="96"
+            height="96"
+            loading="lazy"
+            decoding="async"
             className="w-24 h-24 object-cover border border-ink/20"
             data-testid={`${test}-preview`}
           />

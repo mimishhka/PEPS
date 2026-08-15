@@ -9,6 +9,7 @@ import useAffiliate from "../hooks/useAffiliate";
 import { useCart } from "../contexts/CartContext";
 import { VialArt, Seal } from "../components/brand";
 import ProductImage from "../components/ProductImage";
+import { ProductDetailSkeleton } from "../components/LoadingSkeletons";
 
 function hueFor(slug = "") {
   let h = 0;
@@ -93,7 +94,7 @@ export default function ProductDetail() {
   useEffect(() => { setNotifyDone(false); setNotifyEmail(""); }, [variantId, slug]);
 
   if (loading) {
-    return <div className="p-16 font-data text-xs uppercase tracking-[0.2em] text-glacier">{t("common.loading")}</div>;
+    return <ProductDetailSkeleton />;
   }
   if (!product) {
     return (
@@ -180,6 +181,10 @@ export default function ProductDetail() {
                 src={product.image_url}
                 slug={product.slug}
                 alt={name}
+                width={1000}
+                height={1000}
+                loading="eager"
+                fetchPriority="high"
                 className="w-full h-full"
                 imgClassName="w-full h-full object-cover"
               />
@@ -376,6 +381,9 @@ export default function ProductDetail() {
                         src={p.image_url}
                         slug={p.slug}
                         alt=""
+                        width={480}
+                        height={480}
+                        loading="lazy"
                         className="w-full h-full"
                         imgClassName="w-full h-full object-cover"
                       />

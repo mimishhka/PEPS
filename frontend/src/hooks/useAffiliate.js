@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import useSWR from "swr";
 import api from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -7,21 +7,19 @@ import { useAuth } from "../contexts/AuthContext";
  * est un affilié actif, sinon null. Silencieux sur les 403 (utilisateurs non
  * affiliés) pour éviter la pollution du log.
  */
-export default function useAffiliate() {
+export default function useAffiliate(lang) {
   const { user } = useAuth();
-  const [affiliate, setAffiliate] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const userKey = user?.id || user?.email;
+  const { data, error, isLoading, mutate } = useSWR(
+    userKey ? ["/affiliate/me", userKey, lang || ""] : null,
+    ([url]) => api.get(url, { params: lang ? { lang } : undefined }).then((response) => response.data),
+    { dedupingInterval: 60_000, revalidateOnFocus: false }
+  );
 
-  useEffect(() => {
-    if (!user) { setAffiliate(null); return; }
-    let cancelled = false;
-    setLoading(true);
-    api.get("/affiliate/me")
-      .then((r) => { if (!cancelled) setAffiliate(r.data || null); })
-      .catch(() => { if (!cancelled) setAffiliate(null); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [user]);
-
-  return { affiliate, loading };
+  return {
+    affiliate: data || null,
+    loading: Boolean(userKey) && isLoading,
+    error,
+    mutate,
+  };
 }

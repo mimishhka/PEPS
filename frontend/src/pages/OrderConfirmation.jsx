@@ -5,6 +5,10 @@ import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 
+const guestRequestConfig = (token) => token
+  ? { headers: { "X-Order-Access-Token": token } }
+  : {};
+
 export default function OrderConfirmation() {
   useDocumentHead({ title: "Order", noindex: true });
   const { id } = useParams();
@@ -13,25 +17,27 @@ export default function OrderConfirmation() {
   const [order, setOrder] = useState(state?.order || null);
   const [copied, setCopied] = useState("");
   const [remainingMs, setRemainingMs] = useState(null);
-  const storedGuestEmail = typeof window !== "undefined"
-    ? window.sessionStorage.getItem(`fironova_guest_order_email:${id}`) || ""
+  const fragmentToken = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.hash.replace(/^#/, "")).get("access_token") || ""
     : "";
-  const guestEmail = new URLSearchParams(search).get("email") || order?.email || storedGuestEmail || "";
-
-  const guestQuery = guestEmail && !order?.user_id ? `?email=${encodeURIComponent(guestEmail)}` : "";
+  const storedGuestToken = typeof window !== "undefined"
+    ? window.sessionStorage.getItem(`fironova_guest_order_token:${id}`) || ""
+    : "";
+  const guestToken = fragmentToken || order?.guest_access_token || storedGuestToken;
 
   useEffect(() => {
-    if (!order?.email || order?.user_id || typeof window === "undefined") return;
+    if (!guestToken || order?.user_id || typeof window === "undefined") return;
     try {
-      window.sessionStorage.setItem(`fironova_guest_order_email:${id}`, order.email);
+      window.sessionStorage.setItem(`fironova_guest_order_token:${id}`, guestToken);
+      if (fragmentToken) window.history.replaceState(null, "", `${window.location.pathname}${search}`);
     } catch { /* ignore */ }
-  }, [id, order]);
+  }, [fragmentToken, guestToken, id, order?.user_id, search]);
 
   useEffect(() => {
     if (!order) {
-      api.get(`/orders/${id}${guestQuery}`).then((r) => setOrder(r.data)).catch(() => {});
+      api.get(`/orders/${id}`, guestRequestConfig(guestToken)).then((r) => setOrder(r.data)).catch(() => {});
     }
-  }, [id, order, guestQuery]);
+  }, [id, order, guestToken]);
 
   // Countdown uses backend-stored deadline; falls back to 24h if absent.
   useEffect(() => {
@@ -43,7 +49,7 @@ export default function OrderConfirmation() {
     tick();
     const iv = setInterval(tick, 30000);
     return () => clearInterval(iv);
-  }, [order, guestQuery]);
+  }, [order]);
 
   // NOWPayments live status polling
   useEffect(() => {
@@ -55,16 +61,16 @@ export default function OrderConfirmation() {
       attempts += 1;
       if (attempts > 45) { clearInterval(iv); return; }
       try {
-        const { data } = await api.get(`/payments/crypto/status/${order.id}${guestQuery}`);
+        const { data } = await api.get(`/payments/crypto/status/${order.id}`, guestRequestConfig(guestToken));
         if (data.payment_status === "paid") {
           clearInterval(iv);
-          const fresh = await api.get(`/orders/${order.id}${guestQuery}`);
+          const fresh = await api.get(`/orders/${order.id}`, guestRequestConfig(guestToken));
           setOrder(fresh.data);
         }
       } catch { /* ignore */ }
     }, 20000);
     return () => clearInterval(iv);
-  }, [order, guestQuery]);
+  }, [order, guestToken]);
 
   // Interac (Autodeposit) live status polling — confirmed automatically by backend watchdog
   useEffect(() => {
@@ -75,7 +81,7 @@ export default function OrderConfirmation() {
       attempts += 1;
       if (attempts > 45) { clearInterval(iv); return; }
       try {
-        const { data } = await api.get(`/orders/${order.id}${guestQuery}`);
+        const { data } = await api.get(`/orders/${order.id}`, guestRequestConfig(guestToken));
         if (data.payment_status === "paid") {
           clearInterval(iv);
           setOrder(data);
@@ -83,7 +89,7 @@ export default function OrderConfirmation() {
       } catch { /* ignore */ }
     }, 20000);
     return () => clearInterval(iv);
-  }, [order, guestQuery]);
+  }, [order, guestToken]);
 
   if (!order) return <div className="p-16 font-mono text-xs uppercase tracking-[0.25em]">{t("common.loading")}</div>;
 
@@ -238,7 +244,7 @@ export default function OrderConfirmation() {
             </div>
           ) : (
             <div className="p-8 space-y-5 font-mono text-sm">
-              {np.mock && import.meta.env.DEV && (
+              {np.mock && process.env.NODE_ENV !== "production" && (
                 <div className="border border-warning bg-yellow-50 p-3 text-xs uppercase tracking-[0.15em]" style={{ borderColor: "#FFCC00" }}>
                   ⚠ DEMO MODE · Configure NOWPAYMENTS_API_KEY to enable live crypto payments.
                 </div>

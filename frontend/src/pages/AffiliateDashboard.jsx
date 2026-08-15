@@ -14,6 +14,7 @@ import {
 import api, { formatApiError } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
+import { DashboardSkeleton } from "../components/LoadingSkeletons";
 import useDocumentHead from "../hooks/useDocumentHead";
 
 const TIER_META = {
@@ -312,13 +313,7 @@ export default function AffiliateDashboard() {
   };
 
   if (loading) {
-    return (
-      <div className="bg-clinical min-h-screen flex items-center justify-center">
-        <p className="font-data text-xs uppercase tracking-[0.24em] text-glacier animate-pulse">
-          {L("Chargement…", "Loading…")}
-        </p>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   if (notAffiliate) {

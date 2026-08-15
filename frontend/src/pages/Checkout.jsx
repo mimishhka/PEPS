@@ -269,8 +269,8 @@ export default function Checkout() {
       clear();
       try { window.localStorage.removeItem(CHECKOUT_DRAFT_KEY); } catch { /* ignore */ }
       try {
-        if (data?.email && !data?.user_id && typeof window !== "undefined") {
-          window.sessionStorage.setItem(`fironova_guest_order_email:${data.id}`, data.email);
+        if (data?.guest_access_token && !data?.user_id && typeof window !== "undefined") {
+          window.sessionStorage.setItem(`fironova_guest_order_token:${data.id}`, data.guest_access_token);
         }
       } catch { /* ignore */ }
       // Interac ET crypto : page de confirmation interne.

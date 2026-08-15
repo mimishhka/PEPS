@@ -15,30 +15,33 @@ import AgeGate from "./components/AgeGate";
 import CartDrawer from "./components/CartDrawer";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminGate from "./components/AdminGate";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 import Home from "./pages/Home";
 import ComingSoon from "./pages/ComingSoon";
-import Catalog from "./pages/Catalog";
-import ProductDetail from "./pages/ProductDetail";
-import Checkout from "./pages/Checkout";
-import OrderConfirmation from "./pages/OrderConfirmation";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import AuthCallback from "./pages/AuthCallback";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import Account from "./pages/Account";
-import About from "./pages/About";
-import Lab from "./pages/Lab";
-import Compliance from "./pages/Compliance";
-import Privacy from "./pages/Privacy";
-import Faq from "./pages/Faq";
-import AffiliateDashboard from "./pages/AffiliateDashboard";
-import AffiliateJoin from "./pages/AffiliateJoin";
-import StaffAccept from "./pages/StaffAccept";
 import { ConfirmProvider } from "./components/ConfirmDialog";
 import useAffiliateRef from "./hooks/useAffiliateRef";
 import NotFound from "./pages/NotFound";
+import { DashboardSkeleton, RouteSkeleton } from "./components/LoadingSkeletons";
+
+const Catalog = lazy(() => import("./pages/Catalog"));
+const ProductDetail = lazy(() => import("./pages/ProductDetail"));
+const Checkout = lazy(() => import("./pages/Checkout"));
+const OrderConfirmation = lazy(() => import("./pages/OrderConfirmation"));
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const AuthCallback = lazy(() => import("./pages/AuthCallback"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const Account = lazy(() => import("./pages/Account"));
+const About = lazy(() => import("./pages/About"));
+const Lab = lazy(() => import("./pages/Lab"));
+const Compliance = lazy(() => import("./pages/Compliance"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Faq = lazy(() => import("./pages/Faq"));
+const AffiliateDashboard = lazy(() => import("./pages/AffiliateDashboard"));
+const AffiliateJoin = lazy(() => import("./pages/AffiliateJoin"));
+const StaffAccept = lazy(() => import("./pages/StaffAccept"));
 
 // Chargé à la demande (chunk séparé) — le code du panneau admin n'est PLUS
 // téléchargé par un visiteur du site public tant qu'il ne visite pas cette
@@ -116,7 +119,8 @@ function LabRoute() {
 
 function AppRoutes() {
   return (
-    <Routes>
+    <Suspense fallback={<RouteSkeleton />}>
+      <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/catalog" element={<Catalog />} />
       <Route path="/product/:slug" element={<ProductDetail />} />
@@ -140,7 +144,7 @@ function AppRoutes() {
         path={`${ADMIN_PATH}/*`}
         element={
           <AdminGate>
-            <Suspense fallback={null}>
+            <Suspense fallback={<DashboardSkeleton />}>
               <ProtectedRoute adminOnly>
                 <Admin basePath={ADMIN_PATH} />
               </ProtectedRoute>
@@ -152,7 +156,8 @@ function AppRoutes() {
       <Route path="/ops/*" element={<Navigate to={ADMIN_PATH} replace />} />
         {/* Alias de compatibilité : redirigent vers le portail OPS courant. */}
       <Route path="*" element={<NotFound />} />
-    </Routes>
+      </Routes>
+    </Suspense>
   );
 }
 
@@ -164,7 +169,9 @@ export default function App() {
         <LanguageProvider>
           <AuthProvider>
             <CartProvider>
-              <GatedApp />
+              <ErrorBoundary>
+                <GatedApp />
+              </ErrorBoundary>
             </CartProvider>
           </AuthProvider>
         </LanguageProvider>

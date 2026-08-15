@@ -54,9 +54,8 @@ export default function Lab() {
     setTracking(true);
     setTrack(null);
     try {
-      const params = new URLSearchParams({ email: trackEmail.trim() });
-      const { data } = await api.get(`/orders/${encodeURIComponent(id)}/tracking?${params.toString()}`);
-      setTrack(data);
+      await api.post(`/orders/${encodeURIComponent(id)}/guest-access`, { email: trackEmail.trim() });
+      setTrack({ accessRequested: true });
     } catch {
       setTrack({ tracked: false, reason: "not_found" });
     } finally {
@@ -143,7 +142,13 @@ export default function Lab() {
 
         {track && (
           <div className="mt-6 rounded-2xl border border-ash bg-white p-6" data-testid="lab-track-result">
-            {track.tracked ? (
+            {track.accessRequested ? (
+              <div className="font-data text-sm text-glacier">
+                {isFr
+                  ? "Si la commande et le courriel correspondent, un lien de suivi privé vous sera envoyé."
+                  : "If the order and email match, a private tracking link will be sent."}
+              </div>
+            ) : track.tracked ? (
               <div>
                 <div className="font-data text-[10px] uppercase tracking-[0.2em] text-success mb-1">{isFr ? "SUIVI ACTIF" : "TRACKING ACTIVE"}</div>
                 <div className="font-data text-sm text-nordfjord">{track.status || track.description || (isFr ? "En transit" : "In transit")}</div>
