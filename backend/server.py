@@ -2213,8 +2213,11 @@ async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(
         f.write(contents)
 
     rel_path = f"/api/uploads/coa/{safe_name}"
-    url = f"{PUBLIC_BASE_URL}{rel_path}" if PUBLIC_BASE_URL else rel_path
-    return {"url": url, "original_filename": filename, "size_bytes": len(contents)}
+    # On stocke le chemin relatif — le client construit l'URL absolue avec son
+    # propre `REACT_APP_BACKEND_URL`. Éviter `PUBLIC_BASE_URL` gèle une URL
+    # d'ingress spécifique (ex. `*.emergentcf.cloud`) qui peut varier entre
+    # environnements ou expirer, laissant des pointeurs morts en BDD.
+    return {"url": rel_path, "original_filename": filename, "size_bytes": len(contents)}
 
 
 async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
