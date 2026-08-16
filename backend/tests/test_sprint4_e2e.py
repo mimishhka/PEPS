@@ -98,7 +98,9 @@ def _effective_price(v: dict) -> float:
     return base
 
 
-def _pick_variant_with_stock(products_list, min_stock=1):
+def _pick_variant_with_stock(products_list, min_stock=5):
+    """Sélectionne un variant avec stock suffisant. min_stock=5 par défaut
+    évite qu'un test consomme la dernière unité et fasse échouer les suivants."""
     for p in products_list:
         if p.get("active") is False:
             continue
@@ -112,13 +114,15 @@ def _pick_variant_with_stock(products_list, min_stock=1):
 
 
 def _shipping():
+    # Adresse réelle validée par Google Maps AVS (item 1.3) — sans quoi tous
+    # les checkouts sont bloqués 422 avec invalid_shipping_address.
     return {
         "full_name": "Sprint4 Tester",
-        "address1": "123 Rue Sprint 4",
+        "address1": "100 Queen Street West",
         "address2": "",
-        "city": "Montreal",
-        "province": "QC",
-        "postal_code": "H2X1Y4",
+        "city": "Toronto",
+        "province": "ON",
+        "postal_code": "M5H 2N2",
         "country": "CA",
         "phone": "5145550004",
     }
