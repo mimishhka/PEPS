@@ -11,21 +11,48 @@ import re
 from typing import Any, Optional
 
 
+_MISSING = object()
+
+
+def _resolve(doc, path: str):
+    """Follow a dotted field path the way Mongo does: `shipping_info.label_url`."""
+    current = doc
+    for part in path.split("."):
+        if isinstance(current, list):
+            current = [c.get(part, _MISSING) if isinstance(c, dict) else _MISSING
+                       for c in current]
+            continue
+        if not isinstance(current, dict) or part not in current:
+            return _MISSING
+        current = current[part]
+    return current
+
+
 def _matches(doc: dict, filt: dict) -> bool:
     for key, cond in (filt or {}).items():
         if key == "$or":
             if not any(_matches(doc, sub) for sub in cond):
                 return False
             continue
-        if not _match_field(doc.get(key), cond):
+        if key == "$and":
+            if not all(_matches(doc, sub) for sub in cond):
+                return False
+            continue
+        value = _resolve(doc, key)
+        if not _match_field(None if value is _MISSING else value, cond,
+                            present=value is not _MISSING):
             return False
     return True
 
 
-def _match_field(value: Any, cond: Any) -> bool:
+def _match_field(value: Any, cond: Any, present: bool = True) -> bool:
     if not isinstance(cond, dict):
         return value == cond
     for op, operand in cond.items():
+        if op == "$exists":
+            if present != bool(operand):
+                return False
+            continue
         if op == "$in":
             candidates = value if isinstance(value, list) else [value]
             if not any(c in operand for c in candidates):
@@ -41,9 +68,6 @@ def _match_field(value: Any, cond: Any) -> bool:
                 return False
         elif op == "$gte":
             if value is None or not value >= operand:
-                return False
-        elif op == "$exists":
-            if (value is not None) != operand:
                 return False
         elif op == "$regex":
             flags = re.IGNORECASE if "i" in cond.get("$options", "") else 0
@@ -152,6 +176,8 @@ class FakeCollection:
             doc.pop(key, None)
         for key, delta in update.get("$inc", {}).items():
             doc[key] = doc.get(key, 0) + delta
+        for key, item in update.get("$push", {}).items():
+            doc.setdefault(key, []).append(copy.deepcopy(item))
         return doc != before
 
     async def update_one(self, filt, update, **kwargs):

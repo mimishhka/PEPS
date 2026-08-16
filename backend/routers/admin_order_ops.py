@@ -2,6 +2,11 @@ from fastapi import APIRouter, Depends
 
 import server as s
 
+try:
+    from services import canada_post
+except ImportError:  # package-relative import (uvicorn backend.server:app)
+    from backend.services import canada_post
+
 router = APIRouter(prefix="/api")
 
 
@@ -38,3 +43,8 @@ async def admin_create_label(order_id: str, payload: s.CreateLabelIn, _admin: di
 @router.post("/admin/orders/{order_id}/void-label")
 async def admin_void_label(order_id: str, _admin: dict = Depends(s.require_area("orders", "manage"))):
     return await s.admin_void_label(order_id, _admin)
+
+@router.post("/admin/shipping/void-untransmitted")
+async def admin_void_untransmitted_labels(_admin: dict = Depends(s.require_area("orders", "manage"))):
+    """Annule toutes les étiquettes non transmises (nettoyage des essais)."""
+    return await canada_post.void_untransmitted_labels(admin_email=_admin.get("email", ""))

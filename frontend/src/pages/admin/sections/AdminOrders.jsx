@@ -59,6 +59,34 @@ export default function AdminOrders() {
     }
   };
 
+  // Sortie de secours quand les étiquettes ne partiront jamais (essais, erreur
+  // de manipulation) : les annuler chez Postes Canada plutôt que les transmettre.
+  const voidUntransmitted = async () => {
+    if (!await confirm({
+      title: `Void ${manifest?.pending_count ?? 0} untransmitted label(s)?`,
+      description: "Cancels the shipments with Canada Post and returns the orders to processing. "
+        + "Use this for labels created by mistake — not for parcels you are actually sending.",
+      destructive: true,
+    })) return;
+    setTxBusy(true);
+    try {
+      const { data } = await api.post("/admin/shipping/void-untransmitted");
+      toast.success(`${data.voided} label(s) voided.`);
+      if (data.failed?.length) {
+        toast.error(`Canada Post refused to void: ${data.failed.join(", ")}`);
+      }
+      if (data.no_shipment_id?.length) {
+        toast.warning(`No Canada Post shipment id, void manually: ${data.no_shipment_id.join(", ")}`);
+      }
+      loadManifest();
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setTxBusy(false);
+    }
+  };
+
   const load = useCallback(() => {
     const params = {
       page,
@@ -120,14 +148,25 @@ export default function AdminOrders() {
               )}
             </div>
           </div>
-          <button
-            onClick={transmitManifest}
-            disabled={txBusy || !manifest.transmittable_count}
-            data-testid="transmit-manifest-btn"
-            className="bg-red-600 text-white font-mono text-xs uppercase tracking-[0.2em] px-5 py-2.5 flex items-center gap-2 disabled:opacity-50 shrink-0"
-          >
-            <Send size={14} /> {txBusy ? "Transmitting…" : "Transmit manifest"}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={voidUntransmitted}
+              disabled={txBusy}
+              data-testid="void-untransmitted-btn"
+              title="Cancel these labels with Canada Post instead of shipping them"
+              className="border border-red-600 text-red-700 font-mono text-xs uppercase tracking-[0.2em] px-4 py-2.5 flex items-center gap-2 disabled:opacity-50"
+            >
+              <Undo2 size={14} /> Void all
+            </button>
+            <button
+              onClick={transmitManifest}
+              disabled={txBusy || !manifest.transmittable_count}
+              data-testid="transmit-manifest-btn"
+              className="bg-red-600 text-white font-mono text-xs uppercase tracking-[0.2em] px-5 py-2.5 flex items-center gap-2 disabled:opacity-50"
+            >
+              <Send size={14} /> {txBusy ? "Transmitting…" : "Transmit manifest"}
+            </button>
+          </div>
         </div>
       )}
       <div className="flex items-end justify-between mb-6">

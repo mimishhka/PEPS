@@ -931,6 +931,58 @@ async def _canada_post_void(shipment_id: str) -> bool:
         return False
 
 
+async def void_untransmitted_labels(admin_email: str = "", limit: int = 100) -> dict:
+    """Annule en lot les étiquettes créées mais pas encore transmises.
+
+    Même contrat unitaire que admin_void_label, répété : on n'annule que ce qui
+    n'est pas transmis (au-delà, Postes Canada refuse), et on ne remet la
+    commande en `processing` que si le transporteur a bien confirmé.
+
+    Les commandes sans cp_shipment_id ne peuvent pas être annulées côté
+    transporteur — elles sont rapportées à part plutôt que nettoyées en douce,
+    parce qu'une étiquette peut exister chez Postes Canada malgré tout.
+    """
+    orders = await s.db.orders.find(
+        UNTRANSMITTED_MATCH,
+        {"_id": 0, "id": 1, "order_number": 1, "shipping_info": 1},
+    ).limit(max(1, min(int(limit or 100), 500))).to_list(500)
+
+    voided: list[str] = []
+    failed: list[str] = []
+    no_shipment_id: list[str] = []
+
+    for order in orders:
+        info = order.get("shipping_info") or {}
+        number = order.get("order_number") or order.get("id")
+        shipment_id = (info.get("cp_shipment_id") or "").strip()
+        if not shipment_id:
+            no_shipment_id.append(number)
+            continue
+        if not await s._canada_post_void(shipment_id):
+            failed.append(number)
+            continue
+        await s.db.orders.update_one(
+            {"id": order["id"]},
+            {"$set": {"shipping_info": {"carrier": "", "tracking_number": "", "shipped_at": None},
+                      "fulfillment_status": "processing"},
+             "$push": {"notes": {
+                 "id": str(uuid.uuid4()),
+                 "text": f"Étiquette Postes Canada annulée (void en lot) par {admin_email or 'admin'}.",
+                 "author": "system",
+                 "created_at": datetime.now(timezone.utc).isoformat(),
+             }}},
+        )
+        voided.append(number)
+
+    return {
+        "ok": True,
+        "voided": len(voided),
+        "voided_orders": voided,
+        "failed": failed,
+        "no_shipment_id": no_shipment_id,
+    }
+
+
 async def _auto_create_dispatch_label(order_id: str, service_code: Optional[str] = None) -> Optional[dict]:
     order = await s.db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
