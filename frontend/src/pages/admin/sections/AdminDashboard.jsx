@@ -215,7 +215,10 @@ export default function AdminDashboard() {
             {(analytics?.recent_orders || []).slice(0, 8).map((o) => (
               <tr key={o.id} className="border-t border-ash/40 hover:bg-clinical/60">
                 <td className="px-6 py-3">
-                  <Link to={`/admin/orders`} className="font-data font-bold text-xs text-nova hover:text-nordfjord">{o.order_number}</Link>
+                  {/* Lien relatif : `/admin/...` en absolu tombe sur l'alias de
+                      compatibilité qui redirige vers la racine du portail en
+                      perdant le sous-chemin, donc le clic ne menait nulle part. */}
+                  <Link to={`orders/${o.id}`} className="font-data font-bold text-xs text-nova hover:text-nordfjord">{o.order_number}</Link>
                   <div className="font-data text-[10px] text-glacier">{(o.created_at || "").slice(0, 16).replace("T", " ")}</div>
                 </td>
                 <td className="px-6 py-3">

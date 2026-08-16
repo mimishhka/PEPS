@@ -1,4 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { Download, Search, X, FileText, CheckCircle2, Save, Truck, MessageSquarePlus, Mail, Undo2, Trash2, AlertTriangle, Send, Tag } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
@@ -30,6 +31,8 @@ export default function AdminOrders() {
   const [txBusy, setTxBusy] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const { id: routeOrderId } = useParams();
+  const navigate = useNavigate();
   const deferredQuery = useDeferredValue(query);
 
   // Étiquettes créées mais non transmises = 2 $/article de surcharge et perte
@@ -120,6 +123,33 @@ export default function AdminOrders() {
   useEffect(() => {
     setPage(1);
   }, [tab, query, filterPayment, filterFulfill, filterLate]);
+
+  // Lien profond /orders/:id (tableau de bord, courriels). La route existait
+  // déjà dans AdminLayout mais rien ne lisait le paramètre : on atterrissait
+  // sur la liste sans que la commande s'ouvre.
+  useEffect(() => {
+    if (!routeOrderId || selected?.id === routeOrderId) return undefined;
+    let alive = true;
+    api.get("/admin/orders")
+      .then((r) => {
+        if (!alive) return;
+        const found = (r.data || []).find((o) => o.id === routeOrderId);
+        if (found) setSelected(found);
+        else toast.error("Order not found");
+      })
+      .catch((e) => {
+        if (alive) toast.error(formatApiError(e.response?.data?.detail) || e.message);
+      });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeOrderId]);
+
+  // Refermer doit aussi retirer l'id de l'URL, sinon l'effet ci-dessus rouvre
+  // la commande au moindre re-rendu.
+  const closeDetail = () => {
+    setSelected(null);
+    if (routeOrderId) navigate("..", { relative: "path" });
+  };
 
   return (
     <div className="p-8" data-testid="admin-orders">
@@ -320,7 +350,7 @@ export default function AdminOrders() {
         </div>
       )}
 
-      {selected && <OrderDetail order={selected} onClose={() => setSelected(null)} onUpdate={() => {
+      {selected && <OrderDetail order={selected} onClose={closeDetail} onUpdate={() => {
         load();
         api.get(`/admin/orders`)
           .then((r) => setSelected(r.data.find((x) => x.id === selected.id) || null))
