@@ -744,6 +744,17 @@ class StockAdjustIn(BaseModel):
     delta: int  # positive to add, negative to subtract
 
 
+class StockRestockDeltaIn(BaseModel):
+    variant_id: Optional[str] = None   # None = ligne produit legacy sans variantes
+    quantity: int = Field(gt=0, le=100000)   # strictly positive → restock uniquement
+    note: Optional[str] = None
+
+
+class StockRestockIn(BaseModel):
+    deltas: List[StockRestockDeltaIn] = Field(min_length=1, max_length=200)
+    reason: Optional[str] = None   # optionnel : "réception fournisseur", "retour client", etc.
+
+
 class StockNotifyIn(BaseModel):
     email: EmailStr
     product_id: str
@@ -7559,6 +7570,93 @@ async def admin_adjust_stock(product_id: str, payload: StockAdjustIn, _admin: di
     return await db.products.find_one({"id": product_id}, {"_id": 0})
 
 
+async def admin_bulk_restock(product_id: str, payload: StockRestockIn,
+                              admin: dict = Depends(require_area("products", "manage"))):
+    """Restock atomique multi-variantes avec audit trail.
+
+    - Chaque delta > 0 est appliqué via `$inc` sur la variante ciblée (ou sur le
+      champ `stock` racine si `variant_id` est absent — produit legacy).
+    - Chaque ligne écrit un doc `stock_movements` (audit qui/quand/combien).
+    - Déclenche `_maybe_notify_restock` par variante si stock passé de 0 → >0.
+    - Réponse : produit à jour + résumé `{applied[], skipped[]}`.
+    """
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(404, "Product not found")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    admin_email = admin.get("email") or ""
+    variant_index = {v.get("id"): v for v in (product.get("variants") or []) if v.get("id")}
+
+    applied: list = []
+    skipped: list = []
+
+    for entry in payload.deltas:
+        vid = entry.variant_id
+        qty = int(entry.quantity)
+        if vid:
+            variant = variant_index.get(vid)
+            if not variant:
+                skipped.append({"variant_id": vid, "reason": "variant_not_found"})
+                continue
+            before = int(variant.get("stock") or 0)
+            res = await db.products.update_one(
+                {"id": product_id, "variants.id": vid},
+                {"$inc": {"variants.$.stock": qty}},
+            )
+            if not res.modified_count:
+                skipped.append({"variant_id": vid, "reason": "update_failed"})
+                continue
+            after = before + qty
+            variant_name = variant.get("name") or vid
+        else:
+            before = int(product.get("stock") or 0)
+            res = await db.products.update_one(
+                {"id": product_id}, {"$inc": {"stock": qty}}
+            )
+            if not res.modified_count:
+                skipped.append({"variant_id": None, "reason": "update_failed"})
+                continue
+            after = before + qty
+            variant_name = None
+
+        movement = {
+            "id": str(uuid.uuid4()),
+            "product_id": product_id,
+            "product_name": product.get("name_en") or product.get("name_fr") or product.get("slug"),
+            "variant_id": vid,
+            "variant_name": variant_name,
+            "delta": qty,
+            "stock_before": before,
+            "stock_after": after,
+            "reason": (entry.note or payload.reason or "").strip() or None,
+            "admin_email": admin_email,
+            "created_at": now_iso,
+        }
+        await db.stock_movements.insert_one(movement)
+        movement.pop("_id", None)
+        applied.append(movement)
+
+        # Restock notifications : si le stock passait de 0 à >0, avertir les abonnés
+        if before == 0 and after > 0:
+            asyncio.create_task(_maybe_notify_restock(product_id, vid))
+
+    fresh = await db.products.find_one({"id": product_id}, {"_id": 0})
+    return {"ok": True, "product": fresh, "applied": applied, "skipped": skipped}
+
+
+async def admin_product_stock_history(product_id: str, limit: int = 50,
+                                       _admin: dict = Depends(require_area("products", "view"))):
+    """Retourne l'historique des mouvements de stock d'un produit
+    (restocks admin), du plus récent au plus ancien."""
+    limit = max(1, min(int(limit or 50), 500))
+    cursor = db.stock_movements.find(
+        {"product_id": product_id}, {"_id": 0}
+    ).sort("created_at", -1).limit(limit)
+    items = await cursor.to_list(limit)
+    return {"product_id": product_id, "items": items, "count": len(items)}
+
+
 async def admin_list_stock_notifications(_admin: dict = Depends(require_area("products", "view"))):
     """Overview of pending back-in-stock subscriptions, grouped implicitly by product/variant."""
     pending = await db.stock_notifications.find({"notified": False}, {"_id": 0}).sort("created_at", -1).to_list(2000)
@@ -9136,6 +9234,10 @@ async def seed_admin_and_products():
         [("affiliate_id", 1), ("period", 1)], unique=True
     )
     await db.affiliate_payout_deferrals.create_index([("created_at", -1)])
+    # Stock movements — audit trail restocks admin (qui, quand, combien).
+    # Un mouvement par ligne (product_id, variant_id?, delta, admin_email, timestamp).
+    await db.stock_movements.create_index([("product_id", 1), ("created_at", -1)])
+    await db.stock_movements.create_index([("created_at", -1)])
     await db.products.create_index("deleted_at")
     await db.coupons.create_index("deleted_at")
     await db.shipping_zones.create_index("deleted_at")

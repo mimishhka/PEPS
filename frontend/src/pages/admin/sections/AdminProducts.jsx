@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, Plus, Edit, Trash2, Star, X, Save, AlertTriangle, CheckCircle2, GripVertical } from "lucide-react";
+import { Download, Plus, Edit, Trash2, Star, X, Save, AlertTriangle, CheckCircle2, GripVertical, PackagePlus, History } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError, resolveAssetUrl } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
@@ -10,6 +10,7 @@ export default function AdminProducts() {
   const confirm = useConfirm();
   const [products, setProducts] = useState([]);
   const [editing, setEditing] = useState(null);
+  const [restocking, setRestocking] = useState(null);
 
   const load = () => api.get("/products").then((r) => setProducts(r.data));
   useEffect(() => { load(); }, []);
@@ -112,6 +113,10 @@ export default function AdminProducts() {
                     {p.featured && <Star size={12} className="inline ml-2 fill-yellow-500 text-yellow-500" />}
                   </td>
                   <td className="px-6 py-3 text-right">
+                    <button onClick={() => setRestocking(p)} data-testid={`restock-${p.slug}`}
+                      className="border border-emerald-600/40 text-emerald-700 px-2 py-1 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 mr-1" title="Quick restock">
+                      <PackagePlus size={12} />
+                    </button>
                     <button onClick={() => setEditing({ ...p, variants: [...(p.variants || [])] })} data-testid={`edit-${p.slug}`} className="border border-ink/30 px-2 py-1 hover:bg-ink hover:text-white mr-1"><Edit size={12} /></button>
                     <button onClick={() => del(p.id)} data-testid={`delete-${p.slug}`} className="border border-ink/30 px-2 py-1 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={12} /></button>
                   </td>
@@ -123,6 +128,7 @@ export default function AdminProducts() {
       </div>
 
       {editing && <ProductEditor product={editing} setProduct={setEditing} onSave={save} onCancel={() => setEditing(null)} />}
+      {restocking && <RestockModal product={restocking} onClose={() => setRestocking(null)} onDone={() => { setRestocking(null); load(); }} />}
     </div>
   );
 }
@@ -491,5 +497,236 @@ function Toggle({ checked, onChange, label, test, compact = false }) {
       <input type="checkbox" checked={!!checked} onChange={(e) => onChange(e.target.checked)} data-testid={test} className="w-4 h-4 accent-ink" />
       {label}
     </label>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Quick Restock modal — atomic per-variant delta with audit history.
+// Backend: POST /admin/products/{id}/restock, GET /admin/products/{id}/stock-history
+// ---------------------------------------------------------------------------
+function RestockModal({ product, onClose, onDone }) {
+  const variants = product.variants && product.variants.length
+    ? product.variants
+    : [{ id: null, name: "Default", stock: product.stock || 0 }];
+  const [deltas, setDeltas] = useState(
+    Object.fromEntries(variants.map((v) => [v.id || "__legacy__", ""])),
+  );
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const setDelta = (key, val) => setDeltas({ ...deltas, [key]: val });
+  const setQuick = (key, val) => {
+    const current = parseInt(deltas[key] || "0", 10) || 0;
+    setDelta(key, String(current + val));
+  };
+
+  const totalDeltaSum = variants.reduce((sum, v) => {
+    const k = v.id || "__legacy__";
+    return sum + (parseInt(deltas[k] || "0", 10) || 0);
+  }, 0);
+
+  const loadHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const r = await api.get(`/admin/products/${product.id}/stock-history?limit=50`);
+      setHistory(r.data.items || []);
+      setShowHistory(true);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const submit = async () => {
+    const payload = {
+      reason: reason.trim() || null,
+      deltas: variants
+        .map((v) => {
+          const k = v.id || "__legacy__";
+          const q = parseInt(deltas[k] || "0", 10) || 0;
+          if (q <= 0) return null;
+          return { variant_id: v.id || null, quantity: q };
+        })
+        .filter(Boolean),
+    };
+    if (!payload.deltas.length) {
+      toast.error("Add a quantity to at least one variant");
+      return;
+    }
+    setSaving(true);
+    try {
+      const r = await api.post(`/admin/products/${product.id}/restock`, payload);
+      const applied = r.data.applied || [];
+      toast.success(`Restocked ${applied.length} variant(s) — ${totalDeltaSum} units added`);
+      onDone();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-ink/60 z-50 flex items-center justify-center p-4"
+         onClick={onClose} data-testid="restock-modal-overlay">
+      <div className="bg-white w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col"
+           onClick={(e) => e.stopPropagation()} data-testid="restock-modal">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-ink/10 flex items-center justify-between shrink-0">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-emerald-700">// QUICK RESTOCK</div>
+            <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight mt-1">{product.name_en}</h2>
+            <p className="font-mono text-[10px] text-foreground/50 mt-1">{product.slug}</p>
+          </div>
+          <button onClick={onClose} data-testid="restock-close" className="p-2 hover:bg-ink/5"><X size={18} /></button>
+        </div>
+
+        {/* Body */}
+        <div className="p-6 overflow-y-auto flex-1">
+          {!showHistory ? (
+            <>
+              <p className="text-xs text-foreground/60 mb-4 leading-relaxed">
+                Add the units received (never the new absolute total). All changes are atomic and audited.
+              </p>
+              <table className="w-full text-sm mb-4">
+                <thead>
+                  <tr className="text-left font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 border-b border-ink/10">
+                    <th className="py-2">Variant</th>
+                    <th className="py-2 text-right w-20">Current</th>
+                    <th className="py-2 text-center w-64">Add</th>
+                    <th className="py-2 text-right w-20">New total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {variants.map((v) => {
+                    const key = v.id || "__legacy__";
+                    const current = parseInt(v.stock || 0, 10);
+                    const delta = parseInt(deltas[key] || "0", 10) || 0;
+                    const next = current + delta;
+                    return (
+                      <tr key={key} className="border-b border-ink/5" data-testid={`restock-row-${key}`}>
+                        <td className="py-3 font-medium">{v.name || "(no name)"}</td>
+                        <td className="py-3 text-right font-mono text-xs text-foreground/60">{current}</td>
+                        <td className="py-3">
+                          <div className="flex items-center gap-1 justify-center">
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={deltas[key] || ""}
+                              onChange={(e) => setDelta(key, e.target.value)}
+                              placeholder="0"
+                              className="w-16 border border-ink/20 px-2 py-1 text-center text-sm focus:outline-none focus:border-emerald-600"
+                              data-testid={`restock-input-${key}`}
+                            />
+                            {[10, 25, 50, 100].map((n) => (
+                              <button
+                                key={n}
+                                type="button"
+                                onClick={() => setQuick(key, n)}
+                                data-testid={`restock-quick-${key}-${n}`}
+                                className="text-[10px] font-mono px-1.5 py-1 border border-ink/15 hover:bg-emerald-600 hover:text-white hover:border-emerald-600"
+                              >
+                                +{n}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="py-3 text-right font-mono text-sm font-bold" data-testid={`restock-new-total-${key}`}>
+                          {delta > 0 ? <span className="text-emerald-700">{next}</span> : <span className="text-foreground/40">{next}</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <label className="block">
+                <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60 mb-1">
+                  Reason (optional)
+                </div>
+                <input
+                  type="text"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="e.g. Supplier delivery #2026-08-15"
+                  className="w-full border border-ink/20 px-3 py-2 text-sm focus:outline-none focus:border-emerald-600"
+                  data-testid="restock-reason"
+                />
+              </label>
+
+              {totalDeltaSum > 0 && (
+                <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-mono">
+                  <CheckCircle2 size={12} className="inline mr-1" />
+                  {totalDeltaSum} units will be added across {Object.values(deltas).filter((d) => (parseInt(d, 10) || 0) > 0).length} variant(s).
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-foreground/60">// STOCK MOVEMENTS · Last 50</div>
+                <button onClick={() => setShowHistory(false)} data-testid="restock-back-to-form" className="text-xs font-mono uppercase tracking-[0.15em] hover:underline">
+                  ← Back to restock
+                </button>
+              </div>
+              {loadingHistory ? (
+                <p className="text-sm text-foreground/50">Loading…</p>
+              ) : history.length === 0 ? (
+                <p className="text-sm text-foreground/50 italic">No restock history yet for this product.</p>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 border-b border-ink/10">
+                      <th className="py-2">Date</th>
+                      <th className="py-2">Variant</th>
+                      <th className="py-2 text-right">Delta</th>
+                      <th className="py-2 text-right">Before → After</th>
+                      <th className="py-2">Admin</th>
+                      <th className="py-2">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((m) => (
+                      <tr key={m.id} className="border-b border-ink/5" data-testid={`history-row-${m.id}`}>
+                        <td className="py-2 font-mono">{new Date(m.created_at).toLocaleString()}</td>
+                        <td className="py-2">{m.variant_name || <span className="text-foreground/40">—</span>}</td>
+                        <td className="py-2 text-right font-mono font-bold text-emerald-700">+{m.delta}</td>
+                        <td className="py-2 text-right font-mono text-foreground/60">{m.stock_before} → {m.stock_after}</td>
+                        <td className="py-2 font-mono text-foreground/60">{m.admin_email || "—"}</td>
+                        <td className="py-2 text-foreground/70">{m.reason || <span className="text-foreground/40">—</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-ink/10 flex items-center justify-between shrink-0 bg-secondary/30">
+          <button onClick={loadHistory} disabled={loadingHistory || showHistory} data-testid="restock-view-history"
+            className="font-mono text-xs uppercase tracking-[0.2em] flex items-center gap-2 hover:underline disabled:opacity-40">
+            <History size={12} /> View history
+          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} data-testid="restock-cancel"
+              className="border border-ink/30 font-mono text-xs uppercase tracking-[0.25em] px-4 py-2 hover:bg-ink hover:text-white">
+              Cancel
+            </button>
+            <button onClick={submit} disabled={saving || totalDeltaSum <= 0 || showHistory} data-testid="restock-confirm"
+              className="bg-emerald-600 text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2 hover:bg-emerald-700 disabled:opacity-40 flex items-center gap-2">
+              <PackagePlus size={12} /> {saving ? "Saving…" : `Confirm +${totalDeltaSum}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

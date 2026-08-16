@@ -12,6 +12,18 @@ async def admin_adjust_stock(product_id: str, payload: s.StockAdjustIn, _admin: 
     return await s.admin_adjust_stock(product_id, payload, _admin)
 
 
+@router.post("/admin/products/{product_id}/restock")
+async def admin_bulk_restock(product_id: str, payload: s.StockRestockIn,
+                              admin: dict = Depends(s.require_area("products", "manage"))):
+    return await s.admin_bulk_restock(product_id, payload, admin)
+
+
+@router.get("/admin/products/{product_id}/stock-history")
+async def admin_product_stock_history(product_id: str, limit: int = 50,
+                                       _admin: dict = Depends(s.require_area("products", "view"))):
+    return await s.admin_product_stock_history(product_id, limit, _admin)
+
+
 @router.get("/admin/stock-notifications")
 async def admin_list_stock_notifications(_admin: dict = Depends(s.require_area("products", "view"))):
     return await s.admin_list_stock_notifications(_admin)
