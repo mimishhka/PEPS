@@ -1,0 +1,180 @@
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { RefreshCw, DollarSign } from "lucide-react";
+import api, { formatApiError } from "../../../lib/api";
+import { useLang } from "../../../contexts/LanguageContext";
+
+/**
+ * Item 5 — Refunds admin dashboard.
+ * List + approve/deny + mark processed (D2 manual crypto tx reference).
+ */
+export default function AdminRefunds() {
+  const { lang } = useLang();
+  const L = (fr, en) => (lang === "fr" ? fr : en);
+
+  const [items, setItems] = useState([]);
+  const [filter, setFilter] = useState("requested");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState("");
+  const [notes, setNotes] = useState({});
+  const [amounts, setAmounts] = useState({});
+  const [txRefs, setTxRefs] = useState({});
+  const [types, setTypes] = useState({});
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const q = filter === "all" ? "" : `?status=${filter}`;
+      const { data } = await api.get(`/admin/refunds${q}`);
+      setItems(data.items || []);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally { setLoading(false); }
+  }, [filter]);
+  useEffect(() => { load(); }, [load]);
+
+  const decide = async (id, action) => {
+    setBusy(id);
+    try {
+      const body = { action, admin_note: notes[id] || "" };
+      if (action === "approve") {
+        if (amounts[id]) body.approved_amount = parseFloat(amounts[id]);
+        if (types[id]) body.approved_type = types[id];
+      }
+      await api.post(`/admin/orders/${id}/refund-decision`, body);
+      toast.success(L("Décision enregistrée", "Decision saved"));
+      await load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally { setBusy(""); }
+  };
+
+  const markProcessed = async (id) => {
+    const tx = (txRefs[id] || "").trim();
+    if (!tx) { toast.error(L("Référence tx requise", "TX reference required")); return; }
+    setBusy(id);
+    try {
+      await api.post(`/admin/orders/${id}/refund-processed`, { tx_reference: tx, admin_note: notes[id] || "" });
+      toast.success(L("Remboursement enregistré comme envoyé", "Refund marked as sent"));
+      await load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally { setBusy(""); }
+  };
+
+  return (
+    <div className="p-6 space-y-6" data-testid="admin-refunds">
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold text-nordfjord flex items-center gap-2">
+            <DollarSign size={22} />{L("Remboursements", "Refunds")}
+          </h1>
+          <p className="text-sm text-compliance mt-1">
+            {L("Fenêtre 14 jours après livraison. Crypto envoyée manuellement, admin colle le tx hash.",
+               "14-day window after delivery. Crypto sent manually, admin pastes the tx hash.")}
+          </p>
+        </div>
+        <button onClick={load} className="btn-pill btn-ghost inline-flex items-center gap-2" data-testid="reload">
+          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          {L("Rafraîchir", "Refresh")}
+        </button>
+      </header>
+
+      <div className="flex items-center gap-3">
+        <label className="text-xs font-mono uppercase tracking-widest text-compliance">{L("Statut", "Status")}</label>
+        <select value={filter} onChange={(e) => setFilter(e.target.value)} data-testid="status-filter"
+          className="border rounded-lg px-3 py-1.5 text-sm bg-white">
+          <option value="requested">{L("À examiner", "Pending")}</option>
+          <option value="approved">{L("Approuvés (à envoyer)", "Approved (to send)")}</option>
+          <option value="processed">{L("Traités", "Processed")}</option>
+          <option value="denied">{L("Refusés", "Denied")}</option>
+          <option value="all">{L("Tous", "All")}</option>
+        </select>
+        <span className="text-xs text-compliance">{items.length} {L("entrée(s)", "entrie(s)")}</span>
+      </div>
+
+      {loading ? <div className="text-sm">{L("Chargement…", "Loading…")}</div> :
+       items.length === 0 ? (
+        <div className="rounded-xl bg-birch/40 p-8 text-center text-compliance text-sm">
+          {L("Aucune demande.", "No requests.")}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((r) => (
+            <div key={r.id} className="rounded-xl border border-nova/20 bg-white p-4" data-testid={`refund-${r.id}`}>
+              <div className="flex justify-between items-start flex-wrap gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-mono text-compliance">
+                    {r.refund_requested_at && new Date(r.refund_requested_at).toLocaleString(lang==="fr"?"fr-CA":"en-CA")}
+                  </div>
+                  <div className="font-semibold text-nordfjord mt-1">
+                    #{r.order_number} — {r.email} — {r.total?.toFixed(2)} CAD
+                  </div>
+                  <div className="text-xs text-compliance mt-1">
+                    {L("Type demandé", "Requested type")} : <b>{r.refund_type_requested}</b>
+                    {r.refund_amount_requested && ` — ${r.refund_amount_requested} CAD`}
+                  </div>
+                  <div className="text-sm text-nordfjord mt-2 whitespace-pre-line">
+                    <b>{L("Raison", "Reason")}: </b>{r.refund_reason}
+                  </div>
+                  {r.refund_admin_note && (
+                    <div className="text-xs text-compliance mt-1"><b>Note admin :</b> {r.refund_admin_note}</div>
+                  )}
+                  {r.refund_tx_reference && (
+                    <div className="text-xs text-emerald-800 mt-1 font-mono">TX : {r.refund_tx_reference}</div>
+                  )}
+                </div>
+                <div className="min-w-[280px] flex flex-col gap-2 items-end">
+                  <span className={`text-[10px] font-mono uppercase tracking-widest px-2 py-1 rounded ${
+                    r.refund_status === "processed" ? "bg-emerald-100 text-emerald-800" :
+                    r.refund_status === "approved" ? "bg-blue-100 text-blue-800" :
+                    r.refund_status === "denied" ? "bg-gray-200 text-gray-800" :
+                    "bg-amber-100 text-amber-800"}`}>{r.refund_status}</span>
+
+                  {r.refund_status === "requested" && (
+                    <>
+                      <input type="number" step="0.01" placeholder={`Montant (max ${r.total})`}
+                        value={amounts[r.id] || ""} onChange={(e) => setAmounts({...amounts, [r.id]: e.target.value})}
+                        data-testid={`amount-${r.id}`} className="border rounded px-2 py-1 text-xs w-full"/>
+                      <select value={types[r.id] || "full"} onChange={(e) => setTypes({...types, [r.id]: e.target.value})}
+                        data-testid={`type-${r.id}`} className="border rounded px-2 py-1 text-xs w-full">
+                        <option value="full">{L("Complet", "Full")}</option>
+                        <option value="partial">{L("Partiel", "Partial")}</option>
+                        <option value="store_credit">{L("Crédit boutique", "Store credit")}</option>
+                      </select>
+                      <input type="text" placeholder={L("Note admin", "Admin note")}
+                        value={notes[r.id] || ""} onChange={(e) => setNotes({...notes, [r.id]: e.target.value})}
+                        data-testid={`note-${r.id}`} className="border rounded px-2 py-1 text-xs w-full"/>
+                      <div className="flex gap-2">
+                        <button onClick={() => decide(r.id, "deny")} disabled={busy===r.id}
+                          data-testid={`deny-${r.id}`} className="btn-pill btn-ghost text-xs px-3 py-1">
+                          {L("Refuser", "Deny")}</button>
+                        <button onClick={() => decide(r.id, "approve")} disabled={busy===r.id}
+                          data-testid={`approve-${r.id}`} className="btn-pill btn-nova text-xs px-3 py-1">
+                          {L("Approuver", "Approve")}</button>
+                      </div>
+                    </>
+                  )}
+
+                  {r.refund_status === "approved" && (
+                    <>
+                      <div className="text-xs text-blue-800">
+                        <b>{L("Approuvé", "Approved")} : {r.refund_approved_amount} CAD ({r.refund_approved_type})</b>
+                      </div>
+                      <input type="text" placeholder={L("TX hash / référence", "TX hash / reference")}
+                        value={txRefs[r.id] || ""} onChange={(e) => setTxRefs({...txRefs, [r.id]: e.target.value})}
+                        data-testid={`tx-${r.id}`} className="border rounded px-2 py-1 text-xs w-full font-mono"/>
+                      <button onClick={() => markProcessed(r.id)} disabled={busy===r.id}
+                        data-testid={`processed-${r.id}`} className="btn-pill btn-nova text-xs px-3 py-1">
+                        {L("Marquer envoyé", "Mark sent")}</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -28,3 +28,7 @@ async def order_tracking(order_id: str, request: Request):
 @router.get("/orders/{order_id}/invoice.pdf")
 async def order_invoice_pdf(order_id: str, request: Request):
     return await s.order_invoice_pdf(order_id, request)
+
+@router.post("/orders/{order_id}/refund-request")
+async def order_request_refund(order_id: str, payload: s.RefundRequestIn, request: Request):
+    return await s.order_request_refund(order_id, payload, request)

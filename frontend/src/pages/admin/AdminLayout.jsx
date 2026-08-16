@@ -33,6 +33,7 @@ import AdminAffiliates from "./sections/AdminAffiliates";
 import AdminPayouts from "./sections/AdminPayouts";
 import AdminReconciliation from "./sections/AdminReconciliation";
 import AdminCheckoutFailures from "./sections/AdminCheckoutFailures";
+import AdminRefunds from "./sections/AdminRefunds";
 
 function hasAccess(user, area) {
   if (!user) return false;
@@ -70,6 +71,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
           { to: `${basePath}/orders`, label: L("Commandes", "Orders"), icon: ShoppingCart, area: "orders" },
           { to: `${basePath}/reconciliation`, label: L("Réconciliation", "Reconciliation"), icon: Link2, area: "orders" },
           { to: `${basePath}/reconciliation/checkout`, label: L("↳ Checkout failures", "↳ Checkout failures"), icon: Link2, area: "orders" },
+          { to: `${basePath}/refunds`, label: L("Remboursements", "Refunds"), icon: Link2, area: "orders" },
           { to: `${basePath}/customers`, label: L("Clients", "Customers"), icon: Users, area: "customers" },
           { to: `${basePath}/coupons`, label: L("Coupons", "Coupons"), icon: Ticket, area: "coupons" },
         ],
@@ -217,6 +219,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
             <Route path="orders/:id" element={hasAccess(user, "orders") ? <AdminOrders /> : <Navigate to={landingPath} replace />} />
             <Route path="reconciliation" element={hasAccess(user, "orders") ? <AdminReconciliation /> : <Navigate to={landingPath} replace />} />
             <Route path="reconciliation/checkout" element={hasAccess(user, "orders") ? <AdminCheckoutFailures /> : <Navigate to={landingPath} replace />} />
+            <Route path="refunds" element={hasAccess(user, "orders") ? <AdminRefunds /> : <Navigate to={landingPath} replace />} />
             <Route path="products" element={hasAccess(user, "products") ? <AdminProducts /> : <Navigate to={landingPath} replace />} />
             <Route path="coupons" element={hasAccess(user, "coupons") ? <AdminCoupons /> : <Navigate to={landingPath} replace />} />
             <Route path="customers" element={hasAccess(user, "customers") ? <AdminCustomers /> : <Navigate to={landingPath} replace />} />

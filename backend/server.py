@@ -5123,6 +5123,170 @@ async def order_tracking(order_id: str, request: Request):
     return {"tracked": False, "reason": "unavailable_or_not_configured", "pin": pin}
 
 
+# --- Refund workflow (Item 5 : A2+B2+C3+D2+E1) ---------------------------
+class RefundRequestIn(BaseModel):
+    reason: str = Field(min_length=10, max_length=1000)
+    amount_requested: Optional[float] = None
+    refund_type: str = Field(default="full", pattern="^(full|partial|store_credit)$")
+
+
+class RefundDecisionIn(BaseModel):
+    action: str = Field(pattern="^(approve|deny)$")
+    approved_amount: Optional[float] = None
+    approved_type: Optional[str] = Field(default=None, pattern="^(full|partial|store_credit)$")
+    admin_note: str = ""
+
+
+class RefundProcessedIn(BaseModel):
+    tx_reference: str = Field(min_length=3)
+    admin_note: str = ""
+
+
+def _refund_eligibility_reason(order: dict) -> Optional[str]:
+    if not order:
+        return "Commande introuvable"
+    if order.get("payment_status") != "paid":
+        return "La commande n'est pas payée"
+    if (order.get("fulfillment_status") or "") not in ("shipped", "delivered"):
+        return "Le remboursement est possible après expédition uniquement"
+    if order.get("refund_status") in ("requested", "approved", "processed"):
+        return f"Une demande est déjà en cours (statut : {order.get('refund_status')})"
+    now = datetime.now(timezone.utc)
+    delivered_at = (order.get("shipping_info") or {}).get("delivered_at")
+    if delivered_at:
+        try:
+            d = datetime.fromisoformat(delivered_at.replace("Z", "+00:00"))
+            if (now - d).days > 14:
+                return "Fenêtre de 14 jours après livraison dépassée"
+        except ValueError:
+            pass
+    else:
+        paid_at = order.get("paid_at")
+        if paid_at:
+            try:
+                p = datetime.fromisoformat(paid_at.replace("Z", "+00:00"))
+                if (now - p).days > 30:
+                    return "Fenêtre de 30 jours après paiement dépassée"
+            except ValueError:
+                pass
+    return None
+
+
+async def order_request_refund(order_id: str, payload: RefundRequestIn, request: Request):
+    await _rate_limit("refund_request", _client_ip(request), 5, 3600,
+                       "Trop de demandes. Réessayez plus tard.")
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    user = await _resolve_user(request)
+    is_owner = user and (order.get("user_id") == user.get("id") or user.get("role") == "admin")
+    if not is_owner:
+        if order.get("user_id") or not _guest_order_accessible(order, request):
+            raise HTTPException(403, "Not authorized")
+    ineligible = _refund_eligibility_reason(order)
+    if ineligible:
+        raise HTTPException(400, ineligible)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "refund_status": "requested", "refund_requested_at": now_iso,
+        "refund_reason": payload.reason.strip(),
+        "refund_amount_requested": payload.amount_requested,
+        "refund_type_requested": payload.refund_type,
+    }})
+    try:
+        await _send_email(
+            os.environ.get("ADMIN_NOTIFICATION_EMAIL", ADMIN_EMAIL),
+            f"[FIRONOVA] Demande de remboursement — {order.get('order_number')}",
+            f"<p>Commande <b>{order.get('order_number')}</b>. Raison : {payload.reason[:500]}</p>"
+            f"<p>Voir /ops-portal-fn7k2q/refunds.</p>",
+        )
+    except Exception:
+        pass
+    return {"ok": True, "refund_status": "requested"}
+
+
+async def admin_refund_decision(order_id: str, payload: RefundDecisionIn, admin: dict):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if order.get("refund_status") != "requested":
+        raise HTTPException(400, f"Cannot decide — status is {order.get('refund_status')}")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if payload.action == "deny":
+        await db.orders.update_one({"id": order_id}, {"$set": {
+            "refund_status": "denied", "refund_decided_at": now_iso,
+            "refund_decided_by": admin.get("email"),
+            "refund_admin_note": payload.admin_note or "",
+        }})
+        try:
+            await _send_email(order.get("email", ""),
+                "Votre demande de remboursement FIRONOVA",
+                f"<p>Après examen, la demande sur <b>{order.get('order_number')}</b> n'a pas été approuvée.</p>"
+                f"<p>Motif : {payload.admin_note or 'Non spécifié'}</p>")
+        except Exception:
+            pass
+        return {"ok": True, "refund_status": "denied"}
+    total = float(order.get("total") or 0)
+    amount = payload.approved_amount if payload.approved_amount is not None else total
+    if amount <= 0 or amount > total:
+        raise HTTPException(400, f"Montant invalide (max {total} CAD)")
+    approved_type = payload.approved_type or ("full" if amount == total else "partial")
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "refund_status": "approved", "refund_decided_at": now_iso,
+        "refund_decided_by": admin.get("email"),
+        "refund_approved_amount": amount, "refund_approved_type": approved_type,
+        "refund_admin_note": payload.admin_note or "",
+    }})
+    try:
+        await _send_email(order.get("email", ""),
+            "Votre remboursement FIRONOVA est approuvé",
+            f"<p>Approuvé : <b>{amount:.2f} CAD</b> ({approved_type}).</p>"
+            f"<p>Vous recevrez un message dès l'envoi.</p>")
+    except Exception:
+        pass
+    return {"ok": True, "refund_status": "approved", "approved_amount": amount, "approved_type": approved_type}
+
+
+async def admin_refund_processed(order_id: str, payload: RefundProcessedIn, admin: dict):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if order.get("refund_status") != "approved":
+        raise HTTPException(400, f"Cannot mark processed — status is {order.get('refund_status')}")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "refund_status": "processed", "refund_processed_at": now_iso,
+        "refund_tx_reference": payload.tx_reference.strip(),
+        "refund_processed_by": admin.get("email"),
+        "refund_admin_note_processed": payload.admin_note or "",
+    }})
+    try:
+        await _send_email(order.get("email", ""),
+            "Remboursement FIRONOVA effectué",
+            f"<p>Remboursement de <b>{order.get('order_number')}</b> envoyé.</p>"
+            f"<p>Référence : <code>{payload.tx_reference}</code> — {order.get('refund_approved_amount','?')} CAD</p>")
+    except Exception:
+        pass
+    return {"ok": True, "refund_status": "processed"}
+
+
+async def admin_refunds_list(status: Optional[str] = None, limit: int = 50):
+    q: dict = {"refund_status": {"$exists": True, "$ne": None}}
+    if status:
+        q["refund_status"] = status
+    limit = max(1, min(200, int(limit)))
+    cursor = db.orders.find(q, {
+        "_id": 0, "id": 1, "order_number": 1, "email": 1, "total": 1,
+        "fulfillment_status": 1, "paid_at": 1,
+        "refund_status": 1, "refund_requested_at": 1, "refund_reason": 1,
+        "refund_amount_requested": 1, "refund_type_requested": 1,
+        "refund_approved_amount": 1, "refund_approved_type": 1,
+        "refund_admin_note": 1, "refund_tx_reference": 1, "refund_processed_at": 1,
+    }).sort("refund_requested_at", -1).limit(limit)
+    return {"items": [d async for d in cursor], "total": await db.orders.count_documents(q)}
+
+
+
 async def admin_sync_delivery_status(order_id: str,
                                      _admin: dict = Depends(require_area("orders", "manage"))):
     """Vérifie le repérage CP et passe la commande à 'delivered' si la livraison

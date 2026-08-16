@@ -67,3 +67,20 @@ async def admin_confirm_payment(order_id: str, _admin: dict = Depends(s.require_
 @router.post("/admin/orders/{order_id}/reopen")
 async def admin_reopen_order(order_id: str, payload: s.ReopenOrderIn, admin: dict = Depends(s.require_area("orders", "manage"))):
     return await s.admin_reopen_order(order_id, payload, admin)
+
+@router.get("/admin/refunds")
+async def admin_refunds_list(status: Optional[str] = None, limit: int = 50,
+                             admin: dict = Depends(s.require_area("orders", "view"))):
+    return await s.admin_refunds_list(status, limit)
+
+
+@router.post("/admin/orders/{order_id}/refund-decision")
+async def admin_refund_decision(order_id: str, payload: s.RefundDecisionIn,
+                                admin: dict = Depends(s.require_area("orders", "manage"))):
+    return await s.admin_refund_decision(order_id, payload, admin)
+
+
+@router.post("/admin/orders/{order_id}/refund-processed")
+async def admin_refund_processed(order_id: str, payload: s.RefundProcessedIn,
+                                 admin: dict = Depends(s.require_area("orders", "manage"))):
+    return await s.admin_refund_processed(order_id, payload, admin)
