@@ -69,11 +69,20 @@ export default function AdminOrders() {
       ...(filterFulfill === "all" ? {} : { fulfillment_status: filterFulfill }),
       ...(filterLate === "late_only" ? { late_only: true } : {}),
     };
+    // Un .catch() sur chaque appel : sans lui, une réponse en erreur devient
+    // une unhandled rejection, que l'overlay CRA affiche en « [object Object] »
+    // et que le build de prod avale en silence.
     api.get("/admin/orders/page", { params }).then((r) => {
       setOrders(r.data.items || []);
       setTotal(r.data.total || 0);
+    }).catch((e) => {
+      setOrders([]);
+      setTotal(0);
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
     });
-    api.get("/admin/orders/counts").then((r) => setCounts(r.data));
+    api.get("/admin/orders/counts")
+      .then((r) => setCounts(r.data))
+      .catch(() => setCounts({}));
   }, [deferredQuery, filterFulfill, filterLate, filterPayment, page, tab]);
   useEffect(() => { load(); }, [load]);
 
@@ -100,12 +109,20 @@ export default function AdminOrders() {
               <div className="text-sm text-red-800 mt-1">
                 Transmit the manifest before end of day. Canada Post bills untransmitted shipments
                 with a <strong>$2 surcharge per item</strong> and removes the automation discount.
+                {" "}The manifest does not exist until you transmit — transmitting is what creates it.
               </div>
+              {manifest.orphan_count > 0 && (
+                <div className="text-sm text-red-800 mt-2" data-testid="manifest-orphans">
+                  <strong>{manifest.orphan_count} of these cannot be transmitted</strong> — they have
+                  a label but no Canada Post group, so "Transmit manifest" will not clear them. Void
+                  and recreate those labels: {manifest.orphans?.join(", ")}
+                </div>
+              )}
             </div>
           </div>
           <button
             onClick={transmitManifest}
-            disabled={txBusy}
+            disabled={txBusy || !manifest.transmittable_count}
             data-testid="transmit-manifest-btn"
             className="bg-red-600 text-white font-mono text-xs uppercase tracking-[0.2em] px-5 py-2.5 flex items-center gap-2 disabled:opacity-50 shrink-0"
           >
@@ -264,7 +281,12 @@ export default function AdminOrders() {
         </div>
       )}
 
-      {selected && <OrderDetail order={selected} onClose={() => setSelected(null)} onUpdate={() => { load(); api.get(`/admin/orders`).then(r => setSelected(r.data.find(x => x.id === selected.id) || null)); }} />}
+      {selected && <OrderDetail order={selected} onClose={() => setSelected(null)} onUpdate={() => {
+        load();
+        api.get(`/admin/orders`)
+          .then((r) => setSelected(r.data.find((x) => x.id === selected.id) || null))
+          .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message));
+      }} />}
     </div>
   );
 }

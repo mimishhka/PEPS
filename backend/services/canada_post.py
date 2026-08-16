@@ -316,6 +316,73 @@ def is_canada_post_configured() -> bool:
     return bool(s.CANADA_POST_API_KEY and s.CANADA_POST_CUSTOMER_NUMBER and s.CANADA_POST_ORIGIN_POSTAL_CODE)
 
 
+# Source de vérité UNIQUE pour « étiquettes non transmises ». La bannière de la
+# page Commandes et la barre rouge du layout lisaient deux requêtes différentes
+# et pouvaient afficher deux nombres contradictoires.
+UNTRANSMITTED_MATCH = {
+    "$or": [
+        {"shipping_info.label_url": {"$nin": [None, ""]}},
+        {"shipping_info.cp_group_id": {"$nin": [None, ""]}},
+    ],
+    "shipping_info.cp_transmitted": {"$ne": True},
+}
+
+
+async def pending_manifest_state() -> dict:
+    """Étiquettes créées et pas encore transmises à Postes Canada.
+
+    Séparé en deux seaux, parce qu'ils n'appellent pas la même action :
+      - `groups` : possèdent un cp_group_id, donc transmissibles — c'est ce que
+        le bouton « Transmit manifest » traite.
+      - `orphans` : étiquette sans cp_group_id. La transmission ne les voit pas
+        (elle filtre sur le groupe), donc les compter sans le dire laissait la
+        bannière allumée en permanence, sans aucun bouton capable de l'éteindre.
+        Il faut les annuler (void) puis recréer l'étiquette.
+
+    Le comptage reste un $group côté Mongo : ramener un document par commande
+    pour les compter en Python ne tient pas à 2 000+ étiquettes.
+    """
+    rows = await s._cursor_all(s.db.orders.aggregate([
+        {"$match": UNTRANSMITTED_MATCH},
+        {"$group": {"_id": {"$ifNull": ["$shipping_info.cp_group_id", ""]},
+                    "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}},
+    ]))
+
+    groups: list[dict] = []
+    orphan_count = 0
+    for row in rows:
+        count = int(row.get("count", 0))
+        group_id = (row.get("_id") or "").strip()
+        if group_id:
+            groups.append({"group_id": group_id, "count": count})
+        else:
+            orphan_count += count
+
+    # Échantillon borné, seulement pour nommer les commandes à corriger.
+    orphans: list[str] = []
+    if orphan_count:
+        cursor = s.db.orders.find(
+            {"$and": [UNTRANSMITTED_MATCH, {"$or": [
+                {"shipping_info.cp_group_id": {"$in": [None, ""]}},
+                {"shipping_info.cp_group_id": {"$exists": False}},
+            ]}]},
+            {"_id": 0, "order_number": 1},
+        ).limit(50)
+        orphans = [doc.get("order_number") or "?" async for doc in cursor]
+
+    transmittable = sum(g["count"] for g in groups)
+    return {
+        "configured": is_canada_post_configured(),
+        # Total affiché : tout ce qui expose au surcoût de 2 $/article.
+        "pending_count": transmittable + orphan_count,
+        "transmittable_count": transmittable,
+        "groups": groups,
+        "orphan_count": orphan_count,
+        "orphans": sorted(orphans),
+    }
+
+
 def _cp_auth_tuple() -> tuple[str, str]:
     """Supporte "user:password" (recommandé CP) et token seul (legacy)."""
     raw = (s.CANADA_POST_API_KEY or "").strip()

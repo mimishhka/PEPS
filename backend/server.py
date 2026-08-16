@@ -2624,6 +2624,7 @@ try:
         _canada_post_get_artifact, _canada_post_transmit, _canada_post_void,
         _auto_create_dispatch_label, _auto_label_paid_orders_watchdog,
         _auto_sync_delivered_orders_once, _auto_sync_delivered_orders_watchdog,
+        UNTRANSMITTED_MATCH, pending_manifest_state,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
     from backend.services.canada_post import (  # noqa: F401
@@ -2637,6 +2638,7 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
         _canada_post_get_artifact, _canada_post_transmit, _canada_post_void,
         _auto_create_dispatch_label, _auto_label_paid_orders_watchdog,
         _auto_sync_delivered_orders_once, _auto_sync_delivered_orders_watchdog,
+        UNTRANSMITTED_MATCH, pending_manifest_state,
     )
 
 
@@ -4991,22 +4993,7 @@ async def admin_void_label(order_id: str, _admin: dict = Depends(require_area("o
 
 async def admin_pending_manifest(_admin: dict = Depends(require_area("orders", "view"))):
     """Alimente la bannière rouge de l'admin : combien d'étiquettes non transmises."""
-    groups = await _cursor_all(db.orders.aggregate([
-        {"$match": {
-            "shipping_info.cp_group_id": {"$nin": [None, ""]},
-            "shipping_info.cp_transmitted": False,
-        }},
-        {"$group": {"_id": "$shipping_info.cp_group_id", "count": {"$sum": 1}}},
-        {"$sort": {"_id": 1}},
-    ]))
-    return {
-        "configured": is_canada_post_configured(),
-        "pending_count": sum(int(group.get("count", 0)) for group in groups),
-        "groups": [
-            {"group_id": group.get("_id"), "count": int(group.get("count", 0))}
-            for group in groups
-        ],
-    }
+    return await pending_manifest_state()
 
 
 async def admin_shipping_config_status(_admin: dict = Depends(require_area("shipping", "view"))):
@@ -5124,9 +5111,11 @@ async def admin_transmit_manifest(_admin: dict = Depends(require_area("orders", 
     if not is_canada_post_configured():
         raise HTTPException(503, "Canada Post is not configured")
     group_cursor = db.orders.aggregate([
+        # $ne: True et non == False : une étiquette dont le champ est absent
+        # est tout aussi non transmise, et restait invisible ici.
         {"$match": {
             "shipping_info.cp_group_id": {"$nin": [None, ""]},
-            "shipping_info.cp_transmitted": False,
+            "shipping_info.cp_transmitted": {"$ne": True},
         }},
         {"$group": {"_id": "$shipping_info.cp_group_id"}},
         {"$sort": {"_id": 1}},
@@ -5149,7 +5138,8 @@ async def admin_transmit_manifest(_admin: dict = Depends(require_area("orders", 
     marked = 0
     if done_groups:
         res = await db.orders.update_many(
-            {"shipping_info.cp_group_id": {"$in": done_groups}, "shipping_info.cp_transmitted": False},
+            {"shipping_info.cp_group_id": {"$in": done_groups},
+             "shipping_info.cp_transmitted": {"$ne": True}},
             {"$set": {"shipping_info.cp_transmitted": True,
                       "shipping_info.cp_transmitted_at": datetime.now(timezone.utc).isoformat()}},
         )
@@ -6164,10 +6154,9 @@ async def admin_ops_signals(_admin: dict = Depends(require_area("orders", "view"
             {"shipping_info.label_printed_at": {"$exists": False}},
         ],
     })
-    pending_manifest = await db.orders.count_documents({
-        "shipping_info.label_url": {"$nin": [None, ""]},
-        "shipping_info.cp_transmitted": {"$ne": True},
-    })
+    # Même source que la bannière de la page Commandes, sinon les deux
+    # affichent des nombres différents pour la même chose.
+    pending_manifest = await db.orders.count_documents(UNTRANSMITTED_MATCH)
     # Retards : lots antérieurs encore non expédiés.
     overdue = await db.orders.count_documents({
         "payment_status": "paid",

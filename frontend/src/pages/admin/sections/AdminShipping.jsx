@@ -10,7 +10,9 @@ export default function AdminShipping() {
   const [editingZone, setEditingZone] = useState(null);
   const [editingMethod, setEditingMethod] = useState(null);
 
-  const load = () => api.get("/admin/shipping/zones").then((r) => setZones(r.data));
+  const load = () => api.get("/admin/shipping/zones")
+    .then((r) => setZones(r.data))
+    .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message));
   useEffect(() => { load(); }, []);
 
   const blankZone = { name: "", countries: ["CA"], provinces: [] };

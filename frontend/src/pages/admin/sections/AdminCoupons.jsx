@@ -13,7 +13,9 @@ export default function AdminCoupons() {
   const [coupons, setCoupons] = useState([]);
   const [editing, setEditing] = useState(null);
 
-  const load = () => api.get("/admin/coupons").then((r) => setCoupons(r.data));
+  const load = () => api.get("/admin/coupons")
+    .then((r) => setCoupons(r.data))
+    .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message));
   useEffect(() => { load(); }, []);
 
   const blank = {

@@ -13,7 +13,9 @@ export default function AdminProducts() {
   const [restocking, setRestocking] = useState(null);
   const [csvOpen, setCsvOpen] = useState(false);
 
-  const load = () => api.get("/products").then((r) => setProducts(r.data));
+  const load = () => api.get("/products")
+    .then((r) => setProducts(r.data))
+    .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message));
   useEffect(() => { load(); }, []);
 
   const blank = {
