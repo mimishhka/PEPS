@@ -320,10 +320,7 @@ def is_canada_post_configured() -> bool:
 # page Commandes et la barre rouge du layout lisaient deux requêtes différentes
 # et pouvaient afficher deux nombres contradictoires.
 UNTRANSMITTED_MATCH = {
-    "$or": [
-        {"shipping_info.label_url": {"$nin": [None, ""]}},
-        {"shipping_info.cp_group_id": {"$nin": [None, ""]}},
-    ],
+    "shipping_info.label_url": {"$nin": [None, ""]},
     "shipping_info.cp_transmitted": {"$ne": True},
 }
 

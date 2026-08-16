@@ -99,6 +99,13 @@ def test_nothing_pending_is_a_no_op(server_module, canada_post, monkeypatch):
                       "failed": [], "no_shipment_id": []}
 
 
+def test_untransmitted_match_requires_an_actual_label(canada_post):
+    assert canada_post.UNTRANSMITTED_MATCH == {
+        "shipping_info.label_url": {"$nin": [None, ""]},
+        "shipping_info.cp_transmitted": {"$ne": True},
+    }
+
+
 async def _true():
     return True
 
