@@ -95,3 +95,45 @@ async def admin_transmit_manifest(_admin: dict = Depends(s.require_area("orders"
 @router.get("/admin/ops/signals")
 async def admin_ops_signals(_admin: dict = Depends(s.require_area("orders", "view"))):
     return await s.admin_ops_signals(_admin)
+
+
+# --- Item 1.2 B4 SMART : Reconciliation checkout failures ---------------
+
+@router.get("/admin/reconciliation/checkout-failures")
+async def admin_checkout_failures_list(
+    status: Optional[str] = None,
+    limit: int = 50,
+    _admin: dict = Depends(s.require_area("orders", "view")),
+):
+    return await s.admin_checkout_failures_list(status, limit)
+
+
+@router.post("/admin/reconciliation/checkout-failures/{failure_id}/retry")
+async def admin_checkout_failures_retry(
+    failure_id: str,
+    _admin: dict = Depends(s.require_area("orders", "manage")),
+):
+    return await s.admin_checkout_failures_retry(failure_id, _admin)
+
+
+@router.post("/admin/reconciliation/checkout-failures/{failure_id}/resolve")
+async def admin_checkout_failures_resolve(
+    failure_id: str,
+    payload: s.CheckoutFailureResolveIn,
+    _admin: dict = Depends(s.require_area("orders", "manage")),
+):
+    return await s.admin_checkout_failures_resolve(failure_id, payload, _admin)
+
+
+@router.get("/admin/reconciliation/checkout-breaker")
+async def admin_checkout_breaker_state(
+    _admin: dict = Depends(s.require_area("orders", "view")),
+):
+    return await s.admin_checkout_breaker_state()
+
+
+@router.post("/admin/reconciliation/checkout-breaker/reset")
+async def admin_checkout_breaker_reset(
+    _admin: dict = Depends(s.require_area("orders", "manage")),
+):
+    return await s.admin_checkout_breaker_reset(_admin)

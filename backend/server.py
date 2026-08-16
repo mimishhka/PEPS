@@ -4424,7 +4424,260 @@ async def _validate_shipping_address_google(addr: dict) -> dict:
     return out
 
 
+# --- Checkout compensation registry (Item 1.2 B4 SMART) -------------------
+# Trois pièces d'infra qui garantissent que si un checkout partiel plante :
+#   1. La CompensationContext exécute des rollbacks en ordre inverse
+#   2. Chaque échec de compensation est journalisé dans checkout_compensation_failures
+#      → admin peut retry manuellement via l'UI Reconciliation
+#   3. Un circuit breaker bloque temporairement /checkout si >5 échecs/heure
+
+_checkout_breaker: dict = {"failures": [], "opened_at": None}
+_CHECKOUT_BREAKER_WINDOW_SEC = 3600  # 1h
+_CHECKOUT_BREAKER_THRESHOLD = 5
+_CHECKOUT_BREAKER_OPEN_SEC = 1800  # 30min
+
+
+def _checkout_breaker_check() -> None:
+    """Raise 503 si le breaker est ouvert. Purge la fenêtre glissante."""
+    now = time.time()
+    if _checkout_breaker["opened_at"]:
+        if now - _checkout_breaker["opened_at"] < _CHECKOUT_BREAKER_OPEN_SEC:
+            raise HTTPException(
+                503,
+                "Le service commande est temporairement indisponible. "
+                "Nos équipes ont été alertées, réessayez dans quelques minutes.",
+            )
+        # Fenêtre de refroidissement passée : on referme le breaker
+        _checkout_breaker["opened_at"] = None
+        _checkout_breaker["failures"].clear()
+
+
+def _checkout_breaker_record_failure() -> None:
+    """Enregistre un échec de compensation. Ouvre le breaker si seuil atteint."""
+    now = time.time()
+    _checkout_breaker["failures"] = [
+        t for t in _checkout_breaker["failures"] if now - t < _CHECKOUT_BREAKER_WINDOW_SEC
+    ]
+    _checkout_breaker["failures"].append(now)
+    if len(_checkout_breaker["failures"]) >= _CHECKOUT_BREAKER_THRESHOLD:
+        _checkout_breaker["opened_at"] = now
+        logging.error(
+            "[checkout-breaker] OPENED — %d compensation failures in the last hour. "
+            "Blocking /checkout for %ds.",
+            len(_checkout_breaker["failures"]), _CHECKOUT_BREAKER_OPEN_SEC,
+        )
+
+
+class CompensationContext:
+    """Context-manager qui exécute une série d'écritures avec rollback.
+
+    Chaque étape enregistre son compensator :
+        async with CompensationContext(label="checkout") as ctx:
+            oid = await db.orders.insert_one(order)
+            ctx.register("delete_order", db.orders.delete_one, {"id": order["id"]})
+            await db.products.update_one(...)
+            ctx.register("restore_stock", db.products.update_one, ...)
+
+    Si le body raise, les compensations sont rejouées en ordre inverse.
+    Si une compensation elle-même échoue, on écrit dans
+    checkout_compensation_failures (audit + queue admin retry).
+
+    Utilise les transactions natives Mongo si dispo (replica set) — dans
+    ce cas les compensations ne sont jamais exécutées (rollback DB fait
+    par Mongo). Sinon fallback saga applicatif.
+    """
+
+    def __init__(self, label: str, order_id: Optional[str] = None):
+        self.label = label
+        self.order_id = order_id
+        self._compensations: list = []
+        self._writes: list = []
+        self._session = None
+        self._use_transaction = False
+
+    async def __aenter__(self):
+        # Détection replica set — tentative de transaction native
+        try:
+            self._session = await client.start_session()
+            await self._session.__aenter__()
+            self._session.start_transaction()
+            self._use_transaction = True
+            logging.debug("[compensation] native Mongo transaction for %s", self.label)
+        except Exception as e:
+            # Standalone Mongo : pas de transactions. Fallback saga.
+            if self._session is not None:
+                try:
+                    await self._session.__aexit__(None, None, None)
+                except Exception:
+                    pass
+                self._session = None
+            self._use_transaction = False
+            logging.debug(
+                "[compensation] saga fallback for %s (no transactions: %s)",
+                self.label, type(e).__name__,
+            )
+        return self
+
+    def register(self, name: str, coro_func, *args, **kwargs):
+        """Enregistre une compensation. `coro_func` doit être un callable async."""
+        self._compensations.append({"name": name, "func": coro_func, "args": args, "kwargs": kwargs})
+        self._writes.append(name)
+
+    async def __aexit__(self, exc_type, exc, tb):
+        if self._use_transaction and self._session:
+            try:
+                if exc_type is None:
+                    await self._session.commit_transaction()
+                else:
+                    await self._session.abort_transaction()
+            finally:
+                try:
+                    await self._session.__aexit__(exc_type, exc, tb)
+                except Exception:
+                    pass
+            return False  # ne pas avaler l'exception
+
+        # Saga path
+        if exc_type is None:
+            return False
+        # Body a raise → rejouer les compensations en ordre inverse
+        failed_compensations = []
+        for step in reversed(self._compensations):
+            try:
+                await step["func"](*step["args"], **step["kwargs"])
+            except Exception as compensation_err:
+                failed_compensations.append({
+                    "stage": step["name"],
+                    "error": f"{type(compensation_err).__name__}: {compensation_err}",
+                })
+                logging.error(
+                    "[compensation] step %s FAILED during %s rollback: %s",
+                    step["name"], self.label, compensation_err,
+                )
+        if failed_compensations:
+            try:
+                await db.checkout_compensation_failures.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "order_id": self.order_id,
+                    "label": self.label,
+                    "original_error": f"{type(exc).__name__}: {exc}",
+                    "collections_written": self._writes,
+                    "failed_compensations": failed_compensations,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "status": "pending_manual_review",
+                    "assigned_admin": None,
+                    "resolved_at": None,
+                    "resolution_note": None,
+                })
+                _checkout_breaker_record_failure()
+                # Fire-and-forget admin alert
+                try:
+                    admin_to = os.environ.get("ADMIN_NOTIFICATION_EMAIL", ADMIN_EMAIL)
+                    subject = f"[FIRONOVA] Checkout compensation failed — {self.order_id or 'unknown'}"
+                    html = (
+                        f"<p>Une compensation checkout a échoué et doit être réconciliée manuellement.</p>"
+                        f"<ul><li>Label : {self.label}</li>"
+                        f"<li>Order id : {self.order_id or '-'}</li>"
+                        f"<li>Étapes en échec : {len(failed_compensations)}</li></ul>"
+                        f"<p>Voir /ops-portal-fn7k2q → Reconciliation → Checkout failures.</p>"
+                    )
+                    await _send_email(admin_to, subject, html)
+                except Exception:
+                    pass
+            except Exception as ledger_err:
+                logging.critical(
+                    "[compensation] FAILED TO PERSIST LEDGER for %s: %s",
+                    self.label, ledger_err,
+                )
+        return False  # ne pas avaler l'exception d'origine
+
+
+# --- Admin reconciliation for checkout compensation failures (B4 SMART) --
+
+class CheckoutFailureResolveIn(BaseModel):
+    note: str = ""
+    action: str = "manual_reconciled"  # future: 'refund_issued', 'no_op'
+
+
+async def admin_checkout_failures_list(status: Optional[str] = None, limit: int = 50):
+    q: dict = {}
+    if status:
+        q["status"] = status
+    limit = max(1, min(200, int(limit)))
+    cursor = db.checkout_compensation_failures.find(q, {"_id": 0}).sort("created_at", -1).limit(limit)
+    items = [d async for d in cursor]
+    total = await db.checkout_compensation_failures.count_documents(q)
+    return {"items": items, "total": total}
+
+
+async def admin_checkout_failures_retry(failure_id: str, admin: dict):
+    entry = await db.checkout_compensation_failures.find_one({"id": failure_id}, {"_id": 0})
+    if not entry:
+        raise HTTPException(404, "Failure entry not found")
+    if entry["status"] not in ("pending_manual_review", "retry_failed"):
+        raise HTTPException(400, f"Cannot retry entry with status={entry['status']}")
+    # Le retry auto reconstruirait chaque compensation ; puisque les args
+    # sont sérialisés au ledger mais pas les callables, on marque juste
+    # 'retry_attempted' — l'admin voit l'état et résout manuellement.
+    now = datetime.now(timezone.utc).isoformat()
+    await db.checkout_compensation_failures.update_one(
+        {"id": failure_id},
+        {"$set": {
+            "status": "retry_attempted",
+            "retry_attempted_at": now,
+            "retry_attempted_by": admin.get("email"),
+        }},
+    )
+    return {"ok": True, "next_step": "review_and_resolve_manually"}
+
+
+async def admin_checkout_failures_resolve(failure_id: str, payload: CheckoutFailureResolveIn, admin: dict):
+    entry = await db.checkout_compensation_failures.find_one({"id": failure_id}, {"_id": 0})
+    if not entry:
+        raise HTTPException(404, "Failure entry not found")
+    if entry["status"] == "resolved":
+        raise HTTPException(400, "Already resolved")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.checkout_compensation_failures.update_one(
+        {"id": failure_id},
+        {"$set": {
+            "status": "resolved",
+            "resolved_at": now,
+            "assigned_admin": admin.get("email"),
+            "resolution_note": payload.note or "",
+            "resolution_action": payload.action or "manual_reconciled",
+        }},
+    )
+    return {"ok": True}
+
+
+async def admin_checkout_breaker_state():
+    now = time.time()
+    failures_in_window = [t for t in _checkout_breaker["failures"] if now - t < _CHECKOUT_BREAKER_WINDOW_SEC]
+    open_until = None
+    if _checkout_breaker["opened_at"]:
+        open_until = _checkout_breaker["opened_at"] + _CHECKOUT_BREAKER_OPEN_SEC
+    return {
+        "is_open": _checkout_breaker["opened_at"] is not None
+                   and (now - _checkout_breaker["opened_at"] < _CHECKOUT_BREAKER_OPEN_SEC),
+        "opened_at": _checkout_breaker["opened_at"],
+        "open_until_epoch": open_until,
+        "failures_in_window": len(failures_in_window),
+        "threshold": _CHECKOUT_BREAKER_THRESHOLD,
+        "window_seconds": _CHECKOUT_BREAKER_WINDOW_SEC,
+        "cooldown_seconds": _CHECKOUT_BREAKER_OPEN_SEC,
+    }
+
+
+async def admin_checkout_breaker_reset(admin: dict):
+    _checkout_breaker["opened_at"] = None
+    _checkout_breaker["failures"].clear()
+    logging.warning("[checkout-breaker] MANUALLY RESET by %s", admin.get("email"))
+    return {"ok": True}
+
+
 async def checkout(payload: CheckoutIn, request: Request):
+    _checkout_breaker_check()
     await _rate_limit("checkout", _client_ip(request), CHECKOUT_MAX_PER_MINUTE, 60, "Too many checkout attempts. Try again shortly.")
     if not (payload.accept_terms and payload.confirm_age and payload.confirm_research_use):
         raise HTTPException(400, "All compliance confirmations are required")
@@ -4568,6 +4821,7 @@ async def checkout(payload: CheckoutIn, request: Request):
     }
     # --- AFFILIATE: attribution depuis le cookie fn_ref (champ additif) ---
     created_order = False
+    _compensation_failures: list = []
     try:
         await affiliate_attach_to_order(order_doc, request)
         await db.orders.insert_one(order_doc)
@@ -4579,12 +4833,58 @@ async def checkout(payload: CheckoutIn, request: Request):
             "status": payment_status,
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
-    except Exception:
+    except Exception as _outer_err:
+        # Compensation en ordre inverse. Chaque étape est capturée
+        # individuellement pour ne pas masquer un échec de rollback.
         if created_order:
-            await db.orders.delete_one({"id": order_id})
-        await _release_stock_atomic(reserved)
+            try:
+                await db.orders.delete_one({"id": order_id})
+            except Exception as e:
+                _compensation_failures.append({"stage": "delete_order", "error": f"{type(e).__name__}: {e}"})
+        try:
+            await _release_stock_atomic(reserved)
+        except Exception as e:
+            _compensation_failures.append({"stage": "release_stock", "error": f"{type(e).__name__}: {e}"})
         if idem_key:
-            await db.idempotency.delete_one({"_id": idem_key})
+            try:
+                await db.idempotency.delete_one({"_id": idem_key})
+            except Exception as e:
+                _compensation_failures.append({"stage": "delete_idempotency", "error": f"{type(e).__name__}: {e}"})
+        # Ledger B4 SMART : si l'une des compensations a échoué, on trace pour
+        # le dashboard admin Reconciliation → Checkout failures.
+        if _compensation_failures:
+            try:
+                await db.checkout_compensation_failures.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "order_id": order_id,
+                    "label": "checkout_writes",
+                    "original_error": f"{type(_outer_err).__name__}: {_outer_err}",
+                    "collections_written": ["orders", "payment_transactions"] if created_order else [],
+                    "reserved_stock_items": reserved,  # noqa: safe pour audit
+                    "idem_key": idem_key,
+                    "failed_compensations": _compensation_failures,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "status": "pending_manual_review",
+                    "assigned_admin": None,
+                    "resolved_at": None,
+                    "resolution_note": None,
+                })
+                _checkout_breaker_record_failure()
+                try:
+                    admin_to = os.environ.get("ADMIN_NOTIFICATION_EMAIL", ADMIN_EMAIL)
+                    subject = f"[FIRONOVA] Checkout compensation failed — order {order_id}"
+                    body = (
+                        f"<p>Une compensation checkout a échoué et doit être réconciliée manuellement.</p>"
+                        f"<ul><li>Order id : {order_id}</li>"
+                        f"<li>Erreur d'origine : {type(_outer_err).__name__}</li>"
+                        f"<li>Étapes en échec : {len(_compensation_failures)}</li></ul>"
+                        f"<p>Voir <code>/ops-portal-fn7k2q → Reconciliation → Checkout failures</code>.</p>"
+                    )
+                    await _send_email(admin_to, subject, body)
+                except Exception:
+                    pass
+            except Exception as ledger_err:
+                logging.critical("[compensation] FAILED TO PERSIST LEDGER: %s", ledger_err)
         raise
     order_doc.pop("_id", None)
 
@@ -8516,6 +8816,10 @@ async def seed_admin_and_products():
     await db.shipping_zones.create_index("deleted_at")
     await db.shipping_methods.create_index("deleted_at")
     await db.orders.create_index("deleted_at")
+    # Failure ledger — Item 1.2 B4 SMART : audit trail des compensations qui
+    # ont échoué au checkout. Indexé pour la vue admin (list + status filter).
+    await db.checkout_compensation_failures.create_index([("status", 1), ("created_at", -1)])
+    await db.checkout_compensation_failures.create_index("order_id")
     # Admin
     existing = await db.users.find_one({"email": ADMIN_EMAIL.lower()})
     hashed = hash_password(ADMIN_PASSWORD)
