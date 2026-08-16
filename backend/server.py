@@ -8216,6 +8216,85 @@ async def _interac_deposit_watchdog() -> None:
         await asyncio.sleep(INTERAC_GRAPH_POLL_SECONDS)
 
 
+@api.get("/admin/interac/graph-health")
+async def admin_interac_graph_health(_admin: dict = Depends(get_admin_user)):
+    """Diagnostic Microsoft Graph — vérifie que l'app peut obtenir un token
+    et lire la boîte INTERAC_GRAPH_USER. Retourne latence + code d'erreur.
+    Ne modifie aucune donnée. Réservé aux administrateurs."""
+    import time as _time
+    result: dict = {
+        "mode": INTERAC_AUTOCONFIRM_MODE,
+        "tenant_id_configured": bool(INTERAC_GRAPH_TENANT_ID),
+        "client_id_configured": bool(INTERAC_GRAPH_CLIENT_ID),
+        "client_secret_configured": bool(INTERAC_GRAPH_CLIENT_SECRET),
+        "graph_user": INTERAC_GRAPH_USER,
+        "trusted_sender_configured": bool(INTERAC_TRUSTED_SENDER),
+        "poll_interval_seconds": INTERAC_GRAPH_POLL_SECONDS,
+    }
+    if INTERAC_AUTOCONFIRM_MODE != "strict":
+        result.update({"ok": False, "error": "INTERAC_AUTOCONFIRM_MODE is not 'strict'"})
+        return result
+    if not (INTERAC_GRAPH_TENANT_ID and INTERAC_GRAPH_CLIENT_ID and INTERAC_GRAPH_CLIENT_SECRET):
+        result.update({"ok": False, "error": "One or more Azure AD credentials are missing"})
+        return result
+    t0 = _time.perf_counter()
+    try:
+        async with httpx.AsyncClient(timeout=20) as cx:
+            tok_resp = await cx.post(
+                _GRAPH_TOKEN_URL.format(tenant=INTERAC_GRAPH_TENANT_ID),
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": INTERAC_GRAPH_CLIENT_ID,
+                    "client_secret": INTERAC_GRAPH_CLIENT_SECRET,
+                    "scope": "https://graph.microsoft.com/.default",
+                },
+            )
+        if tok_resp.status_code != 200:
+            result.update({
+                "ok": False,
+                "stage": "token",
+                "http_status": tok_resp.status_code,
+                "error": tok_resp.text[:400],
+                "latency_ms": int((_time.perf_counter() - t0) * 1000),
+            })
+            return result
+        access_token = tok_resp.json().get("access_token")
+        async with httpx.AsyncClient(timeout=20) as cx:
+            msg_resp = await cx.get(
+                f"{_GRAPH_API_URL}/users/{INTERAC_GRAPH_USER}/messages",
+                params={"$top": 1, "$select": "id,subject,receivedDateTime"},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        latency_ms = int((_time.perf_counter() - t0) * 1000)
+        if msg_resp.status_code != 200:
+            result.update({
+                "ok": False,
+                "stage": "messages",
+                "http_status": msg_resp.status_code,
+                "error": msg_resp.text[:400],
+                "latency_ms": latency_ms,
+            })
+            return result
+        payload = msg_resp.json()
+        result.update({
+            "ok": True,
+            "stage": "messages",
+            "http_status": 200,
+            "latency_ms": latency_ms,
+            "messages_returned": len(payload.get("value") or []),
+        })
+        return result
+    except Exception as ex:
+        result.update({
+            "ok": False,
+            "error": str(ex)[:400],
+            "latency_ms": int((_time.perf_counter() - t0) * 1000),
+        })
+        return result
+
+
+
+
 # ---------------------------------------------------------------------------
 # Public meta
 # ---------------------------------------------------------------------------

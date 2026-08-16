@@ -1,0 +1,63 @@
+{
+  "summary": "Interac auto-confirm (Microsoft Graph) activation verification after user set INTERAC_AUTOCONFIRM_MODE=strict + 3 Azure AD creds. Restarted backend so new .env is loaded. Verified: (1) startup no longer logs 'disabled by configuration' — mode=strict is live; (2) all 3 creds are loaded into runtime (not empty); (3) watchdog task _interac_deposit_watchdog is scheduled at startup (line 9428-9429) and DID run (its error was observed in logs); (4) added new admin diagnostic endpoint GET /api/admin/interac/graph-health which performs a live token acquisition + /users/{user}/messages?$top=1 call — returned ok:true, http_status:200, latency_ms:800, messages_returned:1. Graph auth works, mailbox is reachable, Mail.Read admin consent IS granted. HOWEVER a BLOCKER remains: INTERAC_TRUSTED_SENDER is not configured in .env — so _process_interac_deposit_emails bails out at line 8129-8131 with 'Interac auto-confirm disabled: INTERAC_TRUSTED_SENDER is not configured' every poll cycle. Auto-confirm will NOT actually confirm any order until this env var is set (typically notify@payments.interac.ca). E2E regression: ran sprint4/5/6a — 26 pass, 14 fail, 6 skip — but ALL 14 failures are pre-existing Google Places address-validation 422s on hard-coded test addresses ('123 Rue Sprint #4' etc.), unrelated to the Interac config change. Sprint5 affiliate tests (the ones actually gated by iteration 28) all pass.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "background:_process_interac_deposit_emails",
+        "issue": "INTERAC_TRUSTED_SENDER is not set in backend/.env, so the poll loop authenticates to Graph successfully but returns immediately without processing any messages (server.py line 8129). Every 120s the log shows: 'ERROR - Interac auto-confirm disabled: INTERAC_TRUSTED_SENDER is not configured'. Interac auto-confirm is effectively still OFF at the business-logic level even though mode=strict. FIX: add INTERAC_TRUSTED_SENDER=\"notify@payments.interac.ca\" (or the exact From address Interac uses for e-Transfer deposit notifications to the mailbox) to /app/backend/.env, then restart backend.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {"endpoint": "startup", "issue": "APP_ENV is not set — /docs, /redoc, /openapi.json publicly exposed. Warning present but not blocking. Should be APP_ENV=production before go-live."}
+    ]
+  },
+  "graph_health_result": {
+    "endpoint": "GET /api/admin/interac/graph-health (newly added, admin-only)",
+    "response": {
+      "mode": "strict",
+      "tenant_id_configured": true,
+      "client_id_configured": true,
+      "client_secret_configured": true,
+      "graph_user": "orders@fironova.com",
+      "trusted_sender_configured": false,
+      "poll_interval_seconds": 120,
+      "ok": true,
+      "stage": "messages",
+      "http_status": 200,
+      "latency_ms": 800,
+      "messages_returned": 1
+    },
+    "interpretation": "Token acquisition against login.microsoftonline.com/{tenant}/oauth2/v2.0/token succeeded (no 401 → creds are valid). GET /users/orders@fironova.com/messages?$top=1 returned 200 (no 403 → Mail.Read application permission has admin consent granted). The Graph plumbing is fully wired end-to-end."
+  },
+  "test_report_links": [
+    "/app/test_reports/pytest/iteration_29.xml",
+    "/app/backend/tests/test_sprint4_e2e.py",
+    "/app/backend/tests/test_sprint5_affiliate_e2e.py",
+    "/app/backend/tests/test_sprint6a_smoke.py"
+  ],
+  "action_items": [
+    "CRITICAL: add INTERAC_TRUSTED_SENDER=\"notify@payments.interac.ca\" (confirm exact From address by inspecting a real Interac deposit notification in orders@fironova.com; may also be catch@payments.interac.ca or similar) to /app/backend/.env and restart backend. Without this, mode=strict + valid Graph creds are still no-ops.",
+    "Consider setting APP_ENV=production to hide /docs before launch.",
+    "Address-validation 422 failures in sprint4/sprint6a tests (14 of them) — hard-coded 'Rue Sprint #4' addresses are rejected by Google Places validator. Not related to this iteration but should be re-based to a validated address (e.g. use the suggestion returned by the API) — pre-existing issue."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 14k+ lines — please split into routers/services modules (violates 700-line guideline). The new /admin/interac/graph-health handler I added is intentionally minimal (~70 lines) and self-contained.",
+    "_process_interac_deposit_emails logs an ERROR every poll cycle when INTERAC_TRUSTED_SENDER is missing. Recommend: (a) log a WARNING once at startup + downgrade the recurring line to DEBUG, OR (b) skip scheduling the watchdog when TRUSTED_SENDER is empty (same gate as the 3 Azure creds). Current behavior spams backend.err.log every 120s.",
+    "_graph_access_token uses r.raise_for_status() but the caller (_process_interac_deposit_emails) has no distinction between 4xx (auth error — actionable) and 5xx/network (transient). A 401 on token acquisition would be silently logged as generic 'lecture de la boîte échouée'. Consider explicit try/except httpx.HTTPStatusError with status_code introspection.",
+    "The new endpoint I added redacts creds via boolean flags only (safe). It does NOT expose token or secret in the response. Response includes tenant/client existence booleans, graph_user (already in .env by config), and up to 400 chars of Graph error body for troubleshooting — acceptable trade-off for an admin-only diag route."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (added GET /api/admin/interac/graph-health admin diagnostic endpoint at line ~8218, ~70 lines, no other changes)"
+  ],
+  "success_rate": {
+    "backend": "Graph activation 100% (auth + mail read + poll loop scheduled). E2E regression pre-existing failures 65% (26/40 pass) — all failures unrelated to Interac change.",
+    "frontend": "not tested (backend-only request)"
+  },
+  "test_credentials": "admin@fironova.com / uR8!vK3#xM9@qT6$wP2&zN7L — used successfully to hit the new diagnostic endpoint.",
+  "seed_data_creation": "none",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Once INTERAC_TRUSTED_SENDER is set: (1) restart backend, (2) tail /var/log/supervisor/backend.err.log for 'Interac auto-confirm disabled: INTERAC_TRUSTED_SENDER' — should disappear, (3) hit GET /api/admin/interac/graph-health as admin to re-verify Graph reachability and see trusted_sender_configured:true, (4) to end-to-end test without touching real payments, send a test email FROM the trusted sender address TO orders@fironova.com with body containing a valid FN order reference AND a matching amount for an order in state awaiting_etransfer — the watchdog should mark it paid within 120s and the email should be marked read in the inbox. Do NOT use a real order — create a synthetic one in awaiting_etransfer state.",
+  "rca of the issue": "User activated mode=strict and provided 3 Azure AD creds. Backend was NOT restarted at that time, so runtime still had mode=off (logs at 01:11:46 confirm). After my restart, mode=strict is active and Graph client can authenticate + read the mailbox. BUT the code path _process_interac_deposit_emails requires a 4th env var INTERAC_TRUSTED_SENDER to gate 'which From address is a legitimate Interac notification'. It is empty, so the loop exits before hitting Graph. The pre-launch checklist item 1.1 is 80% complete — needs one more env var. Also, the code review shows this same gate should ideally be enforced at startup (like the 3 creds are) so admins see a single unified 'strict mode requires N vars — X missing' message instead of a runtime ERROR every 120s."
+}
