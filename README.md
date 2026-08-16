@@ -1,5 +1,29 @@
 # Here are your Instructions
 
+## Backend layout
+
+`backend/server.py` holds the FastAPI app, configuration, Pydantic models, and the
+route handlers. Integration and domain logic lives under `backend/services/`:
+
+| Module | Owns |
+| --- | --- |
+| `services/mail.py` | Resend transport, email outbox worker, janitor, template catalogue and rendering |
+| `services/canada_post.py` | Rating, shipment/label and manifest generation, artifact download, voiding, delivery tracking sync |
+| `services/interac.py` | Microsoft Graph mailbox polling and Interac e-Transfer auto-confirmation |
+| `services/nowpayments.py` | Crypto invoices, IPN verification and handling, mass payouts |
+| `services/affiliate.py` | Tiers, referral attribution, coupon codes and aliases, metrics, invitations, payouts |
+| `services/stock.py` | Atomic reservation/release, restock, back-in-stock and low-stock alerts |
+
+Routes stay in `server.py` and `backend/routers/`; a service never declares one.
+Services read configuration, the Mongo handle, and anything still in `server.py`
+through `import server as s`. `server.py` registers itself in `sys.modules` under
+both `server` and `backend.server`, so either entrypoint works, and it re-exports
+the service symbols that existing call sites resolve by bare name.
+
+Outbound side effects — provider HTTP calls, email sends, stock mutations — are
+always invoked as `s.<name>`, even from inside the owning service, so `server` stays
+the single namespace where a caller can substitute them.
+
 ## Environment configuration
 
 Copy `.env.example` to `.env` and populate your Canada Post credentials before running the backend.
