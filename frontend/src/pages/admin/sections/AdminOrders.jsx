@@ -234,7 +234,7 @@ export default function AdminOrders() {
                 </td>
               </tr>
             ))}
-            {!filtered.length && (
+            {!pageRows.length && (
               <tr><td colSpan={7} className="px-6 py-12 text-center font-mono text-xs text-foreground/50">No orders match the filters</td></tr>
             )}
           </tbody>
