@@ -222,6 +222,23 @@ CANADA_POST_AUTO_DELIVERY_SYNC_SECONDS = int(os.environ.get("CANADA_POST_AUTO_DE
 CANADA_POST_SANDBOX_DELIVERY_FALLBACK = os.environ.get("CANADA_POST_SANDBOX_DELIVERY_FALLBACK", "false").strip().lower() == "true"
 CANADA_POST_SANDBOX_DELIVER_AFTER_HOURS = int(os.environ.get("CANADA_POST_SANDBOX_DELIVER_AFTER_HOURS", "24"))
 
+# Le repli sandbox fabrique de FAUSSES confirmations de livraison : une
+# commande jamais expédiée apparaîtrait livrée. Il est déjà conditionné à
+# CANADA_POST_ENVIRONMENT == "dev" côté service, mais cette variable vaut
+# "dev" PAR DÉFAUT — un simple oubli en production suffisait à l'activer.
+# On refuse de démarrer plutôt que de risquer de mentir à un client.
+if IS_PRODUCTION and CANADA_POST_SANDBOX_DELIVERY_FALLBACK:
+    raise RuntimeError(
+        "CANADA_POST_SANDBOX_DELIVERY_FALLBACK=true est interdit en production : "
+        "ce repli simule des livraisons et marquerait des commandes livrées à tort."
+    )
+if IS_PRODUCTION and CANADA_POST_ENVIRONMENT != "prod":
+    logging.error(
+        "[config] CANADA_POST_ENVIRONMENT=%r en production : tarifs et étiquettes "
+        "sortiraient de l'environnement de test Postes Canada. Attendu : 'prod'.",
+        CANADA_POST_ENVIRONMENT,
+    )
+
 # ---------------------------------------------------------------------------
 # Dispatch batch (fenêtre de traitement des commandes)
 # Cutoff 13h heure de l'Est, jours ouvrables seulement (week-ends + fériés exclus).

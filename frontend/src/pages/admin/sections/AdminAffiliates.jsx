@@ -207,16 +207,6 @@ export default function AdminAffiliates() {
   useEffect(() => { if (tab === "payouts") loadPayouts(); }, [tab, loadPayouts]);
   useEffect(() => { if (tab === "clicks") loadClicks(); }, [tab, loadClicks]);
 
-  const runPayouts = async () => {
-    try {
-      const { data } = await api.post("/admin/affiliates/payouts/run");
-      toast.success(L(`${data.payouts_created} relevé(s) généré(s)`, `${data.payouts_created} payout(s) created`));
-      load();
-    } catch (e) {
-      toast.error(formatApiError(e.response?.data?.detail) || e.message);
-    }
-  };
-
   const fin = ov?.financial || {};
   const aff = ov?.affiliates || {};
   const al = ov?.alerts || {};
@@ -270,10 +260,12 @@ export default function AdminAffiliates() {
           <h1 className="font-display text-3xl font-extrabold uppercase tracking-tight text-nordfjord">{L("Affiliés", "Affiliates")}</h1>
         </div>
         <div className="flex gap-2">
-          <button onClick={runPayouts} data-testid="affiliate-run-payouts"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-ash text-sm font-medium text-nordfjord hover:bg-clinical transition">
-            <DollarSign size={16} /> {L("Générer les paiements", "Run payouts")}
-          </button>
+          {/* « Générer les paiements » appelait /payouts/run, exactement comme
+              le bouton de la page Paiements. Deux boutons pour un seul effet,
+              dont un placé dans l'en-tête de la page — loin de l'onglet
+              Paiements et de son envoi groupé. La génération reste sur la page
+              Paiements ; l'onglet ci-dessous garde ses fonctions propres
+              (sélection multiple, envoi groupé NOWPayments avec un seul 2FA). */}
           <button onClick={() => setShowBulk(true)} data-testid="affiliate-bulk-open"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-ash text-sm font-medium text-nordfjord hover:bg-clinical transition">
             <Upload size={16} /> {L("Import CSV", "Import CSV")}

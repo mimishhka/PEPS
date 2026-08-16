@@ -235,6 +235,33 @@ async def crypto_status(order_id: str, request: Request):
             {"$set": {"payment_info.provider_response.payment_status": np_status}},
         )
     if np_status == "finished":
+        # Défense en profondeur, alignée sur nowpayments_ipn plus haut. Ce
+        # chemin de polling marquait la commande payée sur le seul statut
+        # "finished", sans jamais comparer le montant : un paiement partiel
+        # refusé par le webhook passait ici. Même contrôle, même tolérance.
+        try:
+            poll_amount = float(data.get("price_amount") or 0)
+        except (TypeError, ValueError):
+            poll_amount = 0.0
+        poll_order_total = float(order.get("total", 0))
+        if abs(poll_amount - poll_order_total) > 0.01:
+            logging.warning(
+                "NOWPayments poll: montant divergent commande %s (poll %.2f vs commande %.2f) — NON marquée payée",
+                order_id, poll_amount, poll_order_total,
+            )
+            await s.db.orders.update_one({"id": order_id}, {"$push": {"notes": {
+                "id": str(uuid.uuid4()),
+                "text": (f"Statut crypto 'finished' reçu par sondage avec un montant divergent "
+                         f"(${poll_amount:.2f} vs ${poll_order_total:.2f}) — paiement NON auto-confirmé, "
+                         f"à vérifier manuellement."),
+                "author": "system",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }}})
+            await _queue_crypto_reconciliation_item(
+                {**data, "order_id": order_id}, reason="amount_mismatch_poll"
+            )
+            return {"order_id": order_id, "payment_status": order.get("payment_status"),
+                    "np_status": np_status, "requires_review": True}
         if order.get("payment_status") == "cancelled":
             await s._flag_late_cancelled_payment(order, "nowpayments poll", str(payment_id or ""))
         fresh = await s._mark_order_paid(
