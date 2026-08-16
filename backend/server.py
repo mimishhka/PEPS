@@ -3871,6 +3871,142 @@ async def _email_outbox_worker():
         await asyncio.sleep(0 if processed else 2)
 
 
+# ---------------------------------------------------------------------------
+# Email outbox janitor — safety net (cron 5 min)
+# Reprend automatiquement :
+#  1. Les jobs "sending" bloqués (lease expiré > 5 min sans reprise par le worker)
+#  2. Les jobs "failed" définitifs de plus de 1h (2ᵉ chance après une panne Resend)
+# Idempotent + capé (max 100 requeues par tick pour éviter les storms).
+# ---------------------------------------------------------------------------
+EMAIL_JANITOR_INTERVAL_S = int(os.environ.get("EMAIL_JANITOR_INTERVAL_S", "300"))     # 5 min
+EMAIL_FAILED_RETRY_AFTER_S = int(os.environ.get("EMAIL_FAILED_RETRY_AFTER_S", "3600"))  # 1h
+EMAIL_JANITOR_MAX_PER_TICK = int(os.environ.get("EMAIL_JANITOR_MAX_PER_TICK", "100"))
+
+
+async def _email_outbox_janitor_tick() -> dict:
+    """Un cycle de nettoyage. Retourne un compteur pour observabilité."""
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    stuck_cutoff = now_iso                                         # lease déjà expiré
+    failed_cutoff = (now - timedelta(seconds=EMAIL_FAILED_RETRY_AFTER_S)).isoformat()
+
+    # 1) Récupère les jobs "sending" abandonnés (lease expiré) → retry immédiat
+    stuck = await db.email_outbox.update_many(
+        {"status": "sending", "lease_expires_at": {"$lte": stuck_cutoff}},
+        {"$set": {"status": "retry", "available_at": now_iso},
+         "$unset": {"lease_expires_at": ""}},
+    )
+    # 2) Les jobs "failed" (5 tentatives épuisées) de plus de EMAIL_FAILED_RETRY_AFTER_S
+    #    sont ramenés en "retry" avec attempts=0 (2ᵉ chance après panne prolongée).
+    #    Cap sur EMAIL_JANITOR_MAX_PER_TICK pour éviter de saturer le worker.
+    cursor = db.email_outbox.find(
+        {"status": "failed", "created_at": {"$lte": failed_cutoff}},
+        {"_id": 0, "id": 1},
+    ).sort("created_at", 1).limit(EMAIL_JANITOR_MAX_PER_TICK)
+    ids = [doc["id"] async for doc in cursor]
+    if ids:
+        await db.email_outbox.update_many(
+            {"id": {"$in": ids}, "status": "failed"},
+            {"$set": {"status": "retry", "attempts": 0, "available_at": now_iso,
+                      "requeued_at": now_iso, "requeued_by": "janitor"}},
+        )
+    return {"stuck_requeued": stuck.modified_count, "failed_requeued": len(ids)}
+
+
+async def _email_outbox_janitor():
+    while True:
+        try:
+            report = await _email_outbox_janitor_tick()
+            if report["stuck_requeued"] or report["failed_requeued"]:
+                logging.info("[email] janitor stuck=%d failed=%d",
+                             report["stuck_requeued"], report["failed_requeued"])
+        except Exception as e:
+            logging.error("[email] janitor tick error_type=%s", type(e).__name__)
+        await asyncio.sleep(EMAIL_JANITOR_INTERVAL_S)
+
+
+# ---------------------------------------------------------------------------
+# Admin visibilité + contrôle manuel de la file email
+# ---------------------------------------------------------------------------
+async def admin_email_outbox_stats(_admin: dict = Depends(require_area("orders", "view"))):  # noqa: F821
+    """Retourne l'état de santé de la file email :
+      - counts by status (pending, retry, sending, sent, failed)
+      - âge du plus ancien job actif (retard file)
+      - moyenne des tentatives sur les failed (indique un incident tiers)
+    """
+    pipeline = [{"$group": {"_id": "$status", "n": {"$sum": 1}}}]
+    counts = {"pending": 0, "retry": 0, "sending": 0, "sent": 0, "failed": 0}
+    async for row in db.email_outbox.aggregate(pipeline):
+        counts[row["_id"]] = row["n"]
+
+    now = datetime.now(timezone.utc)
+    oldest_active = await db.email_outbox.find_one(
+        {"status": {"$in": ["pending", "retry", "sending"]}},
+        {"_id": 0, "created_at": 1, "status": 1, "attempts": 1},
+        sort=[("created_at", 1)],
+    )
+    oldest_age_s = None
+    if oldest_active and oldest_active.get("created_at"):
+        try:
+            ts = datetime.fromisoformat(oldest_active["created_at"])
+            oldest_age_s = int((now - ts).total_seconds())
+        except Exception:
+            oldest_age_s = None
+
+    # Avg attempts on failed (dernier 7 jours)
+    since = (now - timedelta(days=7)).isoformat()
+    avg_pipeline = [
+        {"$match": {"status": "failed", "created_at": {"$gte": since}}},
+        {"$group": {"_id": None, "avg": {"$avg": "$attempts"}, "n": {"$sum": 1}}},
+    ]
+    avg = None
+    n_failed_7d = 0
+    async for row in db.email_outbox.aggregate(avg_pipeline):
+        avg = round(row["avg"], 2) if row.get("avg") is not None else None
+        n_failed_7d = row.get("n") or 0
+
+    return {
+        "counts": counts,
+        "oldest_active_age_seconds": oldest_age_s,
+        "oldest_active_status": (oldest_active or {}).get("status"),
+        "failed_last_7d": n_failed_7d,
+        "avg_attempts_on_failed": avg,
+        "janitor_interval_s": EMAIL_JANITOR_INTERVAL_S,
+        "failed_retry_after_s": EMAIL_FAILED_RETRY_AFTER_S,
+    }
+
+
+class EmailRequeueIn(BaseModel):
+    scope: str = "failed"  # "failed" ou "stuck" ou "all_active"
+    max: int = Field(default=100, ge=1, le=1000)
+
+
+async def admin_email_requeue(payload: EmailRequeueIn,
+                               _admin: dict = Depends(require_area("orders", "manage"))):  # noqa: F821
+    """Force le rejeu de jobs email. Utile après une panne Resend ou pour
+    dépiler manuellement une file bloquée. Retourne le nombre requeué."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    query: dict
+    if payload.scope == "stuck":
+        query = {"status": "sending", "lease_expires_at": {"$lte": now_iso}}
+    elif payload.scope == "all_active":
+        query = {"status": {"$in": ["failed", "sending"]}}
+    else:
+        query = {"status": "failed"}
+
+    cursor = db.email_outbox.find(query, {"_id": 0, "id": 1}).limit(payload.max)
+    ids = [doc["id"] async for doc in cursor]
+    if not ids:
+        return {"requeued": 0, "scope": payload.scope}
+    await db.email_outbox.update_many(
+        {"id": {"$in": ids}},
+        {"$set": {"status": "retry", "attempts": 0, "available_at": now_iso,
+                  "requeued_at": now_iso, "requeued_by": "admin"},
+         "$unset": {"lease_expires_at": ""}},
+    )
+    return {"requeued": len(ids), "scope": payload.scope}
+
+
 async def send_order_confirmation(order: dict) -> None:
     if not order.get("email"):
         logging.info("[email] skip customer confirm: no email on order %s", order["order_number"])
@@ -10143,6 +10279,7 @@ async def startup_event():
         asyncio.create_task(affiliate_maintenance_watchdog())
         asyncio.create_task(_affiliate_email_worker())
         asyncio.create_task(_email_outbox_worker())
+        asyncio.create_task(_email_outbox_janitor())
 
 
 async def _backfill_dispatch_batch():

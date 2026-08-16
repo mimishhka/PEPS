@@ -143,3 +143,14 @@ async def admin_products_csv(_admin: dict = Depends(s.require_area("products", "
 @router.get("/admin/products.xlsx")
 async def admin_products_xlsx(_admin: dict = Depends(s.require_area("products", "view"))):
     return await s.admin_products_xlsx(_admin)
+
+
+@router.get("/admin/emails/outbox-stats")
+async def admin_email_outbox_stats(_admin: dict = Depends(s.require_area("orders", "view"))):
+    return await s.admin_email_outbox_stats(_admin)
+
+
+@router.post("/admin/emails/requeue")
+async def admin_email_requeue(payload: s.EmailRequeueIn,
+                               _admin: dict = Depends(s.require_area("orders", "manage"))):
+    return await s.admin_email_requeue(payload, _admin)

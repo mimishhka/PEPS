@@ -659,7 +659,8 @@ function RestockModal({ product, onClose, onDone }) {
                   <tr className="text-left font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 border-b border-ink/10">
                     <th className="py-2">Variant</th>
                     <th className="py-2 text-right w-20">Current</th>
-                    <th className="py-2 text-center w-64">{isAdd ? "Add" : "Remove"}</th>
+                    <th className="py-2 text-center w-32">Custom qty</th>
+                    <th className="py-2 text-center w-52">Quick {isAdd ? "add" : "remove"}</th>
                     <th className="py-2 text-right w-20">New total</th>
                   </tr>
                 </thead>
@@ -676,7 +677,8 @@ function RestockModal({ product, onClose, onDone }) {
                         <td className="py-3 font-medium">{v.name || "(no name)"}</td>
                         <td className="py-3 text-right font-mono text-xs text-foreground/60">{current}</td>
                         <td className="py-3">
-                          <div className="flex items-center gap-1 justify-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <span className={`font-mono font-bold text-base ${isAdd ? "text-emerald-700" : "text-amber-700"}`}>{isAdd ? "+" : "−"}</span>
                             <input
                               type="number"
                               min="0"
@@ -684,16 +686,20 @@ function RestockModal({ product, onClose, onDone }) {
                               value={deltas[key] || ""}
                               onChange={(e) => setDelta(key, e.target.value)}
                               placeholder="0"
-                              className={`w-16 border ${insufficient ? "border-red-500" : "border-ink/20"} px-2 py-1 text-center text-sm focus:outline-none ${accentClasses.focus}`}
+                              className={`w-20 border ${insufficient ? "border-red-500" : "border-ink/30"} px-2 py-2 text-center font-mono text-base font-bold focus:outline-none ${accentClasses.focus}`}
                               data-testid={`restock-input-${key}`}
                             />
+                          </div>
+                        </td>
+                        <td className="py-3">
+                          <div className="flex items-center gap-1 justify-center">
                             {[10, 25, 50, 100].map((n) => (
                               <button
                                 key={n}
                                 type="button"
                                 onClick={() => setQuick(key, n)}
                                 data-testid={`restock-quick-${key}-${n}`}
-                                className={`text-[10px] font-mono px-1.5 py-1 border border-ink/15 hover:${accentClasses.bg} hover:text-white hover:${accentClasses.border}`}
+                                className={`text-[10px] font-mono px-2 py-1.5 border border-ink/15 hover:${accentClasses.bg} hover:text-white hover:${accentClasses.border}`}
                               >
                                 {isAdd ? "+" : "-"}{n}
                               </button>

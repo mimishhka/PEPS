@@ -221,3 +221,19 @@ Patch reçu contenant : scheduler mensuel avec `payout_runs` anti-double, FX BoC
   - Restock +50 → alerte auto-clearée (`active=false`, count=0)
 - **UI validée par screenshot** : mode Remove affiche header ambre, colonne "REMOVE", boutons `-N`, New total rouge si insuffisant, banner ambre de confirmation, bouton `— CONFIRM −3`.
 
+
+## Email retry worker + Custom qty UI — Février 2026 (session fork, suite 5)
+- **Modal restock — Custom qty distincte** — La colonne "Add/Remove" a été scindée en deux colonnes explicites :
+  1. `CUSTOM QTY` : préfixe "+"/"−" coloré (émeraude/ambre) + input agrandi `w-20 py-2 text-base font-bold` avec placeholder "0" pour saisir n'importe quelle quantité manuellement (idéal pour 42, 77, etc.)
+  2. `QUICK ADD` : boutons rapides `+10 / +25 / +50 / +100` séparés pour les cas standards
+  L'utilisateur ne peut plus manquer l'input personnalisé. Validé screenshot : saisie 42 → New total 97 en vert.
+- **Email outbox worker existant** : `_email_outbox_worker` tourne en continu (poll 2s idle, 0s si travail) avec lease atomique 5 min + backoff exponentiel (30s × 2^attempts, cap 1h) + max 5 tentatives.
+- **Nouveau janitor cron (5 min)** — `_email_outbox_janitor` en tâche parallèle. Chaque cycle :
+  1. Reprend les jobs `sending` dont le lease a expiré (crash worker → job orphelin) → status=retry
+  2. Rejoue automatiquement les jobs `failed` plus vieux que `EMAIL_FAILED_RETRY_AFTER_S` (défaut 1h) avec `attempts=0`, capé à `EMAIL_JANITOR_MAX_PER_TICK` (défaut 100 par tick pour éviter storms). Marqués `requeued_by: "janitor"`.
+- **Endpoints admin visibilité + contrôle** :
+  - `GET /api/admin/emails/outbox-stats` — counts par statut, âge du plus ancien job actif, moyenne des tentatives sur `failed` (7j), config janitor exposée
+  - `POST /api/admin/emails/requeue` body `{scope: "failed"|"stuck"|"all_active", max: 1-1000}` — reset manuel (`requeued_by: "admin"`)
+- **Env vars** ajoutables (défauts sensés) : `EMAIL_JANITOR_INTERVAL_S=300`, `EMAIL_FAILED_RETRY_AFTER_S=3600`, `EMAIL_JANITOR_MAX_PER_TICK=100`
+- **Tests E2E validés** : (1) stats retourne bien counts + oldest age + failed_last_7d ; (2) injection de 2 fake `failed` + requeue admin → 50 jobs remis en `retry` en une opération ; (3) janitor tick appelé directement → 100 jobs `failed` anciens rejoués (313 → 165). Le worker continu prendra la relève automatiquement.
+
