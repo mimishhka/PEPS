@@ -121,6 +121,11 @@ ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@fir
 SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
 FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))
 UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "24"))
+# Seuil minimum en CAD sous lequel un payout affilié est reporté au cycle
+# suivant (évite de gaspiller des frais gas crypto sur des micro-payouts).
+# Les commissions restent en `approved` (payout_id=None) et roulent au mois suivant.
+# Une notification email bilingue est envoyée UNE seule fois par (affilié, période).
+AFFILIATE_PAYOUT_MIN_CAD = float(os.environ.get("AFFILIATE_PAYOUT_MIN_CAD", "25.00"))
 PREORDER_RELEASE_INTERVAL_SECONDS = int(os.environ.get("PREORDER_RELEASE_INTERVAL_SECONDS", "300"))
 # Rabais % du coupon auto-lié à chaque affilié (0 = pas de coupon auto).
 AFFILIATE_COUPON_PERCENT = float(os.environ.get("AFFILIATE_COUPON_PERCENT", "10"))
@@ -9123,6 +9128,14 @@ async def seed_admin_and_products():
     await db.email_outbox.create_index("id", unique=True)
     await db.email_outbox.create_index([("status", 1), ("available_at", 1), ("created_at", 1)])
     await db.email_outbox.create_index("expires_at", expireAfterSeconds=0)
+    # Affiliate payout deferrals — Item 3.2 : audit + idempotence des notifications
+    # de report envoyées quand le montant cumulé d'un affilié pour une période
+    # est en dessous de AFFILIATE_PAYOUT_MIN_CAD. Unique (affiliate_id, period) →
+    # un affilié ne reçoit qu'UN seul email par période même si le run est rejoué.
+    await db.affiliate_payout_deferrals.create_index(
+        [("affiliate_id", 1), ("period", 1)], unique=True
+    )
+    await db.affiliate_payout_deferrals.create_index([("created_at", -1)])
     await db.products.create_index("deleted_at")
     await db.coupons.create_index("deleted_at")
     await db.shipping_zones.create_index("deleted_at")
@@ -12122,6 +12135,130 @@ async def admin_affiliate_alias_toggle(affiliate_id: str, alias_code: str,
     )
 
 
+# ===========================================================================
+# Item 3.2 — Seuil minimum de payout affilié (AFFILIATE_PAYOUT_MIN_CAD)
+# ===========================================================================
+async def _defer_affiliate_payout_below_threshold(
+    aff: dict, period: str, amount_cad: float, referral_count: int,
+    threshold_cad: float,
+) -> bool:
+    """Enregistre un report de payout (montant < seuil) et notifie l'affilié
+    UNE seule fois par (affiliate_id, period). Idempotent via unique index.
+
+    Retourne True si un email a été mis en file d'attente (premier report),
+    False si déjà notifié pour cette période (re-run scheduler)."""
+    now = datetime.now(timezone.utc)
+    deferral_doc = {
+        "id": str(uuid.uuid4()),
+        "affiliate_id": aff.get("id"),
+        "affiliate_code": aff.get("code"),
+        "affiliate_email": aff.get("email"),
+        "period": period,
+        "amount_cad": round(float(amount_cad), 2),
+        "threshold_cad": round(float(threshold_cad), 2),
+        "referral_count": int(referral_count),
+        "created_at": now.isoformat(),
+        "email_status": "pending",
+    }
+    try:
+        await db.affiliate_payout_deferrals.insert_one(deferral_doc)
+    except DuplicateKeyError:
+        # Déjà notifié pour cette période — no-op (re-run scheduler)
+        return False
+
+    email = (aff.get("email") or "").strip()
+    if not email:
+        await db.affiliate_payout_deferrals.update_one(
+            {"id": deferral_doc["id"]},
+            {"$set": {"email_status": "skipped_no_email"}},
+        )
+        return False
+
+    lang = (aff.get("preferred_lang") or "fr").lower()
+    first_name = aff.get("first_name") or aff.get("name") or ""
+    subject_fr = f"FIRONOVA — Votre paiement d'affilié de {period} est reporté au prochain cycle"
+    subject_en = f"FIRONOVA — Your {period} affiliate payout is deferred to next cycle"
+    subject = subject_fr if lang == "fr" else subject_en
+
+    amount_str = f"{amount_cad:.2f} $ CAD"
+    threshold_str = f"{threshold_cad:.2f} $ CAD"
+    remaining = max(0.0, threshold_cad - amount_cad)
+    remaining_str = f"{remaining:.2f} $ CAD"
+
+    hello_fr = f"Bonjour {first_name}," if first_name else "Bonjour,"
+    hello_en = f"Hello {first_name}," if first_name else "Hello,"
+
+    body_fr = f"""
+      <p style="margin:0 0 16px">{hello_fr}</p>
+      <p style="margin:0 0 16px">
+        Vos commissions cumulées pour la période <strong>{period}</strong> s'élèvent à
+        <strong>{amount_str}</strong>, ce qui est inférieur à notre seuil minimum de
+        paiement de <strong>{threshold_str}</strong>.
+      </p>
+      <p style="margin:0 0 16px">
+        <strong>Bonne nouvelle :</strong> vos commissions ne sont pas perdues. Elles restent
+        à votre crédit et seront automatiquement additionnées au prochain cycle mensuel.
+      </p>
+      <p style="margin:0 0 16px">
+        Il vous reste <strong>{remaining_str}</strong> à générer pour atteindre le seuil et
+        déclencher un paiement. Merci pour votre partenariat &mdash; continuez sur votre lancée !
+      </p>
+      <p style="margin:24px 0 0;color:#666;font-size:12px">
+        Pourquoi un seuil ? Les frais de réseau blockchain (gas) rendent inefficace l'envoi
+        de très petits montants. Regrouper les paiements maximise ce que vous recevez réellement.
+      </p>
+    """
+    body_en = f"""
+      <p style="margin:0 0 16px">{hello_en}</p>
+      <p style="margin:0 0 16px">
+        Your accumulated commissions for period <strong>{period}</strong> total
+        <strong>{amount_str}</strong>, which is below our minimum payout threshold of
+        <strong>{threshold_str}</strong>.
+      </p>
+      <p style="margin:0 0 16px">
+        <strong>Good news:</strong> your commissions are not lost. They stay to your credit
+        and will automatically roll over to the next monthly cycle.
+      </p>
+      <p style="margin:0 0 16px">
+        You need <strong>{remaining_str}</strong> more to reach the threshold and trigger a
+        payout. Thanks for your partnership &mdash; keep it up!
+      </p>
+      <p style="margin:24px 0 0;color:#666;font-size:12px">
+        Why a threshold? Blockchain network fees (gas) make sending very small amounts
+        inefficient. Grouping payouts maximizes what you actually receive.
+      </p>
+    """
+    body = body_fr if lang == "fr" else body_en
+
+    html = f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#F5F1EA;font-family:'Inter',Arial,sans-serif;color:#0B2E4F">
+  <table style="max-width:600px;margin:24px auto;background:#fff;border:1px solid #E5DED0;border-radius:8px;overflow:hidden">
+    <tr><td style="background:#0B2E4F;color:#fff;padding:20px 28px;font-family:monospace;letter-spacing:3px;font-size:14px">FIRONOVA · AFFILIATE PROGRAM</td></tr>
+    <tr><td style="padding:32px 28px;font-size:14px;line-height:1.6">
+      {body}
+    </td></tr>
+    <tr><td style="background:#0B2E4F;color:#fff;padding:14px 28px;font-family:monospace;font-size:10px;letter-spacing:2px">FIRONOVA · CANADA · {now.strftime("%Y")}</td></tr>
+  </table>
+</body></html>"""
+
+    try:
+        await _send_email(email, subject, html)
+        await db.affiliate_payout_deferrals.update_one(
+            {"id": deferral_doc["id"]},
+            {"$set": {"email_status": "queued",
+                      "email_queued_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        return True
+    except Exception as e:
+        await db.affiliate_payout_deferrals.update_one(
+            {"id": deferral_doc["id"]},
+            {"$set": {"email_status": "failed", "email_error": type(e).__name__}},
+        )
+        logging.error("[payout-deferral] email queue failed affiliate=%s period=%s",
+                      aff.get("id"), period)
+        return False
+
+
 async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # noqa: F821
                                       period: Optional[str] = None,
                                       dry_run: bool = False):
@@ -12163,6 +12300,23 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
             continue
         aff = affiliates_by_id.get(affiliate_id)
         if not aff or aff.get("status") != "active":
+            continue
+        # ---- Item 3.2 : seuil minimum de payout (skip + notification) --------
+        if total < AFFILIATE_PAYOUT_MIN_CAD:
+            deferral_entry = {
+                "affiliate_id": affiliate_id,
+                "affiliate_code": aff.get("code"),
+                "amount_cad": total,
+                "threshold_cad": AFFILIATE_PAYOUT_MIN_CAD,
+                "referral_count": len(grp["ids"]),
+                "deferred": True,
+            }
+            if not dry_run:
+                notified = await _defer_affiliate_payout_below_threshold(
+                    aff, period, total, len(grp["ids"]), AFFILIATE_PAYOUT_MIN_CAD,
+                )
+                deferral_entry["notified"] = notified
+            created.append(deferral_entry)
             continue
         # Devise cible : USDT/USDC → 1:1 avec USD (peggé). Sinon on garde la valeur legacy.
         payout_currency = (aff.get("payout_currency") or "usdt").lower()
@@ -12229,7 +12383,11 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
         created.append({"affiliate_id": affiliate_id, "amount": amount_target,
                         "amount_cad": amount_cad, "currency": payout_currency,
                         "payout_id": payout_id})
-    return {"ok": True, "period": period, "payouts_created": len(created),
+    payouts_only = [c for c in created if c.get("payout_id")]
+    deferred = [c for c in created if c.get("deferred")]
+    return {"ok": True, "period": period, "payouts_created": len(payouts_only),
+            "payouts_deferred": len(deferred),
+            "threshold_cad": AFFILIATE_PAYOUT_MIN_CAD,
             "fx_rate_cad_to_usd": fx_rate, "fx_source": fx_source,
             "fx_captured_at": fx_captured_at,
             "dry_run": bool(dry_run),
@@ -12554,6 +12712,12 @@ async def _generate_payouts_for_period(period: str, fx_rate: float,
             continue
         aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
         if not aff or aff.get("status") != "active":
+            continue
+        # ---- Item 3.2 : seuil minimum de payout (skip + notification) --------
+        if total < AFFILIATE_PAYOUT_MIN_CAD:
+            await _defer_affiliate_payout_below_threshold(
+                aff, period, total, len(grp["ids"]), AFFILIATE_PAYOUT_MIN_CAD,
+            )
             continue
         payout_currency = (aff.get("payout_currency") or "usdt").lower()
         amount_cad = total
