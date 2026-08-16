@@ -129,10 +129,41 @@ async def _send_email(to: str | list, subject: str, html: str, from_email: str |
         logging.error("[email] queue failed recipients=%s error_type=%s", recipient_refs, type(e).__name__)
 
 
+# ---------------------------------------------------------------------------
+# Limitation de débit du fournisseur (Resend)
+# ---------------------------------------------------------------------------
+# Une limite de débit n'est PAS un échec d'envoi : le message est valide, le
+# fournisseur demande seulement d'attendre. La traiter comme un échec ordinaire
+# avait deux effets, tous deux visibles en production :
+#   1. chaque refus consommait une des 5 tentatives, donc un lot entier partait
+#      à la poubelle en quelques minutes — confirmations de commande comprises ;
+#   2. la boucle du worker repart sans délai après une tâche « traitée », même
+#      en échec, donc elle martelait le fournisseur et s'auto-entretenait.
+# On rend la tentative consommée et on impose une pause GLOBALE au worker.
+EMAIL_THROTTLE_COOLDOWN_S = int(os.environ.get("EMAIL_THROTTLE_COOLDOWN_S", "60"))
+_EMAIL_THROTTLED_UNTIL: Optional[datetime] = None
+
+_RATE_LIMIT_MARKERS = ("ratelimit", "rate limit", "too many requests", "429", "quota")
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Le fournisseur nous demande-t-il de ralentir, plutôt que de refuser ?"""
+    name = type(exc).__name__.lower()
+    if "ratelimit" in name or "toomanyrequests" in name:
+        return True
+    text = str(exc).lower()
+    return any(marker in text for marker in _RATE_LIMIT_MARKERS)
+
+
 async def _process_email_outbox_job() -> bool:
+    global _EMAIL_THROTTLED_UNTIL
     if not s.RESEND_API_KEY:
         return False
     now = datetime.now(timezone.utc)
+    # Pause globale en cours : ne pas réclamer de tâche, sinon on la marque
+    # « sending » pour rien et on relance immédiatement le même refus.
+    if _EMAIL_THROTTLED_UNTIL and now < _EMAIL_THROTTLED_UNTIL:
+        return False
     now_iso = now.isoformat()
     job = await s.db.email_outbox.find_one_and_update(
         {"$or": [
@@ -165,20 +196,41 @@ async def _process_email_outbox_job() -> bool:
         )
     except Exception as exc:
         attempts = int(job.get("attempts", 1))
-        terminal = attempts >= 5
-        delay_seconds = min(3600, 30 * (2 ** max(0, attempts - 1)))
+        throttled = _is_rate_limit_error(exc)
+        changes: dict = {"error_type": type(exc).__name__}
+
+        if throttled:
+            # Tentative rendue : le message n'a pas été refusé, seulement différé.
+            attempts = max(0, attempts - 1)
+            changes["attempts"] = attempts
+            terminal = False
+            delay_seconds = EMAIL_THROTTLE_COOLDOWN_S
+            _EMAIL_THROTTLED_UNTIL = (
+                datetime.now(timezone.utc) + timedelta(seconds=EMAIL_THROTTLE_COOLDOWN_S)
+            )
+        else:
+            terminal = attempts >= 5
+            delay_seconds = min(3600, 30 * (2 ** max(0, attempts - 1)))
+
+        changes["status"] = "failed" if terminal else "retry"
+        changes["available_at"] = (
+            datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
+        ).isoformat()
         await s.db.email_outbox.update_one(
             {"id": job["id"], "status": "sending"},
-            {"$set": {
-                "status": "failed" if terminal else "retry",
-                "available_at": (datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)).isoformat(),
-                "error_type": type(exc).__name__,
-            }, "$unset": {"lease_expires_at": ""}},
+            {"$set": changes, "$unset": {"lease_expires_at": ""}},
         )
-        logging.error(
-            "[email] delivery failed job=%s attempt=%d terminal=%s error_type=%s",
-            job["id"], attempts, terminal, type(exc).__name__,
-        )
+        if throttled:
+            logging.warning(
+                "[email] fournisseur saturé job=%s — tentative NON consommée (%d/5), "
+                "envois en pause %ds",
+                job["id"], attempts, EMAIL_THROTTLE_COOLDOWN_S,
+            )
+        else:
+            logging.error(
+                "[email] delivery failed job=%s attempt=%d terminal=%s error_type=%s",
+                job["id"], attempts, terminal, type(exc).__name__,
+            )
     return True
 
 
@@ -189,6 +241,14 @@ async def _email_outbox_worker():
         except Exception as exc:  # pragma: no cover
             logging.error("[email] outbox worker error_type=%s", type(exc).__name__)
             processed = False
+        # Une pause globale l'emporte sur tout le reste. Sans ça, la boucle
+        # repartait à zéro délai après une tâche « traitée » — y compris une
+        # tâche refusée pour saturation — et relançait le fournisseur aussitôt.
+        if _EMAIL_THROTTLED_UNTIL:
+            remaining = (_EMAIL_THROTTLED_UNTIL - datetime.now(timezone.utc)).total_seconds()
+            if remaining > 0:
+                await asyncio.sleep(min(remaining, EMAIL_THROTTLE_COOLDOWN_S))
+                continue
         await asyncio.sleep(0 if processed else 2)
 
 
