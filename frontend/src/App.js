@@ -28,6 +28,7 @@ const Catalog = lazy(() => import("./pages/Catalog"));
 const ProductDetail = lazy(() => import("./pages/ProductDetail"));
 const Checkout = lazy(() => import("./pages/Checkout"));
 const OrderConfirmation = lazy(() => import("./pages/OrderConfirmation"));
+const NewsletterConfirm = lazy(() => import("./pages/NewsletterConfirm"));
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
 const AuthCallback = lazy(() => import("./pages/AuthCallback"));
@@ -126,6 +127,7 @@ function AppRoutes() {
       <Route path="/product/:slug" element={<ProductDetail />} />
       <Route path="/checkout" element={<Checkout />} />
       <Route path="/order/:id" element={<OrderConfirmation />} />
+      <Route path="/newsletter/confirm/:token" element={<NewsletterConfirm />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/auth/callback" element={<AuthCallback />} />

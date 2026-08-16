@@ -82,6 +82,11 @@ async def newsletter_subscribe(payload: s.NewsletterSubscribeIn, request: Reques
     return await s.newsletter_subscribe(payload, request)
 
 
+@router.get("/newsletter/confirm/{token}")
+async def newsletter_confirm(token: str, request: Request):
+    return await s.newsletter_confirm(token, request)
+
+
 @router.get("/newsletter/unsubscribe")
 async def newsletter_unsubscribe(token: str, request: Request):
     return await s.newsletter_unsubscribe(token, request)

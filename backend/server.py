@@ -2060,45 +2060,114 @@ async def newsletter_subscribe(payload: NewsletterSubscribeIn, request: Request)
     email = payload.email.lower().strip()
     if (payload.website or "").strip():
         return {"ok": True, "already_subscribed": False}
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
     ip = _client_ip(request)
+    lang = (payload.lang or "en").lower()
+    if lang not in ("en", "fr"):
+        lang = "en"
 
     existing = await db.subscribers.find_one({"email": email}, {"_id": 0})
     if existing and existing.get("status") == "subscribed":
         return {"ok": True, "already_subscribed": True}
 
+    # Double-opt-in : on n'active pas immédiatement. On génère un token de
+    # confirmation valable 7 jours (RGPD/CASL) et on envoie l'email.
+    confirmation_token = secrets.token_urlsafe(32)
+    confirmation_expires_at = (now + timedelta(days=7)).isoformat()
+
     if existing:
-        # Ancien désabonné qui se réinscrit : nouveau consentement, nouvelle preuve.
         await db.subscribers.update_one(
             {"email": email},
             {"$set": {
-                "status": "subscribed",
-                "lang": payload.lang,
+                "status": "pending_confirmation",
+                "lang": lang,
                 "source": payload.source,
-                "consent_at": now,
+                "consent_at": now_iso,
                 "consent_ip": ip,
                 "unsubscribed_at": None,
+                "confirmation_token": confirmation_token,
+                "confirmation_expires_at": confirmation_expires_at,
+                "confirmed_at": None,
             }},
         )
     else:
         await db.subscribers.insert_one({
             "id": str(uuid.uuid4()),
             "email": email,
-            "lang": payload.lang,
+            "lang": lang,
             "source": payload.source,
-            "status": "subscribed",
-            "consent_at": now,
+            "status": "pending_confirmation",
+            "consent_at": now_iso,
             "consent_ip": ip,
             "unsubscribe_token": str(uuid.uuid4()),
             "unsubscribed_at": None,
-            "created_at": now,
-            "converted": False,  # bascule à True à la création de compte
+            "confirmation_token": confirmation_token,
+            "confirmation_expires_at": confirmation_expires_at,
+            "confirmed_at": None,
+            "created_at": now_iso,
+            "converted": False,
         })
-    fresh = await db.subscribers.find_one({"email": email}, {"_id": 0})
-    asyncio.create_task(
-        send_prelaunch_welcome(email, payload.lang or "en", (fresh or {}).get("unsubscribe_token", ""))
+
+    # Envoi email de confirmation (double-opt-in RGPD/CASL) — bilingue.
+    confirm_url = f"{PUBLIC_BASE_URL.rstrip('/')}/newsletter/confirm/{confirmation_token}?lang={lang}"
+    if lang == "fr":
+        subject = "Confirmez votre inscription à la newsletter FIRONOVA"
+        body_html = (
+            f"<p>Merci pour votre intérêt. Un dernier pas : cliquez pour confirmer votre inscription.</p>"
+            f"<p><a href=\"{confirm_url}\" style=\"display:inline-block;padding:12px 24px;background:#0f172a;color:#fff;text-decoration:none;border-radius:8px\">Confirmer mon inscription</a></p>"
+            f"<p style=\"font-size:12px;color:#64748b\">Le lien est valable 7 jours. "
+            f"Si vous n'avez pas demandé cette inscription, ignorez ce message.</p>"
+        )
+    else:
+        subject = "Confirm your FIRONOVA newsletter subscription"
+        body_html = (
+            f"<p>Thanks for your interest. One final step: click to confirm your subscription.</p>"
+            f"<p><a href=\"{confirm_url}\" style=\"display:inline-block;padding:12px 24px;background:#0f172a;color:#fff;text-decoration:none;border-radius:8px\">Confirm my subscription</a></p>"
+            f"<p style=\"font-size:12px;color:#64748b\">This link expires in 7 days. "
+            f"If you did not request this subscription, please ignore this message.</p>"
+        )
+    asyncio.create_task(_send_email(email, subject, body_html))
+
+    return {"ok": True, "already_subscribed": False, "confirmation_required": True}
+
+
+async def newsletter_confirm(token: str, request: Request):
+    """Endpoint appelé quand l'utilisateur clique le lien de confirmation
+    reçu par email. Marque le subscriber comme confirmé et lui envoie
+    l'email de bienvenue pré-launch (contenu réel de la newsletter)."""
+    await _rate_limit("newsletter_confirm", _client_ip(request), 30, 3600,
+                       "Too many confirmation attempts. Try again later.")
+    entry = await db.subscribers.find_one({"confirmation_token": token}, {"_id": 0})
+    if not entry:
+        raise HTTPException(404, "Lien de confirmation introuvable ou déjà utilisé.")
+    if entry.get("status") == "subscribed":
+        return {"ok": True, "already_confirmed": True, "email": entry.get("email")}
+    # Vérification expiration
+    exp = entry.get("confirmation_expires_at")
+    if exp:
+        try:
+            exp_dt = datetime.fromisoformat(exp.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > exp_dt:
+                raise HTTPException(410, "Le lien de confirmation a expiré. Réinscrivez-vous pour recevoir un nouveau lien.")
+        except ValueError:
+            pass
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.subscribers.update_one(
+        {"confirmation_token": token},
+        {"$set": {
+            "status": "subscribed",
+            "confirmed_at": now_iso,
+        }, "$unset": {
+            "confirmation_token": "",
+            "confirmation_expires_at": "",
+        }},
     )
-    return {"ok": True, "already_subscribed": False}
+    # Envoie l'email de bienvenue réel (l'accueil marketing).
+    lang = entry.get("lang") or "en"
+    unsubscribe_token = entry.get("unsubscribe_token") or ""
+    asyncio.create_task(send_prelaunch_welcome(entry.get("email", ""), lang, unsubscribe_token))
+    return {"ok": True, "already_confirmed": False, "email": entry.get("email")}
 
 
 async def newsletter_unsubscribe(token: str, request: Request):
