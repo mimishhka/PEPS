@@ -205,3 +205,19 @@ Patch reçu contenant : scheduler mensuel avec `payout_runs` anti-double, FX BoC
 - **Testids** : `restock-<slug>`, `restock-modal`, `restock-input-<vid>`, `restock-quick-<vid>-<n>`, `restock-new-total-<vid>`, `restock-reason`, `restock-view-history`, `restock-cancel`, `restock-confirm`.
 - **Tests E2E validés** : restock +10 sur BPC-157/5mg (96→106), audit trail persisté avec admin_email + reason, 3 edge-cases OK (`quantity=0`→422, variant inconnu→skipped, product inconnu→404). Screenshot UI validé : modal affiche live totals, boutons rapides fonctionnels, banner de confirmation.
 
+
+## Stock ops — Février 2026 (session fork, suite 4 : ajustements, CSV bulk, low-stock alerts)
+- **Ajustements de stock (-N)** — Le modal `RestockModal` a désormais un toggle **ADD STOCK / REMOVE STOCK** (émeraude / ambre). En mode remove : boutons rapides `-10 -25 -50 -100`, prévisualisation "New total" rouge si insuffisant, banner rouge d'erreur si `delta > current`, garde atomique côté backend `variants.$.stock >= |delta|` (skip `insufficient_stock` sinon). Mouvements audités avec `movement_type: "adjustment"`.
+- **Bulk Restock CSV (multi-produits)** — Nouveau bouton `BULK RESTOCK CSV` dans le header d'AdminProducts + endpoint `POST /api/admin/products/bulk-restock` acceptant deux layouts (avec ou sans header) : `sku,quantity[,reason]` OU `product_slug,variant_name,quantity[,reason]`. Parser client-side auto-détecte séparateur (`,`/`;`) et header. Négatif = adjustment. Preview 50 lignes, résultat KPIs `applied/failed` avec table détaillée des rejets typés (`product_not_found`, `variant_not_found`, `insufficient_stock`, `update_failed`). Chaque mouvement porte `source: "csv_bulk"` dans `stock_movements`.
+- **Alerte low-stock automatique** — Post-hook `_check_low_stock_alerts(product_id, variant_ids)` déclenché à chaque restock/bulk-CSV. Compare `stock <= low_stock_threshold` (défaut 10) : (1) émet email admin (Resend) avec CTA vers l'admin panel, (2) upsert `low_stock_alerts` (`active=true`, unique par variant), (3) **ne re-notifie pas** tant que l'alerte est active. Si le restock ramène le stock > seuil, l'alerte est marquée `active=false` (auto-clear). Endpoint `GET /api/admin/low-stock-alerts` pour widget dashboard futur.
+- **Testids** ajoutés : `restock-mode-add`, `restock-mode-remove`, `bulk-restock-csv-btn`, `bulk-restock-modal`, `bulk-restock-file-input`, `bulk-restock-reason`, `bulk-restock-submit`, `bulk-restock-applied-count`, `bulk-restock-failed-count`, `bulk-restock-done`.
+- **Tests E2E validés via curl** :
+  - `-20` sur BPC-157 (106→86, movement_type=adjustment)
+  - `-9999` refusé (`insufficient_stock`, applied=0)
+  - `quantity=0` refusé Pydantic 422
+  - CSV bulk 2 lignes (1 SKU valide `BPC-157-5MG` +50, 1 invalide) → applied=1 failed=1 avec raison typée
+  - Drop -130 sous seuil → 1 alerte insérée + 1 email admin `Stock bas` en outbox
+  - Drop -1 supplémentaire → **pas de doublon email** (idempotence)
+  - Restock +50 → alerte auto-clearée (`active=false`, count=0)
+- **UI validée par screenshot** : mode Remove affiche header ambre, colonne "REMOVE", boutons `-N`, New total rouge si insuffisant, banner ambre de confirmation, bouton `— CONFIRM −3`.
+

@@ -746,13 +746,43 @@ class StockAdjustIn(BaseModel):
 
 class StockRestockDeltaIn(BaseModel):
     variant_id: Optional[str] = None   # None = ligne produit legacy sans variantes
-    quantity: int = Field(gt=0, le=100000)   # strictly positive → restock uniquement
+    # Positif : restock. Négatif : ajustement inventaire (perte, casse, retour).
+    # 0 est refusé pour éviter les no-ops silencieux.
+    quantity: int = Field(ge=-100000, le=100000)
     note: Optional[str] = None
+
+    @field_validator("quantity")
+    @classmethod
+    def _not_zero(cls, v: int) -> int:
+        if v == 0:
+            raise ValueError("quantity must be non-zero (positive to add, negative to remove)")
+        return v
 
 
 class StockRestockIn(BaseModel):
     deltas: List[StockRestockDeltaIn] = Field(min_length=1, max_length=200)
-    reason: Optional[str] = None   # optionnel : "réception fournisseur", "retour client", etc.
+    reason: Optional[str] = None   # optionnel : "réception fournisseur", "casse", "retour client", etc.
+
+
+class StockBulkRestockRowIn(BaseModel):
+    # Identifie la variante par SKU (préféré) OU par (product_slug + variant_name).
+    sku: Optional[str] = None
+    product_slug: Optional[str] = None
+    variant_name: Optional[str] = None
+    quantity: int = Field(ge=-100000, le=100000)
+    note: Optional[str] = None
+
+    @field_validator("quantity")
+    @classmethod
+    def _not_zero_bulk(cls, v: int) -> int:
+        if v == 0:
+            raise ValueError("quantity must be non-zero")
+        return v
+
+
+class StockBulkRestockIn(BaseModel):
+    rows: List[StockBulkRestockRowIn] = Field(min_length=1, max_length=500)
+    reason: Optional[str] = None
 
 
 class StockNotifyIn(BaseModel):
@@ -7574,11 +7604,15 @@ async def admin_bulk_restock(product_id: str, payload: StockRestockIn,
                               admin: dict = Depends(require_area("products", "manage"))):
     """Restock atomique multi-variantes avec audit trail.
 
-    - Chaque delta > 0 est appliqué via `$inc` sur la variante ciblée (ou sur le
-      champ `stock` racine si `variant_id` est absent — produit legacy).
-    - Chaque ligne écrit un doc `stock_movements` (audit qui/quand/combien).
-    - Déclenche `_maybe_notify_restock` par variante si stock passé de 0 → >0.
-    - Réponse : produit à jour + résumé `{applied[], skipped[]}`.
+    - `quantity > 0` : ajoute du stock (`$inc`).
+    - `quantity < 0` : retire du stock (perte/casse/retour) avec garde
+      atomique `stock >= abs(qty)` pour empêcher un stock négatif.
+    - Chaque ligne écrit un doc `stock_movements` (audit qui/quand/combien
+      + `movement_type` in ('restock', 'adjustment')).
+    - Déclenche `_maybe_notify_restock` si stock passe de 0 → >0.
+    - Déclenche `_maybe_send_low_stock_alert` si stock franchit le seuil bas.
+    - Réponse : produit à jour + `{applied[], skipped[]}` (raisons de skip
+      typées : `variant_not_found`, `insufficient_stock`, `update_failed`).
     """
     product = await db.products.find_one({"id": product_id}, {"_id": 0})
     if not product:
@@ -7590,27 +7624,45 @@ async def admin_bulk_restock(product_id: str, payload: StockRestockIn,
 
     applied: list = []
     skipped: list = []
+    affected_variant_ids: set = set()
 
     for entry in payload.deltas:
         vid = entry.variant_id
         qty = int(entry.quantity)
+        movement_type = "restock" if qty > 0 else "adjustment"
         if vid:
             variant = variant_index.get(vid)
             if not variant:
                 skipped.append({"variant_id": vid, "reason": "variant_not_found"})
                 continue
             before = int(variant.get("stock") or 0)
-            res = await db.products.update_one(
-                {"id": product_id, "variants.id": vid},
-                {"$inc": {"variants.$.stock": qty}},
-            )
-            if not res.modified_count:
-                skipped.append({"variant_id": vid, "reason": "update_failed"})
-                continue
+            if qty < 0:
+                # Garde atomique : refuse si stock < |qty|
+                res = await db.products.update_one(
+                    {"id": product_id,
+                     "variants": {"$elemMatch": {"id": vid, "stock": {"$gte": -qty}}}},
+                    {"$inc": {"variants.$.stock": qty}},
+                )
+                if not res.modified_count:
+                    skipped.append({"variant_id": vid, "reason": "insufficient_stock",
+                                    "current": before, "requested": qty})
+                    continue
+            else:
+                res = await db.products.update_one(
+                    {"id": product_id, "variants.id": vid},
+                    {"$inc": {"variants.$.stock": qty}},
+                )
+                if not res.modified_count:
+                    skipped.append({"variant_id": vid, "reason": "update_failed"})
+                    continue
             after = before + qty
             variant_name = variant.get("name") or vid
         else:
             before = int(product.get("stock") or 0)
+            if qty < 0 and before < -qty:
+                skipped.append({"variant_id": None, "reason": "insufficient_stock",
+                                "current": before, "requested": qty})
+                continue
             res = await db.products.update_one(
                 {"id": product_id}, {"$inc": {"stock": qty}}
             )
@@ -7627,6 +7679,7 @@ async def admin_bulk_restock(product_id: str, payload: StockRestockIn,
             "variant_id": vid,
             "variant_name": variant_name,
             "delta": qty,
+            "movement_type": movement_type,
             "stock_before": before,
             "stock_after": after,
             "reason": (entry.note or payload.reason or "").strip() or None,
@@ -7636,13 +7689,232 @@ async def admin_bulk_restock(product_id: str, payload: StockRestockIn,
         await db.stock_movements.insert_one(movement)
         movement.pop("_id", None)
         applied.append(movement)
+        affected_variant_ids.add(vid)
 
         # Restock notifications : si le stock passait de 0 à >0, avertir les abonnés
         if before == 0 and after > 0:
             asyncio.create_task(_maybe_notify_restock(product_id, vid))
 
+    # Post-check low stock alerts (une fois toutes les modifs appliquées)
+    if applied:
+        asyncio.create_task(_check_low_stock_alerts(product_id, affected_variant_ids))
+
     fresh = await db.products.find_one({"id": product_id}, {"_id": 0})
     return {"ok": True, "product": fresh, "applied": applied, "skipped": skipped}
+
+
+async def admin_bulk_restock_csv(payload: StockBulkRestockIn,
+                                  admin: dict = Depends(require_area("products", "manage"))):
+    """Restock multi-produits depuis un CSV. Chaque ligne référence une
+    variante via `sku` (préféré) ou via `(product_slug, variant_name)`.
+
+    Retour : `{ok, total, applied[], failed[]}` — chaque `applied` contient
+    le mouvement inséré, chaque `failed` explique la raison de rejet."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    admin_email = admin.get("email") or ""
+
+    applied: list = []
+    failed: list = []
+    # Groupement par (product_id, variant_id) pour post-check alerte
+    affected: dict = {}
+
+    for idx, row in enumerate(payload.rows):
+        line_no = idx + 1
+        # Résolution variant → (product, variant, product_id, variant_id)
+        product = None
+        variant = None
+        vid = None
+        if row.sku:
+            product = await db.products.find_one(
+                {"variants.sku": row.sku}, {"_id": 0}
+            )
+            if not product:
+                # fallback : SKU sur produit sans variantes
+                product = await db.products.find_one({"sku": row.sku}, {"_id": 0})
+            if product:
+                for v in product.get("variants") or []:
+                    if v.get("sku") == row.sku:
+                        variant = v
+                        vid = v.get("id")
+                        break
+        elif row.product_slug:
+            product = await db.products.find_one({"slug": row.product_slug}, {"_id": 0})
+            if product and row.variant_name:
+                for v in product.get("variants") or []:
+                    if (v.get("name") or "").strip().lower() == row.variant_name.strip().lower():
+                        variant = v
+                        vid = v.get("id")
+                        break
+
+        if not product:
+            failed.append({"line": line_no, "reason": "product_not_found",
+                           "sku": row.sku, "product_slug": row.product_slug})
+            continue
+        if product.get("variants") and not variant:
+            failed.append({"line": line_no, "reason": "variant_not_found",
+                           "sku": row.sku, "product_slug": row.product_slug,
+                           "variant_name": row.variant_name})
+            continue
+
+        qty = int(row.quantity)
+        movement_type = "restock" if qty > 0 else "adjustment"
+        before = int((variant.get("stock") if variant else product.get("stock")) or 0)
+
+        if vid:
+            if qty < 0:
+                res = await db.products.update_one(
+                    {"id": product["id"],
+                     "variants": {"$elemMatch": {"id": vid, "stock": {"$gte": -qty}}}},
+                    {"$inc": {"variants.$.stock": qty}},
+                )
+            else:
+                res = await db.products.update_one(
+                    {"id": product["id"], "variants.id": vid},
+                    {"$inc": {"variants.$.stock": qty}},
+                )
+        else:
+            if qty < 0 and before < -qty:
+                failed.append({"line": line_no, "reason": "insufficient_stock",
+                               "current": before, "requested": qty})
+                continue
+            res = await db.products.update_one(
+                {"id": product["id"]}, {"$inc": {"stock": qty}}
+            )
+
+        if not res.modified_count:
+            failed.append({"line": line_no, "reason": "insufficient_stock" if qty < 0 else "update_failed",
+                           "current": before, "requested": qty})
+            continue
+
+        after = before + qty
+        movement = {
+            "id": str(uuid.uuid4()),
+            "product_id": product["id"],
+            "product_name": product.get("name_en") or product.get("name_fr") or product.get("slug"),
+            "variant_id": vid,
+            "variant_name": (variant.get("name") if variant else None),
+            "delta": qty,
+            "movement_type": movement_type,
+            "stock_before": before,
+            "stock_after": after,
+            "reason": (row.note or payload.reason or "").strip() or None,
+            "admin_email": admin_email,
+            "source": "csv_bulk",
+            "created_at": now_iso,
+        }
+        await db.stock_movements.insert_one(movement)
+        movement.pop("_id", None)
+        applied.append(movement)
+        affected.setdefault(product["id"], set()).add(vid)
+
+        if before == 0 and after > 0:
+            asyncio.create_task(_maybe_notify_restock(product["id"], vid))
+
+    for pid, vids in affected.items():
+        asyncio.create_task(_check_low_stock_alerts(pid, vids))
+
+    return {"ok": True, "total": len(payload.rows),
+            "applied": applied, "failed": failed,
+            "counts": {"applied": len(applied), "failed": len(failed)}}
+
+
+# ===========================================================================
+# Low stock alert — email admin quand une variante tombe sous son seuil
+# ===========================================================================
+async def _check_low_stock_alerts(product_id: str, variant_ids) -> None:
+    """Vérifie chaque variante affectée d'un produit contre son seuil bas.
+    - Si stock <= threshold ET pas d'alerte active → queue email admin + set flag.
+    - Si stock > threshold ET alerte active → clear flag (permet ré-alertes futures).
+    Idempotent via collection `low_stock_alerts` (unique par variant)."""
+    try:
+        product = await db.products.find_one({"id": product_id}, {"_id": 0})
+        if not product:
+            return
+        threshold = int(product.get("low_stock_threshold") or 10)
+        variants = product.get("variants") or []
+        for v in variants:
+            vid = v.get("id")
+            if variant_ids and vid not in variant_ids and None not in variant_ids:
+                continue
+            stock = int(v.get("stock") or 0)
+            alert_key = {"product_id": product_id, "variant_id": vid}
+            existing = await db.low_stock_alerts.find_one(alert_key, {"_id": 0, "active": 1})
+            if stock <= threshold:
+                if existing and existing.get("active"):
+                    continue   # déjà alerté, on ne spamme pas
+                # Nouvelle alerte
+                await db.low_stock_alerts.update_one(
+                    alert_key,
+                    {"$set": {**alert_key, "active": True, "stock": stock,
+                              "threshold": threshold,
+                              "triggered_at": datetime.now(timezone.utc).isoformat()}},
+                    upsert=True,
+                )
+                await _send_low_stock_admin_email(product, v, stock, threshold)
+            else:
+                if existing and existing.get("active"):
+                    await db.low_stock_alerts.update_one(
+                        alert_key,
+                        {"$set": {"active": False,
+                                  "cleared_at": datetime.now(timezone.utc).isoformat()}},
+                    )
+        # Cas produit sans variantes : évaluer product.stock
+        if not variants:
+            stock = int(product.get("stock") or 0)
+            alert_key = {"product_id": product_id, "variant_id": None}
+            existing = await db.low_stock_alerts.find_one(alert_key, {"_id": 0, "active": 1})
+            if stock <= threshold:
+                if not (existing and existing.get("active")):
+                    await db.low_stock_alerts.update_one(
+                        alert_key,
+                        {"$set": {**alert_key, "active": True, "stock": stock,
+                                  "threshold": threshold,
+                                  "triggered_at": datetime.now(timezone.utc).isoformat()}},
+                        upsert=True,
+                    )
+                    await _send_low_stock_admin_email(product, None, stock, threshold)
+            elif existing and existing.get("active"):
+                await db.low_stock_alerts.update_one(
+                    alert_key,
+                    {"$set": {"active": False,
+                              "cleared_at": datetime.now(timezone.utc).isoformat()}},
+                )
+    except Exception as e:
+        logging.error("[low-stock] check failed product=%s err=%s", product_id, type(e).__name__)
+
+
+async def _send_low_stock_admin_email(product: dict, variant: Optional[dict],
+                                       stock: int, threshold: int) -> None:
+    name = product.get("name_en") or product.get("name_fr") or product.get("slug") or "?"
+    variant_label = variant.get("name") if variant else "—"
+    slug = product.get("slug") or ""
+    base = (PUBLIC_BASE_URL or "").rstrip("/")
+    subject = f"FIRONOVA — Stock bas : {name} · {variant_label} ({stock} restants)"
+    html = f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#F5F1EA;font-family:'Inter',Arial,sans-serif;color:#0B2E4F">
+  <table style="max-width:600px;margin:24px auto;background:#fff;border:1px solid #E5DED0;border-radius:8px;overflow:hidden">
+    <tr><td style="background:#B85E00;color:#fff;padding:20px 28px;font-family:monospace;letter-spacing:3px;font-size:14px">FIRONOVA · LOW STOCK ALERT</td></tr>
+    <tr><td style="padding:32px 28px;font-size:14px;line-height:1.6">
+      <p style="margin:0 0 12px"><strong>{name}</strong> — {variant_label}</p>
+      <p style="margin:0 0 20px">Stock restant : <strong style="color:#B85E00;font-size:20px">{stock}</strong> (seuil : {threshold})</p>
+      <p style="margin:0 0 12px;color:#666;font-size:12px">Ce produit tombe sous son seuil bas. Pensez à commander auprès du fournisseur.</p>
+      <p style="margin:24px 0 0"><a href="{base}/ops-portal-fn7k2q/products" style="background:#0B2E4F;color:#fff;padding:12px 20px;text-decoration:none;font-family:monospace;font-size:12px;letter-spacing:2px;text-transform:uppercase">Ouvrir l'admin →</a></p>
+    </td></tr>
+    <tr><td style="background:#0B2E4F;color:#fff;padding:14px 28px;font-family:monospace;font-size:10px;letter-spacing:2px">FIRONOVA · CANADA</td></tr>
+  </table>
+</body></html>"""
+    try:
+        await _send_email(ADMIN_NOTIFICATION_EMAIL, subject, html)
+    except Exception as e:
+        logging.error("[low-stock] email queue failed err=%s", type(e).__name__)
+
+
+async def admin_list_low_stock_alerts(_admin: dict = Depends(require_area("products", "view"))):
+    """Liste des alertes de stock bas actives (pour un widget dashboard admin)."""
+    docs = await db.low_stock_alerts.find(
+        {"active": True}, {"_id": 0}
+    ).sort("triggered_at", -1).to_list(500)
+    return {"items": docs, "count": len(docs)}
 
 
 async def admin_product_stock_history(product_id: str, limit: int = 50,
@@ -9238,6 +9510,13 @@ async def seed_admin_and_products():
     # Un mouvement par ligne (product_id, variant_id?, delta, admin_email, timestamp).
     await db.stock_movements.create_index([("product_id", 1), ("created_at", -1)])
     await db.stock_movements.create_index([("created_at", -1)])
+    # Low stock alerts — un doc par (product_id, variant_id), unique.
+    # `active: true` = alerte en cours (email envoyé, on ne re-notifie pas).
+    # `active: false` = seuil regagné → prêt à re-déclencher plus tard.
+    await db.low_stock_alerts.create_index(
+        [("product_id", 1), ("variant_id", 1)], unique=True
+    )
+    await db.low_stock_alerts.create_index([("active", 1), ("triggered_at", -1)])
     await db.products.create_index("deleted_at")
     await db.coupons.create_index("deleted_at")
     await db.shipping_zones.create_index("deleted_at")
