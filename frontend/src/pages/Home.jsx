@@ -68,13 +68,6 @@ export default function Home() {
 
   const trustItems = [t("home.trustTested"), t("home.trustCanada"), t("home.trustPurity"), t("home.trustDiscreet")];
 
-  const categories = [
-    { key: "healing", label: t("categories.healing") },
-    { key: "weight-loss", label: t("categories.weight-loss") },
-    { key: "gh-secretagogues", label: t("categories.gh-secretagogues") },
-    { key: "cognitive", label: t("categories.cognitive") },
-    { key: "longevity", label: t("categories.longevity") },
-  ];
 
   const heroTitle = lang === "fr"
     ? { a: "Peptides de précision", b: "pour la recherche." }
@@ -91,9 +84,6 @@ export default function Home() {
   const featTitle = lang === "fr" ? "Une pureté documentée" : "Documented purity";
   const featLede = lang === "fr" ? "Un catalogue restreint et rigoureux. Aucun bruit — chaque composé gagne sa place par une vérification indépendante." : "A tight, curated catalog. No noise — each compound earns its place with third-party verification.";
   const featAll = lang === "fr" ? "Voir tout le catalogue" : "View full catalog";
-  const catsEyebrow = lang === "fr" ? "02 — DOMAINES DE RECHERCHE" : "02 — RESEARCH AREAS";
-  const catsTitle = lang === "fr" ? "Cinq domaines, un seul standard" : "Five fields, one standard";
-  const catsProducts = lang === "fr" ? "composés" : "compounds";
   const newsTitle = lang === "fr" ? "Sorties de lots & notes de recherche" : "Lot releases & research notes";
   const newsLede = lang === "fr" ? "Un courriel précis par mois. Nouveaux lots, rapports de lots, réassorts. Conforme à la LCAP, désabonnement en tout temps." : "One precise email per month. New lots, lot reports, restocks. CASL-compliant, unsubscribe anytime.";
   const newsDone = lang === "fr" ? "Confirmé — vous êtes inscrit." : "Confirmed — you're on the list.";
@@ -201,36 +191,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CATEGORIES */}
-      <section className="py-24 bg-white border-y border-ash/60" data-testid="categories-section">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <Reveal><p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">{catsEyebrow}</p></Reveal>
-          <Reveal delay={60}><h2 className="font-display text-[42px] font-semibold text-nordfjord mb-14">{catsTitle}</h2></Reveal>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-6">
-            {categories.map((c, i) => (
-              <Reveal key={c.key} delay={i * 80}>
-                <Link to={`/catalog?cat=${c.key}`} data-testid={`category-${c.key}`}
-                  className="group relative block rounded-2xl bg-nordfjord p-8 h-56 overflow-hidden card-hover">
-                  <svg viewBox="0 0 300 200" className="absolute inset-0 w-full h-full opacity-20 transition-opacity duration-500 group-hover:opacity-40" aria-hidden="true">
-                    <g stroke="#00B8D4" strokeWidth="1" fill="none">
-                      <line x1={30 + i * 14} y1="60" x2="150" y2="110" /><line x1="150" y1="110" x2="260" y2="50" /><line x1="150" y1="110" x2="220" y2="170" />
-                    </g>
-                    <g fill="#00B8D4"><circle cx={30 + i * 14} cy="60" r="4" /><circle cx="150" cy="110" r="5" /><circle cx="260" cy="50" r="4" /><circle cx="220" cy="170" r="4" /></g>
-                  </svg>
-                  <div className="relative h-full flex flex-col">
-                    <span className="font-data text-[11px] uppercase tracking-[0.2em] text-nova">0{i + 1}</span>
-                    <h3 className="font-display text-[22px] font-semibold text-white mt-auto leading-snug">{c.label}</h3>
-                    <p className="font-data text-[11px] uppercase tracking-[0.16em] text-[#8FB3C9] mt-2 flex items-center gap-2">
-                      {catsProducts}
-                      <ArrowRight size={13} className="text-nova transition-transform duration-300 group-hover:translate-x-1.5" />
-                    </p>
-                  </div>
-                </Link>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* NEWSLETTER */}
       <section className="py-24" data-testid="newsletter-section">

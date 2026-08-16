@@ -8197,11 +8197,12 @@ async def _seed_default_menus() -> None:
         {
             "slug": "footer-shop", "name_en": "Shop", "name_fr": "Boutique",
             "location": "footer", "display_order": 1,
+            # Plus de raccourcis par catégorie : leurs libellés (« Guérison et
+            # récupération », « Gestion du poids ») décrivaient un effet
+            # physiologique, ce qui rattache un composé à un usage humain.
             "items": [
                 {"label_en": "Catalog", "label_fr": "Catalogue", "url": "/catalog", "display_order": 0},
-                {"label_en": "Healing & Recovery", "label_fr": "Guérison et récupération", "url": "/catalog?cat=healing", "display_order": 1},
-                {"label_en": "Weight Management", "label_fr": "Gestion du poids", "url": "/catalog?cat=weight-loss", "display_order": 2},
-                {"label_en": "Cognitive", "label_fr": "Cognitif", "url": "/catalog?cat=cognitive", "display_order": 3},
+                {"label_en": "Lab & COA", "label_fr": "Labo & COA", "url": "/lab", "display_order": 1},
             ],
         },
         {

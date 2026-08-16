@@ -49,15 +49,18 @@ export default function ProductDetail() {
     const prices = (product.variants || []).map((v) => Number(v.price)).filter(Boolean);
     const low = prices.length ? Math.min(...prices) : Number(product.price_cad || 0);
     const inStock = (product.variants || []).some((v) => Number(v.stock) > 0) || Number(product.stock) > 0;
+    // La description libre du produit n'est plus publiée : ni sur la page, ni
+    // dans les données structurées, ni en meta description. Seul un texte SEO
+    // saisi explicitement par l'admin (meta_description_*) peut sortir.
+    // La catégorie est également retirée : ses libellés décrivaient un effet.
     const ld = {
       "@context": "https://schema.org",
       "@type": "Product",
       name: product.name_en || product.slug,
-      description: (product.description_en || "").slice(0, 300),
       sku: product.slug,
       brand: { "@type": "Brand", name: "Fironova" },
-      category: product.category || "",
     };
+    if (product.meta_description_en) ld.description = product.meta_description_en.slice(0, 300);
     if (_ogImage) ld.image = _ogImage;
     if (low > 0) ld.offers = {
       "@type": "Offer", priceCurrency: "CAD", price: Number(low.toFixed(2)),
@@ -69,7 +72,7 @@ export default function ProductDetail() {
 
   useDocumentHead({
     title: product ? (lang === "fr" ? product.name_fr : product.name_en) : "Product",
-    description: product ? ((lang === "fr" ? product.meta_description_fr || product.description_fr : product.meta_description_en || product.description_en) || "").slice(0, 155) : undefined,
+    description: product ? ((lang === "fr" ? product.meta_description_fr : product.meta_description_en) || "").slice(0, 155) : undefined,
     path: `/product/${slug}`,
     image: _ogImage || undefined,
     jsonLd: _jsonLd || undefined,
@@ -117,7 +120,6 @@ export default function ProductDetail() {
   }
 
   const name = lang === "fr" ? product.name_fr : product.name_en;
-  const desc = lang === "fr" ? product.description_fr : product.description_en;
   const variants = product.variants || [];
   const selectedVariant = variants.find((v) => v.id === variantId) || variants[0] || null;
   const coaComing = !!(selectedVariant && (selectedVariant.badge_coa_pending || selectedVariant.badge_coming_soon));
@@ -165,7 +167,7 @@ export default function ProductDetail() {
     { k: lang === "fr" ? "LOT ACTUEL" : "CURRENT LOT", v: selectedVariant?.coa_lot || product.coa_lot || "—" },
     { k: lang === "fr" ? "MASSE MOLAIRE" : "MOLAR MASS", v: product.molecular_weight ? `${product.molecular_weight} g/mol` : "—" },
     { k: "SKU", v: selectedVariant?.sku || product.slug.toUpperCase() },
-    { k: lang === "fr" ? "FORME" : "FORM", v: "Lyophilized" },
+    { k: lang === "fr" ? "FORME" : "FORM", v: lang === "fr" ? "Lyophilisé" : "Lyophilized" },
     { k: "CAS", v: product.cas_number || "—" },
   ];
 
@@ -207,8 +209,7 @@ export default function ProductDetail() {
             <p className="font-data text-[11px] uppercase tracking-[0.22em] text-compliance mb-3">
               {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT" : "FOR RESEARCH USE ONLY"}
             </p>
-            <h1 className="font-display text-[44px] font-bold text-nordfjord leading-none mb-5" data-testid="product-name">{name}</h1>
-            <p className="text-base leading-relaxed text-glacier mb-7">{desc}</p>
+            <h1 className="font-display text-[44px] font-bold text-nordfjord leading-none mb-7" data-testid="product-name">{name}</h1>
 
             {variants.length > 1 && (
               <div data-testid="variant-selector" className="mb-6">

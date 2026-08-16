@@ -80,14 +80,6 @@ export const dict = {
       confirmedTag: "// CONFIRMED",
       confirmed: "Check your inbox — create your account from the email to lock in 15% off at launch with code:",
     },
-    categories: {
-      all: "All categories",
-      healing: "Healing & Recovery",
-      "gh-secretagogues": "GH Secretagogues",
-      "weight-loss": "Metabolic",
-      cognitive: "Cognitive",
-      longevity: "Longevity",
-    },
     product: {
       sku: "SKU",
       sequence: "Sequence",
@@ -342,14 +334,6 @@ export const dict = {
       cta: "S'inscrire",
       confirmedTag: "// CONFIRMÉ",
       confirmed: "Vérifiez votre boîte de réception — créez votre compte depuis le courriel pour verrouiller 15 % de rabais au lancement avec le code :",
-    },
-    categories: {
-      all: "Toutes les catégories",
-      healing: "Guérison & Récupération",
-      "gh-secretagogues": "Sécrétagogues GH",
-      "weight-loss": "Métabolique",
-      cognitive: "Cognitif",
-      longevity: "Longévité",
     },
     product: {
       sku: "SKU",

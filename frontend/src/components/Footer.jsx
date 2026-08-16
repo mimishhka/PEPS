@@ -6,11 +6,11 @@ import { useAuth } from "../contexts/AuthContext";
 import { FnMark, Wordmark, NovaSpark } from "./brand";
 
 const FALLBACK_COLS = [
+  // Les raccourcis par catégorie ont été retirés : leurs libellés décrivaient
+  // un effet physiologique. Le catalogue complet reste accessible.
   { key: "shop", titleKey: "footer.shop", links: [
     { to: "/catalog", labelKey: "nav.catalog" },
-    { to: "/catalog?cat=healing", labelKey: "categories.healing" },
-    { to: "/catalog?cat=weight-loss", labelKey: "categories.weight-loss" },
-    { to: "/catalog?cat=cognitive", labelKey: "categories.cognitive" },
+    { to: "/lab", labelKey: "nav.lab" },
   ]},
   { key: "program", titleKey: "footer.program", links: [
     { to: "/affiliate/join", labelKey: "footer.affiliate" },
@@ -37,12 +37,18 @@ export default function Footer() {
         setCols(menus.length ? menus.map((m) => ({
           key: m.slug,
           title: lang === "fr" ? m.name_fr : m.name_en,
-          links: (m.items || []).map((it) => ({
-            to: it.url,
-            label: lang === "fr" ? it.label_fr : it.label_en,
-            newTab: it.open_new_tab,
-          })),
-        })) : []);
+          // Les menus vivent en base et y ont été semés avec des raccourcis
+          // par catégorie (« Guérison et récupération »…). Le semis est
+          // idempotent, donc corriger la graine ne corrige PAS les bases
+          // existantes : on filtre ici, ce qui vaut quel que soit leur état.
+          links: (m.items || [])
+            .filter((it) => !String(it.url || "").includes("cat="))
+            .map((it) => ({
+              to: it.url,
+              label: lang === "fr" ? it.label_fr : it.label_en,
+              newTab: it.open_new_tab,
+            })),
+        })).filter((c) => c.links.length) : []);
       })
       .catch(() => { if (!cancelled) setCols([]); });
     return () => { cancelled = true; };

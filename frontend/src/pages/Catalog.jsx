@@ -1,56 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { Search } from "lucide-react";
 import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import ProductCard from "../components/ProductCard.jsx";
 
-const FALLBACK_CATEGORIES = ["all", "healing", "gh-secretagogues", "weight-loss", "cognitive", "longevity"];
-
-function catLabel(c, lang, t) {
-  const stored = lang === "fr" ? c.name_fr : c.name_en;
-  if (stored) return stored;
-  const key = `categories.${c.slug}`;
-  const translated = t(key);
-  return translated === key ? c.slug.replace(/-/g, " ") : translated;
-}
-
+// Les catégories thématiques ont été retirées de la boutique : leurs libellés
+// (« Healing & Recovery », « Weight Management »…) décrivaient un effet
+// physiologique, ce qui rattache un composé à un usage humain. Le catalogue
+// présente désormais l'ensemble des produits, avec recherche et tri sur des
+// critères objectifs (nom, séquence, CAS, prix).
 export default function Catalog() {
   useDocumentHead({ title: "Catalog", description: "Browse Fironova research peptides. Certificate-of-analysis documentation. For Research Use Only.", path: "/catalog" });
-  const { t, lang } = useLang();
-  const [params, setParams] = useSearchParams();
+  const { lang } = useLang();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [activeRetry, setActiveRetry] = useState(0);
   const [sort, setSort] = useState("name");
   const [query, setQuery] = useState("");
-  const [cats, setCats] = useState(null);
-
-  const active = params.get("cat") || "all";
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get("/categories")
-      .then((r) => { if (!cancelled) setCats(Array.isArray(r.data) && r.data.length ? r.data : []); })
-      .catch(() => { if (!cancelled) setCats([]); });
-    return () => { cancelled = true; };
-  }, []);
-
-  const chips = useMemo(() => {
-    if (cats && cats.length) return [{ slug: "all", name_en: null, name_fr: null }, ...cats];
-    return FALLBACK_CATEGORIES.map((c) => ({ slug: c, name_en: null, name_fr: null }));
-  }, [cats]);
 
   useEffect(() => {
     setLoading(true);
     setLoadError(false);
-    api.get("/products", { params: active !== "all" ? { category: active } : {} })
+    api.get("/products")
       .then((r) => setProducts(Array.isArray(r.data) ? r.data : []))
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-  }, [active, activeRetry]);
+  }, [activeRetry]);
 
   const sorted = useMemo(() => {
     let arr = [...products];
@@ -79,25 +56,7 @@ export default function Catalog() {
         </h1>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 lg:px-8 pb-24 grid lg:grid-cols-[220px_1fr] gap-10">
-        <aside data-testid="catalog-sidebar">
-          <ul className="space-y-1">
-            {chips.map((c) => (
-              <li key={c.slug}>
-                <button
-                  onClick={() => setParams(c.slug === "all" ? {} : { cat: c.slug })}
-                  data-testid={`filter-${c.slug}`}
-                  className={`w-full text-left rounded-lg px-4 py-2.5 font-data text-xs uppercase tracking-[0.16em] transition-colors ${
-                    active === c.slug ? "bg-nordfjord text-white" : "text-glacier hover:bg-white hover:text-nordfjord"
-                  }`}
-                >
-                  {catLabel(c, lang, t)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </aside>
-
+      <div className="max-w-7xl mx-auto px-6 lg:px-8 pb-24">
         <section>
           <div className="flex flex-col sm:flex-row gap-3 mb-8">
             <div className="flex-1 flex items-center gap-2.5 bg-white border border-ash rounded-full px-5 py-3">
@@ -166,15 +125,15 @@ export default function Catalog() {
               <p className="text-nordfjord font-display text-lg font-semibold mb-2">
                 {query.trim()
                   ? (lang === "fr" ? `Aucun résultat pour « ${query.trim()} »` : `No results for “${query.trim()}”`)
-                  : (lang === "fr" ? "Aucun composé dans cette catégorie" : "No compounds in this category")}
+                  : (lang === "fr" ? "Aucun composé disponible" : "No compounds available")}
               </p>
               <p className="text-glacier text-sm mb-6">
                 {lang === "fr" ? "Essayez un autre terme ou parcourez tout le catalogue." : "Try another term or browse the full catalog."}
               </p>
               <button
-                onClick={() => { setQuery(""); setParams({}); }}
+                onClick={() => setQuery("")}
                 className="btn-pill btn-outline" data-testid="catalog-reset">
-                {lang === "fr" ? "Réinitialiser les filtres" : "Reset filters"}
+                {lang === "fr" ? "Effacer la recherche" : "Clear search"}
               </button>
             </div>
           ) : (
