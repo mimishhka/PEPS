@@ -4,7 +4,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, Ticket, Users, Truck, Settings as Cog,
   LogOut, Download, Search, X, Plus, Edit, Trash2, FileText, CheckCircle2, AlertCircle, Clock, UserCog,
   History, FolderTree, ListTree, Mail, Handshake, Globe,
-  CalendarCheck, Send, Boxes, LayoutGrid, DollarSign,
+  CalendarCheck, Send, Boxes, LayoutGrid, DollarSign, Inbox,
   Link2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -26,6 +26,7 @@ import AdminTrash from "./sections/AdminTrash";
 import AdminAuditLog from "./sections/AdminAuditLog";
 import AdminSeo from "./sections/AdminSeo";
 import AdminEmails from "./sections/AdminEmails";
+import AdminEmailOutbox from "./sections/AdminEmailOutbox";
 import AdminCategories from "./sections/AdminCategories";
 import AdminMenus from "./sections/AdminMenus";
 import AdminSubscribers from "./sections/AdminSubscribers";
@@ -59,6 +60,21 @@ export default function AdminLayout({ basePath = "/admin" }) {
     return () => { alive = false; clearInterval(t); };
   }, []);
 
+  // Pastille "stock faible" sur Produits. Endpoint distinct de ops/signals car
+  // il est protégé par products:view — un 403 laisse simplement la pastille à 0.
+  const [lowStock, setLowStock] = useState(0);
+  const canSeeProducts = hasAccess(user, "products");
+  useEffect(() => {
+    if (!canSeeProducts) { setLowStock(0); return undefined; }
+    let alive = true;
+    const pull = () => api.get("/admin/low-stock-alerts")
+      .then((r) => { if (alive) setLowStock(r.data?.count || 0); })
+      .catch(() => {});
+    pull();
+    const t = setInterval(pull, 60000);
+    return () => { alive = false; clearInterval(t); };
+  }, [canSeeProducts]);
+
   // Navigation groupée par intention de travail. Chaque item conserve son
   // "area" pour le filtrage de permissions ; les groupes vides sont masqués.
   const navGroups = useMemo(() => {
@@ -80,7 +96,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
         id: "catalog",
         label: L("CATALOGUE", "CATALOG"),
         items: [
-          { to: `${basePath}/products`, label: L("Produits", "Products"), icon: Package, area: "products" },
+          { to: `${basePath}/products`, label: L("Produits", "Products"), icon: Package, area: "products", badge: lowStock, testid: "admin-nav-products" },
           { to: `${basePath}/categories`, label: L("Catégories", "Categories"), icon: FolderTree, area: "categories" },
           { to: `${basePath}/menus`, label: L("Menus", "Menus"), icon: ListTree, area: "menus" },
         ],
@@ -111,7 +127,8 @@ export default function AdminLayout({ basePath = "/admin" }) {
           { to: `${basePath}/staff`, label: L("Équipe", "Team"), icon: UserCog, area: "staff" },
           { to: `${basePath}/audit-log`, label: L("Journal", "Activity log"), icon: History, area: "audit" },
           { to: `${basePath}/seo`, label: L("SEO", "SEO"), icon: Globe, area: "seo" },
-          { to: `${basePath}/emails`, label: L("Emails", "Emails"), icon: Mail, area: "emails" },
+          { to: `${basePath}/emails`, label: L("Emails", "Emails"), icon: Mail, area: "emails", end: true },
+          { to: `${basePath}/emails/outbox`, label: L("File d'attente", "Outbox"), icon: Inbox, area: "orders", testid: "admin-nav-emails-outbox" },
           { to: `${basePath}/trash`, label: L("Corbeille", "Trash"), icon: Trash2, area: "trash" },
         ],
       },
@@ -124,7 +141,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
         ),
       }))
       .filter((g) => g.items.length > 0);
-  }, [user, basePath, L]);
+  }, [user, basePath, L, lowStock]);
 
   const landingPath = navGroups[0]?.items[0]?.to || basePath;
 
@@ -145,13 +162,14 @@ export default function AdminLayout({ basePath = "/admin" }) {
                   {group.label}
                 </div>
                 {group.items.map((n) => {
-                  const badge = n.signal && signals && signals[n.signal] > 0 ? signals[n.signal] : null;
+                  const signalBadge = n.signal && signals && signals[n.signal] > 0 ? signals[n.signal] : null;
+                  const badge = signalBadge ?? (n.badge > 0 ? n.badge : null);
                   return (
                     <NavLink
                       key={n.to}
                       to={n.to}
                       end={n.end}
-                      data-testid={`admin-nav-${n.label.toLowerCase()}`}
+                      data-testid={n.testid || `admin-nav-${n.label.toLowerCase()}`}
                       className={({ isActive }) =>
                         `flex items-center gap-3 px-6 py-2.5 text-sm transition-colors ${
                           isActive
@@ -165,7 +183,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
                       {badge && (
                         <span
                           className="bg-red-600 text-white font-mono text-[10px] px-1.5 py-0.5 rounded-full"
-                          data-testid={`nav-badge-${n.signal}`}
+                          data-testid={n.signal ? `nav-badge-${n.signal}` : "sidebar-low-stock-badge"}
                         >
                           {badge}
                         </span>
@@ -237,6 +255,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
             <Route path="audit-log" element={hasAccess(user, "audit") ? <AdminAuditLog /> : <Navigate to={landingPath} replace />} />
             <Route path="seo" element={hasAccess(user, "seo") ? <AdminSeo /> : <Navigate to={landingPath} replace />} />
             <Route path="emails" element={hasAccess(user, "emails") ? <AdminEmails /> : <Navigate to={landingPath} replace />} />
+            <Route path="emails/outbox" element={hasAccess(user, "orders") ? <AdminEmailOutbox /> : <Navigate to={landingPath} replace />} />
           </Routes>
         </main>
       </div>

@@ -4,6 +4,11 @@ from fastapi import APIRouter, Depends
 
 import server as s
 
+try:
+    from services import mail
+except ImportError:  # package-relative import (uvicorn backend.server:app)
+    from backend.services import mail
+
 router = APIRouter(prefix="/api")
 
 
@@ -154,3 +159,30 @@ async def admin_email_outbox_stats(_admin: dict = Depends(s.require_area("orders
 async def admin_email_requeue(payload: s.EmailRequeueIn,
                                _admin: dict = Depends(s.require_area("orders", "manage"))):
     return await s.admin_email_requeue(payload, _admin)
+
+
+# Outbox panel — ces routes appellent directement le service, sans détour par
+# server.py : c'est la direction que la couche services/ rend possible.
+@router.get("/admin/emails/list")
+async def admin_email_list(status: Optional[str] = None, q: Optional[str] = None,
+                            page: int = 0, limit: int = 50,
+                            _admin: dict = Depends(s.require_area("orders", "view"))):
+    return await mail.admin_email_list(status=status, q=q, page=page, limit=limit)
+
+
+@router.get("/admin/emails/{email_id}")
+async def admin_email_get(email_id: str,
+                           _admin: dict = Depends(s.require_area("orders", "view"))):
+    return await mail.admin_email_get(email_id)
+
+
+@router.post("/admin/emails/{email_id}/retry")
+async def admin_email_retry_single(email_id: str,
+                                    _admin: dict = Depends(s.require_area("orders", "manage"))):
+    return await mail.admin_email_retry_single(email_id)
+
+
+@router.post("/admin/emails/{email_id}/cancel")
+async def admin_email_cancel(email_id: str,
+                              _admin: dict = Depends(s.require_area("orders", "manage"))):
+    return await mail.admin_email_cancel(email_id)

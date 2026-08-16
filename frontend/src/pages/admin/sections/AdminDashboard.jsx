@@ -7,6 +7,7 @@ import api from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
 import { useLang } from "../../../contexts/LanguageContext";
 import { DashboardSkeleton } from "../../../components/LoadingSkeletons";
+import { LowStockCard } from "./dashboard/LowStockCard";
 
 export default function AdminDashboard() {
   const { lang } = useLang();
@@ -164,6 +165,9 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        <div className="space-y-4">
+        <LowStockCard />
+
         <div className="bg-white border border-ash p-6 rounded-md">
           <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">// {L("MEILLEURES VENTES", "BEST SELLERS")}</div>
           <h2 className="font-display text-xl font-bold tracking-tight mt-1 mb-4 text-nordfjord">{L("Top produits", "Top Products")}</h2>
@@ -182,6 +186,7 @@ export default function AdminDashboard() {
               <li className="py-4 font-data text-xs text-glacier text-center">{L("Aucune vente pour l'instant", "No sales yet")}</li>
             )}
           </ul>
+        </div>
         </div>
       </div>
 

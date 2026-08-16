@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict
 from pymongo import ReturnDocument
 import resend
@@ -243,6 +244,97 @@ async def _email_outbox_janitor():
         except Exception as e:
             logging.error("[email] janitor tick error_type=%s", type(e).__name__)
         await asyncio.sleep(EMAIL_JANITOR_INTERVAL_S)
+
+
+# ---------------------------------------------------------------------------
+# Admin email outbox panel — inspection et contrôle unitaire de la file.
+# Le worker ne prend que pending/retry/sending et le janitor ne cible que
+# sending (lease expiré) et failed : un job "cancelled" est donc inerte pour
+# les deux, sans garde supplémentaire.
+# ---------------------------------------------------------------------------
+
+def _redact_email(email: str) -> str:
+    """Masque un destinataire pour la vue liste (le détail reste en clair)."""
+    if not email or "@" not in email:
+        return "***"
+    local, domain = email.split("@", 1)
+    tld = domain.rsplit(".", 1)[-1] if "." in domain else "***"
+    return f"{local[:1]}***@{domain[:1]}***.{tld}"
+
+
+def _redact_recipients(value):
+    if isinstance(value, list):
+        return [_redact_email(x) for x in value]
+    if isinstance(value, str):
+        return _redact_email(value)
+    return value
+
+
+async def admin_email_list(status: Optional[str] = None, q: Optional[str] = None,
+                           page: int = 0, limit: int = 50) -> dict:
+    """Page de la file email. Le corps HTML est exclu (lourd) et les
+    destinataires sont masqués : la vue liste n'a pas besoin des adresses."""
+    page = max(0, int(page or 0))
+    limit = max(1, min(int(limit or 50), 200))
+
+    filt: dict = {}
+    if status:
+        statuses = [part.strip() for part in status.split(",") if part.strip()]
+        if statuses:
+            filt["status"] = {"$in": statuses}
+    if q:
+        needle = re.escape(q)
+        filt["$or"] = [
+            {"subject": {"$regex": needle, "$options": "i"}},
+            {"to": {"$regex": needle, "$options": "i"}},
+        ]
+
+    total = await s.db.email_outbox.count_documents(filt)
+    cursor = (
+        s.db.email_outbox.find(filt, {"_id": 0, "html": 0})
+        .sort("created_at", -1).skip(page * limit).limit(limit)
+    )
+    items = await cursor.to_list(limit)
+    for doc in items:
+        doc["to"] = _redact_recipients(doc.get("to"))
+    return {"items": items, "total": total, "page": page, "limit": limit,
+            "has_more": (page + 1) * limit < total}
+
+
+async def admin_email_get(email_id: str) -> dict:
+    """Détail d'un job, HTML rendu et destinataire en clair (vue ciblée)."""
+    doc = await s.db.email_outbox.find_one({"id": email_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Email not found")
+    return doc
+
+
+async def admin_email_retry_single(email_id: str) -> dict:
+    """Remet un job unique en file, compteur de tentatives remis à zéro."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    res = await s.db.email_outbox.update_one(
+        {"id": email_id},
+        {"$set": {"status": "retry", "attempts": 0, "available_at": now_iso,
+                  "requeued_at": now_iso, "requeued_by": "admin_single"},
+         "$unset": {"lease_expires_at": ""}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "Email not found")
+    return {"ok": True}
+
+
+async def admin_email_cancel(email_id: str) -> dict:
+    """Abandon manuel : le job sort des files worker et janitor."""
+    res = await s.db.email_outbox.update_one(
+        {"id": email_id},
+        {"$set": {"status": "cancelled",
+                  "cancelled_at": datetime.now(timezone.utc).isoformat(),
+                  "cancelled_by": "admin"}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "Email not found")
+    return {"ok": True}
+
 
 async def send_order_confirmation(order: dict) -> None:
     if not order.get("email"):

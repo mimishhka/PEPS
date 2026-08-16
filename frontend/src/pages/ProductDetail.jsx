@@ -153,7 +153,9 @@ export default function ProductDetail() {
 
   // COA strictement au niveau variante — source de vérité unique : coa_status.
   const coaStatus = selectedVariant?.coa_status || "none";
-  const coaUrl = selectedVariant?.coa_url || "";
+  // Les COA sont stockés en chemin relatif (/uploads/coa/…) : sans resolveAssetUrl
+  // le lien viserait l'origine du frontend et renverrait 404 hors reverse proxy.
+  const coaUrl = selectedVariant?.coa_url ? resolveAssetUrl(selectedVariant.coa_url) : "";
   const coaAvailable = coaStatus === "available" && !!coaUrl;
   const coaPending = coaStatus === "pending";
   const imageSrc = resolveAssetUrl(product.image_url);

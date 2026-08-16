@@ -2430,12 +2430,14 @@ def _variant_effective_price(v: dict, is_preorder: bool) -> float:
 try:
     from services.stock import (  # noqa: F401
         _reserve_stock_atomic, _release_stock_atomic, _send_restock_email, _maybe_notify_restock,
-        _check_low_stock_alerts, _send_low_stock_admin_email, _restock_order_items,
+        _check_low_stock_alerts, _send_low_stock_admin_email, low_stock_alerts_enriched,
+        _restock_order_items,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
     from backend.services.stock import (  # noqa: F401
         _reserve_stock_atomic, _release_stock_atomic, _send_restock_email, _maybe_notify_restock,
-        _check_low_stock_alerts, _send_low_stock_admin_email, _restock_order_items,
+        _check_low_stock_alerts, _send_low_stock_admin_email, low_stock_alerts_enriched,
+        _restock_order_items,
     )
 
 
@@ -6414,11 +6416,8 @@ async def admin_bulk_restock_csv(payload: StockBulkRestockIn,
 
 
 async def admin_list_low_stock_alerts(_admin: dict = Depends(require_area("products", "view"))):
-    """Liste des alertes de stock bas actives (pour un widget dashboard admin)."""
-    docs = await db.low_stock_alerts.find(
-        {"active": True}, {"_id": 0}
-    ).sort("triggered_at", -1).to_list(500)
-    return {"items": docs, "count": len(docs)}
+    """Liste des alertes de stock bas actives (pour le widget dashboard admin)."""
+    return await low_stock_alerts_enriched()
 
 
 async def admin_product_stock_history(product_id: str, limit: int = 50,

@@ -202,6 +202,40 @@ async def _check_low_stock_alerts(product_id: str, variant_ids) -> None:
         logging.error("[low-stock] check failed product=%s err=%s", product_id, type(e).__name__)
 
 
+async def low_stock_alerts_enriched(limit: int = 500) -> dict:
+    """Alertes de stock bas actives, enrichies du nom produit/variante.
+
+    L'enrichissement se fait ici plutôt que côté client : une seule requête
+    products couvre toutes les alertes, là où le widget dashboard ferait un
+    N+1 (une requête par ligne affichée).
+    """
+    docs = await s.db.low_stock_alerts.find(
+        {"active": True}, {"_id": 0}
+    ).sort("triggered_at", -1).to_list(limit)
+    if not docs:
+        return {"items": [], "count": 0}
+
+    product_ids = list({d["product_id"] for d in docs})
+    products = await s.db.products.find(
+        {"id": {"$in": product_ids}},
+        {"_id": 0, "id": 1, "name_en": 1, "name_fr": 1, "slug": 1,
+         "variants.id": 1, "variants.name": 1, "variants.sku": 1},
+    ).to_list(len(product_ids))
+    pmap = {p["id"]: p for p in products}
+
+    for d in docs:
+        p = pmap.get(d["product_id"], {})
+        d["product_name"] = p.get("name_en") or p.get("name_fr") or p.get("slug") or "?"
+        d["product_slug"] = p.get("slug")
+        variant = next(
+            (v for v in (p.get("variants") or []) if v.get("id") == d.get("variant_id")),
+            {},
+        )
+        d["variant_name"] = variant.get("name")
+        d["variant_sku"] = variant.get("sku")
+    return {"items": docs, "count": len(docs)}
+
+
 async def _send_low_stock_admin_email(product: dict, variant: Optional[dict],
                                        stock: int, threshold: int) -> None:
     name = product.get("name_en") or product.get("name_fr") or product.get("slug") or "?"
