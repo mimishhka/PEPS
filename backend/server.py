@@ -9,6 +9,7 @@ import io
 import re
 import csv
 import json
+import time
 import html
 import hmac
 import hashlib
@@ -162,6 +163,13 @@ IMAGE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_IMAGE_UPLOAD_MB = float(os.environ.get("MAX_IMAGE_UPLOAD_MB", "5"))
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 _IMAGE_FORMAT_EXT = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp", "GIF": "gif"}
+
+# --- Address validation (Google Maps Address Validation API) --------------
+# Utilisée dans POST /checkout (blocking) et POST /checkout/validate-address
+# (preview côté client). Cache 24h TTL pour économiser le quota gratuit (10 K/mois).
+GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
+_ADDRESS_CACHE: dict = {}
+_ADDRESS_CACHE_TTL_SEC = 60 * 60 * 24  # 24h
 
 # Étiquettes d'expédition Postes Canada — servies à /uploads/labels/<file>.
 LABEL_UPLOAD_DIR = UPLOAD_DIR / "labels"
@@ -4314,12 +4322,131 @@ async def _queue_crypto_reconciliation_item(payload: dict, reason: str) -> bool:
     return True
 
 
+def _address_cache_key(addr: dict) -> str:
+    """SHA-256 canonique (upper+trim+dedupe whitespace) — chaque adresse
+    identique en essence n'appelle Google qu'une fois par 24h."""
+    canonical = {
+        k: " ".join(str(addr.get(k, "")).strip().upper().split())
+        for k in ("address1", "address2", "city", "province", "postal_code", "country")
+    }
+    return hashlib.sha256(json.dumps(canonical, sort_keys=True).encode()).hexdigest()
+
+
+async def _validate_shipping_address_google(addr: dict) -> dict:
+    """Appelle Google Maps Address Validation API. Retourne un dict :
+      {
+        "valid": bool,
+        "suggestions": [postalAddress dict],  # candidat corrigé si dispo
+        "verdict": {...},
+        "normalized": {...} | None,
+        "provider": "google_maps" | "disabled" | "unavailable",
+        "response_id": str | None,
+      }
+
+    Politique : accepte SEULEMENT si `addressComplete=true`, aucun composant
+    non-confirmé, et `possibleNextAction=ACCEPT`. Sur erreur Google (timeout,
+    quota, config), retourne `unavailable` → l'appelant décide (défaut :
+    laisser passer sinon Google en panne bloque toutes les ventes).
+    """
+    if not GOOGLE_MAPS_API_KEY:
+        return {"valid": True, "suggestions": [], "verdict": {},
+                "normalized": None, "provider": "disabled", "response_id": None}
+
+    country = (addr.get("country") or "CA").upper()
+    if country != "CA":
+        # On ne valide que le Canada pour le lancement. Les autres pays passent
+        # (à revoir si vous ouvrez à l'international).
+        return {"valid": True, "suggestions": [], "verdict": {},
+                "normalized": None, "provider": "skipped_non_ca", "response_id": None}
+
+    cache_key = _address_cache_key(addr)
+    now = time.time()
+    cached = _ADDRESS_CACHE.get(cache_key)
+    if cached and now - cached[0] < _ADDRESS_CACHE_TTL_SEC:
+        return cached[1]
+
+    lines = [addr.get("address1", "")]
+    if addr.get("address2"):
+        lines.append(addr["address2"])
+    payload = {
+        "address": {
+            "regionCode": "CA",
+            "locality": addr.get("city", ""),
+            "administrativeArea": addr.get("province", ""),
+            "postalCode": addr.get("postal_code", ""),
+            "addressLines": [l for l in lines if l],
+        }
+    }
+    url = "https://addressvalidation.googleapis.com/v1:validateAddress"
+    try:
+        import httpx  # local import — évite la charge au boot si feature off
+        async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=2.0)) as client:
+            r = await client.post(url, params={"key": GOOGLE_MAPS_API_KEY}, json=payload)
+    except Exception as e:
+        logging.warning("Google Maps AVS request failed: %s", e)
+        return {"valid": True, "suggestions": [], "verdict": {},
+                "normalized": None, "provider": "unavailable", "response_id": None}
+
+    if r.status_code >= 400:
+        try:
+            err = r.json().get("error", {})
+        except Exception:
+            err = {}
+        status = err.get("status", "")
+        logging.warning("Google Maps AVS HTTP %s status=%s", r.status_code, status)
+        # Quota / auth / config → on ne bloque pas la vente. Alerte visible en log.
+        return {"valid": True, "suggestions": [], "verdict": {"error": status},
+                "normalized": None, "provider": "unavailable", "response_id": None}
+
+    data = r.json()
+    result = data.get("result", {})
+    verdict = result.get("verdict", {})
+    normalized = result.get("address")
+    is_ok = (
+        verdict.get("addressComplete") is True
+        and not verdict.get("hasUnconfirmedComponents", False)
+        and verdict.get("possibleNextAction") == "ACCEPT"
+    )
+    out = {
+        "valid": is_ok,
+        "suggestions": [] if is_ok or not normalized else [normalized],
+        "verdict": verdict,
+        "normalized": normalized,
+        "provider": "google_maps",
+        "response_id": data.get("responseId"),
+    }
+    _ADDRESS_CACHE[cache_key] = (now, out)
+    # Nettoyage passif : si le cache dépasse 20K entrées, drop 25% les plus vieilles
+    if len(_ADDRESS_CACHE) > 20000:
+        oldest = sorted(_ADDRESS_CACHE.items(), key=lambda x: x[1][0])[:5000]
+        for k, _ in oldest:
+            _ADDRESS_CACHE.pop(k, None)
+    return out
+
+
 async def checkout(payload: CheckoutIn, request: Request):
     await _rate_limit("checkout", _client_ip(request), CHECKOUT_MAX_PER_MINUTE, 60, "Too many checkout attempts. Try again shortly.")
     if not (payload.accept_terms and payload.confirm_age and payload.confirm_research_use):
         raise HTTPException(400, "All compliance confirmations are required")
     if not payload.items:
         raise HTTPException(400, "Cart is empty")
+
+    # Address validation (Google Maps AVS) — bloquant si adresse invalide.
+    # Le résultat est persisté sur l'ordre pour audit. Cache 24h TTL en interne.
+    address_check = await _validate_shipping_address_google(payload.shipping.model_dump())
+    if not address_check["valid"]:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "invalid_shipping_address",
+                "message": (
+                    "L'adresse de livraison n'a pas pu être vérifiée. "
+                    "Veuillez la corriger ou accepter la suggestion proposée."
+                ),
+                "suggestions": address_check["suggestions"],
+                "verdict": address_check["verdict"],
+            },
+        )
 
     # Priorité au body (évite un préflight CORS déclenché par un en-tête
     # personnalisé, qui échoue derrière certains ingress) — l'en-tête reste
@@ -4418,6 +4545,10 @@ async def checkout(payload: CheckoutIn, request: Request):
         "total": total,
         "currency": "CAD",
         "shipping_address": payload.shipping.model_dump(),
+        # C2 — audit trail Google Maps Address Validation (voir _validate_shipping_address_google)
+        "address_verified": bool(address_check.get("valid")),
+        "address_suggestions": address_check.get("suggestions") or [],
+        "address_verification_provider": address_check.get("provider", "disabled"),
         "shipping_info": {"carrier": "", "tracking_number": "", "shipped_at": None},
         "payment_method": payload.payment_method,
         "payment_status": payment_status,

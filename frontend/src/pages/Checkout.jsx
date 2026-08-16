@@ -5,6 +5,9 @@ import { useLang } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import api, { formatApiError } from "../lib/api";
 import { toast } from "sonner";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
+} from "../components/ui/dialog";
 
 const SHIPPING_FLAT_CAD = 20.0;
 const FREE_SHIPPING_THRESHOLD_CAD = 200.0;
@@ -69,6 +72,10 @@ export default function Checkout() {
   });
 
   const [idempotencyKey] = useState(() => `chk_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+
+  // Dialog "adresse suggérée par Google Maps AVS" — s'affiche si le serveur
+  // bloque le checkout avec detail.code === 'invalid_shipping_address'.
+  const [addrSuggestion, setAddrSuggestion] = useState(null);
 
   const hasAddressData = (addr) => {
     if (!addr) return false;
@@ -278,7 +285,15 @@ export default function Checkout() {
       // (iframe) directement sur /order/{id} — aucune redirection externe.
       nav(`/order/${data.id}`, { state: { order: data } });
     } catch (err) {
-      toast.error(formatApiError(err?.response?.data?.detail || err?.message));
+      const detail = err?.response?.data?.detail;
+      // Cas spécifique : le serveur a bloqué à cause d'une adresse invalide
+      // et propose une suggestion normalisée par Google Maps AVS.
+      if (detail && typeof detail === "object" && detail.code === "invalid_shipping_address") {
+        const sug = (detail.suggestions && detail.suggestions[0]) || null;
+        setAddrSuggestion({ suggestion: sug, verdict: detail.verdict });
+      } else {
+        toast.error(formatApiError(detail || err?.message));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -527,6 +542,69 @@ export default function Checkout() {
           </div>
         </aside>
       </div>
+
+      {/* Modal de suggestion d'adresse — s'affiche uniquement si Google Maps
+          AVS a bloqué le checkout avec une suggestion normalisée. */}
+      <Dialog open={!!addrSuggestion} onOpenChange={(open) => !open && setAddrSuggestion(null)}>
+        <DialogContent data-testid="address-suggestion-dialog">
+          <DialogHeader>
+            <DialogTitle>
+              {lang === "fr" ? "Vérifier votre adresse" : "Verify your address"}
+            </DialogTitle>
+            <DialogDescription>
+              {lang === "fr"
+                ? "L'adresse saisie n'a pas pu être confirmée par notre service de vérification. Corrigez-la ou acceptez la suggestion proposée."
+                : "The address you entered could not be confirmed. Please correct it or accept the suggested address."}
+            </DialogDescription>
+          </DialogHeader>
+          {addrSuggestion?.suggestion?.formattedAddress && (
+            <div className="rounded-xl bg-birch/40 p-4 my-2 border border-nova/20">
+              <div className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance mb-1">
+                {lang === "fr" ? "Suggestion" : "Suggestion"}
+              </div>
+              <div className="font-medium text-nordfjord" data-testid="address-suggestion-text">
+                {addrSuggestion.suggestion.formattedAddress}
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <button
+              type="button"
+              onClick={() => setAddrSuggestion(null)}
+              data-testid="address-suggestion-edit"
+              className="btn-pill btn-ghost">
+              {lang === "fr" ? "Corriger manuellement" : "Edit manually"}
+            </button>
+            {addrSuggestion?.suggestion?.postalAddress && (
+              <button
+                type="button"
+                onClick={() => {
+                  const pa = addrSuggestion.suggestion.postalAddress;
+                  const lines = pa.addressLines || [];
+                  setShip((s) => ({
+                    ...s,
+                    line1: lines[0] || s.line1,
+                    line2: lines[1] || "",
+                    city: pa.locality || s.city,
+                    province: pa.administrativeArea || s.province,
+                    postal_code: pa.postalCode || s.postal_code,
+                    country: pa.regionCode || s.country,
+                  }));
+                  setAddrSuggestion(null);
+                  toast.success(
+                    lang === "fr"
+                      ? "Adresse mise à jour. Cliquez à nouveau sur \"Placer la commande\"."
+                      : "Address updated. Click \"Place order\" again."
+                  );
+                }}
+                data-testid="address-suggestion-accept"
+                className="btn-pill btn-nova">
+                {lang === "fr" ? "Utiliser la suggestion" : "Use suggestion"}
+              </button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -120,3 +120,18 @@ async def get_shipping_rates(payload: s.ShippingRateRequest, request: Request):
 @router.post("/checkout")
 async def checkout(payload: s.CheckoutIn, request: Request):
     return await s.checkout(payload, request)
+
+
+@router.post("/checkout/validate-address")
+async def checkout_validate_address(payload: s.ShippingAddress, request: Request):
+    """Preview endpoint appelé par le frontend Checkout AVANT la soumission
+    finale. Retourne verdict + suggestions sans créer aucune commande. Le
+    checkout final re-valide de toute façon (source de vérité serveur)."""
+    await s._rate_limit("validate_address", s._client_ip(request), 30, 60,
+                        "Trop de vérifications d'adresse. Réessayez dans un instant.")
+    result = await s._validate_shipping_address_google(payload.model_dump())
+    return {
+        "valid": result["valid"],
+        "suggestions": result["suggestions"],
+        "provider": result["provider"],
+    }
