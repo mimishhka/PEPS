@@ -428,13 +428,38 @@ export default function AffiliateDashboard() {
               )}
             </div>
 
-            {/* KPI cards */}
+            {/* KPI cards — la devise est explicite. Les montants sont en CAD
+                alors que le versement part en USDT/USDC : sans etiquette, un
+                affilie qui voit « 250 $ » et recoit 180 USDT croit a une
+                retenue. La conversion n'apparaissait qu'APRES un versement,
+                dans l'historique — donc jamais pour qui n'a pas encore ete paye. */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <KpiCard label={L("Revenu validé cumulé", "Cumulative validated revenue")} value={money(data?.cumulative_revenue)} />
-              <KpiCard label={L("Revenu du trimestre", "Quarter revenue")} value={money(data?.quarter_revenue)} />
-              <KpiCard label={L("Commissions en attente", "Pending commissions")} value={money(data?.pending_commission)} />
-              <KpiCard label={L("Commissions payées", "Paid commissions")} value={money(data?.paid_commission)} accent />
+              <KpiCard label={L("Revenu validé cumulé", "Cumulative validated revenue")} value={money(data?.cumulative_revenue)} sub="CAD" />
+              <KpiCard label={L("12 derniers mois", "Last 12 months")} value={money(data?.rolling12_revenue)} sub={L("CAD · fixe votre palier", "CAD · sets your tier")} />
+              <KpiCard label={L("Commissions en attente", "Pending commissions")} value={money(data?.pending_commission)} sub="CAD" />
+              <KpiCard label={L("Commissions payées", "Paid commissions")} value={money(data?.paid_commission)} sub="CAD" accent />
             </div>
+
+            {/* Estimation prospective : ce que l'affilie touchera reellement. */}
+            {data?.fx_rate_cad_to_usd > 0 && (data?.pending_commission > 0 || data?.approved_commission > 0) && (
+              <div className="bg-white rounded-2xl border border-ash p-5" data-testid="payout-estimate">
+                <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+                  {L("VOTRE PROCHAIN VERSEMENT", "YOUR NEXT PAYOUT")}
+                </p>
+                <p className="font-display text-2xl font-bold text-nordfjord tabular-nums">
+                  ≈ {(Number(data.approved_commission || 0) * Number(data.fx_rate_cad_to_usd)).toFixed(2)}
+                  <span className="text-sm font-medium text-glacier ml-1.5 uppercase">
+                    {(data.payout_currency || "usdt")}
+                  </span>
+                </p>
+                <p className="font-data text-[11px] text-glacier mt-1">
+                  {money(data.approved_commission)} CAD × {Number(data.fx_rate_cad_to_usd).toFixed(4)}
+                  {" — "}
+                  {L("taux de la Banque du Canada. Le taux définitif sera celui du jour du versement.",
+                     "Bank of Canada rate. The final rate is the one on payout day.")}
+                </p>
+              </div>
+            )}
 
             {/* Insights secondaires : clics / conversion / commandes / panier */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -943,13 +968,20 @@ export default function AffiliateDashboard() {
   );
 }
 
-function KpiCard({ label, value, accent }) {
+function KpiCard({ label, value, sub, accent }) {
   return (
     <div className={`rounded-2xl border p-5 ${accent ? "bg-nordfjord border-nordfjord" : "bg-white border-ash"}`}>
       <p className={`font-data text-[10px] font-semibold uppercase tracking-[0.2em] mb-2 ${accent ? "text-nova" : "text-glacier"}`}>
         {label}
       </p>
       <p className={`font-display text-2xl font-bold ${accent ? "text-white" : "text-nordfjord"}`}>{value}</p>
+      {/* Devise ou precision. Sans elle, rien ne distingue un montant en CAD
+          d'un montant en USD sur un ecran ou les deux coexistent. */}
+      {sub && (
+        <p className={`font-data text-[10px] uppercase tracking-[0.16em] mt-1 ${accent ? "text-white/60" : "text-glacier"}`}>
+          {sub}
+        </p>
+      )}
     </div>
   );
 }
