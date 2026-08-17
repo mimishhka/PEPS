@@ -8349,6 +8349,27 @@ async def _release_preorders_watchdog():
         await asyncio.sleep(PREORDER_RELEASE_INTERVAL_SECONDS)
 
 
+# Identité de CE processus pour le verrou des tâches de fond. Permet de
+# renouveler le bail sans risquer de voler celui d'un autre worker.
+_WORKER_LOCK_OWNER = str(uuid.uuid4())
+_WORKER_LOCK_TTL = 120
+_WORKER_LOCK_RENEW_EVERY = 45   # < TTL, pour que le bail ne se périme jamais
+_WORKER_LOCK_TASK = None        # référence forte au superviseur
+
+
+async def _renew_worker_lock(name: str) -> bool:
+    """Prolonge le bail, uniquement si ce processus le détient encore."""
+    now = datetime.now(timezone.utc)
+    try:
+        res = await db.locks.update_one(
+            {"_id": name, "owner": _WORKER_LOCK_OWNER},
+            {"$set": {"expires_at": (now + timedelta(seconds=_WORKER_LOCK_TTL)).isoformat()}},
+        )
+        return res.matched_count == 1
+    except Exception:
+        return False
+
+
 async def _acquire_worker_lock(name: str, ttl_seconds: int = 120) -> bool:
     """Verrou coopératif Mongo : un seul worker exécute les tâches de fond.
     Sans ça, N workers uvicorn lancent N boucles concurrentes sur les mêmes
@@ -8358,7 +8379,7 @@ async def _acquire_worker_lock(name: str, ttl_seconds: int = 120) -> bool:
         await db.locks.update_one(
             {"_id": name, "expires_at": {"$lt": now.isoformat()}},
             {"$set": {"expires_at": (now + timedelta(seconds=ttl_seconds)).isoformat(),
-                      "owner": str(uuid.uuid4())}},
+                      "owner": _WORKER_LOCK_OWNER}},
             upsert=True,
         )
         return True
@@ -8534,24 +8555,67 @@ async def startup_event():
     await _seed_launch_coupon()
     await _backfill_affiliate_coupons()
     await _drain_unpaid_order_batches()
-    if await _acquire_worker_lock("background_tasks"):
-        asyncio.create_task(_unpaid_orders_watchdog())
-        asyncio.create_task(_monthly_payouts_scheduler())
-        asyncio.create_task(_backfill_dispatch_batch())
-        asyncio.create_task(_release_preorders_watchdog())
-        if INTERAC_AUTOCONFIRM_MODE == "strict":
-            asyncio.create_task(_interac_deposit_watchdog())
-        # Dispatch manuel : watchdog d'auto-étiquetage désactivé.
-        # asyncio.create_task(_auto_label_paid_orders_watchdog())
-        asyncio.create_task(_auto_sync_delivered_orders_watchdog())
-        asyncio.create_task(_trash_auto_purge_watchdog())
-        asyncio.create_task(_rollover_watchdog())
-        asyncio.create_task(_magic_tokens_cleanup())
-        asyncio.create_task(_abandoned_cart_watchdog())
-        asyncio.create_task(affiliate_maintenance_watchdog())
-        asyncio.create_task(_affiliate_email_worker())
-        asyncio.create_task(_email_outbox_worker())
-        asyncio.create_task(_email_outbox_janitor())
+    # Superviseur du verrou : réessaie jusqu'à l'obtenir, puis renouvelle le
+    # bail tant que ce processus vit.
+    #
+    # Avant, l'acquisition était tentée UNE SEULE FOIS au démarrage. Le bail
+    # dure 120 s et n'était jamais renouvelé : redémarrer le backend moins de
+    # deux minutes après le démarrage précédent laissait le verrou détenu par
+    # le processus mort, la tentative échouait, et AUCUNE tâche de fond ne
+    # démarrait — ni l'envoi des courriels, ni l'auto-annulation des impayés,
+    # ni la confirmation Interac, ni les versements mensuels. En silence, et
+    # jusqu'au prochain redémarrage tombant par chance après l'expiration.
+    # Référence gardée au niveau module : asyncio ne retient qu'une référence
+    # faible, une tâche détachée sans référence peut être ramassée en vol.
+    global _WORKER_LOCK_TASK
+    _WORKER_LOCK_TASK = asyncio.create_task(_worker_lock_supervisor())
+
+
+async def _start_background_workers() -> None:
+    """Lance les tâches de fond. Appelé une seule fois, verrou en main."""
+    asyncio.create_task(_unpaid_orders_watchdog())
+    asyncio.create_task(_monthly_payouts_scheduler())
+    asyncio.create_task(_backfill_dispatch_batch())
+    asyncio.create_task(_release_preorders_watchdog())
+    if INTERAC_AUTOCONFIRM_MODE == "strict":
+        asyncio.create_task(_interac_deposit_watchdog())
+    # Dispatch manuel : watchdog d'auto-étiquetage désactivé.
+    # asyncio.create_task(_auto_label_paid_orders_watchdog())
+    asyncio.create_task(_auto_sync_delivered_orders_watchdog())
+    asyncio.create_task(_trash_auto_purge_watchdog())
+    asyncio.create_task(_rollover_watchdog())
+    asyncio.create_task(_magic_tokens_cleanup())
+    asyncio.create_task(_abandoned_cart_watchdog())
+    asyncio.create_task(affiliate_maintenance_watchdog())
+    asyncio.create_task(_affiliate_email_worker())
+    asyncio.create_task(_email_outbox_worker())
+    asyncio.create_task(_email_outbox_janitor())
+
+
+async def _worker_lock_supervisor() -> None:
+    """Obtient le verrou des taches de fond, puis le renouvelle.
+
+    Reessaie toutes les 30 s : si un processus mort detient encore le bail,
+    la tentative suivante reussit des son expiration. Sans cette boucle, un
+    redemarrage malchanceux laissait le serveur tourner sans AUCUNE tache de
+    fond, en silence, jusqu'au prochain redemarrage.
+    """
+    started = False
+    while True:
+        if await _acquire_worker_lock("background_tasks", _WORKER_LOCK_TTL):
+            if not started:
+                logging.info("[worker-lock] verrou obtenu (%s) — demarrage des taches de fond",
+                             _WORKER_LOCK_OWNER[:8])
+                await _start_background_workers()
+                started = True   # les boucles tournent deja : ne jamais relancer
+            else:
+                logging.info("[worker-lock] verrou repris (%s)", _WORKER_LOCK_OWNER[:8])
+            # Renouvellement tant que ce processus vit. Si le bail est perdu
+            # (horloge, panne Mongo), on repasse en phase d'acquisition.
+            while await _renew_worker_lock("background_tasks"):
+                await asyncio.sleep(_WORKER_LOCK_RENEW_EVERY)
+            logging.warning("[worker-lock] bail perdu — nouvelle tentative d'acquisition")
+        await asyncio.sleep(30)
 
 
 async def _backfill_dispatch_batch():
