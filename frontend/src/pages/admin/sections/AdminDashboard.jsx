@@ -149,16 +149,21 @@ export default function AdminDashboard() {
             </div>
             <TrendingUp size={18} strokeWidth={1.5} className="text-nova" />
           </div>
-          <div className="h-48 flex items-end gap-1" data-testid="chart-revenue">
+          {/* h-full sur l'enveloppe de chaque barre : sans hauteur DEFINIE sur
+              le parent, le height:X% de la barre se resout contre « auto » —
+              c'est-a-dire contre son propre contenu — et le navigateur calcule
+              zero. Les barres mesuraient 0 pixel quelles que soient les ventes,
+              d'ou un graphique vide en permanence. */}
+          <div className="h-48 flex items-end gap-1 border-b border-ash" data-testid="chart-revenue">
             {(analytics?.daily_revenue || []).map((d) => (
-              <div key={d.date} className="flex-1 flex flex-col items-center gap-1 group">
+              <div key={d.date} className="flex-1 h-full flex flex-col justify-end items-center group">
                 <div
-                  className="w-full bg-nordfjord hover:bg-nova transition-colors relative"
-                  style={{ height: `${Math.max(2, (d.revenue / dailyMax) * 100)}%` }}
-                  title={`${d.date}: ${d.revenue.toFixed(2)} $ (${d.orders} ${L("commandes", "orders")})`}
+                  className="w-full bg-nordfjord group-hover:bg-nova transition-colors relative rounded-t-sm"
+                  style={{ height: `${Math.max(3, (d.revenue / dailyMax) * 100)}%` }}
+                  title={`${d.date} · ${d.revenue.toFixed(2)} $ · ${d.orders} ${L("commande(s)", "order(s)")}`}
                 >
-                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 font-data text-[10px] bg-nordfjord text-white px-2 py-1 whitespace-nowrap pointer-events-none transition-opacity rounded">
-                    {d.revenue.toFixed(0)} $
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 font-data text-[10px] bg-nordfjord text-white px-2 py-1 whitespace-nowrap pointer-events-none transition-opacity rounded z-10">
+                    {d.revenue.toFixed(0)} $ · {d.orders}
                   </div>
                 </div>
               </div>
@@ -184,6 +189,21 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
+          {/* Reperes de lecture : sans eux, des barres sans echelle ni dates
+              ne disent rien — on voit une forme, pas une information. */}
+          {analytics?.daily_revenue?.length > 0 && (
+            <div className="flex items-center justify-between mt-2 font-data text-[10px] text-glacier tabular-nums">
+              <span>{analytics.daily_revenue[0].date}</span>
+              <span className="text-nordfjord">
+                {L("max", "peak")} {dailyMax.toFixed(0)} $
+                <span className="text-glacier">
+                  {" · "}
+                  {analytics.daily_revenue.reduce((s, d) => s + d.orders, 0)} {L("commandes", "orders")}
+                </span>
+              </span>
+              <span>{analytics.daily_revenue[analytics.daily_revenue.length - 1].date}</span>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">
