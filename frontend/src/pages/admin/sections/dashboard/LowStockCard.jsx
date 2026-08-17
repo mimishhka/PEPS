@@ -109,10 +109,14 @@ export function LowStockCard() {
                 className="py-2.5 flex items-center justify-between gap-3"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-bold truncate text-nordfjord">{a.product_name}</div>
-                  <div className="font-data text-[10px] text-glacier truncate">
-                    {a.variant_name || "—"}
-                    {a.variant_sku && <span className="opacity-70"> · {a.variant_sku}</span>}
+                  <div className="text-sm font-bold truncate text-nordfjord">
+                    {(lang === "fr" ? a.product_name_fr : a.product_name_en) || a.product_name}
+                  </div>
+                  {/* Le dosage est l'information qui distingue deux lignes du
+                      même composé : on le met en avant plutôt qu'en gris. */}
+                  <div className="font-data text-[10px] truncate">
+                    <span className="text-nordfjord font-semibold">{a.variant_name || "—"}</span>
+                    {a.variant_sku && <span className="text-glacier opacity-70"> · {a.variant_sku}</span>}
                   </div>
                 </div>
                 <div className="text-right shrink-0 tabular-nums">

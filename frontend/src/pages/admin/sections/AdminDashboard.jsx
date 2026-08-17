@@ -18,12 +18,18 @@ export default function AdminDashboard() {
   const [enhanced, setEnhanced] = useState(null);
   const [period, setPeriod] = useState(30);
   const [initialLoading, setInitialLoading] = useState(true);
+  // allSettled avalait les echecs : un 500 sur /admin/analytics produisait le
+  // meme ecran vide que « aucune vente ». Une boite vide ne doit jamais etre
+  // ambigue entre « pas de donnees » et « c'est casse ».
+  const [analyticsError, setAnalyticsError] = useState(false);
 
   useEffect(() => {
     let active = true;
     Promise.allSettled([
       api.get("/admin/stats").then((r) => { if (active) setStats(r.data); }),
-      api.get("/admin/analytics").then((r) => { if (active) setAnalytics(r.data); }),
+      api.get("/admin/analytics")
+        .then((r) => { if (active) { setAnalytics(r.data); setAnalyticsError(false); } })
+        .catch(() => { if (active) setAnalyticsError(true); }),
     ]).finally(() => { if (active) setInitialLoading(false); });
     return () => { active = false; };
   }, []);
@@ -158,8 +164,23 @@ export default function AdminDashboard() {
               </div>
             ))}
             {!analytics?.daily_revenue?.length && (
-              <div className="flex-1 text-center font-data text-xs text-glacier self-center">
-                {L("Aucune commande payée sur les 30 derniers jours", "No paid orders in the last 30 days")}
+              <div className="flex-1 text-center self-center px-4">
+                {analyticsError ? (
+                  <>
+                    <p className="font-data text-xs text-error" data-testid="chart-revenue-error">
+                      {L("Impossible de charger les revenus.", "Could not load revenue data.")}
+                    </p>
+                    <p className="font-data text-[10px] text-glacier mt-1">
+                      {L("Les autres chiffres de cette page peuvent être incomplets.",
+                         "Other figures on this page may be incomplete.")}
+                    </p>
+                  </>
+                ) : (
+                  <p className="font-data text-xs text-glacier" data-testid="chart-revenue-empty">
+                    {L("Aucune commande payée sur les 30 derniers jours",
+                       "No paid orders in the last 30 days")}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -173,10 +194,18 @@ export default function AdminDashboard() {
           <h2 className="font-display text-xl font-bold tracking-tight mt-1 mb-4 text-nordfjord">{L("Top produits", "Top Products")}</h2>
           <ul className="divide-y divide-ash/60" data-testid="top-products">
             {(analytics?.top_products || []).slice(0, 6).map((p, idx) => (
-              <li key={p.slug} className="py-2.5 flex items-center gap-3">
+              // La cle inclut la variante : deux dosages du meme compose sont
+              // deux lignes distinctes, et p.slug seul les ferait entrer en
+              // collision (React n'en afficherait qu'une).
+              <li key={`${p.slug}-${p.variant_name || "root"}`} className="py-2.5 flex items-center gap-3">
                 <span className="font-data text-[10px] text-glacier w-5">#{idx + 1}</span>
                 <div className="flex-1 min-w-0">
-                  <div className="font-bold text-sm truncate text-nordfjord">{lang === "fr" ? (p.name_fr || p.name_en) : p.name_en}</div>
+                  <div className="font-bold text-sm truncate text-nordfjord">
+                    {lang === "fr" ? (p.name_fr || p.name_en) : (p.name_en || p.name_fr)}
+                    {p.variant_name && (
+                      <span className="font-data text-[11px] text-nova font-semibold"> · {p.variant_name}</span>
+                    )}
+                  </div>
                   <div className="font-data text-[10px] text-glacier">{p.units_sold} {L("unités", "units")}</div>
                 </div>
                 <div className="font-bold tabular-nums text-nordfjord">{p.revenue.toFixed(2)} $</div>

@@ -4744,15 +4744,58 @@ async def admin_subscribers_csv(status: Optional[str] = None, _admin: dict = Dep
     )
 
 
+async def _low_stock_variants(limit: int = 200) -> list:
+    """Variantes actuellement sous leur seuil, lues en DIRECT depuis products.
+
+    Source unique pour la tuile « stock faible » et pour le panneau du
+    dashboard. L'ancien panneau lisait la collection `low_stock_alerts`, qui
+    n'est alimentée que par ÉVÉNEMENT — une variante saisie à 2 unités
+    directement dans l'admin ne déclenche rien et restait donc invisible.
+    La collection reste en place : elle sert aux courriels d'alerte.
+    """
+    rows: list = []
+    cursor = db.products.find(
+        {"active": True, "deleted_at": None},
+        {"_id": 0, "id": 1, "slug": 1, "name_en": 1, "name_fr": 1,
+         "low_stock_threshold": 1, "variants": 1},
+    )
+    async for p in cursor:
+        threshold = int(p.get("low_stock_threshold") or 10)
+        for v in (p.get("variants") or []):
+            stock = int(v.get("stock") or 0)
+            if stock > threshold:
+                continue
+            rows.append({
+                "product_id": p.get("id"),
+                "product_slug": p.get("slug"),
+                # product_name : conservé pour le widget existant, qui l'affiche
+                # tel quel. Les deux langues suivent pour qu'il puisse localiser.
+                "product_name": p.get("name_en") or p.get("name_fr") or p.get("slug") or "?",
+                "product_name_en": p.get("name_en") or "",
+                "product_name_fr": p.get("name_fr") or "",
+                "variant_id": v.get("id"),
+                "variant_name": v.get("name") or "",
+                "variant_sku": v.get("sku") or "",
+                "stock": stock,
+                "threshold": threshold,
+                "out_of_stock": stock <= 0,
+            })
+    # Le plus critique en premier : rupture d'abord, puis stock croissant.
+    rows.sort(key=lambda r: (r["stock"], r["product_name"] or ""))
+    return rows[:limit]
+
+
 async def admin_stats(_admin: dict = Depends(require_area("dashboard", "view"))):
     total_orders = await db.orders.count_documents({})
     pending = await db.orders.count_documents({"fulfillment_status": "pending"})
     paid = await db.orders.count_documents({"payment_status": "paid"})
     users = await db.users.count_documents({"role": "user"})
     products = await db.products.count_documents({})
-    low_stock = await db.products.count_documents(
-        {"$expr": {"$lte": ["$stock", {"$ifNull": ["$low_stock_threshold", 10]}]}, "active": True}
-    )
+    # Le compte portait sur products.stock — un champ « legacy/fallback » qui
+    # vaut souvent 0 puisque le stock réel vit sur les variantes. La tuile
+    # annonçait donc un stock bas que le panneau du dashboard, lui, ne voyait
+    # pas. Les deux lisent maintenant le même calcul, au niveau variante.
+    low_stock = len(await _low_stock_variants())
     revenue_cursor = db.orders.aggregate([
         {"$match": {"payment_status": "paid"}},
         {"$group": {"_id": None, "total": {"$sum": "$total"}}},
@@ -6422,8 +6465,17 @@ async def admin_bulk_restock_csv(payload: StockBulkRestockIn,
 
 
 async def admin_list_low_stock_alerts(_admin: dict = Depends(require_area("products", "view"))):
-    """Liste des alertes de stock bas actives (pour le widget dashboard admin)."""
-    return await low_stock_alerts_enriched()
+    """Variantes actuellement sous leur seuil, pour le widget du dashboard.
+
+    Lecture EN DIRECT de products (via _low_stock_variants) plutôt que de la
+    collection low_stock_alerts : celle-ci n'est alimentée que lorsqu'une
+    commande ou un réapprovisionnement fait franchir le seuil, si bien qu'un
+    stock saisi bas à la main n'y apparaissait jamais. La tuile du dashboard
+    lit exactement le même calcul, ce qui met fin à la contradiction entre
+    « 1 stock faible » en haut et « aucune alerte » juste en dessous.
+    """
+    items = await _low_stock_variants()
+    return {"items": items, "count": len(items)}
 
 
 async def admin_product_stock_history(product_id: str, limit: int = 50,
@@ -6663,28 +6715,54 @@ async def _select_box_for_order(order: dict, all_boxes: Optional[list] = None) -
 # ---------------------------------------------------------------------------
 # Admin — Analytics
 # ---------------------------------------------------------------------------
-async def admin_analytics(_admin: dict = Depends(require_area("dashboard", "view"))):
-    # Revenue per day (last 30 days)
-    since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    daily_cursor = db.orders.aggregate([
-        {"$match": {"payment_status": "paid", "created_at": {"$gte": since}}},
-        {"$group": {
-            "_id": {"$substr": ["$created_at", 0, 10]},
-            "revenue": {"$sum": "$total"},
-            "orders": {"$sum": 1},
-        }},
-        {"$sort": {"_id": 1}},
-    ])
-    daily = await daily_cursor.to_list(60)
-    daily = [{"date": d["_id"], "revenue": round(d["revenue"], 2), "orders": d["orders"]} for d in daily]
+def _order_day(value) -> str:
+    """Jour AAAA-MM-JJ d'une commande, que created_at soit une chaîne ISO ou
+    un objet datetime. Les deux formes coexistent en base selon l'ancienneté
+    de la commande et le chemin qui l'a créée."""
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).strftime("%Y-%m-%d")
+    return str(value or "")[:10]
 
-    # Top products
+
+async def admin_analytics(_admin: dict = Depends(require_area("dashboard", "view"))):
+    # --- Revenu par jour, 30 derniers jours ---------------------------------
+    # Le regroupement se fait en Python, volontairement. L'agrégation Mongo
+    # comparait created_at (parfois stocké en Date) à une chaîne ISO : dans
+    # l'ordre BSON les chaînes viennent après les dates, donc le $match ne
+    # laissait passer AUCUN document et le graphique était vide en permanence,
+    # quel que soit le nombre de ventes. Le volume (quelques centaines de
+    # commandes) rend le tri côté application sans coût mesurable.
+    since_day = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+    paid = await db.orders.find(
+        {"payment_status": "paid"},
+        {"_id": 0, "created_at": 1, "total": 1},
+    ).to_list(5000)
+
+    buckets: dict = {}
+    for o in paid:
+        day = _order_day(o.get("created_at"))
+        if not day or day < since_day:
+            continue
+        b = buckets.setdefault(day, {"revenue": 0.0, "orders": 0})
+        b["revenue"] += float(o.get("total") or 0)
+        b["orders"] += 1
+    daily = [
+        {"date": d, "revenue": round(v["revenue"], 2), "orders": v["orders"]}
+        for d, v in sorted(buckets.items())
+    ]
+
+    # --- Meilleures ventes, PAR VARIANTE ------------------------------------
+    # Le regroupement se faisait sur le seul slug produit, si bien que deux
+    # dosages du même composé apparaissaient comme deux lignes identiques aux
+    # montants différents — illisible. On groupe désormais sur le couple
+    # (slug, variante) et on renvoie le nom de la variante pour l'afficher.
     top_cursor = db.orders.aggregate([
         {"$match": {"payment_status": "paid"}},
         {"$unwind": "$items"},
         {"$group": {
-            "_id": "$items.slug",
+            "_id": {"slug": "$items.slug", "variant": "$items.variant_name"},
             "name_en": {"$first": "$items.name_en"},
+            "name_fr": {"$first": "$items.name_fr"},
             "units_sold": {"$sum": "$items.qty"},
             "revenue": {"$sum": "$items.line_total"},
         }},
@@ -6692,7 +6770,14 @@ async def admin_analytics(_admin: dict = Depends(require_area("dashboard", "view
         {"$limit": 10},
     ])
     top = await top_cursor.to_list(10)
-    top = [{"slug": t["_id"], "name_en": t["name_en"], "units_sold": t["units_sold"], "revenue": round(t["revenue"], 2)} for t in top]
+    top = [{
+        "slug": t["_id"].get("slug"),
+        "variant_name": t["_id"].get("variant") or "",
+        "name_en": t.get("name_en"),
+        "name_fr": t.get("name_fr"),
+        "units_sold": t["units_sold"],
+        "revenue": round(t["revenue"], 2),
+    } for t in top]
 
     # Recent orders
     recent = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10)
