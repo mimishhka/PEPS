@@ -375,9 +375,22 @@ def _affiliate_prev_quarter_start(now: Optional[datetime] = None) -> datetime:
 # ===========================================================================
 
 async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
-    """Agrège les référrals validés (approved|paid) en CA cumulé + trimestriel,
-    calcule le palier avec plancher trimestriel (baisse d'un niveau max)."""
-    q_start = _affiliate_quarter_start()
+    """Agrège les référrals validés (approved|paid) et calcule le palier.
+
+    Le palier repose sur une FENÊTRE GLISSANTE DE 12 MOIS : à chaque instant on
+    additionne le CA généré sur les 365 derniers jours. La fenêtre avance toute
+    seule — le mois écoulé entre, celui d'il y a un an sort — donc le palier
+    monte quand l'activité monte et redescend quand elle ralentit, sans date de
+    révision ni décision manuelle.
+
+    Remplace un modèle « cumul à vie + rétrogradation trimestrielle » qui était
+    mal calibré : il comparait le CA d'UN trimestre au plancher CUMULATIF du
+    palier. Conserver Bronze exigeait donc 2 001 $ tous les 90 jours alors que
+    l'atteindre n'avait demandé que 2 001 $ au total. Un affilié régulier
+    restait bloqué un palier sous celui qu'il avait mérité, indéfiniment.
+    """
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(days=365)
     affiliate = await s.db.affiliates.find_one(
         {"id": affiliate_id}, {"_id": 0, "manual_tier": 1}
     )
@@ -385,8 +398,10 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
     if manual_tier and manual_tier not in {tier[0] for tier in s.AFFILIATE_TIERS}:
         manual_tier = None
 
-    cumulative = 0.0
-    quarter = 0.0
+    q_start = _affiliate_quarter_start()
+    cumulative = 0.0      # depuis toujours — informatif, affiché à l'affilié
+    rolling12 = 0.0       # 365 derniers jours — c'est LUI qui fixe le palier
+    quarter = 0.0         # trimestre en cours — informatif uniquement désormais
     pending_commission = 0.0
     approved_commission = 0.0
     paid_commission = 0.0
@@ -408,10 +423,16 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
                     dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
                     if dt.tzinfo is None:
                         dt = dt.replace(tzinfo=timezone.utc)
+                    if dt >= window_start:
+                        rolling12 += base
                     if dt >= q_start:
                         quarter += base
                 except Exception:
-                    pass
+                    # Date illisible : la vente compte au cumul mais pas dans la
+                    # fenêtre. Prudent — mieux vaut sous-estimer un palier que
+                    # l'accorder sur une donnée qu'on ne sait pas dater.
+                    logging.warning("[affiliate] date de referral illisible (%r) — hors fenetre 12 mois",
+                                    created)
         if status == "pending":
             pending_commission += comm
         elif status == "approved":
@@ -419,36 +440,38 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
         elif status == "paid":
             paid_commission += comm
 
-    # Palier théorique selon CA cumulé
-    theoretical = _affiliate_tier_for_revenue(cumulative)
-
-    # Plancher trimestriel : si le CA du trimestre est SOUS le seuil du palier
-    # théorique, on descend d'UN niveau max (jamais plus).
-    floor, _ceil = _affiliate_tier_bounds(theoretical)
+    # Palier selon le CA des 12 derniers mois. Plus de rétrogradation
+    # trimestrielle : la fenêtre glissante fait déjà redescendre le total quand
+    # l'activité ralentit, progressivement et sans effet de seuil brutal.
+    theoretical = _affiliate_tier_for_revenue(rolling12)
     effective = manual_tier or theoretical
-    if not manual_tier and quarter < floor and _affiliate_tier_index(theoretical) > 0:
-        prev = s.AFFILIATE_TIERS[_affiliate_tier_index(theoretical) - 1]
-        effective = prev[0]
 
     rate = _affiliate_rate_for_tier(effective)
     nxt = _affiliate_next_tier(effective)
     remaining = None
     progress = None
     if nxt:
-        remaining = max(0.0, nxt["floor"] - cumulative)
+        # Mesuré sur la MÊME base que le palier, sinon l'objectif affiché ne
+        # correspond pas à la règle appliquée.
+        remaining = max(0.0, nxt["floor"] - rolling12)
         span = nxt["floor"] - _affiliate_tier_bounds(effective)[0]
         if span > 0:
-            progress = min(1.0, (cumulative - _affiliate_tier_bounds(effective)[0]) / span)
+            progress = min(1.0, max(0.0,
+                           (rolling12 - _affiliate_tier_bounds(effective)[0]) / span))
 
-    # Garde-fou trimestriel : pour CONSERVER le palier effectif, il faut que le CA
-    # du trimestre reste >= au plancher du palier (sinon descente d'un niveau max).
+    # Le garde-fou trimestriel est supprimé : plus de rétrogradation, donc plus
+    # d'alerte à afficher. Les champs quarter_* restent renseignés — le CA du
+    # trimestre garde son intérêt informatif — mais quarter_warning vaut
+    # désormais toujours False : plus rien ne menace le palier acquis.
     floor, _ceil = _affiliate_tier_bounds(effective)
-    quarter_target = round(floor, 2)
-    quarter_progress = min(1.0, quarter / floor) if floor > 0 else None
-    quarter_warning = bool(quarter < floor and _affiliate_tier_index(effective) > 0)
+    quarter_target = None
+    quarter_progress = None
+    quarter_warning = False
 
     return {
         "cumulative_revenue": round(cumulative, 2),
+        "rolling12_revenue": round(rolling12, 2),
+        "tier_basis": "rolling_12m",
         "quarter_revenue": round(quarter, 2),
         "validated_orders": validated_orders,
         "tier": effective,

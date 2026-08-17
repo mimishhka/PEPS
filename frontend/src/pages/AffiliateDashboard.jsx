@@ -8,7 +8,7 @@ import {
 } from "recharts";
 import { QRCodeSVG } from "qrcode.react";
 import {
-  MousePointerClick, ShoppingBag, Wallet, Download, ShieldAlert,
+  MousePointerClick, ShoppingBag, Wallet, Download,
   MessageCircle, Send, Mail, Activity,
 } from "lucide-react";
 import api, { formatApiError } from "../lib/api";
@@ -470,47 +470,47 @@ export default function AffiliateDashboard() {
               )}
             </div>
 
-            {/* Garde-fou trimestriel : sécuriser son palier */}
-            {data?.quarter_target > 0 && (
-              <div className={`bg-white rounded-2xl border p-6 ${data.quarter_warning ? "border-warning/50 bg-warning/5" : "border-ash"}`}>
+            {/* Fenetre glissante de 12 mois — c'est elle qui fixe le palier.
+                Remplace l'ancienne carte « securisez votre palier », qui
+                annoncait une retrogradation trimestrielle desormais supprimee. */}
+            {data?.rolling12_revenue != null && (
+              <div className="bg-white rounded-2xl border border-ash p-6">
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div>
                     <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
-                      {L("SÉCURISEZ VOTRE PALIER", "PROTECT YOUR TIER")}
+                      {L("VOS 12 DERNIERS MOIS", "YOUR LAST 12 MONTHS")}
                     </p>
                     <p className="font-display text-2xl font-bold text-nordfjord tabular-nums">
-                      {money(data.quarter_revenue)}
-                      <span className="text-sm font-medium text-glacier"> / {money(data.quarter_target)}</span>
+                      {money(data.rolling12_revenue)}
+                      {data.next_tier && (
+                        <span className="text-sm font-medium text-glacier">
+                          {" / "}{money(data.next_tier.floor)}
+                        </span>
+                      )}
                     </p>
                   </div>
-                  {data.quarter_warning && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-warning/15 text-warning text-[11px] font-semibold">
-                      <ShieldAlert size={14} />
-                      {L("Sous le plancher", "Below floor")}
-                    </span>
-                  )}
                 </div>
-                <div className="h-3 rounded-full bg-ash overflow-hidden">
-                  <div className="h-full rounded-full transition-all"
-                       style={{ width: `${Math.min(100, Math.round((data.quarter_progress || 0) * 100))}%`,
-                                background: data.quarter_warning ? "#E8A33D" : "#00B8D4" }} />
-                </div>
+                {data.next_tier && (
+                  <div className="h-3 rounded-full bg-ash overflow-hidden">
+                    <div className="h-full rounded-full transition-all"
+                         style={{ width: `${Math.min(100, Math.round((data.progress_to_next || 0) * 100))}%`,
+                                  background: "#00B8D4" }} />
+                  </div>
+                )}
                 <p className="font-data text-[11px] text-glacier mt-2">
-                  {data.quarter_warning ? (
-                    <>{L(
-                      "Votre CA du trimestre est sous le plancher de votre palier. À la prochaine réévaluation (",
-                      "Your quarterly revenue is below your tier floor. At the next review (")}
-                      {fmtDate(data.next_review, lang)}
-                      {L("), vous pourriez descendre d'un palier.", "), you could drop one tier.")}
+                  {data.next_tier ? (
+                    <>{L("Encore ", "Still ")}{money(data.remaining_to_next)}
+                      {L(" de ventes validees pour atteindre ", " in validated sales to reach ")}
+                      {TIER_META[data.next_tier.tier]?.[lang] || data.next_tier.tier}
+                      {" ("}{Math.round(data.next_tier.rate * 100)} %{")."}
                     </>
                   ) : (
-                    <>{L(
-                      "Maintenez au moins ce montant de ventes validées d'ici la prochaine réévaluation (",
-                      "Keep at least this amount of validated sales before the next review (")}
-                      {fmtDate(data.next_review, lang)}
-                      {L(") pour conserver votre palier.", ") to keep your tier.")}
-                    </>
+                    L("Palier maximal atteint.", "Top tier reached.")
                   )}
+                </p>
+                <p className="font-data text-[11px] text-glacier mt-1">
+                  {L("Votre taux suit ce total : il monte quand vos ventes montent, et redescend progressivement si elles ralentissent.",
+                     "Your rate follows this total: it rises as your sales rise, and eases down gradually if they slow.")}
                 </p>
               </div>
             )}
