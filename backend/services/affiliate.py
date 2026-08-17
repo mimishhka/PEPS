@@ -606,8 +606,16 @@ def _affiliate_invite_html(name: str, link: str, lang: str) -> tuple:
 
 async def _affiliate_send_invite(email: str, name: str, link: str, lang: str) -> None:
     subject, html = _affiliate_invite_html(name, link, lang)
-    from_addr = (globals().get("MAGIC_SENDER_EMAIL") or
-                 globals().get("SENDER_EMAIL") or "orders@fironova.com")
+    # globals() lisait les variables de CE module, où MAGIC_SENDER_EMAIL et
+    # SENDER_EMAIL n'ont jamais été définis : les deux lookups renvoyaient None
+    # et l'expéditeur retombait toujours sur "orders@fironova.com" codé en dur,
+    # en ignorant la configuration. Si cette adresse n'est pas vérifiée chez le
+    # fournisseur d'envoi, TOUTES les invitations échouent — alors que le reste
+    # des courriels, qui passe par s.SENDER_EMAIL, part normalement.
+    #
+    # AFFILIATE_SENDER_EMAIL d'abord : une invitation à un partenariat n'a pas
+    # à partir de l'adresse des commandes.
+    from_addr = s.AFFILIATE_SENDER_EMAIL or s.MAGIC_SENDER_EMAIL or s.SENDER_EMAIL
     await s._send_email(email, subject, html, from_email=from_addr)  # noqa: F821
 
 

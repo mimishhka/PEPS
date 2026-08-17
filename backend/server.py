@@ -116,6 +116,12 @@ NOWPAYMENTS_BASE_URL = "https://api.nowpayments.io/v1"
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "orders@fironova.com")
 MAGIC_SENDER_EMAIL = os.environ.get("MAGIC_SENDER_EMAIL", "")
+# Expéditeur du programme d'affiliation (invitations, relances). Séparé de
+# SENDER_EMAIL parce qu'une invitation à un partenariat commercial n'a pas à
+# partir de l'adresse des commandes — et parce que si cette adresse n'est pas
+# vérifiée chez le fournisseur d'envoi, seules les invitations échouent au lieu
+# de faire tomber toute la messagerie transactionnelle.
+AFFILIATE_SENDER_EMAIL = os.environ.get("AFFILIATE_SENDER_EMAIL", "")
 ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@fironova.com")
 SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
 FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))

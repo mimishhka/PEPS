@@ -197,7 +197,14 @@ async def _process_email_outbox_job() -> bool:
     except Exception as exc:
         attempts = int(job.get("attempts", 1))
         throttled = _is_rate_limit_error(exc)
-        changes: dict = {"error_type": type(exc).__name__}
+        # Le MESSAGE de l'erreur, pas seulement son type. Savoir qu'un envoi a
+        # levé « HTTPError » n'apprend rien ; « domain not verified » ou
+        # « from address not allowed » dit exactement quoi corriger. Tronqué à
+        # 500 caractères, et jamais affiché ailleurs que dans l'admin.
+        changes: dict = {
+            "error_type": type(exc).__name__,
+            "error_message": str(exc)[:500],
+        }
 
         if throttled:
             # Tentative rendue : le message n'a pas été refusé, seulement différé.
@@ -228,8 +235,10 @@ async def _process_email_outbox_job() -> bool:
             )
         else:
             logging.error(
-                "[email] delivery failed job=%s attempt=%d terminal=%s error_type=%s",
-                job["id"], attempts, terminal, type(exc).__name__,
+                "[email] delivery failed job=%s to=%s attempt=%d terminal=%s "
+                "error_type=%s error=%s",
+                job["id"], job.get("to"), attempts, terminal,
+                type(exc).__name__, str(exc)[:300],
             )
     return True
 

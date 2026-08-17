@@ -379,6 +379,15 @@ export default function AdminEmailOutbox() {
                   {recipients(detail.to)}
                   {detail.error_type && <span className="text-error"> · {detail.error_type}</span>}
                 </div>
+                {/* Le message du fournisseur, pas seulement le type d'exception :
+                    « HTTPError » n'apprend rien, « domain not verified » dit
+                    exactement quoi corriger. */}
+                {detail.error_message && (
+                  <p className="font-data text-[11px] text-error bg-error/5 border border-error/20 rounded px-2.5 py-1.5 mt-2 break-words"
+                     data-testid="admin-emails-error-message">
+                    {detail.error_message}
+                  </p>
+                )}
               </div>
               <button type="button" onClick={() => setDetail(null)} data-testid="admin-emails-drawer-close"
                       className="p-1.5 border border-ash rounded hover:bg-clinical shrink-0">
