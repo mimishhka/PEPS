@@ -239,8 +239,12 @@ export default function AdminDashboard() {
           soit ce dernier s'étirait avec du vide à l'intérieur, soit — avec
           items-start — le vide passait dans la grille. Le problème n'était pas
           la hauteur mais le déséquilibre des colonnes. */}
-      <div className="mb-4">
-        <div className="bg-white border border-ash p-6 rounded-md">
+      {/* Appariement par HAUTEUR REELLE plutot que par importance : le
+          graphique (~320px) et le top produits (~350px) se ressemblent, le
+          stock faible (~125px) et les circuits (~210px) aussi. Les mettre en
+          face de leur semblable supprime le vide sans rien etirer. */}
+      <div className="grid lg:grid-cols-3 gap-4 mb-4 items-start">
+        <div className="lg:col-span-2 bg-white border border-ash p-6 rounded-md">
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">
@@ -318,9 +322,37 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
+
+        <div className="bg-white border border-ash p-6 rounded-md">
+          <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">// {L("MEILLEURES VENTES", "BEST SELLERS")}</div>
+          <h2 className="font-display text-xl font-bold tracking-tight mt-1 mb-4 text-nordfjord">{L("Top produits", "Top Products")}</h2>
+          <ul className="divide-y divide-ash/60" data-testid="top-products">
+            {(analytics?.top_products || []).slice(0, 6).map((p, idx) => (
+              // La cle inclut la variante : deux dosages du meme compose sont
+              // deux lignes distinctes, et p.slug seul les ferait entrer en
+              // collision (React n'en afficherait qu'une).
+              <li key={`${p.slug}-${p.variant_name || "root"}`} className="py-2.5 flex items-center gap-3">
+                <span className="font-data text-[10px] text-glacier w-5">#{idx + 1}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-sm truncate text-nordfjord">
+                    {lang === "fr" ? (p.name_fr || p.name_en) : (p.name_en || p.name_fr)}
+                    {p.variant_name && (
+                      <span className="font-data text-[11px] text-nova font-semibold"> · {p.variant_name}</span>
+                    )}
+                  </div>
+                  <div className="font-data text-[10px] text-glacier">{p.units_sold} {L("unités", "units")}</div>
+                </div>
+                <div className="font-bold tabular-nums text-nordfjord whitespace-nowrap">{p.revenue.toFixed(2)} $</div>
+              </li>
+            ))}
+            {!analytics?.top_products?.length && (
+              <li className="py-4 font-data text-xs text-glacier text-center">{L("Aucune vente pour l'instant", "No sales yet")}</li>
+            )}
+          </ul>
+        </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-4 mb-8 items-start">
+      <div className="grid lg:grid-cols-2 gap-4 mb-8 items-start">
         <LowStockCard />
 
         {/* Circuits de paiement : une colonne par ÉTAT, pas seulement
@@ -373,33 +405,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        <div className="bg-white border border-ash p-6 rounded-md">
-          <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">// {L("MEILLEURES VENTES", "BEST SELLERS")}</div>
-          <h2 className="font-display text-xl font-bold tracking-tight mt-1 mb-4 text-nordfjord">{L("Top produits", "Top Products")}</h2>
-          <ul className="divide-y divide-ash/60" data-testid="top-products">
-            {(analytics?.top_products || []).slice(0, 6).map((p, idx) => (
-              // La cle inclut la variante : deux dosages du meme compose sont
-              // deux lignes distinctes, et p.slug seul les ferait entrer en
-              // collision (React n'en afficherait qu'une).
-              <li key={`${p.slug}-${p.variant_name || "root"}`} className="py-2.5 flex items-center gap-3">
-                <span className="font-data text-[10px] text-glacier w-5">#{idx + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-bold text-sm truncate text-nordfjord">
-                    {lang === "fr" ? (p.name_fr || p.name_en) : (p.name_en || p.name_fr)}
-                    {p.variant_name && (
-                      <span className="font-data text-[11px] text-nova font-semibold"> · {p.variant_name}</span>
-                    )}
-                  </div>
-                  <div className="font-data text-[10px] text-glacier">{p.units_sold} {L("unités", "units")}</div>
-                </div>
-                <div className="font-bold tabular-nums text-nordfjord">{p.revenue.toFixed(2)} $</div>
-              </li>
-            ))}
-            {!analytics?.top_products?.length && (
-              <li className="py-4 font-data text-xs text-glacier text-center">{L("Aucune vente pour l'instant", "No sales yet")}</li>
-            )}
-          </ul>
-        </div>
       </div>
 
       {/* Recent orders */}
@@ -478,7 +483,7 @@ function ActionCard({ tone = "calm", label, value, hint, to, testid }) {
   const body = (
     <>
       <div className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{label}</div>
-      <div className="font-display text-2xl font-bold tabular-nums text-nordfjord mt-1 leading-tight">
+      <div className="font-display text-[26px] font-bold tabular-nums text-nordfjord mt-1 leading-none whitespace-nowrap">
         {value}
       </div>
       <div className="text-[12px] text-glacier mt-0.5 leading-snug">{hint}</div>
@@ -501,9 +506,12 @@ function DeltaCard({ label, value, delta, icon: Icon, lang }) {
   return (
     <div className="bg-white border border-ash p-6 rounded-md">
       <div className="flex items-start justify-between">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">{label}</div>
-          <div className="font-display text-3xl font-bold mt-2 tabular-nums text-nordfjord">{value}</div>
+          {/* whitespace-nowrap : « 1 310,73 $ » se coupait, laissant le « $ »
+              seul sur une deuxième ligne. Et 26px plutôt que text-3xl (30px) :
+              quatre cartes sur une rangée n'ont pas la largeur pour ça. */}
+          <div className="font-display text-[26px] leading-none font-bold mt-2 tabular-nums text-nordfjord whitespace-nowrap">{value}</div>
           {delta != null ? (
             <div className={`flex items-center gap-1 mt-1 text-xs font-medium ${up ? "text-success" : "text-error"}`}>
               <DeltaIcon size={13} /> {up ? "+" : ""}{delta}% <span className="text-glacier font-normal">{L("vs préc.", "vs prev.")}</span>
@@ -512,7 +520,7 @@ function DeltaCard({ label, value, delta, icon: Icon, lang }) {
             <div className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mt-1">{L("— vs préc.", "— vs prev.")}</div>
           )}
         </div>
-        {Icon && <div className="w-10 h-10 flex items-center justify-center text-white bg-nordfjord rounded-md"><Icon size={18} strokeWidth={1.6} /></div>}
+        {Icon && <div className="w-9 h-9 shrink-0 ml-3 flex items-center justify-center text-white bg-nordfjord rounded-md"><Icon size={18} strokeWidth={1.6} /></div>}
       </div>
     </div>
   );
@@ -522,12 +530,15 @@ function MetricCard({ label, value, sub, icon: Icon }) {
   return (
     <div className="bg-white border border-ash p-6 rounded-md">
       <div className="flex items-start justify-between">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">{label}</div>
-          <div className="font-display text-3xl font-bold mt-2 tabular-nums text-nordfjord">{value}</div>
+          {/* whitespace-nowrap : « 1 310,73 $ » se coupait, laissant le « $ »
+              seul sur une deuxième ligne. Et 26px plutôt que text-3xl (30px) :
+              quatre cartes sur une rangée n'ont pas la largeur pour ça. */}
+          <div className="font-display text-[26px] leading-none font-bold mt-2 tabular-nums text-nordfjord whitespace-nowrap">{value}</div>
           <div className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mt-1">{sub}</div>
         </div>
-        {Icon && <div className="w-10 h-10 flex items-center justify-center text-white bg-nordfjord rounded-md"><Icon size={18} strokeWidth={1.6} /></div>}
+        {Icon && <div className="w-9 h-9 shrink-0 ml-3 flex items-center justify-center text-white bg-nordfjord rounded-md"><Icon size={18} strokeWidth={1.6} /></div>}
       </div>
     </div>
   );
