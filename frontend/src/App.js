@@ -97,12 +97,28 @@ function GatedApp() {
 
   if (!loaded || authLoading || !previewChecked) return null;
 
+  // Pages atteintes depuis un lien que NOUS avons envoyé par courriel. Elles
+  // portent toutes un jeton à usage unique : c'est lui qui autorise l'accès,
+  // pas la porte de préversion. Sans cette liste, une invitation d'affilié, un
+  // lien magique de connexion ou une réinitialisation de mot de passe tombait
+  // sur « Coming Soon » — le destinataire ne pouvait rien faire du courriel
+  // qu'on venait de lui envoyer.
+  const EMAIL_ENTRY_PATHS = [
+    "/affiliate/join",      // invitation d'affilié
+    "/auth/callback",       // lien magique de connexion
+    "/reset-password",      // réinitialisation de mot de passe
+    "/newsletter/confirm",  // double opt-in infolettre
+    "/staff-accept",        // invitation d'un membre du personnel
+    "/order/",              // commande invité, via son jeton d'accès
+  ];
+
   const bypass =
     !prelaunchEnabled ||
     user?.role === "admin" ||
     user?.role === "staff" ||
     previewOk ||
     ["/login", "/register", "/account"].some((p) => location.pathname.startsWith(p)) ||
+    EMAIL_ENTRY_PATHS.some((p) => location.pathname.startsWith(p)) ||
     location.pathname.startsWith(ADMIN_PATH);
 
   if (!bypass) return <><ComingSoon /><Toaster position="bottom-right" /></>;
