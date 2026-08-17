@@ -22,20 +22,33 @@ export default function AdminDashboard() {
   // meme ecran vide que « aucune vente ». Une boite vide ne doit jamais etre
   // ambigue entre « pas de donnees » et « c'est casse ».
   const [analyticsError, setAnalyticsError] = useState(false);
+  const [pulse, setPulse] = useState(null);
+  const [affiliate, setAffiliate] = useState(null);
 
   useEffect(() => {
     let active = true;
     Promise.allSettled([
       api.get("/admin/stats").then((r) => { if (active) setStats(r.data); }),
-      api.get("/admin/analytics")
-        .then((r) => { if (active) { setAnalytics(r.data); setAnalyticsError(false); } })
-        .catch(() => { if (active) setAnalyticsError(true); }),
+      api.get("/admin/dashboard/pulse").then((r) => { if (active) setPulse(r.data); }),
+      // Les chiffres d'affiliation sont deja calcules par cet endpoint :
+      // payouts_ready, commission_due, compliance_review… rien a construire.
+      api.get("/admin/affiliates/overview").then((r) => { if (active) setAffiliate(r.data); }),
     ]).finally(() => { if (active) setInitialLoading(false); });
     return () => { active = false; };
   }, []);
 
+  // La serie ET les tuiles suivent desormais la periode. Le graphique etait
+  // cable en dur sur 30 jours : cliquer 7j ou 90j changeait les chiffres mais
+  // jamais les barres.
   useEffect(() => {
-    api.get(`/admin/analytics/enhanced?period=${period}`).then((r) => setEnhanced(r.data)).catch(() => {});
+    let active = true;
+    api.get(`/admin/analytics?period=${period}`)
+      .then((r) => { if (active) { setAnalytics(r.data); setAnalyticsError(false); } })
+      .catch(() => { if (active) setAnalyticsError(true); });
+    api.get(`/admin/analytics/enhanced?period=${period}`)
+      .then((r) => { if (active) setEnhanced(r.data); })
+      .catch(() => {});
+    return () => { active = false; };
   }, [period]);
 
   const cards = stats ? [
@@ -63,6 +76,85 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {/* Deux bandes d'action AVANT les statistiques : ce qui demande une
+          decision passe devant ce qui decrit le passe. Les tuiles historiques
+          ne declenchent aucune action, elles descendent en bas de page. */}
+      {pulse && (
+        <>
+          <SectionLabel>{L("ARGENT EN SUSPENS", "MONEY OUTSTANDING")}</SectionLabel>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-6">
+            <ActionCard
+              tone={pulse.money.pending_payment.expiring_soon ? "urgent" : "warn"}
+              label={L("En attente de paiement", "Awaiting payment")}
+              value={`${pulse.money.pending_payment.amount.toFixed(2)} $`}
+              testid="pulse-pending"
+              hint={
+                <>
+                  {pulse.money.pending_payment.count} {L("commandes", "orders")}
+                  {" · "}
+                  {pulse.money.pending_payment.by_method.interac} Interac,{" "}
+                  {pulse.money.pending_payment.by_method.crypto} crypto
+                  {pulse.money.pending_payment.expiring_soon > 0 && (
+                    <strong className="text-error">
+                      {" — "}{pulse.money.pending_payment.expiring_soon}{" "}
+                      {L("expirent bientôt", "expiring soon")}
+                    </strong>
+                  )}
+                </>
+              }
+            />
+            <ActionCard
+              tone={pulse.money.reconcile.count ? "urgent" : "calm"}
+              label={L("À réconcilier", "To reconcile")}
+              value={pulse.money.reconcile.count}
+              testid="pulse-reconcile"
+              to="reconciliation"
+              hint={pulse.money.reconcile.count
+                ? <>{Object.entries(pulse.money.reconcile.by_provider)
+                      .map(([k, v]) => `${v} ${k}`).join(" · ")}
+                   {" — "}<strong className="text-error">{L("reçu, non attribué", "received, unmatched")}</strong></>
+                : L("aucun écart à vérifier", "nothing to check")}
+            />
+            <ActionCard
+              tone="warn"
+              label={L("Versements affiliés prêts", "Affiliate payouts ready")}
+              value={affiliate ? `${(affiliate.alerts?.payouts_ready_amount ?? 0).toFixed(2)} $` : "—"}
+              testid="pulse-payouts"
+              to="payouts"
+              hint={affiliate
+                ? `${affiliate.alerts?.payouts_ready ?? 0} ${L("affiliés · exécution + 2FA", "affiliates · execute + 2FA")}`
+                : L("chargement…", "loading…")}
+            />
+          </div>
+
+          <SectionLabel>{L("OPÉRATIONS DU JOUR", "TODAY'S OPERATIONS")}</SectionLabel>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+            <ActionCard tone={pulse.ops.to_ship ? "warn" : "calm"}
+              label={L("À expédier", "To ship")} value={pulse.ops.to_ship}
+              testid="pulse-ship" to="dispatch"
+              hint={pulse.ops.to_ship ? L("commandes payées", "paid orders") : L("rien en attente", "nothing pending")} />
+            <ActionCard tone={pulse.ops.low_stock ? "urgent" : "calm"}
+              label={L("Rupture / stock bas", "Out of / low stock")} value={pulse.ops.low_stock}
+              testid="pulse-stock" to="products"
+              hint={pulse.ops.low_stock_top?.[0]
+                ? `${pulse.ops.low_stock_top[0].product_name} · ${pulse.ops.low_stock_top[0].variant_name}`
+                : L("toutes au-dessus du seuil", "all above threshold")} />
+            <ActionCard tone={pulse.ops.emails_failed ? "warn" : "calm"}
+              label={L("Courriels non délivrés", "Undelivered emails")} value={pulse.ops.emails_failed}
+              testid="pulse-emails" to="emails/outbox"
+              hint={pulse.ops.emails_failed
+                ? L("après 5 tentatives", "after 5 attempts")
+                : L("tout est parti", "all delivered")} />
+            <ActionCard tone={pulse.ops.late_payments ? "urgent" : "calm"}
+              label={L("Paiements tardifs", "Late payments")} value={pulse.ops.late_payments}
+              testid="pulse-late" to="orders"
+              hint={pulse.ops.late_payments
+                ? L("commandes à rouvrir", "orders to reopen")
+                : L("rien à rouvrir", "nothing to reopen")} />
+          </div>
+        </>
+      )}
+
       {/* Alerte seuil de taxe (30k CAD sur 12 mois glissants) */}
       {enhanced?.tax_threshold && enhanced.tax_threshold.level !== "ok" && (
         <div className={`mb-6 rounded-xl border p-4 flex items-start gap-3 ${
@@ -88,15 +180,18 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Sélecteur de période */}
-      <div className="flex items-center gap-2 mb-6">
-        <span className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier">{L("Période", "Period")}</span>
-        {[7, 30, 90].map((p) => (
-          <button key={p} onClick={() => setPeriod(p)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
+      {/* Sélecteur de période — pilote maintenant les tuiles ET le graphique.
+          Au-delà de 3 mois le backend agrège (semaine, puis mois) : 365 barres
+          de deux pixels montrent une texture, pas une tendance. */}
+      <SectionLabel>{L("PERFORMANCE", "PERFORMANCE")}</SectionLabel>
+      <div className="flex items-center gap-2 mb-6 flex-wrap" role="group" aria-label={L("Période", "Period")}>
+        {[[7, L("7 jours", "7 days")], [30, L("30 jours", "30 days")], [90, L("3 mois", "3 months")],
+          [180, L("6 mois", "6 months")], [365, L("1 an", "1 year")]].map(([p, label]) => (
+          <button key={p} onClick={() => setPeriod(p)} aria-pressed={period === p}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition ${
               period === p ? "bg-nordfjord text-white" : "border border-ash text-glacier hover:bg-clinical"}`}
             data-testid={`period-${p}`}>
-            {p}{L("j", "d")}
+            {label}
           </button>
         ))}
       </div>
@@ -144,7 +239,21 @@ export default function AdminDashboard() {
         <div className="lg:col-span-2 bg-white border border-ash p-6 rounded-md">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">// {L("30 DERNIERS JOURS", "LAST 30 DAYS")}</div>
+              <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">
+                {/* Le pas de temps est annoncé : sans lui, on ne sait pas si
+                    une barre vaut un jour, une semaine ou un mois. */}
+                // {period === 365 ? L("12 DERNIERS MOIS", "LAST 12 MONTHS")
+                   : period === 180 ? L("6 DERNIERS MOIS", "LAST 6 MONTHS")
+                   : L(`${period} DERNIERS JOURS`, `LAST ${period} DAYS`)}
+                {analytics?.granularity && (
+                  <span className="text-nova">
+                    {" · "}
+                    {analytics.granularity === "month" ? L("MENSUEL", "MONTHLY")
+                      : analytics.granularity === "week" ? L("HEBDOMADAIRE", "WEEKLY")
+                      : L("QUOTIDIEN", "DAILY")}
+                  </span>
+                )}
+              </div>
               <h2 className="font-display text-xl font-bold tracking-tight mt-1 text-nordfjord">{L("Revenu", "Revenue")}</h2>
             </div>
             <TrendingUp size={18} strokeWidth={1.5} className="text-nova" />
@@ -182,8 +291,8 @@ export default function AdminDashboard() {
                   </>
                 ) : (
                   <p className="font-data text-xs text-glacier" data-testid="chart-revenue-empty">
-                    {L("Aucune commande payée sur les 30 derniers jours",
-                       "No paid orders in the last 30 days")}
+                    {L("Aucune commande payée sur la période",
+                       "No paid orders in this period")}
                   </p>
                 )}
               </div>
@@ -208,6 +317,56 @@ export default function AdminDashboard() {
 
         <div className="space-y-4">
         <LowStockCard />
+
+        {/* Circuits de paiement : une colonne par ÉTAT, pas seulement
+            l'encaissé. Un circuit peut beaucoup encaisser tout en accumulant
+            des paiements bloqués — c'est ce qu'un simple partage cachait. */}
+        {pulse?.rails && (
+          <div className="bg-white border border-ash p-6 rounded-md" data-testid="payment-rails">
+            <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">// {L("CIRCUITS DE PAIEMENT", "PAYMENT RAILS")}</div>
+            <h2 className="font-display text-xl font-bold tracking-tight mt-1 mb-4 text-nordfjord">{L("Où en est l'argent", "Where the money is")}</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="font-data text-[9px] uppercase tracking-[0.14em] text-glacier border-b border-ash">
+                    <th className="text-left py-2 font-medium"> </th>
+                    <th className="text-right py-2 font-medium">{L("Encaissé", "Collected")}</th>
+                    <th className="text-right py-2 font-medium">{L("En attente", "Pending")}</th>
+                    <th className="text-right py-2 font-medium">{L("À récon.", "To recon.")}</th>
+                  </tr>
+                </thead>
+                <tbody className="tabular-nums">
+                  {[["interac", "Interac", "#0B2E4F"], ["crypto", L("Crypto", "Crypto"), "#7C5CD6"]].map(([key, label, color]) => {
+                    const r = pulse.rails[key] || {};
+                    return (
+                      <tr key={key} className="border-b border-ash/60" data-testid={`rail-${key}`}>
+                        <th scope="row" className="text-left py-2.5 font-semibold text-nordfjord whitespace-nowrap">
+                          <span className="inline-block w-2 h-2 rounded-full mr-2 align-middle" style={{ background: color }} />
+                          {label}
+                        </th>
+                        <td className="text-right py-2.5 font-data font-bold text-nordfjord">
+                          {(r.paid_amount ?? 0).toFixed(0)} $
+                          <span className="block font-normal text-[10px] text-glacier">
+                            {r.paid_count ?? 0} {L("cmd", "ord")}
+                          </span>
+                        </td>
+                        <td className="text-right py-2.5 font-data font-bold text-warning">
+                          {(r.pending_amount ?? 0).toFixed(0)} $
+                          <span className="block font-normal text-[10px] text-glacier">
+                            {r.pending_count ?? 0} {L("cmd", "ord")}
+                          </span>
+                        </td>
+                        <td className={`text-right py-2.5 font-data font-bold ${r.reconcile_count ? "text-error" : "text-glacier"}`}>
+                          {r.reconcile_count ?? 0}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white border border-ash p-6 rounded-md">
           <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">// {L("MEILLEURES VENTES", "BEST SELLERS")}</div>
@@ -286,6 +445,48 @@ export default function AdminDashboard() {
         </table>
       </div>
     </div>
+  );
+}
+
+// Intitulé de section : structure la page en zones lisibles plutôt qu'en
+// une suite de tuiles de poids égal, où l'œil ne sait pas où se poser.
+function SectionLabel({ children }) {
+  return (
+    <div className="flex items-center gap-3 mb-3">
+      <span className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier whitespace-nowrap">
+        {children}
+      </span>
+      <span className="flex-1 h-px bg-ash" />
+    </div>
+  );
+}
+
+// Carte d'action : un compteur qui appelle une décision, pas une statistique.
+// Le liseré coloré à gauche encode l'urgence sans dépendre de la seule
+// couleur du chiffre — lisible aussi pour qui distingue mal les teintes.
+const ACTION_TONES = {
+  urgent: "border-l-error",
+  warn: "border-l-warning",
+  calm: "border-l-success",
+};
+
+function ActionCard({ tone = "calm", label, value, hint, to, testid }) {
+  const body = (
+    <>
+      <div className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{label}</div>
+      <div className="font-display text-2xl font-bold tabular-nums text-nordfjord mt-1 leading-tight">
+        {value}
+      </div>
+      <div className="text-[12px] text-glacier mt-0.5 leading-snug">{hint}</div>
+    </>
+  );
+  const cls = `bg-white border border-ash border-l-[3px] ${ACTION_TONES[tone]} p-4 rounded-md block`;
+  return to ? (
+    <Link to={to} data-testid={testid} className={`${cls} hover:border-nova transition-colors`}>
+      {body}
+    </Link>
+  ) : (
+    <div data-testid={testid} className={cls}>{body}</div>
   );
 }
 

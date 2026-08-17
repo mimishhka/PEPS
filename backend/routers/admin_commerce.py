@@ -126,8 +126,14 @@ async def admin_delete_box(box_id: str, admin: dict = Depends(s.require_area("sh
 
 
 @router.get("/admin/analytics")
-async def admin_analytics(_admin: dict = Depends(s.require_area("dashboard", "view"))):
-    return await s.admin_analytics(_admin)
+async def admin_analytics(period: int = 30,
+                          _admin: dict = Depends(s.require_area("dashboard", "view"))):
+    return await s.admin_analytics(period, _admin)
+
+
+@router.get("/admin/dashboard/pulse")
+async def admin_dashboard_pulse(_admin: dict = Depends(s.require_area("dashboard", "view"))):
+    return await s.admin_dashboard_pulse(_admin)
 
 
 @router.get("/admin/orders.csv")

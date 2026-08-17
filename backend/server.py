@@ -6715,6 +6715,9 @@ async def _select_box_for_order(order: dict, all_boxes: Optional[list] = None) -
 # ---------------------------------------------------------------------------
 # Admin — Analytics
 # ---------------------------------------------------------------------------
+DASHBOARD_PERIODS = (7, 30, 90, 180, 365)
+
+
 def _order_day(value) -> str:
     """Jour AAAA-MM-JJ d'une commande, que created_at soit une chaîne ISO ou
     un objet datetime. Les deux formes coexistent en base selon l'ancienneté
@@ -6724,26 +6727,144 @@ def _order_day(value) -> str:
     return str(value or "")[:10]
 
 
-async def admin_analytics(_admin: dict = Depends(require_area("dashboard", "view"))):
-    # --- Revenu par jour, 30 derniers jours ---------------------------------
-    # Le regroupement se fait en Python, volontairement. L'agrégation Mongo
-    # comparait created_at (parfois stocké en Date) à une chaîne ISO : dans
-    # l'ordre BSON les chaînes viennent après les dates, donc le $match ne
-    # laissait passer AUCUN document et le graphique était vide en permanence,
-    # quel que soit le nombre de ventes. Le volume (quelques centaines de
-    # commandes) rend le tri côté application sans coût mesurable.
-    since_day = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+def _series_granularity(period: int) -> str:
+    """Pas de temps du graphique selon la période demandée.
+
+    Un an en barres quotidiennes fait 365 traits de deux pixels : on voit une
+    texture, pas une tendance. On agrège donc au-delà de 3 mois.
+    """
+    if period <= 90:
+        return "day"
+    if period <= 180:
+        return "week"
+    return "month"
+
+
+def _bucket_key(day: str, granularity: str) -> str:
+    """Étiquette du seau auquel appartient un jour AAAA-MM-JJ."""
+    if granularity == "month":
+        return day[:7]                      # AAAA-MM
+    if granularity == "week":
+        d = datetime.strptime(day, "%Y-%m-%d")
+        monday = d - timedelta(days=d.weekday())
+        return monday.strftime("%Y-%m-%d")  # lundi de la semaine
+    return day
+
+
+async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard", "view"))):
+    """Ce qui demande une action maintenant, et où en est l'argent.
+
+    Une seule requête pour toute la partie haute du tableau de bord : le
+    widget appelait sinon cinq endpoints différents pour afficher six
+    compteurs. Tout est calculé en direct — aucun de ces chiffres ne doit
+    dépendre d'une collection d'événements qui pourrait ne pas s'être
+    déclenchée.
+    """
+    now = datetime.now(timezone.utc)
+    now_s = now.isoformat()
+    soon_s = (now + timedelta(hours=3)).isoformat()
+
+    # --- Commandes vendues mais pas encore encaissées, TOUS circuits -------
+    awaiting = await db.orders.find(
+        {"payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto"]},
+         "deleted_at": None},
+        {"_id": 0, "total": 1, "payment_method": 1, "payment_deadline": 1},
+    ).to_list(2000)
+    pending_total = round(sum(float(o.get("total") or 0) for o in awaiting), 2)
+    pending_expiring = sum(
+        1 for o in awaiting
+        if o.get("payment_deadline") and now_s < str(o["payment_deadline"]) <= soon_s
+    )
+
+    # --- Réconciliation : une seule file, deux fournisseurs ---------------
+    # La collection porte un nom historique (interac_) mais reçoit aussi les
+    # signaux crypto, distingués par le champ provider.
+    recon = await db.interac_reconciliation_queue.find(
+        {"status": "pending"}, {"_id": 0, "provider": 1},
+    ).to_list(1000)
+    recon_by_provider: dict = {}
+    for r in recon:
+        prov = (r.get("provider") or "interac").lower()
+        recon_by_provider[prov] = recon_by_provider.get(prov, 0) + 1
+
+    # --- Circuits de paiement : encaissé / en attente / à réconcilier -----
+    rails: dict = {}
+    for method in ("interac", "nowpayments"):
+        paid_rows = await db.orders.aggregate([
+            {"$match": {"payment_status": "paid", "payment_method": method}},
+            {"$group": {"_id": None, "amount": {"$sum": "$total"}, "count": {"$sum": 1}}},
+        ]).to_list(1)
+        pend = [o for o in awaiting if (o.get("payment_method") or "") == method]
+        key = "crypto" if method == "nowpayments" else "interac"
+        rails[key] = {
+            "paid_amount": round(float(paid_rows[0]["amount"]), 2) if paid_rows else 0.0,
+            "paid_count": int(paid_rows[0]["count"]) if paid_rows else 0,
+            "pending_amount": round(sum(float(o.get("total") or 0) for o in pend), 2),
+            "pending_count": len(pend),
+            "reconcile_count": recon_by_provider.get(
+                "crypto" if key == "crypto" else "interac", 0),
+        }
+
+    # --- Opérations du jour ----------------------------------------------
+    to_ship = await db.orders.count_documents({
+        "payment_status": "paid",
+        "fulfillment_status": {"$in": ["processing", "pending"]},
+        "deleted_at": None,
+    })
+    low_stock_rows = await _low_stock_variants(limit=50)
+    late_payments = await db.orders.count_documents({"late_payment_flagged": True})
+    emails_failed = await db.email_outbox.count_documents({"status": "failed"})
+
+    return {
+        "money": {
+            "pending_payment": {
+                "amount": pending_total,
+                "count": len(awaiting),
+                "expiring_soon": pending_expiring,
+                "by_method": {
+                    "interac": sum(1 for o in awaiting if o.get("payment_method") == "interac"),
+                    "crypto": sum(1 for o in awaiting if o.get("payment_method") == "nowpayments"),
+                },
+            },
+            "reconcile": {"count": len(recon), "by_provider": recon_by_provider},
+        },
+        "rails": rails,
+        "ops": {
+            "to_ship": to_ship,
+            "low_stock": len(low_stock_rows),
+            "low_stock_top": low_stock_rows[:1],
+            "late_payments": late_payments,
+            "emails_failed": emails_failed,
+        },
+    }
+
+
+async def admin_analytics(period: int = 30,
+                          _admin: dict = Depends(require_area("dashboard", "view"))):
+    # --- Série de revenu sur la période demandée ----------------------------
+    # Le regroupement se fait en Python, volontairement : l'agrégation Mongo
+    # comparait created_at (parfois stocké en Date) à une chaîne ISO, ce qui
+    # est fragile selon l'ordre des types BSON. Le volume (quelques centaines
+    # de commandes) rend le tri côté application sans coût mesurable.
+    #
+    # La série suivait auparavant 30 jours EN DUR : le sélecteur de période du
+    # dashboard changeait les tuiles mais jamais le graphique.
+    if period not in DASHBOARD_PERIODS:
+        period = 30
+    granularity = _series_granularity(period)
+    since_day = (datetime.now(timezone.utc) - timedelta(days=period)).strftime("%Y-%m-%d")
     paid = await db.orders.find(
         {"payment_status": "paid"},
         {"_id": 0, "created_at": 1, "total": 1},
-    ).to_list(5000)
+    ).to_list(20000)
 
     buckets: dict = {}
     for o in paid:
         day = _order_day(o.get("created_at"))
         if not day or day < since_day:
             continue
-        b = buckets.setdefault(day, {"revenue": 0.0, "orders": 0})
+        key = _bucket_key(day, granularity)
+        b = buckets.setdefault(key, {"revenue": 0.0, "orders": 0})
         b["revenue"] += float(o.get("total") or 0)
         b["orders"] += 1
     daily = [
@@ -6766,7 +6887,9 @@ async def admin_analytics(_admin: dict = Depends(require_area("dashboard", "view
             "units_sold": {"$sum": "$items.qty"},
             "revenue": {"$sum": "$items.line_total"},
         }},
-        {"$sort": {"units_sold": -1}},
+        # Trie par REVENU, pas par unités : 17 unités à 1 $ passaient devant
+        # 15 unités à 70 $, ce qui donnait un classement trompeur.
+        {"$sort": {"revenue": -1}},
         {"$limit": 10},
     ])
     top = await top_cursor.to_list(10)
@@ -6782,7 +6905,13 @@ async def admin_analytics(_admin: dict = Depends(require_area("dashboard", "view
     # Recent orders
     recent = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10)
 
-    return {"daily_revenue": daily, "top_products": top, "recent_orders": recent}
+    return {
+        "daily_revenue": daily,
+        "granularity": granularity,   # day | week | month — pilote l'étiquetage côté UI
+        "period": period,
+        "top_products": top,
+        "recent_orders": recent,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -10375,7 +10504,7 @@ def _pct_change(cur: float, prev: float):
 async def admin_analytics_enhanced(period: int = 30,
                                    _admin: dict = Depends(require_area("dashboard", "view"))):  # noqa: F821
     """Métriques de pilotage avec comparaison période courante vs précédente."""
-    if period not in (7, 30, 90):
+    if period not in DASHBOARD_PERIODS:
         period = 30
     now = datetime.now(timezone.utc)
     cur_start = now - timedelta(days=period)
