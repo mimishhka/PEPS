@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import {
-  Plus, RefreshCw, Copy, DollarSign, X, Users, TrendingUp, Clock,
+  Plus, RefreshCw, Copy, X, Users, TrendingUp, Clock,
   AlertTriangle, MousePointerClick, Award, Wallet, ShieldAlert, Eye,
   Search, Download, BarChart3, Smartphone, Globe, MousePointerClick as CursorClick,
   Upload, FileText, CheckCircle2, XCircle,
@@ -300,49 +300,72 @@ export default function AdminAffiliates() {
             <RiskPanel risk={risk} L={L} lang={lang} onOpen={setDetail} />
           )}
 
-          {/* ALERTES ACTIONNABLES */}
-          {(al.payouts_ready > 0 || al.compliance_review > 0 || al.invites_expired > 0 || al.commissions_maturing > 0) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6" data-testid="affiliate-alerts">
-              {al.payouts_ready > 0 && (
-                <AlertCard icon={Wallet} tone="cyan"
-                  title={L("Paiements à envoyer", "Payouts to send")}
-                  value={`${al.payouts_ready} · ${money(al.payouts_ready_amount)}`}
-                  action={L("Voir plus bas", "See below")} />
-              )}
-              {al.commissions_maturing > 0 && (
-                <AlertCard icon={Clock} tone="amber"
-                  title={L("Commissions à approuver", "Commissions maturing")}
-                  value={int(al.commissions_maturing)}
-                  action={L("Prêtes sous peu", "Maturing soon")} />
-              )}
-              {al.compliance_review > 0 && (
-                <AlertCard icon={ShieldAlert} tone="red"
-                  title={L("En révision conformité", "In compliance review")}
-                  value={int(al.compliance_review)} />
-              )}
-              {al.invites_expired > 0 && (
-                <AlertCard icon={AlertTriangle} tone="slate"
-                  title={L("Invitations expirées", "Expired invites")}
-                  value={int(al.invites_expired)}
-                  action={L("À renvoyer", "Resend")} />
-              )}
-            </div>
-          )}
+          {/* À TRAITER — toujours visible, y compris au calme.
+              Le bloc disparaissait entierement quand tout etait a zero : on ne
+              savait alors pas si rien n'attendait, ou si le chargement avait
+              echoue. Une carte calme dit « rien a faire », un vide ne dit rien. */}
+          <SectionRule>{L("À TRAITER", "NEEDS ACTION")}</SectionRule>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6" data-testid="affiliate-alerts">
+            <AlertCard icon={Wallet} tone={al.payouts_ready > 0 ? "cyan" : "slate"}
+              title={L("Paiements à envoyer", "Payouts to send")}
+              value={al.payouts_ready > 0 ? `${al.payouts_ready} · ${money(al.payouts_ready_amount)}` : "0"}
+              action={al.payouts_ready > 0
+                ? L("exécution + 2FA", "execute + 2FA")
+                : L("rien à verser", "nothing to pay")} />
+            <AlertCard icon={Clock} tone={al.commissions_maturing > 0 ? "amber" : "slate"}
+              title={L("Commissions à approuver", "Commissions maturing")}
+              value={int(al.commissions_maturing)}
+              action={al.commissions_maturing > 0
+                ? L("prêtes sous peu", "maturing soon")
+                : L("aucune en attente", "none pending")} />
+            <AlertCard icon={ShieldAlert} tone={al.compliance_review > 0 ? "red" : "slate"}
+              title={L("En révision conformité", "In compliance review")}
+              value={int(al.compliance_review)}
+              action={al.compliance_review > 0
+                ? L("dossier à examiner", "file to review")
+                : L("tout est conforme", "all clear")} />
+            <AlertCard icon={AlertTriangle} tone={al.invites_expired > 0 ? "amber" : "slate"}
+              title={L("Invitations expirées", "Expired invites")}
+              value={int(al.invites_expired)}
+              action={al.invites_expired > 0
+                ? L("à renvoyer ou fermer", "resend or close")
+                : L("aucune en souffrance", "none outstanding")} />
+          </div>
 
-          {/* KPI PRINCIPAUX */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          {/* PERFORMANCE — trois indicateurs qui pilotent, pas quatre dont un
+              historique. « Versé à vie » descend en ligne de référence. */}
+          <SectionRule>{L("PERFORMANCE", "PERFORMANCE")}</SectionRule>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             <Kpi icon={TrendingUp} accent="#0d9d57" label={L("CA généré (validé)", "Generated revenue")} value={money(fin.validated_revenue)} sub={`${int(fin.validated_orders)} ${L("commandes", "orders")}`} />
             <Kpi icon={Wallet} accent="#00B8D4" label={L("Commissions dues", "Commissions due")} value={money(fin.commission_due)} sub={L("approuvé, à payer", "approved, to pay")} />
-            <Kpi icon={DollarSign} accent="#7c3aed" label={L("Versé à vie", "Paid lifetime")} value={money(fin.commission_paid)} sub={`${money(fin.commission_pending)} ${L("en attente", "pending")}`} />
             <Kpi icon={Users} accent="#f59e0b" label={L("Affiliés actifs", "Active affiliates")} value={int(aff.active)} sub={`${int(aff.invited)} ${L("invités", "invited")} · ${int(aff.suspended)} susp.`} />
           </div>
 
-          {/* KPI SECONDAIRES */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-            <MiniStat label={L("Panier moyen validé", "Avg validated order")} value={money(fin.avg_order_value)} />
+          {/* Totaux historiques : consultables, ils ne declenchent aucune
+              decision quotidienne — une ligne suffit. */}
+          <div className="bg-white border border-ash rounded-xl px-5 py-3 mb-6 flex flex-wrap gap-x-8 gap-y-1.5"
+               data-testid="affiliate-reference">
+            <span className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier self-center">
+              {L("DEPUIS L'OUVERTURE", "ALL TIME")}
+            </span>
+            {[
+              [L("Versé", "Paid"), money(fin.commission_paid)],
+              [L("En maturation", "Maturing"), money(fin.commission_pending)],
+              [L("Annulé", "Reversed"), money(fin.commission_reversed)],
+              [L("Panier moyen", "Avg order"), money(fin.avg_order_value)],
+            ].map(([k, v]) => (
+              <span key={k} className="text-[13px] text-glacier whitespace-nowrap">
+                {k} <b className="text-nordfjord font-semibold tabular-nums">{v}</b>
+              </span>
+            ))}
+          </div>
+
+          {/* Panier moyen et commissions annulées sont passés dans la ligne
+              de référence ci-dessus : il ne reste ici que l'attribution, qui
+              raconte autre chose (d'où viennent les ventes). */}
+          <div className="grid grid-cols-2 gap-3 mb-6">
             <MiniStat label={L("Clics d'affiliation", "Affiliate clicks")} value={int(attr.total_clicks)} icon={MousePointerClick} />
             <MiniStat label={L("Taux de conversion", "Conversion rate")} value={attr.conversion_rate != null ? `${(attr.conversion_rate * 100).toFixed(1)}%` : "—"} />
-            <MiniStat label={L("Commissions annulées", "Reversed commissions")} value={money(fin.commission_reversed)} />
           </div>
 
           {/* GRAPHE + TOP AFFILIÉS */}
@@ -853,13 +876,15 @@ function RiskPanel({ risk, L, lang, onOpen }) {
 function Kpi({ icon: Icon, accent, label, value, sub }) {
   return (
     <div className="bg-white border border-ash rounded-xl p-5">
-      <div className="flex items-start justify-between mb-3">
-        <p className="font-data text-[10px] uppercase tracking-[0.18em] text-glacier">{label}</p>
-        <span className="w-8 h-8 rounded-lg grid place-items-center" style={{ background: `${accent}1a` }}>
+      <div className="flex items-start justify-between mb-3 gap-2">
+        <p className="font-data text-[10px] uppercase tracking-[0.18em] text-glacier min-w-0">{label}</p>
+        <span className="w-8 h-8 shrink-0 rounded-lg grid place-items-center" style={{ background: `${accent}1a` }}>
           <Icon size={16} style={{ color: accent }} />
         </span>
       </div>
-      <p className="font-display text-2xl font-bold text-nordfjord tabular-nums">{value}</p>
+      {/* whitespace-nowrap : money() rend « 1 234,56 $ » et la valeur se
+          coupait, laissant le symbole seul sur une deuxième ligne. */}
+      <p className="font-display text-2xl font-bold text-nordfjord tabular-nums whitespace-nowrap">{value}</p>
       {sub && <p className="text-[11px] text-glacier mt-1">{sub}</p>}
     </div>
   );
@@ -933,6 +958,19 @@ function AdminDevicesCard({ devices, L }) {
   );
 }
 
+// Intitulé de section : structure la page en zones lisibles plutôt qu'en une
+// pile de grilles sans repère. Même rôle que sur le tableau de bord principal.
+function SectionRule({ children }) {
+  return (
+    <div className="flex items-center gap-3 mb-3">
+      <span className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier whitespace-nowrap">
+        {children}
+      </span>
+      <span className="flex-1 h-px bg-ash" />
+    </div>
+  );
+}
+
 function AlertCard({ icon: Icon, tone, title, value, action }) {
   const tones = {
     cyan: "border-nova/40 bg-nova/5",
@@ -947,7 +985,7 @@ function AlertCard({ icon: Icon, tone, title, value, action }) {
         <Icon size={15} style={{ color: iconColor }} />
         <p className="text-[11px] uppercase tracking-wider text-glacier">{title}</p>
       </div>
-      <p className="text-xl font-bold text-nordfjord tabular-nums">{value}</p>
+      <p className="text-xl font-bold text-nordfjord tabular-nums whitespace-nowrap">{value}</p>
       {action && <p className="text-[11px] text-glacier mt-0.5">{action}</p>}
     </div>
   );
