@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  ShoppingCart, Package, Users, DollarSign, AlertTriangle, TrendingUp, TrendingDown, ArrowUpRight, Repeat, Percent,
+  DollarSign, AlertTriangle, TrendingUp, TrendingDown, ArrowUpRight, Repeat, Percent,
 } from "lucide-react";
 import api from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
@@ -22,28 +22,35 @@ export default function AdminDashboard() {
   // meme ecran vide que « aucune vente ». Une boite vide ne doit jamais etre
   // ambigue entre « pas de donnees » et « c'est casse ».
   const [analyticsError, setAnalyticsError] = useState(false);
+  const [pulse, setPulse] = useState(null);
+  const [affiliate, setAffiliate] = useState(null);
 
   useEffect(() => {
     let active = true;
     Promise.allSettled([
       api.get("/admin/stats").then((r) => { if (active) setStats(r.data); }),
-      api.get("/admin/analytics")
-        .then((r) => { if (active) { setAnalytics(r.data); setAnalyticsError(false); } })
-        .catch(() => { if (active) setAnalyticsError(true); }),
+      api.get("/admin/dashboard/pulse").then((r) => { if (active) setPulse(r.data); }),
+      // Les chiffres d'affiliation sont deja calcules par cet endpoint :
+      // payouts_ready, commission_due, compliance_review… rien a construire.
+      api.get("/admin/affiliates/overview").then((r) => { if (active) setAffiliate(r.data); }),
     ]).finally(() => { if (active) setInitialLoading(false); });
     return () => { active = false; };
   }, []);
 
+  // La serie ET les tuiles suivent desormais la periode. Le graphique etait
+  // cable en dur sur 30 jours : cliquer 7j ou 90j changeait les chiffres mais
+  // jamais les barres.
   useEffect(() => {
-    api.get(`/admin/analytics/enhanced?period=${period}`).then((r) => setEnhanced(r.data)).catch(() => {});
+    let active = true;
+    api.get(`/admin/analytics?period=${period}`)
+      .then((r) => { if (active) { setAnalytics(r.data); setAnalyticsError(false); } })
+      .catch(() => { if (active) setAnalyticsError(true); });
+    api.get(`/admin/analytics/enhanced?period=${period}`)
+      .then((r) => { if (active) setEnhanced(r.data); })
+      .catch(() => {});
+    return () => { active = false; };
   }, [period]);
 
-  const cards = stats ? [
-    { k: L("Revenu", "Revenue"), tid: "revenue", v: `${stats.revenue_cad.toFixed(2)} $`, sub: L("CAD · commandes payées", "CAD · paid orders"), icon: DollarSign, accent: "#2E9E6B" },
-    { k: L("Commandes", "Orders"), tid: "orders", v: stats.total_orders, sub: L(`${stats.pending_orders} en attente`, `${stats.pending_orders} pending`), icon: ShoppingCart, accent: "#0B2E4F" },
-    { k: L("Clients", "Customers"), tid: "customers", v: stats.customers, sub: L("Inscrits", "Registered"), icon: Users, accent: "#00B8D4" },
-    { k: L("Produits", "Products"), tid: "products", v: stats.products, sub: L(`${stats.low_stock || 0} stock faible`, `${stats.low_stock || 0} low stock`), icon: Package, accent: "#E8A33D" },
-  ] : [];
 
   const dailyMax = analytics?.daily_revenue?.length
     ? Math.max(...analytics.daily_revenue.map(d => d.revenue), 1)
@@ -62,6 +69,85 @@ export default function AdminDashboard() {
           {L("Temps réel · CAD", "Real-time · CAD")}
         </div>
       </div>
+
+      {/* Deux bandes d'action AVANT les statistiques : ce qui demande une
+          decision passe devant ce qui decrit le passe. Les tuiles historiques
+          ne declenchent aucune action, elles descendent en bas de page. */}
+      {pulse && (
+        <>
+          <SectionLabel>{L("ARGENT EN SUSPENS", "MONEY OUTSTANDING")}</SectionLabel>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-6">
+            <ActionCard
+              tone={pulse.money.pending_payment.expiring_soon ? "urgent" : "warn"}
+              label={L("En attente de paiement", "Awaiting payment")}
+              value={`${pulse.money.pending_payment.amount.toFixed(2)} $`}
+              testid="pulse-pending"
+              hint={
+                <>
+                  {pulse.money.pending_payment.count} {L("commandes", "orders")}
+                  {" · "}
+                  {pulse.money.pending_payment.by_method.interac} Interac,{" "}
+                  {pulse.money.pending_payment.by_method.crypto} crypto
+                  {pulse.money.pending_payment.expiring_soon > 0 && (
+                    <strong className="text-error">
+                      {" — "}{pulse.money.pending_payment.expiring_soon}{" "}
+                      {L("expirent bientôt", "expiring soon")}
+                    </strong>
+                  )}
+                </>
+              }
+            />
+            <ActionCard
+              tone={pulse.money.reconcile.count ? "urgent" : "calm"}
+              label={L("À réconcilier", "To reconcile")}
+              value={pulse.money.reconcile.count}
+              testid="pulse-reconcile"
+              to="reconciliation"
+              hint={pulse.money.reconcile.count
+                ? <>{Object.entries(pulse.money.reconcile.by_provider)
+                      .map(([k, v]) => `${v} ${k}`).join(" · ")}
+                   {" — "}<strong className="text-error">{L("reçu, non attribué", "received, unmatched")}</strong></>
+                : L("aucun écart à vérifier", "nothing to check")}
+            />
+            <ActionCard
+              tone="warn"
+              label={L("Versements affiliés prêts", "Affiliate payouts ready")}
+              value={affiliate ? `${(affiliate.alerts?.payouts_ready_amount ?? 0).toFixed(2)} $` : "—"}
+              testid="pulse-payouts"
+              to="payouts"
+              hint={affiliate
+                ? `${affiliate.alerts?.payouts_ready ?? 0} ${L("affiliés · exécution + 2FA", "affiliates · execute + 2FA")}`
+                : L("chargement…", "loading…")}
+            />
+          </div>
+
+          <SectionLabel>{L("OPÉRATIONS DU JOUR", "TODAY'S OPERATIONS")}</SectionLabel>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+            <ActionCard tone={pulse.ops.to_ship ? "warn" : "calm"}
+              label={L("À expédier", "To ship")} value={pulse.ops.to_ship}
+              testid="pulse-ship" to="dispatch"
+              hint={pulse.ops.to_ship ? L("commandes payées", "paid orders") : L("rien en attente", "nothing pending")} />
+            <ActionCard tone={pulse.ops.low_stock ? "urgent" : "calm"}
+              label={L("Rupture / stock bas", "Out of / low stock")} value={pulse.ops.low_stock}
+              testid="pulse-stock" to="products"
+              hint={pulse.ops.low_stock_top?.[0]
+                ? `${pulse.ops.low_stock_top[0].product_name} · ${pulse.ops.low_stock_top[0].variant_name}`
+                : L("toutes au-dessus du seuil", "all above threshold")} />
+            <ActionCard tone={pulse.ops.emails_failed ? "warn" : "calm"}
+              label={L("Courriels non délivrés", "Undelivered emails")} value={pulse.ops.emails_failed}
+              testid="pulse-emails" to="emails/outbox"
+              hint={pulse.ops.emails_failed
+                ? L("après 5 tentatives", "after 5 attempts")
+                : L("tout est parti", "all delivered")} />
+            <ActionCard tone={pulse.ops.late_payments ? "urgent" : "calm"}
+              label={L("Paiements tardifs", "Late payments")} value={pulse.ops.late_payments}
+              testid="pulse-late" to="orders"
+              hint={pulse.ops.late_payments
+                ? L("commandes à rouvrir", "orders to reopen")
+                : L("rien à rouvrir", "nothing to reopen")} />
+          </div>
+        </>
+      )}
 
       {/* Alerte seuil de taxe (30k CAD sur 12 mois glissants) */}
       {enhanced?.tax_threshold && enhanced.tax_threshold.level !== "ok" && (
@@ -88,40 +174,25 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Sélecteur de période */}
-      <div className="flex items-center gap-2 mb-6">
-        <span className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier">{L("Période", "Period")}</span>
-        {[7, 30, 90].map((p) => (
-          <button key={p} onClick={() => setPeriod(p)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${
+      {/* Sélecteur de période — pilote maintenant les tuiles ET le graphique.
+          Au-delà de 3 mois le backend agrège (semaine, puis mois) : 365 barres
+          de deux pixels montrent une texture, pas une tendance. */}
+      <SectionLabel>{L("PERFORMANCE", "PERFORMANCE")}</SectionLabel>
+      <div className="flex items-center gap-2 mb-6 flex-wrap" role="group" aria-label={L("Période", "Period")}>
+        {[[7, L("7 jours", "7 days")], [30, L("30 jours", "30 days")], [90, L("3 mois", "3 months")],
+          [180, L("6 mois", "6 months")], [365, L("1 an", "1 year")]].map(([p, label]) => (
+          <button key={p} onClick={() => setPeriod(p)} aria-pressed={period === p}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition ${
               period === p ? "bg-nordfjord text-white" : "border border-ash text-glacier hover:bg-clinical"}`}
             data-testid={`period-${p}`}>
-            {p}{L("j", "d")}
+            {label}
           </button>
-        ))}
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {cards.map((c) => (
-          <div key={c.tid} className="bg-white border border-ash p-6 rounded-md" data-testid={`stat-${c.tid}`}>
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">{c.k}</div>
-                <div className="font-display text-3xl font-bold mt-2 tabular-nums text-nordfjord">{c.v}</div>
-                <div className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mt-1">{c.sub}</div>
-              </div>
-              <div className="w-10 h-10 flex items-center justify-center text-white rounded-md" style={{ background: c.accent }}>
-                <c.icon size={18} strokeWidth={1.6} />
-              </div>
-            </div>
-          </div>
         ))}
       </div>
 
       {/* Métriques de pilotage (période sélectionnée, avec comparaison) */}
       {enhanced && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8" data-testid="enhanced-metrics">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="enhanced-metrics">
           <DeltaCard label={L(`Revenu ${period}j`, `Revenue ${period}d`)} value={`${enhanced.current.revenue.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA")} $`}
             delta={enhanced.changes.revenue} icon={DollarSign} lang={lang} />
           <DeltaCard label={L("Panier moyen", "Avg. order value")} value={`${enhanced.current.aov.toFixed(2)} $`}
@@ -139,12 +210,58 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Charts & top products */}
-      <div className="grid lg:grid-cols-3 gap-4 mb-8">
+      {/* Totaux historiques : consultables, mais ils ne declenchent aucune
+          decision quotidienne. Ils occupaient quatre tuiles pleine taille au
+          meme poids visuel que les indicateurs de pilotage — l'oeil ne savait
+          plus ou se poser. Une ligne suffit. */}
+      {stats && (
+        <div className="bg-white border border-ash rounded-md px-5 py-3 mb-8 flex flex-wrap gap-x-8 gap-y-1.5"
+             data-testid="reference-totals">
+          <span className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier self-center">
+            {L("DEPUIS L'OUVERTURE", "ALL TIME")}
+          </span>
+          {[
+            [L("Revenu", "Revenue"), `${stats.revenue_cad.toFixed(2)} $`],
+            [L("Commandes", "Orders"), stats.total_orders],
+            [L("Clients", "Customers"), stats.customers],
+            [L("Produits actifs", "Active products"), stats.products],
+          ].map(([k, v]) => (
+            <span key={k} className="text-[13px] text-glacier">
+              {k} <b className="text-nordfjord font-semibold tabular-nums">{v}</b>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Le graphique prend toute la largeur, les trois panneaux forment une
+          rangée en dessous. En deux colonnes, la droite (stock + circuits +
+          top produits empilés) descendait bien plus bas que le graphique :
+          soit ce dernier s'étirait avec du vide à l'intérieur, soit — avec
+          items-start — le vide passait dans la grille. Le problème n'était pas
+          la hauteur mais le déséquilibre des colonnes. */}
+      {/* Appariement par HAUTEUR REELLE plutot que par importance : le
+          graphique (~320px) et le top produits (~350px) se ressemblent, le
+          stock faible (~125px) et les circuits (~210px) aussi. Les mettre en
+          face de leur semblable supprime le vide sans rien etirer. */}
+      <div className="grid lg:grid-cols-3 gap-4 mb-4 items-start">
         <div className="lg:col-span-2 bg-white border border-ash p-6 rounded-md">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">// {L("30 DERNIERS JOURS", "LAST 30 DAYS")}</div>
+              <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">
+                {/* Le pas de temps est annoncé : sans lui, on ne sait pas si
+                    une barre vaut un jour, une semaine ou un mois. */}
+                // {period === 365 ? L("12 DERNIERS MOIS", "LAST 12 MONTHS")
+                   : period === 180 ? L("6 DERNIERS MOIS", "LAST 6 MONTHS")
+                   : L(`${period} DERNIERS JOURS`, `LAST ${period} DAYS`)}
+                {analytics?.granularity && (
+                  <span className="text-nova">
+                    {" · "}
+                    {analytics.granularity === "month" ? L("MENSUEL", "MONTHLY")
+                      : analytics.granularity === "week" ? L("HEBDOMADAIRE", "WEEKLY")
+                      : L("QUOTIDIEN", "DAILY")}
+                  </span>
+                )}
+              </div>
               <h2 className="font-display text-xl font-bold tracking-tight mt-1 text-nordfjord">{L("Revenu", "Revenue")}</h2>
             </div>
             <TrendingUp size={18} strokeWidth={1.5} className="text-nova" />
@@ -154,7 +271,7 @@ export default function AdminDashboard() {
               c'est-a-dire contre son propre contenu — et le navigateur calcule
               zero. Les barres mesuraient 0 pixel quelles que soient les ventes,
               d'ou un graphique vide en permanence. */}
-          <div className="h-48 flex items-end gap-1 border-b border-ash" data-testid="chart-revenue">
+          <div className="h-56 flex items-end gap-1 border-b border-ash" data-testid="chart-revenue">
             {(analytics?.daily_revenue || []).map((d) => (
               <div key={d.date} className="flex-1 h-full flex flex-col justify-end items-center group">
                 <div
@@ -182,8 +299,8 @@ export default function AdminDashboard() {
                   </>
                 ) : (
                   <p className="font-data text-xs text-glacier" data-testid="chart-revenue-empty">
-                    {L("Aucune commande payée sur les 30 derniers jours",
-                       "No paid orders in the last 30 days")}
+                    {L("Aucune commande payée sur la période",
+                       "No paid orders in this period")}
                   </p>
                 )}
               </div>
@@ -206,9 +323,6 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        <div className="space-y-4">
-        <LowStockCard />
-
         <div className="bg-white border border-ash p-6 rounded-md">
           <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">// {L("MEILLEURES VENTES", "BEST SELLERS")}</div>
           <h2 className="font-display text-xl font-bold tracking-tight mt-1 mb-4 text-nordfjord">{L("Top produits", "Top Products")}</h2>
@@ -228,7 +342,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="font-data text-[10px] text-glacier">{p.units_sold} {L("unités", "units")}</div>
                 </div>
-                <div className="font-bold tabular-nums text-nordfjord">{p.revenue.toFixed(2)} $</div>
+                <div className="font-bold tabular-nums text-nordfjord whitespace-nowrap">{p.revenue.toFixed(2)} $</div>
               </li>
             ))}
             {!analytics?.top_products?.length && (
@@ -236,7 +350,61 @@ export default function AdminDashboard() {
             )}
           </ul>
         </div>
-        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-4 mb-8 items-start">
+        <LowStockCard />
+
+        {/* Circuits de paiement : une colonne par ÉTAT, pas seulement
+            l'encaissé. Un circuit peut beaucoup encaisser tout en accumulant
+            des paiements bloqués — c'est ce qu'un simple partage cachait. */}
+        {pulse?.rails && (
+          <div className="bg-white border border-ash p-6 rounded-md" data-testid="payment-rails">
+            <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">// {L("CIRCUITS DE PAIEMENT", "PAYMENT RAILS")}</div>
+            <h2 className="font-display text-xl font-bold tracking-tight mt-1 mb-4 text-nordfjord">{L("Où en est l'argent", "Where the money is")}</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="font-data text-[9px] uppercase tracking-[0.14em] text-glacier border-b border-ash">
+                    <th className="text-left py-2 font-medium"> </th>
+                    <th className="text-right py-2 font-medium">{L("Encaissé", "Collected")}</th>
+                    <th className="text-right py-2 font-medium">{L("En attente", "Pending")}</th>
+                    <th className="text-right py-2 font-medium">{L("À récon.", "To recon.")}</th>
+                  </tr>
+                </thead>
+                <tbody className="tabular-nums">
+                  {[["interac", "Interac", "#0B2E4F"], ["crypto", L("Crypto", "Crypto"), "#7C5CD6"]].map(([key, label, color]) => {
+                    const r = pulse.rails[key] || {};
+                    return (
+                      <tr key={key} className="border-b border-ash/60" data-testid={`rail-${key}`}>
+                        <th scope="row" className="text-left py-2.5 font-semibold text-nordfjord whitespace-nowrap">
+                          <span className="inline-block w-2 h-2 rounded-full mr-2 align-middle" style={{ background: color }} />
+                          {label}
+                        </th>
+                        <td className="text-right py-2.5 font-data font-bold text-nordfjord">
+                          {(r.paid_amount ?? 0).toFixed(0)} $
+                          <span className="block font-normal text-[10px] text-glacier">
+                            {r.paid_count ?? 0} {L("cmd", "ord")}
+                          </span>
+                        </td>
+                        <td className="text-right py-2.5 font-data font-bold text-warning">
+                          {(r.pending_amount ?? 0).toFixed(0)} $
+                          <span className="block font-normal text-[10px] text-glacier">
+                            {r.pending_count ?? 0} {L("cmd", "ord")}
+                          </span>
+                        </td>
+                        <td className={`text-right py-2.5 font-data font-bold ${r.reconcile_count ? "text-error" : "text-glacier"}`}>
+                          {r.reconcile_count ?? 0}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* Recent orders */}
@@ -289,6 +457,48 @@ export default function AdminDashboard() {
   );
 }
 
+// Intitulé de section : structure la page en zones lisibles plutôt qu'en
+// une suite de tuiles de poids égal, où l'œil ne sait pas où se poser.
+function SectionLabel({ children }) {
+  return (
+    <div className="flex items-center gap-3 mb-3">
+      <span className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier whitespace-nowrap">
+        {children}
+      </span>
+      <span className="flex-1 h-px bg-ash" />
+    </div>
+  );
+}
+
+// Carte d'action : un compteur qui appelle une décision, pas une statistique.
+// Le liseré coloré à gauche encode l'urgence sans dépendre de la seule
+// couleur du chiffre — lisible aussi pour qui distingue mal les teintes.
+const ACTION_TONES = {
+  urgent: "border-l-error",
+  warn: "border-l-warning",
+  calm: "border-l-success",
+};
+
+function ActionCard({ tone = "calm", label, value, hint, to, testid }) {
+  const body = (
+    <>
+      <div className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{label}</div>
+      <div className="font-display text-[26px] font-bold tabular-nums text-nordfjord mt-1 leading-none whitespace-nowrap">
+        {value}
+      </div>
+      <div className="text-[12px] text-glacier mt-0.5 leading-snug">{hint}</div>
+    </>
+  );
+  const cls = `bg-white border border-ash border-l-[3px] ${ACTION_TONES[tone]} p-4 rounded-md block`;
+  return to ? (
+    <Link to={to} data-testid={testid} className={`${cls} hover:border-nova transition-colors`}>
+      {body}
+    </Link>
+  ) : (
+    <div data-testid={testid} className={cls}>{body}</div>
+  );
+}
+
 function DeltaCard({ label, value, delta, icon: Icon, lang }) {
   const L = (fr, en) => (lang === "fr" ? fr : en);
   const up = delta != null && delta >= 0;
@@ -296,9 +506,12 @@ function DeltaCard({ label, value, delta, icon: Icon, lang }) {
   return (
     <div className="bg-white border border-ash p-6 rounded-md">
       <div className="flex items-start justify-between">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">{label}</div>
-          <div className="font-display text-3xl font-bold mt-2 tabular-nums text-nordfjord">{value}</div>
+          {/* whitespace-nowrap : « 1 310,73 $ » se coupait, laissant le « $ »
+              seul sur une deuxième ligne. Et 26px plutôt que text-3xl (30px) :
+              quatre cartes sur une rangée n'ont pas la largeur pour ça. */}
+          <div className="font-display text-[26px] leading-none font-bold mt-2 tabular-nums text-nordfjord whitespace-nowrap">{value}</div>
           {delta != null ? (
             <div className={`flex items-center gap-1 mt-1 text-xs font-medium ${up ? "text-success" : "text-error"}`}>
               <DeltaIcon size={13} /> {up ? "+" : ""}{delta}% <span className="text-glacier font-normal">{L("vs préc.", "vs prev.")}</span>
@@ -307,7 +520,7 @@ function DeltaCard({ label, value, delta, icon: Icon, lang }) {
             <div className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mt-1">{L("— vs préc.", "— vs prev.")}</div>
           )}
         </div>
-        {Icon && <div className="w-10 h-10 flex items-center justify-center text-white bg-nordfjord rounded-md"><Icon size={18} strokeWidth={1.6} /></div>}
+        {Icon && <div className="w-9 h-9 shrink-0 ml-3 flex items-center justify-center text-white bg-nordfjord rounded-md"><Icon size={18} strokeWidth={1.6} /></div>}
       </div>
     </div>
   );
@@ -317,12 +530,15 @@ function MetricCard({ label, value, sub, icon: Icon }) {
   return (
     <div className="bg-white border border-ash p-6 rounded-md">
       <div className="flex items-start justify-between">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">{label}</div>
-          <div className="font-display text-3xl font-bold mt-2 tabular-nums text-nordfjord">{value}</div>
+          {/* whitespace-nowrap : « 1 310,73 $ » se coupait, laissant le « $ »
+              seul sur une deuxième ligne. Et 26px plutôt que text-3xl (30px) :
+              quatre cartes sur une rangée n'ont pas la largeur pour ça. */}
+          <div className="font-display text-[26px] leading-none font-bold mt-2 tabular-nums text-nordfjord whitespace-nowrap">{value}</div>
           <div className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mt-1">{sub}</div>
         </div>
-        {Icon && <div className="w-10 h-10 flex items-center justify-center text-white bg-nordfjord rounded-md"><Icon size={18} strokeWidth={1.6} /></div>}
+        {Icon && <div className="w-9 h-9 shrink-0 ml-3 flex items-center justify-center text-white bg-nordfjord rounded-md"><Icon size={18} strokeWidth={1.6} /></div>}
       </div>
     </div>
   );
