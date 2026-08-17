@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  ShoppingCart, Package, Users, DollarSign, AlertTriangle, TrendingUp, TrendingDown, ArrowUpRight, Repeat, Percent,
+  DollarSign, AlertTriangle, TrendingUp, TrendingDown, ArrowUpRight, Repeat, Percent,
 } from "lucide-react";
 import api from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
@@ -51,12 +51,6 @@ export default function AdminDashboard() {
     return () => { active = false; };
   }, [period]);
 
-  const cards = stats ? [
-    { k: L("Revenu", "Revenue"), tid: "revenue", v: `${stats.revenue_cad.toFixed(2)} $`, sub: L("CAD · commandes payées", "CAD · paid orders"), icon: DollarSign, accent: "#2E9E6B" },
-    { k: L("Commandes", "Orders"), tid: "orders", v: stats.total_orders, sub: L(`${stats.pending_orders} en attente`, `${stats.pending_orders} pending`), icon: ShoppingCart, accent: "#0B2E4F" },
-    { k: L("Clients", "Customers"), tid: "customers", v: stats.customers, sub: L("Inscrits", "Registered"), icon: Users, accent: "#00B8D4" },
-    { k: L("Produits", "Products"), tid: "products", v: stats.products, sub: L(`${stats.low_stock || 0} stock faible`, `${stats.low_stock || 0} low stock`), icon: Package, accent: "#E8A33D" },
-  ] : [];
 
   const dailyMax = analytics?.daily_revenue?.length
     ? Math.max(...analytics.daily_revenue.map(d => d.revenue), 1)
@@ -196,27 +190,9 @@ export default function AdminDashboard() {
         ))}
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {cards.map((c) => (
-          <div key={c.tid} className="bg-white border border-ash p-6 rounded-md" data-testid={`stat-${c.tid}`}>
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">{c.k}</div>
-                <div className="font-display text-3xl font-bold mt-2 tabular-nums text-nordfjord">{c.v}</div>
-                <div className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mt-1">{c.sub}</div>
-              </div>
-              <div className="w-10 h-10 flex items-center justify-center text-white rounded-md" style={{ background: c.accent }}>
-                <c.icon size={18} strokeWidth={1.6} />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
       {/* Métriques de pilotage (période sélectionnée, avec comparaison) */}
       {enhanced && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8" data-testid="enhanced-metrics">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="enhanced-metrics">
           <DeltaCard label={L(`Revenu ${period}j`, `Revenue ${period}d`)} value={`${enhanced.current.revenue.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA")} $`}
             delta={enhanced.changes.revenue} icon={DollarSign} lang={lang} />
           <DeltaCard label={L("Panier moyen", "Avg. order value")} value={`${enhanced.current.aov.toFixed(2)} $`}
@@ -234,8 +210,33 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Charts & top products */}
-      <div className="grid lg:grid-cols-3 gap-4 mb-8">
+      {/* Totaux historiques : consultables, mais ils ne declenchent aucune
+          decision quotidienne. Ils occupaient quatre tuiles pleine taille au
+          meme poids visuel que les indicateurs de pilotage — l'oeil ne savait
+          plus ou se poser. Une ligne suffit. */}
+      {stats && (
+        <div className="bg-white border border-ash rounded-md px-5 py-3 mb-8 flex flex-wrap gap-x-8 gap-y-1.5"
+             data-testid="reference-totals">
+          <span className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier self-center">
+            {L("DEPUIS L'OUVERTURE", "ALL TIME")}
+          </span>
+          {[
+            [L("Revenu", "Revenue"), `${stats.revenue_cad.toFixed(2)} $`],
+            [L("Commandes", "Orders"), stats.total_orders],
+            [L("Clients", "Customers"), stats.customers],
+            [L("Produits actifs", "Active products"), stats.products],
+          ].map(([k, v]) => (
+            <span key={k} className="text-[13px] text-glacier">
+              {k} <b className="text-nordfjord font-semibold tabular-nums">{v}</b>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* items-start : sans ça, la colonne de droite (stock + circuits + top
+          produits empilés) étire le panneau du graphique à sa hauteur, ce qui
+          laissait un vide de plusieurs centaines de pixels sous les barres. */}
+      <div className="grid lg:grid-cols-3 gap-4 mb-8 items-start">
         <div className="lg:col-span-2 bg-white border border-ash p-6 rounded-md">
           <div className="flex items-center justify-between mb-4">
             <div>
