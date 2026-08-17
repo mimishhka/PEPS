@@ -233,11 +233,14 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* items-start : sans ça, la colonne de droite (stock + circuits + top
-          produits empilés) étire le panneau du graphique à sa hauteur, ce qui
-          laissait un vide de plusieurs centaines de pixels sous les barres. */}
-      <div className="grid lg:grid-cols-3 gap-4 mb-8 items-start">
-        <div className="lg:col-span-2 bg-white border border-ash p-6 rounded-md">
+      {/* Le graphique prend toute la largeur, les trois panneaux forment une
+          rangée en dessous. En deux colonnes, la droite (stock + circuits +
+          top produits empilés) descendait bien plus bas que le graphique :
+          soit ce dernier s'étirait avec du vide à l'intérieur, soit — avec
+          items-start — le vide passait dans la grille. Le problème n'était pas
+          la hauteur mais le déséquilibre des colonnes. */}
+      <div className="mb-4">
+        <div className="bg-white border border-ash p-6 rounded-md">
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">
@@ -264,7 +267,7 @@ export default function AdminDashboard() {
               c'est-a-dire contre son propre contenu — et le navigateur calcule
               zero. Les barres mesuraient 0 pixel quelles que soient les ventes,
               d'ou un graphique vide en permanence. */}
-          <div className="h-48 flex items-end gap-1 border-b border-ash" data-testid="chart-revenue">
+          <div className="h-56 flex items-end gap-1 border-b border-ash" data-testid="chart-revenue">
             {(analytics?.daily_revenue || []).map((d) => (
               <div key={d.date} className="flex-1 h-full flex flex-col justify-end items-center group">
                 <div
@@ -315,8 +318,9 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
+      </div>
 
-        <div className="space-y-4">
+      <div className="grid lg:grid-cols-3 gap-4 mb-8 items-start">
         <LowStockCard />
 
         {/* Circuits de paiement : une colonne par ÉTAT, pas seulement
@@ -395,7 +399,6 @@ export default function AdminDashboard() {
               <li className="py-4 font-data text-xs text-glacier text-center">{L("Aucune vente pour l'instant", "No sales yet")}</li>
             )}
           </ul>
-        </div>
         </div>
       </div>
 
