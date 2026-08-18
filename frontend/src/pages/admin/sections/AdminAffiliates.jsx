@@ -338,7 +338,16 @@ export default function AdminAffiliates() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             <Kpi icon={TrendingUp} accent="#0d9d57" label={L("CA généré (validé)", "Generated revenue")} value={money(fin.validated_revenue)} sub={`CAD · ${int(fin.validated_orders)} ${L("commandes", "orders")}`} />
             <Kpi icon={Wallet} accent="#00B8D4" label={L("Commissions dues", "Commissions due")} value={money(fin.commission_due)} sub={L("CAD · approuvé, versé en USDT", "CAD · approved, paid in USDT")} />
-            <Kpi icon={Users} accent="#f59e0b" label={L("Affiliés actifs", "Active affiliates")} value={int(aff.active)} sub={`${int(aff.invited)} ${L("invités", "invited")} · ${int(aff.suspended)} susp.`} />
+            {/* « Actifs » designait le STATUT du compte, pas l'activite : 78
+                comptes acceptes dont aucun n'a genere une vente se lisaient
+                comme 78 affilies productifs. Le libelle dit maintenant ce
+                qu'il compte, et le sous-titre montre combien produisent. */}
+            <Kpi icon={Users} accent="#f59e0b"
+              label={L("Comptes acceptés", "Accepted accounts")}
+              value={int(aff.active)}
+              sub={ov?.top_affiliates?.length
+                ? `${ov.top_affiliates.length} ${L("avec ventes", "with sales")} · ${int(aff.invited)} ${L("en attente", "pending")}`
+                : `${L("aucun avec vente", "none with sales")} · ${int(aff.invited)} ${L("en attente", "pending")}`} />
           </div>
 
           {/* Totaux historiques : consultables, ils ne declenchent aucune
@@ -353,6 +362,7 @@ export default function AdminAffiliates() {
               [L("En maturation", "Maturing"), money(fin.commission_pending)],
               [L("Annulé", "Reversed"), money(fin.commission_reversed)],
               [L("Panier moyen", "Avg order"), money(fin.avg_order_value)],
+              [L("Clics", "Clicks"), int(attr.total_clicks)],
             ].map(([k, v]) => (
               <span key={k} className="text-[13px] text-glacier whitespace-nowrap">
                 {k} <b className="text-nordfjord font-semibold tabular-nums">{v}</b>
@@ -363,12 +373,10 @@ export default function AdminAffiliates() {
           {/* Panier moyen et commissions annulées sont passés dans la ligne
               de référence ci-dessus : il ne reste ici que l'attribution, qui
               raconte autre chose (d'où viennent les ventes). */}
-          {/* Le taux de conversion vivait ici ET dans l'onglet Attribution, qui
-              le montre avec son contexte — clics, meilleures pages, conversions
-              sur 30 jours. Un seul endroit : celui qui explique le chiffre. */}
-          <div className="grid grid-cols-1 gap-3 mb-6">
-            <MiniStat label={L("Clics d'affiliation", "Affiliate clicks")} value={int(attr.total_clicks)} icon={MousePointerClick} />
-          </div>
+          {/* Les clics rejoignent la ligne de référence ci-dessus. Ils y avaient
+              leur place : c'est un chiffre qu'on consulte, pas un chiffre qui
+              declenche une action. Seuls, ils occupaient une carte pleine
+              largeur pour deux caracteres. */}
 
           {/* GRAPHE + TOP AFFILIÉS — items-start : sans lui, le panneau le plus
               court s'étire à la hauteur de l'autre et se remplit de vide. Même
@@ -378,6 +386,20 @@ export default function AdminAffiliates() {
               <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier mb-4">
                 {L("CA & COMMISSIONS — 12 MOIS", "REVENUE & COMMISSIONS — 12 MONTHS")}
               </p>
+              {/* Sans ce garde, Recharts dessinait une boite d'axes vide : ni
+                  courbe, ni message. Un cadre desert se lit comme une panne. */}
+              {!(ov?.monthly_series || []).some((m) => (m.revenue || 0) > 0 || (m.commission || 0) > 0) ? (
+                <div style={{ height: 260 }} className="flex flex-col items-center justify-center text-center px-6">
+                  <p className="text-sm text-glacier">
+                    {L("Aucune vente attribuée sur les 12 derniers mois.",
+                       "No attributed sales in the last 12 months.")}
+                  </p>
+                  <p className="font-data text-[11px] text-glacier/70 mt-1.5">
+                    {L("La courbe apparaîtra à la première commande validée d'un affilié.",
+                       "The chart appears with the first validated affiliate order.")}
+                  </p>
+                </div>
+              ) : (
               <div style={{ width: "100%", height: 260 }}>
                 <ResponsiveContainer>
                   <LineChart data={ov?.monthly_series || []} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
@@ -391,6 +413,7 @@ export default function AdminAffiliates() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+              )}
             </div>
 
             <div className="bg-white border border-ash rounded-xl p-5">
@@ -890,18 +913,6 @@ function Kpi({ icon: Icon, accent, label, value, sub }) {
           coupait, laissant le symbole seul sur une deuxième ligne. */}
       <p className="font-display text-2xl font-bold text-nordfjord tabular-nums whitespace-nowrap">{value}</p>
       {sub && <p className="text-[11px] text-glacier mt-1">{sub}</p>}
-    </div>
-  );
-}
-
-function MiniStat({ label, value, icon: Icon }) {
-  return (
-    <div className="bg-white border border-ash rounded-xl px-4 py-3 flex items-center gap-3">
-      {Icon && <Icon size={16} className="text-glacier shrink-0" />}
-      <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-glacier truncate">{label}</p>
-        <p className="text-lg font-bold text-nordfjord tabular-nums">{value}</p>
-      </div>
     </div>
   );
 }
