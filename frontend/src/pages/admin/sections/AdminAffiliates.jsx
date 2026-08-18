@@ -511,6 +511,7 @@ export default function AdminAffiliates() {
               <>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
+                    <thead>
                       <tr className="border-b border-ash">
                         <Th>{L("Affilié", "Affiliate")}</Th>
                         <Th>{L("Code", "Code")}</Th>
