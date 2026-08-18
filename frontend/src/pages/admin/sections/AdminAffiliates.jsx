@@ -524,36 +524,48 @@ export default function AdminAffiliates() {
                       </tr>
                     </thead>
                     <tbody>
-                      {affPageRows.map((a) => (
-                        <tr key={a.id} className="border-b border-ash/60 hover:bg-clinical/60">
-                          <td className="px-4 py-3">
-                            <p className="font-medium text-nordfjord">{a.name}</p>
-                            <p className="text-xs text-glacier">{a.email}</p>
+                      {affPageRows.map((a) => {
+                        // Un affilie INVITE n'a ni code, ni palier, ni
+                        // statistique : cinq colonnes de tirets par rangee,
+                        // sur une liste ou la majorite est en attente. On les
+                        // fait reculer visuellement au lieu de les repeter.
+                        const pending = a.status !== "active";
+                        const dash = <span className="text-glacier/35">—</span>;
+                        return (
+                        <tr key={a.id}
+                            className={`border-b border-ash/60 hover:bg-clinical/60 ${pending ? "bg-clinical/30" : ""}`}>
+                          <td className="px-4 py-2.5 max-w-[15rem]">
+                            <p className="font-medium text-nordfjord truncate">{a.name}</p>
+                            {/* truncate + title : « test_bulk_good_498cf227c8@fironova-smoke.com »
+                                passait a la ligne et doublait la hauteur de rangee. */}
+                            <p className="text-xs text-glacier truncate" title={a.email}>{a.email}</p>
                           </td>
-                          <td className="px-4 py-3 font-mono text-xs text-nordfjord">{a.code || "—"}</td>
-                          <td className="px-4 py-3"><StatusPill status={a.status} L={L} /></td>
-                          <td className="px-4 py-3"><CompDot status={a.compliance_status} /></td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-2.5 font-mono text-xs text-nordfjord">{a.code || dash}</td>
+                          <td className="px-4 py-2.5"><StatusPill status={a.status} L={L} /></td>
+                          <td className="px-4 py-2.5"><CompDot status={a.compliance_status} /></td>
+                          <td className="px-4 py-2.5">
                             {a.tier ? (
-                              <span className="inline-flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full" style={{ background: TIER_COLOR[a.tier] }} />
+                              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: TIER_COLOR[a.tier] }} />
                                 <span className="text-nordfjord">{TIER_LABEL[a.tier]?.[lang] || a.tier}</span>
                                 <span className="text-glacier text-xs">{a.commission_rate ? `${Math.round(a.commission_rate * 100)}%` : ""}</span>
                               </span>
-                            ) : "—"}
+                            ) : dash}
                           </td>
-                          <td className="px-4 py-3 text-right text-glacier tabular-nums">
+                          <td className="px-4 py-2.5 text-right text-glacier tabular-nums">
                             {a.clicks ? (
                               <span title={a.last_click_at ? `${L("Dernier clic", "Last click")}: ${fmtDate(a.last_click_at)}` : ""}>
                                 {int(a.clicks)}
                               </span>
-                            ) : "—"}
+                            ) : dash}
                           </td>
-                          <td className="px-4 py-3 text-right text-nordfjord tabular-nums">{a.cumulative_revenue != null ? money(a.cumulative_revenue) : "—"}</td>
-                          <td className="px-4 py-3 text-right text-nordfjord tabular-nums">{a.pending_commission != null ? money(a.pending_commission) : "—"}</td>
-                          <td className="px-4 py-3 text-right">
-                            <div className="flex gap-1 justify-end">
-                              {a.status !== "active" && <ResendButton affiliateId={a.id} L={L} />}
+                          <td className="px-4 py-2.5 text-right text-nordfjord tabular-nums whitespace-nowrap">{a.cumulative_revenue != null ? money(a.cumulative_revenue) : dash}</td>
+                          <td className="px-4 py-2.5 text-right text-nordfjord tabular-nums whitespace-nowrap">{a.pending_commission != null ? money(a.pending_commission) : dash}</td>
+                          <td className="px-4 py-2.5 text-right">
+                            {/* Largeur fixe : sans elle, « Resend » n'apparait que sur
+                                les rangees en attente et le bord droit devient dentele. */}
+                            <div className="flex gap-1 justify-end min-w-[9.5rem]">
+                              {pending && <ResendButton affiliateId={a.id} L={L} />}
                               <button onClick={() => setDetail(a.id)}
                                 className="px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical transition">
                                 {L("Détails", "Details")}
@@ -561,7 +573,8 @@ export default function AdminAffiliates() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
