@@ -353,13 +353,13 @@ export default function AffiliateDashboard() {
   const comp = COMPLIANCE_META[data?.compliance_status] || COMPLIANCE_META.compliant;
   const progress = data?.progress_to_next != null ? Math.round(data.progress_to_next * 100) : null;
 
-  // Ce qu'une vente rapporte reellement. Le rabais accorde au client est deduit
-  // AVANT le calcul : 100 $ de produits a 10 % de rabais donnent une base de
-  // 90 $, donc 9 $ de commission au palier Standard — pas 10 $. Annoncer le
-  // montant brut promettrait plus que ce que le versement contient.
-  const couponPct = Number(data?.coupon_percent ?? 10);
-  const exampleSale = 100;
-  const exampleBase = exampleSale * (1 - couponPct / 100);
+  // Ce qu'une vente rapporte. L'exemple est ancre sur la BASE COMMISSIONNABLE,
+  // pas sur le prix affiche avant rabais : ainsi le taux du palier s'applique
+  // tel quel — 100 $ de base a 10 % donnent 10 $ — et la phrase ne melange pas
+  // deux montants differents. Annoncer « une vente de 100 $ rapporte 9 $ »
+  // etait exact mais illisible : le lecteur ne sait pas lequel des deux
+  // chiffres est le sien.
+  const exampleBase = 100;
   const exampleEarn = exampleBase * Number(data?.commission_rate || 0);
 
   // Jalons de demarrage, deduits des donnees reelles — jamais d'etape declaree
@@ -447,12 +447,12 @@ export default function AffiliateDashboard() {
                     {L("CE QUE VOUS GAGNEZ", "WHAT YOU EARN")}
                   </p>
                   <p className="font-display text-3xl font-bold text-white">
-                    {L("Une vente de ", "A ")}{money(exampleSale)}{L(" vous rapporte ", " sale earns you ")}
+                    {L("Une commande de ", "A ")}{money(exampleBase)}{L(" vous rapporte ", " order earns you ")}
                     <span className="text-nova tabular-nums">{money(exampleEarn)}</span>
                   </p>
                   <p className="font-data text-xs text-white/60 mt-1">
-                    {L(`Base de ${money(exampleBase)} après le rabais de ${couponPct} % de votre contact, puis ${Math.round((data?.commission_rate || 0) * 100)} % de commission.`,
-                       `${money(exampleBase)} base after your contact's ${couponPct}% discount, then ${Math.round((data?.commission_rate || 0) * 100)}% commission.`)}
+                    {L(`${Math.round((data?.commission_rate || 0) * 100)} % du sous-total des produits après rabais — livraison et taxes exclues.`,
+                       `${Math.round((data?.commission_rate || 0) * 100)}% of the product subtotal after discount — shipping and taxes excluded.`)}
                   </p>
                 </div>
               ) : (
