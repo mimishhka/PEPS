@@ -336,8 +336,8 @@ export default function AdminAffiliates() {
               historique. « Versé à vie » descend en ligne de référence. */}
           <SectionRule>{L("PERFORMANCE", "PERFORMANCE")}</SectionRule>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-            <Kpi icon={TrendingUp} accent="#0d9d57" label={L("CA généré (validé)", "Generated revenue")} value={money(fin.validated_revenue)} sub={`${int(fin.validated_orders)} ${L("commandes", "orders")}`} />
-            <Kpi icon={Wallet} accent="#00B8D4" label={L("Commissions dues", "Commissions due")} value={money(fin.commission_due)} sub={L("approuvé, à payer", "approved, to pay")} />
+            <Kpi icon={TrendingUp} accent="#0d9d57" label={L("CA généré (validé)", "Generated revenue")} value={money(fin.validated_revenue)} sub={`CAD · ${int(fin.validated_orders)} ${L("commandes", "orders")}`} />
+            <Kpi icon={Wallet} accent="#00B8D4" label={L("Commissions dues", "Commissions due")} value={money(fin.commission_due)} sub={L("CAD · approuvé, versé en USDT", "CAD · approved, paid in USDT")} />
             <Kpi icon={Users} accent="#f59e0b" label={L("Affiliés actifs", "Active affiliates")} value={int(aff.active)} sub={`${int(aff.invited)} ${L("invités", "invited")} · ${int(aff.suspended)} susp.`} />
           </div>
 
@@ -346,7 +346,7 @@ export default function AdminAffiliates() {
           <div className="bg-white border border-ash rounded-xl px-5 py-3 mb-6 flex flex-wrap gap-x-8 gap-y-1.5"
                data-testid="affiliate-reference">
             <span className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier self-center">
-              {L("DEPUIS L'OUVERTURE", "ALL TIME")}
+              {L("DEPUIS L'OUVERTURE · CAD", "ALL TIME · CAD")}
             </span>
             {[
               [L("Versé", "Paid"), money(fin.commission_paid)],
@@ -363,13 +363,17 @@ export default function AdminAffiliates() {
           {/* Panier moyen et commissions annulées sont passés dans la ligne
               de référence ci-dessus : il ne reste ici que l'attribution, qui
               raconte autre chose (d'où viennent les ventes). */}
-          <div className="grid grid-cols-2 gap-3 mb-6">
+          {/* Le taux de conversion vivait ici ET dans l'onglet Attribution, qui
+              le montre avec son contexte — clics, meilleures pages, conversions
+              sur 30 jours. Un seul endroit : celui qui explique le chiffre. */}
+          <div className="grid grid-cols-1 gap-3 mb-6">
             <MiniStat label={L("Clics d'affiliation", "Affiliate clicks")} value={int(attr.total_clicks)} icon={MousePointerClick} />
-            <MiniStat label={L("Taux de conversion", "Conversion rate")} value={attr.conversion_rate != null ? `${(attr.conversion_rate * 100).toFixed(1)}%` : "—"} />
           </div>
 
-          {/* GRAPHE + TOP AFFILIÉS */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          {/* GRAPHE + TOP AFFILIÉS — items-start : sans lui, le panneau le plus
+              court s'étire à la hauteur de l'autre et se remplit de vide. Même
+              correction que sur le tableau de bord principal. */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 items-start">
             <div className="lg:col-span-2 bg-white border border-ash rounded-xl p-5">
               <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier mb-4">
                 {L("CA & COMMISSIONS — 12 MOIS", "REVENUE & COMMISSIONS — 12 MONTHS")}
