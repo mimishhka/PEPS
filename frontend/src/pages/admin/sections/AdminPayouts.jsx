@@ -97,7 +97,12 @@ export default function AdminPayouts() {
     const ready = list.filter((p) => p.status === "ready");
     return {
       ready: ready.length,
-      readyAmount: ready.reduce((sum, p) => sum + (p.amount || 0), 0),
+      // Somme en CAD, pas en `amount`. Pour un versement crypto, `amount` est
+      // deja le montant converti en USD (voir _generate_payouts_for_period) :
+      // additionner ce champ melangeait des devises et affichait le resultat
+      // avec un simple « $ ». Le CAD est la seule base homogene, et c'est
+      // celle qui correspond a vos livres.
+      readyCad: ready.reduce((sum, p) => sum + (p.amount_cad ?? p.amount ?? 0), 0),
       pending: list.filter((p) => ["creating", "processing"].includes(p.status)).length,
     };
   }, [payouts]);
@@ -120,7 +125,7 @@ export default function AdminPayouts() {
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <Stat label={L("Prets a payer", "Ready to pay")} value={`${totals.ready} · ${money(totals.readyAmount)}`} />
+        <Stat label={L("Prets a payer", "Ready to pay")} value={`${totals.ready} · ${money(totals.readyCad)} CAD`} />
         <Stat label={L("En cours", "In progress")} value={totals.pending} />
         <Stat label={L("Total releves", "Total payouts")} value={payouts.length} />
       </div>
@@ -146,7 +151,26 @@ export default function AdminPayouts() {
                     {p.np_error ? <span className="text-error"> · {p.np_error}</span> : null}
                   </div>
                 </div>
-                <div className="font-display font-bold text-nordfjord">{money(p.amount)}</div>
+                {/* Les DEUX montants. `amount` est deja converti en USD pour un
+                    versement crypto : l'afficher via money() donnait « $180.00 »
+                    sans qualification, lu naturellement comme des dollars
+                    canadiens. Le montant envoye porte donc sa devise, et la base
+                    CAD — celle qui correspond a vos livres — apparait dessous
+                    avec le taux applique. */}
+                <div className="text-right shrink-0">
+                  <div className="font-display font-bold text-nordfjord tabular-nums whitespace-nowrap">
+                    {Number(p.amount || 0).toFixed(2)}
+                    <span className="text-xs font-data text-glacier uppercase ml-1">
+                      {p.currency || "cad"}
+                    </span>
+                  </div>
+                  {p.amount_cad != null && p.amount_usd != null && (
+                    <div className="font-data text-[11px] text-glacier tabular-nums whitespace-nowrap">
+                      {money(p.amount_cad)} CAD
+                      {p.fx_rate_cad_to_usd ? ` × ${Number(p.fx_rate_cad_to_usd).toFixed(4)}` : ""}
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   {p.status === "ready" && (
                     <button onClick={() => execute(p)} disabled={busy === p.id} data-testid={`execute-${p.id}`}
