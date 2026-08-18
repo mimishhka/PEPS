@@ -9649,6 +9649,7 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
     alertes, attribution, série mensuelle, top affiliés, distribution tiers."""
     now = datetime.now(timezone.utc)
     quarter_start = _affiliate_quarter_start()
+    tier_window_start = now - timedelta(days=365)
 
     # --- Effectifs ---
     active = await db.affiliates.count_documents({"status": "active"})
@@ -9704,6 +9705,18 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
                     "revenue": {"$sum": {"$ifNull": ["$order_total", 0]}},
                     "commission": {"$sum": {"$ifNull": ["$commission_amount", 0]}},
                     "cumulative": {"$sum": {"$ifNull": ["$base_amount", 0]}},
+                    # 365 derniers jours — c'est CETTE somme qui fixe le palier,
+                    # comme dans _affiliate_compute_metrics(). Sans elle, l'admin
+                    # classait sur le cumul a vie pendant que l'affilie voyait un
+                    # palier calcule sur douze mois glissants : deux reponses
+                    # differentes a la meme question.
+                    "rolling12": {"$sum": {"$cond": [
+                        {"$gte": [
+                            {"$ifNull": ["$approved_at", "$created_at"]},
+                            tier_window_start.isoformat(),
+                        ]},
+                        {"$ifNull": ["$base_amount", 0]}, 0,
+                    ]}},
                     "quarter": {"$sum": {"$cond": [
                         {"$gte": [
                             {"$ifNull": ["$approved_at", "$created_at"]},
@@ -9743,6 +9756,7 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
     tier_revenue = {
         row.get("_id"): {
             "cumulative": float(row.get("cumulative", 0.0)),
+            "rolling12": float(row.get("rolling12", 0.0)),
             "quarter": float(row.get("quarter", 0.0)),
         }
         for row in facets.get("per_affiliate", []) if row.get("_id")
@@ -9769,16 +9783,17 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
     valid_tiers = {tier[0] for tier in AFFILIATE_TIERS}
     for affiliate in active_affiliates:
         values = tier_revenue.get(affiliate.get("id"), {})
-        cumulative = float(values.get("cumulative", 0.0))
-        quarter = float(values.get("quarter", 0.0))
+        rolling12 = float(values.get("rolling12", 0.0))
         manual_tier = str(affiliate.get("manual_tier") or "").strip().lower() or None
         if manual_tier not in valid_tiers:
             manual_tier = None
-        theoretical = _affiliate_tier_for_revenue(cumulative)
-        tier = manual_tier or theoretical
-        floor, _ceil = _affiliate_tier_bounds(theoretical)
-        if not manual_tier and quarter < floor and _affiliate_tier_index(theoretical) > 0:
-            tier = AFFILIATE_TIERS[_affiliate_tier_index(theoretical) - 1][0]
+        # Meme regle que _affiliate_compute_metrics() : palier sur les douze mois
+        # glissants, surcharge manuelle prioritaire, aucune retrogradation
+        # trimestrielle. L'ancienne version classait sur le cumul a vie puis
+        # retrogradait si le trimestre passait sous le plancher CUMULE du palier
+        # — un seuil qu'un affilie regulier ne pouvait pas tenir chaque
+        # trimestre. L'admin voyait donc un palier que l'affilie n'avait pas.
+        tier = manual_tier or _affiliate_tier_for_revenue(rolling12)
         tier_distribution[tier] = tier_distribution.get(tier, 0) + 1
 
     # --- Attribution (clics / conversion) ---

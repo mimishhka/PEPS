@@ -469,12 +469,30 @@ export default function AffiliateDashboard() {
               <MiniInsight label={L("Panier moyen", "Avg order")} value={money(insights?.avg_order_value)} />
             </div>
 
-            {/* Tier progression */}
+            {/* Palier. Un palier fixe par l'administration ne bouge pas avec le
+                chiffre d'affaires : afficher « encore 3 465 $ pour Silver »
+                serait une promesse fausse, puisque franchir ce seuil ne
+                changerait rien — manual_tier l'emporte sur le palier calcule. */}
             <div className="bg-white rounded-2xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
-                {L("PROGRESSION DE PALIER", "TIER PROGRESSION")}
+                {data?.tier_is_manual
+                  ? L("VOTRE PALIER", "YOUR TIER")
+                  : L("PROGRESSION DE PALIER", "TIER PROGRESSION")}
               </p>
-              {data?.next_tier ? (
+              {data?.tier_is_manual ? (
+                <>
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="font-display text-2xl font-bold text-nordfjord">{tierLabel}</span>
+                    <span className="font-data text-sm font-semibold" style={{ color: tierColor }}>
+                      {Math.round((data?.commission_rate || 0) * 100)} %
+                    </span>
+                  </div>
+                  <p className="text-sm text-glacier mt-2">
+                    {L("Ce taux vous est accordé par entente. Il ne dépend pas de votre volume de ventes et ne peut pas redescendre.",
+                       "This rate is set by agreement. It does not depend on your sales volume and cannot go down.")}
+                  </p>
+                </>
+              ) : data?.next_tier ? (
                 <>
                   <div className="flex items-baseline justify-between mb-2">
                     <span className="font-display text-2xl font-bold text-nordfjord">{tierLabel}</span>
@@ -507,7 +525,7 @@ export default function AffiliateDashboard() {
                     </p>
                     <p className="font-display text-2xl font-bold text-nordfjord tabular-nums">
                       {money(data.rolling12_revenue)}
-                      {data.next_tier && (
+                      {data.next_tier && !data.tier_is_manual && (
                         <span className="text-sm font-medium text-glacier">
                           {" / "}{money(data.next_tier.floor)}
                         </span>
@@ -515,27 +533,32 @@ export default function AffiliateDashboard() {
                     </p>
                   </div>
                 </div>
-                {data.next_tier && (
+                {data.next_tier && !data.tier_is_manual && (
                   <div className="h-3 rounded-full bg-ash overflow-hidden">
                     <div className="h-full rounded-full transition-all"
                          style={{ width: `${Math.min(100, Math.round((data.progress_to_next || 0) * 100))}%`,
                                   background: "#00B8D4" }} />
                   </div>
                 )}
-                <p className="font-data text-[11px] text-glacier mt-2">
-                  {data.next_tier ? (
-                    <>{L("Encore ", "Still ")}{money(data.remaining_to_next)}
-                      {L(" de ventes validees pour atteindre ", " in validated sales to reach ")}
-                      {TIER_META[data.next_tier.tier]?.[lang] || data.next_tier.tier}
-                      {" ("}{Math.round(data.next_tier.rate * 100)} %{")."}
-                    </>
-                  ) : (
-                    L("Palier maximal atteint.", "Top tier reached.")
-                  )}
-                </p>
+                {!data.tier_is_manual && (
+                  <p className="font-data text-[11px] text-glacier mt-2">
+                    {data.next_tier ? (
+                      <>{L("Encore ", "Still ")}{money(data.remaining_to_next)}
+                        {L(" de ventes validees pour atteindre ", " in validated sales to reach ")}
+                        {TIER_META[data.next_tier.tier]?.[lang] || data.next_tier.tier}
+                        {" ("}{Math.round(data.next_tier.rate * 100)} %{")."}
+                      </>
+                    ) : (
+                      L("Palier maximal atteint.", "Top tier reached.")
+                    )}
+                  </p>
+                )}
                 <p className="font-data text-[11px] text-glacier mt-1">
-                  {L("Votre taux suit ce total : il monte quand vos ventes montent, et redescend progressivement si elles ralentissent.",
-                     "Your rate follows this total: it rises as your sales rise, and eases down gradually if they slow.")}
+                  {data.tier_is_manual
+                    ? L("Chiffre indicatif : votre palier étant fixé par entente, ce total ne modifie pas votre taux.",
+                        "For information only: your tier is set by agreement, so this total does not change your rate.")
+                    : L("Votre taux suit ce total : il monte quand vos ventes montent, et redescend progressivement si elles ralentissent.",
+                        "Your rate follows this total: it rises as your sales rise, and eases down gradually if they slow.")}
                 </p>
               </div>
             )}
