@@ -272,13 +272,13 @@ export default function AdminOrders() {
         <table className="w-full text-sm">
           <thead className="bg-secondary text-foreground/70">
             <tr>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Order</th>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Customer</th>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Method</th>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Payment</th>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Fulfillment</th>
-              <th className="px-6 py-3 text-right font-mono text-[10px] uppercase tracking-[0.2em]">Total</th>
-              <th className="px-6 py-3 text-right font-mono text-[10px] uppercase tracking-[0.2em]"></th>
+              <th className="px-6 py-3 text-left text-[12px] font-semibold">Order</th>
+              <th className="px-6 py-3 text-left text-[12px] font-semibold">Customer</th>
+              <th className="px-6 py-3 text-left text-[12px] font-semibold">Method</th>
+              <th className="px-6 py-3 text-left text-[12px] font-semibold">Payment</th>
+              <th className="px-6 py-3 text-left text-[12px] font-semibold">Fulfillment</th>
+              <th className="px-6 py-3 text-right text-[12px] font-semibold">Total</th>
+              <th className="px-6 py-3 text-right text-[12px] font-semibold"></th>
             </tr>
           </thead>
           <tbody>

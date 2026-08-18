@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
+import { Th, Num, Identity, TierBadge, TIER_TONE } from "../ui";
 
 const money = (n) => `$${Number(n || 0).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const int = (n) => Number(n || 0).toLocaleString("en-CA");
@@ -510,60 +511,64 @@ export default function AdminAffiliates() {
               <>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
-                        <th className="px-4 py-3">{L("Affilié", "Affiliate")}</th>
-                        <th className="px-4 py-3">{L("Code", "Code")}</th>
-                        <th className="px-4 py-3">{L("Statut", "Status")}</th>
-                        <th className="px-4 py-3">{L("Conf.", "Comp.")}</th>
-                        <th className="px-4 py-3">{L("Palier", "Tier")}</th>
-                        <th className="px-4 py-3 text-right">{L("Clics", "Clicks")}</th>
-                        <th className="px-4 py-3 text-right">{L("CA validé", "Validated")}</th>
-                        <th className="px-4 py-3 text-right">{L("En attente", "Pending")}</th>
-                        <th className="px-4 py-3"></th>
+                      <tr className="border-b border-ash">
+                        <Th>{L("Affilié", "Affiliate")}</Th>
+                        <Th>{L("Code", "Code")}</Th>
+                        <Th>{L("Statut", "Status")}</Th>
+                        {/* La colonne « Conf. » affichait une coche verte sur
+                            TOUTES les lignes : une colonne identique partout
+                            n'informe de rien. Le manquement se signale
+                            desormais sur la pastille de statut, la ou il est
+                            une exception. */}
+                        <Th>{L("Palier", "Tier")}</Th>
+                        <Th align="right">{L("Clics", "Clicks")}</Th>
+                        <Th align="right">{L("CA validé", "Validated")}</Th>
+                        <Th align="right">{L("En attente", "Pending")}</Th>
+                        <Th></Th>
                       </tr>
                     </thead>
                     <tbody>
                       {affPageRows.map((a) => {
-                        // Un affilie INVITE n'a ni code, ni palier, ni
-                        // statistique : cinq colonnes de tirets par rangee,
-                        // sur une liste ou la majorite est en attente. On les
-                        // fait reculer visuellement au lieu de les repeter.
+                        // Un affilie INVITE n'a ni code, ni palier, ni chiffre.
+                        // Sur une liste ou la majorite est en attente, repeter
+                        // cinq tirets par rangee sature l'ecran pour rien : la
+                        // rangee recule en bloc.
                         const pending = a.status !== "active";
-                        const dash = <span className="text-glacier/35">—</span>;
+                        const flagged = a.compliance_status && a.compliance_status !== "compliant";
                         return (
                         <tr key={a.id}
-                            className={`border-b border-ash/60 hover:bg-clinical/60 ${pending ? "bg-clinical/30" : ""}`}>
-                          <td className="px-4 py-2.5 max-w-[15rem]">
-                            <p className="font-medium text-nordfjord truncate">{a.name}</p>
-                            {/* truncate + title : « test_bulk_good_498cf227c8@fironova-smoke.com »
-                                passait a la ligne et doublait la hauteur de rangee. */}
-                            <p className="text-xs text-glacier truncate" title={a.email}>{a.email}</p>
+                            className={`border-b border-ash/60 hover:bg-clinical/60 ${pending ? "bg-clinical/40" : ""}`}>
+                          <td className="px-4 py-2 max-w-[17rem]">
+                            <Identity name={a.name} email={a.email}
+                              tone={pending ? "#94A9B4" : TIER_TONE[a.tier] || "#7C93A1"} />
                           </td>
-                          <td className="px-4 py-2.5 font-mono text-xs text-nordfjord">{a.code || dash}</td>
-                          <td className="px-4 py-2.5"><StatusPill status={a.status} L={L} /></td>
-                          <td className="px-4 py-2.5"><CompDot status={a.compliance_status} /></td>
-                          <td className="px-4 py-2.5">
-                            {a.tier ? (
-                              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: TIER_COLOR[a.tier] }} />
-                                <span className="text-nordfjord">{TIER_LABEL[a.tier]?.[lang] || a.tier}</span>
-                                <span className="text-glacier text-xs">{a.commission_rate ? `${Math.round(a.commission_rate * 100)}%` : ""}</span>
-                              </span>
-                            ) : dash}
+                          <td className="px-4 py-2 font-data text-[12px]">
+                            {a.code ? <span className="text-nordfjord">{a.code}</span>
+                                    : <span className="text-glacier/45">—</span>}
                           </td>
-                          <td className="px-4 py-2.5 text-right text-glacier tabular-nums">
-                            {a.clicks ? (
-                              <span title={a.last_click_at ? `${L("Dernier clic", "Last click")}: ${fmtDate(a.last_click_at)}` : ""}>
-                                {int(a.clicks)}
-                              </span>
-                            ) : dash}
+                          <td className="px-4 py-2">
+                            <span className="inline-flex items-center gap-1.5">
+                              <StatusPill status={a.status} L={L} />
+                              {/* La conformite ne s'affiche QUE si elle pose
+                                  probleme — une coche verte partout ne dit rien. */}
+                              {flagged && (
+                                <span title={L("Conformité à vérifier", "Compliance to review")}
+                                      className="text-warning text-xs font-bold">!</span>
+                              )}
+                            </span>
                           </td>
-                          <td className="px-4 py-2.5 text-right text-nordfjord tabular-nums whitespace-nowrap">{a.cumulative_revenue != null ? money(a.cumulative_revenue) : dash}</td>
-                          <td className="px-4 py-2.5 text-right text-nordfjord tabular-nums whitespace-nowrap">{a.pending_commission != null ? money(a.pending_commission) : dash}</td>
-                          <td className="px-4 py-2.5 text-right">
-                            {/* Largeur fixe : sans elle, « Resend » n'apparait que sur
-                                les rangees en attente et le bord droit devient dentele. */}
+                          <td className="px-4 py-2">
+                            <TierBadge tier={a.tier} rate={a.commission_rate}
+                              label={TIER_LABEL[a.tier]?.[lang] || a.tier} />
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            <span title={a.last_click_at ? `${L("Dernier clic", "Last click")}: ${fmtDate(a.last_click_at)}` : ""}>
+                              <Num value={a.clicks} format={int} />
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-right"><Num value={a.cumulative_revenue} format={money} /></td>
+                          <td className="px-4 py-2 text-right"><Num value={a.pending_commission} format={money} /></td>
+                          <td className="px-4 py-2 text-right">
                             <div className="flex gap-1 justify-end min-w-[9.5rem]">
                               {pending && <ResendButton affiliateId={a.id} L={L} />}
                               <button onClick={() => setDetail(a.id)}
@@ -1027,11 +1032,6 @@ function StatusPill({ status, L }) {
   };
   const m = map[status] || map.invited;
   return <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${m.cls}`}>{L(m.fr, m.en)}</span>;
-}
-
-function CompDot({ status }) {
-  const emoji = { compliant: "✅", review: "⚠️", suspended: "🔒" };
-  return <span title={status}>{emoji[status] || "✅"}</span>;
 }
 
 function ResendButton({ affiliateId, L }) {
