@@ -901,20 +901,33 @@ export default function AffiliateDashboard() {
                    "Fironova pays your commissions in USDT or USDC on the Ethereum network (ERC-20). Amounts are converted from CAD at the official Bank of Canada rate on the payout date.")}
               </p>
               <label className="block mb-4">
-                <span className="font-data text-xs text-glacier">{L("Adresse Ethereum (ERC-20)", "Ethereum address (ERC-20)")}</span>
+                <span className="font-data text-xs text-glacier">{L("Adresse de versement (ERC-20 ou TRC-20)", "Payout address (ERC-20 or TRC-20)")}</span>
                 <input value={payAddr} onChange={(e) => setPayAddr(e.target.value)}
                   data-testid="affiliate-payout-address"
                   className="mt-1 w-full rounded-lg border border-ash px-4 py-3 font-data text-sm text-nordfjord focus:border-nova outline-none"
-                  placeholder="0x…" />
+                  placeholder={L("0x… (Ethereum) ou T… (Tron)", "0x… (Ethereum) or T… (Tron)")} />
                 {(() => {
+                  // Le backend accepte ERC-20 ET TRC-20 ; cette validation
+                  // client ne connaissait que l'Ethereum et refusait donc une
+                  // adresse Tron parfaitement valide, sans que l'affilie
+                  // comprenne pourquoi.
                   const raw = (payAddr || "").trim();
                   if (!raw) return null;
-                  const isFormat = /^0x[0-9a-fA-F]{40}$/.test(raw);
-                  if (!isFormat) {
+                  const isErc = /^0x[0-9a-fA-F]{40}$/.test(raw);
+                  const isTrc = /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(raw);
+                  if (!isErc && !isTrc) {
                     return (
                       <p className="mt-1.5 text-[11px] text-error">
-                        {L("Format invalide. Attendu : 0x suivi de 40 caractères hexadécimaux.",
-                           "Invalid format. Expected: 0x followed by 40 hex characters.")}
+                        {L("Format invalide. Attendu : 0x + 40 caractères hexadécimaux (ERC-20), ou T + 33 caractères (TRC-20).",
+                           "Invalid format. Expected: 0x + 40 hex characters (ERC-20), or T + 33 characters (TRC-20).")}
+                      </p>
+                    );
+                  }
+                  if (isTrc) {
+                    return (
+                      <p className="mt-1.5 text-[11px] text-success">
+                        {L("✓ Adresse Tron (TRC-20) — frais de réseau plus faibles.",
+                           "✓ Tron address (TRC-20) — lower network fees.")}
                       </p>
                     );
                   }
@@ -924,10 +937,10 @@ export default function AffiliateDashboard() {
                   return (
                     <p className={`mt-1.5 text-[11px] ${isChecksummed ? "text-success" : "text-warning"}`}>
                       {isChecksummed
-                        ? L("✓ Format checksummé détecté — vérification EIP-55 côté serveur à l'enregistrement.",
-                            "✓ Checksummed format detected — EIP-55 verification on save.")
-                        : L("Adresse en minuscules acceptée : le serveur la convertira au format checksummé EIP-55 automatiquement.",
-                            "Lowercase address accepted: server will auto-normalize to EIP-55 checksummed format.")}
+                        ? L("✓ Adresse Ethereum checksummée — vérification EIP-55 à l'enregistrement.",
+                            "✓ Checksummed Ethereum address — EIP-55 verification on save.")
+                        : L("Adresse en minuscules acceptée : le serveur la convertira au format EIP-55.",
+                            "Lowercase address accepted: server will normalize to EIP-55.")}
                     </p>
                   );
                 })()}

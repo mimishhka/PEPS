@@ -1771,11 +1771,18 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                   <EditField label={L("Adresse de paiement", "Payout address")}
                     value={form.payout_address} onChange={(v) => setForm({ ...form, payout_address: v })}
                     test="edit-payout-address"
-                    placeholder={L("Interac email, adresse crypto ou IBAN", "Interac email, crypto address, or IBAN")} />
-                  <EditField label={L("Devise / méthode", "Currency / method")}
+                    placeholder={L("0x… (ERC-20) ou T… (TRC-20) — renseignée par l'affilié",
+                                   "0x… (ERC-20) or T… (TRC-20) — set by the affiliate")} />
+                  {/* Ces deux aides annonçaient « Interac email, IBAN » et
+                      « CAD / BTC » — des vestiges d'un ancien design
+                      multi-méthodes. Le code n'accepte que USDT/USDC sur
+                      ERC-20 ou TRC-20 : suivre l'aide menait droit au rejet.
+                      La devise devient une liste, puisqu'il n'y a que deux
+                      valeurs valides. */}
+                  <EditField label={L("Devise de versement", "Payout currency")}
                     value={form.payout_currency} onChange={(v) => setForm({ ...form, payout_currency: v })}
                     test="edit-payout-currency"
-                    placeholder="CAD / USDC / BTC" />
+                    select={["usdt", "usdc"]} />
                   <EditField label={L("Palier manuel (override)", "Manual tier override")}
                     value={form.manual_tier} onChange={(v) => setForm({ ...form, manual_tier: v })}
                     test="edit-manual-tier"
