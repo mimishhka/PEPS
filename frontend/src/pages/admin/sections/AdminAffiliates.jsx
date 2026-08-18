@@ -571,10 +571,10 @@ export default function AdminAffiliates() {
                                       a.tier_agreement ? "text-glacier" : "text-warning"}`}
                                     title={L(
                                       `${a.tier_agreement
-                                          ? "Entente négociée — l'affilié lit que son taux ne peut pas redescendre."
+                                          ? "Entente négociée — l'affilié lit que son taux ne baisse jamais automatiquement et que toute modification lui serait signalée."
                                           : "Palier fixé à la main, sans entente. Aucun engagement affiché à l'affilié."} Palier calculé sur 12 mois : ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`,
                                       `${a.tier_agreement
-                                          ? "Negotiated agreement — the affiliate reads that their rate cannot go down."
+                                          ? "Negotiated agreement — the affiliate reads that their rate never decreases automatically and that any change would be communicated."
                                           : "Tier set manually, no agreement. No commitment shown to the affiliate."} Tier computed over 12 months: ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`)}>
                                 {a.tier_agreement ? L("entente", "agreement") : L("forcé", "forced")}
                                 {a.tier_theoretical && a.tier_theoretical !== a.tier
@@ -1845,9 +1845,10 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     {/* L'engagement est un acte separe du figeage du palier.
                         Cocher cette case change ce que l'affilie LIT : sans
                         elle, on lui dit que son taux est fixe ; avec elle, on
-                        lui promet qu'il ne redescendra pas. Une erreur de
-                        manipulation sur le palier ne doit pas emporter cette
-                        promesse — d'ou la case distincte. */}
+                        lui promet l'absence de baisse automatique et un avis en
+                        cas de changement. Une erreur de manipulation sur le
+                        palier ne doit pas emporter cette promesse — d'ou la
+                        case distincte. */}
                     <label className="mt-2.5 flex items-start gap-2 cursor-pointer">
                       <input type="checkbox" className="mt-0.5"
                         data-testid="edit-tier-agreement"
@@ -1861,8 +1862,8 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
 
                     <p className="mt-1.5 text-[11px] text-glacier italic">
                       {form.tier_agreement
-                        ? L("L'affilié lira : « Ce taux vous est accordé par entente. Il ne dépend pas de votre volume de ventes et ne peut pas redescendre. »",
-                            "The affiliate will read: “This rate is set by agreement. It does not depend on your sales volume and cannot go down.”")
+                        ? L("L'affilié lira : « Ce taux vous est accordé par entente. Il ne varie pas avec votre volume de ventes et ne baisse jamais automatiquement. Toute modification ferait l'objet d'un avis de notre part. » — vous restez libre de le modifier, à charge de l'en aviser.",
+                            "The affiliate will read: “This rate is set by agreement. It does not vary with your sales volume and never decreases automatically. Any change would be communicated to you.” — you remain free to change it, provided you notify them.")
                         : L("L'affilié lira : « Ce taux est fixé par l'administration et ne suit pas votre volume de ventes. » Aucun engagement de permanence.",
                             "The affiliate will read: “This rate is set by the administration and does not follow your sales volume.” No commitment of permanence.")}
                     </p>

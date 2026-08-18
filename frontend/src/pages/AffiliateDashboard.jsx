@@ -616,11 +616,15 @@ export default function AffiliateDashboard() {
                       la main est un geste administratif, parfois accidentel :
                       il fixe le taux sans rien promettre. Seul tier_agreement,
                       coche explicitement par l'administration, autorise
-                      « accorde par entente » et « ne peut pas redescendre ». */}
+                      le libelle « accorde par entente ». Celui-ci ne promet
+                      d'ailleurs PAS que le taux ne redescendra jamais —
+                      l'administration peut retirer l'entente a tout moment. Il
+                      promet l'absence de baisse AUTOMATIQUE et un avis en cas
+                      de changement, deux choses que le systeme tient. */}
                   <p className="text-sm text-glacier mt-2">
                     {data?.tier_agreement
-                      ? L("Ce taux vous est accordé par entente. Il ne dépend pas de votre volume de ventes et ne peut pas redescendre.",
-                          "This rate is set by agreement. It does not depend on your sales volume and cannot go down.")
+                      ? L("Ce taux vous est accordé par entente. Il ne varie pas avec votre volume de ventes et ne baisse jamais automatiquement. Toute modification ferait l'objet d'un avis de notre part.",
+                          "This rate is set by agreement. It does not vary with your sales volume and never decreases automatically. Any change would be communicated to you.")
                       : L("Ce taux est fixé par l'administration et ne suit pas votre volume de ventes. Écrivez-nous si vous avez une question à son sujet.",
                           "This rate is set by the administration and does not follow your sales volume. Contact us if you have any question about it.")}
                   </p>
