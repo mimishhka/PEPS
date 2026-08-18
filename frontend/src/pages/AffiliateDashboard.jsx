@@ -559,20 +559,30 @@ export default function AffiliateDashboard() {
                     qu'elle evite le malentendu — voir « 250 $ » puis recevoir
                     180 USDT ressemble a une retenue. La conditionner au solde
                     la faisait disparaitre pour qui n'a encore rien gagne. */}
-                {data?.fx_rate_cad_to_usd > 0 && (
-                  <p className="font-data text-[11px] text-glacier mt-1">
-                    {dueNow > 0 ? (
-                      <>{money(dueNow)} CAD × {Number(data.fx_rate_cad_to_usd).toFixed(4)}</>
-                    ) : (
-                      <>{L("Vos commissions sont calculées en CAD et versées en ", "Your commissions are calculated in CAD and paid in ")}
-                        <span className="uppercase">{data.payout_currency || "usdt"}</span>
-                        {" · 1 CAD ≈ "}{Number(data.fx_rate_cad_to_usd).toFixed(4)}</>
-                    )}
-                    {" — "}
-                    {L("taux de la Banque du Canada. Le taux définitif sera celui du jour du versement.",
-                       "Bank of Canada rate. The final rate is the one on payout day.")}
-                  </p>
-                )}
+                {/* La DEVISE vient du choix de l'affilie (payout_currency,
+                    USDT ou USDC) et s'enonce toujours. Le TAUX vient de la
+                    Banque du Canada et peut manquer : affiliate_me() l'omet
+                    silencieusement si l'API est indisponible. Les lier ferait
+                    disparaitre l'information de devise lors d'une panne
+                    exterieure, alors qu'elle n'en depend pas. */}
+                <p className="font-data text-[11px] text-glacier mt-1">
+                  {L("Vos commissions sont calculées en CAD et versées en ",
+                     "Your commissions are calculated in CAD and paid in ")}
+                  <span className="uppercase">{data?.payout_currency || "usdt"}</span>
+                  {data?.fx_rate_cad_to_usd > 0 ? (
+                    <>
+                      {dueNow > 0
+                        ? <>{" · "}{money(dueNow)} CAD × {Number(data.fx_rate_cad_to_usd).toFixed(4)}</>
+                        : <>{" · 1 CAD ≈ "}{Number(data.fx_rate_cad_to_usd).toFixed(4)}</>}
+                      {" — "}
+                      {L("taux de la Banque du Canada. Le taux définitif sera celui du jour du versement.",
+                         "Bank of Canada rate. The final rate is the one on payout day.")}
+                    </>
+                  ) : (
+                    L(" — au taux officiel de la Banque du Canada le jour du versement.",
+                      " — at the official Bank of Canada rate on payout day.")
+                  )}
+                </p>
               </div>
             )}
 
@@ -1032,11 +1042,11 @@ export default function AffiliateDashboard() {
           <div className="space-y-6 max-w-xl" data-testid="affiliate-settings">
             <div className="bg-white rounded-2xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
-                {L("PARAMÈTRES DE PAIEMENT — USDT / USDC (ERC-20)", "PAYOUT SETTINGS — USDT / USDC (ERC-20)")}
+                {L("PARAMÈTRES DE PAIEMENT — USDT / USDC", "PAYOUT SETTINGS — USDT / USDC")}
               </p>
               <p className="text-xs text-glacier mb-5 leading-relaxed">
-                {L("Fironova verse vos commissions en USDT ou USDC sur le réseau Ethereum (ERC-20). Le montant est converti à partir du CAD au taux officiel de la Banque du Canada le jour de l'exécution du paiement.",
-                   "Fironova pays your commissions in USDT or USDC on the Ethereum network (ERC-20). Amounts are converted from CAD at the official Bank of Canada rate on the payout date.")}
+                {L("Fironova verse vos commissions en USDT ou USDC, sur Ethereum (ERC-20) ou Tron (TRC-20) selon l'adresse que vous indiquez. Le montant est converti à partir du CAD au taux officiel de la Banque du Canada le jour de l'exécution du paiement. Les frais de réseau sont déduits du versement — ils sont nettement plus faibles sur Tron.",
+                   "Fironova pays your commissions in USDT or USDC, on Ethereum (ERC-20) or Tron (TRC-20) depending on the address you provide. Amounts are converted from CAD at the official Bank of Canada rate on the payout date. Network fees are deducted from the payout — they are markedly lower on Tron.")}
               </p>
               <label className="block mb-4">
                 <span className="font-data text-xs text-glacier">{L("Adresse de versement (ERC-20 ou TRC-20)", "Payout address (ERC-20 or TRC-20)")}</span>
@@ -1088,8 +1098,12 @@ export default function AffiliateDashboard() {
                 <select value={payCur} onChange={(e) => setPayCur(e.target.value)}
                   data-testid="affiliate-payout-currency"
                   className="mt-1 w-full rounded-lg border border-ash px-4 py-3 font-data text-sm text-nordfjord focus:border-nova outline-none">
-                  <option value="usdt">USDT (Tether — Ethereum ERC-20)</option>
-                  <option value="usdc">USDC (Circle — Ethereum ERC-20)</option>
+                  {/* Sans mention de reseau : celui-ci est deduit de l'adresse
+                      saisie, pas choisi ici. Annoncer « Ethereum ERC-20 » dans
+                      ce menu contredisait le champ adresse juste au-dessus, qui
+                      accepte aussi une adresse Tron. */}
+                  <option value="usdt">USDT (Tether)</option>
+                  <option value="usdc">USDC (Circle)</option>
                 </select>
               </label>
               <button onClick={savePayout} disabled={savingPay}
@@ -1097,9 +1111,17 @@ export default function AffiliateDashboard() {
                 className="px-6 py-3 rounded-full bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50">
                 {savingPay ? L("Enregistrement…", "Saving…") : L("Enregistrer", "Save")}
               </button>
+              {/* Tron RETIRE de la liste des reseaux interdits : le backend
+                  l'accepte (_detect_payout_network renvoie 'trc20') et propage
+                  le reseau au CSV NOWPayments. Le meme ecran confirmait plus
+                  haut « ✓ Adresse Tron (TRC-20) — frais plus faibles » tout en
+                  annoncant ici une perte definitive sur Tron : contradiction
+                  dangereuse, susceptible de faire remplacer une adresse
+                  parfaitement valide. Le reseau est deduit de l'adresse, pas
+                  choisi separement — il n'y a donc rien a accorder. */}
               <p className="text-[10px] text-glacier/80 mt-4 leading-relaxed">
-                {L("⚠️ Envoyer USDT/USDC sur un autre réseau (BSC, Polygon, Tron) entraînera une perte définitive des fonds. Assurez-vous que votre portefeuille supporte l'ERC-20.",
-                   "⚠️ Sending USDT/USDC on another network (BSC, Polygon, Tron) will result in permanent loss. Ensure your wallet supports ERC-20.")}
+                {L("⚠️ Deux réseaux sont acceptés : Ethereum (adresse 0x…) et Tron (adresse T…). Envoyer sur tout autre réseau — BSC, Polygon, Solana — entraînera une perte définitive des fonds.",
+                   "⚠️ Two networks are accepted: Ethereum (0x… address) and Tron (T… address). Sending on any other network — BSC, Polygon, Solana — will result in permanent loss.")}
               </p>
             </div>
             <div className="bg-white rounded-2xl border border-ash p-6">
