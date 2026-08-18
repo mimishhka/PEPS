@@ -330,6 +330,14 @@ def _normalize_payout(address: str, currency: str) -> tuple:
             "Devise de versement non supportée. Choix : USDT ou USDC (Ethereum ou Tron).",
         )
     addr = (address or "").strip()
+    # Adresse vide = pas encore configurée, ce qui est l'état normal d'un
+    # affilié qui vient d'être créé. La rejeter faisait échouer TOUTE la
+    # requête de mise à jour — y compris un simple changement de palier —
+    # avec un message parlant d'adresse invalide alors qu'aucune n'existait.
+    # Le versement, lui, reste bloqué tant qu'elle n'est pas renseignée :
+    # c'est là que l'exigence a du sens, pas à l'enregistrement d'une fiche.
+    if not addr:
+        return "", cur, ""
     network = _detect_payout_network(addr)
     if network == "erc20":
         body = addr[2:]
