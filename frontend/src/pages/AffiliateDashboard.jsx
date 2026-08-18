@@ -353,6 +353,39 @@ export default function AffiliateDashboard() {
   const comp = COMPLIANCE_META[data?.compliance_status] || COMPLIANCE_META.compliant;
   const progress = data?.progress_to_next != null ? Math.round(data.progress_to_next * 100) : null;
 
+  // Ce qu'une vente rapporte reellement. Le rabais accorde au client est deduit
+  // AVANT le calcul : 100 $ de produits a 10 % de rabais donnent une base de
+  // 90 $, donc 9 $ de commission au palier Standard — pas 10 $. Annoncer le
+  // montant brut promettrait plus que ce que le versement contient.
+  const couponPct = Number(data?.coupon_percent ?? 10);
+  const exampleSale = 100;
+  const exampleBase = exampleSale * (1 - couponPct / 100);
+  const exampleEarn = exampleBase * Number(data?.commission_rate || 0);
+
+  // Jalons de demarrage, deduits des donnees reelles — jamais d'etape declaree
+  // franchie sans preuve. Le bloc disparait quand les trois sont acquises :
+  // un chemin d'accueil qui reste affiche pour toujours devient du decor.
+  const steps = [
+    { done: (insights?.clicks || 0) > 0,
+      t: L("Partagez votre lien", "Share your link"),
+      d: L("Une seule visite suffit pour démarrer le suivi.",
+           "A single visit is enough to start tracking.") },
+    { done: (insights?.validated_orders || 0) > 0,
+      t: L("Première vente validée", "First validated sale"),
+      d: L("Votre commission apparaît dès la commande payée.",
+           "Your commission appears as soon as the order is paid.") },
+    { done: Number(data?.paid_commission || 0) > 0,
+      t: L("Premier versement", "First payout"),
+      d: L("Dès le seuil atteint, versé dans votre portefeuille.",
+           "Once the threshold is met, sent to your wallet.") },
+  ];
+  const onboarding = steps.some((x) => !x.done);
+  const nextStep = steps.findIndex((x) => !x.done);
+
+  const payoutMin = Number(data?.payout_min_cad || 0);
+  const dueNow = Number(data?.approved_commission || 0);
+  const payoutPct = payoutMin > 0 ? Math.min(100, Math.round((dueNow / payoutMin) * 100)) : null;
+
   const TABS = [
     ["overview", L("Vue globale", "Overview")],
     ["performance", L("Performance", "Performance")],
@@ -404,8 +437,25 @@ export default function AffiliateDashboard() {
         {/* OVERVIEW */}
         {tab === "overview" && (
           <div className="space-y-8" data-testid="affiliate-overview">
-            {/* Bandeau gains du mois en cours */}
+            {/* Bandeau. Tant que rien n'a ete gagne, un « 0,00 $ » en gros
+                caracteres n'enseigne rien : on montre ce qu'une vente vaut. Des
+                qu'il y a des gains, le montant reel est plus utile. */}
             <div className="rounded-2xl bg-nordfjord p-6 flex flex-wrap items-center justify-between gap-4">
+              {Number(data?.cumulative_revenue || 0) === 0 ? (
+                <div>
+                  <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+                    {L("CE QUE VOUS GAGNEZ", "WHAT YOU EARN")}
+                  </p>
+                  <p className="font-display text-3xl font-bold text-white">
+                    {L("Une vente de ", "A ")}{money(exampleSale)}{L(" vous rapporte ", " sale earns you ")}
+                    <span className="text-nova tabular-nums">{money(exampleEarn)}</span>
+                  </p>
+                  <p className="font-data text-xs text-white/60 mt-1">
+                    {L(`Base de ${money(exampleBase)} après le rabais de ${couponPct} % de votre contact, puis ${Math.round((data?.commission_rate || 0) * 100)} % de commission.`,
+                       `${money(exampleBase)} base after your contact's ${couponPct}% discount, then ${Math.round((data?.commission_rate || 0) * 100)}% commission.`)}
+                  </p>
+                </div>
+              ) : (
               <div>
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
                   {L("GAINS DU MOIS EN COURS", "THIS MONTH'S EARNINGS")}
@@ -417,6 +467,7 @@ export default function AffiliateDashboard() {
                   {money(insights?.current_month?.revenue)} {L("de ventes validées", "in validated sales")}
                 </p>
               </div>
+              )}
               {insights?.best_month && (
                 <div className="text-right">
                   <p className="font-data text-[11px] uppercase tracking-wider text-white/50 mb-1">
@@ -427,6 +478,34 @@ export default function AffiliateDashboard() {
                 </div>
               )}
             </div>
+
+            {/* Chemin de demarrage. Il ne s'affiche que tant qu'une etape reste
+                a franchir : garde en permanence, il deviendrait du decor. */}
+            {onboarding && (
+              <div data-testid="affiliate-onboarding">
+                <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-glacier mb-3">
+                  {L("VOS PROCHAINES ÉTAPES", "YOUR NEXT STEPS")}
+                </p>
+                <ol className="grid grid-cols-1 sm:grid-cols-3 gap-4 list-none p-0 m-0">
+                  {steps.map((st, i) => (
+                    <li key={i}
+                        className={`bg-white rounded-2xl border p-5 ${
+                          i === nextStep ? "border-nova ring-1 ring-nova" : "border-ash"}`}>
+                      <p className="font-data text-[10px] uppercase tracking-[0.18em] text-glacier">
+                        {st.done
+                          ? L("Fait", "Done")
+                          : `${L("Étape", "Step")} ${i + 1}`}
+                      </p>
+                      <p className="font-semibold text-nordfjord mt-1 flex items-center gap-1.5">
+                        {st.done && <span aria-hidden="true" style={{ color: "#2E9E6B" }}>✓</span>}
+                        {st.t}
+                      </p>
+                      <p className="text-[13px] text-glacier mt-0.5">{st.d}</p>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
 
             {/* KPI cards — la devise est explicite. Les montants sont en CAD
                 alors que le versement part en USDT/USDC : sans etiquette, un
@@ -440,24 +519,48 @@ export default function AffiliateDashboard() {
               <KpiCard label={L("Commissions payées", "Paid commissions")} value={money(data?.paid_commission)} sub="CAD" accent />
             </div>
 
-            {/* Estimation prospective : ce que l'affilie touchera reellement. */}
-            {data?.fx_rate_cad_to_usd > 0 && (data?.pending_commission > 0 || data?.approved_commission > 0) && (
+            {/* Prochain versement. Affiche meme a zero : c'est justement quand
+                rien n'est accumule qu'un affilie doit connaitre le seuil. La
+                version precedente se cachait dans ce cas, et un solde bloque
+                sous le minimum ressemblait alors a une retenue inexpliquee. */}
+            {payoutMin > 0 && (
               <div className="bg-white rounded-2xl border border-ash p-5" data-testid="payout-estimate">
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
                   {L("VOTRE PROCHAIN VERSEMENT", "YOUR NEXT PAYOUT")}
                 </p>
-                <p className="font-display text-2xl font-bold text-nordfjord tabular-nums">
-                  ≈ {(Number(data.approved_commission || 0) * Number(data.fx_rate_cad_to_usd)).toFixed(2)}
-                  <span className="text-sm font-medium text-glacier ml-1.5 uppercase">
-                    {(data.payout_currency || "usdt")}
-                  </span>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <p className="font-display text-2xl font-bold text-nordfjord tabular-nums">
+                    {money(dueNow)}
+                    <span className="text-sm font-medium text-glacier ml-1.5">
+                      {L(`sur ${money(payoutMin)} requis`, `of ${money(payoutMin)} required`)}
+                    </span>
+                  </p>
+                  {data?.fx_rate_cad_to_usd > 0 && dueNow > 0 && (
+                    <p className="font-data text-sm text-glacier tabular-nums">
+                      ≈ {(dueNow * Number(data.fx_rate_cad_to_usd)).toFixed(2)}
+                      <span className="uppercase ml-1">{data.payout_currency || "usdt"}</span>
+                    </p>
+                  )}
+                </div>
+                <div className="h-3 rounded-full bg-ash overflow-hidden mt-2">
+                  <div className="h-full rounded-full transition-all"
+                       style={{ width: `${payoutPct || 0}%`, background: "#00B8D4" }} />
+                </div>
+                <p className="font-data text-[11px] text-glacier mt-2">
+                  {dueNow >= payoutMin
+                    ? L("Seuil atteint — le versement part au prochain cycle mensuel.",
+                        "Threshold met — the payout goes out at the next monthly cycle.")
+                    : L("Rien n'est perdu sous le seuil : vos commissions restent à votre crédit et s'ajoutent au mois suivant.",
+                        "Nothing is lost below the threshold: your commissions stay to your credit and carry over.")}
                 </p>
-                <p className="font-data text-[11px] text-glacier mt-1">
-                  {money(data.approved_commission)} CAD × {Number(data.fx_rate_cad_to_usd).toFixed(4)}
-                  {" — "}
-                  {L("taux de la Banque du Canada. Le taux définitif sera celui du jour du versement.",
-                     "Bank of Canada rate. The final rate is the one on payout day.")}
-                </p>
+                {data?.fx_rate_cad_to_usd > 0 && dueNow > 0 && (
+                  <p className="font-data text-[11px] text-glacier mt-1">
+                    {money(dueNow)} CAD × {Number(data.fx_rate_cad_to_usd).toFixed(4)}
+                    {" — "}
+                    {L("taux de la Banque du Canada. Le taux définitif sera celui du jour du versement.",
+                       "Bank of Canada rate. The final rate is the one on payout day.")}
+                  </p>
+                )}
               </div>
             )}
 

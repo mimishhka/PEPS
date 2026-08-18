@@ -581,10 +581,21 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
             (aff.get("payout_address") or "").strip()
             and _detect_payout_network(aff.get("payout_address") or "")
         ),
-        "coupon_percent": aff.get("coupon_percent"),
+        # Resolu ici plutot que laisse a None : l'ecran affilie s'en sert pour
+        # calculer ce qu'une vente rapporte, et un repli code en dur cote
+        # interface trahirait tout changement de AFFILIATE_COUPON_PERCENT.
+        # Meme regle qu'a la creation du coupon (_affiliate_ensure_coupon).
+        "coupon_percent": (float(aff["coupon_percent"])
+                           if aff.get("coupon_percent") is not None
+                           else float(s.AFFILIATE_COUPON_PERCENT)),
         "aliases": aff.get("aliases", []),
         "activated_at": aff.get("activated_at"),
         "created_at": aff.get("created_at"),
+        # Seuil minimum de versement. Expose parce que l'affilie doit pouvoir
+        # situer ses commissions par rapport a lui : sans ce chiffre, un solde
+        # de 12 $ qui ne part pas ressemble a une retenue inexpliquee. La regle
+        # est appliquee dans _generate_payouts_for_period().
+        "payout_min_cad": float(s.AFFILIATE_PAYOUT_MIN_CAD),
     }
     if metrics:
         out.update(metrics)
