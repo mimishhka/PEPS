@@ -561,6 +561,22 @@ export default function AdminAffiliates() {
                           <td className="px-4 py-2">
                             <TierBadge tier={a.tier} rate={a.commission_rate}
                               label={TIER_LABEL[a.tier]?.[lang] || a.tier} />
+                            {/* Un palier force doit se voir dans la liste, pas
+                                seulement dans la fiche : c'est le seul endroit
+                                ou une erreur de saisie se remarque au passage.
+                                On indique aussi le palier merite, pour juger
+                                d'un coup d'oeil si l'ecart est voulu. */}
+                            {a.tier_is_manual && (
+                              <span className="block mt-0.5 text-[10px] text-warning font-data"
+                                    title={L(
+                                      `L'affilié lit « accordé par entente ». Palier calculé sur 12 mois : ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`,
+                                      `The affiliate reads "set by agreement". Tier computed over 12 months: ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`)}>
+                                {L("forcé", "forced")}
+                                {a.tier_theoretical && a.tier_theoretical !== a.tier
+                                  ? ` · ${L("calculé", "computed")} ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical}`
+                                  : ""}
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-2 text-right">
                             <span title={a.last_click_at ? `${L("Dernier clic", "Last click")}: ${fmtDate(a.last_click_at)}` : ""}>
@@ -1801,6 +1817,30 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     placeholder={L("laisser vide pour auto", "leave blank for auto")}
                     select={["", "standard", "bronze", "silver", "gold", "platinum", "diamond"]} />
                 </div>
+
+                {/* Consequence explicite du palier manuel. Ce champ ne fige pas
+                    seulement un taux : il change ce que l'affilie LIT sur son
+                    ecran, avec un engagement — « accorde par entente », « ne
+                    peut pas redescendre ». Une erreur de manipulation ici
+                    promet donc quelque chose qu'on ne voulait pas promettre.
+                    On cite la phrase exacte plutot que de la resumer. */}
+                {form.manual_tier ? (
+                  <div className="rounded-md border border-warning/40 bg-warning/5 px-3 py-2.5"
+                       data-testid="manual-tier-warning">
+                    <p className="text-[11px] font-semibold text-nordfjord">
+                      {L("Ce palier sera présenté à l'affilié comme un engagement",
+                         "This tier will be presented to the affiliate as a commitment")}
+                    </p>
+                    <p className="mt-1 text-[11px] text-glacier italic">
+                      {L("« Ce taux vous est accordé par entente. Il ne dépend pas de votre volume de ventes et ne peut pas redescendre. »",
+                         "“This rate is set by agreement. It does not depend on your sales volume and cannot go down.”")}
+                    </p>
+                    <p className="mt-1.5 text-[11px] text-glacier">
+                      {L("Sa barre de progression disparaît et son palier cesse de suivre son chiffre d'affaires. Pour revenir au calcul automatique sur douze mois glissants, remettez ce champ à vide.",
+                         "Their progress bar disappears and their tier stops following their revenue. To return to the automatic rolling-12-month calculation, set this field back to blank.")}
+                    </p>
+                  </div>
+                ) : null}
                 <div>
                   <label className="text-[11px] uppercase tracking-wider text-glacier">
                     {L("Note commission (visible sur relevé)", "Commission note (shown on statements)")}

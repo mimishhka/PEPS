@@ -506,6 +506,11 @@ async def _affiliate_compute_list_metrics(affiliates: list[dict]) -> dict[str, d
         return {}
 
     quarter_start = _affiliate_quarter_start().isoformat()
+    # 365 derniers jours : c'est CETTE fenêtre qui fixe le palier, comme dans
+    # _affiliate_compute_metrics(). Cette liste calculait encore sur le cumul à
+    # vie avec rétrogradation trimestrielle — une TROISIÈME version de la même
+    # règle, donc un palier affiché à l'admin que l'affilié n'avait pas.
+    tier_window_start = (datetime.now(timezone.utc) - timedelta(days=365)).isoformat()
     grouped = {}
     async for row in s.db.affiliate_referrals.aggregate([
         {"$match": {"affiliate_id": {"$in": [affiliate["id"] for affiliate in active]}}},
@@ -513,6 +518,13 @@ async def _affiliate_compute_list_metrics(affiliates: list[dict]) -> dict[str, d
             "_id": "$affiliate_id",
             "cumulative_revenue": {"$sum": {"$cond": [
                 {"$in": ["$status", ["approved", "paid"]]},
+                {"$ifNull": ["$base_amount", 0]}, 0,
+            ]}},
+            "rolling12_revenue": {"$sum": {"$cond": [
+                {"$and": [
+                    {"$in": ["$status", ["approved", "paid"]]},
+                    {"$gte": [{"$ifNull": ["$approved_at", "$created_at"]}, tier_window_start]},
+                ]},
                 {"$ifNull": ["$base_amount", 0]}, 0,
             ]}},
             "quarter_revenue": {"$sum": {"$cond": [
@@ -541,17 +553,25 @@ async def _affiliate_compute_list_metrics(affiliates: list[dict]) -> dict[str, d
         totals = grouped.get(affiliate["id"], {})
         cumulative = float(totals.get("cumulative_revenue", 0))
         quarter = float(totals.get("quarter_revenue", 0))
+        rolling12 = float(totals.get("rolling12_revenue", 0))
         manual_tier = str(affiliate.get("manual_tier") or "").strip().lower() or None
         if manual_tier not in valid_tiers:
             manual_tier = None
-        theoretical = _affiliate_tier_for_revenue(cumulative)
+        # Même règle que partout ailleurs : douze mois glissants, surcharge
+        # manuelle prioritaire, aucune rétrogradation trimestrielle.
+        theoretical = _affiliate_tier_for_revenue(rolling12)
         effective = manual_tier or theoretical
-        floor, _ceil = _affiliate_tier_bounds(theoretical)
-        if not manual_tier and quarter < floor and _affiliate_tier_index(theoretical) > 0:
-            effective = s.AFFILIATE_TIERS[_affiliate_tier_index(theoretical) - 1][0]
         metrics[affiliate["id"]] = {
             "cumulative_revenue": round(cumulative, 2),
             "quarter_revenue": round(quarter, 2),
+            "rolling12_revenue": round(rolling12, 2),
+            # Exposé pour que la liste admin distingue un palier FORCÉ d'un
+            # palier mérité : sans ce drapeau, une erreur de saisie reste
+            # invisible alors qu'elle promet à l'affilié un taux « accordé par
+            # entente » qui « ne peut pas redescendre ».
+            "manual_tier": manual_tier,
+            "tier_is_manual": manual_tier is not None,
+            "tier_theoretical": theoretical,
             "tier": effective,
             "commission_rate": _affiliate_rate_for_tier(effective),
             "pending_commission": round(float(totals.get("pending_commission", 0)), 2),
