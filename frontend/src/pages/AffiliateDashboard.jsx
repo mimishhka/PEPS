@@ -910,9 +910,12 @@ export default function AffiliateDashboard() {
         {tab === "payments" && (
           <div className="space-y-6" data-testid="affiliate-payments">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <KpiCard label={L("En attente", "Pending")} value={money(data?.pending_commission)} />
-              <KpiCard label={L("Approuvé", "Approved")} value={money(data?.approved_commission)} />
-              <KpiCard label={L("Payé", "Paid")} value={money(data?.paid_commission)} accent />
+              {/* Devise explicite. Ces trois montants sont en CAD alors que le
+                  versement part en USDT/USDC : sans etiquette, trois « \$ » sur
+                  un ecran de paiements crypto ne disent pas lesquels. */}
+              <KpiCard label={L("En attente", "Pending")} value={money(data?.pending_commission)} sub="CAD" />
+              <KpiCard label={L("Approuvé", "Approved")} value={money(data?.approved_commission)} sub="CAD" />
+              <KpiCard label={L("Payé", "Paid")} value={money(data?.paid_commission)} sub="CAD" accent />
             </div>
             <div className="bg-white rounded-2xl border border-ash overflow-hidden">
               <div className="px-6 py-4 border-b border-ash flex items-center justify-between">
@@ -925,9 +928,45 @@ export default function AffiliateDashboard() {
                 </button>
               </div>
               {payouts.length === 0 ? (
-                <p className="text-glacier text-sm py-12 text-center">
-                  {L("Aucun paiement pour l'instant.", "No payments yet.")}
-                </p>
+                /* L'explication de la conversion vivait dans la branche « il y a
+                   des versements », donc invisible tant qu'il n'y en avait
+                   aucun — precisement quand l'affilie ignore encore comment il
+                   sera paye. Un ecran vide ne doit pas etre un ecran muet. */
+                <div className="py-10 px-6 max-w-xl mx-auto text-center">
+                  <p className="text-glacier text-sm">
+                    {L("Aucun paiement pour l'instant.", "No payments yet.")}
+                  </p>
+                  <dl className="mt-5 text-left space-y-2.5 font-data text-[12px]">
+                    <div className="flex justify-between gap-4 border-b border-ash/60 pb-2">
+                      <dt className="text-glacier">{L("Seuil minimum", "Minimum threshold")}</dt>
+                      <dd className="text-nordfjord font-semibold">
+                        {data?.payout_min_cad != null ? `${money(data.payout_min_cad)} CAD` : "—"}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-4 border-b border-ash/60 pb-2">
+                      <dt className="text-glacier">{L("Vous serez payé en", "You will be paid in")}</dt>
+                      <dd className="text-nordfjord font-semibold uppercase">
+                        {data?.payout_currency || "usdt"}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-4 border-b border-ash/60 pb-2">
+                      <dt className="text-glacier">{L("Taux du jour", "Today's rate")}</dt>
+                      <dd className="text-nordfjord font-semibold">
+                        {data?.fx_rate_cad_to_usd > 0
+                          ? `1 CAD ≈ ${Number(data.fx_rate_cad_to_usd).toFixed(4)}`
+                          : L("indisponible", "unavailable")}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-glacier">{L("Rythme", "Cadence")}</dt>
+                      <dd className="text-nordfjord font-semibold">{L("Mensuel", "Monthly")}</dd>
+                    </div>
+                  </dl>
+                  <p className="mt-4 font-data text-[10px] text-glacier/80 leading-relaxed text-left">
+                    {L("Sous le seuil, rien n'est perdu : vos commissions restent à votre crédit et s'ajoutent au mois suivant. La conversion utilise le taux officiel de la Banque du Canada le jour du versement, et les frais de réseau sont déduits du montant envoyé.",
+                       "Below the threshold nothing is lost: your commissions stay to your credit and carry over. Conversion uses the official Bank of Canada rate on payout day, and network fees are deducted from the amount sent.")}
+                  </p>
+                </div>
               ) : (
                 <>
                   <div className="overflow-x-auto">
