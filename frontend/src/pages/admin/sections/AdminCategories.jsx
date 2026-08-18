@@ -3,6 +3,7 @@ import { Plus, Edit, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import { Th } from "../ui";
 
 const EMPTY = { slug: "", name_en: "", name_fr: "", published: true, display_order: 0 };
 
@@ -107,11 +108,11 @@ export default function AdminCategories() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-faint font-mono text-[10px] uppercase tracking-[0.2em] text-copper">
-              <th className="text-left px-4 py-3">Name (EN)</th>
-              <th className="text-left px-4 py-3">Slug</th>
-              <th className="text-left px-4 py-3">Order</th>
-              <th className="text-left px-4 py-3">Published</th>
-              <th className="px-4 py-3" />
+              <Th>Name (EN)</Th>
+              <Th>Slug</Th>
+              <Th>Order</Th>
+              <Th>Published</Th>
+              <Th />
             </tr>
           </thead>
           <tbody>

@@ -3,6 +3,7 @@ import { Package2, Plus, Trash2, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import { Th } from "../ui";
 
 const EMPTY = { name: "", length_cm: 20.3, width_cm: 10.2, height_cm: 2, tare_grams: 20, max_units: 6, active: true };
 
@@ -101,14 +102,14 @@ export default function AdminBoxes() {
           </div>
         ) : (
           <table className="w-full">
-            <thead className="bg-ink/5">
+            <thead>
               <tr className="font-mono text-[10px] uppercase tracking-wider text-foreground/60 text-left">
-                <th className="px-4 py-3">Nom</th>
-                <th className="px-4 py-3">Dimensions (L×l×é)</th>
-                <th className="px-4 py-3">Tare</th>
-                <th className="px-4 py-3">Capacité</th>
-                <th className="px-4 py-3">État</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <Th>Nom</Th>
+                <Th>Dimensions (L×l×é)</Th>
+                <Th>Tare</Th>
+                <Th>Capacité</Th>
+                <Th>État</Th>
+                <Th align="right">Actions</Th>
               </tr>
             </thead>
             <tbody>

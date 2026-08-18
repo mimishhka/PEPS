@@ -20,11 +20,15 @@ const TIER_TONE = {
  *  une étiquette isolée, pas à neuf en rang — au-delà, elles cessent d'être un
  *  accent et deviennent du bruit. */
 export function Th({ children, align = "left", className = "" }) {
+  // Un en-tête doit être aligné comme sa colonne : décalé, il fait lire la
+  // valeur d'à côté. Le centre existe pour les colonnes d'état, où la donnée
+  // est une pastille et non un nombre à comparer verticalement.
+  const ALIGN = { right: "text-right", center: "text-center", left: "text-left" };
   return (
     <th
       scope="col"
       className={`px-4 py-2.5 text-[12px] font-semibold text-glacier border-b border-ash ${
-        align === "right" ? "text-right" : "text-left"
+        ALIGN[align] || ALIGN.left
       } ${className}`}
     >
       {children}

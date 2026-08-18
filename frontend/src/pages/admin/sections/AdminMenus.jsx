@@ -3,6 +3,7 @@ import { Plus, Edit, Trash2, X, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import { Th } from "../ui";
 
 const EMPTY_MENU = {
   slug: "", name_en: "", name_fr: "", location: "header",
@@ -104,11 +105,11 @@ export default function AdminMenus() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-faint font-mono text-[10px] uppercase tracking-[0.2em] text-copper">
-              <th className="text-left px-4 py-3">Name</th>
-              <th className="text-left px-4 py-3">Location</th>
-              <th className="text-left px-4 py-3">Items</th>
-              <th className="text-left px-4 py-3">Published</th>
-              <th className="px-4 py-3" />
+              <Th>Name</Th>
+              <Th>Location</Th>
+              <Th>Items</Th>
+              <Th>Published</Th>
+              <Th />
             </tr>
           </thead>
           <tbody>

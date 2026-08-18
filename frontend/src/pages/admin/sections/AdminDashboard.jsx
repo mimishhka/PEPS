@@ -8,6 +8,7 @@ import { StatusBadge } from "../AdminLayout";
 import { useLang } from "../../../contexts/LanguageContext";
 import { DashboardSkeleton } from "../../../components/LoadingSkeletons";
 import { LowStockCard } from "./dashboard/LowStockCard";
+import { Th } from "../ui";
 
 export default function AdminDashboard() {
   const { lang } = useLang();
@@ -419,13 +420,13 @@ export default function AdminDashboard() {
           </Link>
         </div>
         <table className="w-full text-sm" data-testid="recent-orders-table">
-          <thead className="bg-clinical text-glacier">
+          <thead>
             <tr>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Commande", "Order")}</th>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Client", "Customer")}</th>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Paiement", "Payment")}</th>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Traitement", "Fulfillment")}</th>
-              <th className="px-6 py-3 text-right font-mono text-[10px] uppercase tracking-[0.2em]">Total</th>
+              <Th>{L("Commande", "Order")}</Th>
+              <Th>{L("Client", "Customer")}</Th>
+              <Th>{L("Paiement", "Payment")}</Th>
+              <Th>{L("Traitement", "Fulfillment")}</Th>
+              <Th align="right">{L("Total", "Total")}</Th>
             </tr>
           </thead>
           <tbody>

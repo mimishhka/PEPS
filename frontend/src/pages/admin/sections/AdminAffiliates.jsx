@@ -725,19 +725,17 @@ export default function AdminAffiliates() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-left text-xs uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
-                          <th className="px-4 py-3 w-8">
-                            <input type="checkbox"
+                          <Th><input type="checkbox"
                               data-testid="payouts-select-all"
                               checked={selectedPayouts.size > 0 && selectedPayouts.size === payouts.filter((p) => p.status === "ready").length}
                               onChange={toggleSelectAll}
-                              className="w-4 h-4 accent-nova cursor-pointer" />
-                          </th>
-                          <th className="px-4 py-3">{L("Période", "Period")}</th>
-                          <th className="px-4 py-3">{L("Affilié", "Affiliate")}</th>
-                          <th className="px-4 py-3 text-right">{L("Montant", "Amount")}</th>
-                          <th className="px-4 py-3">{L("Devise", "Currency")}</th>
-                          <th className="px-4 py-3">{L("Statut", "Status")}</th>
-                          <th className="px-4 py-3">{L("Réf.", "Ref.")}</th>
+                              className="w-4 h-4 accent-nova cursor-pointer" /></Th>
+                          <Th>{L("Période", "Period")}</Th>
+                          <Th>{L("Affilié", "Affiliate")}</Th>
+                          <Th align="right">{L("Montant", "Amount")}</Th>
+                          <Th>{L("Devise", "Currency")}</Th>
+                          <Th>{L("Statut", "Status")}</Th>
+                          <Th>{L("Réf.", "Ref.")}</Th>
                         </tr>
                       </thead>
                       <tbody>
@@ -803,12 +801,12 @@ export default function AdminAffiliates() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-xs uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
-                        <th className="px-4 py-2">{L("Période", "Period")}</th>
-                        <th className="px-4 py-2">{L("Type", "Kind")}</th>
-                        <th className="px-4 py-2">{L("Statut", "Status")}</th>
-                        <th className="px-4 py-2 text-right">{L("Créés", "Created")}</th>
-                        <th className="px-4 py-2">{L("Démarré", "Started")}</th>
-                        <th className="px-4 py-2">{L("Déclenché par", "Triggered by")}</th>
+                        <Th>{L("Période", "Period")}</Th>
+                        <Th>{L("Type", "Kind")}</Th>
+                        <Th>{L("Statut", "Status")}</Th>
+                        <Th align="right">{L("Créés", "Created")}</Th>
+                        <Th>{L("Démarré", "Started")}</Th>
+                        <Th>{L("Déclenché par", "Triggered by")}</Th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1391,11 +1389,11 @@ function BulkInviteModal({ L, onClose, onDone }) {
                   <table className="w-full text-xs">
                     <thead className="bg-white sticky top-0">
                       <tr className="border-b border-ash">
-                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">{L("Prénom", "First")}</th>
-                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">{L("Nom", "Last")}</th>
-                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">{L("Entreprise", "Company")}</th>
-                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">Email</th>
-                        <th className="px-3 py-1.5 text-right text-glacier font-data uppercase tracking-wider">%</th>
+                        <Th>{L("Prénom", "First")}</Th>
+                        <Th>{L("Nom", "Last")}</Th>
+                        <Th>{L("Entreprise", "Company")}</Th>
+                        <Th>{L("Courriel", "Email")}</Th>
+                        <Th align="right">%</Th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1478,9 +1476,9 @@ function BulkInviteModal({ L, onClose, onDone }) {
                   <table className="w-full text-xs">
                     <thead className="bg-white sticky top-0">
                       <tr className="border-b border-ash">
-                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">Email</th>
-                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">Code</th>
-                        <th className="px-3 py-1.5 text-left text-glacier font-data uppercase tracking-wider">{L("Statut", "Status")}</th>
+                        <Th>{L("Courriel", "Email")}</Th>
+                        <Th>{L("Code", "Code")}</Th>
+                        <Th>{L("Statut", "Status")}</Th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1894,10 +1892,10 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-left text-glacier border-b border-ash">
-                        <th className="px-3 py-2">{L("Commande", "Order")}</th>
-                        <th className="px-3 py-2">{L("Base", "Base")}</th>
-                        <th className="px-3 py-2">{L("Commission", "Commission")}</th>
-                        <th className="px-3 py-2">{L("Statut", "Status")}</th>
+                        <Th>{L("Commande", "Order")}</Th>
+                        <Th>{L("Base", "Base")}</Th>
+                        <Th>{L("Commission", "Commission")}</Th>
+                        <Th>{L("Statut", "Status")}</Th>
                       </tr>
                     </thead>
                     <tbody>

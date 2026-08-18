@@ -6,6 +6,7 @@ import api, { API_BASE, formatApiError } from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
 import { useConfirm } from "../../../components/ConfirmDialog";
 import { useAuth } from "../../../contexts/AuthContext";
+import { Th } from "../ui";
 
 const FULFILLMENT_OPTS = ["pending", "preorder", "processing", "shipped", "delivered", "cancelled", "failed", "refunded"];
 const PAYMENT_OPTS = ["awaiting_etransfer", "awaiting_crypto", "paid", "refunded", "cancelled", "failed"];
@@ -270,15 +271,15 @@ export default function AdminOrders() {
       {/* Table */}
       <div className="bg-white border border-ink/10 overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-secondary text-foreground/70">
+          <thead>
             <tr>
-              <th className="px-6 py-3 text-left text-[12px] font-semibold">Order</th>
-              <th className="px-6 py-3 text-left text-[12px] font-semibold">Customer</th>
-              <th className="px-6 py-3 text-left text-[12px] font-semibold">Method</th>
-              <th className="px-6 py-3 text-left text-[12px] font-semibold">Payment</th>
-              <th className="px-6 py-3 text-left text-[12px] font-semibold">Fulfillment</th>
-              <th className="px-6 py-3 text-right text-[12px] font-semibold">Total</th>
-              <th className="px-6 py-3 text-right text-[12px] font-semibold"></th>
+              <Th>Order</Th>
+              <Th>Customer</Th>
+              <Th>Method</Th>
+              <Th>Payment</Th>
+              <Th>Fulfillment</Th>
+              <Th align="right">{L("Total", "Total")}</Th>
+              <Th align="right"></Th>
             </tr>
           </thead>
           <tbody>

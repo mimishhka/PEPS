@@ -3,6 +3,7 @@ import { Download, Plus, Edit, Trash2, Star, X, Save, AlertTriangle, CheckCircle
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError, resolveAssetUrl } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import { Th } from "../ui";
 
 const CATEGORIES = ["healing", "gh-secretagogues", "weight-loss", "cognitive", "longevity"];
 
@@ -73,13 +74,13 @@ export default function AdminProducts() {
 
       <div className="bg-white border border-ink/10 overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-secondary text-foreground/70">
+          <thead>
             <tr>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Product</th>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Category</th>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Variants</th>
-              <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Status</th>
-              <th className="px-6 py-3 text-right font-mono text-[10px] uppercase tracking-[0.2em]">Actions</th>
+              <Th>Product</Th>
+              <Th>Category</Th>
+              <Th>Variants</Th>
+              <Th>Status</Th>
+              <Th align="right">Actions</Th>
             </tr>
           </thead>
           <tbody>

@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { ShieldCheck, User } from "lucide-react";
 import api from "../../../lib/api";
+import { Th } from "../ui";
 
 export default function AdminAuditLog() {
   const [entries, setEntries] = useState(null);
@@ -32,13 +33,13 @@ export default function AdminAuditLog() {
       ) : (
         <div className="bg-white border border-ink/10 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-secondary text-foreground/70">
+            <thead>
               <tr>
-                <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">When</th>
-                <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Who</th>
-                <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Area</th>
-                <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Action</th>
-                <th className="px-6 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Detail</th>
+                <Th>When</Th>
+                <Th>Who</Th>
+                <Th>Area</Th>
+                <Th>Action</Th>
+                <Th>Detail</Th>
               </tr>
             </thead>
             <tbody>

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import { Th } from "../ui";
 
 const AREAS = [
   { key: "dashboard", fr: "Tableau de bord", en: "Dashboard" },
@@ -200,13 +201,13 @@ export default function AdminStaff() {
       {/* Active members */}
       <div className="bg-white border border-ash overflow-x-auto mb-8">
         <table className="w-full text-sm">
-          <thead className="bg-clinical text-glacier">
+          <thead>
             <tr>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">Name</th>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">Email</th>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">Role</th>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">Access</th>
-              <th className="px-6 py-3 text-right font-data text-[10px] uppercase tracking-[0.2em]"></th>
+              <Th>{L("Nom", "Name")}</Th>
+              <Th>{L("Courriel", "Email")}</Th>
+              <Th>{L("Rôle", "Role")}</Th>
+              <Th>{L("Accès", "Access")}</Th>
+              <Th align="right"></Th>
             </tr>
           </thead>
           <tbody>
@@ -266,12 +267,12 @@ export default function AdminStaff() {
           <div className="font-data text-[11px] uppercase tracking-[0.25em] text-glacier mb-3">Pending invites</div>
           <div className="bg-white border border-ash overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-clinical text-glacier">
+              <thead>
                 <tr>
-                  <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">Name</th>
-                  <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">Email</th>
-                  <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">Sent</th>
-                  <th className="px-6 py-3 text-right font-data text-[10px] uppercase tracking-[0.2em]"></th>
+                  <Th>{L("Nom", "Name")}</Th>
+                  <Th>{L("Courriel", "Email")}</Th>
+                  <Th>{L("Envoyée", "Sent")}</Th>
+                  <Th align="right"></Th>
                 </tr>
               </thead>
               <tbody>

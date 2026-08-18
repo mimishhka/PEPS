@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Users, Search, X, Mail, TrendingUp, ShoppingBag, Clock } from "lucide-react";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
+import { Th } from "../ui";
 
 const SEGMENTS = {
   loyal:    { fr: "Fidèles",   en: "Loyal",    color: "bg-nova/15 text-nova border-nova/30" },
@@ -121,11 +122,11 @@ export default function AdminCustomers() {
       ) : (
         <div className="bg-white border border-ash rounded-xl overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-clinical text-glacier">
+            <thead>
               <tr>
                 {[L("Client", "Customer"), L("Segment", "Segment"), L("Commandes", "Orders"),
                   L("Dépensé", "Spent"), L("Dernière", "Last"), ""].map((h, i) => (
-                  <th key={i} className="px-4 py-3 text-left font-data text-[10px] uppercase tracking-[0.16em]">{h}</th>
+                  <Th key={i}>{h}</Th>
                 ))}
               </tr>
             </thead>

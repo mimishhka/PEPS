@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Mail } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
+import { Th } from "../ui";
 
 export default function AdminSubscribers() {
   const [rows, setRows] = useState([]);
@@ -83,12 +84,12 @@ export default function AdminSubscribers() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-faint font-mono text-[10px] uppercase tracking-[0.2em] text-copper">
-              <th className="text-left px-4 py-3">Email</th>
-              <th className="text-left px-4 py-3">Lang</th>
-              <th className="text-left px-4 py-3">Source</th>
-              <th className="text-left px-4 py-3">Status</th>
-              <th className="text-left px-4 py-3">Account</th>
-              <th className="text-left px-4 py-3">Consent (CASL)</th>
+              <Th>Email</Th>
+              <Th>Lang</Th>
+              <Th>Source</Th>
+              <Th>Status</Th>
+              <Th>Account</Th>
+              <Th>Consent (CASL)</Th>
             </tr>
           </thead>
           <tbody>

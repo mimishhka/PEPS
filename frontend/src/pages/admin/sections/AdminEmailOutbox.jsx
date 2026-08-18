@@ -9,6 +9,7 @@ import {
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import { Th } from "../ui";
 
 const PAGE_SIZE = 50;
 const KPI_REFRESH_MS = 15000;
@@ -285,11 +286,11 @@ export default function AdminEmailOutbox() {
       {/* Table */}
       <div className="bg-white border border-ash rounded-md overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-clinical text-glacier">
+          <thead>
             <tr>
               {[L("Date", "Date"), L("Statut", "Status"), L("Destinataire", "To"),
                 L("Sujet", "Subject"), L("Tent.", "Att."), ""].map((h, i) => (
-                <th key={i} className="px-4 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{h}</th>
+                <Th key={i}>{h}</Th>
               ))}
             </tr>
           </thead>

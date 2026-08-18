@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Link2, RefreshCw, CheckCircle2, XCircle } from "lucide-react";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
+import { Th } from "../ui";
 
 export default function AdminReconciliation() {
   const { lang } = useLang();
@@ -126,15 +127,15 @@ export default function AdminReconciliation() {
       ) : (
         <div className="bg-white border border-ink/10 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-secondary text-foreground/70">
+            <thead>
               <tr>
-                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">{L("Détection", "Detected")}</th>
-                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">{L("Canal", "Provider")}</th>
-                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">{L("Montant", "Amount")}</th>
-                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">{L("Expéditeur", "Sender")}</th>
-                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">Subject</th>
-                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">{L("Associer", "Match")}</th>
-                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.2em]">{L("Actions", "Actions")}</th>
+                <Th>{L("Détection", "Detected")}</Th>
+                <Th>{L("Canal", "Provider")}</Th>
+                <Th>{L("Montant", "Amount")}</Th>
+                <Th>{L("Expéditeur", "Sender")}</Th>
+                <Th>{L("Objet", "Subject")}</Th>
+                <Th>{L("Associer", "Match")}</Th>
+                <Th>{L("Actions", "Actions")}</Th>
               </tr>
             </thead>
             <tbody>

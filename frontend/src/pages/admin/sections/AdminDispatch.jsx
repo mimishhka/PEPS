@@ -3,6 +3,7 @@ import { Printer, Send, RefreshCw, Package, AlertTriangle, ExternalLink, CheckCi
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import { Th } from "../ui";
 
 const PAGE_SIZE = 50;
 
@@ -439,7 +440,7 @@ function Section({ title, rows, render, empty, testid, headers }) {
               <thead>
                 <tr className="border-b border-ink/10 bg-ink/[0.02]">
                   {headers.map((h) => (
-                    <th key={h} className="px-4 py-2 font-mono text-[10px] uppercase tracking-wider text-foreground/40 text-left">{h}</th>
+                    <Th key={h}>{h}</Th>
                   ))}
                 </tr>
               </thead>

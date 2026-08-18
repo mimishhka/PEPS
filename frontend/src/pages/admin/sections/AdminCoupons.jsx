@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
 import { useLang } from "../../../contexts/LanguageContext";
+import { Th } from "../ui";
 
 export default function AdminCoupons() {
   const confirm = useConfirm();
@@ -88,15 +89,15 @@ export default function AdminCoupons() {
       {/* Table */}
       <div className="bg-white border border-ash rounded-xl overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-clinical text-glacier">
+          <thead>
             <tr>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">Code</th>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Rabais", "Discount")}</th>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Sous-total min.", "Min subtotal")}</th>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Utilisation", "Usage")}</th>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Fenêtre", "Window")}</th>
-              <th className="px-6 py-3 text-left font-data text-[10px] uppercase tracking-[0.2em]">{L("Actif", "Active")}</th>
-              <th className="px-6 py-3 text-right font-data text-[10px] uppercase tracking-[0.2em]"></th>
+              <Th>{L("Code", "Code")}</Th>
+              <Th>{L("Rabais", "Discount")}</Th>
+              <Th>{L("Sous-total min.", "Min subtotal")}</Th>
+              <Th>{L("Utilisation", "Usage")}</Th>
+              <Th>{L("Fenêtre", "Window")}</Th>
+              <Th>{L("Actif", "Active")}</Th>
+              <Th align="right"></Th>
             </tr>
           </thead>
           <tbody>

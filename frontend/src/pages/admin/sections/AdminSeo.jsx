@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Search as SearchIcon, ExternalLink, Check, AlertTriangle, Save, X } from "lucide-react";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
+import { Th } from "../ui";
 
 export default function AdminSeo() {
   const { lang } = useLang();
@@ -165,10 +166,10 @@ export default function AdminSeo() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
-                      <th className="px-4 py-3">{L("Produit", "Product")}</th>
-                      <th className="px-4 py-3">{L("Meta titre", "Meta title")}</th>
-                      <th className="px-4 py-3 text-center">{L("État", "Status")}</th>
-                      <th className="px-4 py-3"></th>
+                      <Th>{L("Produit", "Product")}</Th>
+                      <Th>{L("Meta titre", "Meta title")}</Th>
+                      <Th align="center">{L("État", "Status")}</Th>
+                      <Th></Th>
                     </tr>
                   </thead>
                   <tbody>
