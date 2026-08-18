@@ -1072,6 +1072,19 @@ export default function AffiliateDashboard() {
                     );
                   }
                   if (isTrc) {
+                    // Tron n'est ouvert qu'a l'USDT : la table de routage des
+                    // versements (NOWPAYMENTS_PAYOUT_CURRENCY) ne contient pas
+                    // encore usdc+trc20, et une combinaison absente est ignoree
+                    // plutot qu'envoyee au hasard. Le dire ICI evite a l'affilie
+                    // d'attendre un versement qui ne partira jamais.
+                    if (payCur === "usdc") {
+                      return (
+                        <p className="mt-1.5 text-[11px] text-error">
+                          {L("Adresse Tron valide, mais l'USDC n'est versé que sur Ethereum. Choisissez USDT pour utiliser cette adresse, ou indiquez une adresse Ethereum (0x…).",
+                             "Valid Tron address, but USDC is only paid on Ethereum. Choose USDT to use this address, or provide an Ethereum address (0x…).")}
+                        </p>
+                      );
+                    }
                     return (
                       <p className="mt-1.5 text-[11px] text-success">
                         {L("✓ Adresse Tron (TRC-20) — frais de réseau plus faibles.",

@@ -8686,7 +8686,7 @@ try:
         _affiliate_tier_for_revenue, _affiliate_tier_index, _affiliate_tier_bounds,
         _affiliate_hash_token, _affiliate_hash_ip, _affiliate_referrer_domain,
         _affiliate_normalize_custom_code, _affiliate_gen_code_v2, _fetch_cad_to_usd_rate,
-        _normalize_payout, _affiliate_quarter_start, _affiliate_compute_metrics,
+        _normalize_payout, _detect_payout_network, _affiliate_quarter_start, _affiliate_compute_metrics,
         _affiliate_compute_list_metrics, _affiliate_public, _affiliate_send_invite,
         _affiliate_ensure_coupon, affiliate_capture_click, affiliate_attach_to_order,
         affiliate_on_order_paid, affiliate_on_order_reversed, affiliate_maintenance_watchdog,
@@ -8699,7 +8699,7 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
         _affiliate_tier_for_revenue, _affiliate_tier_index, _affiliate_tier_bounds,
         _affiliate_hash_token, _affiliate_hash_ip, _affiliate_referrer_domain,
         _affiliate_normalize_custom_code, _affiliate_gen_code_v2, _fetch_cad_to_usd_rate,
-        _normalize_payout, _affiliate_quarter_start, _affiliate_compute_metrics,
+        _normalize_payout, _detect_payout_network, _affiliate_quarter_start, _affiliate_compute_metrics,
         _affiliate_compute_list_metrics, _affiliate_public, _affiliate_send_invite,
         _affiliate_ensure_coupon, affiliate_capture_click, affiliate_attach_to_order,
         affiliate_on_order_paid, affiliate_on_order_reversed, affiliate_maintenance_watchdog,
@@ -10244,6 +10244,25 @@ class AffiliatePayoutBatchIn(BaseModel):
     otp: Optional[str] = None
 
 
+# Code de devise NOWPayments par (jeton, réseau). Le réseau est DÉDUIT DE
+# L'ADRESSE, jamais supposé : c'est l'adresse qui détermine où les fonds
+# atterrissent. Le code envoyait « usdterc20 » en dur, donc un affilié ayant
+# saisi une adresse Tron — que l'interface accepte et confirme explicitement —
+# se voyait dispatché sur Ethereum vers une adresse T…, qui n'y existe pas.
+#
+# Toute combinaison absente de cette table est IGNORÉE et signalée, jamais
+# envoyée sur un réseau approchant : un versement crypto est irréversible, et
+# une adresse invalide sur le mauvais réseau ne revient pas.
+NOWPAYMENTS_PAYOUT_CURRENCY = {
+    ("usdt", "erc20"): "usdterc20",
+    ("usdt", "trc20"): "usdttrc20",
+    ("usdc", "erc20"): "usdcerc20",
+    # ("usdc", "trc20"): "usdctrc20",  # à activer après vérification du code
+    #   exact dans GET /v1/currencies de NOWPayments — un code inexistant fait
+    #   échouer le lot entier, pas seulement la ligne concernée.
+}
+
+
 async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
                                         admin: dict = Depends(get_admin_user)):  # noqa: F821
     """Envoie plusieurs payouts USDT/USDC en lot via NOWPayments Mass Payouts.
@@ -10269,8 +10288,17 @@ async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
         if not addr or cur not in AFFILIATE_PAYOUT_CURRENCIES or not amt:
             skipped.append({"payout_id": p["id"], "reason": "missing address or unsupported currency"})
             continue
-        # Format NOWPayments Mass Payouts : usdterc20 / usdcerc20
-        np_currency = "usdterc20" if cur == "usdt" else "usdcerc20"
+        # Réseau déduit de l'adresse elle-même, pas du champ stocké : c'est
+        # l'adresse qui décide de la destination réelle des fonds.
+        net = _detect_payout_network(addr)
+        np_currency = NOWPAYMENTS_PAYOUT_CURRENCY.get((cur, net or ""))
+        if not np_currency:
+            skipped.append({
+                "payout_id": p["id"],
+                "reason": (f"{cur.upper()} non supporté sur le réseau "
+                           f"{(net or 'inconnu').upper()} — versement non envoyé"),
+            })
+            continue
         withdrawals.append({
             "address": addr,
             "currency": np_currency,
