@@ -8766,6 +8766,13 @@ class AffiliateAdminUpdateIn(BaseModel):
     compliance_status: Optional[Literal["compliant", "review", "suspended"]] = None
     manual_tier: Optional[str] = None
     clear_manual_tier: bool = False
+    # Entente négociée. DISTINCT de manual_tier, et volontairement : figer un
+    # palier à la main est un geste administratif, révocable et parfois
+    # accidentel ; une entente est un engagement pris envers la personne. Seul
+    # ce drapeau autorise l'écran affilié à écrire « accordé par entente » et
+    # « ne peut pas redescendre ». Sans lui, un palier forcé par erreur
+    # promettait quelque chose qui n'avait jamais été convenu.
+    tier_agreement: Optional[bool] = None
     commission_note: Optional[str] = None
     # Payout
     payout_address: Optional[str] = Field(default=None, max_length=200)
@@ -9614,7 +9621,17 @@ async def admin_affiliates_list(admin: dict = Depends(get_admin_user)):  # noqa:
             item.update({
                 "cumulative_revenue": metrics["cumulative_revenue"],
                 "quarter_revenue": metrics["quarter_revenue"],
+                "rolling12_revenue": metrics["rolling12_revenue"],
                 "tier": metrics["tier"],
+                # Champs de provenance du palier. Cette fusion est une liste
+                # BLANCHE : un champ ajouté aux métriques et oublié ici
+                # n'atteint jamais l'interface. Le marqueur « forcé / entente »
+                # de la liste dependait de tier_is_manual, absent d'ici : sa
+                # condition etait donc toujours fausse et le marqueur ne
+                # s'affichait jamais, sans qu'aucune erreur ne le signale.
+                "tier_is_manual": metrics["tier_is_manual"],
+                "tier_agreement": metrics["tier_agreement"],
+                "tier_theoretical": metrics["tier_theoretical"],
                 "commission_rate": metrics["commission_rate"],
                 "pending_commission": metrics["pending_commission"],
                 "approved_commission": metrics["approved_commission"],
@@ -9961,6 +9978,12 @@ async def admin_affiliate_update(affiliate_id: str, payload: AffiliateAdminUpdat
     clear_manual_tier = bool(update.pop("clear_manual_tier", False))
     if clear_manual_tier:
         update["manual_tier"] = None
+        # Une entente sans palier fige n'a pas d'objet : revenir au calcul
+        # automatique retire donc aussi l'engagement. Sans cette regle, un
+        # affilie garderait le drapeau « entente » tout en voyant son palier
+        # bouger avec son chiffre d'affaires — exactement ce que l'engagement
+        # dit qui n'arrivera pas.
+        update["tier_agreement"] = False
     elif "manual_tier" in update:
         manual_tier = str(update["manual_tier"] or "").strip().lower()
         if manual_tier not in {tier[0] for tier in AFFILIATE_TIERS}:

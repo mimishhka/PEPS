@@ -571,6 +571,7 @@ async def _affiliate_compute_list_metrics(affiliates: list[dict]) -> dict[str, d
             # entente » qui « ne peut pas redescendre ».
             "manual_tier": manual_tier,
             "tier_is_manual": manual_tier is not None,
+            "tier_agreement": bool(affiliate.get("tier_agreement")),
             "tier_theoretical": theoretical,
             "tier": effective,
             "commission_rate": _affiliate_rate_for_tier(effective),
@@ -605,6 +606,9 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
         # calculer ce qu'une vente rapporte, et un repli code en dur cote
         # interface trahirait tout changement de AFFILIATE_COUPON_PERCENT.
         # Meme regle qu'a la creation du coupon (_affiliate_ensure_coupon).
+        # Entente negociee. Seul ce drapeau autorise le libelle engageant cote
+        # affilie ; un manual_tier seul fige le taux sans rien promettre.
+        "tier_agreement": bool(aff.get("tier_agreement")),
         "coupon_percent": (float(aff["coupon_percent"])
                            if aff.get("coupon_percent") is not None
                            else float(s.AFFILIATE_COUPON_PERCENT)),

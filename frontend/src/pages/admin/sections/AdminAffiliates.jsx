@@ -567,11 +567,16 @@ export default function AdminAffiliates() {
                                 On indique aussi le palier merite, pour juger
                                 d'un coup d'oeil si l'ecart est voulu. */}
                             {a.tier_is_manual && (
-                              <span className="block mt-0.5 text-[10px] text-warning font-data"
+                              <span className={`block mt-0.5 text-[10px] font-data ${
+                                      a.tier_agreement ? "text-glacier" : "text-warning"}`}
                                     title={L(
-                                      `L'affilié lit « accordé par entente ». Palier calculé sur 12 mois : ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`,
-                                      `The affiliate reads "set by agreement". Tier computed over 12 months: ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`)}>
-                                {L("forcé", "forced")}
+                                      `${a.tier_agreement
+                                          ? "Entente négociée — l'affilié lit que son taux ne peut pas redescendre."
+                                          : "Palier fixé à la main, sans entente. Aucun engagement affiché à l'affilié."} Palier calculé sur 12 mois : ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`,
+                                      `${a.tier_agreement
+                                          ? "Negotiated agreement — the affiliate reads that their rate cannot go down."
+                                          : "Tier set manually, no agreement. No commitment shown to the affiliate."} Tier computed over 12 months: ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`)}>
+                                {a.tier_agreement ? L("entente", "agreement") : L("forcé", "forced")}
                                 {a.tier_theoretical && a.tier_theoretical !== a.tier
                                   ? ` · ${L("calculé", "computed")} ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical}`
                                   : ""}
@@ -1597,6 +1602,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
         payout_currency: a.payout_currency || "",
         coupon_percent: a.coupon_percent ?? "",
         manual_tier: a.manual_tier || "",
+        tier_agreement: Boolean(a.tier_agreement),
         commission_note: a.commission_note || "",
         admin_notes: a.admin_notes || "",
       });
@@ -1625,6 +1631,10 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
         patch.clear_manual_tier = true;
         return;
       }
+      // Booleen : `false` est une valeur a transmettre, pas un champ vide.
+      // Le filtre generique ci-dessous ne rejette que "" et null, mais decocher
+      // « entente » doit pouvoir RETIRER l'engagement, donc on l'envoie tel quel.
+      if (k === "tier_agreement") { patch[k] = Boolean(v); return; }
       if (v === "" || v == null) return;
       if (k === "coupon_percent") { patch[k] = Number(v); return; }
       patch[k] = v;
@@ -1827,17 +1837,34 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 {form.manual_tier ? (
                   <div className="rounded-md border border-warning/40 bg-warning/5 px-3 py-2.5"
                        data-testid="manual-tier-warning">
-                    <p className="text-[11px] font-semibold text-nordfjord">
-                      {L("Ce palier sera présenté à l'affilié comme un engagement",
-                         "This tier will be presented to the affiliate as a commitment")}
+                    <p className="text-[11px] text-glacier">
+                      {L("Le palier cesse de suivre le chiffre d'affaires. Pour revenir au calcul automatique sur douze mois glissants, remettez le champ ci-dessus à vide.",
+                         "The tier stops following revenue. To return to the automatic rolling-12-month calculation, set the field above back to blank.")}
                     </p>
-                    <p className="mt-1 text-[11px] text-glacier italic">
-                      {L("« Ce taux vous est accordé par entente. Il ne dépend pas de votre volume de ventes et ne peut pas redescendre. »",
-                         "“This rate is set by agreement. It does not depend on your sales volume and cannot go down.”")}
-                    </p>
-                    <p className="mt-1.5 text-[11px] text-glacier">
-                      {L("Sa barre de progression disparaît et son palier cesse de suivre son chiffre d'affaires. Pour revenir au calcul automatique sur douze mois glissants, remettez ce champ à vide.",
-                         "Their progress bar disappears and their tier stops following their revenue. To return to the automatic rolling-12-month calculation, set this field back to blank.")}
+
+                    {/* L'engagement est un acte separe du figeage du palier.
+                        Cocher cette case change ce que l'affilie LIT : sans
+                        elle, on lui dit que son taux est fixe ; avec elle, on
+                        lui promet qu'il ne redescendra pas. Une erreur de
+                        manipulation sur le palier ne doit pas emporter cette
+                        promesse — d'ou la case distincte. */}
+                    <label className="mt-2.5 flex items-start gap-2 cursor-pointer">
+                      <input type="checkbox" className="mt-0.5"
+                        data-testid="edit-tier-agreement"
+                        checked={Boolean(form.tier_agreement)}
+                        onChange={(e) => setForm({ ...form, tier_agreement: e.target.checked })} />
+                      <span className="text-[11px] text-nordfjord font-semibold">
+                        {L("Entente négociée avec cet affilié",
+                           "Negotiated agreement with this affiliate")}
+                      </span>
+                    </label>
+
+                    <p className="mt-1.5 text-[11px] text-glacier italic">
+                      {form.tier_agreement
+                        ? L("L'affilié lira : « Ce taux vous est accordé par entente. Il ne dépend pas de votre volume de ventes et ne peut pas redescendre. »",
+                            "The affiliate will read: “This rate is set by agreement. It does not depend on your sales volume and cannot go down.”")
+                        : L("L'affilié lira : « Ce taux est fixé par l'administration et ne suit pas votre volume de ventes. » Aucun engagement de permanence.",
+                            "The affiliate will read: “This rate is set by the administration and does not follow your sales volume.” No commitment of permanence.")}
                     </p>
                   </div>
                 ) : null}

@@ -612,9 +612,17 @@ export default function AffiliateDashboard() {
                       {Math.round((data?.commission_rate || 0) * 100)} %
                     </span>
                   </div>
+                  {/* L'engagement ne s'ecrit QUE s'il existe. Un palier fige a
+                      la main est un geste administratif, parfois accidentel :
+                      il fixe le taux sans rien promettre. Seul tier_agreement,
+                      coche explicitement par l'administration, autorise
+                      « accorde par entente » et « ne peut pas redescendre ». */}
                   <p className="text-sm text-glacier mt-2">
-                    {L("Ce taux vous est accordé par entente. Il ne dépend pas de votre volume de ventes et ne peut pas redescendre.",
-                       "This rate is set by agreement. It does not depend on your sales volume and cannot go down.")}
+                    {data?.tier_agreement
+                      ? L("Ce taux vous est accordé par entente. Il ne dépend pas de votre volume de ventes et ne peut pas redescendre.",
+                          "This rate is set by agreement. It does not depend on your sales volume and cannot go down.")
+                      : L("Ce taux est fixé par l'administration et ne suit pas votre volume de ventes. Écrivez-nous si vous avez une question à son sujet.",
+                          "This rate is set by the administration and does not follow your sales volume. Contact us if you have any question about it.")}
                   </p>
                 </>
               ) : data?.next_tier ? (
@@ -680,8 +688,11 @@ export default function AffiliateDashboard() {
                 )}
                 <p className="font-data text-[11px] text-glacier mt-1">
                   {data.tier_is_manual
-                    ? L("Chiffre indicatif : votre palier étant fixé par entente, ce total ne modifie pas votre taux.",
-                        "For information only: your tier is set by agreement, so this total does not change your rate.")
+                    ? (data.tier_agreement
+                        ? L("Chiffre indicatif : votre palier étant fixé par entente, ce total ne modifie pas votre taux.",
+                            "For information only: your tier is set by agreement, so this total does not change your rate.")
+                        : L("Chiffre indicatif : votre palier étant fixé manuellement, ce total ne modifie pas votre taux.",
+                            "For information only: your tier is set manually, so this total does not change your rate."))
                     : L("Votre taux suit ce total : il monte quand vos ventes montent, et redescend progressivement si elles ralentissent.",
                         "Your rate follows this total: it rises as your sales rise, and eases down gradually if they slow.")}
                 </p>
