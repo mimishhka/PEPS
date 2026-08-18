@@ -145,6 +145,24 @@ _EMAIL_THROTTLED_UNTIL: Optional[datetime] = None
 
 _RATE_LIMIT_MARKERS = ("ratelimit", "rate limit", "too many requests", "429", "quota")
 
+# Erreurs qui ne guériront JAMAIS d'elles-mêmes : l'adresse du destinataire est
+# refusée en soi. Réessayer ne peut pas la rendre valide, et le janitor remettant
+# les jobs « failed » en file indéfiniment, ces envois bouclaient à vie en
+# consommant le quota du fournisseur. Distingué d'un domaine expéditeur non
+# vérifié, qui est réparable par l'opérateur et mérite donc de rester en file.
+_INVALID_RECIPIENT_MARKERS = (
+    "invalid `to` field",
+    "invalid to field",
+    "invalid recipient",
+    "domains like `example.com`",
+)
+
+
+def _is_invalid_recipient_error(exc: Exception) -> bool:
+    """L'adresse destinataire est-elle refusée en soi ? (définitif)"""
+    text = str(exc).lower()
+    return any(marker in text for marker in _INVALID_RECIPIENT_MARKERS)
+
 
 def _is_rate_limit_error(exc: Exception) -> bool:
     """Le fournisseur nous demande-t-il de ralentir, plutôt que de refuser ?"""
@@ -215,11 +233,20 @@ async def _process_email_outbox_job() -> bool:
             _EMAIL_THROTTLED_UNTIL = (
                 datetime.now(timezone.utc) + timedelta(seconds=EMAIL_THROTTLE_COOLDOWN_S)
             )
+        elif _is_invalid_recipient_error(exc):
+            # Statut distinct de « failed » : le janitor ne reprend que les
+            # « failed ». Une adresse refusée en soi ne deviendra jamais valide,
+            # donc la remettre en file ne fait que bruler du quota.
+            terminal = True
+            delay_seconds = 0
+            changes["status"] = "invalid"
+            logging.warning("[email] destinataire refuse job=%s to=%s — abandon definitif",
+                            job.get("id"), job.get("to"))
         else:
             terminal = attempts >= 5
             delay_seconds = min(3600, 30 * (2 ** max(0, attempts - 1)))
 
-        changes["status"] = "failed" if terminal else "retry"
+        changes.setdefault("status", "failed" if terminal else "retry")
         changes["available_at"] = (
             datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
         ).isoformat()
@@ -271,6 +298,12 @@ async def _email_outbox_worker():
 EMAIL_JANITOR_INTERVAL_S = int(os.environ.get("EMAIL_JANITOR_INTERVAL_S", "300"))     # 5 min
 EMAIL_FAILED_RETRY_AFTER_S = int(os.environ.get("EMAIL_FAILED_RETRY_AFTER_S", "3600"))  # 1h
 EMAIL_JANITOR_MAX_PER_TICK = int(os.environ.get("EMAIL_JANITOR_MAX_PER_TICK", "100"))
+# Nombre de SECONDES chances accordees par le janitor. Sans ce plafond, un job
+# qui echoue pour une raison durable repartait pour cinq tentatives toutes les
+# heures, a vie : « 2e chance apres une panne » devenait une boucle infinie
+# consommant le quota du fournisseur. Au-dela, le job reste « failed » et attend
+# une reprise manuelle depuis l'admin (POST /admin/emails/requeue).
+EMAIL_JANITOR_MAX_REQUEUES = int(os.environ.get("EMAIL_JANITOR_MAX_REQUEUES", "3"))
 
 
 async def _email_outbox_janitor_tick() -> dict:
@@ -290,7 +323,17 @@ async def _email_outbox_janitor_tick() -> dict:
     #    sont ramenés en "retry" avec attempts=0 (2ᵉ chance après panne prolongée).
     #    Cap sur EMAIL_JANITOR_MAX_PER_TICK pour éviter de saturer le worker.
     cursor = s.db.email_outbox.find(
-        {"status": "failed", "created_at": {"$lte": failed_cutoff}},
+        {
+            "status": "failed",
+            "created_at": {"$lte": failed_cutoff},
+            # Plafond des reprises automatiques. Les jobs anterieurs a ce champ
+            # n'ont pas de compteur : $exists false les laisse eligibles une
+            # premiere fois, puis $inc les fait entrer dans le compte.
+            "$or": [
+                {"janitor_requeues": {"$exists": False}},
+                {"janitor_requeues": {"$lt": EMAIL_JANITOR_MAX_REQUEUES}},
+            ],
+        },
         {"_id": 0, "id": 1},
     ).sort("created_at", 1).limit(EMAIL_JANITOR_MAX_PER_TICK)
     ids = [doc["id"] async for doc in cursor]
@@ -298,7 +341,8 @@ async def _email_outbox_janitor_tick() -> dict:
         await s.db.email_outbox.update_many(
             {"id": {"$in": ids}, "status": "failed"},
             {"$set": {"status": "retry", "attempts": 0, "available_at": now_iso,
-                      "requeued_at": now_iso, "requeued_by": "janitor"}},
+                      "requeued_at": now_iso, "requeued_by": "janitor"},
+             "$inc": {"janitor_requeues": 1}},
         )
     return {"stuck_requeued": stuck.modified_count, "failed_requeued": len(ids)}
 
