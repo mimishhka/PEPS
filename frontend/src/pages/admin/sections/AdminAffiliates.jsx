@@ -1589,6 +1589,14 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const saveForm = async () => {
     const patch = {};
     Object.entries(form).forEach(([k, v]) => {
+      // Le palier manuel se VIDE volontairement pour revenir au calcul
+      // automatique. Le filtre sur "" l'ignorait, donc un override une fois
+      // pose ne pouvait plus jamais etre retire : le backend attend un
+      // drapeau explicite, pas une chaine vide.
+      if (k === "manual_tier" && (v === "" || v == null)) {
+        patch.clear_manual_tier = true;
+        return;
+      }
       if (v === "" || v == null) return;
       if (k === "coupon_percent") { patch[k] = Number(v); return; }
       patch[k] = v;

@@ -9920,7 +9920,11 @@ async def admin_affiliate_detail(affiliate_id: str,
     )
     if not aff:
         raise HTTPException(404, "Affiliate not found")
-    metrics = await _affiliate_compute_metrics(affiliate_id) if aff.get("status") == "active" else None
+    # Calculé quel que soit le statut. La condition « active » faisait qu'un
+    # palier forcé sur un affilié encore invité était bien enregistré en base
+    # mais jamais renvoyé : l'admin voyait « — » et concluait que la sauvegarde
+    # avait échoué. Le coût est nul — c'est le détail d'UN affilié.
+    metrics = await _affiliate_compute_metrics(affiliate_id)
     referrals = await db.affiliate_referrals.find(
         {"affiliate_id": affiliate_id}, {"_id": 0}
     ).sort("created_at", -1).to_list(500)
