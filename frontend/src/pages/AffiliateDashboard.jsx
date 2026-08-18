@@ -553,9 +553,21 @@ export default function AffiliateDashboard() {
                     : L("Rien n'est perdu sous le seuil : vos commissions restent à votre crédit et s'ajoutent au mois suivant.",
                         "Nothing is lost below the threshold: your commissions stay to your credit and carry over.")}
                 </p>
-                {data?.fx_rate_cad_to_usd > 0 && dueNow > 0 && (
+                {/* La conversion s'affiche meme a solde nul. Elle ne servait
+                    d'abord qu'a chiffrer un montant ; c'est en realite une
+                    information de devise, et c'est AVANT le premier versement
+                    qu'elle evite le malentendu — voir « 250 $ » puis recevoir
+                    180 USDT ressemble a une retenue. La conditionner au solde
+                    la faisait disparaitre pour qui n'a encore rien gagne. */}
+                {data?.fx_rate_cad_to_usd > 0 && (
                   <p className="font-data text-[11px] text-glacier mt-1">
-                    {money(dueNow)} CAD × {Number(data.fx_rate_cad_to_usd).toFixed(4)}
+                    {dueNow > 0 ? (
+                      <>{money(dueNow)} CAD × {Number(data.fx_rate_cad_to_usd).toFixed(4)}</>
+                    ) : (
+                      <>{L("Vos commissions sont calculées en CAD et versées en ", "Your commissions are calculated in CAD and paid in ")}
+                        <span className="uppercase">{data.payout_currency || "usdt"}</span>
+                        {" · 1 CAD ≈ "}{Number(data.fx_rate_cad_to_usd).toFixed(4)}</>
+                    )}
                     {" — "}
                     {L("taux de la Banque du Canada. Le taux définitif sera celui du jour du versement.",
                        "Bank of Canada rate. The final rate is the one on payout day.")}
