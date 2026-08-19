@@ -186,6 +186,34 @@ def _configured_senders() -> list[str]:
                         s.AFFILIATE_SENDER_EMAIL) if a]
 
 
+def _html_to_text(source: str) -> str:
+    """Version texte lisible d'un courriel HTML.
+
+    Un message envoyé en HTML seul est un signal de pourriel classique : les
+    envois légitimes proposent presque toujours les deux formats, et les
+    filtres le savent. Plutôt que d'écrire une seconde version de chaque
+    gabarit — qui divergerait au premier changement — on dérive le texte du
+    HTML au moment de l'envoi.
+
+    Les liens sont conservés en clair : c'est tout l'objet d'un lien magique,
+    et un « cliquez ici » sans adresse ne sert à rien en texte brut.
+    """
+    # Le parametre s'appelle « source » et non « html » : ce module importe
+    # deja le module standard html, et le masquer ici casserait unescape().
+    text = re.sub(r"(?is)<(script|style|head)[^>]*>.*?</\1>", " ", source)
+    # Le libellé du lien suivi de son adresse, pour rester utilisable.
+    text = re.sub(r'(?is)<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+                  lambda m: f"{re.sub(r'<[^>]+>', '', m.group(2)).strip()} : {m.group(1)}",
+                  text)
+    text = re.sub(r"(?i)<br\s*/?>", "\n", text)
+    text = re.sub(r"(?i)</(p|div|tr|h[1-6]|li)>", "\n", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = html.unescape(text)
+    text = re.sub(r"[ \t\xa0]+", " ", text)
+    text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
+    return "\n".join(line.strip() for line in text.splitlines()).strip()
+
+
 def _bare_email(value: str | None) -> str:
     """L'adresse seule, que la valeur soit « a@b.com » ou « Nom <a@b.com> ».
 
@@ -268,10 +296,16 @@ async def _process_email_outbox_job() -> bool:
     if not job:
         return False
     try:
+        corps = job["html"]
         params = {
             "from": _resolve_sender(job.get("from")), "to": job["to"],
-            "subject": job["subject"], "html": job["html"],
+            "subject": job["subject"], "html": corps,
         }
+        # Alternative texte. Derivee du HTML a l'envoi plutot que stockee :
+        # les messages deja en file en beneficient sans etre retouches.
+        texte = _html_to_text(corps)
+        if texte:
+            params["text"] = texte
         result = await asyncio.to_thread(resend.Emails.send, params)
         await s.db.email_outbox.update_one(
             {"id": job["id"], "status": "sending"},
