@@ -186,6 +186,20 @@ def _configured_senders() -> list[str]:
                         s.AFFILIATE_SENDER_EMAIL) if a]
 
 
+def _bare_email(value: str | None) -> str:
+    """L'adresse seule, que la valeur soit « a@b.com » ou « Nom <a@b.com> ».
+
+    Un expéditeur porte souvent un nom d'affichage — c'est lui que le
+    destinataire lit dans sa boîte, avant l'adresse. Toute comparaison doit
+    donc porter sur l'adresse extraite : sans cela, « FIRONOVA <orders@… > »
+    et « orders@… » passeraient pour deux expéditeurs différents.
+    """
+    v = (value or "").strip()
+    if "<" in v and ">" in v:
+        v = v[v.rfind("<") + 1:v.rfind(">")].strip()
+    return v.lower()
+
+
 def _resolve_sender(stored: str | None) -> str:
     """Expéditeur à utiliser MAINTENANT, plutôt que celui grave a l'enfilement.
 
@@ -201,11 +215,26 @@ def _resolve_sender(stored: str | None) -> str:
     """
     configured = _configured_senders()
     addr = (stored or "").strip()
-    if not configured or addr in configured:
+    if not configured:
         return addr or s.SENDER_EMAIL
-    local = addr.split("@")[0] if "@" in addr else ""
-    remplacant = next((c for c in configured if c.split("@")[0] == local),
-                      s.SENDER_EMAIL)
+
+    # Comparaison sur l'adresse SEULE. Un courriel enfile avant l'ajout des
+    # noms d'affichage porte « orders@… » nu ; la configuration porte
+    # « FIRONOVA <orders@…> ». C'est le meme expediteur, et on renvoie la
+    # valeur CONFIGUREE — donc le message en attente gagne le nom d'affichage
+    # sans qu'on ait a le retoucher en base.
+    cible = _bare_email(addr)
+    exact = next((c for c in configured if _bare_email(c) == cible), None)
+    if exact:
+        return exact
+
+    # Adresse inconnue : on cherche le meme role (orders, partners, login)
+    # sur les adresses actuelles avant de retomber sur celle par defaut.
+    local = cible.split("@")[0] if "@" in cible else ""
+    remplacant = next(
+        (c for c in configured if _bare_email(c).split("@")[0] == local and local),
+        s.SENDER_EMAIL,
+    )
     logging.warning(
         "[email] expediteur perime remplace : %s -> %s (la configuration a "
         "change depuis la mise en file)", addr or "(vide)", remplacant,
