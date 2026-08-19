@@ -1355,8 +1355,12 @@ async def me(request: Request):
 # Cohabite avec le login/register classique. Cookie httpOnly identique.
 # ---------------------------------------------------------------------------
 MAGIC_TOKEN_TTL_MINUTES = 15
-MAGIC_REQUEST_MAX = 5
-MAGIC_REQUEST_WINDOW = 3600
+# Reglable par l'environnement : cinq demandes par heure protegent bien en
+# production, mais rendent une seance de test impraticable — on epuise le quota
+# avant d'avoir pu observer quoi que ce soit, et le blocage ressemble alors a la
+# panne qu'on cherchait justement a diagnostiquer.
+MAGIC_REQUEST_MAX = int(os.environ.get("MAGIC_REQUEST_MAX", "5"))
+MAGIC_REQUEST_WINDOW = int(os.environ.get("MAGIC_REQUEST_WINDOW", "3600"))
 MAGIC_VERIFY_MAX = 300
 MAGIC_VERIFY_WINDOW = 3600
 
@@ -1471,6 +1475,16 @@ async def magic_request(payload: MagicRequestIn, request: Request):
     is_signup = payload.create and not existing
     # Login demandé sur un email inconnu -> réponse neutre, aucun email (anti-énumération).
     if not payload.create and not existing:
+        # La réponse reste volontairement identique à un succès : la révéler
+        # permettrait d'énumérer les comptes. Mais le SERVEUR doit le dire,
+        # sinon ce cas est indiscernable d'une panne d'envoi — on a cherché
+        # pendant des jours du côté du fournisseur un courriel qui n'avait
+        # jamais été demandé.
+        logging.warning(
+            "[magic] aucune demande émise pour %s — aucun compte à cette "
+            "adresse et create=false (réponse neutre côté client)",
+            _private_ref(email),
+        )
         return {"ok": True}
 
     raw = await _issue_magic_token(email, payload.name or "", is_signup,

@@ -108,7 +108,14 @@ async def _send_email(to: str | list, subject: str, html: str, from_email: str |
     safe_from = sanitize_header(from_email or s.SENDER_EMAIL)
     recipient_refs = [s._private_ref(address) for address in to_list]
     if not s.RESEND_API_KEY:
-        logging.info("[email] skipped recipients=%s reason=not-configured", recipient_refs)
+        # ERROR et non INFO : c'est un courriel PERDU, pas une information de
+        # fonctionnement. En info, la ligne se noyait et l'appelant recevait
+        # « ok » — on cherchait la panne du cote du fournisseur alors que rien
+        # n'avait jamais quitte le serveur.
+        logging.error(
+            "[email] PERDU recipients=%s sujet=%r — RESEND_API_KEY absente, "
+            "aucun envoi possible", recipient_refs, safe_subject[:80],
+        )
         return
     try:
         now = datetime.now(timezone.utc)
@@ -173,6 +180,39 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return any(marker in text for marker in _RATE_LIMIT_MARKERS)
 
 
+def _configured_senders() -> list[str]:
+    """Adresses d'expédition actuellement configurées, sans les vides."""
+    return [a for a in (s.SENDER_EMAIL, s.MAGIC_SENDER_EMAIL,
+                        s.AFFILIATE_SENDER_EMAIL) if a]
+
+
+def _resolve_sender(stored: str | None) -> str:
+    """Expéditeur à utiliser MAINTENANT, plutôt que celui grave a l'enfilement.
+
+    L'adresse etait figee dans le document au moment de la mise en file et
+    jamais relue. Corriger la configuration ne reparait donc pas les courriels
+    deja en attente : ils repartaient indefiniment avec l'ancienne adresse, le
+    fournisseur les refusait, et le janitor les remettait en file — une panne
+    qui survivait a son propre correctif.
+
+    Si l'adresse stockee ne fait plus partie de la configuration, on cherche
+    celle qui porte le meme prefixe local (orders@ancien -> orders@nouveau),
+    sinon on retombe sur l'expediteur par defaut.
+    """
+    configured = _configured_senders()
+    addr = (stored or "").strip()
+    if not configured or addr in configured:
+        return addr or s.SENDER_EMAIL
+    local = addr.split("@")[0] if "@" in addr else ""
+    remplacant = next((c for c in configured if c.split("@")[0] == local),
+                      s.SENDER_EMAIL)
+    logging.warning(
+        "[email] expediteur perime remplace : %s -> %s (la configuration a "
+        "change depuis la mise en file)", addr or "(vide)", remplacant,
+    )
+    return remplacant
+
+
 async def _process_email_outbox_job() -> bool:
     global _EMAIL_THROTTLED_UNTIL
     if not s.RESEND_API_KEY:
@@ -200,7 +240,7 @@ async def _process_email_outbox_job() -> bool:
         return False
     try:
         params = {
-            "from": job["from"], "to": job["to"],
+            "from": _resolve_sender(job.get("from")), "to": job["to"],
             "subject": job["subject"], "html": job["html"],
         }
         result = await asyncio.to_thread(resend.Emails.send, params)
