@@ -80,9 +80,14 @@ export function AuthProvider({ children }) {
     }
   }, [emitSessionRestored]);
 
-  const register = useCallback(async (name, email, password) => {
+  // `identite` porte { first_name, last_name } — separes depuis que le
+  // formulaire les demande distinctement, pour pouvoir s'adresser aux gens par
+  // leur prenom sans deviner ou couper un nom complet.
+  const register = useCallback(async (identite, email, password) => {
     try {
-      const { data } = await api.post("/auth/register", { name, email, password, website: "" });
+      const { data } = await api.post("/auth/register", {
+        ...identite, email, password, website: "",
+      });
       return { ok: true, data };
     } catch (e) {
       return { ok: false, error: formatApiError(e.response?.data?.detail) || e.message };
@@ -90,9 +95,12 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Magic link — envoie l'email (create=true pour l'inscription passwordless).
-  const requestMagic = useCallback(async ({ email, name, create, lang }) => {
+  const requestMagic = useCallback(async ({ email, first_name, last_name, create, lang }) => {
     try {
-      const { data } = await api.post("/auth/magic/request", { email, name, create: !!create, lang: lang || "fr", website: "" });
+      const { data } = await api.post("/auth/magic/request", {
+        email, first_name, last_name,
+        create: !!create, lang: lang || "fr", website: "",
+      });
       // `existing` : inscription demandée sur une adresse déjà inscrite. Aucun
       // courriel n'est parti — l'écran doit donc orienter vers la connexion
       // plutôt qu'annoncer un envoi qui n'a pas eu lieu.

@@ -403,9 +403,23 @@ export default function AffiliateDashboard() {
             <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">
               {L("PROGRAMME D'AFFILIATION", "AFFILIATE PROGRAM")}
             </p>
+            {/* Accueil par le PRÉNOM. On s'adresse à une personne, pas à une
+                fiche : « Bonjour, Marie-Claude Saint-Jean » sonne comme un
+                publipostage. Le prénom vient de la fiche affilié, saisie à
+                l'invitation ; on retombe sur le nom complet pour les comptes
+                antérieurs, qui n'ont pas de prénom séparé. */}
             <h1 className="font-display text-[40px] font-bold text-nordfjord leading-none">
-              {L("Bonjour", "Welcome")}, {user?.name}
+              {L("Bonjour", "Welcome")}, {data?.first_name || user?.name}
             </h1>
+            {/* L'entreprise, quand elle existe, se met SOUS le prénom et non à
+                côté : c'est la personne qu'on salue, l'entreprise précise au
+                nom de qui elle touche ses commissions. Absente pour un
+                affilié particulier, la ligne disparaît entièrement. */}
+            {data?.company && (
+              <p className="font-data text-[12px] uppercase tracking-[0.14em] text-glacier mt-1.5">
+                {data.company}
+              </p>
+            )}
             <p className="font-data text-xs text-glacier mt-2">
               {L("Prochaine réévaluation", "Next review")} : {data?.next_review ? new Date(data.next_review).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { year: "numeric", month: "long", day: "numeric" }) : "—"}
             </p>
@@ -1195,7 +1209,15 @@ export default function AffiliateDashboard() {
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">
                 {L("COMPTE", "ACCOUNT")}
               </p>
-              <p className="text-sm text-nordfjord">{user?.name}</p>
+              {/* Ici, contrairement à l'accueil, le nom COMPLET : c'est une
+                  fiche de compte, pas une salutation. L'entreprise s'y ajoute
+                  parce que c'est elle qui figurera sur les versements. */}
+              <p className="text-sm text-nordfjord">
+                {[data?.first_name, data?.last_name].filter(Boolean).join(" ") || user?.name}
+              </p>
+              {data?.company && (
+                <p className="text-xs text-glacier">{data.company}</p>
+              )}
               <p className="font-data text-xs text-glacier">{user?.email}</p>
               <p className="font-data text-xs text-glacier mt-2">
                 {L("Code de parrainage", "Referral code")} : <span className="text-nordfjord font-semibold">{refCode}</span>

@@ -600,8 +600,27 @@ def require_area(area: str, level: str = "view"):
 class RegisterIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
-    name: str = Field(min_length=1, max_length=80)
+    # Prénom et nom séparés et OBLIGATOIRES. Le `required` du formulaire est une
+    # commodité d'interface, pas une garantie : la contrainte doit tenir ici,
+    # où elle ne peut pas être contournée. min_length=1 seul laisserait passer
+    # une chaîne d'espaces, d'où le validateur.
+    first_name: str = Field(min_length=1, max_length=60)
+    last_name: str = Field(min_length=1, max_length=60)
     website: str = ""  # honeypot anti-bot — doit rester vide
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def _non_vide(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("Prénom et nom sont obligatoires.")
+        return v
+
+    @property
+    def name(self) -> str:
+        """Nom complet, recomposé. Le reste du code (courriels, en-têtes de
+        commande, affichage admin) attend encore ce champ unique."""
+        return f"{self.first_name} {self.last_name}".strip()
 
     @field_validator("password")
     @classmethod
@@ -972,7 +991,13 @@ async def register(payload: RegisterIn, response: Response, request: Request):
     user_doc = {
         "id": str(uuid.uuid4()),
         "email": email,
+        # Les deux formes coexistent volontairement : « name » reste la source
+        # d'affichage pour tout le code existant (courriels, commandes, admin),
+        # tandis que first_name permet de s'adresser à la personne par son
+        # prénom sans deviner où couper un nom complet.
         "name": name,
+        "first_name": payload.first_name,
+        "last_name": payload.last_name,
         "password_hash": hash_password(payload.password),
         "role": "user",
         "token_version": 0,
@@ -1368,6 +1393,10 @@ MAGIC_VERIFY_WINDOW = 3600
 class MagicRequestIn(BaseModel):
     email: EmailStr
     name: Optional[str] = None
+    # Renseignés à l'INSCRIPTION seulement (create=true). Une demande de
+    # connexion n'a pas à les fournir : le compte existe déjà et les porte.
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     create: bool = False
     lang: str = "fr"
     website: str = ""  # honeypot anti-bot — doit rester vide
@@ -1393,7 +1422,8 @@ def _hash_magic_token(raw: str) -> str:
 
 
 async def _issue_magic_token(email: str, name: str, is_signup: bool,
-                             lang: str, ip: str) -> str:
+                             lang: str, ip: str,
+                             first_name: str = "", last_name: str = "") -> str:
     raw = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
     await db.magic_tokens.insert_one({
@@ -1402,6 +1432,11 @@ async def _issue_magic_token(email: str, name: str, is_signup: bool,
         "token_hash": _hash_magic_token(raw),
         "is_signup": is_signup,
         "name": (name or "").strip()[:120],
+        # Conservés séparément : le compte n'est créé qu'au clic sur le lien,
+        # parfois bien après la saisie. Recomposer le prénom en coupant le nom
+        # complet à cet instant-là se tromperait sur « Marie-Claude Saint-Jean ».
+        "first_name": (first_name or "").strip()[:60],
+        "last_name": (last_name or "").strip()[:60],
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(minutes=MAGIC_TOKEN_TTL_MINUTES)).isoformat(),
         "used_at": None,
@@ -1502,8 +1537,17 @@ async def magic_request(payload: MagicRequestIn, request: Request):
                      _private_ref(email))
         return {"ok": True, "existing": True}
 
-    raw = await _issue_magic_token(email, payload.name or "", is_signup,
-                                   payload.lang or "fr", _client_ip(request))
+    prenom = (payload.first_name or "").strip()
+    nom = (payload.last_name or "").strip()
+    if is_signup and (not prenom or not nom):
+        # Obligation appliquée ici et non seulement dans le formulaire : le
+        # `required` du navigateur se contourne, une requête directe non.
+        raise HTTPException(400, "Prénom et nom sont obligatoires.")
+
+    complet = f"{prenom} {nom}".strip() or (payload.name or "")
+    raw = await _issue_magic_token(email, complet, is_signup,
+                                   payload.lang or "fr", _client_ip(request),
+                                   first_name=prenom, last_name=nom)
     base = _trusted_public_base_url()
     link = f"{base}/auth/callback?token={raw}"
     await _send_magic_email(email, link, payload.lang or "fr", is_signup)
@@ -1541,6 +1585,8 @@ async def magic_verify(response: Response, request: Request, token: str = Body(.
             "id": str(uuid.uuid4()),
             "email": email,
             "name": rec.get("name") or email.split("@")[0],
+            "first_name": rec.get("first_name", ""),
+            "last_name": rec.get("last_name", ""),
             "password_hash": hash_password(secrets.token_urlsafe(32)),
             "role": "user",
             "token_version": 0,

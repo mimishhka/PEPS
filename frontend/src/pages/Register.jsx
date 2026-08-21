@@ -14,7 +14,22 @@ export default function Register() {
   const navigate = useNavigate();
 
   const [mode, setMode] = useState("magic"); // magic | password
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  // Prénom et nom séparés, comme sur l'invitation affiliée. Un champ unique
+  // « nom complet » oblige à deviner où couper pour s'adresser à quelqu'un par
+  // son prénom — et se trompe dès qu'il y a un prénom composé ou deux noms.
+  const [form, setForm] = useState({ first_name: "", last_name: "", email: "", password: "" });
+
+  // Les deux sont obligatoires. Le `required` du navigateur ne suffit pas :
+  // il ne voit pas une saisie composée uniquement d'espaces.
+  const identiteManquante = () => {
+    if (!form.first_name.trim() || !form.last_name.trim()) {
+      toast.error(lang === "fr"
+        ? "Prénom et nom sont obligatoires."
+        : "First and last name are required.");
+      return true;
+    }
+    return false;
+  };
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [magicSent, setMagicSent] = useState(false);
@@ -23,9 +38,13 @@ export default function Register() {
   const onPasswordSubmit = async (e) => {
     e.preventDefault();
     if (!agree) { toast.error(t("auth.mustAgree") || "Vous devez accepter les conditions."); return; }
+    if (identiteManquante()) return;
     if (form.password.length < 8) { toast.error(t("auth.pwMin") || "Mot de passe : 8 caractères minimum."); return; }
     setBusy(true);
-    const res = await register(form.name, form.email, form.password);
+    const res = await register(
+      { first_name: form.first_name.trim(), last_name: form.last_name.trim() },
+      form.email, form.password,
+    );
     setBusy(false);
     if (res.ok) {
       if (res.data?.verification_sent) setVerifyPending(true);
@@ -36,10 +55,14 @@ export default function Register() {
   const onMagicSubmit = async (e) => {
     e.preventDefault();
     if (!agree) { toast.error(t("auth.mustAgree") || "Vous devez accepter les conditions."); return; }
+    if (identiteManquante()) return;
     const normalized = form.email.trim().toLowerCase();
     if (!normalized) { toast.error(t("auth.email") || "Email requis"); return; }
     setBusy(true);
-    const res = await requestMagic({ email: normalized, name: form.name, create: true, lang });
+    const res = await requestMagic({
+      email: normalized, create: true, lang,
+      first_name: form.first_name.trim(), last_name: form.last_name.trim(),
+    });
     setBusy(false);
     if (res.existing) {
       // Aucun courriel n'est parti : afficher « vérifiez votre boîte » ferait
@@ -141,10 +164,25 @@ export default function Register() {
               <p className="text-sm text-glacier">
                 {t("auth.magicSignupSub") || "Créez votre compte sans mot de passe — on vous envoie un lien d'activation."}
               </p>
-              <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.name")}</label>
-                <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="register-magic-name"
-                  className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
+                    {t("auth.firstName") || (lang === "fr" ? "Prénom" : "First name")}
+                  </label>
+                  <input required autoComplete="given-name" value={form.first_name}
+                    onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+                    data-testid="register-magic-first-name"
+                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                </div>
+                <div>
+                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
+                    {t("auth.lastName") || (lang === "fr" ? "Nom" : "Last name")}
+                  </label>
+                  <input required autoComplete="family-name" value={form.last_name}
+                    onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+                    data-testid="register-magic-last-name"
+                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                </div>
               </div>
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
@@ -159,10 +197,25 @@ export default function Register() {
           ) : (
             <form onSubmit={onPasswordSubmit} className="space-y-5">
               <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" data-testid="honeypot" />
-              <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.name")}</label>
-                <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="register-name"
-                  className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
+                    {t("auth.firstName") || (lang === "fr" ? "Prénom" : "First name")}
+                  </label>
+                  <input required autoComplete="given-name" value={form.first_name}
+                    onChange={(e) => setForm({ ...form, first_name: e.target.value })}
+                    data-testid="register-first-name"
+                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                </div>
+                <div>
+                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
+                    {t("auth.lastName") || (lang === "fr" ? "Nom" : "Last name")}
+                  </label>
+                  <input required autoComplete="family-name" value={form.last_name}
+                    onChange={(e) => setForm({ ...form, last_name: e.target.value })}
+                    data-testid="register-last-name"
+                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                </div>
               </div>
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
