@@ -1487,6 +1487,21 @@ async def magic_request(payload: MagicRequestIn, request: Request):
         )
         return {"ok": True}
 
+    if payload.create and existing:
+        # Inscription demandée sur une adresse qui a déjà un compte. On
+        # n'envoie RIEN : il n'y a pas de compte à activer, et un courriel
+        # parlant d'activation ferait croire à la création d'un second compte
+        # — impossible, l'index unique sur users.email l'interdit.
+        #
+        # Contrairement au cas « connexion sur adresse inconnue » juste
+        # au-dessus, la réponse est ici explicite. Un formulaire d'INSCRIPTION
+        # qui reste muet oblige la personne à attendre un courriel qui ne
+        # viendra pas. Le compromis est assumé : cela confirme l'existence du
+        # compte à qui saisit l'adresse, ce que fait la majorité des sites.
+        logging.info("[magic] inscription refusée pour %s — compte déjà existant",
+                     _private_ref(email))
+        return {"ok": True, "existing": True}
+
     raw = await _issue_magic_token(email, payload.name or "", is_signup,
                                    payload.lang or "fr", _client_ip(request))
     base = _trusted_public_base_url()

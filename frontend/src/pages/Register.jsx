@@ -41,6 +41,16 @@ export default function Register() {
     setBusy(true);
     const res = await requestMagic({ email: normalized, name: form.name, create: true, lang });
     setBusy(false);
+    if (res.existing) {
+      // Aucun courriel n'est parti : afficher « vérifiez votre boîte » ferait
+      // attendre un message qui ne viendra pas. On oriente vers la connexion,
+      // en gardant l'adresse saisie pour éviter de la retaper.
+      navigate(`/login?email=${encodeURIComponent(normalized)}&existing=1`);
+      toast.info(lang === "fr"
+        ? "Cette adresse a déjà un compte. Connectez-vous."
+        : "This address already has an account. Please sign in.");
+      return;
+    }
     if (res.ok) {
       setMagicSent(true);
       toast.success(t("auth.magicSent") || "Lien envoyé ! Vérifiez votre email.");

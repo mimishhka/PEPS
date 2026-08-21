@@ -92,8 +92,11 @@ export function AuthProvider({ children }) {
   // Magic link — envoie l'email (create=true pour l'inscription passwordless).
   const requestMagic = useCallback(async ({ email, name, create, lang }) => {
     try {
-      await api.post("/auth/magic/request", { email, name, create: !!create, lang: lang || "fr", website: "" });
-      return { ok: true };
+      const { data } = await api.post("/auth/magic/request", { email, name, create: !!create, lang: lang || "fr", website: "" });
+      // `existing` : inscription demandée sur une adresse déjà inscrite. Aucun
+      // courriel n'est parti — l'écran doit donc orienter vers la connexion
+      // plutôt qu'annoncer un envoi qui n'a pas eu lieu.
+      return { ok: true, existing: Boolean(data?.existing) };
     } catch (e) {
       return { ok: false, error: formatApiError(e.response?.data?.detail) || e.message };
     }
