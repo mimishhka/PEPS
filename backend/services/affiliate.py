@@ -772,19 +772,78 @@ async def affiliate_capture_click(request: Request, response: Response, code: st
 
 
 async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
-    """Lit le cookie fn_ref et attache l'affilié à la commande (champ additif).
+    """Attache l'affilié à la commande (champ additif). TROIS sources, par ordre.
+
+    1. Le cookie fn_ref, posé au clic sur un lien de parrainage.
+    2. À défaut, le code de réduction saisi au paiement.
+    3. À défaut, le rattachement durable du client, mémorisé sur son courriel.
+
+    Les deux dernières manquaient, et le trou était réel. Un affilié partage
+    naturellement son CODE — à l'oral, dans une publication, sans lien
+    cliquable. Le client obtenait son rabais et l'affilié ne touchait rien.
+    Et le cookie expirant à 30 jours, un client fidèle revenu plus tard
+    cessait purement et simplement de compter pour celui qui l'avait amené.
+
+    Le code, lui, n'expire pas : il vaut tant que l'affilié est actif.
+
+    Deux notions distinctes, et c'est délibéré :
+
+    — L'ATTRIBUTION de la commande suit le signal le plus frais. Celui dont le
+      lien ou le code a déclenché CETTE vente touche la commission, même si le
+      client était rattaché à quelqu'un d'autre. Sans cela, un affilié qui fait
+      revenir un ancien client travaillerait pour rien.
+
+    — Le RATTACHEMENT du client, lui, ne bouge jamais une fois posé. Il revient
+      à celui qui a amené la personne en premier, et sert de repli quand plus
+      aucun signal n'est présent — un client fidèle qui commande directement
+      continue donc de compter pour lui, sans limite de durée.
+
     Anti auto-parrainage : refuse si l'email de commande == email affilié.
     À appeler DANS checkout() juste avant db.orders.insert_one(order_doc)."""
-    code = request.cookies.get(s.AFFILIATE_COOKIE_NAME)
+    order_email = (order_doc.get("email") or "").lower().strip()
+
+    source = "click"
+    code = (request.cookies.get(s.AFFILIATE_COOKIE_NAME) or "").strip()
     if not code:
-        return
-    code = code.strip().upper()
-    affiliate = await s.db.affiliates.find_one(
-        {"code": code, "status": "active"}, {"_id": 0}
-    )
+        # Le coupon appliqué porte le code de l'affilié — c'est ainsi que
+        # _affiliate_ensure_coupon() le crée. checkout() le range sous
+        # order_doc["coupon"], sous forme de dict {"code": …}.
+        applied = order_doc.get("coupon") or {}
+        code = str(applied.get("code") or "").strip() if isinstance(applied, dict) else ""
+        source = "code"
+
+    affiliate = None
+    if code:
+        affiliate = await s.db.affiliates.find_one(
+            {"code": code.upper(), "status": "active"}, {"_id": 0}
+        )
+
+    if not affiliate:
+        # Aucun signal sur cette commande : on retombe sur le rattachement
+        # durable du client. C'est ce qui rend une clientèle fidèle réellement
+        # acquise à l'affilié qui l'a apportée.
+        #
+        # Deux clés, et le COMPTE passe en premier. Un client connecté peut
+        # changer l'adresse de son compte, ou commander avec une adresse de
+        # livraison différente : chercher d'abord par courriel le perdrait
+        # alors que son compte, lui, n'a pas bougé. Le courriel reste la
+        # seconde clé, indispensable aux commandes passées sans compte.
+        cle = None
+        _uid = str(order_doc.get("user_id") or "").strip()
+        if _uid:
+            cle = {"user_id": _uid}
+        lien = await s.db.affiliate_bindings.find_one(cle, {"_id": 0}) if cle else None
+        if not lien and order_email:
+            lien = await s.db.affiliate_bindings.find_one({"email": order_email}, {"_id": 0})
+        if lien:
+            affiliate = await s.db.affiliates.find_one(
+                {"id": lien["affiliate_id"], "status": "active"}, {"_id": 0}
+            )
+            source = "binding"
+
     if not affiliate:
         return
-    order_email = (order_doc.get("email") or "").lower().strip()
+
     affiliate_user_id = str(affiliate.get("user_id") or "").strip()
     order_user_id = str(order_doc.get("user_id") or "").strip()
     # Auto-parrainage direct (même email ou même compte utilisateur) : bloqué.
@@ -792,8 +851,47 @@ async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
         return
     if affiliate_user_id and order_user_id and affiliate_user_id == order_user_id:
         return
+
     order_doc["affiliate_id"] = affiliate["id"]
     order_doc["affiliate_code"] = affiliate["code"]
+    order_doc["affiliate_source"] = source
+
+    # Premier rattachement seulement : $setOnInsert n'écrase jamais un lien
+    # existant, ce qui garantit qu'un client reste acquis à celui qui l'a
+    # amené même si un autre affilié déclenche une vente entre-temps.
+    if order_email and source != "binding":
+        try:
+            await s.db.affiliate_bindings.update_one(
+                {"email": order_email},
+                {"$setOnInsert": {
+                    "email": order_email,
+                    "affiliate_id": affiliate["id"],
+                    "affiliate_code": affiliate["code"],
+                    "source": source,
+                    "bound_at": datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=True,
+            )
+        except Exception as exc:  # pragma: no cover
+            # Un rattachement raté ne doit jamais faire échouer une commande.
+            logging.warning("[affiliate] rattachement non enregistré error_type=%s",
+                            type(exc).__name__)
+
+    # Le compte, quand il existe, est ajouté au rattachement SANS l'écraser.
+    # Un client commande souvent en invité avant de se créer un compte : c'est
+    # à ce moment-là que la seconde clé se pose, et elle survit ensuite à tout
+    # changement d'adresse. On n'écrit user_id que s'il manque encore, pour ne
+    # jamais réattribuer un rattachement existant à un autre affilié.
+    _uid = str(order_doc.get("user_id") or "").strip()
+    if _uid and order_email:
+        try:
+            await s.db.affiliate_bindings.update_one(
+                {"email": order_email, "user_id": {"$exists": False}},
+                {"$set": {"user_id": _uid}},
+            )
+        except Exception as exc:  # pragma: no cover
+            logging.warning("[affiliate] compte non rattaché error_type=%s",
+                            type(exc).__name__)
     order_doc["affiliate_ip_hash"] = _affiliate_hash_ip(s._client_ip(request))  # noqa: F821
 
 
@@ -1009,6 +1107,18 @@ async def _affiliate_email_worker():
 async def affiliate_ensure_indexes():
     """Index — à appeler dans seed_admin_and_products() ou au startup."""
     await s.db.affiliates.create_index("id", unique=True)
+    # Rattachement durable d'un client à son affilié, clé sur le courriel :
+    # c'est le seul identifiant présent sur TOUTES les commandes, invité
+    # compris. Unique, car un client n'appartient qu'à un seul affilié.
+    await s.db.affiliate_bindings.create_index("email", unique=True)
+    await s.db.affiliate_bindings.create_index("affiliate_id")
+    # Seconde clé : le compte. Partiel, car la majorité des rattachements
+    # n'auront jamais de user_id — une commande invité n'en produit pas — et
+    # un index unique ordinaire les ferait tous entrer en collision sur null.
+    await s.db.affiliate_bindings.create_index(
+        "user_id", unique=True,
+        partialFilterExpression={"user_id": {"$type": "string"}},
+    )
     # Unique uniquement quand `code` est présent et de type string : permet
     # plusieurs invités concurrents avec code:null sans conflit d'index.
     try:
