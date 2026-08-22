@@ -369,6 +369,9 @@ export default function AffiliateDashboard() {
   // proposée une fois de plus, ce qui ne justifie pas d'alarmer l'affilié.
   const fermerTour = useCallback(async () => {
     setTourOuvert(false);
+    // Retour à la vue globale. La visite se termine sur l'onglet Aide ; y
+    // laisser quelqu'un lui ferait croire qu'il a atterri là par erreur.
+    setTab("overview");
     try {
       await api.post("/affiliate/tour/done");
       await refreshAffiliate();
@@ -442,26 +445,51 @@ export default function AffiliateDashboard() {
     // produits à promouvoir, qui n'apparaît qu'une fois des ventes réalisées.
     // La première bulle pointait donc dans le vide pour un nouvel affilié,
     // c'est-à-dire pour la seule personne à qui la visite s'adresse.
-    { cible: "affiliate-link-panel", ton: "nova",
+    { cible: "affiliate-link-panel", ton: "nova", onglet: "overview",
       titre: L("Votre lien et votre code", "Your link and code"),
       texte: L("Partagez l'un ou l'autre. Le lien reconnaît vos visiteurs pendant un an ; le code, lui, n'expire jamais et fonctionne même à l'oral.",
                "Share either one. The link recognises your visitors for a year; the code never expires and works even spoken aloud.") },
-    { cible: "affiliate-kpis", ton: "acquis",
+    { cible: "affiliate-kpis", ton: "acquis", onglet: "overview",
       titre: L("Validé ne veut pas dire versé", "Validated is not paid"),
       texte: L(`Une commande devient « validée » ${data?.approval_hold_days ?? 14} jours après son paiement, le temps qu'elle ne puisse plus être remboursée. C'est ce montant qui fait progresser votre palier.`,
                `An order becomes “validated” ${data?.approval_hold_days ?? 14} days after payment, once it can no longer be refunded. That amount is what moves your tier.`) },
-    { cible: "payout-estimate", ton: "attente",
+    { cible: "payout-estimate", ton: "attente", onglet: "overview",
       titre: L("Le seuil de versement", "The payout threshold"),
       // Le seuil est LU du serveur, jamais écrit en dur : une valeur figée ici
       // divergerait de AFFILIATE_PAYOUT_MIN_CAD au premier changement, et la
       // visite affirmerait alors un montant que le système n'applique plus.
       texte: L(`Les versements partent une fois par mois, à partir de ${money(data?.payout_min_cad)}. En dessous, rien n'est perdu : le solde s'ajoute au mois suivant.`,
                `Payouts go out monthly, from ${money(data?.payout_min_cad)}. Below that nothing is lost: the balance carries over.`) },
-    { cible: "affiliate-tier-badge", ton: "acquis",
+    { cible: "affiliate-tier-badge", ton: "acquis", onglet: "overview",
       titre: L("Votre palier", "Your tier"),
       texte: L("Il suit votre chiffre d'affaires validé sur douze mois glissants, et monte dès le seuil franchi. De 10 % à 20 % selon le palier.",
                "It follows your validated revenue over twelve rolling months, and rises as soon as a threshold is crossed. From 10% to 20%.") },
-    { cible: "affiliate-faq-link", ton: "regle",
+
+    // Les étapes qui suivent changent d'ONGLET. La visite ne parlait que de la
+    // vue globale : cinq onglets sur six n'étaient jamais mentionnés, dont
+    // celui où se saisit l'adresse de versement — sans laquelle un solde
+    // s'accumule et ne peut jamais être envoyé.
+    { cible: "affiliate-performance", ton: "nova", onglet: "performance",
+      titre: L("D'où viennent vos ventes", "Where your sales come from"),
+      texte: L("Clics, conversions, produits qui marchent, appareils utilisés. C'est ici qu'on voit ce qui fonctionne avant de le répéter.",
+               "Clicks, conversions, products that work, devices used. This is where you see what works before repeating it.") },
+    { cible: "affiliate-payments", ton: "acquis", onglet: "payments",
+      titre: L("L'historique de vos versements", "Your payout history"),
+      texte: L("Chaque versement avec son montant, sa devise, le taux de change retenu et sa référence. Exportable en CSV pour votre comptabilité.",
+               "Every payout with its amount, currency, the exchange rate used and its reference. Exportable to CSV for your bookkeeping.") },
+    { cible: "affiliate-compliance", ton: "regle", onglet: "compliance",
+      titre: L("Ce qui peut suspendre votre compte", "What can suspend your account"),
+      texte: L("Communication privée uniquement, et aucune allégation de santé — ni posologie, ni effet thérapeutique. C'est le seul manquement qui suspend sans préavis, parce qu'il nous engage tous les deux.",
+               "Private communication only, and no health claims — no dosage, no therapeutic effect. It is the one breach that suspends without notice, because it commits us both.") },
+    { cible: "affiliate-payout-address", ton: "attente", onglet: "settings",
+      titre: L("À faire avant votre premier versement", "Do this before your first payout"),
+      texte: L("Sans adresse de portefeuille, vos commissions s'accumulent sans pouvoir vous être envoyées. Renseignez-la dès maintenant : une adresse Ethereum (0x…) ou Tron (T…).",
+               "Without a wallet address, your commissions build up with no way to reach you. Set it now: an Ethereum (0x…) or Tron (T…) address.") },
+    { cible: "affiliate-support", ton: "regle", onglet: "support",
+      titre: L("Une question ?", "A question?"),
+      texte: L("Écrivez-nous d'ici : votre code, votre palier et votre configuration sont joints automatiquement. Réponse sous un à deux jours ouvrables.",
+               "Write to us from here: your code, tier and settings are attached automatically. Reply within one to two business days.") },
+    { cible: "affiliate-faq-link", ton: "regle", onglet: "overview",
       titre: L("Vos questions", "Your questions"),
       texte: L("Le détail des règles s'y trouve : calcul des commissions, attribution, adresses de portefeuille. Vous pouvez relancer cette visite depuis là.",
                "The detailed rules live there: commission calculation, attribution, wallet addresses. You can restart this tour from there.") },
@@ -494,7 +522,7 @@ export default function AffiliateDashboard() {
   return (
     <div className="bg-clinical min-h-screen">
       {tourOuvert && (
-        <GuidedTour steps={TOUR} L={L} onClose={fermerTour} />
+        <GuidedTour steps={TOUR} L={L} onClose={fermerTour} onTab={setTab} />
       )}
       <div className="max-w-6xl mx-auto px-6 py-16" data-testid="affiliate-dashboard">
         {/* Header */}

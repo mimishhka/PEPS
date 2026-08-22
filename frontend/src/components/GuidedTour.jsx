@@ -46,16 +46,16 @@ function Spark({ size = 12, className = "", style }) {
 // de la fiche affilié, côté serveur : un marqueur dans le navigateur la faisait
 // rejouer entièrement sur un autre appareil ou après un nettoyage. Le parent
 // décide de l'afficher et enregistre la fin par onClose.
-export default function GuidedTour({ steps, onClose, L }) {
+export default function GuidedTour({ steps, onClose, onTab, L }) {
   const [i, setI] = useState(0);
   const [box, setBox] = useState(null);
 
-  // Étapes réellement affichables : celles dont la cible existe dans le DOM.
-  const [utiles, setUtiles] = useState([]);
-  useEffect(() => {
-    setUtiles(steps.filter((s) => document.querySelector(`[data-testid="${s.cible}"]`)));
-  }, [steps]);
-
+  // Les étapes ne sont PLUS filtrées à l'ouverture. Elles l'étaient tant que
+  // la visite se limitait à un seul onglet ; maintenant qu'elle en traverse
+  // plusieurs, une cible absente du DOM signifie seulement que son onglet
+  // n'est pas encore affiché — la filtrer d'emblée supprimerait justement les
+  // étapes qui parlent d'ailleurs.
+  const utiles = steps;
   const etape = utiles[i];
 
   // Terminer et quitter appellent la même sortie : quelqu'un qui s'en va à la
@@ -69,24 +69,56 @@ export default function GuidedTour({ steps, onClose, L }) {
   // pendant une image, ce qui se voit.
   useLayoutEffect(() => {
     if (!etape) return undefined;
-    const el = document.querySelector(`[data-testid="${etape.cible}"]`);
-    if (!el) return undefined;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    const mesurer = () => {
-      const r = el.getBoundingClientRect();
-      setBox({ top: r.top, left: r.left, width: r.width, height: r.height });
+
+    // L'onglet d'abord : la cible n'existe dans le DOM qu'une fois son onglet
+    // affiché. Le parent gère le changement, ce composant ne fait que le
+    // demander.
+    if (etape.onglet && onTab) onTab(etape.onglet);
+
+    let arret = false;
+    const minuteurs = [];
+    setBox(null);   // masque la bulle le temps que la nouvelle cible apparaisse
+
+    // On ATTEND la cible au lieu d'abandonner : après un changement d'onglet
+    // elle n'existe pas encore au moment où cet effet s'exécute.
+    const attendre = (reste) => {
+      if (arret) return;
+      const el = document.querySelector(`[data-testid="${etape.cible}"]`);
+      if (!el) {
+        if (reste <= 0) {
+          // Cible introuvable : on passe à la suite plutôt que de laisser un
+          // voile figé sur un écran sans rien à montrer.
+          setI((n) => (n + 1 < utiles.length ? n + 1 : n));
+          return;
+        }
+        minuteurs.push(setTimeout(() => attendre(reste - 1), 80));
+        return;
+      }
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      const mesurer = () => {
+        if (arret) return;
+        const r = el.getBoundingClientRect();
+        setBox({ top: r.top, left: r.left, width: r.width, height: r.height });
+      };
+      mesurer();
+      // Le défilement est animé : on remesure le temps qu'il se termine.
+      const t = setInterval(mesurer, 60);
+      minuteurs.push(setTimeout(() => clearInterval(t), 700));
+      minuteurs.push(t);
+      window.addEventListener("resize", mesurer);
+      minuteurs.push(() => window.removeEventListener("resize", mesurer));
     };
-    mesurer();
-    // Le défilement est animé : on remesure le temps qu'il se termine.
-    const t = setInterval(mesurer, 60);
-    const stop = setTimeout(() => clearInterval(t), 700);
-    window.addEventListener("resize", mesurer);
+
+    attendre(12);   // ~1 s d'attente maximum
+
     return () => {
-      clearInterval(t);
-      clearTimeout(stop);
-      window.removeEventListener("resize", mesurer);
+      arret = true;
+      minuteurs.forEach((m) => {
+        if (typeof m === "function") m();
+        else { clearTimeout(m); clearInterval(m); }
+      });
     };
-  }, [etape]);
+  }, [etape, onTab, utiles.length]);
 
   // Échap ferme la visite, les flèches la parcourent. Attendu de tout ce qui
   // recouvre l'écran.
