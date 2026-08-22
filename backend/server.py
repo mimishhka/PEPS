@@ -8734,8 +8734,23 @@ AFFILIATE_INVITE_TTL_HOURS = 168          # 7 jours
 # la modifier que lorsque le texte change réellement.
 AFFILIATE_TERMS_VERSION = os.environ.get("AFFILIATE_TERMS_VERSION", "2026-08-01")
 
-AFFILIATE_COOKIE_DAYS = 30                # fenêtre d'attribution du clic
-AFFILIATE_CLICK_TTL_DAYS = 45             # rétention des clics (purge auto)
+# Fenêtre d'attribution du clic. Portée de 30 à 365 jours : le rattachement
+# durable ne couvre que les clients qui REVIENNENT, jamais leur première
+# commande. Un visiteur qui cliquait un lien, hésitait, puis achetait au 35e
+# jour sans saisir le code ne rapportait donc rien à l'affilié — alors que
+# c'est lui qui l'avait amené. Trois à six mois de réflexion sont ordinaires
+# sur ce type de produit.
+#
+# 365 et non davantage : les navigateurs plafonnent la durée de vie d'un témoin
+# autour de 400 jours et rogneraient silencieusement toute valeur supérieure.
+AFFILIATE_COOKIE_DAYS = int(os.environ.get("AFFILIATE_COOKIE_DAYS", "365"))
+# Rétention des enregistrements de clics (purge auto). Volontairement DÉCOUPLÉ
+# de AFFILIATE_COOKIE_DAYS malgré l'écart apparent : ces documents servent aux
+# statistiques, pas à l'attribution — celle-ci lit la valeur du témoin, jamais
+# cette collection. Les allonger à un an ne changerait donc aucune commission,
+# et reviendrait à conserver des empreintes d'adresses IP douze mois durant,
+# à rebours de ce que promet la politique de confidentialité.
+AFFILIATE_CLICK_TTL_DAYS = 45
 AFFILIATE_COOKIE_NAME = "fn_ref"
 AFFILIATE_INVITE_MAX = 5                  # rate-limit renvois / fenêtre
 AFFILIATE_INVITE_WINDOW = 3600            # 1 h
