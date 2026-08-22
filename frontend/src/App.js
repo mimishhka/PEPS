@@ -43,6 +43,7 @@ const Faq = lazy(() => import("./pages/Faq"));
 const AffiliateDashboard = lazy(() => import("./pages/AffiliateDashboard"));
 const AffiliateJoin = lazy(() => import("./pages/AffiliateJoin"));
 const AffiliateTerms = lazy(() => import("./pages/AffiliateTerms"));
+const AffiliateFaq = lazy(() => import("./pages/AffiliateFaq"));
 const StaffAccept = lazy(() => import("./pages/StaffAccept"));
 
 // Chargé à la demande (chunk séparé) — le code du panneau admin n'est PLUS
@@ -161,6 +162,10 @@ function AppRoutes() {
           s'apprête à accepter avant d'y être invité, et le texte doit rester
           consultable pour établir ce qui a été accepté. */}
       <Route path="/affiliate/terms" element={<AffiliateTerms />} />
+      {/* Protégée : la FAQ répond à des questions d'exploitation — seuils,
+          délais, mécanique d'attribution — qui n'intéressent qu'un partenaire.
+          La page elle-même écarte ensuite un compte non affilié. */}
+      <Route path="/affiliate/faq" element={<ProtectedRoute><AffiliateFaq /></ProtectedRoute>} />
       <Route path="/affiliate" element={<ProtectedRoute><AffiliateDashboard /></ProtectedRoute>} />
       <Route path="/staff-accept" element={<StaffAccept />} />
       <Route

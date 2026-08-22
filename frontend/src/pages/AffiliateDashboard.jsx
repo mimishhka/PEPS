@@ -431,6 +431,12 @@ export default function AffiliateDashboard() {
             )}
             <p className="font-data text-xs text-glacier mt-2">
               {L("Prochaine réévaluation", "Next review")} : {data?.next_review ? new Date(data.next_review).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { year: "numeric", month: "long", day: "numeric" }) : "—"}
+              {" · "}
+              {/* Placé ici plutôt que dans un onglet : les questions viennent
+                  quand on regarde ses chiffres, pas quand on cherche un menu. */}
+              <Link to="/affiliate/faq" className="text-nova underline">
+                {L("Questions fréquentes", "FAQ")}
+              </Link>
             </p>
           </div>
           <div className="flex items-center gap-3">
