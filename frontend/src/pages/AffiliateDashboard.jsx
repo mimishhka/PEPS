@@ -681,22 +681,21 @@ export default function AffiliateDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="affiliate-kpis">
               <KpiCard label={L("Revenu validé cumulé", "Cumulative validated revenue")} value={money(data?.cumulative_revenue)} sub="CAD" />
               <KpiCard label={L("12 derniers mois", "Last 12 months")} value={money(data?.rolling12_revenue)} sub={L("CAD · fixe votre palier", "CAD · sets your tier")} />
-              <KpiCard label={L("Commissions en attente", "Pending commissions")} value={money(data?.pending_commission)} sub="CAD" />
-              {/* Le seul indicateur qui porte de l'argent DÉJÀ REÇU. Il montre
-                  donc aussi ce que l'affilié a réellement encaissé, dans sa
-                  propre devise : voir « 412,30 $ » quand le portefeuille
-                  affiche 297 USDT laisse croire à une retenue. La devise vient
-                  de son choix, jamais d'un « USDT » écrit en dur. */}
-              {/* « Versé à ce jour » plutôt que « Commissions payées » : le
-                  second ne dit pas si l'argent est acquis ou réellement parti,
-                  et c'est toute la différence sur cet écran. */}
-              <KpiCard label={L("Versé à ce jour", "Paid out to date")}
-                value={money(data?.paid_commission)}
-                sub={
-                  data?.fx_rate_cad_to_usd > 0 && Number(data?.paid_commission) > 0
-                    ? `CAD · ≈ ${(Number(data.paid_commission) * Number(data.fx_rate_cad_to_usd)).toFixed(2)} ${(data.payout_currency || "usdt").toUpperCase()}`
-                    : "CAD"
-                }
+              {/* Clics et conversion, PAS les commissions. Celles-ci vivent
+                  desormais dans le panneau de versement, qui montre leurs trois
+                  etats — en attente, valide, verse. Les avoir aux deux endroits
+                  affichait le meme nombre deux fois sur un ecran, ce qui finit
+                  par faire douter qu'il s'agisse du meme.
+                  Chaque zone a une fonction : ici ce que vous avez VENDU, plus
+                  bas ce que vous GAGNEZ. */}
+              <KpiCard label={L("Clics sur votre lien", "Clicks on your link")}
+                value={insights?.clicks != null ? insights.clicks.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA") : "—"}
+                sub={L("depuis le début", "since the start")} />
+              <KpiCard label={L("Taux de conversion", "Conversion rate")}
+                value={insights?.conversion_rate != null
+                  ? `${(Number(insights.conversion_rate) * 100).toFixed(1)} %`
+                  : "—"}
+                sub={L("clics devenus commandes", "clicks that became orders")}
                 accent />
             </div>
 
