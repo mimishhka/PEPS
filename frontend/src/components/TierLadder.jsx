@@ -15,6 +15,7 @@
 // en dur ici divergerait des seuils réels au premier ajustement, et montrerait
 // une marche à franchir qui n'existe plus.
 import { useState } from "react";
+import TierMark from "./TierMark";
 
 export default function TierLadder({ data, L, lang, money, TIER_META }) {
   const tiers = data?.tiers || [];
@@ -88,8 +89,10 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
                  style={ici ? { borderColor: meta.color, boxShadow: `0 0 0 1px ${meta.color}` }
                             : undefined}>
               <div className="flex items-center justify-between gap-2">
-                <span className="font-data text-[10px] uppercase tracking-[0.14em] font-semibold"
+                <span className="inline-flex items-center gap-1.5 font-data text-[10px]
+                                 uppercase tracking-[0.14em] font-semibold"
                       style={{ color: meta.color }}>
+                  <TierMark tier={t.name} color={meta.color} size={18} />
                   {meta[lang] || t.name}
                 </span>
                 {ici && (

@@ -22,6 +22,7 @@ import GuidedTour from "../components/GuidedTour";
 import AffiliateSupport from "../components/AffiliateSupport";
 import TermsModal from "../components/TermsModal";
 import TierLadder from "../components/TierLadder";
+import TierMark from "../components/TierMark";
 
 // Couleurs métal de l'échelle des paliers. Deux corrections par rapport à la
 // version précédente :
@@ -576,9 +577,11 @@ export default function AffiliateDashboard() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="px-3 py-1.5 rounded-full font-data text-[11px] font-semibold uppercase tracking-wider"
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-data
+                             text-[11px] font-semibold uppercase tracking-wider"
                   data-testid="affiliate-tier-badge"
                   style={{ background: `${tierColor}1a`, color: tierColor }}>
+              <TierMark tier={data?.tier} color={tierColor} size={16} />
               {tierLabel} · {Math.round((data?.commission_rate || 0) * 100)}%
             </span>
             <span className={`px-3 py-1.5 rounded-full font-data text-[11px] font-semibold ${comp.cls}`}>
@@ -678,25 +681,15 @@ export default function AffiliateDashboard() {
                 affilie qui voit « 250 $ » et recoit 180 USDT croit a une
                 retenue. La conversion n'apparaissait qu'APRES un versement,
                 dans l'historique — donc jamais pour qui n'a pas encore ete paye. */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="affiliate-kpis">
+            {/* DEUX cartes, pas quatre. Ce bandeau ne porte que le chiffre
+                d'affaires : les commissions vivent dans le panneau de
+                versement, et l'activité — clics, conversion, commandes, panier
+                — dans la rangée d'indicateurs plus bas. Chacune de ces trois
+                zones répond à une question distincte, et aucune ne répète les
+                chiffres d'une autre. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-testid="affiliate-kpis">
               <KpiCard label={L("Revenu validé cumulé", "Cumulative validated revenue")} value={money(data?.cumulative_revenue)} sub="CAD" />
               <KpiCard label={L("12 derniers mois", "Last 12 months")} value={money(data?.rolling12_revenue)} sub={L("CAD · fixe votre palier", "CAD · sets your tier")} />
-              {/* Clics et conversion, PAS les commissions. Celles-ci vivent
-                  desormais dans le panneau de versement, qui montre leurs trois
-                  etats — en attente, valide, verse. Les avoir aux deux endroits
-                  affichait le meme nombre deux fois sur un ecran, ce qui finit
-                  par faire douter qu'il s'agisse du meme.
-                  Chaque zone a une fonction : ici ce que vous avez VENDU, plus
-                  bas ce que vous GAGNEZ. */}
-              <KpiCard label={L("Clics sur votre lien", "Clicks on your link")}
-                value={insights?.clicks != null ? insights.clicks.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA") : "—"}
-                sub={L("depuis le début", "since the start")} />
-              <KpiCard label={L("Taux de conversion", "Conversion rate")}
-                value={insights?.conversion_rate != null
-                  ? `${(Number(insights.conversion_rate) * 100).toFixed(1)} %`
-                  : "—"}
-                sub={L("clics devenus commandes", "clicks that became orders")}
-                accent />
             </div>
 
             {/* Prochain versement. Affiche meme a zero : c'est justement quand
