@@ -180,6 +180,89 @@ async def _affiliate_gen_code_v2(base_source: str, discount_percent: float,
     # Extrême rare : fallback legacy random
     return _affiliate_gen_code()
 
+# ---- Prix réel du jeton stable (CoinMarketCap) --------------------------------
+#
+# La conversion CAD → USD relève de la Banque du Canada : deux monnaies d'État,
+# source officielle, auditable. Ce qui suit règle un problème DIFFÉRENT.
+#
+# Le versement part en USDT ou USDC, et le code supposait 1 jeton = 1 USD. Cette
+# parité tient à moins de 0,1 % en temps normal, mais elle a cédé : USDC est
+# tombé à 0,87 en mars 2023, USDT à 0,95 en mai 2022. Sur une commission de
+# 250 $, l'affilié recevait alors 217 $ de valeur réelle sans jamais savoir
+# pourquoi. La dette étant libellée en dollars canadiens, c'est la QUANTITÉ de
+# jetons qui doit s'ajuster, pas la valeur livrée.
+#
+# BANDE DE SÉCURITÉ, non négociable. Un prix hors de [0,80 ; 1,05] fait ÉCHOUER
+# la conversion plutôt que de la calculer. Ce n'est pas de la prudence
+# décorative : le chemin d'analyse documenté par le fournisseur mène aussi à
+# `market_cap`, qui vaut ~140 milliards. Sans cette borne, une erreur de champ
+# multiplierait un versement par cent quarante milliards.
+# Endpoint PUBLIC de CoinMarketCap : aucune clé, aucune inscription. Sa
+# structure diffère de celle de l'API v1 documentée — `data` et `quote` y sont
+# des TABLEAUX, non des objets indexés par symbole.
+CMC_PRICE_URL = ("https://pro-api.coinmarketcap.com/public-api/v3"
+                 "/cryptocurrency/quotes/latest")
+
+# On interroge par IDENTIFIANT, jamais par symbole. `symbol=USDT` renvoie DEUX
+# jetons — le Tether authentique (825) à 0,9998 et un « Bridged USDT » à
+# 0,9925. Prendre la première entrée venue donnerait un prix faux un jour sur
+# deux, sans que rien ne le signale.
+CMC_IDS = {"usdt": 825, "usdc": 3408}
+
+STABLE_PRICE_MIN = 0.80
+STABLE_PRICE_MAX = 1.05
+_STABLE_CACHE: dict = {}          # symbole -> {"price", "fetched_at", "source"}
+_STABLE_CACHE_TTL_S = 15 * 60     # 15 min : un décrochage se joue en heures
+
+
+async def _fetch_stable_price(symbol: str) -> tuple:
+    """Retourne (prix_en_USD, source). (1.0, "assumed_peg") si indisponible.
+
+    Le repli à 1,0 reproduit exactement le comportement antérieur : si le
+    service ne répond pas, rien ne change. C'est l'ajout du prix qui est une
+    amélioration, pas son absence qui serait une panne.
+    """
+    import time
+    sym = (symbol or "usdt").strip().lower()
+    cmc_id = CMC_IDS.get(sym)
+    if not cmc_id:
+        return 1.0, "assumed_peg"
+
+    now_ts = time.time()
+    cached = _STABLE_CACHE.get(sym)
+    if cached and (now_ts - cached["fetched_at"]) < _STABLE_CACHE_TTL_S:
+        return cached["price"], cached["source"]
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            r = await client.get(
+                CMC_PRICE_URL,
+                params={"id": cmc_id, "convert": "USD"},
+                headers={"Accept": "application/json", "User-Agent": "Fironova/1.0"},
+            )
+            r.raise_for_status()
+            data = r.json().get("data") or []
+            if not data:
+                raise ValueError("réponse sans données")
+            # « price », et surtout PAS « market_cap » : les deux sont voisins
+            # dans le même objet `quote`, et le second vaut ~7,4e10.
+            prix = float(data[0]["quote"][0]["price"])
+    except Exception as exc:
+        logging.warning("[stable] prix %s indisponible error_type=%s — parité supposée",
+                        sym.upper(), type(exc).__name__)
+        return 1.0, "assumed_peg"
+
+    if not (STABLE_PRICE_MIN <= prix <= STABLE_PRICE_MAX):
+        # Hors bande : on ne devine pas. L'appelant décide d'interrompre.
+        logging.error("[stable] prix %s hors bande : %.6f — versement suspendu",
+                      sym.upper(), prix)
+        return prix, "out_of_band"
+
+    _STABLE_CACHE[sym] = {"price": prix, "fetched_at": now_ts, "source": "coinmarketcap"}
+    return prix, "coinmarketcap"
+
+
 # ---- Taux CAD → USD (Bank of Canada Valet API — gratuit, source officielle) ---
 _CAD_USD_CACHE: dict = {"rate": None, "fetched_at": 0.0, "source": ""}
 _CAD_USD_CACHE_TTL_S = 4 * 3600  # 4h
@@ -1392,9 +1475,29 @@ async def _generate_payouts_for_period(period: str, fx_rate: float,
             continue
         payout_currency = (aff.get("payout_currency") or "usdt").lower()
         amount_cad = total
+        token_price, price_source = 1.0, "n/a"
         if payout_currency in s.AFFILIATE_PAYOUT_CURRENCIES:
             amount_usd = round(amount_cad * fx_rate, 2)
-            amount_target = amount_usd
+            token_price, price_source = await _fetch_stable_price(payout_currency)
+
+            if price_source == "out_of_band":
+                # Le jeton a décroché, ou le prix reçu est aberrant. On ne verse
+                # pas : envoyer la quantité habituelle livrerait moins que la
+                # somme due, et l'ajuster sur un prix qu'on ne peut pas croire
+                # serait pire. Le solde reste au crédit de l'affilié.
+                logging.error(
+                    "[payouts] %s suspendu — prix %s hors bande (%.6f)",
+                    aff.get("code"), payout_currency.upper(), token_price,
+                )
+                await _defer_affiliate_payout_below_threshold(
+                    aff, period, total, len(grp["ids"]), s.AFFILIATE_PAYOUT_MIN_CAD,
+                )
+                continue
+
+            # La dette est libellée en DOLLARS CANADIENS. C'est donc la quantité
+            # de jetons qui s'ajuste, pas la valeur livrée : à 0,95, on envoie
+            # 5 % de jetons en plus pour que l'affilié reçoive bien son dû.
+            amount_target = round(amount_usd / token_price, 2)
         else:
             amount_usd = None
             amount_target = amount_cad
@@ -1409,6 +1512,11 @@ async def _generate_payouts_for_period(period: str, fx_rate: float,
                 "amount_cad": amount_cad,
                 "amount_usd": amount_usd,
                 "currency": payout_currency,
+                # Prix du jeton retenu et sa provenance, conservés pour l'audit :
+                # sans eux, impossible de réexpliquer six mois plus tard
+                # pourquoi ce versement portait 191 jetons et non 181.
+                "token_price_usd": token_price,
+                "token_price_source": price_source,
                 "fx_rate_cad_to_usd": fx_rate if payout_currency in s.AFFILIATE_PAYOUT_CURRENCIES else None,
                 "fx_source": fx_source if payout_currency in s.AFFILIATE_PAYOUT_CURRENCIES else None,
                 "fx_captured_at": fx_captured_at,
