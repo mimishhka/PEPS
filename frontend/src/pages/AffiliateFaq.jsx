@@ -11,11 +11,12 @@
 // exactement le genre de raccourci qui fait écrire à un affilié qu'il a été
 // floué. Chaque réponse répond aussi à la question suivante, celle que la
 // personne allait poser.
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { useLang } from "../contexts/LanguageContext";
 import useAffiliate from "../hooks/useAffiliate";
 import { DashboardSkeleton } from "../components/LoadingSkeletons";
+import { tourKey } from "../components/GuidedTour";
 
 const QA = [
   {
@@ -195,6 +196,7 @@ export default function AffiliateFaq() {
   useDocumentHead({ title: "Affiliate FAQ", path: "/affiliate/faq", noindex: true });
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
+  const navigate = useNavigate();
   const { affiliate, loading, error } = useAffiliate(lang);
 
   if (loading) return <DashboardSkeleton />;
@@ -258,10 +260,22 @@ export default function AffiliateFaq() {
           })}
         </div>
 
-        <div className="border-t border-ash pt-6">
+        <div className="border-t border-ash pt-6 flex flex-wrap items-center justify-between gap-4">
           <Link to="/affiliate" className="text-nova underline text-sm">
             {L("← Retour au tableau de bord", "← Back to dashboard")}
           </Link>
+          {/* Relance de la visite. La dernière bulle l'annonce ; sans ce
+              bouton, la promesse serait fausse. On efface le repère puis on
+              renvoie au tableau de bord, qui la redémarre de lui-même. */}
+          <button
+            onClick={() => {
+              try { localStorage.removeItem(tourKey(affiliate?.id)); } catch { /* sans effet */ }
+              navigate("/affiliate");
+            }}
+            data-testid="faq-restart-tour"
+            className="font-data text-[11px] font-bold uppercase tracking-wider text-glacier hover:text-nordfjord border border-ash hover:border-glacier rounded-full px-4 py-2 transition">
+            {L("Revoir la visite guidée", "Replay the guided tour")}
+          </button>
         </div>
       </div>
     </div>

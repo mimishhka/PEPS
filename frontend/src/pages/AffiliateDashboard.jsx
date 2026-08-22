@@ -18,6 +18,7 @@ import { useLang } from "../contexts/LanguageContext";
 import { DashboardSkeleton } from "../components/LoadingSkeletons";
 import useAffiliate from "../hooks/useAffiliate";
 import useDocumentHead from "../hooks/useDocumentHead";
+import GuidedTour, { tourDejaVue } from "../components/GuidedTour";
 
 const TIER_META = {
   standard: { fr: "Standard", en: "Standard", color: "#64748B" },
@@ -383,6 +384,43 @@ export default function AffiliateDashboard() {
   const onboarding = steps.some((x) => !x.done);
   const nextStep = steps.findIndex((x) => !x.done);
 
+  // Visite guidée. Lancée seulement après acceptation des conditions et une
+  // fois les données chargées : les bulles pointent des zones qui n'existent
+  // pas encore pendant le chargement.
+  const [tourOuvert, setTourOuvert] = useState(false);
+  useEffect(() => {
+    if (data && data.terms_ok !== false && !tourDejaVue(data.id)) {
+      // Court délai : laisse la mise en page se stabiliser avant de mesurer
+      // la première cible, sans quoi la bulle apparaît décalée.
+      const t = setTimeout(() => setTourOuvert(true), 600);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [data]);
+
+  const TOUR = [
+    { cible: "affiliate-share-widget",
+      titre: L("Votre lien et votre code", "Your link and code"),
+      texte: L("Partagez l'un ou l'autre. Le lien reconnaît vos visiteurs pendant un an ; le code, lui, n'expire jamais et fonctionne même à l'oral.",
+               "Share either one. The link recognises your visitors for a year; the code never expires and works even spoken aloud.") },
+    { cible: "affiliate-kpis",
+      titre: L("Validé ne veut pas dire versé", "Validated is not paid"),
+      texte: L("Une commande devient « validée » 14 jours après son paiement, le temps qu'elle ne puisse plus être remboursée. C'est ce montant qui fait progresser votre palier.",
+               "An order becomes “validated” 14 days after payment, once it can no longer be refunded. That amount is what moves your tier.") },
+    { cible: "payout-estimate",
+      titre: L("Le seuil de versement", "The payout threshold"),
+      texte: L("Les versements partent une fois par mois, à partir de 25 $. En dessous, rien n'est perdu : le solde s'ajoute au mois suivant.",
+               "Payouts go out monthly, from $25. Below that nothing is lost: the balance carries over.") },
+    { cible: "affiliate-tier-badge",
+      titre: L("Votre palier", "Your tier"),
+      texte: L("Il suit votre chiffre d'affaires validé sur douze mois glissants, et monte dès le seuil franchi. De 10 % à 20 % selon le palier.",
+               "It follows your validated revenue over twelve rolling months, and rises as soon as a threshold is crossed. From 10% to 20%.") },
+    { cible: "affiliate-faq-link",
+      titre: L("Vos questions", "Your questions"),
+      texte: L("Le détail des règles s'y trouve : calcul des commissions, attribution, adresses de portefeuille. Vous pouvez relancer cette visite depuis là.",
+               "The detailed rules live there: commission calculation, attribution, wallet addresses. You can restart this tour from there.") },
+  ];
+
   const payoutMin = Number(data?.payout_min_cad || 0);
   const dueNow = Number(data?.approved_commission || 0);
   const payoutPct = payoutMin > 0 ? Math.min(100, Math.round((dueNow / payoutMin) * 100)) : null;
@@ -405,6 +443,10 @@ export default function AffiliateDashboard() {
 
   return (
     <div className="bg-clinical min-h-screen">
+      {tourOuvert && (
+        <GuidedTour steps={TOUR} storageId={data?.id} L={L}
+                    onClose={() => setTourOuvert(false)} />
+      )}
       <div className="max-w-6xl mx-auto px-6 py-16" data-testid="affiliate-dashboard">
         {/* Header */}
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ash pb-6 mb-8">
@@ -434,13 +476,14 @@ export default function AffiliateDashboard() {
               {" · "}
               {/* Placé ici plutôt que dans un onglet : les questions viennent
                   quand on regarde ses chiffres, pas quand on cherche un menu. */}
-              <Link to="/affiliate/faq" className="text-nova underline">
+              <Link to="/affiliate/faq" data-testid="affiliate-faq-link" className="text-nova underline">
                 {L("Questions fréquentes", "FAQ")}
               </Link>
             </p>
           </div>
           <div className="flex items-center gap-3">
             <span className="px-3 py-1.5 rounded-full font-data text-[11px] font-semibold uppercase tracking-wider"
+                  data-testid="affiliate-tier-badge"
                   style={{ background: `${tierColor}1a`, color: tierColor }}>
               {tierLabel} · {Math.round((data?.commission_rate || 0) * 100)}%
             </span>
@@ -541,7 +584,7 @@ export default function AffiliateDashboard() {
                 affilie qui voit « 250 $ » et recoit 180 USDT croit a une
                 retenue. La conversion n'apparaissait qu'APRES un versement,
                 dans l'historique — donc jamais pour qui n'a pas encore ete paye. */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="affiliate-kpis">
               <KpiCard label={L("Revenu validé cumulé", "Cumulative validated revenue")} value={money(data?.cumulative_revenue)} sub="CAD" />
               <KpiCard label={L("12 derniers mois", "Last 12 months")} value={money(data?.rolling12_revenue)} sub={L("CAD · fixe votre palier", "CAD · sets your tier")} />
               <KpiCard label={L("Commissions en attente", "Pending commissions")} value={money(data?.pending_commission)} sub="CAD" />
