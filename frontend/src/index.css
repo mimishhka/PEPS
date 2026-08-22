@@ -53,23 +53,67 @@
 
 /* MODE NUIT. Seules les valeurs changent — aucun nom, aucun rôle.
  *
- * Les couleurs porteuses de sens (accent, succès, avertissement, erreur,
- * conformité) sont ÉCLAIRCIES plutôt qu'inversées : une couleur saturée perd
- * en lisibilité sur fond sombre, mais son sens, lui, ne s'inverse pas. */
+ * Ces valeurs ne sont PAS inventées : le système d'identité contient déjà son
+ * propre mode sombre. Le héros et la section des principes posent du Clinical
+ * White sur du Nordfjord, le pied de page sur de l'Ink, et le Nova Cyan y
+ * garde sa valeur exacte. La nuit reprend ce traitement, elle ne l'invente
+ * pas.
+ *
+ * Une version précédente éclaircissait l'accent d'un cran. C'était une teinte
+ * étrangère à la marque, et contraire à sa règle : « un seul accent décisif ».
+ * Elle n'avait aucune justification technique non plus — le Nova Cyan donne
+ * 8:1 sur l'Ink, largement au-delà du seuil d'accessibilité. (Aucune valeur
+ * hexadécimale n'est citée ici : un audit de palette la relèverait comme une
+ * couleur du projet.)
+ *
+ * Les couleurs FONCTIONNELLES, elles, restent éclaircies. Ce n'est pas de
+ * l'identité mais de la signalisation : #D64545 sur fond sombre tombe à 4,3:1
+ * et devient illisible en petit corps. Leur sens ne change pas, leur lisibilité
+ * l'exige. L'identité réserve d'ailleurs les tons chauds à l'avertissement —
+ * cette distinction est donc respectée, pas contournée. */
 .dark {
-  --fn-nordfjord:   232 240 246;   /* #E8F0F6 — l'encre devient claire */
-  --fn-glacier:     147 169 189;   /* #93A9BD */
-  --fn-nova:        53 198 220;    /* #35C6DC — accent éclairci */
-  --fn-clinical:    10 22 32;      /* #0A1620 — le fond devient sombre */
-  --fn-ash:         35 57 76;      /* #23394C */
-  --fn-ink:         5 11 16;       /* #050B10 */
-  --fn-success:     95 196 141;    /* #5FC48D */
+  --fn-nordfjord:   247 250 252;   /* #F7FAFC — Clinical White, texte sur sombre */
+  --fn-glacier:     159 182 204;   /* #9FB6CC — secondaire sur Nordfjord (identité) */
+  --fn-nova:        0 184 212;     /* #00B8D4 — INCHANGÉ, l'accent unique */
+  --fn-clinical:    10 15 20;      /* #0A0F14 — Ink, le fond d'ancrage */
+  --fn-ash:         30 60 88;      /* #1E3C58 — le rgba(255,255,255,.1) aplati */
+  --fn-ink:         10 15 20;      /* #0A0F14 — reste l'ancre la plus sombre */
+  --fn-success:     95 196 141;    /* #5FC48D — signalisation, lisibilité */
   --fn-warning:     240 184 96;    /* #F0B860 */
   --fn-error:       240 122 122;   /* #F07A7A */
   --fn-compliance:  143 175 201;   /* #8FAFC9 */
-  --fn-card:        17 33 46;      /* #11212E */
+  --fn-card:        11 46 79;      /* #0B2E4F — Nordfjord, la surface de la marque */
 
   color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------------
+ * BANDE RUO — mention réglementaire du pied de page.
+ *
+ * Footer.jsx et ComingSoon.jsx portent la classe `fn-ruo`, mais celle-ci
+ * n'était définie que dans src/styles/tokens.css — un système d'identité
+ * ALTERNATIF (« LE SIGNAL », chaud et rouge) que RIEN n'importe. La mention
+ * s'affichait donc sans encadré, sans police de données, sans couleur : un
+ * texte nu, alors que c'est l'avertissement réglementaire du site.
+ *
+ * Elle est donc redéfinie ici, avec la palette en vigueur.
+ *
+ * Surtout PAS en important tokens.css : ce fichier redéclare --fn-ink,
+ * --fn-success, --fn-warning, --fn-error et --fn-compliance en HEXADÉCIMAL,
+ * là où tout le thème les attend en canaux RVB. Chaque rgb(var(--fn-error))
+ * du site deviendrait invalide. Le corriger par un import casserait le
+ * chargement des couleurs partout.
+ *
+ * Compliance (#5B7A9E) est la couleur que l'identité assigne aux mentions
+ * RUO, 19+ et Loi 25 : calme et officielle, jamais alarmiste. ------------- */
+.fn-ruo {
+  font-family: var(--data);
+  font-size: 12px;
+  letter-spacing: .04em;
+  color: rgb(var(--fn-compliance));
+  border: 1.5px solid rgb(var(--fn-compliance));
+  border-radius: 8px;
+  padding: 12px 18px;
 }
 
 /* ---------------------------------------------------------------------------

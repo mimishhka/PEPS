@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Une seule favicon pour les deux themes.
+
+       Les navigateurs affichent l'onglet sur un fond clair ou sombre selon le
+       reglage du systeme. Un symbole peint en #0B2E4F disparait sur un onglet
+       sombre ; un symbole blanc disparait sur un onglet clair. Livrer deux
+       fichiers obligerait a choisir depuis le HTML, qui ne sait pas quel
+       theme s'applique.
+
+       La regle vit donc DANS le fichier : le SVG se repeint lui-meme. -->
+  <style>
+    .trace { stroke: #0B2E4F; }
+    .plein { fill: #0B2E4F; }
+    @media (prefers-color-scheme: dark) {
+      .trace { stroke: #FFFFFF; }
+      .plein { fill: #FFFFFF; }
+    }
+  </style>
+  <g class="trace" fill="none" stroke-width="5" stroke-linejoin="round">
+    <polygon points="50,6 88,28 88,72 50,94 12,72 12,28"></polygon>
+  </g>
+  <g class="plein">
+    <path d="M50 20 L55 45 L80 50 L55 55 L50 80 L45 55 L20 50 L45 45 Z"></path>
+    <circle cx="50" cy="14" r="3.5"></circle>
+    <circle cx="50" cy="86" r="3.5"></circle>
+    <circle cx="84" cy="30" r="3.5"></circle>
+    <circle cx="16" cy="30" r="3.5"></circle>
+    <circle cx="84" cy="70" r="3.5"></circle>
+    <circle cx="16" cy="70" r="3.5"></circle>
+  </g>
+</svg>
