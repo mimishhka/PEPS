@@ -609,6 +609,14 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
         # Entente negociee. Seul ce drapeau autorise le libelle engageant cote
         # affilie ; un manual_tier seul fige le taux sans rien promettre.
         "tier_agreement": bool(aff.get("tier_agreement")),
+        # Acceptation des conditions. On expose la comparaison faite, pas la
+        # version brute : l'interface n'a pas a rejouer la regle, et un ecart
+        # entre les deux implementations passerait inapercu. Un texte revise
+        # (AFFILIATE_TERMS_VERSION modifiee) repasse ce drapeau a false et
+        # redemande l'acceptation.
+        "terms_ok": aff.get("terms_version") == s.AFFILIATE_TERMS_VERSION,
+        "terms_version_required": s.AFFILIATE_TERMS_VERSION,
+        "terms_accepted_at": aff.get("terms_accepted_at", ""),
         "coupon_percent": (float(aff["coupon_percent"])
                            if aff.get("coupon_percent") is not None
                            else float(s.AFFILIATE_COUPON_PERCENT)),

@@ -1,6 +1,7 @@
 // frontend/src/pages/AffiliateDashboard.jsx — Tableau de bord affilié Fironova.
 // Bilingue FR/EN, identité NOVA. Derrière l'auth existante (ProtectedRoute).
 import { useEffect, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
   ComposedChart, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
@@ -393,6 +394,14 @@ export default function AffiliateDashboard() {
     ["compliance", L("Conformité", "Compliance")],
     ["settings", L("Paramètres", "Settings")],
   ];
+
+  // Conditions non acceptées pour la version courante : on rend UNIQUEMENT
+  // l'écran d'acceptation. Pas une surcouche par-dessus le tableau de bord —
+  // un affilié verrait ses chiffres derrière et pourrait fermer la fenêtre,
+  // et rien ne prouverait plus qu'il a lu quoi que ce soit.
+  if (data && data.terms_ok === false) {
+    return <AffiliateTermsGate L={L} lang={lang} onDone={refreshAffiliate} />;
+  }
 
   return (
     <div className="bg-clinical min-h-screen">
@@ -1225,6 +1234,91 @@ export default function AffiliateDashboard() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Acceptation des conditions du programme, bloquante au premier accès et à
+ *  chaque révision du texte. Les trois cases sont distinctes et toutes
+ *  requises : une case unique « j'accepte tout » ne prouverait pas que la
+ *  personne a lu l'engagement sur l'usage recherche, qui est celui qui vous
+ *  expose réellement. */
+function AffiliateTermsGate({ L, lang, onDone }) {
+  const [terms, setTerms] = useState(false);
+  const [age, setAge] = useState(false);
+  const [research, setResearch] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const complet = terms && age && research;
+
+  const accepter = async () => {
+    if (!complet) return;
+    setBusy(true);
+    try {
+      await api.post("/affiliate/terms/accept", {
+        accept_terms: true, confirm_age: true, accept_research_use: true,
+      });
+      await onDone();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+      setBusy(false);
+    }
+  };
+
+  const Case = ({ on, set, children, test }) => (
+    <label className="flex items-start gap-3 cursor-pointer group">
+      <input type="checkbox" checked={on} onChange={(e) => set(e.target.checked)}
+             data-testid={test} className="mt-1 w-4 h-4 accent-nova shrink-0" />
+      <span className="text-sm text-nordfjord leading-snug">{children}</span>
+    </label>
+  );
+
+  return (
+    <div className="bg-clinical min-h-screen flex items-center justify-center px-6 py-16"
+         data-testid="affiliate-terms-gate">
+      <div className="w-full max-w-lg bg-white rounded-2xl border border-ash p-8 space-y-5">
+        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+          {L("AVANT DE COMMENCER", "BEFORE YOU START")}
+        </p>
+        <h1 className="font-display text-2xl font-bold text-nordfjord leading-tight">
+          {L("Conditions du programme d'affiliation", "Affiliate program terms")}
+        </h1>
+        <p className="text-sm text-glacier leading-relaxed">
+          {L("Vous allez promouvoir des produits destinés exclusivement à la recherche en laboratoire. Vos communications ne doivent jamais suggérer un usage humain ou vétérinaire.",
+             "You are about to promote products intended exclusively for laboratory research. Your communications must never suggest human or veterinary use.")}
+        </p>
+
+        <div className="space-y-3.5 pt-1">
+          <Case on={terms} set={setTerms} test="terms-accept">
+            {L("J'ai lu et j'accepte les ", "I have read and accept the ")}
+            <Link to="/compliance" target="_blank" className="text-nova underline">
+              {L("conditions du programme et la politique de confidentialité",
+                 "program terms and privacy policy")}
+            </Link>.
+          </Case>
+          <Case on={age} set={setAge} test="terms-age">
+            {L("Je confirme avoir 19 ans ou plus.", "I confirm I am 19 or older.")}
+          </Case>
+          <Case on={research} set={setResearch} test="terms-research">
+            {L("Je m'engage à ne présenter aucun produit comme destiné à la consommation humaine ou animale.",
+               "I undertake never to present any product as intended for human or animal consumption.")}
+          </Case>
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <Link to="/" data-testid="terms-decline"
+                className="flex-1 text-center px-5 py-3 rounded-full border border-ash font-data text-xs font-bold uppercase tracking-wider text-glacier hover:border-glacier transition">
+            {L("Refuser", "Decline")}
+          </Link>
+          <button onClick={accepter} disabled={!complet || busy} data-testid="terms-submit"
+                  className="flex-[2] px-5 py-3 rounded-full bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider disabled:opacity-40 transition">
+            {busy ? L("Enregistrement…", "Saving…") : L("Accepter et continuer", "Accept and continue")}
+          </button>
+        </div>
+        <p className="font-data text-[11px] text-glacier">
+          {L("Refuser vous ramène à l'accueil. Votre invitation reste valide : vous pourrez accepter plus tard.",
+             "Declining returns you home. Your invitation stays valid — you can accept later.")}
+        </p>
       </div>
     </div>
   );

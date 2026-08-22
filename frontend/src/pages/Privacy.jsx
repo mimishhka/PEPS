@@ -86,6 +86,14 @@ const SECTIONS = [
         en: "This processing is carried out on the basis of our legitimate interest in protecting the integrity of the program, in accordance with PIPEDA and, for Québec residents, Law 25. These fingerprints are kept only for the limited period needed to detect fraud and are deleted afterward.",
         fr: "Ce traitement est effectué sur la base de notre intérêt légitime à protéger l'intégrité du programme, conformément à la LPRPDE et, pour les résidents du Québec, à la Loi 25. Ces empreintes ne sont conservées que pour la période limitée nécessaire à la détection de la fraude, puis supprimées.",
       },
+      // Exception explicite au paragraphe precedent. Sans elle, la politique
+      // promettait de ne JAMAIS conserver d'adresse IP lisible, alors que
+      // l'acceptation des conditions en enregistre une — une empreinte ne
+      // prouverait pas d'ou vient l'engagement, seulement qu'il a eu lieu.
+      {
+        en: "One exception applies to the above. When you accept the affiliate program terms, we record the date, the version of the text accepted and the IP address used, in readable form. This is not fraud prevention but proof of a contractual commitment: a fingerprint would establish that an acceptance occurred, not where it came from. This record is kept for as long as your participation in the program lasts, and for the retention period required afterward.",
+        fr: "Une exception s'applique à ce qui précède. Lorsque vous acceptez les conditions du programme d'affiliation, nous enregistrons la date, la version du texte acceptée et l'adresse IP utilisée, sous forme lisible. Il ne s'agit pas de prévention de la fraude mais de la preuve d'un engagement contractuel : une empreinte établirait qu'une acceptation a eu lieu, non d'où elle provenait. Cet enregistrement est conservé pendant toute la durée de votre participation au programme, puis pendant la période de conservation légale applicable.",
+      },
     ],
   },
   {

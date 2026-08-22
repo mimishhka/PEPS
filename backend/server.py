@@ -8727,6 +8727,13 @@ async def shutdown_event():
 # ===========================================================================
 
 AFFILIATE_INVITE_TTL_HOURS = 168          # 7 jours
+# Version des conditions du programme d'affiliation, au format ISO d'une date.
+# Datée plutôt que numérotée : on doit pouvoir dire QUEL texte a été accepté, et
+# une date se recoupe avec l'archive du document. Changer cette valeur redemande
+# l'acceptation à tout le monde — c'est le seul mécanisme de redemande, donc ne
+# la modifier que lorsque le texte change réellement.
+AFFILIATE_TERMS_VERSION = os.environ.get("AFFILIATE_TERMS_VERSION", "2026-08-01")
+
 AFFILIATE_COOKIE_DAYS = 30                # fenêtre d'attribution du clic
 AFFILIATE_CLICK_TTL_DAYS = 45             # rétention des clics (purge auto)
 AFFILIATE_COOKIE_NAME = "fn_ref"
@@ -8822,6 +8829,21 @@ class AffiliateJoinIn(BaseModel):
     token: str = Field(min_length=10)
     payout_address: Optional[str] = ""
     payout_currency: Optional[str] = None
+
+
+class AffiliateTermsAcceptIn(BaseModel):
+    """Acceptation des conditions du programme.
+
+    Les trois cases sont `Literal[True]` : une valeur absente ou fausse fait
+    échouer la validation. On ne veut surtout pas d'un booléen optionnel qui
+    enregistrerait une acceptation partielle sans que personne s'en aperçoive.
+    """
+    accept_terms: Literal[True]
+    confirm_age: Literal[True]
+    accept_research_use: Literal[True]
+    # La version acceptée est imposée par le SERVEUR, jamais reçue du client :
+    # sinon n'importe qui pourrait déclarer avoir accepté une version obsolète
+    # pour échapper à une redemande.
 
 
 class AffiliatePayoutSettingsIn(BaseModel):
@@ -9043,6 +9065,33 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request,
                         aff.get("code"), _e)
     metrics = await _affiliate_compute_metrics(aff["id"])
     return _affiliate_public(aff, metrics)
+
+
+async def affiliate_terms_accept(payload: AffiliateTermsAcceptIn, request: Request):
+    """Enregistre l'acceptation des conditions du programme.
+
+    L'adresse IP est conservée EN CLAIR, contrairement au reste du module
+    affiliation qui n'en garde qu'une empreinte salée. Les deux finalités sont
+    distinctes : le hachage sert à détecter l'auto-parrainage, où seule
+    l'égalité entre deux adresses importe ; ici il s'agit de prouver un
+    engagement contractuel, et une empreinte ne prouve rien — elle établit
+    qu'une acceptation a eu lieu, pas d'où elle venait. C'est le même choix que
+    pour le consentement à l'infolettre, qui garde déjà `consent_ip`.
+    """
+    aff = await get_current_affiliate(request)
+    now = datetime.now(timezone.utc).isoformat()
+    await db.affiliates.update_one(
+        {"id": aff["id"]},
+        {"$set": {
+            "terms_accepted_at": now,
+            "terms_version": AFFILIATE_TERMS_VERSION,
+            "age_confirmed": True,
+            "terms_accepted_ip": _client_ip(request),
+        }},
+    )
+    logging.info("[affiliate] conditions acceptées code=%s version=%s",
+                 aff.get("code"), AFFILIATE_TERMS_VERSION)
+    return {"ok": True, "terms_version": AFFILIATE_TERMS_VERSION}
 
 
 async def affiliate_me(request: Request, lang: str = "fr"):

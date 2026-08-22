@@ -17,6 +17,11 @@ async def affiliate_me(request: Request, lang: str = "fr"):
     return await s.affiliate_me(request, lang)
 
 
+@router.post("/affiliate/terms/accept")
+async def affiliate_terms_accept(payload: s.AffiliateTermsAcceptIn, request: Request):
+    return await s.affiliate_terms_accept(payload, request)
+
+
 @router.get("/affiliate/referrals")
 async def affiliate_referrals(request: Request, limit: int = 200):
     return await s.affiliate_referrals(request, limit)
