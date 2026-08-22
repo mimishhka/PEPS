@@ -17,7 +17,15 @@ export default function Login() {
 
   const nextParam = new URLSearchParams(location.search).get("next") || "";
   const isAdminLogin = nextParam.includes("ops-portal");
-  const [mode, setMode] = useState("password"); // magic | password — password est le défaut le plus attendu
+  // Le lien magique est proposé en premier : c'est le mode d'accès du site,
+  // et un client passwordless — comme tout affilié activé par invitation —
+  // n'a tout simplement PAS de mot de passe. Lui présenter ce champ d'abord
+  // l'envoie sur « mot de passe oublié » pour un mot de passe qui n'a jamais
+  // existé.
+  //
+  // L'administration fait exception et garde le mot de passe par défaut : un
+  // accès d'administration ne doit pas dépendre de la remise d'un courriel.
+  const [mode, setMode] = useState(isAdminLogin ? "password" : "magic");
   // Adresse pré-remplie quand on arrive depuis l'inscription : la personne
   // vient de la saisir, la lui faire retaper serait gratuit.
   const [email, setEmail] = useState(
