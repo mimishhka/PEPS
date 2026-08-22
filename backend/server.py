@@ -9230,7 +9230,56 @@ async def admin_affiliate_ticket_reply(ticket_id: str, payload: AffiliateTicketR
     )
     if not res:
         raise HTTPException(404, "Billet introuvable")
+
+    # Avertir l'affilié. Sans cela, il devrait revenir consulter son tableau
+    # de bord au hasard pour découvrir la réponse — ce qui annulerait le seul
+    # avantage des billets sur le courriel.
+    #
+    # Le courriel ne contient PAS la réponse elle-même, seulement le fait
+    # qu'elle existe : une conversation d'assistance peut évoquer une adresse
+    # de versement ou un montant, et une boîte de réception n'est pas
+    # l'endroit où faire circuler cela. Le fil reste dans l'espace authentifié.
+    try:
+        await _notify_ticket_reply(res)
+    except Exception as exc:  # pragma: no cover
+        # Un avis manqué ne doit jamais faire échouer une réponse déjà
+        # enregistrée : la réponse est le résultat, l'avis n'est qu'un rappel.
+        logging.warning("[ticket] avis non envoyé id=%s error_type=%s",
+                        ticket_id, type(exc).__name__)
     return res
+
+
+async def _notify_ticket_reply(ticket: dict) -> None:
+    email = (ticket.get("affiliate_email") or "").strip()
+    if not email:
+        return
+    lien = f"{_trusted_public_base_url()}/affiliate"
+    sujet = ticket.get("subject", "")
+    html = f"""\
+<div style="font-family:Inter,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;background:#F7FAFC;padding:40px 24px;">
+  <div style="background:#0B2E4F;border-radius:20px 20px 0 0;padding:28px 32px;">
+    <span style="font-family:'Space Grotesk',sans-serif;color:#F7FAFC;font-size:20px;font-weight:700;letter-spacing:-0.02em;">FIRONOVA</span>
+    <span style="color:#00B8D4;font-size:20px;font-weight:700;"> ·</span>
+  </div>
+  <div style="background:#ffffff;border-radius:0 0 20px 20px;padding:36px 32px;border:1px solid #E2E8F0;border-top:none;">
+    <h1 style="margin:0 0 12px;font-size:20px;color:#0B2E4F;">Nous avons répondu à votre demande</h1>
+    <p style="margin:0 0 8px;color:#3E5C76;font-size:14px;line-height:1.6;">
+      Votre demande « {html.escape(sujet)} » a reçu une réponse.
+    </p>
+    <p style="margin:0 0 24px;color:#3E5C76;font-size:14px;line-height:1.6;">
+      Elle vous attend dans l'onglet Aide de votre tableau de bord.
+    </p>
+    <a href="{lien}" style="display:inline-block;background:#00B8D4;color:#0B2E4F;text-decoration:none;padding:12px 24px;border-radius:999px;font-weight:700;font-size:14px;">
+      Voir la réponse
+    </a>
+    <p style="margin:24px 0 0;font-size:11px;color:#A0AEC0;">
+      Pour votre sécurité, le contenu de l'échange n'est pas reproduit dans ce courriel.
+    </p>
+  </div>
+</div>"""
+    from_addr = AFFILIATE_SENDER_EMAIL or MAGIC_SENDER_EMAIL or SENDER_EMAIL
+    await _send_email(email, f"Réponse à votre demande — {sujet[:60]}", html,
+                      from_email=from_addr)
 
 
 async def admin_affiliate_ticket_status(ticket_id: str, payload: AffiliateTicketStatusIn,
