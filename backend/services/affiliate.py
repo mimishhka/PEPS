@@ -1497,7 +1497,17 @@ async def _generate_payouts_for_period(period: str, fx_rate: float,
             # La dette est libellée en DOLLARS CANADIENS. C'est donc la quantité
             # de jetons qui s'ajuste, pas la valeur livrée : à 0,95, on envoie
             # 5 % de jetons en plus pour que l'affilié reçoive bien son dû.
-            amount_target = round(amount_usd / token_price, 2)
+            #
+            # Calcul en UN SEUL arrondi, depuis le montant en dollars canadiens
+            # et non depuis amount_usd déjà arrondi : deux arrondis successifs
+            # ajoutaient jusqu'à un cent, mesuré.
+            #
+            # SIX décimales, et non deux : c'est la précision native de l'USDT
+            # comme de l'USDC, sur Ethereum comme sur Tron. Arrondir au cent
+            # jetait une précision que la chaîne accepte, et laissait un écart
+            # d'un demi-cent que rien ne rattrapait ensuite. À six décimales
+            # l'écart tombe à zéro.
+            amount_target = round(amount_cad * fx_rate / token_price, 6)
         else:
             amount_usd = None
             amount_target = amount_cad
