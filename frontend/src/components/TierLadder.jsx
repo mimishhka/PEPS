@@ -23,6 +23,10 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
   if (!tiers.length) return null;
 
   const actuel = data?.tier;
+  // Chiffre d'affaires des douze mois glissants : c'est LUI qui détermine le
+  // palier, pas le montant simulé au curseur. Les deux nombres coexistent sur
+  // ce panneau, et les confondre est l'erreur qu'il doit éviter.
+  const rolling12 = Number(data?.rolling12_revenue || 0);
   const rabais = Number(data?.coupon_percent ?? 10) / 100;
   // Base commissionnable : le rabais du contact est déduit avant le calcul.
   // L'afficher autrement promettrait plus que ce que le versement contient.
@@ -39,6 +43,15 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
              `Base after your contact's ${Math.round(rabais * 100)}% discount`)}
         </p>
       </div>
+
+      {/* Dire ce que le tableau EST. Sans cette phrase, six montants alignés se
+          lisent comme six promesses simultanées, alors qu'un seul s'applique —
+          celui du palier courant. Les autres montrent ce que la même vente
+          rapporterait plus tard. */}
+      <p className="text-[12px] text-glacier leading-relaxed mb-4">
+        {L("Une seule de ces commissions vous est versée : celle de votre palier. Les autres montrent ce que la même vente rapporterait aux paliers suivants. Les seuils portent sur vos ventes cumulées des douze derniers mois, pas sur le montant d'une commande.",
+           "Only one of these commissions is paid to you: the one for your tier. The others show what the same sale would earn at higher tiers. Thresholds apply to your cumulative sales over the last twelve months, not to a single order's amount.")}
+      </p>
 
       <div className="flex items-center gap-3 flex-wrap mb-5">
         <label htmlFor="sim-montant"
@@ -66,6 +79,7 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
         {tiers.map((t) => {
           const meta = TIER_META[t.name] || {};
           const ici = t.name === actuel;
+          const atteint = rolling12 >= t.floor;
           return (
             <div key={t.name}
                  data-testid={`ladder-${t.name}`}
@@ -89,12 +103,25 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
               <p className="font-display text-xl font-bold text-nordfjord tabular-nums mt-1">
                 {money(Math.round(base * t.rate * 100) / 100)}
               </p>
+              {/* Le seuil porte sur le chiffre d'affaires CUMULÉ sur douze
+                  mois, pas sur la commande simulée juste au-dessus. Écrit
+                  « dès 2 001 $ » à côté d'un calcul par commande, il se lisait
+                  comme une condition sur la commande elle-même.
+                  Pour les paliers non atteints, on montre la distance réelle :
+                  la question « et si je vendais plus ? » trouve sa réponse au
+                  lieu de rester une comparaison abstraite. */}
               <p className="font-data text-[10px] text-glacier mt-0.5">
                 {Math.round(t.rate * 1000) / 10} %
-                {t.floor > 0 && (
-                  <> · {L("dès", "from")} {money(t.floor)}</>
-                )}
               </p>
+              {t.floor > 0 && (
+                <p className="font-data text-[10px] mt-0.5"
+                   style={{ color: atteint ? undefined : meta.color }}>
+                  {atteint
+                    ? L("palier atteint", "tier reached")
+                    : L(`encore ${money(t.floor - rolling12)} de ventes`,
+                        `${money(t.floor - rolling12)} of sales to go`)}
+                </p>
+              )}
             </div>
           );
         })}
