@@ -779,11 +779,11 @@ export default function AffiliateDashboard() {
                 changerait rien — manual_tier l'emporte sur le palier calcule. */}
             <div className="bg-white rounded-2xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
-                {data?.tier_is_manual
-                  ? L("VOTRE PALIER", "YOUR TIER")
+                {data?.tier_agreement
+                  ? L("VOTRE TAUX CONVENU", "YOUR AGREED RATE")
                   : L("PROGRESSION DE PALIER", "TIER PROGRESSION")}
               </p>
-              {data?.tier_is_manual ? (
+              {data?.tier_agreement ? (
                 <>
                   <div className="flex items-baseline gap-2 flex-wrap">
                     <span className="font-display text-2xl font-bold text-nordfjord">{tierLabel}</span>
@@ -791,21 +791,9 @@ export default function AffiliateDashboard() {
                       {Math.round((data?.commission_rate || 0) * 100)} %
                     </span>
                   </div>
-                  {/* L'engagement ne s'ecrit QUE s'il existe. Un palier fige a
-                      la main est un geste administratif, parfois accidentel :
-                      il fixe le taux sans rien promettre. Seul tier_agreement,
-                      coche explicitement par l'administration, autorise
-                      le libelle « accorde par entente ». Celui-ci ne promet
-                      d'ailleurs PAS que le taux ne redescendra jamais —
-                      l'administration peut retirer l'entente a tout moment. Il
-                      promet l'absence de baisse AUTOMATIQUE et un avis en cas
-                      de changement, deux choses que le systeme tient. */}
                   <p className="text-sm text-glacier mt-2">
-                    {data?.tier_agreement
-                      ? L("Ce taux vous est accordé par entente. Il ne varie pas avec votre volume de ventes et ne baisse jamais automatiquement. Toute modification ferait l'objet d'un avis de notre part.",
-                          "This rate is set by agreement. It does not vary with your sales volume and never decreases automatically. Any change would be communicated to you.")
-                      : L("Ce taux est fixé par l'administration et ne suit pas votre volume de ventes. Écrivez-nous si vous avez une question à son sujet.",
-                          "This rate is set by the administration and does not follow your sales volume. Contact us if you have any question about it.")}
+                    {L("Ce taux fait l'objet d'une entente entre vous et FIRONOVA. Il ne varie pas avec votre volume de ventes et ne baisse jamais automatiquement. Toute modification ferait l'objet d'un avis préalable.",
+                       "This rate is the subject of an agreement between you and FIRONOVA. It does not vary with your sales volume and never decreases automatically. Any change would be preceded by notice.")}
                   </p>
                 </>
               ) : data?.next_tier ? (
@@ -841,7 +829,7 @@ export default function AffiliateDashboard() {
                     </p>
                     <p className="font-display text-2xl font-bold text-nordfjord tabular-nums">
                       {money(data.rolling12_revenue)}
-                      {data.next_tier && !data.tier_is_manual && (
+                      {data.next_tier && !data.tier_agreement && (
                         <span className="text-sm font-medium text-glacier">
                           {" / "}{money(data.next_tier.floor)}
                         </span>
@@ -849,14 +837,14 @@ export default function AffiliateDashboard() {
                     </p>
                   </div>
                 </div>
-                {data.next_tier && !data.tier_is_manual && (
+                {data.next_tier && !data.tier_agreement && (
                   <div className="h-3 rounded-full bg-ash overflow-hidden">
                     <div className="h-full rounded-full transition-all"
                          style={{ width: `${Math.min(100, Math.round((data.progress_to_next || 0) * 100))}%`,
                                   background: "#00B8D4" }} />
                   </div>
                 )}
-                {!data.tier_is_manual && (
+                {!data.tier_agreement && (
                   <p className="font-data text-[11px] text-glacier mt-2">
                     {data.next_tier ? (
                       <>{L("Encore ", "Still ")}{money(data.remaining_to_next)}
@@ -870,12 +858,9 @@ export default function AffiliateDashboard() {
                   </p>
                 )}
                 <p className="font-data text-[11px] text-glacier mt-1">
-                  {data.tier_is_manual
-                    ? (data.tier_agreement
-                        ? L("Chiffre indicatif : votre palier étant fixé par entente, ce total ne modifie pas votre taux.",
-                            "For information only: your tier is set by agreement, so this total does not change your rate.")
-                        : L("Chiffre indicatif : votre palier étant fixé manuellement, ce total ne modifie pas votre taux.",
-                            "For information only: your tier is set manually, so this total does not change your rate."))
+                  {data.tier_agreement
+                    ? L("Chiffre indicatif : votre taux étant convenu par entente, ce total ne le modifie pas.",
+                        "For information only: your rate being set by agreement, this total does not change it.")
                     : L("Votre taux suit ce total : il monte quand vos ventes montent, et redescend progressivement si elles ralentissent.",
                         "Your rate follows this total: it rises as your sales rise, and eases down gradually if they slow.")}
                 </p>
