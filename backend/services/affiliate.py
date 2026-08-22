@@ -737,6 +737,14 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
         "aliases": aff.get("aliases", []),
         "activated_at": aff.get("activated_at"),
         "created_at": aff.get("created_at"),
+        # Bareme complet des paliers. Expose plutot que recopie cote interface :
+        # une echelle ecrite en dur dans le navigateur divergerait de
+        # AFFILIATE_TIERS des qu'un seuil bougerait, et l'affilie verrait une
+        # marche a franchir qui n'existe plus.
+        "tiers": [
+            {"name": n, "rate": r, "floor": f, "ceil": c}
+            for (n, r, f, c) in s.AFFILIATE_TIERS
+        ],
         # Delai de validation d'une commission. Expose pour la meme raison que
         # le seuil : ecrit en dur cote interface, il divergerait de la valeur
         # appliquee des qu'on la changerait, et l'ecran affirmerait un delai que

@@ -21,14 +21,26 @@ import useDocumentHead from "../hooks/useDocumentHead";
 import GuidedTour from "../components/GuidedTour";
 import AffiliateSupport from "../components/AffiliateSupport";
 import TermsModal from "../components/TermsModal";
+import TierLadder from "../components/TierLadder";
 
+// Couleurs métal de l'échelle des paliers. Deux corrections par rapport à la
+// version précédente :
+//
+//   — Standard et Argent portaient LE MÊME gris (#64748B). Deux paliers
+//     distincts, une seule couleur : l'échelle ne se lisait pas.
+//   — Diamant portait #00B8D4, l'accent de la marque. Le système d'identité
+//     réserve cette couleur aux appels à l'action ; l'utiliser pour un palier
+//     la banalisait partout ailleurs.
+//
+// La progression va du turquoise au violet, en passant par les métaux — on
+// suit l'échelle du regard sans lire les noms.
 const TIER_META = {
-  standard: { fr: "Standard", en: "Standard", color: "#64748B" },
-  bronze: { fr: "Bronze", en: "Bronze", color: "#B45309" },
-  silver: { fr: "Argent", en: "Silver", color: "#64748B" },
-  gold: { fr: "Or", en: "Gold", color: "#CA8A04" },
-  platinum: { fr: "Platine", en: "Platinum", color: "#0891B2" },
-  diamond: { fr: "Diamant", en: "Diamond", color: "#00B8D4" },
+  standard: { fr: "Standard", en: "Standard", color: "#2DBFB0" },
+  bronze: { fr: "Bronze", en: "Bronze", color: "#C97B3F" },
+  silver: { fr: "Argent", en: "Silver", color: "#8FA3B0" },
+  gold: { fr: "Or", en: "Gold", color: "#DFA436" },
+  platinum: { fr: "Platine", en: "Platinum", color: "#7FB0D4" },
+  diamond: { fr: "Diamant", en: "Diamond", color: "#9B8BE0" },
 };
 
 const COMPLIANCE_META = {
@@ -870,6 +882,14 @@ export default function AffiliateDashboard() {
                         "Your rate follows this total: it rises as your sales rise, and eases down gradually if they slow.")}
                 </p>
               </div>
+            )}
+
+            {/* Échelle des paliers et simulateur. Masquée sous entente : le
+                barème ne s'applique pas à ces comptes, leur montrer une échelle
+                qu'ils ne gravissent pas serait une fausse promesse — et cela
+                révélerait au passage qu'un autre régime existe. */}
+            {!data?.tier_agreement && (
+              <TierLadder data={data} L={L} lang={lang} money={money} TIER_META={TIER_META} />
             )}
 
             {/* Activité récente */}
