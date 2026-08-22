@@ -152,7 +152,7 @@ export default function AdminDashboard() {
                 : L("rien à rouvrir", "nothing to reopen")} />
             <ActionCard tone={pulse.ops.tickets_open ? "warn" : "calm"}
               label={L("Billets affiliés", "Affiliate tickets")} value={pulse.ops.tickets_open ?? 0}
-              testid="pulse-tickets" to="affiliates"
+              testid="pulse-tickets" to="tickets"
               hint={pulse.ops.tickets_open
                 ? L("attendent une réponse", "awaiting a reply")
                 : L("aucun en attente", "none pending")} />

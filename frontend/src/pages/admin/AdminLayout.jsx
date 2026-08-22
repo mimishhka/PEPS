@@ -5,7 +5,7 @@ import {
   LogOut, Download, Search, X, Plus, Edit, Trash2, FileText, CheckCircle2, AlertCircle, Clock, UserCog,
   History, FolderTree, ListTree, Mail, Handshake, Globe,
   CalendarCheck, Send, Boxes, LayoutGrid, DollarSign, Inbox,
-  Link2,
+  Link2, MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../lib/api";
@@ -32,6 +32,7 @@ import AdminMenus from "./sections/AdminMenus";
 import AdminSubscribers from "./sections/AdminSubscribers";
 import AdminAffiliates from "./sections/AdminAffiliates";
 import AdminPayouts from "./sections/AdminPayouts";
+import AdminTickets from "./sections/AdminTickets";
 import AdminReconciliation from "./sections/AdminReconciliation";
 import AdminCheckoutFailures from "./sections/AdminCheckoutFailures";
 import AdminRefunds from "./sections/AdminRefunds";
@@ -117,6 +118,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
         items: [
           { to: `${basePath}/affiliates`, label: L("Affiliés", "Affiliates"), icon: Handshake, area: "affiliates" },
           { to: `${basePath}/payouts`, label: L("Paiements", "Payouts"), icon: DollarSign, area: "affiliates" },
+    { to: `${basePath}/tickets`, label: L("Billets", "Tickets"), icon: MessageSquare, area: "affiliates" },
           { to: `${basePath}/subscribers`, label: L("Abonnés", "Subscribers"), icon: Mail, area: "subscribers" },
         ],
       },
@@ -250,6 +252,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
             <Route path="menus" element={hasAccess(user, "menus") ? <AdminMenus /> : <Navigate to={landingPath} replace />} />
             <Route path="affiliates" element={hasAccess(user, "affiliates") ? <AdminAffiliates /> : <Navigate to={landingPath} replace />} />
             <Route path="payouts" element={hasAccess(user, "affiliates") ? <AdminPayouts /> : <Navigate to={landingPath} replace />} />
+            <Route path="tickets" element={hasAccess(user, "affiliates") ? <AdminTickets /> : <Navigate to={landingPath} replace />} />
             <Route path="staff" element={hasAccess(user, "staff") ? <AdminStaff /> : <Navigate to={landingPath} replace />} />
             <Route path="trash" element={hasAccess(user, "trash") ? <AdminTrash /> : <Navigate to={landingPath} replace />} />
             <Route path="audit-log" element={hasAccess(user, "audit") ? <AdminAuditLog /> : <Navigate to={landingPath} replace />} />
