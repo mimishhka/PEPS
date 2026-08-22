@@ -1289,11 +1289,17 @@ function AffiliateTermsGate({ L, lang, onDone }) {
         </p>
 
         <div className="space-y-3.5 pt-1">
+          {/* Les deux liens s'ouvrent dans un onglet séparé : on ne fait pas
+              perdre à quelqu'un les cases déjà cochées pour l'avoir envoyé
+              lire ce qu'on lui demande justement de lire. */}
           <Case on={terms} set={setTerms} test="terms-accept">
             {L("J'ai lu et j'accepte les ", "I have read and accept the ")}
-            <Link to="/compliance" target="_blank" className="text-nova underline">
-              {L("conditions du programme et la politique de confidentialité",
-                 "program terms and privacy policy")}
+            <Link to="/affiliate/terms" target="_blank" rel="noreferrer" className="text-nova underline">
+              {L("conditions du programme d'affiliation", "affiliate program terms")}
+            </Link>
+            {L(" ainsi que la ", " and the ")}
+            <Link to="/privacy" target="_blank" rel="noreferrer" className="text-nova underline">
+              {L("politique de confidentialité", "privacy policy")}
             </Link>.
           </Case>
           <Case on={age} set={setAge} test="terms-age">

@@ -42,6 +42,7 @@ const Privacy = lazy(() => import("./pages/Privacy"));
 const Faq = lazy(() => import("./pages/Faq"));
 const AffiliateDashboard = lazy(() => import("./pages/AffiliateDashboard"));
 const AffiliateJoin = lazy(() => import("./pages/AffiliateJoin"));
+const AffiliateTerms = lazy(() => import("./pages/AffiliateTerms"));
 const StaffAccept = lazy(() => import("./pages/StaffAccept"));
 
 // Chargé à la demande (chunk séparé) — le code du panneau admin n'est PLUS
@@ -156,6 +157,10 @@ function AppRoutes() {
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/faq" element={<Faq />} />
       <Route path="/affiliate/join" element={<AffiliateJoin />} />
+      {/* PUBLIQUE, et volontairement : on doit pouvoir lire ce qu'on
+          s'apprête à accepter avant d'y être invité, et le texte doit rester
+          consultable pour établir ce qui a été accepté. */}
+      <Route path="/affiliate/terms" element={<AffiliateTerms />} />
       <Route path="/affiliate" element={<ProtectedRoute><AffiliateDashboard /></ProtectedRoute>} />
       <Route path="/staff-accept" element={<StaffAccept />} />
       <Route
