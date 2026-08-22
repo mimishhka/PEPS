@@ -5,17 +5,25 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        /* ---- FIRONOVA official identity ---- */
-        nordfjord: "#0B2E4F",   // primary structure / ink
-        glacier: "#3E5C76",     // secondary text
-        nova: "#00B8D4",        // accent / spark — used with restraint
-        clinical: "#F7FAFC",    // page ground
-        ash: "#CBD5E0",         // borders / hairlines
-        ink: "#0A0F14",         // deep footer ground
-        success: "#2E9E6B",
-        warning: "#E8A33D",
-        error: "#D64545",
-        compliance: "#5B7A9E",  // RUO / regulatory channel
+        /* ---- FIRONOVA official identity ----
+         * Les valeurs vivent dans src/index.css, en canaux RVB, et changent
+         * selon le theme. La syntaxe <alpha-value> preserve les modificateurs
+         * d'opacite : bg-nova/15, border-ash/60, text-white/70 continuent de
+         * fonctionner exactement comme avant.
+         *
+         * Ecrire un hexadecimal ici figerait la couleur et le mode nuit
+         * n'aurait aucun effet sur la classe concernee. */
+        nordfjord: "rgb(var(--fn-nordfjord) / <alpha-value>)",   // structure / ink
+        glacier: "rgb(var(--fn-glacier) / <alpha-value>)",       // secondary text
+        nova: "rgb(var(--fn-nova) / <alpha-value>)",             // accent, used with restraint
+        clinical: "rgb(var(--fn-clinical) / <alpha-value>)",     // page ground
+        ash: "rgb(var(--fn-ash) / <alpha-value>)",               // borders / hairlines
+        ink: "rgb(var(--fn-ink) / <alpha-value>)",               // deep footer ground
+        card: "rgb(var(--fn-card) / <alpha-value>)",             // card surface
+        success: "rgb(var(--fn-success) / <alpha-value>)",
+        warning: "rgb(var(--fn-warning) / <alpha-value>)",
+        error: "rgb(var(--fn-error) / <alpha-value>)",
+        compliance: "rgb(var(--fn-compliance) / <alpha-value>)", // RUO / regulatory
       },
       fontFamily: {
         display: ["'Space Grotesk'", "sans-serif"],

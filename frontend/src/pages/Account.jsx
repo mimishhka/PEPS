@@ -8,6 +8,7 @@ import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import useAffiliate from "../hooks/useAffiliate";
 import { useConfirm } from "../components/ConfirmDialog";
+import ThemeToggle from "../components/ThemeToggle";
 
 // Statuts de paiement : couleur + libellé lisible bilingue.
 const PAYMENT_STATUS = {
@@ -69,9 +70,12 @@ export default function Account() {
               <p className="font-data text-xs text-glacier mt-0.5 truncate">{user?.email}</p>
             </div>
           </div>
-          <button onClick={logout} data-testid="account-logout" className="font-data text-xs uppercase tracking-[0.2em] text-glacier hover:text-error transition-colors shrink-0">
-            {t("nav.logout")} →
-          </button>
+          <div className="flex items-center gap-3 shrink-0">
+            <ThemeToggle />
+            <button onClick={logout} data-testid="account-logout" className="font-data text-xs uppercase tracking-[0.2em] text-glacier hover:text-error transition-colors">
+              {t("nav.logout")} →
+            </button>
+          </div>
         </div>
 
         {isActiveAffiliate && (

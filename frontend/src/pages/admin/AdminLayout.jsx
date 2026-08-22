@@ -33,6 +33,7 @@ import AdminSubscribers from "./sections/AdminSubscribers";
 import AdminAffiliates from "./sections/AdminAffiliates";
 import AdminPayouts from "./sections/AdminPayouts";
 import AdminTickets from "./sections/AdminTickets";
+import ThemeToggle from "../../components/ThemeToggle";
 import AdminReconciliation from "./sections/AdminReconciliation";
 import AdminCheckoutFailures from "./sections/AdminCheckoutFailures";
 import AdminRefunds from "./sections/AdminRefunds";
@@ -197,8 +198,11 @@ export default function AdminLayout({ basePath = "/admin" }) {
             ))}
           </nav>
           <div className="border-t border-ink/10 p-4 space-y-2">
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">
-              {user?.email}
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 truncate">
+                {user?.email}
+              </div>
+              <ThemeToggle />
             </div>
             <button
               onClick={() => { logout(); navigate("/"); }}

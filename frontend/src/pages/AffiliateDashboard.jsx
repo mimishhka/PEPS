@@ -23,6 +23,7 @@ import AffiliateSupport from "../components/AffiliateSupport";
 import TermsModal from "../components/TermsModal";
 import TierLadder from "../components/TierLadder";
 import TierMark from "../components/TierMark";
+import ThemeToggle from "../components/ThemeToggle";
 
 // Couleurs métal de l'échelle des paliers. Deux corrections par rapport à la
 // version précédente :
@@ -587,6 +588,7 @@ export default function AffiliateDashboard() {
             <span className={`px-3 py-1.5 rounded-full font-data text-[11px] font-semibold ${comp.cls}`}>
               {comp.dot} {comp[lang]}
             </span>
+            <ThemeToggle />
           </div>
         </div>
 
@@ -827,7 +829,8 @@ export default function AffiliateDashboard() {
               </p>
               {data?.tier_agreement ? (
                 <>
-                  <div className="flex items-baseline gap-2 flex-wrap">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <TierMark tier={data?.tier} color={tierColor} size={28} />
                     <span className="font-display text-2xl font-bold text-nordfjord">{tierLabel}</span>
                     <span className="font-data text-sm font-semibold" style={{ color: tierColor }}>
                       {Math.round((data?.commission_rate || 0) * 100)} %
@@ -840,8 +843,11 @@ export default function AffiliateDashboard() {
                 </>
               ) : data?.next_tier ? (
                 <>
-                  <div className="flex items-baseline justify-between mb-2">
-                    <span className="font-display text-2xl font-bold text-nordfjord">{tierLabel}</span>
+                  <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                    <span className="inline-flex items-center gap-2.5">
+                      <TierMark tier={data?.tier} color={tierColor} size={28} />
+                      <span className="font-display text-2xl font-bold text-nordfjord">{tierLabel}</span>
+                    </span>
                     <span className="font-data text-xs text-glacier">
                       {L("Encore", "Still")} {money(data.remaining_to_next)} {L("pour", "to reach")} {TIER_META[data.next_tier.tier]?.[lang] || data.next_tier.tier} ({Math.round(data.next_tier.rate * 100)}%)
                     </span>
