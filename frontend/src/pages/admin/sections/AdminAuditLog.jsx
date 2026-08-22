@@ -5,9 +5,12 @@
 import { useEffect, useState } from "react";
 import { ShieldCheck, User } from "lucide-react";
 import api from "../../../lib/api";
+import { useLang } from "../../../contexts/LanguageContext";
 import { Th } from "../ui";
 
 export default function AdminAuditLog() {
+  const { lang } = useLang();
+  const L = (fr, en) => (lang === "fr" ? fr : en);
   const [entries, setEntries] = useState(null);
 
   useEffect(() => {
@@ -18,28 +21,33 @@ export default function AdminAuditLog() {
     <div className="p-8" data-testid="admin-audit-log">
       <div className="mb-6">
         <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// AUDIT</div>
-        <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">Activity log</h1>
+        <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">
+          {L("Journal d'activité", "Activity log")}
+        </h1>
         <p className="font-mono text-xs text-foreground/60 mt-1">
-          Every change made in the admin panel, by whom, and when.
+          {L("Chaque modification faite dans l'administration, par qui et quand.",
+             "Every change made in the admin panel, by whom, and when.")}
         </p>
       </div>
 
       {entries === null ? (
-        <p className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/50">Loading…</p>
+        <p className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/50">
+          {L("Chargement…", "Loading…")}
+        </p>
       ) : entries.length === 0 ? (
         <div className="bg-white border border-ink/10 p-8 text-center text-foreground/50 font-mono text-xs uppercase tracking-[0.15em]">
-          No activity recorded yet
+          {L("Aucune activité enregistrée", "No activity recorded yet")}
         </div>
       ) : (
         <div className="bg-white border border-ink/10 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr>
-                <Th>When</Th>
-                <Th>Who</Th>
-                <Th>Area</Th>
-                <Th>Action</Th>
-                <Th>Detail</Th>
+                <Th>{L("Quand", "When")}</Th>
+                <Th>{L("Qui", "Who")}</Th>
+                <Th>{L("Zone", "Area")}</Th>
+                <Th>{L("Action", "Action")}</Th>
+                <Th>{L("Détail", "Detail")}</Th>
               </tr>
             </thead>
             <tbody>

@@ -3,11 +3,21 @@ import { Download, Plus, Edit, Trash2, Star, X, Save, AlertTriangle, CheckCircle
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError, resolveAssetUrl } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import { useLang } from "../../../contexts/LanguageContext";
 import { Th } from "../ui";
 
 const CATEGORIES = ["healing", "gh-secretagogues", "weight-loss", "cognitive", "longevity"];
 
+/** Traduction courte, partagée par les six composants de ce fichier. Les
+ *  chaînes visibles y étaient restées en anglais faute de useLang ; les
+ *  éclater en six appels séparés aurait multiplié la même ligne. */
+function useL() {
+  const { lang } = useLang();
+  return (fr, en) => (lang === "fr" ? fr : en);
+}
+
 export default function AdminProducts() {
+  const L = useL();
   const confirm = useConfirm();
   const [products, setProducts] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -53,7 +63,7 @@ export default function AdminProducts() {
       <div className="flex items-end justify-between mb-6">
         <div>
           <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// CATALOG</div>
-          <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">Products</h1>
+          <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">{L("Produits", "Products")}</h1>
           <p className="font-mono text-xs text-foreground/60 mt-1">{products.length} compounds</p>
         </div>
         <div className="flex items-center gap-3">
@@ -76,11 +86,11 @@ export default function AdminProducts() {
         <table className="w-full text-sm">
           <thead>
             <tr>
-              <Th>Product</Th>
-              <Th>Category</Th>
-              <Th>Variants</Th>
-              <Th>Status</Th>
-              <Th align="right">Actions</Th>
+              <Th>{L("Produit", "Product")}</Th>
+              <Th>{L("Catégorie", "Category")}</Th>
+              <Th>{L("Variantes", "Variants")}</Th>
+              <Th>{L("État", "Status")}</Th>
+              <Th align="right">{L("Actions", "Actions")}</Th>
             </tr>
           </thead>
           <tbody>
@@ -114,10 +124,10 @@ export default function AdminProducts() {
                   </td>
                   <td className="px-6 py-3">
                     {!p.active
-                      ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-gray-400 text-white px-2 py-0.5">Hidden</span>
+                      ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-gray-400 text-white px-2 py-0.5">{L("Masqué", "Hidden")}</span>
                       : totalStock === 0
-                      ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-red-600 text-white px-2 py-0.5">Out</span>
-                      : <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-emerald-600 text-white px-2 py-0.5">Active</span>}
+                      ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-red-600 text-white px-2 py-0.5">{L("Rupture", "Out")}</span>
+                      : <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-emerald-600 text-white px-2 py-0.5">{L("Actif", "Active")}</span>}
                     {p.featured && <Star size={12} className="inline ml-2 fill-yellow-500 text-yellow-500" />}
                   </td>
                   <td className="px-6 py-3 text-right">
@@ -152,6 +162,7 @@ function newVariant(name = "") {
 }
 
 function ProductEditor({ product, setProduct, onSave, onCancel }) {
+  const L = useL();
   const setVariant = (i, patch) => {
     const next = [...product.variants];
     next[i] = { ...next[i], ...patch };
@@ -225,7 +236,7 @@ function ProductEditor({ product, setProduct, onSave, onCancel }) {
             <button onClick={onSave} data-testid="save-product-btn" className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-5 py-3 flex items-center gap-2 hover:bg-foreground/80">
               <Save size={14} /> Save Product
             </button>
-            <button onClick={onCancel} className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-5 py-3 hover:bg-secondary">Cancel</button>
+            <button onClick={onCancel} className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-5 py-3 hover:bg-secondary">{L("Annuler", "Cancel")}</button>
           </div>
         </div>
       </div>
@@ -372,6 +383,7 @@ function CoaUploader({ value, onChange, test }) {
 }
 
 function ImageUploader({ value, onChange, test }) {
+  const L = useL();
   const [uploading, setUploading] = useState(false);
   const inputId = `image-upload-${test}`;
   const imageSrc = resolveAssetUrl(value);
@@ -411,7 +423,7 @@ function ImageUploader({ value, onChange, test }) {
 
   return (
     <div>
-      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">Main image</label>
+      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">{L("Image principale", "Main image")}</label>
       <div className="flex items-center gap-2">
         <label
           htmlFor={inputId}
@@ -427,7 +439,7 @@ function ImageUploader({ value, onChange, test }) {
             className="border border-ink/30 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.15em] hover:bg-secondary"
             data-testid={`${test}-clear-btn`}
           >
-            Clear
+            {L("Effacer", "Clear")}
           </button>
         )}
         <input id={inputId} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={handleFile} />
@@ -460,6 +472,7 @@ function Section({ title, children }) {
 }
 const Grid2 = ({ children }) => <div className="grid sm:grid-cols-2 gap-3">{children}</div>;
 function CoaStatusField({ value, hasFile, onChange, test }) {
+  const L = useL();
   const opts = [
     { v: "none", label: "No COA / not shown" },
     { v: "pending", label: "COA pending — coming soon (still purchasable)" },
@@ -468,7 +481,7 @@ function CoaStatusField({ value, hasFile, onChange, test }) {
   const warnNoFile = value === "available" && !hasFile;
   return (
     <div>
-      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">COA Status</label>
+      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">{L("État du COA", "COA status")}</label>
       <select value={value} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm bg-white">
         {opts.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
       </select>
@@ -515,6 +528,7 @@ function Toggle({ checked, onChange, label, test, compact = false }) {
 // Backend: POST /admin/products/{id}/restock, GET /admin/products/{id}/stock-history
 // ---------------------------------------------------------------------------
 function RestockModal({ product, onClose, onDone }) {
+  const L = useL();
   const variants = product.variants && product.variants.length
     ? product.variants
     : [{ id: null, name: "Default", stock: product.stock || 0 }];
@@ -635,14 +649,14 @@ function RestockModal({ product, onClose, onDone }) {
                 data-testid="restock-mode-add"
                 className={`px-4 py-2 font-mono text-xs uppercase tracking-[0.2em] flex items-center gap-2 transition-colors ${isAdd ? "bg-emerald-600 text-white" : "bg-white text-foreground/60 hover:bg-ink/5"}`}
               >
-                <PackagePlus size={12} /> Add stock
+                <PackagePlus size={12} /> {L("Ajouter", "Add stock")}
               </button>
               <button
                 onClick={() => switchMode("remove")}
                 data-testid="restock-mode-remove"
                 className={`px-4 py-2 font-mono text-xs uppercase tracking-[0.2em] flex items-center gap-2 transition-colors ${!isAdd ? "bg-amber-600 text-white" : "bg-white text-foreground/60 hover:bg-ink/5"}`}
               >
-                <Minus size={12} /> Remove stock
+                <Minus size={12} /> {L("Retirer", "Remove stock")}
               </button>
             </div>
           </div>
@@ -660,11 +674,11 @@ function RestockModal({ product, onClose, onDone }) {
               <table className="w-full text-sm mb-4">
                 <thead>
                   <tr className="text-left font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 border-b border-ink/10">
-                    <th className="py-2">Variant</th>
-                    <th className="py-2 text-right w-20">Current</th>
-                    <th className="py-2 text-center w-32">Custom qty</th>
+                    <th className="py-2">{L("Variante", "Variant")}</th>
+                    <th className="py-2 text-right w-20">{L("Actuel", "Current")}</th>
+                    <th className="py-2 text-center w-32">{L("Quantité", "Custom qty")}</th>
                     <th className="py-2 text-center w-52">Quick {isAdd ? "add" : "remove"}</th>
-                    <th className="py-2 text-right w-20">New total</th>
+                    <th className="py-2 text-right w-20">{L("Nouveau total", "New total")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -765,13 +779,13 @@ function RestockModal({ product, onClose, onDone }) {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-left font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 border-b border-ink/10">
-                      <th className="py-2">Date</th>
-                      <th className="py-2">Type</th>
-                      <th className="py-2">Variant</th>
-                      <th className="py-2 text-right">Delta</th>
+                      <th className="py-2">{L("Date", "Date")}</th>
+                      <th className="py-2">{L("Type", "Type")}</th>
+                      <th className="py-2">{L("Variante", "Variant")}</th>
+                      <th className="py-2 text-right">{L("Écart", "Delta")}</th>
                       <th className="py-2 text-right">Before → After</th>
-                      <th className="py-2">Admin</th>
-                      <th className="py-2">Reason</th>
+                      <th className="py-2">{L("Admin", "Admin")}</th>
+                      <th className="py-2">{L("Motif", "Reason")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -804,12 +818,12 @@ function RestockModal({ product, onClose, onDone }) {
         <div className="px-6 py-4 border-t border-ink/10 flex items-center justify-between shrink-0 bg-secondary/30">
           <button onClick={loadHistory} disabled={loadingHistory || showHistory} data-testid="restock-view-history"
             className="font-mono text-xs uppercase tracking-[0.2em] flex items-center gap-2 hover:underline disabled:opacity-40">
-            <History size={12} /> View history
+            <History size={12} /> {L("Voir l historique", "View history")}
           </button>
           <div className="flex items-center gap-2">
             <button onClick={onClose} data-testid="restock-cancel"
               className="border border-ink/30 font-mono text-xs uppercase tracking-[0.25em] px-4 py-2 hover:bg-ink hover:text-white">
-              Cancel
+              {L("Annuler", "Cancel")}
             </button>
             <button onClick={submit} disabled={saving || totalDeltaSum <= 0 || showHistory || insufficientRows.length > 0} data-testid="restock-confirm"
               className={`${accentClasses.bg} text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2 ${accentClasses.bgHover} disabled:opacity-40 flex items-center gap-2`}>
@@ -827,6 +841,7 @@ function RestockModal({ product, onClose, onDone }) {
 // CSV format: sku,quantity[,reason]  OR  product_slug,variant_name,quantity[,reason]
 // ---------------------------------------------------------------------------
 function BulkRestockCSVModal({ onClose, onDone }) {
+  const L = useL();
   const [rows, setRows] = useState([]);
   const [reason, setReason] = useState("");
   const [parsing, setParsing] = useState(false);
@@ -907,7 +922,7 @@ function BulkRestockCSVModal({ onClose, onDone }) {
         <div className="px-6 py-4 border-b border-ink/10 flex items-center justify-between shrink-0">
           <div>
             <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-emerald-700">// BULK RESTOCK · CSV</div>
-            <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight mt-1">Supplier delivery</h2>
+            <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight mt-1">{L("Réception fournisseur", "Supplier delivery")}</h2>
             <p className="text-xs text-foreground/60 mt-1">Upload a CSV to restock multiple products at once.</p>
           </div>
           <button onClick={onClose} data-testid="bulk-restock-close" className="p-2 hover:bg-ink/5"><X size={18} /></button>
@@ -922,7 +937,7 @@ function BulkRestockCSVModal({ onClose, onDone }) {
                     <Upload size={32} className="mx-auto mb-3 text-foreground/40" />
                     <p className="text-sm text-foreground/70 mb-2">Drag & drop your CSV here, or</p>
                     <label className="inline-block bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2 cursor-pointer hover:bg-foreground/80">
-                      Choose file
+                      {L("Choisir un fichier", "Choose file")}
                       <input type="file" accept=".csv,text/csv" className="hidden"
                         onChange={(e) => onFile(e.target.files?.[0])}
                         data-testid="bulk-restock-file-input" />
@@ -930,7 +945,7 @@ function BulkRestockCSVModal({ onClose, onDone }) {
                     {parsing && <p className="text-xs mt-3 text-foreground/50">Parsing…</p>}
                   </div>
                   <div className="mt-6 border border-ink/10 p-4 bg-secondary/40">
-                    <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60 mb-2">CSV FORMAT</div>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60 mb-2">{L("FORMAT CSV", "CSV FORMAT")}</div>
                     <p className="text-xs text-foreground/70 mb-2">Two accepted layouts (with or without header row):</p>
                     <pre className="text-[11px] font-mono bg-white border border-ink/10 p-2 whitespace-pre-wrap">
 sku,quantity,reason
@@ -956,12 +971,12 @@ tb-500-5mg,5.0mg,25
                   <table className="w-full text-xs mb-4">
                     <thead>
                       <tr className="text-left font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 border-b border-ink/10">
-                        <th className="py-2 w-10">Line</th>
+                        <th className="py-2 w-10">{L("Ligne", "Line")}</th>
                         <th className="py-2">SKU</th>
-                        <th className="py-2">Product slug</th>
-                        <th className="py-2">Variant</th>
-                        <th className="py-2 text-right">Qty</th>
-                        <th className="py-2">Note</th>
+                        <th className="py-2">{L("Identifiant produit", "Product slug")}</th>
+                        <th className="py-2">{L("Variante", "Variant")}</th>
+                        <th className="py-2 text-right">{L("Qté", "Qty")}</th>
+                        <th className="py-2">{L("Note", "Note")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -996,11 +1011,11 @@ tb-500-5mg,5.0mg,25
             <>
               <div className="grid grid-cols-2 gap-3 mb-4">
                 <div className="p-4 bg-emerald-50 border border-emerald-200">
-                  <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-700">Applied</div>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-700">{L("Appliqué", "Applied")}</div>
                   <div className="font-display text-3xl font-extrabold text-emerald-700 mt-1" data-testid="bulk-restock-applied-count">{result.counts?.applied || 0}</div>
                 </div>
                 <div className="p-4 bg-red-50 border border-red-200">
-                  <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-red-700">Failed</div>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-red-700">{L("Échoué", "Failed")}</div>
                   <div className="font-display text-3xl font-extrabold text-red-700 mt-1" data-testid="bulk-restock-failed-count">{result.counts?.failed || 0}</div>
                 </div>
               </div>
@@ -1010,9 +1025,9 @@ tb-500-5mg,5.0mg,25
                   <table className="w-full text-xs mb-4">
                     <thead>
                       <tr className="text-left font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 border-b border-ink/10">
-                        <th className="py-2 w-10">Line</th>
+                        <th className="py-2 w-10">{L("Ligne", "Line")}</th>
                         <th className="py-2">SKU / Slug</th>
-                        <th className="py-2">Reason</th>
+                        <th className="py-2">{L("Motif", "Reason")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1035,13 +1050,13 @@ tb-500-5mg,5.0mg,25
           {result ? (
             <button onClick={onDone} data-testid="bulk-restock-done"
               className="bg-emerald-600 text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2 hover:bg-emerald-700">
-              Done
+              {L("Terminé", "Done")}
             </button>
           ) : (
             <>
               <button onClick={onClose} data-testid="bulk-restock-cancel"
                 className="border border-ink/30 font-mono text-xs uppercase tracking-[0.25em] px-4 py-2 hover:bg-ink hover:text-white">
-                Cancel
+                {L("Annuler", "Cancel")}
               </button>
               <button onClick={submit} disabled={!rows.length || submitting} data-testid="bulk-restock-submit"
                 className="bg-emerald-600 text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2 hover:bg-emerald-700 disabled:opacity-40 flex items-center gap-2">
