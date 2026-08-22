@@ -466,7 +466,10 @@ export default function AffiliateDashboard() {
   // un affilié verrait ses chiffres derrière et pourrait fermer la fenêtre,
   // et rien ne prouverait plus qu'il a lu quoi que ce soit.
   if (data && data.terms_ok === false) {
-    return <AffiliateTermsGate L={L} lang={lang} onDone={refreshAffiliate} />;
+    // Une date d'acceptation déjà présente signifie que l'affilié avait accepté
+    // une version antérieure : c'est une révision, pas une première visite.
+    return <AffiliateTermsGate L={L} lang={lang} onDone={refreshAffiliate}
+                               dejaAccepte={Boolean(data?.terms_accepted_at)} />;
   }
 
   return (
@@ -1382,7 +1385,7 @@ function Case({ on, set, children, test, disabled, raison }) {
   );
 }
 
-function AffiliateTermsGate({ L, lang, onDone }) {
+function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
   const [terms, setTerms] = useState(false);
   const [age, setAge] = useState(false);
   const [research, setResearch] = useState(false);
@@ -1412,15 +1415,28 @@ function AffiliateTermsGate({ L, lang, onDone }) {
     <div className="bg-clinical min-h-screen flex items-center justify-center px-6 py-16"
          data-testid="affiliate-terms-gate">
       <div className="w-full max-w-lg bg-white rounded-2xl border border-ash p-8 space-y-5">
+        {/* Première acceptation ou RÉVISION : ce n'est pas la même situation.
+            Dire « avant de commencer » à quelqu'un qui a déjà accepté il y a
+            trois jours lui fait croire que son compte s'est réinitialisé — et
+            le mécanisme de version, qui redemande l'accord dès que le texte
+            change, rend ce cas ordinaire plutôt qu'exceptionnel. La date
+            conservée par le serveur distingue les deux. */}
         <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
-          {L("AVANT DE COMMENCER", "BEFORE YOU START")}
+          {dejaAccepte
+            ? L("CONDITIONS MISES À JOUR", "TERMS UPDATED")
+            : L("AVANT DE COMMENCER", "BEFORE YOU START")}
         </p>
         <h1 className="font-display text-2xl font-bold text-nordfjord leading-tight">
-          {L("Conditions du programme d'affiliation", "Affiliate program terms")}
+          {dejaAccepte
+            ? L("Nos conditions ont changé", "Our terms have changed")
+            : L("Conditions du programme d'affiliation", "Affiliate program terms")}
         </h1>
         <p className="text-sm text-glacier leading-relaxed">
-          {L("Vous allez promouvoir des produits destinés exclusivement à la recherche en laboratoire. Vos communications ne doivent jamais suggérer un usage humain ou vétérinaire.",
-             "You are about to promote products intended exclusively for laboratory research. Your communications must never suggest human or veterinary use.")}
+          {dejaAccepte
+            ? L("Votre compte et vos commissions ne sont pas affectés. Nous avons révisé le texte du programme et devons recueillir votre accord sur cette version avant de continuer.",
+                "Your account and commissions are unaffected. We have revised the program text and need your agreement to this version before continuing.")
+            : L("Vous allez promouvoir des produits destinés exclusivement à la recherche en laboratoire. Vos communications ne doivent jamais suggérer un usage humain ou vétérinaire.",
+                "You are about to promote products intended exclusively for laboratory research. Your communications must never suggest human or veterinary use.")}
         </p>
 
         <div className="space-y-3.5 pt-1">
