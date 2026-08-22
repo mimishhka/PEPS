@@ -12,7 +12,7 @@
 import useDocumentHead from "../hooks/useDocumentHead";
 import { useLang } from "../contexts/LanguageContext";
 
-export const AFFILIATE_TERMS_VERSION = "2026-08-01";
+export const AFFILIATE_TERMS_VERSION = "2026-08-21";
 
 const SECTIONS = [
   {
@@ -79,8 +79,12 @@ const SECTIONS = [
         en: "The following are prohibited: sending unsolicited email, in breach of Canada's Anti-Spam Legislation; bidding on advertising keywords containing \"FIRONOVA\" or its variants, and advertising that redirects to the site other than through the affiliate link; registering domain names, social media accounts or pages using the brand in a way that creates confusion as to their origin.",
       },
       {
-        fr: "Sont également interdits : la diffusion du code de réduction sur des sites agrégateurs de coupons ; la revente, la mise aux enchères ou la redistribution commerciale des produits ; toute déclaration fausse ou trompeuse sur les produits, les prix, les délais ou la disponibilité.",
-        en: "Also prohibited: publishing the discount code on coupon aggregator sites; reselling, auctioning or commercially redistributing the products; any false or misleading statement about products, prices, timelines or availability.",
+        fr: "Est également interdite la diffusion du code de réduction sur un site dont l'objet principal est de recenser des codes de rabais, ainsi que l'achat de tout placement sur un tel site. Cette restriction ne vise pas la mention d'un rabais dans un contenu éditorial, un billet ou une publication personnelle.",
+        en: "Also prohibited is publishing the discount code on any site whose primary purpose is to list discount codes, and buying any placement on such a site. This restriction does not cover mentioning a discount within editorial content, an article or a personal post.",
+      },
+      {
+        fr: "Sont enfin interdites : la revente, la mise aux enchères ou la redistribution commerciale des produits ; toute déclaration fausse ou trompeuse sur les produits, les prix, les délais ou la disponibilité.",
+        en: "Finally prohibited: reselling, auctioning or commercially redistributing the products; any false or misleading statement about products, prices, timelines or availability.",
       },
     ],
   },
@@ -160,6 +164,15 @@ const SECTIONS = [
       {
         fr: "L'Affilié est responsable de la déclaration et du paiement de tout impôt ou taxe applicable aux sommes reçues.",
         en: "The Affiliate is responsible for declaring and paying any tax applicable to amounts received.",
+      },
+      {
+        strong: true,
+        fr: "Un solde acquis n'est jamais perdu, quelle que soit la durée d'inactivité.",
+        en: "An earned balance is never forfeited, however long the period of inactivity.",
+      },
+      {
+        fr: "Après vingt-quatre mois consécutifs sans commission nouvelle, FIRONOVA peut clore la participation et verser le solde restant, même inférieur au seuil minimum. L'Affilié en est avisé au préalable à l'adresse figurant à son dossier et dispose de trente jours pour mettre à jour son adresse de versement.",
+        en: "After twenty-four consecutive months without a new commission, FIRONOVA may close the participation and pay out the remaining balance, even below the minimum threshold. The Affiliate is notified beforehand at the address on file and has thirty days to update their payout address.",
       },
     ],
   },
@@ -241,8 +254,12 @@ const SECTIONS = [
         en: "FIRONOVA may suspend or terminate participation without notice in the event of breach of the articles on Affiliate obligations, prohibited practices or fraud, and on 30 days' notice without cause.",
       },
       {
-        fr: "En cas de résiliation pour manquement, FIRONOVA peut retenir les commissions non encore versées se rapportant aux ventes concernées.",
-        en: "Where terminated for breach, FIRONOVA may withhold unpaid commissions relating to the sales concerned.",
+        fr: "En cas de résiliation pour manquement, FIRONOVA peut retenir les commissions issues des ventes effectivement affectées par ce manquement. Les commissions sans lien avec celui-ci demeurent dues et sont versées selon les modalités habituelles.",
+        en: "Where terminated for breach, FIRONOVA may withhold commissions arising from the sales actually affected by that breach. Commissions unrelated to it remain owed and are paid under the usual terms.",
+      },
+      {
+        fr: "FIRONOVA indique à l'Affilié les ventes concernées et le motif de la retenue. L'Affilié peut y répondre par écrit dans les trente jours.",
+        en: "FIRONOVA identifies to the Affiliate the sales concerned and the reason for the withholding. The Affiliate may respond in writing within thirty days.",
       },
     ],
   },
@@ -263,6 +280,11 @@ const SECTIONS = [
         fr: "L'Affilié indemnise FIRONOVA de toute réclamation résultant de ses propres communications, notamment de toute allégation contraire aux obligations énoncées ci-dessus, ainsi que de tout manquement de sa part aux présentes conditions ou à la loi.",
         en: "The Affiliate indemnifies FIRONOVA against any claim arising from their own communications, in particular any statement contrary to the obligations set out above, and from any breach on their part of these terms or of the law.",
       },
+      {
+        strong: true,
+        fr: "Les limitations qui précèdent ne s'appliquent pas en cas de faute intentionnelle ou de faute lourde, ni au préjudice corporel ou moral. Elles ne réduisent aucun droit que la loi accorde impérativement.",
+        en: "The foregoing limitations do not apply in cases of intentional or gross fault, nor to bodily or moral injury. They do not reduce any right the law grants imperatively.",
+      },
     ],
   },
   {
@@ -275,8 +297,12 @@ const SECTIONS = [
         en: "These terms are governed by the law applicable in the province of Québec and the federal laws of Canada applicable there.",
       },
       {
-        fr: "Tout différend est soumis à la compétence exclusive des tribunaux compétents de la province de Québec.",
-        en: "Any dispute is subject to the exclusive jurisdiction of the competent courts of the province of Québec.",
+        fr: "Tout différend est soumis à la compétence des tribunaux compétents de la province de Québec.",
+        en: "Any dispute is subject to the jurisdiction of the competent courts of the province of Québec.",
+      },
+      {
+        fr: "Avant toute procédure, les parties conviennent d'exposer leur différend par écrit et de disposer de trente jours pour tenter de le résoudre. Cette étape ne prive aucune partie d'un recours conservatoire urgent.",
+        en: "Before any proceedings, the parties agree to set out their dispute in writing and allow thirty days to attempt to resolve it. This step deprives neither party of an urgent protective remedy.",
       },
     ],
   },

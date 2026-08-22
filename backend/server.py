@@ -8740,7 +8740,7 @@ AFFILIATE_INVITE_TTL_HOURS = 168          # 7 jours
 # une date se recoupe avec l'archive du document. Changer cette valeur redemande
 # l'acceptation à tout le monde — c'est le seul mécanisme de redemande, donc ne
 # la modifier que lorsque le texte change réellement.
-AFFILIATE_TERMS_VERSION = os.environ.get("AFFILIATE_TERMS_VERSION", "2026-08-01")
+AFFILIATE_TERMS_VERSION = os.environ.get("AFFILIATE_TERMS_VERSION", "2026-08-21")
 
 # Fenêtre d'attribution du clic. Portée de 30 à 365 jours : le rattachement
 # durable ne couvre que les clients qui REVIENNENT, jamais leur première
