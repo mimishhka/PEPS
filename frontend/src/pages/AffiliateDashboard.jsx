@@ -1172,8 +1172,14 @@ export default function AffiliateDashboard() {
                     </table>
                   </div>
                   <p className="px-6 pt-4 pb-1 font-data text-[10px] text-glacier/80 leading-relaxed border-t border-ash/60">
-                    {L("Les commissions sont calculées en CAD puis converties au moment du paiement au taux officiel de la Banque du Canada. USDT et USDC sont indexés 1:1 sur le dollar américain (USD).",
-                       "Commissions are computed in CAD then converted at payout time at the Bank of Canada official rate. USDT and USDC are pegged 1:1 to the US dollar (USD).")}
+                    {/* Ne dit plus « indexés 1:1 » : c'est précisément
+                        l'hypothèse que le calcul a cessé de faire. USDC est
+                        tombé à 0,87 en mars 2023. La quantité de jetons
+                        s'ajuste désormais au prix réel, et le texte doit le
+                        dire — sinon un affilié qui compte ses jetons trouve un
+                        écart avec ce qu'on lui a écrit. */}
+                    {L("Les commissions sont calculées en CAD, converties en USD au taux officiel de la Banque du Canada le jour du versement, puis payées en jetons. Si le jeton s'écarte du dollar américain, la quantité envoyée est ajustée pour que vous receviez bien le montant dû.",
+                       "Commissions are computed in CAD, converted to USD at the Bank of Canada official rate on payout day, then paid in tokens. If the token drifts from the US dollar, the quantity sent is adjusted so you receive the amount owed.")}
                   </p>
                   <Pagination page={payPage} total={payouts.length} pageSize={PAGE_SIZE}
                     onChange={setPayPage} L={L} />

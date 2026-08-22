@@ -12,7 +12,12 @@
 import useDocumentHead from "../hooks/useDocumentHead";
 import { useLang } from "../contexts/LanguageContext";
 
-export const AFFILIATE_TERMS_VERSION = "2026-08-21";
+// 2026-08-22 : l'article sur les versements gagne l'ajustement au prix réel du
+// jeton. Changement SUBSTANTIEL — il décrit comment une somme due est convertie
+// — donc la version bouge et l'acceptation est redemandée. Une révision qui
+// modifie ce que l'affilié touche sans redemander son accord le laisserait
+// engagé par un texte qu'il n'a jamais lu.
+export const AFFILIATE_TERMS_VERSION = "2026-08-22";
 
 const SECTIONS = [
   {
@@ -160,6 +165,19 @@ const SECTIONS = [
       {
         fr: "Les versements sont effectués en USDT ou USDC, selon le choix de l'Affilié, sur le réseau Ethereum (ERC-20) ou Tron (TRC-20) déterminé par l'adresse fournie. La conversion depuis le dollar canadien s'effectue au taux officiel de la Banque du Canada le jour de l'exécution du versement. Les frais de réseau sont à la charge de l'Affilié et déduits du montant versé.",
         en: "Payouts are made in USDT or USDC, at the Affiliate's choice, on the Ethereum (ERC-20) or Tron (TRC-20) network determined by the address provided. Conversion from Canadian dollars uses the official Bank of Canada rate on the day the payout is executed. Network fees are borne by the Affiliate and deducted from the amount paid.",
+      },
+      {
+        strong: true,
+        fr: "La commission est due en dollars canadiens. C'est ce montant qui est livré, et non un nombre de jetons fixé d'avance.",
+        en: "The commission is owed in Canadian dollars. That amount is what is delivered, not a token quantity fixed in advance.",
+      },
+      {
+        fr: "USDT et USDC visent la parité avec le dollar américain sans la garantir. Lorsque le jeton s'en écarte, la quantité versée est ajustée en conséquence, de sorte que la valeur reçue corresponde à la somme due. Le prix retenu est celui relevé au moment de l'exécution, et il est conservé avec le relevé de versement.",
+        en: "USDT and USDC aim for parity with the US dollar without guaranteeing it. Where the token drifts from it, the quantity paid is adjusted accordingly, so that the value received matches the amount owed. The price used is the one recorded at execution, and it is retained with the payout record.",
+      },
+      {
+        fr: "Lorsque l'écart constaté est trop important pour être tenu pour fiable, le versement est reporté au cycle suivant plutôt qu'exécuté sur une base incertaine. L'Affilié en est avisé et son solde demeure intégralement à son crédit.",
+        en: "Where the observed gap is too large to be treated as reliable, the payout is deferred to the next cycle rather than executed on an uncertain basis. The Affiliate is notified and their balance remains entirely to their credit.",
       },
       {
         strong: true,
