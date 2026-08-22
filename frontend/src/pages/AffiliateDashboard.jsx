@@ -429,12 +429,15 @@ export default function AffiliateDashboard() {
                "Share either one. The link recognises your visitors for a year; the code never expires and works even spoken aloud.") },
     { cible: "affiliate-kpis", ton: "acquis",
       titre: L("Validé ne veut pas dire versé", "Validated is not paid"),
-      texte: L("Une commande devient « validée » 14 jours après son paiement, le temps qu'elle ne puisse plus être remboursée. C'est ce montant qui fait progresser votre palier.",
-               "An order becomes “validated” 14 days after payment, once it can no longer be refunded. That amount is what moves your tier.") },
+      texte: L(`Une commande devient « validée » ${data?.approval_hold_days ?? 14} jours après son paiement, le temps qu'elle ne puisse plus être remboursée. C'est ce montant qui fait progresser votre palier.`,
+               `An order becomes “validated” ${data?.approval_hold_days ?? 14} days after payment, once it can no longer be refunded. That amount is what moves your tier.`) },
     { cible: "payout-estimate", ton: "attente",
       titre: L("Le seuil de versement", "The payout threshold"),
-      texte: L("Les versements partent une fois par mois, à partir de 25 $. En dessous, rien n'est perdu : le solde s'ajoute au mois suivant.",
-               "Payouts go out monthly, from $25. Below that nothing is lost: the balance carries over.") },
+      // Le seuil est LU du serveur, jamais écrit en dur : une valeur figée ici
+      // divergerait de AFFILIATE_PAYOUT_MIN_CAD au premier changement, et la
+      // visite affirmerait alors un montant que le système n'applique plus.
+      texte: L(`Les versements partent une fois par mois, à partir de ${money(data?.payout_min_cad)}. En dessous, rien n'est perdu : le solde s'ajoute au mois suivant.`,
+               `Payouts go out monthly, from ${money(data?.payout_min_cad)}. Below that nothing is lost: the balance carries over.`) },
     { cible: "affiliate-tier-badge", ton: "acquis",
       titre: L("Votre palier", "Your tier"),
       texte: L("Il suit votre chiffre d'affaires validé sur douze mois glissants, et monte dès le seuil franchi. De 10 % à 20 % selon le palier.",
@@ -612,7 +615,19 @@ export default function AffiliateDashboard() {
               <KpiCard label={L("Revenu validé cumulé", "Cumulative validated revenue")} value={money(data?.cumulative_revenue)} sub="CAD" />
               <KpiCard label={L("12 derniers mois", "Last 12 months")} value={money(data?.rolling12_revenue)} sub={L("CAD · fixe votre palier", "CAD · sets your tier")} />
               <KpiCard label={L("Commissions en attente", "Pending commissions")} value={money(data?.pending_commission)} sub="CAD" />
-              <KpiCard label={L("Commissions payées", "Paid commissions")} value={money(data?.paid_commission)} sub="CAD" accent />
+              {/* Le seul indicateur qui porte de l'argent DÉJÀ REÇU. Il montre
+                  donc aussi ce que l'affilié a réellement encaissé, dans sa
+                  propre devise : voir « 412,30 $ » quand le portefeuille
+                  affiche 297 USDT laisse croire à une retenue. La devise vient
+                  de son choix, jamais d'un « USDT » écrit en dur. */}
+              <KpiCard label={L("Commissions payées", "Paid commissions")}
+                value={money(data?.paid_commission)}
+                sub={
+                  data?.fx_rate_cad_to_usd > 0 && Number(data?.paid_commission) > 0
+                    ? `CAD · ≈ ${(Number(data.paid_commission) * Number(data.fx_rate_cad_to_usd)).toFixed(2)} ${(data.payout_currency || "usdt").toUpperCase()}`
+                    : "CAD"
+                }
+                accent />
             </div>
 
             {/* Prochain versement. Affiche meme a zero : c'est justement quand

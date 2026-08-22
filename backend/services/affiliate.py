@@ -626,6 +626,11 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
         "aliases": aff.get("aliases", []),
         "activated_at": aff.get("activated_at"),
         "created_at": aff.get("created_at"),
+        # Delai de validation d'une commission. Expose pour la meme raison que
+        # le seuil : ecrit en dur cote interface, il divergerait de la valeur
+        # appliquee des qu'on la changerait, et l'ecran affirmerait un delai que
+        # le systeme n'observe plus.
+        "approval_hold_days": int(s.AFFILIATE_APPROVAL_HOLD_DAYS),
         # Seuil minimum de versement. Expose parce que l'affilie doit pouvoir
         # situer ses commissions par rapport a lui : sans ce chiffre, un solde
         # de 12 $ qui ne part pas ressemble a une retenue inexpliquee. La regle
