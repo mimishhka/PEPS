@@ -566,12 +566,17 @@ export default function AdminAffiliates() {
                                 ou une erreur de saisie se remarque au passage.
                                 On indique aussi le palier merite, pour juger
                                 d'un coup d'oeil si l'ecart est voulu. */}
+                            {/* Gris dans les deux cas : ajuster un taux est une
+                                action d'administration ordinaire, pas une
+                                anomalie. L'ambre signalait une alerte là où il
+                                n'y en a pas, et « forcé » sonnait comme une
+                                faute alors que c'est souvent une faveur.
+
+                                Ce commentaire est ICI, avant la condition, et
+                                non entre la parenthèse et l'élément : à cet
+                                endroit-là il devient une seconde expression,
+                                que la parenthèse n'accepte pas. */}
                             {a.tier_is_manual && (
-                              {/* Gris dans les deux cas : ajuster un taux est une
-                                  action d'administration ordinaire, pas une
-                                  anomalie. L'ambre signalait une alerte là où il
-                                  n'y en a pas, et « forcé » sonnait comme une
-                                  faute alors que c'est souvent une faveur. */}
                               <span className="block mt-0.5 text-[10px] font-data text-glacier"
                                     title={L(
                                       `${a.tier_agreement
