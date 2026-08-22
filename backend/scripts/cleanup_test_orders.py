@@ -134,9 +134,23 @@ async def main(patterns: list[str], do_delete: bool) -> int:
     res = await db.orders.delete_many({"id": {"$in": ids}})
     print(f"  supprimé {res.deleted_count:5} commande(s)")
     print()
-    print("Terminé. Le stock n'a PAS été recrédité : une commande de test")
-    print("n'a jamais expédié de marchandise, mais elle a pu décrémenter le")
-    print("stock. Vérifiez vos quantités si les chiffres semblent bas.")
+
+    # Avertissement CONDITIONNEL. Une commande annulée a déjà rendu ses unités :
+    # _restock_order_items() est appelé depuis tous les chemins d'annulation.
+    # Avertir malgré tout ferait douter de stocks parfaitement justes, et une
+    # alerte qui se déclenche toujours cesse vite d'être lue.
+    non_annulees = [r["o"] for r in matched
+                    if (r["o"].get("fulfillment_status") or "") != "cancelled"]
+    if non_annulees:
+        print(f"ATTENTION — {len(non_annulees)} commande(s) supprimée(s) n'étaient")
+        print("pas annulées et ont donc pu retenir du stock qui n'a jamais été")
+        print("rendu. Vérifiez les quantités des produits concernés :")
+        for o in non_annulees[:10]:
+            for it in (o.get("items") or []):
+                print(f"  {it.get('sku') or it.get('slug', '?'):28} {it.get('qty', 0)} u.")
+    else:
+        print("Toutes les commandes supprimées étaient annulées : leur stock")
+        print("avait déjà été rendu, rien à vérifier de ce côté.")
     return 0
 
 
