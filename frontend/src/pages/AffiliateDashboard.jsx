@@ -118,6 +118,10 @@ export default function AffiliateDashboard() {
   const [activity, setActivity] = useState([]);
   const [tab, setTab] = useState("overview");
   const [copied, setCopied] = useState(false);
+  // Copie du CODE, distincte de celle du lien : ce sont deux choses qu'on
+  // partage dans deux situations différentes, et un seul témoin de copie
+  // afficherait « Copié » sur le mauvais bouton.
+  const [codeCopie, setCodeCopie] = useState(false);
   const [refPage, setRefPage] = useState(1);
   const [payPage, setPayPage] = useState(1);
 
@@ -252,6 +256,16 @@ export default function AffiliateDashboard() {
   const refLink = refCode
     ? `${window.location.origin}/?ref=${refCode}`
     : "";
+
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(refCode);
+      setCodeCopie(true);
+      setTimeout(() => setCodeCopie(false), 1800);
+    } catch {
+      toast.error(L("Copie impossible", "Copy failed"));
+    }
+  };
 
   const copyLink = async () => {
     try {
@@ -424,7 +438,11 @@ export default function AffiliateDashboard() {
   // Il qualifie ce dont la bulle parle — argent acquis, argent en attente,
   // règle à respecter — au lieu de colorer pour colorer.
   const TOUR = [
-    { cible: "affiliate-share-widget", ton: "nova",
+    // Cible le panneau lien+code, TOUJOURS présent — et non le bloc des
+    // produits à promouvoir, qui n'apparaît qu'une fois des ventes réalisées.
+    // La première bulle pointait donc dans le vide pour un nouvel affilié,
+    // c'est-à-dire pour la seule personne à qui la visite s'adresse.
+    { cible: "affiliate-link-panel", ton: "nova",
       titre: L("Votre lien et votre code", "Your link and code"),
       texte: L("Partagez l'un ou l'autre. Le lien reconnaît vos visiteurs pendant un an ; le code, lui, n'expire jamais et fonctionne même à l'oral.",
                "Share either one. The link recognises your visitors for a year; the code never expires and works even spoken aloud.") },
@@ -855,10 +873,36 @@ export default function AffiliateDashboard() {
             </div>
 
             {/* Referral link */}
-            <div className="bg-white rounded-2xl border border-ash p-6">
+            <div className="bg-white rounded-2xl border border-ash p-6"
+                 data-testid="affiliate-link-panel">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
-                {L("VOTRE LIEN DE PARRAINAGE", "YOUR REFERRAL LINK")}
+                {L("VOTRE LIEN ET VOTRE CODE", "YOUR LINK AND CODE")}
               </p>
+
+              {/* Le CODE, en premier et en grand. Il ne figurait que dans les
+                  Paramètres, alors que c'est lui qu'on donne de vive voix ou
+                  dans un message — et les conditions imposent précisément la
+                  communication privée. Le lien vient après : il sert quand on
+                  peut écrire une adresse cliquable, ce qui est le cas le moins
+                  fréquent depuis cette règle.
+                  Sa propre copie, car on ne partage pas les deux ensemble. */}
+              <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b border-ash">
+                <span className="font-data text-[10px] uppercase tracking-[0.18em] text-glacier">
+                  {L("Code", "Code")}
+                </span>
+                <code className="font-data text-lg font-bold text-nordfjord tracking-[0.08em]
+                                 bg-clinical rounded-lg px-4 py-2 border border-ash"
+                      data-testid="affiliate-ref-code">
+                  {refCode || "—"}
+                </code>
+                {refCode && (
+                  <button onClick={copyCode} data-testid="affiliate-copy-code"
+                    className="px-4 py-2 rounded-full border border-ash text-nordfjord font-data
+                               text-xs font-bold uppercase tracking-wider hover:border-nova transition">
+                    {codeCopie ? L("Copié ✓", "Copied ✓") : L("Copier le code", "Copy code")}
+                  </button>
+                )}
+              </div>
               <div className="flex flex-col sm:flex-row gap-5">
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-3">
