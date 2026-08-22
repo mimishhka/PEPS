@@ -1118,6 +1118,12 @@ async def affiliate_ensure_indexes():
     # Rattachement durable d'un client à son affilié, clé sur le courriel :
     # c'est le seul identifiant présent sur TOUTES les commandes, invité
     # compris. Unique, car un client n'appartient qu'à un seul affilié.
+    # Billets d'assistance. L'index sur (status, updated_at) sert la seule
+    # requete qui compte cote admin : « qu'est-ce qui attend une reponse ».
+    await s.db.affiliate_tickets.create_index("id", unique=True)
+    await s.db.affiliate_tickets.create_index([("affiliate_id", 1), ("updated_at", -1)])
+    await s.db.affiliate_tickets.create_index([("status", 1), ("updated_at", -1)])
+
     await s.db.affiliate_bindings.create_index("email", unique=True)
     await s.db.affiliate_bindings.create_index("affiliate_id")
     # Seconde clé : le compte. Partiel, car la majorité des rattachements

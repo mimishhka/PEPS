@@ -22,6 +22,22 @@ async def affiliate_terms_accept(payload: s.AffiliateTermsAcceptIn, request: Req
     return await s.affiliate_terms_accept(payload, request)
 
 
+@router.post("/affiliate/tickets")
+async def affiliate_ticket_create(payload: s.AffiliateTicketIn, request: Request):
+    return await s.affiliate_ticket_create(payload, request)
+
+
+@router.get("/affiliate/tickets")
+async def affiliate_tickets_list(request: Request):
+    return await s.affiliate_tickets_list(request)
+
+
+@router.post("/affiliate/tickets/{ticket_id}/reply")
+async def affiliate_ticket_reply(ticket_id: str, payload: s.AffiliateTicketReplyIn,
+                                 request: Request):
+    return await s.affiliate_ticket_reply(ticket_id, payload, request)
+
+
 @router.get("/affiliate/referrals")
 async def affiliate_referrals(request: Request, limit: int = 200):
     return await s.affiliate_referrals(request, limit)
@@ -105,6 +121,28 @@ async def admin_affiliates_clicks(admin: dict = Depends(s.get_admin_user), days:
 @router.get("/admin/affiliates/risk")
 async def admin_affiliates_risk(admin: dict = Depends(s.get_admin_user)):
     return await s.admin_affiliates_risk(admin)
+
+
+# Billets d'assistance. Déclarés sous /admin/affiliate-tickets et non
+# /admin/affiliates/tickets : ce dernier entrerait en collision avec
+# /admin/affiliates/{affiliate_id}, qui prendrait « tickets » pour un
+# identifiant et répondrait 404 sans que la cause soit visible.
+@router.get("/admin/affiliate-tickets")
+async def admin_affiliate_tickets(admin: dict = Depends(s.get_admin_user),
+                                  status: Optional[str] = None):
+    return await s.admin_affiliate_tickets(admin, status)
+
+
+@router.post("/admin/affiliate-tickets/{ticket_id}/reply")
+async def admin_affiliate_ticket_reply(ticket_id: str, payload: s.AffiliateTicketReplyIn,
+                                       admin: dict = Depends(s.get_admin_user)):
+    return await s.admin_affiliate_ticket_reply(ticket_id, payload, admin)
+
+
+@router.put("/admin/affiliate-tickets/{ticket_id}/status")
+async def admin_affiliate_ticket_status(ticket_id: str, payload: s.AffiliateTicketStatusIn,
+                                        admin: dict = Depends(s.get_admin_user)):
+    return await s.admin_affiliate_ticket_status(ticket_id, payload, admin)
 
 
 @router.get("/admin/affiliates/{affiliate_id}")

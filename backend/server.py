@@ -6916,6 +6916,14 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
             "low_stock_top": low_stock_rows[:1],
             "late_payments": late_payments,
             "emails_failed": emails_failed,
+            # Billets d'affiliés en attente de réponse. Exposé ICI, sur le
+            # pouls quotidien, et pas seulement dans l'écran des billets :
+            # un billet non relevé est pire qu'un courriel oublié, parce que
+            # l'affilié le voit « ouvert » et attend. Le seul moyen que ce
+            # système tienne sa promesse est qu'on ne puisse pas l'ignorer.
+            "tickets_open": await db.affiliate_tickets.count_documents(
+                {"status": "open"}
+            ),
         },
     }
 
@@ -8861,6 +8869,24 @@ class AffiliateTermsAcceptIn(BaseModel):
     # pour échapper à une redemande.
 
 
+class AffiliateTicketIn(BaseModel):
+    """Ouverture d'un billet d'assistance par un affilié."""
+    subject: str = Field(min_length=3, max_length=140)
+    body: str = Field(min_length=10, max_length=4000)
+    # Page d'où part la demande. Recueillie automatiquement : une personne qui
+    # écrit « ça ne marche pas » depuis l'onglet des versements pose une
+    # question différente de la même phrase écrite depuis les paramètres.
+    context_path: Optional[str] = Field(default="", max_length=200)
+
+
+class AffiliateTicketReplyIn(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
+class AffiliateTicketStatusIn(BaseModel):
+    status: Literal["open", "pending", "resolved"]
+
+
 class AffiliatePayoutSettingsIn(BaseModel):
     payout_address: str = Field(min_length=4, max_length=200)
     payout_currency: str = Field(min_length=2, max_length=12)
@@ -9107,6 +9133,118 @@ async def affiliate_terms_accept(payload: AffiliateTermsAcceptIn, request: Reque
     logging.info("[affiliate] conditions acceptées code=%s version=%s",
                  aff.get("code"), AFFILIATE_TERMS_VERSION)
     return {"ok": True, "terms_version": AFFILIATE_TERMS_VERSION}
+
+
+def _ticket_message(auteur: str, body: str) -> dict:
+    return {
+        "id": str(uuid.uuid4()),
+        "from": auteur,                       # "affiliate" | "admin"
+        "body": body.strip()[:4000],
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+async def affiliate_ticket_create(payload: AffiliateTicketIn, request: Request):
+    """Ouvre un billet. Le fil complet vit dans le document lui-même : une
+    conversation d'assistance se lit d'un bloc, et la séparer en deux
+    collections obligerait à deux requêtes pour afficher trois messages."""
+    aff = await get_current_affiliate(request)
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "affiliate_id": aff["id"],
+        "affiliate_code": aff.get("code", ""),
+        "affiliate_email": aff.get("email", ""),
+        "affiliate_name": " ".join(
+            x for x in [aff.get("first_name"), aff.get("last_name")] if x
+        ) or aff.get("name", ""),
+        "subject": payload.subject.strip(),
+        "status": "open",
+        "context_path": (payload.context_path or "").strip(),
+        # Contexte figé à l'ouverture : le palier et le solde d'aujourd'hui
+        # expliquent la question d'aujourd'hui. Les relire au moment de
+        # répondre donnerait un état qui a peut-être changé entre-temps.
+        "snapshot": {
+            "tier": aff.get("manual_tier") or "",
+            "payout_address": aff.get("payout_address", ""),
+            "payout_currency": aff.get("payout_currency", ""),
+        },
+        "messages": [_ticket_message("affiliate", payload.body)],
+        "created_at": now,
+        "updated_at": now,
+        "last_from": "affiliate",
+    }
+    await db.affiliate_tickets.insert_one(doc)
+    logging.info("[ticket] ouvert code=%s sujet=%r", aff.get("code"), doc["subject"][:60])
+    doc.pop("_id", None)
+    return doc
+
+
+async def affiliate_tickets_list(request: Request):
+    aff = await get_current_affiliate(request)
+    rows = await db.affiliate_tickets.find(
+        {"affiliate_id": aff["id"]}, {"_id": 0}
+    ).sort("updated_at", -1).to_list(100)
+    return rows
+
+
+async def affiliate_ticket_reply(ticket_id: str, payload: AffiliateTicketReplyIn,
+                                  request: Request):
+    aff = await get_current_affiliate(request)
+    # Le filtre porte AUSSI sur affiliate_id : sans lui, connaître un
+    # identifiant suffirait à écrire dans le billet de quelqu'un d'autre.
+    res = await db.affiliate_tickets.find_one_and_update(
+        {"id": ticket_id, "affiliate_id": aff["id"]},
+        {"$push": {"messages": _ticket_message("affiliate", payload.body)},
+         "$set": {"updated_at": datetime.now(timezone.utc).isoformat(),
+                  "last_from": "affiliate",
+                  # Répondre à un billet résolu le rouvre : la personne n'a
+                  # pas eu satisfaction, et la laisser écrire dans le vide
+                  # serait pire que de ne pas lui offrir de réponse.
+                  "status": "open"}},
+        projection={"_id": 0},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not res:
+        raise HTTPException(404, "Billet introuvable")
+    return res
+
+
+async def admin_affiliate_tickets(admin: dict = Depends(get_admin_user),  # noqa: F821
+                                   status: Optional[str] = None):
+    filt = {"status": status} if status else {}
+    rows = await db.affiliate_tickets.find(filt, {"_id": 0}).sort("updated_at", -1).to_list(300)
+    return rows
+
+
+async def admin_affiliate_ticket_reply(ticket_id: str, payload: AffiliateTicketReplyIn,
+                                        admin: dict = Depends(get_admin_user)):  # noqa: F821
+    res = await db.affiliate_tickets.find_one_and_update(
+        {"id": ticket_id},
+        {"$push": {"messages": _ticket_message("admin", payload.body)},
+         "$set": {"updated_at": datetime.now(timezone.utc).isoformat(),
+                  "last_from": "admin",
+                  "status": "pending"}},
+        projection={"_id": 0},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not res:
+        raise HTTPException(404, "Billet introuvable")
+    return res
+
+
+async def admin_affiliate_ticket_status(ticket_id: str, payload: AffiliateTicketStatusIn,
+                                         admin: dict = Depends(get_admin_user)):  # noqa: F821
+    res = await db.affiliate_tickets.find_one_and_update(
+        {"id": ticket_id},
+        {"$set": {"status": payload.status,
+                  "updated_at": datetime.now(timezone.utc).isoformat()}},
+        projection={"_id": 0},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not res:
+        raise HTTPException(404, "Billet introuvable")
+    return res
 
 
 async def affiliate_me(request: Request, lang: str = "fr"):

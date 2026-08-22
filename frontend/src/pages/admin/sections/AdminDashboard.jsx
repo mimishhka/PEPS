@@ -123,7 +123,11 @@ export default function AdminDashboard() {
           </div>
 
           <SectionLabel>{L("OPÉRATIONS DU JOUR", "TODAY'S OPERATIONS")}</SectionLabel>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+          {/* Cinq cartes et non quatre : les billets d'affiliés y figurent
+              parce qu'un billet non relevé est pire qu'un courriel oublié —
+              l'affilié le voit « ouvert » et attend. La grille passe donc en
+              cinq colonnes sur grand écran. */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 mb-8">
             <ActionCard tone={pulse.ops.to_ship ? "warn" : "calm"}
               label={L("À expédier", "To ship")} value={pulse.ops.to_ship}
               testid="pulse-ship" to="dispatch"
@@ -146,6 +150,12 @@ export default function AdminDashboard() {
               hint={pulse.ops.late_payments
                 ? L("commandes à rouvrir", "orders to reopen")
                 : L("rien à rouvrir", "nothing to reopen")} />
+            <ActionCard tone={pulse.ops.tickets_open ? "warn" : "calm"}
+              label={L("Billets affiliés", "Affiliate tickets")} value={pulse.ops.tickets_open ?? 0}
+              testid="pulse-tickets" to="affiliates"
+              hint={pulse.ops.tickets_open
+                ? L("attendent une réponse", "awaiting a reply")
+                : L("aucun en attente", "none pending")} />
           </div>
         </>
       )}

@@ -19,6 +19,7 @@ import { DashboardSkeleton } from "../components/LoadingSkeletons";
 import useAffiliate from "../hooks/useAffiliate";
 import useDocumentHead from "../hooks/useDocumentHead";
 import GuidedTour, { tourDejaVue } from "../components/GuidedTour";
+import AffiliateSupport from "../components/AffiliateSupport";
 
 const TIER_META = {
   standard: { fr: "Standard", en: "Standard", color: "#64748B" },
@@ -431,6 +432,7 @@ export default function AffiliateDashboard() {
     ["payments", L("Paiements", "Payments")],
     ["compliance", L("Conformité", "Compliance")],
     ["settings", L("Paramètres", "Settings")],
+    ["support", L("Aide", "Help")],
   ];
 
   // Conditions non acceptées pour la version courante : on rend UNIQUEMENT
@@ -1283,6 +1285,8 @@ export default function AffiliateDashboard() {
             </div>
           </div>
         )}
+
+        {tab === "support" && <AffiliateSupport L={L} lang={lang} />}
       </div>
     </div>
   );
