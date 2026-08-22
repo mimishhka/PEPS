@@ -18,7 +18,29 @@ import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 
 const MARGE = 8;      // respiration autour de la zone mise en évidence
 const ECART = 12;     // distance entre la zone et la bulle
-const HAUTEUR = 190;  // hauteur estimée d'une bulle, pour décider haut ou bas
+const HAUTEUR = 200;  // hauteur estimée d'une bulle, pour décider haut ou bas
+
+// Couleurs FONCTIONNELLES du système d'identité, pas des teintes décoratives.
+// Le système pose une règle : un seul accent décisif, Nova Cyan. Ces trois-là
+// ne le concurrencent pas, elles qualifient — vert pour l'argent acquis, ambre
+// pour ce qui attend, bleu conformité pour une règle. La couleur informe.
+const TONS = {
+  acquis:      { c: "#2E9E6B", fr: "Acquis",     en: "Earned" },
+  attente:     { c: "#E8A33D", fr: "En attente", en: "Pending" },
+  regle:       { c: "#5B7A9E", fr: "Règle",      en: "Rule" },
+  nova:        { c: "#00B8D4", fr: "",           en: "" },
+};
+
+/** L'étincelle nova du système d'identité. Déjà marqueur de liste et sceau de
+ *  confiance ailleurs sur le site — elle ne sort donc pas de nulle part. */
+function Spark({ size = 12, className = "", style }) {
+  return (
+    <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true"
+         className={className} style={style}>
+      <path d="M50 8 L57 43 L92 50 L57 57 L50 92 L43 57 L8 50 L43 43 Z" fill="currentColor" />
+    </svg>
+  );
+}
 
 // Ce composant ne mémorise RIEN. Savoir si la visite a déjà été donnée relève
 // de la fiche affilié, côté serveur : un marqueur dans le navigateur la faisait
@@ -80,6 +102,8 @@ export default function GuidedTour({ steps, onClose, L }) {
 
   if (!etape || !box) return null;
 
+  const ton = TONS[etape.ton] || TONS.nova;
+  const libelle = ton.fr ? L(ton.fr, ton.en) : "";
   const dernier = i === utiles.length - 1;
   // La bulle passe au-dessus quand la zone est en bas d'écran, pour ne pas
   // sortir du cadre.
@@ -117,12 +141,35 @@ export default function GuidedTour({ steps, onClose, L }) {
       />
       <div style={bulleStyle} role="dialog" aria-modal="true"
            aria-label={etape.titre} data-testid="guided-tour">
-        <div className="bg-nordfjord text-clinical rounded-xl p-4 shadow-2xl">
+        <div className="bg-nordfjord text-clinical rounded-xl p-4 shadow-2xl border-l-[3px]"
+             style={{ borderLeftColor: ton.c }}>
+          {/* Étiquette de zone. Absente pour le ton neutre : une étiquette qui
+              dirait « Info » n'apprendrait rien et volerait une ligne. */}
+          {libelle && (
+            <span className="inline-flex items-center gap-1.5 font-data text-[10px]
+                             font-semibold uppercase tracking-[0.16em] mb-1.5"
+                  style={{ color: ton.c }}>
+              <Spark size={10} /> {libelle}
+            </span>
+          )}
           <p className="font-display font-bold text-[15px] leading-snug">{etape.titre}</p>
           <p className="text-[13px] leading-relaxed mt-1.5 text-clinical/85">{etape.texte}</p>
           <div className="flex items-center justify-between gap-3 mt-3.5">
-            <span className="font-data text-[11px] text-clinical/60 tabular-nums">
-              {i + 1} / {utiles.length}
+            {/* Chapelet d'étincelles plutôt qu'un « 2 / 5 » muet : on voit ce
+                qui reste sans le lire. Le compteur chiffré subsiste pour les
+                lecteurs d'écran, à qui une rangée d'icônes ne dit rien. */}
+            <span className="flex items-center gap-[3px]"
+                  role="img"
+                  aria-label={L(`Étape ${i + 1} sur ${utiles.length}`,
+                                `Step ${i + 1} of ${utiles.length}`)}>
+              {utiles.map((_, n) => (
+                <Spark key={n} size={12}
+                       style={{
+                         color: n <= i ? "#00B8D4" : "rgba(255,255,255,.26)",
+                         filter: n <= i ? "drop-shadow(0 0 5px rgba(0,184,212,.7))" : "none",
+                         transition: "color .2s, filter .2s",
+                       }} />
+              ))}
             </span>
             <div className="flex items-center gap-2">
               <button onClick={fermer} data-testid="tour-exit"

@@ -419,24 +419,27 @@ export default function AffiliateDashboard() {
   const onboarding = steps.some((x) => !x.done);
   const nextStep = steps.findIndex((x) => !x.done);
 
+  // `ton` choisit la couleur fonctionnelle du liseré et l'étiquette de zone.
+  // Il qualifie ce dont la bulle parle — argent acquis, argent en attente,
+  // règle à respecter — au lieu de colorer pour colorer.
   const TOUR = [
-    { cible: "affiliate-share-widget",
+    { cible: "affiliate-share-widget", ton: "nova",
       titre: L("Votre lien et votre code", "Your link and code"),
       texte: L("Partagez l'un ou l'autre. Le lien reconnaît vos visiteurs pendant un an ; le code, lui, n'expire jamais et fonctionne même à l'oral.",
                "Share either one. The link recognises your visitors for a year; the code never expires and works even spoken aloud.") },
-    { cible: "affiliate-kpis",
+    { cible: "affiliate-kpis", ton: "acquis",
       titre: L("Validé ne veut pas dire versé", "Validated is not paid"),
       texte: L("Une commande devient « validée » 14 jours après son paiement, le temps qu'elle ne puisse plus être remboursée. C'est ce montant qui fait progresser votre palier.",
                "An order becomes “validated” 14 days after payment, once it can no longer be refunded. That amount is what moves your tier.") },
-    { cible: "payout-estimate",
+    { cible: "payout-estimate", ton: "attente",
       titre: L("Le seuil de versement", "The payout threshold"),
       texte: L("Les versements partent une fois par mois, à partir de 25 $. En dessous, rien n'est perdu : le solde s'ajoute au mois suivant.",
                "Payouts go out monthly, from $25. Below that nothing is lost: the balance carries over.") },
-    { cible: "affiliate-tier-badge",
+    { cible: "affiliate-tier-badge", ton: "acquis",
       titre: L("Votre palier", "Your tier"),
       texte: L("Il suit votre chiffre d'affaires validé sur douze mois glissants, et monte dès le seuil franchi. De 10 % à 20 % selon le palier.",
                "It follows your validated revenue over twelve rolling months, and rises as soon as a threshold is crossed. From 10% to 20%.") },
-    { cible: "affiliate-faq-link",
+    { cible: "affiliate-faq-link", ton: "regle",
       titre: L("Vos questions", "Your questions"),
       texte: L("Le détail des règles s'y trouve : calcul des commissions, attribution, adresses de portefeuille. Vous pouvez relancer cette visite depuis là.",
                "The detailed rules live there: commission calculation, attribution, wallet addresses. You can restart this tour from there.") },
