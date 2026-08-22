@@ -19,7 +19,11 @@ import { useLang } from "../contexts/LanguageContext";
 // engagé par un texte qu'il n'a jamais lu.
 export const AFFILIATE_TERMS_VERSION = "2026-08-22";
 
-const SECTIONS = [
+// Exporté pour que la fenêtre d'acceptation affiche EXACTEMENT ce texte, sans
+// le recopier. Deux exemplaires du même contrat divergeraient à la première
+// révision, et c'est la version lue au moment du clic qui engage — pas celle
+// d'une page que personne n'a ouverte.
+export const SECTIONS = [
   {
     id: "objet",
     fr: { title: "Objet" },

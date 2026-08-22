@@ -20,6 +20,7 @@ import useAffiliate from "../hooks/useAffiliate";
 import useDocumentHead from "../hooks/useDocumentHead";
 import GuidedTour from "../components/GuidedTour";
 import AffiliateSupport from "../components/AffiliateSupport";
+import TermsModal from "../components/TermsModal";
 
 const TIER_META = {
   standard: { fr: "Standard", en: "Standard", color: "#64748B" },
@@ -1395,7 +1396,17 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
   // l'affirmation à qui n'a même pas ouvert la page, et c'est déjà la
   // différence entre une case cochée par réflexe et un geste délibéré.
   const [luTermes, setLuTermes] = useState(false);
+  const [modaleOuverte, setModaleOuverte] = useState(false);
   const complet = terms && age && research;
+
+  // Fermer la fenêtre ne vaut lecture que si le bouton « J'ai lu » a été
+  // utilisé — donc après défilement complet. Échap et le clic à l'extérieur
+  // ferment aussi, mais ne créditent rien : on laisse toujours sortir, on ne
+  // récompense que le parcours réel.
+  const fermerModale = (parcourue) => {
+    setModaleOuverte(false);
+    if (parcourue) setLuTermes(true);
+  };
 
   const accepter = async () => {
     if (!complet) return;
@@ -1414,6 +1425,9 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
   return (
     <div className="bg-clinical min-h-screen flex items-center justify-center px-6 py-16"
          data-testid="affiliate-terms-gate">
+      {modaleOuverte && (
+        <TermsModal L={L} lang={lang} onClose={fermerModale} />
+      )}
       <div className="w-full max-w-lg bg-white rounded-2xl border border-ash p-8 space-y-5">
         {/* Première acceptation ou RÉVISION : ce n'est pas la même situation.
             Dire « avant de commencer » à quelqu'un qui a déjà accepté il y a
@@ -1440,20 +1454,26 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
         </p>
 
         <div className="space-y-3.5 pt-1">
-          {/* Les deux liens s'ouvrent dans un onglet séparé : on ne fait pas
-              perdre à quelqu'un les cases déjà cochées pour l'avoir envoyé
-              lire ce qu'on lui demande justement de lire. */}
+          {/* Les conditions s'ouvrent PAR-DESSUS, jamais dans un autre onglet :
+              quitter la page fait perdre le fil, et sur mobile on ne retrouve
+              pas où on en était. La case ne se déverrouille qu'après avoir
+              ouvert le texte ET l'avoir déroulé jusqu'au bas — le clic seul
+              prouvait qu'on avait vu un lien, pas qu'on l'avait lu.
+
+              La politique de confidentialité garde son onglet séparé : elle
+              n'est pas soumise à la même exigence, et l'imbriquer dans une
+              seconde fenêtre par-dessus la première serait pénible. */}
           <Case on={terms} set={setTerms} test="terms-accept"
                 disabled={!luTermes}
-                raison={L("Ouvrez d'abord les conditions ci-dessous.",
-                          "Open the terms below first.")}>
+                raison={L("Ouvrez et parcourez d'abord les conditions.",
+                          "Open and scroll through the terms first.")}>
             {L("J'ai lu et j'accepte les ", "I have read and accept the ")}
-            <Link to="/affiliate/terms" target="_blank" rel="noreferrer"
-                  onClick={() => setLuTermes(true)}
-                  data-testid="terms-link"
-                  className="text-nova underline">
+            <button type="button"
+                    onClick={() => setModaleOuverte(true)}
+                    data-testid="terms-link"
+                    className="text-nova underline">
               {L("conditions du programme d'affiliation", "affiliate program terms")}
-            </Link>
+            </button>
             {L(" ainsi que la ", " and the ")}
             <Link to="/privacy" target="_blank" rel="noreferrer" className="text-nova underline">
               {L("politique de confidentialité", "privacy policy")}
