@@ -742,7 +742,40 @@ export default function AffiliateDashboard() {
                   <div className="h-full rounded-full transition-all"
                        style={{ width: `${payoutPct || 0}%`, background: "#00B8D4" }} />
                 </div>
-                <p className="font-data text-[11px] text-glacier mt-2">
+
+                {/* Le parcours complet de l'argent. Ce panneau n'affichait que
+                    le montant validé, sans dire d'où il venait ni où il allait :
+                    on ne pouvait pas savoir, d'ici, ce qu'on avait gagné en
+                    tout. Il fallait remonter à la rangée d'indicateurs et
+                    additionner soi-même trois cases qui ne se présentaient pas
+                    comme les étapes d'une même somme. Les voici dans l'ordre où
+                    l'argent les traverse. */}
+                <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-ash">
+                  {[
+                    [L("En attente", "Pending"), data?.pending_commission,
+                     L(`validé après ${data?.approval_hold_days ?? 14} j`,
+                       `validated after ${data?.approval_hold_days ?? 14}d`)],
+                    [L("Validé", "Validated"), dueNow,
+                     L("part au prochain cycle", "goes out next cycle")],
+                    [L("Déjà versé", "Already paid"), data?.paid_commission,
+                     L("depuis le début", "since the start")],
+                  ].map(([titre, valeur, note], i) => (
+                    <div key={i} data-testid={`payout-flow-${i}`}>
+                      <p className="font-data text-[9px] uppercase tracking-[0.14em] text-glacier">
+                        {titre}
+                      </p>
+                      <p className={`font-data text-sm font-bold tabular-nums mt-0.5 ${
+                        Number(valeur) > 0 ? "text-nordfjord" : "text-glacier/45"}`}>
+                        {money(valeur)}
+                      </p>
+                      <p className="font-data text-[9px] text-glacier/70 leading-tight mt-0.5">
+                        {note}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="font-data text-[11px] text-glacier mt-3">
                   {dueNow >= payoutMin
                     ? L("Seuil atteint — le versement part au prochain cycle mensuel.",
                         "Threshold met — the payout goes out at the next monthly cycle.")
