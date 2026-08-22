@@ -36,7 +36,8 @@ from PIL import Image as PILImage
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
-from pydantic import BaseModel, Field, EmailStr, ConfigDict, field_validator
+from pydantic import (BaseModel, Field, EmailStr, ConfigDict, field_validator,
+                      model_validator)
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib import colors as rl_colors
 from reportlab.lib.units import mm
@@ -8840,9 +8841,34 @@ class AffiliateInviteIn(BaseModel):
     coupon_percent: Optional[float] = Field(default=None, ge=0, le=100)
     lang: str = "fr"
 
+    # Entente négociée, décidée À L'INVITATION.
+    #
+    # Elle se cochait jusqu'ici sur la fiche, donc APRÈS l'activation — alors
+    # qu'on sait au moment d'inviter quelqu'un si on a négocié avec lui. Deux
+    # conséquences fâcheuses : la personne recevait un courriel qui lui
+    # annonçait une progression par paliers ne la concernant pas, et son taux
+    # convenu n'existait dans le système qu'après un second geste, qu'il
+    # suffisait d'oublier.
+    #
+    # Les deux champs vont ENSEMBLE ou pas du tout : une entente sans palier
+    # ne promet rien, un palier sans entente est un simple réglage
+    # administratif. La validation ci-dessous refuse les moitiés.
+    tier_agreement: bool = False
+    manual_tier: Optional[str] = None
+
     # Rétrocompat : accepte encore `name` sur le wire — on le splittera si
     # les nouveaux champs sont absents (pour ne pas casser l'ancien front).
     name: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _entente_coherente(self):
+        tier = (self.manual_tier or "").strip().lower() or None
+        if self.tier_agreement and not tier:
+            raise ValueError("Une entente exige un palier convenu")
+        if tier and not self.tier_agreement:
+            raise ValueError("Un palier ne se fixe à l'invitation que sous entente")
+        self.manual_tier = tier
+        return self
 
 
 class AffiliateJoinIn(BaseModel):
@@ -9693,6 +9719,16 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
     if payout_currency not in AFFILIATE_PAYOUT_CURRENCIES:
         payout_currency = "usdt"
 
+    # Entente négociée : le modèle a déjà garanti que palier et drapeau vont
+    # ensemble ; il reste à vérifier que le palier existe. Un palier inconnu
+    # créerait un affilié dont le taux ne se calcule pas.
+    entente = bool(payload.tier_agreement)
+    manual_tier = payload.manual_tier if entente else None
+    taux_par_palier = {nom: taux for nom, taux, _f, _c in AFFILIATE_TIERS}
+    if manual_tier and manual_tier not in taux_par_palier:
+        raise HTTPException(400, "Unknown affiliate tier")
+    taux_convenu = taux_par_palier.get(manual_tier) if manual_tier else None
+
     raw = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
     expires = (now + timedelta(hours=AFFILIATE_INVITE_TTL_HOURS)).isoformat()
@@ -9716,6 +9752,12 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
                 "status": "invited",
                 "payout_currency": payout_currency,
                 "invite_last_sent_at": now.isoformat(),
+                # Ré-invitation : on ÉCRASE, sans fusionner. Si l'entente a été
+                # retirée du formulaire, elle doit disparaître ici aussi —
+                # sinon un affilié garderait un engagement qu'on vient de ne
+                # plus lui accorder.
+                "manual_tier": manual_tier,
+                "tier_agreement": entente,
             },
              "$inc": {"invite_sent_count": 1}},
         )
@@ -9734,7 +9776,8 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
             "user_id": None,
             "status": "invited",
             "compliance_status": "compliant",
-            "manual_tier": None,
+            "manual_tier": manual_tier,
+            "tier_agreement": entente,
             "commission_note": payload.commission_note or "",
             "payout_currency": payout_currency,
             "payout_address": "",
@@ -9751,7 +9794,8 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
 
     base = _trusted_public_base_url()
     link = f"{base}/affiliate/join?token={raw}"
-    await _affiliate_send_invite(email, display_name, link, payload.lang or "fr")
+    await _affiliate_send_invite(email, first_name, link, payload.lang or "fr",
+                                 taux_convenu=taux_convenu)
     return {"ok": True, "affiliate_id": aff_id, "invite_link": link}
 
 
@@ -9777,8 +9821,17 @@ async def admin_affiliate_resend(affiliate_id: str,
     )
     base = _trusted_public_base_url()
     link = f"{base}/affiliate/join?token={raw}"
-    await _affiliate_send_invite(aff["email"], aff.get("name", ""), link,
-                                 "fr")
+    # Un renvoi doit redire la MÊME chose que l'invitation d'origine. Sans
+    # cette relecture, quelqu'un dont le taux a été négocié recevrait au
+    # second envoi le message qui présente la progression par paliers — un
+    # démenti de ce qu'on lui avait écrit la première fois.
+    taux_convenu = None
+    if aff.get("tier_agreement") and aff.get("manual_tier"):
+        taux_convenu = {nom: taux for nom, taux, _f, _c in AFFILIATE_TIERS}.get(
+            aff["manual_tier"])
+    await _affiliate_send_invite(aff["email"],
+                                 (aff.get("first_name") or aff.get("name") or ""),
+                                 link, "fr", taux_convenu=taux_convenu)
     return {"ok": True, "invite_link": link, "sent_to": aff["email"]}
 
 

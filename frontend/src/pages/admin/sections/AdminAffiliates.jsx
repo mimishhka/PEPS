@@ -75,6 +75,15 @@ const TIER_COLOR = {
   standard: "#64748B", bronze: "#B45309", silver: "#64748B",
   gold: "#CA8A04", platinum: "#0891B2", diamond: "#00B8D4",
 };
+// Reflet de AFFILIATE_TIERS (server.py). Sert UNIQUEMENT à afficher le taux
+// à côté du palier dans la liste déroulante d'invitation.
+//
+// Ce n'est pas la source du calcul : le serveur dérive lui-même le taux du
+// nom de palier. Si ces valeurs dérivaient des siennes, l'affilié recevrait
+// quand même le bon taux ; seule l'étiquette lue par l'admin serait fausse.
+const TIER_RATE = {
+  standard: 10, bronze: 12, silver: 14, gold: 16, platinum: 18, diamond: 20,
+};
 
 export default function AdminAffiliates() {
   const { lang } = useLang();
@@ -1095,6 +1104,12 @@ function InviteModal({ L, onClose, onDone }) {
   const [lang, setLangSel] = useState("fr");
   const [busy, setBusy] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
+  // Entente négociée — décidée ICI, à l'invitation, parce que c'est le moment
+  // où on la connaît. Cochée après coup sur la fiche, elle arrivait toujours
+  // trop tard : la personne avait déjà reçu le courriel qui lui présentait
+  // une progression par paliers ne la concernant pas.
+  const [entente, setEntente] = useState(false);
+  const [palier, setPalier] = useState("gold");
 
   const submit = async () => {
     if (!email.trim() || !firstName.trim() || !lastName.trim()) {
@@ -1111,6 +1126,10 @@ function InviteModal({ L, onClose, onDone }) {
         company: company.trim(),
         commission_note: note.trim(),
         lang,
+        // Les deux champs partent ENSEMBLE : le serveur refuse une entente
+        // sans palier et un palier sans entente.
+        tier_agreement: entente,
+        manual_tier: entente ? palier : null,
       });
       setInviteLink(data.invite_link || "");
       toast.success(L("Invitation envoyée", "Invitation sent"));
@@ -1176,6 +1195,40 @@ function InviteModal({ L, onClose, onDone }) {
               <option value="en">English</option>
             </select>
           </Field>
+
+          <div className="rounded-xl border border-nova/50 bg-nova/5 p-3">
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={entente} data-testid="invite-agreement"
+                onChange={(e) => setEntente(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-ash text-nova focus:ring-nova" />
+              <span className="text-sm text-nordfjord leading-snug">
+                {L("Cette personne bénéficie d'une entente négociée",
+                   "This person has a negotiated agreement")}
+              </span>
+            </label>
+            {entente && (
+              <div className="mt-3 pl-[26px]">
+                <Field label={L("Taux convenu", "Agreed rate")}>
+                  <select value={palier} onChange={(e) => setPalier(e.target.value)}
+                    data-testid="invite-agreement-tier"
+                    className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova">
+                    {["standard", "bronze", "silver", "gold", "platinum", "diamond"].map((t) => (
+                      <option key={t} value={t}>
+                        {`${TIER_LABEL[t]?.[lang] || t} — ${TIER_RATE[t]} %`}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            )}
+            <p className="font-data text-[11px] text-glacier mt-2.5 leading-relaxed">
+              {entente
+                ? L("Elle recevra le courriel qui annonce son taux convenu, et son tableau de bord n'affichera pas l'échelle des paliers.",
+                    "They'll receive the email announcing their agreed rate, and their dashboard won't show the tier ladder.")
+                : L("Sans entente, elle entre au barème standard et progresse avec ses ventes.",
+                    "Without an agreement, they start at the standard scale and progress with their sales.")}
+            </p>
+          </div>
         </div>
         <p className="font-data text-[11px] text-glacier mt-4 leading-relaxed">
           {L("Le code affilié sera généré automatiquement à l'activation (base + rabais 10% par défaut). Vous pourrez le modifier depuis la fiche.",

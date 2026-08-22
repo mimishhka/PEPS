@@ -767,25 +767,87 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
 # EMAILS (NOVA identity, cohérent avec _send_magic_email)
 # ===========================================================================
 
-def _affiliate_invite_html(name: str, link: str, lang: str) -> tuple:
+def _affiliate_invite_html(name: str, link: str, lang: str,
+                           taux_convenu: float | None = None) -> tuple:
+    """Courriel d'accueil. DEUX versions, choisies par `taux_convenu`.
+
+    L'ancien texte annonçait la même chose à tout le monde : « activez votre
+    compte pour accéder à votre tableau de bord ». C'était froid, et surtout
+    faux pour une partie des destinataires — on écrivait à quelqu'un dont le
+    taux avait été négocié comme s'il découvrait un barème.
+
+    Avec entente, on nomme le taux convenu et on dit ce qui compte pour la
+    personne : il ne bouge pas tout seul. Sans entente, on présente la
+    progression, qui est justement ce qui l'intéresse.
+
+    Ce que les DEUX taisent : l'existence même des ententes. Celui qui n'en a
+    pas ne doit pas apprendre qu'il en existe. C'est pourquoi la distinction
+    passe par le contenu du message et jamais par une mention du dispositif.
+    """
     fr = lang.startswith("fr")
+    entente = taux_convenu is not None
+    pct = f"{round(float(taux_convenu or 0) * 100):g}"
+    jours = s.AFFILIATE_INVITE_TTL_HOURS // 24
+
     if fr:
-        subject = "Invitation — Programme d'affiliation Fironova"
-        heading = "Vous êtes invité(e)"
-        intro = (f"Bonjour {name}, vous avez été invité(e) à rejoindre le "
-                 "programme d'affiliation privé de Fironova. Activez votre "
-                 "compte pour accéder à votre tableau de bord.")
-        cta = "Activer mon compte affilié"
-        expiry = f"Ce lien expire dans {s.AFFILIATE_INVITE_TTL_HOURS // 24} jours et ne sert qu'une fois."
-        ignore = "Si vous n'attendiez pas cette invitation, ignorez cet email."
+        subject = f"Bienvenue chez Fironova, {name}" if name else "Bienvenue chez Fironova"
+        expiry = f"Ce lien expire dans {jours} jours et ne sert qu'une fois."
+        ignore = ("Une question ? Répondez simplement à ce courriel. "
+                  "Si vous n'attendiez pas cette invitation, ignorez-la.")
+        cta = "Activer mon compte"
+        salut = f"Bonjour {name}," if name else "Bonjour,"
+        # Où lire le programme. Volontairement SANS adresse publique : le
+        # programme est privé et rien n'en est exposé sur le site. Le détail
+        # vit dans l'espace affilié, donc derrière l'activation — laquelle
+        # n'engage à rien : l'acceptation des conditions se fait ensuite, à
+        # l'écran, après défilement et clic explicite.
+        apres = ("Le détail du programme — commissions, attribution, "
+                 "paiements — vous attend dans votre espace dès l'activation.")
+        if entente:
+            heading = "Nous sommes heureux de vous compter parmi nous"
+            intro = ("Nous avons convenu ensemble des conditions de votre "
+                     "participation. Voici votre accès et tout ce qu'il faut "
+                     "pour commencer.")
+            mise_en_avant = f"Votre taux convenu — {pct} % sur chaque vente"
+            detail = ("Ce taux s'applique à l'ensemble de vos ventes validées. "
+                      "Il ne dépend pas de votre volume et ne diminue jamais de "
+                      "lui-même ; toute modification vous serait annoncée.")
+        else:
+            heading = "Votre place vous attend"
+            intro = ("Vous êtes invité(e) à rejoindre notre programme "
+                     "d'affiliation. Vos contacts économisent avec votre code, "
+                     "et chaque vente validée vous revient en commission.")
+            mise_en_avant = "Départ à 10 % — jusqu'à 20 %"
+            detail = ("Votre taux suit vos ventes des douze derniers mois, sur "
+                      "six paliers. Votre tableau de bord vous montre en "
+                      "permanence ce qui vous sépare du suivant.")
     else:
-        subject = "Invitation — Fironova Affiliate Program"
-        heading = "You're invited"
-        intro = (f"Hi {name}, you've been invited to join Fironova's private "
-                 "affiliate program. Activate your account to access your dashboard.")
-        cta = "Activate my affiliate account"
-        expiry = f"This link expires in {s.AFFILIATE_INVITE_TTL_HOURS // 24} days and works only once."
-        ignore = "If you weren't expecting this invitation, you can ignore this email."
+        subject = f"Welcome to Fironova, {name}" if name else "Welcome to Fironova"
+        expiry = f"This link expires in {jours} days and works only once."
+        ignore = ("Any questions? Just reply to this email. "
+                  "If you weren't expecting this invitation, you can ignore it.")
+        cta = "Activate my account"
+        salut = f"Hello {name}," if name else "Hello,"
+        apres = ("The full program — commissions, attribution, payouts — is "
+                 "waiting in your account as soon as you activate.")
+        if entente:
+            heading = "We're glad to have you with us"
+            intro = ("We've agreed together on the terms of your participation. "
+                     "Here's your access and everything you need to begin.")
+            mise_en_avant = f"Your agreed rate — {pct}% on every sale"
+            detail = ("This rate applies to all your approved sales. It doesn't "
+                      "depend on your volume and never decreases on its own; "
+                      "any change would be announced to you.")
+        else:
+            heading = "Your place is waiting"
+            intro = ("You've been invited to join our affiliate program. Your "
+                     "contacts save with your code, and every approved sale "
+                     "earns you a commission.")
+            mise_en_avant = "Starting at 10% — up to 20%"
+            detail = ("Your rate follows your sales over the last twelve months, "
+                      "across six tiers. Your dashboard always shows how far you "
+                      "are from the next one.")
+
     html = f"""\
 <div style="font-family:Inter,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;background:#F7FAFC;padding:40px 24px;">
   <div style="background:#0B2E4F;border-radius:20px 20px 0 0;padding:28px 32px;">
@@ -793,10 +855,14 @@ def _affiliate_invite_html(name: str, link: str, lang: str) -> tuple:
     <span style="color:#00B8D4;font-size:20px;font-weight:700;"> ·</span>
   </div>
   <div style="background:#ffffff;border-radius:0 0 20px 20px;padding:36px 32px;border:1px solid #E2E8F0;border-top:none;">
-    <h1 style="font-family:'Space Grotesk',sans-serif;color:#0B2E4F;font-size:24px;font-weight:700;margin:0 0 12px;">{heading}</h1>
-    <p style="color:#334155;font-size:15px;line-height:1.6;margin:0 0 28px;">{intro}</p>
+    <h1 style="font-family:'Space Grotesk',sans-serif;color:#0B2E4F;font-size:24px;font-weight:700;margin:0 0 16px;">{heading}</h1>
+    <p style="color:#0B2E4F;font-size:15px;line-height:1.6;margin:0 0 12px;">{salut}</p>
+    <p style="color:#334155;font-size:15px;line-height:1.6;margin:0 0 20px;">{intro}</p>
+    <p style="display:inline-block;background:#E1F2F5;border:1px solid #00B8D4;border-radius:8px;padding:10px 16px;margin:0 0 20px;color:#00697C;font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;">{mise_en_avant}</p>
+    <p style="color:#334155;font-size:15px;line-height:1.6;margin:0 0 28px;">{detail}</p>
     <a href="{link}" style="display:inline-block;background:#00B8D4;color:#0B2E4F;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:999px;font-size:15px;">{cta} &rarr;</a>
-    <p style="color:#64748B;font-size:12px;line-height:1.6;margin:28px 0 0;font-family:'JetBrains Mono',monospace;">{expiry}</p>
+    <p style="color:#334155;font-size:14px;line-height:1.6;margin:24px 0 0;">{apres}</p>
+    <p style="color:#64748B;font-size:12px;line-height:1.6;margin:20px 0 0;font-family:'JetBrains Mono',monospace;">{expiry}</p>
     <p style="color:#94A3B8;font-size:12px;line-height:1.6;margin:8px 0 0;">{ignore}</p>
     <hr style="border:none;border-top:1px solid #E2E8F0;margin:24px 0 12px;">
     <p style="color:#94A3B8;font-size:11px;line-height:1.5;margin:0;">Produits destin&eacute;s &agrave; la recherche uniquement (RUO). R&eacute;serv&eacute; aux 18 ans et plus.<br>For Research Use Only. 18+ only.</p>
@@ -805,8 +871,12 @@ def _affiliate_invite_html(name: str, link: str, lang: str) -> tuple:
     return subject, html
 
 
-async def _affiliate_send_invite(email: str, name: str, link: str, lang: str) -> None:
-    subject, html = _affiliate_invite_html(name, link, lang)
+async def _affiliate_send_invite(email: str, name: str, link: str, lang: str,
+                                 taux_convenu: float | None = None) -> None:
+    # `taux_convenu` est optionnel et par défaut absent : les appelants qui ne
+    # le passent pas (renvoi d'invitation, tests) obtiennent la version sans
+    # entente, qui est la bonne pour la grande majorité des affiliés.
+    subject, html = _affiliate_invite_html(name, link, lang, taux_convenu)
     # globals() lisait les variables de CE module, où MAGIC_SENDER_EMAIL et
     # SENDER_EMAIL n'ont jamais été définis : les deux lookups renvoyaient None
     # et l'expéditeur retombait toujours sur "orders@fironova.com" codé en dur,
@@ -1202,8 +1272,13 @@ async def _process_affiliate_email_job() -> bool:
         return False
 
     try:
+        # L'envoi en lot ne porte pas d'entente aujourd'hui — elles se
+        # négocient une par une. On lit quand même le champ : le jour où un
+        # lot en transporterait une, l'absence de lecture ici enverrait
+        # silencieusement le mauvais message.
         await s._affiliate_send_invite(
-            job["email"], job.get("name", ""), job["link"], job.get("lang", "fr")
+            job["email"], job.get("name", ""), job["link"], job.get("lang", "fr"),
+            taux_convenu=job.get("taux_convenu"),
         )
         await s.db.affiliate_email_jobs.update_one(
             {"id": job["id"], "status": "sending"},
