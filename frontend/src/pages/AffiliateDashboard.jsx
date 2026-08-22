@@ -461,9 +461,14 @@ export default function AffiliateDashboard() {
       texte: L(`Les versements partent une fois par mois, à partir de ${money(data?.payout_min_cad)}. En dessous, rien n'est perdu : le solde s'ajoute au mois suivant.`,
                `Payouts go out monthly, from ${money(data?.payout_min_cad)}. Below that nothing is lost: the balance carries over.`) },
     { cible: "affiliate-tier-badge", ton: "acquis", onglet: "overview",
-      titre: L("Votre palier", "Your tier"),
-      texte: L("Il suit votre chiffre d'affaires validé sur douze mois glissants, et monte dès le seuil franchi. De 10 % à 20 % selon le palier.",
-               "It follows your validated revenue over twelve rolling months, and rises as soon as a threshold is crossed. From 10% to 20%.") },
+      titre: data?.tier_agreement
+        ? L("Votre taux convenu", "Your agreed rate")
+        : L("Votre palier", "Your tier"),
+      texte: data?.tier_agreement
+        ? L("Il résulte d'une entente et ne suit pas le barème. Il ne varie pas avec votre volume de ventes et ne baisse jamais automatiquement.",
+            "It comes from an agreement and does not follow the scale. It does not vary with your sales volume and never decreases automatically.")
+        : L("Il suit votre chiffre d'affaires validé sur douze mois glissants, et monte dès le seuil franchi. De 10 % à 20 % selon le palier.",
+            "It follows your validated revenue over twelve rolling months, and rises as soon as a threshold is crossed. From 10% to 20%.") },
 
     // Les étapes qui suivent changent d'ONGLET. La visite ne parlait que de la
     // vue globale : cinq onglets sur six n'étaient jamais mentionnés, dont

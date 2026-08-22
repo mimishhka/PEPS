@@ -83,7 +83,12 @@ const QA = [
       a: [
         "Par votre chiffre d'affaires validé des douze derniers mois glissants — une fenêtre qui avance avec vous, pas un total remis à zéro en janvier.",
         "Les paliers : Standard 10 % jusqu'à 2 000 $, Bronze 12 % à partir de 2 001 $, Silver 14 % à partir de 5 001 $, Gold 16 % à partir de 10 001 $, Platinum 18 % à partir de 20 001 $, Diamond 20 % à partir de 35 001 $.",
-        "Le palier monte dès le seuil franchi, et le nouveau taux s'applique aux commandes suivantes. Les commissions déjà acquises ne sont pas recalculées. Si votre taux a été fixé par entente, il ne suit pas cette règle : il ne varie pas avec votre volume et ne baisse jamais automatiquement.",
+        "Le palier monte dès le seuil franchi, et le nouveau taux s'applique aux commandes suivantes. Les commissions déjà acquises ne sont pas recalculées.",
+        // Réservé aux comptes SOUS ENTENTE. Une entente est confidentielle :
+        // son existence même ne se divulgue pas, et un affilié au barème ne
+        // doit pas apprendre ici qu'un autre bénéficie d'un traitement
+        // particulier. La clé `entente` filtre ce paragraphe à l'affichage.
+        { entente: true, texte: "Votre taux résultant d'une entente, il ne suit pas cette règle : il ne varie pas avec votre volume de ventes et ne baisse jamais automatiquement." },
       ],
     },
     en: {
@@ -91,7 +96,8 @@ const QA = [
       a: [
         "By your validated revenue over the last twelve rolling months — a window that moves with you, not a total reset every January.",
         "The tiers: Standard 10% up to $2,000, Bronze 12% from $2,001, Silver 14% from $5,001, Gold 16% from $10,001, Platinum 18% from $20,001, Diamond 20% from $35,001.",
-        "The tier rises as soon as the threshold is crossed, and the new rate applies to subsequent orders. Commissions already earned are not recalculated. If your rate was set by agreement, it does not follow this rule: it does not vary with your volume and never decreases automatically.",
+        "The tier rises as soon as the threshold is crossed, and the new rate applies to subsequent orders. Commissions already earned are not recalculated.",
+        { entente: true, texte: "Your rate resulting from an agreement, it does not follow this rule: it does not vary with your sales volume and never decreases automatically." },
       ],
     },
   },
@@ -255,7 +261,15 @@ export default function AffiliateFaq() {
                   {t.q}
                 </h2>
                 <div className="mt-2 space-y-3 text-sm text-glacier leading-relaxed">
-                  {t.a.map((p, i) => <p key={i}>{p}</p>)}
+                  {/* Un paragraphe peut être une chaîne — visible par tous —
+                      ou un objet { entente: true }, réservé aux comptes sous
+                      entente. Une entente est confidentielle : son existence
+                      même ne se divulgue pas, et un affilié au barème ne doit
+                      pas apprendre ici qu'un autre bénéficie d'un traitement
+                      particulier. */}
+                  {t.a
+                    .filter((p) => typeof p === "string" || (p.entente && affiliate?.tier_agreement))
+                    .map((p, i) => <p key={i}>{typeof p === "string" ? p : p.texte}</p>)}
                 </div>
               </div>
             );

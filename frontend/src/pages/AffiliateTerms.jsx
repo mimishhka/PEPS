@@ -151,10 +151,6 @@ export const SECTIONS = [
         fr: "Une commande remboursée, annulée ou faisant l'objet d'une rétrofacturation après validation donne lieu à la reprise de la commission correspondante sur le solde suivant.",
         en: "An order refunded, cancelled or charged back after validation results in the corresponding commission being reversed against the next balance.",
       },
-      {
-        fr: "FIRONOVA peut convenir avec un Affilié d'un taux fixé par entente. Ce taux ne varie pas avec le volume de ventes et ne diminue pas automatiquement. Toute modification fait l'objet d'un avis préalable.",
-        en: "FIRONOVA may agree a negotiated rate with an Affiliate. That rate does not vary with sales volume and does not decrease automatically. Any change is subject to prior notice.",
-      },
     ],
   },
   {
@@ -339,8 +335,8 @@ export const SECTIONS = [
     en: { title: "Miscellaneous" },
     paras: [
       {
-        fr: "Intégralité — Les présentes conditions, avec la politique de confidentialité, constituent l'entente complète entre les parties relativement au programme et remplacent toute entente antérieure. Divisibilité — La nullité d'une disposition n'affecte pas la validité des autres. Renonciation — Le fait de ne pas se prévaloir d'une disposition ne vaut pas renonciation à s'en prévaloir ultérieurement. Cession — L'Affilié ne peut céder sa participation sans l'accord écrit préalable de FIRONOVA.",
-        en: "Entire agreement — These terms, together with the privacy policy, constitute the entire agreement between the parties in respect of the program and supersede any prior agreement. Severability — The invalidity of one provision does not affect the validity of the others. Waiver — Failure to rely on a provision is not a waiver of the right to rely on it later. Assignment — The Affiliate may not assign their participation without FIRONOVA's prior written consent.",
+        fr: "Intégralité — Les présentes conditions, avec la politique de confidentialité, constituent l'entente complète entre les parties relativement au programme et remplacent toute entente antérieure, sous réserve de toute convention écrite distincte conclue entre elles. Divisibilité — La nullité d'une disposition n'affecte pas la validité des autres. Renonciation — Le fait de ne pas se prévaloir d'une disposition ne vaut pas renonciation à s'en prévaloir ultérieurement. Cession — L'Affilié ne peut céder sa participation sans l'accord écrit préalable de FIRONOVA.",
+        en: "Entire agreement — These terms, together with the privacy policy, constitute the entire agreement between the parties in respect of the program and supersede any prior agreement, subject to any separate written agreement entered into between them. Severability — The invalidity of one provision does not affect the validity of the others. Waiver — Failure to rely on a provision is not a waiver of the right to rely on it later. Assignment — The Affiliate may not assign their participation without FIRONOVA's prior written consent.",
       },
       {
         fr: "Langue — Les parties ont exigé que les présentes soient rédigées en français.",
