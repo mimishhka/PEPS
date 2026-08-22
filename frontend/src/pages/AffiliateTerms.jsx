@@ -79,8 +79,13 @@ const SECTIONS = [
         en: "The following are prohibited: sending unsolicited email, in breach of Canada's Anti-Spam Legislation; bidding on advertising keywords containing \"FIRONOVA\" or its variants, and advertising that redirects to the site other than through the affiliate link; registering domain names, social media accounts or pages using the brand in a way that creates confusion as to their origin.",
       },
       {
-        fr: "Est également interdite la diffusion du code de réduction sur un site dont l'objet principal est de recenser des codes de rabais, ainsi que l'achat de tout placement sur un tel site. Cette restriction ne vise pas la mention d'un rabais dans un contenu éditorial, un billet ou une publication personnelle.",
-        en: "Also prohibited is publishing the discount code on any site whose primary purpose is to list discount codes, and buying any placement on such a site. This restriction does not cover mentioning a discount within editorial content, an article or a personal post.",
+        strong: true,
+        fr: "La promotion se fait en communication privée. Le lien et le code de l'Affilié sont destinés à ses échanges directs — messages, courriels, conversations. Ils ne doivent pas être publiés sur un forum, un réseau social ouvert, une vidéo publique, un site de codes de rabais ou tout autre support accessible à un public indéterminé.",
+        en: "Promotion is by private communication. The Affiliate's link and code are intended for direct exchanges — messages, email, conversations. They must not be published on a forum, an open social network, a public video, a discount-code site or any other medium accessible to an undetermined audience.",
+      },
+      {
+        fr: "Cette règle tient à la nature des produits : une affirmation faite devant un public indéterminé engage FIRONOVA bien au-delà de la même phrase adressée à une personne. Elle pourra évoluer. Un Affilié qui souhaite promouvoir publiquement peut en faire la demande ; une autorisation écrite préalable est alors requise et peut porter sur un contenu déterminé.",
+        en: "This rule follows from the nature of the products: a statement made to an undetermined audience commits FIRONOVA far beyond the same sentence addressed to one person. It may evolve. An Affiliate wishing to promote publicly may request it; prior written authorisation is then required and may cover specified content.",
       },
       {
         fr: "Sont enfin interdites : la revente, la mise aux enchères ou la redistribution commerciale des produits ; toute déclaration fausse ou trompeuse sur les produits, les prix, les délais ou la disponibilité.",
