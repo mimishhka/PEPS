@@ -10,6 +10,7 @@ import api from "./lib/api";
 
 import Header from "./components/Header";
 import ScrollToTop from "./components/ScrollToTop";
+import { PorteeDuTheme } from "./contexts/ThemeContext";
 import Footer from "./components/Footer";
 import AgeGate from "./components/AgeGate";
 import CartDrawer from "./components/CartDrawer";
@@ -199,6 +200,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <ScrollToTop />
+      {/* Décide OÙ le mode nuit s'applique — comptes et administration
+          seulement. Doit être dans le routeur : elle lit la page courante. */}
+      <PorteeDuTheme cheminAdmin={ADMIN_PATH} />
       <SiteConfigProvider>
         <LanguageProvider>
           <AuthProvider>

@@ -62,14 +62,24 @@ export default function Header() {
 
   return (
     <>
-      <div className="bg-nordfjord text-center py-2 px-4 font-data text-[11px] font-semibold uppercase tracking-[0.22em] text-[#9FD9E8]">
+      {/* Le fond `bg-nordfjord` s'inverse la nuit et devient clair. Le cyan
+          pâle écrit dessus, parfait sur bleu marine, disparaissait alors sur
+          fond blanc. La nuit, le texte passe donc à l'encre sombre — c'est la
+          paire fond/texte qui porte le contraste, pas la valeur. */}
+      <div className="bg-nordfjord text-center py-2 px-4 font-data text-[11px] font-semibold uppercase tracking-[0.22em] text-[#9FD9E8] dark:text-clinical">
         <span data-testid="header-compliance-band">{t("footer.compliance")}</span>
       </div>
       <header className="sticky top-0 z-40 bg-clinical/85 backdrop-blur border-b border-ash/70">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 flex items-center justify-between h-16">
-          <Link to="/" data-testid="header-logo" className="flex items-center gap-3 group" aria-label="FIRONOVA">
-            <FnMark size={30} frame="#0B2E4F" spark="#00B8D4" className="transition-transform duration-500 group-hover:rotate-[30deg]" />
-            <Wordmark size={19} color="#0B2E4F" />
+          {/* Le symbole et le mot étaient peints en Nordfjord codé en dur. Sur
+              les pages de compte en mode nuit, le fond passe au sombre et le
+              logo devenait un bleu marine sur du presque noir — pratiquement
+              invisible. currentColor le fait suivre `text-nordfjord`, dont la
+              valeur s'inverse. L'étoile garde son Nova Cyan : c'est l'accent
+              unique, et il tient sur les deux fonds. */}
+          <Link to="/" data-testid="header-logo" className="flex items-center gap-3 group text-nordfjord" aria-label="FIRONOVA">
+            <FnMark size={30} frame="currentColor" spark="#00B8D4" className="transition-transform duration-500 group-hover:rotate-[30deg]" />
+            <Wordmark size={19} color="currentColor" />
           </Link>
           <nav className="hidden md:flex items-center gap-8">
             {navItems.map((n) => (
