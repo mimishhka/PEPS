@@ -3910,17 +3910,27 @@ def _refund_eligibility_reason(order: dict) -> Optional[str]:
     if delivered_at:
         try:
             d = datetime.fromisoformat(delivered_at.replace("Z", "+00:00"))
-            if (now - d).days > 14:
-                return "Fenêtre de 14 jours après livraison dépassée"
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=timezone.utc)
+            if (now - d) > timedelta(hours=REFUND_CLAIM_HOURS_AFTER_DELIVERY):
+                return (f"Fenêtre de {int(REFUND_CLAIM_HOURS_AFTER_DELIVERY)} h "
+                        f"après livraison dépassée")
         except ValueError:
             pass
     else:
+        # Sans date de livraison, la fenêtre n'a pas de point de départ connu :
+        # on ne peut pas opposer un délai à quelqu'un dont on ignore quand — et
+        # même si — il a reçu son colis. Le repli reste donc volontairement
+        # long, et il est INCHANGÉ : le resserrer ici aurait durci, sans qu'on
+        # le demande, le cas où l'on sait le moins de choses.
         paid_at = order.get("paid_at")
         if paid_at:
             try:
                 p = datetime.fromisoformat(paid_at.replace("Z", "+00:00"))
-                if (now - p).days > 30:
-                    return "Fenêtre de 30 jours après paiement dépassée"
+                if p.tzinfo is None:
+                    p = p.replace(tzinfo=timezone.utc)
+                if (now - p).days > REFUND_CLAIM_FALLBACK_DAYS:
+                    return f"Fenêtre de {int(REFUND_CLAIM_FALLBACK_DAYS)} jours après paiement dépassée"
             except ValueError:
                 pass
     return None
@@ -8995,6 +9005,20 @@ class AffiliatePayoutMarkIn(BaseModel):
 # ===========================================================================
 # TÂCHE : approbation automatique après fenêtre de rétractation
 # ===========================================================================
+
+# Fenêtre de réclamation — 48 heures après la livraison.
+#
+# C'est ce qu'annoncent la FAQ et la page Conformité. Le code, lui, acceptait
+# une demande pendant 14 JOURS : il était sept fois plus permissif que la
+# politique publiée, et l'écran d'administration affichait cette fenêtre de
+# 14 jours, si bien que rien ne signalait l'écart.
+#
+# Le repli sans date de livraison reste à 30 jours, inchangé.
+REFUND_CLAIM_HOURS_AFTER_DELIVERY = float(
+    os.environ.get("REFUND_CLAIM_HOURS_AFTER_DELIVERY", "48"))
+REFUND_CLAIM_FALLBACK_DAYS = float(
+    os.environ.get("REFUND_CLAIM_FALLBACK_DAYS", "30"))
+
 
 # Une commission reste bloquée exactement le temps où l'argent peut encore
 # repartir, plus le temps de traiter une réclamation — et pas un jour de plus.

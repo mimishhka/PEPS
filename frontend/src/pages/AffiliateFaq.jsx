@@ -114,7 +114,7 @@ const QA = [
     en: {
       q: "What do \"pending\" and \"validated\" mean?",
       a: [
-        "Pending: the order is paid, but the 14-day period has not elapsed. The commission exists, it is not yet earned.",
+        "Pending: the order is paid, but the period following delivery has not elapsed — or a claim is under review. The commission exists, it is not yet earned.",
         "Validated: the period has passed, the commission is yours and counts toward your tier. This is the amount that goes out at the next payout.",
         "That period matches the window during which an order can still be cancelled or refunded. An order refunded after validation is reversed against the next balance.",
       ],
