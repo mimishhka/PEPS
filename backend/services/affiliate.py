@@ -768,7 +768,8 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
 # ===========================================================================
 
 def _affiliate_invite_html(name: str, link: str, lang: str,
-                           taux_convenu: float | None = None) -> tuple:
+                           taux_convenu: float | None = None,
+                           lien_programme: str = "") -> tuple:
     """Courriel d'accueil. DEUX versions, choisies par `taux_convenu`.
 
     L'ancien texte annonçait la même chose à tout le monde : « activez votre
@@ -848,6 +849,31 @@ def _affiliate_invite_html(name: str, link: str, lang: str,
                       "across six tiers. Your dashboard always shows how far you "
                       "are from the next one.")
 
+    # Lire d'abord, activer ensuite.
+    #
+    # Le bouton menait droit à l'activation : on demandait de s'engager avant
+    # d'avoir rien lu. Quand une page de programme est disponible, c'est elle
+    # que le bouton ouvre — l'activation s'y trouve, une fois la lecture faite.
+    #
+    # Le lien direct reste, en second et discret : si cette page échouait, il
+    # ne faut pas que l'invitation devienne inutilisable.
+    secondaire = ""
+    if lien_programme:
+        if fr:
+            cta = "Découvrir le programme"
+            apres = ("Vous pourrez activer votre compte depuis cette page, "
+                     "en connaissance de cause.")
+            direct = "Ou activer directement"
+        else:
+            cta = "See the program"
+            apres = ("You'll be able to activate your account from that page, "
+                     "once you've read it.")
+            direct = "Or activate directly"
+        secondaire = (f'<p style="margin:14px 0 0;"><a href="{link}" '
+                      f'style="color:#64748B;font-size:12px;text-decoration:underline;">'
+                      f'{direct}</a></p>')
+    cta_href = lien_programme or link
+
     html = f"""\
 <div style="font-family:Inter,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;background:#F7FAFC;padding:40px 24px;">
   <div style="background:#0B2E4F;border-radius:20px 20px 0 0;padding:28px 32px;">
@@ -860,7 +886,8 @@ def _affiliate_invite_html(name: str, link: str, lang: str,
     <p style="color:#334155;font-size:15px;line-height:1.6;margin:0 0 20px;">{intro}</p>
     <p style="display:inline-block;background:#E1F2F5;border:1px solid #00B8D4;border-radius:8px;padding:10px 16px;margin:0 0 20px;color:#00697C;font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;">{mise_en_avant}</p>
     <p style="color:#334155;font-size:15px;line-height:1.6;margin:0 0 28px;">{detail}</p>
-    <a href="{link}" style="display:inline-block;background:#00B8D4;color:#0B2E4F;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:999px;font-size:15px;">{cta} &rarr;</a>
+    <a href="{cta_href}" style="display:inline-block;background:#00B8D4;color:#0B2E4F;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:999px;font-size:15px;">{cta} &rarr;</a>
+    {secondaire}
     <p style="color:#334155;font-size:14px;line-height:1.6;margin:24px 0 0;">{apres}</p>
     <p style="color:#64748B;font-size:12px;line-height:1.6;margin:20px 0 0;font-family:'JetBrains Mono',monospace;">{expiry}</p>
     <p style="color:#94A3B8;font-size:12px;line-height:1.6;margin:8px 0 0;">{ignore}</p>
@@ -872,11 +899,13 @@ def _affiliate_invite_html(name: str, link: str, lang: str,
 
 
 async def _affiliate_send_invite(email: str, name: str, link: str, lang: str,
-                                 taux_convenu: float | None = None) -> None:
-    # `taux_convenu` est optionnel et par défaut absent : les appelants qui ne
-    # le passent pas (renvoi d'invitation, tests) obtiennent la version sans
-    # entente, qui est la bonne pour la grande majorité des affiliés.
-    subject, html = _affiliate_invite_html(name, link, lang, taux_convenu)
+                                 taux_convenu: float | None = None,
+                                 lien_programme: str = "") -> None:
+    # Les deux extras sont optionnels et absents par défaut : un appelant qui
+    # ne les passe pas obtient l'ancien courriel, sans entente et menant droit
+    # à l'activation. Rien de ce qui marchait ne cesse de marcher.
+    subject, html = _affiliate_invite_html(name, link, lang, taux_convenu,
+                                           lien_programme)
     # globals() lisait les variables de CE module, où MAGIC_SENDER_EMAIL et
     # SENDER_EMAIL n'ont jamais été définis : les deux lookups renvoyaient None
     # et l'expéditeur retombait toujours sur "orders@fironova.com" codé en dur,
@@ -1279,6 +1308,7 @@ async def _process_affiliate_email_job() -> bool:
         await s._affiliate_send_invite(
             job["email"], job.get("name", ""), job["link"], job.get("lang", "fr"),
             taux_convenu=job.get("taux_convenu"),
+            lien_programme=job.get("programme_link", ""),
         )
         await s.db.affiliate_email_jobs.update_one(
             {"id": job["id"], "status": "sending"},

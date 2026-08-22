@@ -8982,6 +8982,78 @@ async def get_current_affiliate(request: Request) -> dict:
 # ENDPOINTS — AFFILIÉ (dashboard)
 # ===========================================================================
 
+async def affiliate_invite_program(token: str = ""):
+    """Le programme, lisible AVANT d'activer — et par les seuls invités.
+
+    Le programme est privé : aucune page publique ne l'expose. Mais quelqu'un
+    qu'on invite doit pouvoir lire ce qu'on lui propose avant de s'y engager.
+    Le jeton d'invitation sert donc de clé de lecture.
+
+    Deux propriétés tiennent tout :
+
+      — On NE CONSOMME PAS le jeton. Lire n'active rien ; l'activation reste
+        le geste séparé de /affiliate/join. Sans cela, ouvrir le lien pour se
+        renseigner aurait créé le compte, ce qui est exactement l'inverse de
+        ce qu'on cherche.
+
+      — On ne révèle jamais l'existence des ententes. Un invité sous entente
+        reçoit son taux convenu et RIEN de l'échelle ; un invité ordinaire
+        reçoit l'échelle et rien d'autre. Aucun des deux ne peut déduire que
+        l'autre régime existe.
+
+    Le message d'erreur est le même pour un jeton absent, faux, expiré ou
+    déjà utilisé : distinguer les cas dirait à qui essaie des jetons au
+    hasard lesquels ont existé.
+    """
+    token = (token or "").strip()
+    invite = None
+    if token:
+        invite = await db.affiliates.find_one(
+            {"invite_token_hash": _affiliate_hash_token(token),
+             "status": "invited"},
+            {"_id": 0, "first_name": 1, "manual_tier": 1, "tier_agreement": 1,
+             "invite_expires_at": 1},
+        )
+    if invite:
+        exp = invite.get("invite_expires_at")
+        if exp:
+            try:
+                exp_dt = datetime.fromisoformat(str(exp).replace("Z", "+00:00"))
+                if exp_dt.tzinfo is None:
+                    exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) > exp_dt:
+                    invite = None
+            except Exception:
+                pass
+    if not invite:
+        raise HTTPException(404, "Invitation introuvable ou expirée")
+
+    taux_par_palier = {nom: taux for nom, taux, _f, _c in AFFILIATE_TIERS}
+    entente = bool(invite.get("tier_agreement")) and bool(invite.get("manual_tier"))
+    if entente:
+        return {
+            "first_name": invite.get("first_name") or "",
+            "agreed_rate": taux_par_palier.get(invite["manual_tier"]),
+            "tiers": [],
+            "payout_min_cad": AFFILIATE_PAYOUT_MIN_CAD,
+        }
+    return {
+        "first_name": invite.get("first_name") or "",
+        "agreed_rate": None,
+        # Le seuil se règle par variable d'environnement. L'écrire en dur dans
+        # la page en ferait un chiffre faux le jour où il change — le défaut
+        # même qu'on reproche à un document joint.
+        "payout_min_cad": AFFILIATE_PAYOUT_MIN_CAD,
+        # Les paliers viennent d'AFFILIATE_TIERS, la source du calcul des
+        # commissions. Aucune recopie : ce que lit l'invité est ce que le
+        # serveur appliquera.
+        "tiers": [
+            {"key": nom, "rate": taux, "floor": plancher, "ceil": plafond}
+            for nom, taux, plancher, plafond in AFFILIATE_TIERS
+        ],
+    }
+
+
 async def affiliate_join(payload: AffiliateJoinIn, request: Request,
                           response: Response):
     """Active un affilié via son token d'invitation — MAGIC-LINK 1-CLIC.
@@ -9795,7 +9867,8 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
     base = _trusted_public_base_url()
     link = f"{base}/affiliate/join?token={raw}"
     await _affiliate_send_invite(email, first_name, link, payload.lang or "fr",
-                                 taux_convenu=taux_convenu)
+                                 taux_convenu=taux_convenu,
+                                 lien_programme=f"{base}/affiliate/programme?token={raw}")
     return {"ok": True, "affiliate_id": aff_id, "invite_link": link}
 
 
@@ -9831,7 +9904,8 @@ async def admin_affiliate_resend(affiliate_id: str,
             aff["manual_tier"])
     await _affiliate_send_invite(aff["email"],
                                  (aff.get("first_name") or aff.get("name") or ""),
-                                 link, "fr", taux_convenu=taux_convenu)
+                                 link, "fr", taux_convenu=taux_convenu,
+                                 lien_programme=f"{base}/affiliate/programme?token={raw}")
     return {"ok": True, "invite_link": link, "sent_to": aff["email"]}
 
 
@@ -9973,6 +10047,7 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
                     "email": email,
                     "name": display_name,
                     "link": link,
+                    "programme_link": f"{base}/affiliate/programme?token={raw}",
                     "lang": lang,
                     "attempts": 0,
                     "available_at": now.isoformat(),

@@ -7,6 +7,17 @@ import server as s
 router = APIRouter(prefix="/api")
 
 
+@router.get("/affiliate/invite/program")
+async def affiliate_invite_program(token: str = ""):
+    """Lecture du programme par un invité, avant activation.
+
+    GET et non POST : c'est une consultation, elle ne change rien. Le jeton
+    n'est pas consommé — ouvrir ce lien pour se renseigner ne doit pas créer
+    de compte.
+    """
+    return await s.affiliate_invite_program(token)
+
+
 @router.post("/affiliate/join")
 async def affiliate_join(payload: s.AffiliateJoinIn, request: Request, response: Response):
     return await s.affiliate_join(payload, request, response)

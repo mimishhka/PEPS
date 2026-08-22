@@ -42,6 +42,7 @@ const Privacy = lazy(() => import("./pages/Privacy"));
 const Faq = lazy(() => import("./pages/Faq"));
 const AffiliateDashboard = lazy(() => import("./pages/AffiliateDashboard"));
 const AffiliateJoin = lazy(() => import("./pages/AffiliateJoin"));
+const AffiliateProgramme = lazy(() => import("./pages/AffiliateProgramme"));
 const AffiliateTerms = lazy(() => import("./pages/AffiliateTerms"));
 const AffiliateFaq = lazy(() => import("./pages/AffiliateFaq"));
 const StaffAccept = lazy(() => import("./pages/StaffAccept"));
@@ -158,6 +159,11 @@ function AppRoutes() {
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/faq" element={<Faq />} />
       <Route path="/affiliate/join" element={<AffiliateJoin />} />
+      {/* Sans garde de session, mais PAS publique pour autant : la page ne
+          montre rien sans un jeton d'invitation valide, que le serveur
+          vérifie. Le programme reste privé ; seul l'invité peut le lire, et
+          il peut le lire AVANT d'activer quoi que ce soit. */}
+      <Route path="/affiliate/programme" element={<AffiliateProgramme />} />
       {/* PUBLIQUE, et volontairement : on doit pouvoir lire ce qu'on
           s'apprête à accepter avant d'y être invité, et le texte doit rester
           consultable pour établir ce qui a été accepté. */}
