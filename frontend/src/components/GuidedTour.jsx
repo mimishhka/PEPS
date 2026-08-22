@@ -20,23 +20,11 @@ const MARGE = 8;      // respiration autour de la zone mise en évidence
 const ECART = 12;     // distance entre la zone et la bulle
 const HAUTEUR = 190;  // hauteur estimée d'une bulle, pour décider haut ou bas
 
-/** Repère mémorisé par affilié : deux personnes partageant un navigateur ne
- *  doivent pas hériter de la visite l'une de l'autre. */
-export function tourKey(id) {
-  return `fn_tour_${id || "anon"}`;
-}
-
-export function tourDejaVue(id) {
-  try {
-    return localStorage.getItem(tourKey(id)) === "1";
-  } catch {
-    // Navigation privée ou stockage refusé : on considère la visite non vue.
-    // Au pire elle se rejoue, ce qui est moins grave que de planter.
-    return false;
-  }
-}
-
-export default function GuidedTour({ steps, storageId, onClose, L }) {
+// Ce composant ne mémorise RIEN. Savoir si la visite a déjà été donnée relève
+// de la fiche affilié, côté serveur : un marqueur dans le navigateur la faisait
+// rejouer entièrement sur un autre appareil ou après un nettoyage. Le parent
+// décide de l'afficher et enregistre la fin par onClose.
+export default function GuidedTour({ steps, onClose, L }) {
   const [i, setI] = useState(0);
   const [box, setBox] = useState(null);
 
@@ -48,15 +36,11 @@ export default function GuidedTour({ steps, storageId, onClose, L }) {
 
   const etape = utiles[i];
 
-  // Terminer et quitter marquent tous deux la visite comme vue : quelqu'un qui
-  // sort à la deuxième bulle a décidé qu'il n'en voulait pas, et la lui
-  // resservir au prochain chargement serait le punir de son choix.
-  const fermer = useCallback(() => {
-    try {
-      localStorage.setItem(tourKey(storageId), "1");
-    } catch { /* stockage indisponible : on ferme quand même */ }
-    onClose();
-  }, [storageId, onClose]);
+  // Terminer et quitter appellent la même sortie : quelqu'un qui s'en va à la
+  // deuxième bulle a décidé qu'il n'en voulait pas, et la lui resservir au
+  // prochain chargement serait le punir de son choix. C'est le parent qui
+  // enregistre, ce composant ne fait que le prévenir.
+  const fermer = useCallback(() => { onClose(); }, [onClose]);
 
   // Position de la zone mise en évidence. useLayoutEffect et non useEffect :
   // mesurer après peinture ferait apparaître la bulle au mauvais endroit

@@ -614,6 +614,9 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
         # entre les deux implementations passerait inapercu. Un texte revise
         # (AFFILIATE_TERMS_VERSION modifiee) repasse ce drapeau a false et
         # redemande l'acceptation.
+        # Visite guidee : marqueur porte par la FICHE, pas par le navigateur.
+        # Elle doit se donner une fois par personne, pas une fois par appareil.
+        "tour_done": bool(aff.get("tour_done")),
         "terms_ok": aff.get("terms_version") == s.AFFILIATE_TERMS_VERSION,
         "terms_version_required": s.AFFILIATE_TERMS_VERSION,
         "terms_accepted_at": aff.get("terms_accepted_at", ""),

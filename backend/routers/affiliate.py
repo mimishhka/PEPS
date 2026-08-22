@@ -22,6 +22,16 @@ async def affiliate_terms_accept(payload: s.AffiliateTermsAcceptIn, request: Req
     return await s.affiliate_terms_accept(payload, request)
 
 
+@router.post("/affiliate/tour/done")
+async def affiliate_tour_done(request: Request):
+    return await s.affiliate_tour_done(request)
+
+
+@router.post("/affiliate/tour/reset")
+async def affiliate_tour_reset(request: Request):
+    return await s.affiliate_tour_reset(request)
+
+
 @router.post("/affiliate/tickets")
 async def affiliate_ticket_create(payload: s.AffiliateTicketIn, request: Request):
     return await s.affiliate_ticket_create(payload, request)

@@ -9296,6 +9296,37 @@ async def admin_affiliate_ticket_status(ticket_id: str, payload: AffiliateTicket
     return res
 
 
+async def affiliate_tour_done(request: Request):
+    """Marque la visite guidée comme vue, DANS LA FICHE AFFILIÉ.
+
+    Le marqueur vivait d'abord dans le stockage du navigateur, ce qui la faisait
+    rejouer intégralement dès qu'on se connectait depuis un autre appareil ou
+    après un nettoyage. Une visite d'accueil qui revient est une nuisance : elle
+    doit se donner une fois par personne, pas une fois par navigateur.
+    """
+    aff = await get_current_affiliate(request)
+    await db.affiliates.update_one(
+        {"id": aff["id"]},
+        {"$set": {"tour_done": True,
+                  "tour_done_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {"ok": True}
+
+
+async def affiliate_tour_reset(request: Request):
+    """Redemande la visite guidée, à la demande de l'affilié.
+
+    La dernière bulle annonce qu'on peut la revoir depuis la FAQ ; sans cette
+    route, la promesse serait fausse. Le marqueur vivant maintenant dans la
+    fiche, l'effacer côté navigateur n'aurait plus aucun effet.
+    """
+    aff = await get_current_affiliate(request)
+    await db.affiliates.update_one(
+        {"id": aff["id"]}, {"$set": {"tour_done": False}},
+    )
+    return {"ok": True}
+
+
 async def affiliate_me(request: Request, lang: str = "fr"):
     aff = await get_current_affiliate(request)
     metrics = await _affiliate_compute_metrics(aff["id"])

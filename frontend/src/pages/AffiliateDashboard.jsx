@@ -18,7 +18,7 @@ import { useLang } from "../contexts/LanguageContext";
 import { DashboardSkeleton } from "../components/LoadingSkeletons";
 import useAffiliate from "../hooks/useAffiliate";
 import useDocumentHead from "../hooks/useDocumentHead";
-import GuidedTour, { tourDejaVue } from "../components/GuidedTour";
+import GuidedTour from "../components/GuidedTour";
 import AffiliateSupport from "../components/AffiliateSupport";
 
 const TIER_META = {
@@ -334,7 +334,12 @@ export default function AffiliateDashboard() {
   // remplacait tout le tableau de bord par l'ecran d'erreur.
   const [tourOuvert, setTourOuvert] = useState(false);
   useEffect(() => {
-    if (data && data.terms_ok !== false && !tourDejaVue(data.id)) {
+    // Trois conditions, toutes nécessaires : la fiche est chargée, les
+    // conditions sont acceptées — la visite n'a aucun sens avant —, et le
+    // SERVEUR dit qu'elle n'a pas déjà été donnée. Ce dernier point vient de
+    // la fiche affilié et non du navigateur : autrement la visite rejouait
+    // entièrement sur un autre appareil ou après un nettoyage.
+    if (data && data.terms_ok !== false && data.tour_done !== true) {
       // Court délai : laisse la mise en page se stabiliser avant de mesurer
       // la première cible, sans quoi la bulle apparaît décalée.
       const t = setTimeout(() => setTourOuvert(true), 600);
@@ -342,6 +347,18 @@ export default function AffiliateDashboard() {
     }
     return undefined;
   }, [data]);
+
+  // Terminer ET quitter marquent la visite comme donnée : quelqu'un qui sort à
+  // la deuxième bulle a décidé qu'il n'en voulait pas. L'échec de l'appel est
+  // volontairement silencieux — le pire qui puisse arriver est qu'elle soit
+  // proposée une fois de plus, ce qui ne justifie pas d'alarmer l'affilié.
+  const fermerTour = useCallback(async () => {
+    setTourOuvert(false);
+    try {
+      await api.post("/affiliate/tour/done");
+      await refreshAffiliate();
+    } catch { /* sans conséquence */ }
+  }, [refreshAffiliate]);
 
   if (loading || affiliateLoading) {
     return <DashboardSkeleton />;
@@ -449,8 +466,7 @@ export default function AffiliateDashboard() {
   return (
     <div className="bg-clinical min-h-screen">
       {tourOuvert && (
-        <GuidedTour steps={TOUR} storageId={data?.id} L={L}
-                    onClose={() => setTourOuvert(false)} />
+        <GuidedTour steps={TOUR} L={L} onClose={fermerTour} />
       )}
       <div className="max-w-6xl mx-auto px-6 py-16" data-testid="affiliate-dashboard">
         {/* Header */}
@@ -1300,11 +1316,40 @@ export default function AffiliateDashboard() {
  *  requises : une case unique « j'accepte tout » ne prouverait pas que la
  *  personne a lu l'engagement sur l'usage recherche, qui est celui qui vous
  *  expose réellement. */
+/** Une case à cocher, définie AU NIVEAU DU MODULE et non dans le composant.
+ *
+ *  Déclarée à l'intérieur, elle devenait une nouvelle fonction à chaque rendu :
+ *  React y voyait un composant d'un type différent, démontait puis remontait
+ *  la case, et l'interaction était détruite à l'instant même où elle se
+ *  produisait. Les cases paraissaient alors ne pas répondre au clic.
+ */
+function Case({ on, set, children, test, disabled, raison }) {
+  return (
+    <label className={`flex items-start gap-3 group ${
+      disabled ? "cursor-not-allowed" : "cursor-pointer"}`}>
+      <input type="checkbox" checked={on} disabled={disabled}
+             onChange={(e) => set(e.target.checked)}
+             data-testid={test} className="mt-1 w-4 h-4 accent-nova shrink-0" />
+      <span className={`text-sm leading-snug ${disabled ? "text-glacier" : "text-nordfjord"}`}>
+        {children}
+        {disabled && raison && (
+          <span className="block text-[11px] text-nova mt-0.5">{raison}</span>
+        )}
+      </span>
+    </label>
+  );
+}
+
 function AffiliateTermsGate({ L, lang, onDone }) {
   const [terms, setTerms] = useState(false);
   const [age, setAge] = useState(false);
   const [research, setResearch] = useState(false);
   const [busy, setBusy] = useState(false);
+  // « J'ai lu » ne doit pas pouvoir être coché sans avoir ouvert le texte. On
+  // ne peut évidemment pas vérifier qu'il a été LU — mais on peut refuser
+  // l'affirmation à qui n'a même pas ouvert la page, et c'est déjà la
+  // différence entre une case cochée par réflexe et un geste délibéré.
+  const [luTermes, setLuTermes] = useState(false);
   const complet = terms && age && research;
 
   const accepter = async () => {
@@ -1320,14 +1365,6 @@ function AffiliateTermsGate({ L, lang, onDone }) {
       setBusy(false);
     }
   };
-
-  const Case = ({ on, set, children, test }) => (
-    <label className="flex items-start gap-3 cursor-pointer group">
-      <input type="checkbox" checked={on} onChange={(e) => set(e.target.checked)}
-             data-testid={test} className="mt-1 w-4 h-4 accent-nova shrink-0" />
-      <span className="text-sm text-nordfjord leading-snug">{children}</span>
-    </label>
-  );
 
   return (
     <div className="bg-clinical min-h-screen flex items-center justify-center px-6 py-16"
@@ -1348,9 +1385,15 @@ function AffiliateTermsGate({ L, lang, onDone }) {
           {/* Les deux liens s'ouvrent dans un onglet séparé : on ne fait pas
               perdre à quelqu'un les cases déjà cochées pour l'avoir envoyé
               lire ce qu'on lui demande justement de lire. */}
-          <Case on={terms} set={setTerms} test="terms-accept">
+          <Case on={terms} set={setTerms} test="terms-accept"
+                disabled={!luTermes}
+                raison={L("Ouvrez d'abord les conditions ci-dessous.",
+                          "Open the terms below first.")}>
             {L("J'ai lu et j'accepte les ", "I have read and accept the ")}
-            <Link to="/affiliate/terms" target="_blank" rel="noreferrer" className="text-nova underline">
+            <Link to="/affiliate/terms" target="_blank" rel="noreferrer"
+                  onClick={() => setLuTermes(true)}
+                  data-testid="terms-link"
+                  className="text-nova underline">
               {L("conditions du programme d'affiliation", "affiliate program terms")}
             </Link>
             {L(" ainsi que la ", " and the ")}

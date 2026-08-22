@@ -16,7 +16,7 @@ import useDocumentHead from "../hooks/useDocumentHead";
 import { useLang } from "../contexts/LanguageContext";
 import useAffiliate from "../hooks/useAffiliate";
 import { DashboardSkeleton } from "../components/LoadingSkeletons";
-import { tourKey } from "../components/GuidedTour";
+import api from "../lib/api";
 
 const QA = [
   {
@@ -265,11 +265,15 @@ export default function AffiliateFaq() {
             {L("← Retour au tableau de bord", "← Back to dashboard")}
           </Link>
           {/* Relance de la visite. La dernière bulle l'annonce ; sans ce
-              bouton, la promesse serait fausse. On efface le repère puis on
-              renvoie au tableau de bord, qui la redémarre de lui-même. */}
+              bouton, la promesse serait fausse. Le marqueur vit dans la fiche
+              affilié et non dans le navigateur : on demande au serveur de le
+              lever, puis on renvoie au tableau de bord, qui redémarre de
+              lui-même. Effacer un repère local n'aurait plus aucun effet. */}
           <button
-            onClick={() => {
-              try { localStorage.removeItem(tourKey(affiliate?.id)); } catch { /* sans effet */ }
+            onClick={async () => {
+              try {
+                await api.post("/affiliate/tour/reset");
+              } catch { /* la visite reste simplement telle quelle */ }
               navigate("/affiliate");
             }}
             data-testid="faq-restart-tour"
