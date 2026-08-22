@@ -620,7 +620,10 @@ export default function AffiliateDashboard() {
                   propre devise : voir « 412,30 $ » quand le portefeuille
                   affiche 297 USDT laisse croire à une retenue. La devise vient
                   de son choix, jamais d'un « USDT » écrit en dur. */}
-              <KpiCard label={L("Commissions payées", "Paid commissions")}
+              {/* « Versé à ce jour » plutôt que « Commissions payées » : le
+                  second ne dit pas si l'argent est acquis ou réellement parti,
+                  et c'est toute la différence sur cet écran. */}
+              <KpiCard label={L("Versé à ce jour", "Paid out to date")}
                 value={money(data?.paid_commission)}
                 sub={
                   data?.fx_rate_cad_to_usd > 0 && Number(data?.paid_commission) > 0
@@ -646,11 +649,26 @@ export default function AffiliateDashboard() {
                       {L(`sur ${money(payoutMin)} requis`, `of ${money(payoutMin)} required`)}
                     </span>
                   </p>
-                  {data?.fx_rate_cad_to_usd > 0 && dueNow > 0 && (
-                    <p className="font-data text-sm text-glacier tabular-nums">
+                  {/* Jeton de conversion, TOUJOURS visible dès que le taux est
+                      connu — y compris à zéro. C'est justement avant le premier
+                      versement qu'on doit comprendre qu'on sera payé dans une
+                      autre devise ; le conditionner au solde le faisait
+                      disparaître exactement pour qui l'ignorait encore.
+                      Sa couleur le distingue des montants en dollars canadiens
+                      qui l'entourent : trois « $ » de suite sur un écran, dont
+                      un qui n'est pas la même monnaie, se confondent. */}
+                  {data?.fx_rate_cad_to_usd > 0 && (
+                    <span className="font-data text-[13px] tabular-nums rounded-lg px-2.5 py-1.5
+                                     border whitespace-nowrap"
+                          data-testid="payout-conversion"
+                          style={{
+                            color: "#7C5CD6",
+                            background: "rgba(124,92,214,.09)",
+                            borderColor: "rgba(124,92,214,.28)",
+                          }}>
                       ≈ {(dueNow * Number(data.fx_rate_cad_to_usd)).toFixed(2)}
                       <span className="uppercase ml-1">{data.payout_currency || "usdt"}</span>
-                    </p>
+                    </span>
                   )}
                 </div>
                 <div className="h-3 rounded-full bg-ash overflow-hidden mt-2">
