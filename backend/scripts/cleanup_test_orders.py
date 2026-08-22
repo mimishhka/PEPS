@@ -62,7 +62,7 @@ def protegee(cmd: dict) -> str:
     return ""
 
 
-async def main(patterns: list[str], do_delete: bool) -> int:
+async def main(patterns: list[str], do_delete: bool, include_paid: bool) -> int:
     load_dotenv("/app/backend/.env")
     mongo = os.environ.get("MONGO_URL")
     dbname = os.environ.get("DB_NAME")
@@ -86,15 +86,28 @@ async def main(patterns: list[str], do_delete: bool) -> int:
     print(f"Correspondant aux motifs : {len(matched) + len(protected)}")
     print()
 
+    if protected and include_paid:
+        # Reversées dans le lot supprimable, sur demande explicite. Ce sont
+        # elles qui faussent le plus les chiffres : une commande annulée ne
+        # compte pas dans le chiffre d'affaires, une commande payée si.
+        matched.extend(protected)
+        montant_protege = sum(float(r["o"].get("total") or 0) for r in protected)
+        print(f"--include-paid : {len(protected)} commande(s) protégée(s) "
+              f"réintégrée(s), {montant_protege:.2f} $.")
+        print()
+        protected = []
+
     if protected:
-        print("PROTÉGÉES — jamais supprimées automatiquement :")
+        montant_protege = sum(float(r["o"].get("total") or 0) for r in protected)
+        print(f"PROTÉGÉES — {len(protected)} commande(s), {montant_protege:.2f} $ :")
         for r in protected:
             o = r["o"]
             print(f"  {(o.get('order_number') or o.get('id', ''))[:24]:26} "
                   f"{(o.get('email') or '?')[:38]:40} {r['raison']}")
         print()
-        print("  Si l'une d'elles est bien un test, supprimez-la à la main :")
-        print("  vous verrez alors exactement ce que vous effacez.")
+        print("  Ces commandes ont laissé une trace réelle — paiement, envoi —")
+        print("  et comptent donc dans votre chiffre d'affaires. Si ce sont bien")
+        print("  des tests, relancez avec --include-paid pour les inclure.")
         print()
 
     if not matched:
@@ -160,5 +173,9 @@ if __name__ == "__main__":
                     help="exécute la suppression (sinon : inventaire seul)")
     ap.add_argument("--pattern", action="append", default=[],
                     help="motif d'adresse supplémentaire (regex), répétable")
+    ap.add_argument("--include-paid", action="store_true",
+                    help="inclut les commandes protégées (payées, expédiées) — "
+                         "à n'utiliser qu'après les avoir lues une par une")
     args = ap.parse_args()
-    sys.exit(asyncio.run(main(DEFAULT_PATTERNS + args.pattern, args.delete)))
+    sys.exit(asyncio.run(main(DEFAULT_PATTERNS + args.pattern, args.delete,
+                              args.include_paid)))
