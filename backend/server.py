@@ -126,7 +126,16 @@ AFFILIATE_SENDER_EMAIL = os.environ.get("AFFILIATE_SENDER_EMAIL", "")
 ADMIN_NOTIFICATION_EMAIL = os.environ.get("ADMIN_NOTIFICATION_EMAIL", "admin@fironova.com")
 SHIPPING_FLAT_CAD = float(os.environ.get("SHIPPING_FLAT_CAD", "20.00"))
 FREE_SHIPPING_THRESHOLD_CAD = float(os.environ.get("FREE_SHIPPING_THRESHOLD_CAD", "200.00"))
-UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "24"))
+# Délai de paiement — 30 minutes.
+#
+# Le stock est réservé dès la commande : chaque commande impayée immobilise
+# des flacons. Sur un stock restreint, 24 heures d'attente coûtaient plus que
+# les rares paiements tardifs qu'elles récupéraient. Une fenêtre courte pousse
+# aussi à conclure, là où un long délai laisse l'envie retomber.
+#
+# Un paiement arrivé après l'annulation n'est pas perdu : il est marqué
+# `late_payment_flagged` et déclenche une alerte pour rapprochement manuel.
+UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "0.5"))
 # Seuil minimum en CAD sous lequel un payout affilié est reporté au cycle
 # suivant (évite de gaspiller des frais gas crypto sur des micro-payouts).
 # Les commissions restent en `approved` (payout_id=None) et roulent au mois suivant.
@@ -8245,7 +8254,22 @@ async def _cancel_order_side_effects(order: dict, *, reverse_affiliate: bool = T
             logging.warning("[cancel] affiliate reverse failed for %s: %s", order.get("id"), e)
 
 
-PAYMENT_REMINDER_HOURS = float(os.environ.get("PAYMENT_REMINDER_HOURS", "6"))
+# Le rappel se calcule à partir du délai, il n'est plus fixé en dur.
+#
+# Il valait 6 heures alors que la docstring promet « la moitié du délai » —
+# déjà faux avec 24 h, où 6 h en fait le quart. Avec un délai de 30 minutes,
+# c'était pire qu'inexact : la borne haute passait AVANT la borne basse, la
+# requête ne renvoyait plus rien, et aucun rappel ne partait — sans erreur,
+# sans trace, sans que personne s'en aperçoive.
+#
+# Une valeur explicite reste possible, mais jamais au-delà du délai : un
+# rappel envoyé après l'annulation n'a plus d'objet.
+_RAPPEL_CONFIGURE = os.environ.get("PAYMENT_REMINDER_HOURS")
+PAYMENT_REMINDER_HOURS = (
+    float(_RAPPEL_CONFIGURE) if _RAPPEL_CONFIGURE else UNPAID_ORDER_TTL_HOURS / 2
+)
+if not 0 < PAYMENT_REMINDER_HOURS < UNPAID_ORDER_TTL_HOURS:
+    PAYMENT_REMINDER_HOURS = UNPAID_ORDER_TTL_HOURS / 2
 OPERATIONAL_BATCH_SIZE = max(1, min(int(os.environ.get("OPERATIONAL_BATCH_SIZE", "500")), 2000))
 OPERATIONAL_MAX_BATCHES_PER_RUN = max(1, min(int(os.environ.get("OPERATIONAL_MAX_BATCHES_PER_RUN", "20")), 100))
 
@@ -8332,13 +8356,27 @@ async def _drain_unpaid_order_batches() -> dict:
     return totals
 
 
+# Fréquence de balayage — proportionnelle au délai, plus fixée à une heure.
+#
+# Le balayage tournait toutes les heures. Avec un délai de 24 h, l'écart
+# passait inaperçu. Avec 30 minutes, il annulait tout le raisonnement : une
+# commande expirée à 10 h 30 gardait ses flacons jusqu'au passage de 11 h, et
+# le rappel de la 15e minute partait après l'annulation qu'il devait prévenir.
+# La promesse de libérer le stock vite tenait au texte, pas au comportement.
+#
+# Le sixième du délai, borné : jamais plus d'une fois par minute — inutile de
+# marteler la base — ni moins d'une fois l'heure, ce qui préserve exactement
+# le rythme actuel pour les délais longs.
+UNPAID_SWEEP_SECONDS = max(60, min(int(UNPAID_ORDER_TTL_HOURS * 3600 / 6), 3600))
+
+
 async def _unpaid_orders_watchdog():
     while True:
         try:
             await _drain_unpaid_order_batches()
         except Exception as e:
             logging.error("Unpaid order watchdog error: %s", e)
-        await asyncio.sleep(3600)
+        await asyncio.sleep(UNPAID_SWEEP_SECONDS)
 
 
 async def _release_ready_preorder_orders() -> int:
@@ -8958,6 +8996,24 @@ class AffiliatePayoutMarkIn(BaseModel):
 # TÂCHE : approbation automatique après fenêtre de rétractation
 # ===========================================================================
 
+# Une commission reste bloquée exactement le temps où l'argent peut encore
+# repartir, plus le temps de traiter une réclamation — et pas un jour de plus.
+#
+#   48 h pour signaler un dommage après la livraison
+# +  2 jours pour traiter la demande
+# = 4 jours à compter de la LIVRAISON
+#
+# Le point important est l'ancrage. L'ancien calcul partait de la création de
+# la commande, alors que le risque court depuis la livraison : sur un colis
+# livré au 13e jour, la commission devenait acquise au 14e, soit avant la fin
+# du droit de réclamation. Le blocage ne protégeait plus rien au moment où il
+# aurait dû servir.
+AFFILIATE_APPROVAL_AFTER_DELIVERY_DAYS = float(
+    os.environ.get("AFFILIATE_APPROVAL_AFTER_DELIVERY_DAYS", "4"))
+
+# Repli quand aucune date de livraison n'est connue — colis sans repérage,
+# retrait sur place, suivi muet. On ne sait rien, donc on attend : ce délai
+# est volontairement long et se compte, lui, depuis la commande.
 AFFILIATE_APPROVAL_HOLD_DAYS = 14  # délai avant qu'une commission 'pending'
 
 

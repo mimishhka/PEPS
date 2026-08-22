@@ -144,8 +144,8 @@ export const SECTIONS = [
         en: "The tier rises as soon as the threshold is crossed. The new rate applies to subsequent orders; commissions already earned are not recalculated.",
       },
       {
-        fr: "Une commission est d'abord en attente, puis devient validée après un délai de 14 jours suivant le paiement de la commande, correspondant à la période durant laquelle une commande peut être annulée ou remboursée. Seules les commissions validées comptent pour le palier et pour le versement.",
-        en: "A commission is first pending, then becomes validated after 14 days from payment of the order, matching the period during which an order may be cancelled or refunded. Only validated commissions count toward the tier and toward payout.",
+        fr: "Une commission est d'abord en attente, puis devient validée quatre jours après la livraison de la commande — le temps que la fenêtre de réclamation de 48 heures se ferme et que toute demande reçue soit traitée. Si une demande de remboursement est déposée, la commission demeure en attente jusqu'à la décision, puis est ajustée en conséquence. Lorsqu'aucune date de livraison n'est enregistrée, la validation intervient quatorze jours après la commande. Seules les commissions validées comptent pour le palier et pour le versement.",
+        en: "A commission is first pending, then becomes validated four days after the order is delivered — the time for the 48-hour claim window to close and for any claim received to be handled. If a refund request is filed, the commission stays pending until the decision, then is adjusted accordingly. Where no delivery date is recorded, validation occurs fourteen days after the order. Only validated commissions count toward the tier and toward payout.",
       },
       {
         fr: "Une commande remboursée, annulée ou faisant l'objet d'une rétrofacturation après validation donne lieu à la reprise de la commission correspondante sur le solde suivant.",

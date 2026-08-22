@@ -8,6 +8,27 @@ import { useLang } from "../../../contexts/LanguageContext";
  * Item 5 — Refunds admin dashboard.
  * List + approve/deny + mark processed (D2 manual crypto tx reference).
  */
+
+// Engagement de traitement : deux jours pour statuer sur une demande reçue.
+const SLA_JOURS = 2;
+
+/* Compte les demandes NON TRAITÉES qui dépassent l'engagement.
+ *
+ * Hors du composant : une fonction recréée à chaque rendu ne sert à rien ici,
+ * et la garder pure la rend vérifiable.
+ *
+ * Seules « requested » et « approved » comptent — une demande refusée ou déjà
+ * versée n'attend plus rien de personne, et la faire figurer au décompte
+ * transformerait l'indicateur en bruit permanent. */
+function compterEnRetard(items, maintenant = Date.now()) {
+  const limite = SLA_JOURS * 24 * 3600 * 1000;
+  return (items || []).filter((r) => {
+    if (!["requested", "approved"].includes(r.refund_status)) return false;
+    const t = Date.parse(r.refund_requested_at || "");
+    return Number.isFinite(t) && maintenant - t > limite;
+  }).length;
+}
+
 export default function AdminRefunds() {
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
@@ -20,6 +41,8 @@ export default function AdminRefunds() {
   const [amounts, setAmounts] = useState({});
   const [txRefs, setTxRefs] = useState({});
   const [types, setTypes] = useState({});
+
+  const enRetard = compterEnRetard(items);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,9 +93,20 @@ export default function AdminRefunds() {
             <DollarSign size={22} />{L("Remboursements", "Refunds")}
           </h1>
           <p className="text-sm text-compliance mt-1">
-            {L("Fenêtre 14 jours après livraison. Crypto envoyée manuellement, admin colle le tx hash.",
-               "14-day window after delivery. Crypto sent manually, admin pastes the tx hash.")}
+            {L("Réclamation dans les 48 h suivant la livraison. Engagement : traiter en 2 jours. Crypto envoyée manuellement, admin colle le tx hash.",
+               "Claims within 48 h of delivery. Commitment: handled within 2 days. Crypto sent manually, admin pastes the tx hash.")}
           </p>
+          {/* Chaque demande gèle la commission de l'affilié jusqu'à la
+              décision. Une demande oubliée immobilise donc l'argent de
+              quelqu'un d'autre — d'où ce décompte, absent jusqu'ici : l'écran
+              n'affichait qu'une date, sur laquelle il fallait calculer
+              mentalement. L'écran des billets porte déjà le même bandeau. */}
+          {enRetard > 0 && (
+            <p className="text-sm text-warning font-semibold mt-1" data-testid="refunds-late">
+              {L(`${enRetard} demande(s) au-delà de ${SLA_JOURS} jours — la commission affiliée reste gelée.`,
+                 `${enRetard} request(s) past ${SLA_JOURS} days — the affiliate commission stays frozen.`)}
+            </p>
+          )}
         </div>
         <button onClick={load} className="btn-pill btn-ghost inline-flex items-center gap-2" data-testid="reload">
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />

@@ -270,8 +270,8 @@ const SHIPPING = [
     fr: { title: "Commandes impayées" },
     paras: [
       {
-        en: "Orders placed with a deferred payment method (Interac e-Transfer or cryptocurrency) must be paid within 48 hours. If payment has not been received within that window, the order is automatically cancelled and the reserved stock is released. Simply place a new order if you still wish to purchase.",
-        fr: "Les commandes passées avec un mode de paiement différé (virement Interac ou cryptomonnaie) doivent être payées dans un délai de 48 heures. Si le paiement n'est pas reçu dans ce délai, la commande est automatiquement annulée et le stock réservé est libéré. Il vous suffit de passer une nouvelle commande si vous souhaitez toujours acheter.",
+        en: "Orders placed with a deferred payment method (Interac e-Transfer or cryptocurrency) must be paid within 30 minutes. If payment has not been received within that window, the order is automatically cancelled and the reserved stock is released. Simply place a new order if you still wish to purchase, subject to availability. Should a payment reach us after cancellation, we will contact you to either reinstate the order or refund the amount.",
+        fr: "Les commandes passées avec un mode de paiement différé (virement Interac ou cryptomonnaie) doivent être payées dans un délai de 30 minutes. Si le paiement n'est pas reçu dans ce délai, la commande est automatiquement annulée et le stock réservé est libéré. Il vous suffit de passer une nouvelle commande si vous souhaitez toujours acheter, selon les disponibilités. Si un paiement nous parvient après l'annulation, nous vous contacterons pour rétablir la commande ou vous rembourser.",
       },
     ],
   },

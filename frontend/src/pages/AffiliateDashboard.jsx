@@ -465,8 +465,8 @@ export default function AffiliateDashboard() {
                "Share either one. The link recognises your visitors for a year; the code never expires and works even spoken aloud.") },
     { cible: "affiliate-kpis", ton: "acquis", onglet: "overview",
       titre: L("Validé ne veut pas dire versé", "Validated is not paid"),
-      texte: L(`Une commande devient « validée » ${data?.approval_hold_days ?? 14} jours après son paiement, le temps qu'elle ne puisse plus être remboursée. C'est ce montant qui fait progresser votre palier.`,
-               `An order becomes “validated” ${data?.approval_hold_days ?? 14} days after payment, once it can no longer be refunded. That amount is what moves your tier.`) },
+      texte: L(`Une commande devient « validée » ${data?.approval_after_delivery_days ?? 4} jours après sa LIVRAISON, le délai passé lequel elle ne peut plus faire l'objet d'une réclamation. C'est ce montant qui fait progresser votre palier.`,
+               `An order becomes “validated” ${data?.approval_after_delivery_days ?? 4} days after DELIVERY, once the claim window has closed. That amount is what moves your tier.`) },
     { cible: "payout-estimate", ton: "attente", onglet: "overview",
       titre: L("Le seuil de versement", "The payout threshold"),
       // Le seuil est LU du serveur, jamais écrit en dur : une valeur figée ici
@@ -747,8 +747,8 @@ export default function AffiliateDashboard() {
                 <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-ash">
                   {[
                     [L("En attente", "Pending"), data?.pending_commission,
-                     L(`validé après ${data?.approval_hold_days ?? 14} j`,
-                       `validated after ${data?.approval_hold_days ?? 14}d`)],
+                     L(`validé ${data?.approval_after_delivery_days ?? 4} j après livraison`,
+                       `validated ${data?.approval_after_delivery_days ?? 4}d after delivery`)],
                     [L("Validé", "Validated"), dueNow,
                      L("part au prochain cycle", "goes out next cycle")],
                     [L("Déjà versé", "Already paid"), data?.paid_commission,

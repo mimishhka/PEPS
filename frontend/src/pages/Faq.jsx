@@ -144,8 +144,8 @@ const GROUPS = [
         id: "unpaid",
         q: { en: "What happens if I don't send my payment?", fr: "Que se passe-t-il si je n'envoie pas mon paiement ?" },
         a: {
-          en: "Orders awaiting payment (Interac e-Transfer or crypto) are automatically cancelled if payment is not received within 24 hours, and the reserved stock is released. You can simply place a new order afterwards.",
-          fr: "Les commandes en attente de paiement (virement Interac ou crypto) sont automatiquement annulées si le paiement n'est pas reçu dans les 24 heures, et le stock réservé est libéré. Vous pouvez simplement passer une nouvelle commande par la suite.",
+          en: "Your order holds the stock for 30 minutes. If payment has not been received in that time, the order is cancelled and the vials return to the shop for someone else. Our stock is limited, so we cannot hold it longer. You can place a new order at any time, subject to availability.",
+          fr: "Votre commande réserve le stock pendant 30 minutes. Passé ce délai sans paiement reçu, la commande est annulée et les flacons repartent à la vente. Notre stock est limité : nous ne pouvons pas l'immobiliser plus longtemps. Vous pouvez repasser une commande à tout moment, selon les disponibilités.",
         },
       },
     ],

@@ -106,7 +106,7 @@ const QA = [
     fr: {
       q: "Que veulent dire « en attente » et « validé » ?",
       a: [
-        "En attente : la commande est payée, mais le délai de 14 jours n'est pas écoulé. La commission existe, elle n'est pas encore acquise.",
+        "En attente : la commande est payée, mais le délai suivant la livraison n'est pas écoulé — ou une réclamation est en cours d'examen. La commission existe, elle n'est pas encore acquise.",
         "Validé : le délai est passé, la commission vous est acquise et compte pour votre palier. C'est ce montant qui part au prochain versement.",
         "Ce délai correspond à la période durant laquelle une commande peut encore être annulée ou remboursée. Une commande remboursée après validation est reprise sur le solde suivant.",
       ],

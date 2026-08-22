@@ -749,7 +749,13 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
         # le seuil : ecrit en dur cote interface, il divergerait de la valeur
         # appliquee des qu'on la changerait, et l'ecran affirmerait un delai que
         # le systeme n'observe plus.
+        # Repli, quand aucune date de livraison n'est connue.
         "approval_hold_days": int(s.AFFILIATE_APPROVAL_HOLD_DAYS),
+        # Le délai qui s'applique en pratique : à compter de la LIVRAISON.
+        # Exposé séparément parce que l'écran doit pouvoir dire la vraie règle
+        # — « 4 jours après la livraison » — et non le repli, qui ne concerne
+        # qu'une minorité de commandes sans repérage.
+        "approval_after_delivery_days": int(s.AFFILIATE_APPROVAL_AFTER_DELIVERY_DAYS),
         # Seuil minimum de versement. Expose parce que l'affilie doit pouvoir
         # situer ses commissions par rapport a lui : sans ce chiffre, un solde
         # de 12 $ qui ne part pas ressemble a une retenue inexpliquee. La regle
@@ -1235,28 +1241,116 @@ async def affiliate_on_order_reversed(order_id: str, full: bool = True) -> None:
 #                                    devienne 'approved' (fenêtre refund)
 
 
+def _date_ou_rien(valeur):
+    """Lit une date sans jamais lever : le pilote rend tantôt une chaîne ISO,
+    tantôt un datetime, et un champ absent doit simplement valoir « inconnu »."""
+    if isinstance(valeur, datetime):
+        return valeur if valeur.tzinfo else valeur.replace(tzinfo=timezone.utc)
+    if not valeur:
+        return None
+    try:
+        d = datetime.fromisoformat(str(valeur).replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+# Une demande de remboursement en cours SUSPEND l'acquisition. Tant que la
+# décision n'est pas prise, l'argent peut encore repartir.
+_REMBOURSEMENT_EN_COURS = ("requested", "approved")
+
+
+def _echeance_acquisition(commande, referral_cree_le,
+                          jours_apres_livraison, jours_repli):
+    """Quand cette commission devient-elle acquise ? None = pas encore décidable.
+
+    Isolée du parcours de la base pour être vérifiable : c'est la règle qui
+    décide du versement d'argent, elle ne doit pas dépendre d'un accès Mongo
+    pour être testée.
+
+    None couvre trois situations distinctes, toutes traitées pareil — on
+    n'acquiert pas :
+      · la commande n'est pas payée ;
+      · une demande de remboursement est en cours, donc l'issue est inconnue ;
+      · aucune date exploitable, donc aucune échéance calculable.
+    """
+    if not commande or commande.get("payment_status") != "paid":
+        return None
+    if (commande.get("refund_status") or "") in _REMBOURSEMENT_EN_COURS:
+        return None
+
+    livre_le = _date_ou_rien((commande.get("shipping_info") or {}).get("delivered_at"))
+    if livre_le:
+        return livre_le + timedelta(days=float(jours_apres_livraison))
+
+    # Sans date de livraison, le droit de réclamation n'a pas de point de
+    # départ connu. On retombe sur le repli long, compté depuis la commande.
+    cree_le = _date_ou_rien(referral_cree_le)
+    if not cree_le:
+        return None
+    return cree_le + timedelta(days=float(jours_repli))
+
+
 async def _affiliate_approve_matured():
-    """Passe pending→approved les commissions dont l'ordre est payé depuis
-    plus de AFFILIATE_APPROVAL_HOLD_DAYS jours et non remboursé."""
-    cutoff = (datetime.now(timezone.utc) -
-              timedelta(days=s.AFFILIATE_APPROVAL_HOLD_DAYS)).isoformat()
-    now = datetime.now(timezone.utc).isoformat()
-    matured = await s.db.affiliate_referrals.find(
+    """Passe pending→approved les commissions dont le délai est écoulé.
+
+    Trois conditions, toutes nécessaires :
+
+      1. la commande est payée ;
+      2. aucune demande de remboursement n'est en cours — une demande gèle la
+         commission jusqu'à la décision, quelle qu'en soit la durée ;
+      3. le délai est écoulé, compté depuis la LIVRAISON.
+
+    Le point (3) est la correction de fond. L'ancien calcul partait de la date
+    de commande, alors que le droit de réclamation court depuis la livraison :
+    un colis livré tardivement voyait sa commission acquise avant même la fin
+    de ce droit. Le blocage cessait de protéger au moment précis où il aurait
+    servi.
+
+    Sans date de livraison, on ne peut rien conclure : on retombe alors sur le
+    repli long, compté depuis la commande.
+    """
+    maintenant = datetime.now(timezone.utc)
+    now_iso = maintenant.isoformat()
+
+    # Borne de tri grossière : la livraison ne précède jamais la commande, donc
+    # aucune commission créée il y a moins de N jours ne peut être mûre. Elle
+    # sert seulement à ne pas relire toute la collection à chaque passage.
+    borne = min(float(s.AFFILIATE_APPROVAL_AFTER_DELIVERY_DAYS),
+                float(s.AFFILIATE_APPROVAL_HOLD_DAYS))
+    cutoff = (maintenant - timedelta(days=borne)).isoformat()
+
+    candidats = await s.db.affiliate_referrals.find(
         {"status": "pending", "created_at": {"$lte": cutoff}},
-        {"_id": 0, "id": 1, "order_id": 1},
+        {"_id": 0, "id": 1, "order_id": 1, "created_at": 1},
     ).to_list(None)
-    if not matured:
+    if not candidats:
         return
-    order_ids = list({r["order_id"] for r in matured})
-    paid_cursor = s.db.orders.find(
-        {"id": {"$in": order_ids}, "payment_status": "paid"}, {"_id": 0, "id": 1}
+
+    order_ids = list({r["order_id"] for r in candidats})
+    commandes = {}
+    curseur = s.db.orders.find(
+        {"id": {"$in": order_ids}},
+        {"_id": 0, "id": 1, "payment_status": 1, "refund_status": 1,
+         "shipping_info": 1},
     )
-    paid_ids = {o["id"] async for o in paid_cursor}
-    approve_ids = [r["id"] for r in matured if r["order_id"] in paid_ids]
-    if approve_ids:
+    async for o in curseur:
+        commandes[o["id"]] = o
+
+    a_approuver = []
+    for r in candidats:
+        echeance = _echeance_acquisition(
+            commandes.get(r["order_id"]), r.get("created_at"),
+            s.AFFILIATE_APPROVAL_AFTER_DELIVERY_DAYS,
+            s.AFFILIATE_APPROVAL_HOLD_DAYS,
+        )
+        if echeance is not None and maintenant >= echeance:
+            a_approuver.append(r["id"])
+
+    if a_approuver:
         await s.db.affiliate_referrals.update_many(
-            {"id": {"$in": approve_ids}, "status": "pending"},
-            {"$set": {"status": "approved", "approved_at": now}},
+            {"id": {"$in": a_approuver}, "status": "pending"},
+            {"$set": {"status": "approved", "approved_at": now_iso}},
         )
 
 
