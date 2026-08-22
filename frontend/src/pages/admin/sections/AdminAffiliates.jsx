@@ -567,16 +567,20 @@ export default function AdminAffiliates() {
                                 On indique aussi le palier merite, pour juger
                                 d'un coup d'oeil si l'ecart est voulu. */}
                             {a.tier_is_manual && (
-                              <span className={`block mt-0.5 text-[10px] font-data ${
-                                      a.tier_agreement ? "text-glacier" : "text-warning"}`}
+                              {/* Gris dans les deux cas : ajuster un taux est une
+                                  action d'administration ordinaire, pas une
+                                  anomalie. L'ambre signalait une alerte là où il
+                                  n'y en a pas, et « forcé » sonnait comme une
+                                  faute alors que c'est souvent une faveur. */}
+                              <span className="block mt-0.5 text-[10px] font-data text-glacier"
                                     title={L(
                                       `${a.tier_agreement
-                                          ? "Entente négociée — l'affilié lit que son taux ne baisse jamais automatiquement et que toute modification lui serait signalée."
-                                          : "Palier fixé à la main, sans entente. Aucun engagement affiché à l'affilié."} Palier calculé sur 12 mois : ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`,
+                                          ? "Entente négociée — palier figé, l'affilié lit que son taux ne baisse jamais automatiquement."
+                                          : "Ajustement manuel, sans entente — le palier sert de plancher : si le chiffre d'affaires en mérite un meilleur, c'est celui-là qui s'applique."} Palier calculé sur 12 mois : ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`,
                                       `${a.tier_agreement
-                                          ? "Negotiated agreement — the affiliate reads that their rate never decreases automatically and that any change would be communicated."
-                                          : "Tier set manually, no agreement. No commitment shown to the affiliate."} Tier computed over 12 months: ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`)}>
-                                {a.tier_agreement ? L("entente", "agreement") : L("forcé", "forced")}
+                                          ? "Negotiated agreement — tier frozen, the affiliate reads that their rate never decreases automatically."
+                                          : "Manual adjustment, no agreement — the tier acts as a floor: if revenue earns a higher one, that one applies."} Tier computed over 12 months: ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`)}>
+                                {a.tier_agreement ? L("entente", "agreement") : L("manuel", "manual")}
                                 {a.tier_theoretical && a.tier_theoretical !== a.tier
                                   ? ` · ${L("calculé", "computed")} ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical}`
                                   : ""}

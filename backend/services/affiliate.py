@@ -32,6 +32,30 @@ def _affiliate_tier_for_revenue(cumulative_revenue: float) -> str:
     return tier
 
 
+def _palier_effectif(manuel: Optional[str], theorique: str, entente: bool) -> str:
+    """Palier réellement appliqué, selon qu'une entente existe ou non.
+
+    Deux situations que le code confondait :
+
+    — SOUS ENTENTE, le palier est FIGÉ à la valeur convenue. C'est l'engagement
+      pris : il ne varie pas avec le volume, et ne redescend jamais seul.
+
+    — SANS ENTENTE, un palier saisi à la main est un COUP DE POUCE, pas un
+      plafond. Le code retenait `manuel or theorique`, donc le manuel gagnait
+      toujours : quelqu'un ajusté à Bronze qui générait ensuite de quoi valoir
+      Gold restait bloqué à Bronze — traité exactement comme un compte sous
+      entente, sans en avoir une, et sans que rien ne le signale.
+
+      On retient donc le MEILLEUR des deux. Un geste destiné à avantager
+      quelqu'un ne peut pas finir par le pénaliser.
+    """
+    if not manuel:
+        return theorique
+    if entente:
+        return manuel
+    return manuel if _affiliate_tier_index(manuel) >= _affiliate_tier_index(theorique) else theorique
+
+
 def _affiliate_rate_for_tier(tier: str) -> float:
     for name, rate, _floor, _ceil in s.AFFILIATE_TIERS:
         if name == tier:
@@ -535,7 +559,8 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
     # trimestrielle : la fenêtre glissante fait déjà redescendre le total quand
     # l'activité ralentit, progressivement et sans effet de seuil brutal.
     theoretical = _affiliate_tier_for_revenue(rolling12)
-    effective = manual_tier or theoretical
+    effective = _palier_effectif(manual_tier, theoretical,
+                                 bool((affiliate or {}).get("tier_agreement")))
 
     rate = _affiliate_rate_for_tier(effective)
     nxt = _affiliate_next_tier(effective)
@@ -640,10 +665,13 @@ async def _affiliate_compute_list_metrics(affiliates: list[dict]) -> dict[str, d
         manual_tier = str(affiliate.get("manual_tier") or "").strip().lower() or None
         if manual_tier not in valid_tiers:
             manual_tier = None
-        # Même règle que partout ailleurs : douze mois glissants, surcharge
-        # manuelle prioritaire, aucune rétrogradation trimestrielle.
+        # Même règle que partout ailleurs, et par le MÊME code : douze mois
+        # glissants, entente prioritaire, ajustement manuel traité comme un
+        # plancher. Cette ligne recopiait la règle ; la liste admin affichait
+        # donc un palier que la fiche de l'affilié pouvait contredire.
         theoretical = _affiliate_tier_for_revenue(rolling12)
-        effective = manual_tier or theoretical
+        effective = _palier_effectif(manual_tier, theoretical,
+                                     bool(affiliate.get("tier_agreement")))
         metrics[affiliate["id"]] = {
             "cumulative_revenue": round(cumulative, 2),
             "quarter_revenue": round(quarter, 2),
