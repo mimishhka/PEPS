@@ -326,6 +326,23 @@ export default function AffiliateDashboard() {
     }
   };
 
+  // Visite guidée. Ces deux crochets doivent rester AU-DESSUS des sorties
+  // anticipées qui suivent : React exige que chaque rendu appelle la même
+  // suite de crochets. Places plus bas, ils n'etaient pas executes pendant le
+  // chargement puis l'etaient une fois les donnees arrivees, ce qui faisait
+  // lancer « Rendered more hooks than during the previous render » et
+  // remplacait tout le tableau de bord par l'ecran d'erreur.
+  const [tourOuvert, setTourOuvert] = useState(false);
+  useEffect(() => {
+    if (data && data.terms_ok !== false && !tourDejaVue(data.id)) {
+      // Court délai : laisse la mise en page se stabiliser avant de mesurer
+      // la première cible, sans quoi la bulle apparaît décalée.
+      const t = setTimeout(() => setTourOuvert(true), 600);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [data]);
+
   if (loading || affiliateLoading) {
     return <DashboardSkeleton />;
   }
@@ -384,20 +401,6 @@ export default function AffiliateDashboard() {
   ];
   const onboarding = steps.some((x) => !x.done);
   const nextStep = steps.findIndex((x) => !x.done);
-
-  // Visite guidée. Lancée seulement après acceptation des conditions et une
-  // fois les données chargées : les bulles pointent des zones qui n'existent
-  // pas encore pendant le chargement.
-  const [tourOuvert, setTourOuvert] = useState(false);
-  useEffect(() => {
-    if (data && data.terms_ok !== false && !tourDejaVue(data.id)) {
-      // Court délai : laisse la mise en page se stabiliser avant de mesurer
-      // la première cible, sans quoi la bulle apparaît décalée.
-      const t = setTimeout(() => setTourOuvert(true), 600);
-      return () => clearTimeout(t);
-    }
-    return undefined;
-  }, [data]);
 
   const TOUR = [
     { cible: "affiliate-share-widget",
