@@ -692,6 +692,7 @@ export default function AdminAffiliates() {
                     </p>
                   </div>
                   {clicks.top_affiliates?.length ? (
+                    <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <tbody>
                         {clicks.top_affiliates.map((t, i) => (
@@ -712,6 +713,7 @@ export default function AdminAffiliates() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   ) : <p className="text-sm text-glacier py-10 text-center">{L("Aucun clic.", "No clicks.")}</p>}
                 </div>
               </>
@@ -1469,6 +1471,7 @@ function BulkInviteModal({ L, onClose, onDone }) {
                   </button>
                 </div>
                 <div className="max-h-48 overflow-y-auto">
+                  <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead className="bg-white sticky top-0">
                       <tr className="border-b border-ash">
@@ -1496,6 +1499,7 @@ function BulkInviteModal({ L, onClose, onDone }) {
                       )}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </div>
             )}
@@ -1556,6 +1560,7 @@ function BulkInviteModal({ L, onClose, onDone }) {
                   </button>
                 </div>
                 <div className="max-h-56 overflow-y-auto">
+                  <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead className="bg-white sticky top-0">
                       <tr className="border-b border-ash">
@@ -1576,6 +1581,7 @@ function BulkInviteModal({ L, onClose, onDone }) {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               </div>
             )}

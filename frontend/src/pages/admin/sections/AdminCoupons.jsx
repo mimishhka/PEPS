@@ -88,6 +88,7 @@ export default function AdminCoupons() {
 
       {/* Table */}
       <div className="bg-white border border-ash rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr>
@@ -160,6 +161,7 @@ export default function AdminCoupons() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Editor modal */}

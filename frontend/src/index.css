@@ -90,19 +90,14 @@
 /* ---------------------------------------------------------------------------
  * BANDE RUO — mention réglementaire du pied de page.
  *
- * Footer.jsx et ComingSoon.jsx portent la classe `fn-ruo`, mais celle-ci
- * n'était définie que dans src/styles/tokens.css — un système d'identité
- * ALTERNATIF (« LE SIGNAL », chaud et rouge) que RIEN n'importe. La mention
- * s'affichait donc sans encadré, sans police de données, sans couleur : un
+ * Footer.jsx et ComingSoon.jsx portent la classe `fn-ruo`, qui n'était
+ * définie que dans un fichier de jetons appartenant à une direction
+ * artistique abandonnée — chaude et rouge — que rien n'importait. La mention
+ * s'affichait donc sans encadré, sans police de données et sans couleur : un
  * texte nu, alors que c'est l'avertissement réglementaire du site.
  *
- * Elle est donc redéfinie ici, avec la palette en vigueur.
- *
- * Surtout PAS en important tokens.css : ce fichier redéclare --fn-ink,
- * --fn-success, --fn-warning, --fn-error et --fn-compliance en HEXADÉCIMAL,
- * là où tout le thème les attend en canaux RVB. Chaque rgb(var(--fn-error))
- * du site deviendrait invalide. Le corriger par un import casserait le
- * chargement des couleurs partout.
+ * Ce fichier a depuis été supprimé. La classe vit ici, avec la palette en
+ * vigueur, et ne dépend plus de rien d'extérieur.
  *
  * Compliance (#5B7A9E) est la couleur que l'identité assigne aux mentions
  * RUO, 19+ et Loi 25 : calme et officielle, jamais alarmiste. ------------- */

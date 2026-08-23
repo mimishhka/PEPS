@@ -172,7 +172,7 @@ export default function AdminCheckoutFailures() {
       {loading ? (
         <div className="text-sm text-compliance">{L("Chargement…", "Loading…")}</div>
       ) : items.length === 0 ? (
-        <div className="rounded-xl bg-birch/40 p-8 text-center text-compliance text-sm">
+        <div className="rounded-xl bg-clinical/40 p-8 text-center text-compliance text-sm">
           <CheckCircle2 size={36} className="mx-auto mb-3 text-emerald-600" />
           {L("Aucune anomalie. Le système est propre.", "No anomalies. System is clean.")}
         </div>

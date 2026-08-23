@@ -163,6 +163,7 @@ export default function AdminSeo() {
               </div>
 
               <div className="bg-white border border-ash rounded-xl overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
@@ -197,6 +198,7 @@ export default function AdminSeo() {
                     ))}
                   </tbody>
                 </table>
+                </div>
                 {filtered.length === 0 && (
                   <p className="text-sm text-glacier/70 py-10 text-center">{L("Aucun produit.", "No products.")}</p>
                 )}

@@ -129,7 +129,7 @@ export default function AdminRefunds() {
 
       {loading ? <div className="text-sm">{L("Chargement…", "Loading…")}</div> :
        items.length === 0 ? (
-        <div className="rounded-xl bg-birch/40 p-8 text-center text-compliance text-sm">
+        <div className="rounded-xl bg-clinical/40 p-8 text-center text-compliance text-sm">
           {L("Aucune demande.", "No requests.")}
         </div>
       ) : (

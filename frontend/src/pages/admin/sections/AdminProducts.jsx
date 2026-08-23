@@ -671,6 +671,7 @@ function RestockModal({ product, onClose, onDone }) {
                   ? "Enter the units received (never the new absolute total). All changes are atomic and audited."
                   : "Enter the units to remove for losses, breakages or customer returns. Stock cannot go below zero."}
               </p>
+              <div className="overflow-x-auto">
               <table className="w-full text-sm mb-4">
                 <thead>
                   <tr className="text-left font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 border-b border-ink/10">
@@ -735,6 +736,7 @@ function RestockModal({ product, onClose, onDone }) {
                   })}
                 </tbody>
               </table>
+              </div>
 
               <label className="block">
                 <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60 mb-1">
@@ -776,6 +778,7 @@ function RestockModal({ product, onClose, onDone }) {
               ) : history.length === 0 ? (
                 <p className="text-sm text-foreground/50 italic">No stock movements yet for this product.</p>
               ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-left font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 border-b border-ink/10">
@@ -809,6 +812,7 @@ function RestockModal({ product, onClose, onDone }) {
                     })}
                   </tbody>
                 </table>
+                </div>
               )}
             </>
           )}
@@ -968,6 +972,7 @@ tb-500-5mg,5.0mg,25
                       ← Choose another file
                     </button>
                   </div>
+                  <div className="overflow-x-auto">
                   <table className="w-full text-xs mb-4">
                     <thead>
                       <tr className="text-left font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 border-b border-ink/10">
@@ -992,6 +997,7 @@ tb-500-5mg,5.0mg,25
                       ))}
                     </tbody>
                   </table>
+                  </div>
                   {rows.length > 50 && <p className="text-xs text-foreground/50 italic">…and {rows.length - 50} more row(s).</p>}
                   <label className="block mt-2">
                     <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60 mb-1">Global reason (optional)</div>
@@ -1022,6 +1028,7 @@ tb-500-5mg,5.0mg,25
               {(result.failed || []).length > 0 && (
                 <>
                   <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60 mb-2">// FAILED ROWS</div>
+                  <div className="overflow-x-auto">
                   <table className="w-full text-xs mb-4">
                     <thead>
                       <tr className="text-left font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 border-b border-ink/10">
@@ -1040,6 +1047,7 @@ tb-500-5mg,5.0mg,25
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </>
               )}
             </>

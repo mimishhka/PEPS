@@ -104,8 +104,8 @@ export default function AdminTrash() {
       </div>
 
       {activeResource?.noAutoPurge && (
-        <div className="flex items-start gap-2 border border-copper/40 bg-copper/5 px-4 py-3 mb-5 text-xs text-foreground/70">
-          <AlertTriangle size={14} className="text-copper mt-0.5 shrink-0" />
+        <div className="flex items-start gap-2 border border-ash/40 bg-glacier/5 px-4 py-3 mb-5 text-xs text-foreground/70">
+          <AlertTriangle size={14} className="text-glacier mt-0.5 shrink-0" />
           Orders are never purged automatically — they stay in trash until you purge them yourself.
           A paid order is an accounting record; restore it if it was deleted by mistake.
         </div>
@@ -122,7 +122,7 @@ export default function AdminTrash() {
             <RotateCcw size={13} /> Restore
           </button>
           <button onClick={purge} disabled={busy || selected.size === 0} data-testid="trash-purge-btn"
-            className="flex items-center gap-2 border border-signal text-signal font-mono text-xs uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-40 hover:bg-signal hover:text-white">
+            className="flex items-center gap-2 border border-error text-error font-mono text-xs uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-40 hover:bg-error hover:text-white">
             <Trash2 size={13} /> Delete forever
           </button>
         </div>
@@ -134,6 +134,7 @@ export default function AdminTrash() {
             Trash is empty
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <tbody>
               {items.map((item) => (
@@ -149,6 +150,7 @@ export default function AdminTrash() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

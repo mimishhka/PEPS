@@ -44,12 +44,12 @@ def _order_email_html(order: dict, body_intro: str) -> str:
     payment_block = ""
     if interac:
         payment_block = f"""
-        <div style="background:#FDF3F2;border:2px solid #C20114;padding:20px;margin:24px 0">
-          <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#C20114;font-weight:bold;margin-bottom:12px">⚡ INTERAC E-TRANSFER INSTRUCTIONS</div>
+        <div style="background:#EAF7FA;border:2px solid #00B8D4;padding:20px;margin:24px 0">
+          <div style="font-family:monospace;font-size:11px;letter-spacing:2px;color:#00B8D4;font-weight:bold;margin-bottom:12px">⚡ INTERAC E-TRANSFER INSTRUCTIONS</div>
           <table style="width:100%;font-family:monospace;font-size:13px">
             <tr><td style="padding:6px 0;color:#666">Send to:</td><td style="padding:6px 0;font-weight:bold">{interac["send_to"]}</td></tr>
             <tr><td style="padding:6px 0;color:#666">Amount:</td><td style="padding:6px 0;font-weight:bold">${interac["amount_cad"]:.2f} CAD</td></tr>
-            <tr><td style="padding:6px 0;color:#666">Reference (required):</td><td style="padding:6px 0;font-weight:bold;color:#C20114">{interac["reference"]}</td></tr>
+            <tr><td style="padding:6px 0;color:#666">Reference (required):</td><td style="padding:6px 0;font-weight:bold;color:#00B8D4">{interac["reference"]}</td></tr>
             <tr><td style="padding:6px 0;color:#666">Security question:</td><td style="padding:6px 0">{interac["security_question"]}</td></tr>
             <tr><td style="padding:6px 0;color:#666">Security answer:</td><td style="padding:6px 0;font-weight:bold">{interac["security_answer_hint"]}</td></tr>
           </table>
@@ -627,7 +627,7 @@ async def send_prelaunch_welcome(email: str, lang: str = "en", unsubscribe_token
             f"sur votre première commande au lancement, avec le code "
             f"<strong style='font-family:monospace'>{s.LAUNCH_COUPON_CODE}</strong>.</p>"
             f"<p style='margin-top:20px'><a href='{register_url}' style='display:inline-block;"
-            f"background:#C20114;color:#fff;font-family:monospace;font-size:12px;letter-spacing:2px;"
+            f"background:#0B2E4F;color:#fff;font-family:monospace;font-size:12px;letter-spacing:2px;"
             f"padding:14px 28px;text-decoration:none'>CRÉER MON COMPTE →</a></p>"
         )
         subject = "FIRONOVA — 15 % vous attendent au lancement"
@@ -639,7 +639,7 @@ async def send_prelaunch_welcome(email: str, lang: str = "en", unsubscribe_token
             f"<p>Create your account now to lock in <strong>15% off</strong> your first order "
             f"at launch, with code <strong style='font-family:monospace'>{s.LAUNCH_COUPON_CODE}</strong>.</p>"
             f"<p style='margin-top:20px'><a href='{register_url}' style='display:inline-block;"
-            f"background:#C20114;color:#fff;font-family:monospace;font-size:12px;letter-spacing:2px;"
+            f"background:#0B2E4F;color:#fff;font-family:monospace;font-size:12px;letter-spacing:2px;"
             f"padding:14px 28px;text-decoration:none'>CREATE MY ACCOUNT →</a></p>"
         )
         subject = "FIRONOVA — 15% off waiting at launch"

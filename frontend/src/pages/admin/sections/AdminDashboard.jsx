@@ -429,6 +429,7 @@ export default function AdminDashboard() {
             {L("Voir tout", "View all")} <ArrowUpRight size={14} />
           </Link>
         </div>
+        <div className="overflow-x-auto">
         <table className="w-full text-sm" data-testid="recent-orders-table">
           <thead>
             <tr>
@@ -463,6 +464,7 @@ export default function AdminDashboard() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

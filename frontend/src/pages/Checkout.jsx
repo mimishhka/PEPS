@@ -567,7 +567,7 @@ export default function Checkout() {
             </DialogDescription>
           </DialogHeader>
           {addrSuggestion?.suggestion?.formattedAddress && (
-            <div className="rounded-xl bg-birch/40 p-4 my-2 border border-nova/20">
+            <div className="rounded-xl bg-clinical/40 p-4 my-2 border border-nova/20">
               <div className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance mb-1">
                 {lang === "fr" ? "Suggestion" : "Suggestion"}
               </div>

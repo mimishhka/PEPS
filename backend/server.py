@@ -1801,14 +1801,14 @@ def _email_change_html(confirm_url: str, lang: str = "fr") -> str:
                 "If you didn't request this, you can safely ignore this message.")
         btn = "Confirm my email"
     return f"""
-    <div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;padding:32px;color:#3A0A08;background:#FFFAF6">
-      <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px">FIRONOVA<span style="color:#C20114">.</span></div>
+    <div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;padding:32px;color:#0B2E4F;background:#F7FAFC">
+      <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px">FIRONOVA<span style="color:#00B8D4">.</span></div>
       <h2 style="margin-top:24px">{heading}</h2>
       <p style="line-height:1.6">{body}</p>
-      <a href="{confirm_url}" style="display:inline-block;margin-top:16px;background:#3A0A08;color:#fff;
+      <a href="{confirm_url}" style="display:inline-block;margin-top:16px;background:#0B2E4F;color:#fff;
          padding:14px 28px;text-decoration:none;font-family:monospace;font-size:12px;
          letter-spacing:0.2em;text-transform:uppercase">{btn} →</a>
-      <p style="margin-top:24px;font-size:12px;color:#6B0504">{confirm_url}</p>
+      <p style="margin-top:24px;font-size:12px;color:#0B2E4F">{confirm_url}</p>
     </div>
     """
 
@@ -1874,9 +1874,9 @@ async def account_confirm_email_change(token: str, request: Request):
     await db.email_change_requests.update_one({"token_hash": token_hash}, {"$set": {"used": True, "used_at": now}})
     # Réponse HTML minimale : le lien est ouvert dans un navigateur, pas via l'app.
     return Response(
-        content=f"""<!doctype html><html><body style="font-family:Georgia,serif;background:#FFFAF6;color:#3A0A08;
+        content=f"""<!doctype html><html><body style="font-family:Georgia,serif;background:#F7FAFC;color:#0B2E4F;
         display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-        <div style="text-align:center"><div style="font-size:22px;font-weight:800">FIRONOVA<span style="color:#C20114">.</span></div>
+        <div style="text-align:center"><div style="font-size:22px;font-weight:800">FIRONOVA<span style="color:#00B8D4">.</span></div>
         <h2>Email confirmé ✓ / Email confirmed ✓</h2>
         <p>Reconnectez-vous avec votre nouvelle adresse.<br/>Please sign in again with your new address.</p>
         </div></body></html>""",
@@ -4583,14 +4583,14 @@ def _staff_invite_html(accept_url: str, inviter_name: str, lang: str = "fr") -> 
                 f"This link expires in {STAFF_INVITE_TTL_HOURS} hours.")
         btn = "Activate my access"
     return f"""
-    <div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;padding:32px;color:#3A0A08;background:#FFFAF6">
-      <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px">FIRONOVA<span style="color:#C20114">.</span></div>
+    <div style="font-family:Georgia,serif;max-width:520px;margin:0 auto;padding:32px;color:#0B2E4F;background:#F7FAFC">
+      <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px">FIRONOVA<span style="color:#00B8D4">.</span></div>
       <h2 style="margin-top:24px">{heading}</h2>
       <p style="line-height:1.6">{body}</p>
-      <a href="{accept_url}" style="display:inline-block;margin-top:16px;background:#3A0A08;color:#fff;
+      <a href="{accept_url}" style="display:inline-block;margin-top:16px;background:#0B2E4F;color:#fff;
          padding:14px 28px;text-decoration:none;font-family:monospace;font-size:12px;
          letter-spacing:0.2em;text-transform:uppercase">{btn} →</a>
-      <p style="margin-top:24px;font-size:12px;color:#6B0504">{accept_url}</p>
+      <p style="margin-top:24px;font-size:12px;color:#0B2E4F">{accept_url}</p>
     </div>
     """
 
@@ -7231,7 +7231,7 @@ def _generate_invoice_pdf(order: dict) -> bytes:
     c.setFillColor(rl_colors.white)
     c.setFont("Helvetica-Bold", 22)
     c.drawString(20 * mm, h - 13 * mm, "FIRONOVA")
-    c.setFillColor(rl_colors.HexColor("#C20114"))
+    c.setFillColor(rl_colors.HexColor("#00B8D4"))
     c.circle(20 * mm + 41 * mm, h - 13 * mm + 1.5 * mm, 1.5 * mm, fill=1, stroke=0)
     c.setFillColor(rl_colors.white)
     c.setFont("Courier", 8)

@@ -297,7 +297,7 @@ export default function AdminOrders() {
                   )}
                   <div className="font-mono text-[10px] text-foreground/50">{(o.created_at || "").slice(0, 10)}</div>
                   {o.dispatch_batch && (
-                    <div className="font-mono text-[10px] text-copper" data-testid={`dispatch-batch-${o.order_number}`}>
+                    <div className="font-mono text-[10px] text-glacier" data-testid={`dispatch-batch-${o.order_number}`}>
                       LOT {o.dispatch_batch}
                     </div>
                   )}
@@ -576,7 +576,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
             <div className="font-mono text-[10px] uppercase tracking-[0.25em]">// ORDER</div>
             <div className="font-display text-xl font-bold tracking-tight" data-testid="order-detail-number">{order.order_number}</div>
             {order.dispatch_batch && (
-              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-copperlight" data-testid="order-detail-dispatch-batch">
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-glacier" data-testid="order-detail-dispatch-batch">
                 LOT D'EXPÉDITION · {order.dispatch_batch}
               </div>
             )}
@@ -664,6 +664,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
           {/* Items */}
           <div className="bg-white border border-ink/10">
             <div className="px-4 py-3 border-b border-ink/10 font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50">Items</div>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <tbody>
                 {order.items.map((it) => (
@@ -686,6 +687,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 <tr><td className="px-4 py-2 text-right font-bold uppercase">Total CAD</td><td className="px-4 py-2 text-right font-display font-extrabold text-lg tabular-nums" data-testid="order-total">${order.total?.toFixed(2)}</td></tr>
               </tfoot>
             </table>
+            </div>
           </div>
 
           {/* Shipping */}
