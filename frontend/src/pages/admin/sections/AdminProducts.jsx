@@ -23,11 +23,29 @@ export default function AdminProducts() {
   const [editing, setEditing] = useState(null);
   const [restocking, setRestocking] = useState(null);
   const [csvOpen, setCsvOpen] = useState(false);
+  const [attentes, setAttentes] = useState([]);
 
   const load = () => api.get("/products")
     .then((r) => setProducts(r.data))
     .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message));
   useEffect(() => { load(); }, []);
+
+  // Demandes de réapprovisionnement — l'endpoint collectait ces inscriptions
+  // depuis le début sans qu'aucun écran ne les montre. Des clients demandaient
+  // à être prévenus du retour d'un produit, et personne ne le voyait.
+  useEffect(() => {
+    api.get("/admin/stock-notifications")
+      .then((r) => setAttentes(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setAttentes([]));
+  }, []);
+
+  // Regroupées par produit : la liste brute est une inscription par personne,
+  // ce qui noierait l'information utile — quel produit fait attendre, et
+  // combien de monde.
+  const attentesParProduit = attentes.reduce((acc, a) => {
+    acc[a.product_id] = (acc[a.product_id] || 0) + 1;
+    return acc;
+  }, {});
 
   const blank = {
     slug: "", name_en: "", name_fr: "", category: "healing", sequence: "",
@@ -64,6 +82,30 @@ export default function AdminProducts() {
         <div>
           <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// CATALOG</div>
           <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">{L("Produits", "Products")}</h1>
+          {/* Ne s'affiche que s'il y a des demandes : un encadré vide en
+              permanence finit par ne plus être lu. */}
+          {Object.keys(attentesParProduit).length > 0 && (
+            <div className="mt-3 border border-nova/40 bg-nova/5 px-4 py-3" data-testid="restock-requests">
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-nova">
+                {L("Demandes de réapprovisionnement", "Back-in-stock requests")}
+                {" — "}{attentes.length} {L("inscription(s)", "subscriber(s)")}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
+                {Object.entries(attentesParProduit)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([pid, n]) => {
+                    const prod = products.find((p) => p.id === pid);
+                    return (
+                      <span key={pid} className="text-sm">
+                        <b>{n}</b>{" "}
+                        {prod ? (L(prod.name_fr, prod.name_en) || prod.slug)
+                              : L("produit retiré", "removed product")}
+                      </span>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
           <p className="font-mono text-xs text-foreground/60 mt-1">{products.length} compounds</p>
         </div>
         <div className="flex items-center gap-3">

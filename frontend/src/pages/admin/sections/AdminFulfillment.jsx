@@ -16,6 +16,7 @@ export default function AdminFulfillment() {
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [openId, setOpenId] = useState(null);
+  const [bulkStep, setBulkStep] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -25,6 +26,29 @@ export default function AdminFulfillment() {
       .finally(() => setLoading(false));
   }, [date]);
   useEffect(() => { load(); }, [load]);
+
+  // Avance TOUTES les commandes d'une etape d'un coup. L'endpoint existait
+  // depuis le debut sans qu'aucun bouton ne l'appelle : il fallait cliquer
+  // commande par commande.
+  const advanceAll = async (step) => {
+    const to = NEXT[step];
+    if (!to) return;
+    setBulkStep(step);
+    try {
+      // `reponse` et non `data` : le composant a deja un etat nomme data,
+      // et le masquer ici rendrait la suite trompeuse a la lecture.
+      const { data: reponse } = await api.post("/admin/fulfillment/bulk-advance", {
+        date, from_status: step, to,
+      });
+      const n = reponse?.updated ?? reponse?.count ?? 0;
+      toast.success(`${n} commande(s) avancee(s) vers ${NEXT_LABEL[step]}`);
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setBulkStep(null);
+    }
+  };
 
   const advance = async (order, to) => {
     setBusyId(order.id);
@@ -106,8 +130,22 @@ export default function AdminFulfillment() {
             : baseRows;
           return (
             <div key={step} data-testid={`fulfil-col-${step}`}>
-                <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 mb-3 flex items-center gap-2">
+                <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 mb-3 flex items-center gap-2 flex-wrap">
                   <Icon size={14} /> {labels[step]?.fr || step} <span className="text-foreground/30">({rows.length})</span>
+                  {/* Avancement groupé — l'endpoint existait sans bouton.
+                      Il n'apparaît que sur les colonnes qui ont une étape
+                      suivante et au moins une commande : une colonne vide ou
+                      terminale n'a rien à avancer. */}
+                  {NEXT[step] && rows.length > 0 && (
+                    <button
+                      onClick={() => advanceAll(step)}
+                      disabled={bulkStep === step}
+                      data-testid={`fulfil-bulk-${step}`}
+                      className="ml-auto border border-ink/25 px-2.5 py-1 text-[10px] tracking-[0.15em] hover:border-nova hover:text-nova disabled:opacity-40"
+                    >
+                      {bulkStep === step ? "…" : `Tout → ${NEXT_LABEL[step]}`}
+                    </button>
+                  )}
                 </h2>
                 <div className="space-y-3">
                   {rows.length === 0 ? (
