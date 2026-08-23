@@ -37,13 +37,13 @@ export default class ErrorBoundary extends React.Component {
         title: "Une erreur est survenue",
         body: "Quelque chose s'est mal passé de notre côté. Vous pouvez recharger la page ou revenir à l'accueil.",
         cta: "Retour à l'accueil",
-        ruo: "Produits destinés à la recherche uniquement (RUO) · 18+",
+        ruo: "Produits destinés à la recherche uniquement (RUO) · 19+",
       },
       en: {
         title: "Something went wrong",
         body: "An unexpected error occurred on our side. You can reload the page or return home.",
         cta: "Back to home",
-        ruo: "For Research Use Only (RUO) · 18+",
+        ruo: "For Research Use Only (RUO) · 19+",
       },
     }[lang];
 

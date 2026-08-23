@@ -760,8 +760,8 @@ def _nova_email_shell(heading_fr: str, heading_en: str, body_html: str,
       {cta}
     </td></tr>
     <tr><td style="background:#F7FAFC;padding:16px 32px;font-family:monospace;font-size:10px;letter-spacing:1px;color:#94A3B8;border-top:1px solid #E2E8F0">
-      PRODUITS DESTINÉS À LA RECHERCHE UNIQUEMENT (RUO) · 18+ · Ne pas consommer.<br>
-      FOR RESEARCH USE ONLY (RUO) · 18+ · Not for human consumption.
+      PRODUITS DESTINÉS À LA RECHERCHE UNIQUEMENT (RUO) · 19+ · Ne pas consommer.<br>
+      FOR RESEARCH USE ONLY (RUO) · 19+ · Not for human consumption.
     </td></tr>
   </table>
 </body></html>"""

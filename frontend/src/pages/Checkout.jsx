@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
+import { useSiteConfig } from "../contexts/SiteConfigContext";
 import api, { formatApiError } from "../lib/api";
 import { toast } from "sonner";
 import {
@@ -54,6 +55,7 @@ export default function Checkout() {
 
   const [submitting, setSubmitting] = useState(false);
   const [email, setEmail] = useState("");
+  const { minAge } = useSiteConfig();
   const [confirmAge, setConfirmAge] = useState(false);
   const [acceptRuO, setAcceptRuO] = useState(false);
   const [acceptPolicy, setAcceptPolicy] = useState(false);
@@ -421,7 +423,14 @@ export default function Checkout() {
           <div className="rounded-2xl border border-ash bg-white p-5 space-y-3">
             <label className="flex items-start gap-2 text-sm text-nordfjord">
               <input type="checkbox" checked={confirmAge} onChange={(e) => setConfirmAge(e.target.checked)} data-testid="checkout-confirm-age" className="mt-1" />
-              <span>{lang === "fr" ? "Je confirme avoir 18 ans ou plus." : "I confirm I am 18 years of age or older."}</span>
+              {/* L'âge vient de la configuration du serveur, il n'est plus
+                  écrit en dur. Cette case attestait 18 ans alors que tout le
+                  reste du site annonce 19 — or c'est ICI que le client
+                  s'engage. L'attestation la plus faible était celle qui
+                  compte. */}
+              <span>{lang === "fr"
+                ? `Je confirme avoir ${minAge} ans ou plus.`
+                : `I confirm I am ${minAge} years of age or older.`}</span>
             </label>
             <label className="flex items-start gap-2 text-sm text-nordfjord">
               <input type="checkbox" checked={acceptRuO} onChange={(e) => setAcceptRuO(e.target.checked)} data-testid="checkout-accept-ruo" className="mt-1" />

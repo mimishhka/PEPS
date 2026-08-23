@@ -892,7 +892,7 @@ def _affiliate_invite_html(name: str, link: str, lang: str,
     <p style="color:#64748B;font-size:12px;line-height:1.6;margin:20px 0 0;font-family:'JetBrains Mono',monospace;">{expiry}</p>
     <p style="color:#94A3B8;font-size:12px;line-height:1.6;margin:8px 0 0;">{ignore}</p>
     <hr style="border:none;border-top:1px solid #E2E8F0;margin:24px 0 12px;">
-    <p style="color:#94A3B8;font-size:11px;line-height:1.5;margin:0;">Produits destin&eacute;s &agrave; la recherche uniquement (RUO). R&eacute;serv&eacute; aux 18 ans et plus.<br>For Research Use Only. 18+ only.</p>
+    <p style="color:#94A3B8;font-size:11px;line-height:1.5;margin:0;">Produits destin&eacute;s &agrave; la recherche uniquement (RUO). R&eacute;serv&eacute; aux 19 ans et plus.<br>For Research Use Only. 19+ only.</p>
   </div>
 </div>"""
     return subject, html

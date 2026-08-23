@@ -91,7 +91,7 @@ export default function Register() {
         <Link to="/compliance" className="font-semibold text-nordfjord hover:text-nova">{t("auth.terms") || "conditions d'utilisation"}</Link>
         {" "}{t("auth.and") || "et la"}{" "}
         <Link to="/privacy" className="font-semibold text-nordfjord hover:text-nova">{t("auth.privacy") || "politique de confidentialité"}</Link>.
-        {" "}<span className="text-compliance">{t("auth.ruoConsent") || "Je confirme avoir 18 ans et plus. Produits pour la recherche uniquement (RUO)."}</span>
+        {" "}<span className="text-compliance">{t("auth.ruoConsent") || "Je confirme avoir 19 ans et plus. Produits pour la recherche uniquement (RUO)."}</span>
       </span>
     </label>
   );

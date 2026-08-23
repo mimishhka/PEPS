@@ -178,7 +178,7 @@ export const dict = {
       terms: "terms of use",
       and: "and the",
       privacy: "privacy policy",
-      ruoConsent: "I confirm I am 18+. Products for research use only (RUO).",
+      ruoConsent: "I confirm I am 19+. Products for research use only (RUO).",
       registerSub: "Create an account to checkout faster and view order history.",
     },
     account: {
@@ -436,7 +436,7 @@ export const dict = {
       terms: "conditions d'utilisation",
       and: "et la",
       privacy: "politique de confidentialité",
-      ruoConsent: "Je confirme avoir 18 ans et plus. Produits pour la recherche uniquement (RUO).",
+      ruoConsent: "Je confirme avoir 19 ans et plus. Produits pour la recherche uniquement (RUO).",
       registerSub: "Créez un compte pour acheter plus rapidement et voir l'historique.",
     },
     account: {
