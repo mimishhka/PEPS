@@ -89,17 +89,24 @@ def etat(texte):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--on", action="store_true")
-    ap.add_argument("--off", action="store_true")
+    ap.add_argument("--on", action="store_true",
+                    help="poser les réglages de test")
+    ap.add_argument("--off", action="store_true",
+                    help="retirer les réglages et remettre ce qui était là")
+    ap.add_argument("--defauts", action="store_true",
+                    help="retirer les réglages ET les anciennes valeurs, pour "
+                         "que les défauts du code s'appliquent")
     args = ap.parse_args()
 
     texte = lire()
 
-    if args.on and args.off:
-        print("--on et --off en même temps : choisissez.")
+    if sum((args.on, args.off, args.defauts)) > 1:
+        print("Une seule option à la fois.")
         return 1
+    if args.defauts:
+        args.off = True
 
-    if not args.on and not args.off:
+    if not args.on and not args.off and not args.defauts:
         # TROIS états, pas deux. Une valeur qui diffère du défaut n'est pas
         # forcément un réglage de test : elle peut être un choix délibéré.
         # Les confondre ferait crier au loup sur une configuration saine.
@@ -145,6 +152,15 @@ def main():
             lignes.append(f"{cle}={valeur}")
         lignes.append(FIN)
         nouveau = nouveau + "\n" + "\n".join(lignes) + "\n"
+    elif args.defauts:
+        # On n'écrit RIEN. Les trois clés disparaissent du fichier, et le code
+        # applique ses propres valeurs.
+        #
+        # C'est ce qu'il faut quand une ancienne valeur contredit la politique
+        # voulue : le serveur portait UNPAID_ORDER_TTL_HOURS="24", héritée
+        # d'avant la décision des 30 minutes. Un --off ordinaire l'aurait
+        # fidèlement restaurée, et la décision serait restée lettre morte.
+        pass
     else:
         # Remettre ce qui était là, et seulement cela. Une clé absente à
         # l'origine reste absente : le code a ses propres défauts, les
@@ -162,11 +178,32 @@ def main():
         print("\n⚠  Ces valeurs ne doivent PAS survivre à la campagne.")
         print("   Laissées en place, elles signifient : 3 minutes pour payer,")
         print("   et des commissions acquises instantanément.\n")
-    else:
-        print("Réglages de test retirés. Les valeurs par défaut du code")
-        print("s'appliquent de nouveau :\n")
+    elif args.defauts:
+        print("Réglages de test retirés, et les anciennes valeurs effacées.")
+        print("Le code applique désormais ses propres défauts :\n")
         for cle, attendue in NORMALES.items():
             print(f"  {cle}={attendue}")
+        print()
+    else:
+        print("Réglages de test retirés. Ce qui était là est remis :\n")
+        divergent = []
+        for cle, attendue in NORMALES.items():
+            v = origine.get(cle) or ""
+            if not v:
+                print(f"  {cle} absent → défaut du code ({attendue})")
+            else:
+                print(f"  {cle}={v}")
+                if v != attendue:
+                    divergent.append((cle, v, attendue))
+        if divergent:
+            # Le point qui compte : une valeur restaurée peut CONTREDIRE la
+            # politique du code. Le dire ici, au moment où on la remet, plutôt
+            # que de laisser la découverte pour plus tard.
+            print("\n⚠  Une valeur remise diffère du défaut du code :")
+            for cle, v, attendue in divergent:
+                print(f"     {cle} = {v}, alors que le code prévoit {attendue}")
+            print("   Si ce n'est pas voulu, effacez-la :")
+            print("     python backend/scripts/mode_test.py --defauts")
         print()
 
     print("Redémarrer pour que ce soit pris en compte :")
