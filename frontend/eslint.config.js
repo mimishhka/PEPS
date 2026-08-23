@@ -45,6 +45,40 @@ module.exports = [
         clearTimeout: "readonly",
         setInterval: "readonly",
         clearInterval: "readonly",
+        // Ajoutes apres le premier passage reel de no-undef : ces globaux du
+        // navigateur produisaient 24 fausses erreurs. Une liste incomplete ne
+        // rend pas la regle prudente, elle la rend bruyante — et une regle
+        // bruyante finit desactivee.
+        Blob: "readonly",
+        File: "readonly",
+        FileReader: "readonly",
+        Event: "readonly",
+        CustomEvent: "readonly",
+        IntersectionObserver: "readonly",
+        ResizeObserver: "readonly",
+        MutationObserver: "readonly",
+        AbortController: "readonly",
+        // alert, confirm et prompt sont VOLONTAIREMENT ABSENTS de cette liste.
+        //
+        // Ce sont bien des globaux du navigateur, et les declarer supprimerait
+        // trois erreurs. Mais ce projet a son propre dialogue — useConfirm —
+        // et c'est justement en oubliant `const confirm = useConfirm()` dans
+        // OrderDetail que trois actions destructrices ont fini par afficher
+        // « [object Object] » : le natif recevait un objet la ou il attend une
+        // chaine, sans qu'aucune erreur ne soit levee.
+        //
+        // Les laisser non declares transforme ce piege silencieux en erreur de
+        // lint. C'est un choix propre a ce projet, pas un oubli.
+        requestAnimationFrame: "readonly",
+        cancelAnimationFrame: "readonly",
+        matchMedia: "readonly",
+        history: "readonly",
+        location: "readonly",
+        atob: "readonly",
+        btoa: "readonly",
+        structuredClone: "readonly",
+        Image: "readonly",
+        WebSocket: "readonly",
       },
     },
     rules: {
@@ -71,6 +105,25 @@ module.exports = [
        * chaine d'integration.
        */
       "no-undef": "error",
+    },
+  },
+  {
+    // Les fichiers de test tournent sous Jest, qui injecte ses propres globaux.
+    // Sans ce bloc, no-undef signalait 14 fois describe, it et expect —
+    // du bruit pur, dans les deux seuls fichiers de test du projet.
+    files: ["src/**/*.test.{js,jsx}", "src/**/__tests__/**/*.{js,jsx}"],
+    languageOptions: {
+      globals: {
+        describe: "readonly",
+        it: "readonly",
+        test: "readonly",
+        expect: "readonly",
+        beforeEach: "readonly",
+        afterEach: "readonly",
+        beforeAll: "readonly",
+        afterAll: "readonly",
+        jest: "readonly",
+      },
     },
   },
 ];

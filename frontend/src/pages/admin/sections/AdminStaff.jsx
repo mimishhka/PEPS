@@ -39,6 +39,11 @@ const BLANK_PERMISSIONS = Object.fromEntries(AREAS.map((a) => [a.key, "none"]));
 export default function AdminStaff() {
   const { user: me } = useAuth();
   const isOwner = me?.role === "admin";
+  // L manquait ICI : il n'etait defini que dans un composant plus bas du meme
+  // fichier. Les quinze appels de cet ecran plantaient donc au rendu —
+  // « L is not defined » — alors que le code compilait parfaitement.
+  const { lang } = useLang();
+  const L = (fr, en) => (lang === "fr" ? fr : en);
   const confirm = useConfirm();
   const [staff, setStaff] = useState([]);
   const [invites, setInvites] = useState([]);

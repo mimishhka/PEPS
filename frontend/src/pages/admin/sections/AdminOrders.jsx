@@ -278,7 +278,10 @@ export default function AdminOrders() {
               <Th>Method</Th>
               <Th>Payment</Th>
               <Th>Fulfillment</Th>
-              <Th align="right">{L("Total", "Total")}</Th>
+              {/* « Total » en clair, et non L("Total","Total") : ce fichier
+                  n'a aucun helper L, et les deux traductions etaient de toute
+                  facon identiques. Residu de l'unification des en-tetes. */}
+              <Th align="right">Total</Th>
               <Th align="right"></Th>
             </tr>
           </thead>
@@ -363,6 +366,15 @@ export default function AdminOrders() {
 
 function OrderDetail({ order, onClose, onUpdate }) {
   const { user } = useAuth();
+  // Sans cette ligne, `confirm(...)` ne designait pas le dialogue stylé du
+  // projet mais le window.confirm DU NAVIGATEUR — un global, donc aucune
+  // erreur. Or ce composant lui passe un OBJET { title, description }, la ou
+  // le natif attend une chaine : la boite affichait « [object Object] ».
+  //
+  // Trois actions destructrices etaient concernees — mise a la corbeille,
+  // annulation d'etiquette, et une troisieme — c'est-a-dire precisement
+  // celles ou la personne doit comprendre ce qu'elle valide.
+  const confirm = useConfirm();
   const [reopenBusy, setReopenBusy] = useState(false);
   const canUseReopenAction =
     user?.role === "admin"
