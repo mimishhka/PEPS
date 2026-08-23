@@ -4017,6 +4017,40 @@ async def admin_refund_processed(order_id: str, payload: RefundProcessedIn, admi
         raise HTTPException(404, "Order not found")
     if order.get("refund_status") != "approved":
         raise HTTPException(400, f"Cannot mark processed — status is {order.get('refund_status')}")
+
+    # RÈGLEMENT COMPTABLE — il manquait entièrement.
+    #
+    # Ce flux (demande → décision → traité) ne faisait que poser un statut et
+    # envoyer un courriel. Il ne touchait ni au montant remboursé, ni au statut
+    # de paiement, ni au stock, ni aux coupons, ni à la commission de
+    # l'affilié. Une commande remboursée par cet écran restait donc « payée »
+    # dans les comptes, et l'affilié conservait sa commission sur une vente
+    # rendue.
+    #
+    # Toute cette logique existe déjà, éprouvée, dans admin_refund_order — y
+    # compris deux règles qu'il aurait été facile de perdre en la réécrivant :
+    #
+    #   · le stock n'est REMIS QUE si la commande n'est ni expédiée ni livrée
+    #     (un retour après livraison ne remet rien en rayon) ;
+    #   · un remboursement PARTIEL réduit la commission au prorata au lieu de
+    #     l'annuler.
+    #
+    # On l'appelle donc plutôt que de la dupliquer. Son propre courriel ne part
+    # que s'il existe un identifiant de remboursement du fournisseur — absent
+    # pour une crypto envoyée à la main — il n'y a donc pas de double envoi.
+    montant = float(order.get("refund_approved_amount")
+                    or order.get("refund_amount_requested")
+                    or order.get("total") or 0)
+    if montant > 0:
+        try:
+            await admin_refund_order(order_id, RefundIn(amount=montant), admin)
+        except HTTPException as e:
+            # Un règlement impossible ne doit PAS être masqué : sans lui, la
+            # commission resterait acquise et les comptes seraient faux.
+            raise HTTPException(
+                409,
+                f"Remboursement non réglé ({e.detail}) — statut inchangé.") from e
+
     now_iso = datetime.now(timezone.utc).isoformat()
     await db.orders.update_one({"id": order_id}, {"$set": {
         "refund_status": "processed", "refund_processed_at": now_iso,

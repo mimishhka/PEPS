@@ -487,6 +487,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
   const [noteText, setNoteText] = useState("");
   const [noteVisible, setNoteVisible] = useState(false);
   const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("");
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -547,6 +548,22 @@ function OrderDetail({ order, onClose, onUpdate }) {
       if (noteVisible) toast.success("Note added — email sent to customer");
       setNoteText(""); setNoteVisible(false); onUpdate();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+
+  const openRefundCase = async () => {
+    const motif = refundReason.trim();
+    if (!motif) return;
+    try {
+      await api.post(`/orders/${order.id}/refund-request`, { reason: motif });
+      toast.success("Dossier ouvert — la commission affiliée est gelée");
+      setRefundReason("");
+      // onUpdate et non load : OrderDetail ne recoit que { order, onClose,
+      // onUpdate }. Un appel a load() aurait compile sans broncher et plante a
+      // l'usage — les controles statiques ne verifient pas la portee.
+      onUpdate();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
   };
 
   const issueRefund = async () => {
@@ -868,6 +885,45 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 Refunded so far: ${(order.refunded_amount || 0).toFixed(2)} / ${order.total?.toFixed(2)}
               </div>
             </div>
+
+            {/* Ouverture d'un DOSSIER, distincte du remboursement direct
+                ci-dessus. La différence tient en une phrase : le dossier GÈLE
+                immédiatement la commission de l'affilié, le temps de décider.
+                Un remboursement direct, lui, règle tout d'un coup — si l'examen
+                prend deux jours, la commission peut être acquise entre-temps.
+
+                Aucun écran n'ouvrait de dossier jusqu'ici : la file, l'écran
+                de décision et le compteur de retard attendaient un statut que
+                rien ne posait. */}
+            {!order.refund_status && order.payment_status === "paid" && (
+              <div className="mt-3 pt-3 border-t border-ink/10 flex items-center gap-3 flex-wrap">
+                <input
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  placeholder="Motif — requis pour ouvrir un dossier"
+                  data-testid="refund-case-reason"
+                  className="border border-ink/20 px-3 py-2 text-sm flex-1 min-w-[16rem]"
+                />
+                <button
+                  onClick={openRefundCase}
+                  disabled={!refundReason.trim()}
+                  data-testid="open-refund-case-btn"
+                  className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:border-nova hover:text-nova disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Ouvrir un dossier
+                </button>
+                <span className="font-mono text-[10px] text-foreground/50">
+                  gèle la commission affiliée
+                </span>
+              </div>
+            )}
+            {order.refund_status && (
+              <div className="mt-3 pt-3 border-t border-ink/10 font-mono text-[10px] text-foreground/60"
+                   data-testid="refund-case-state">
+                Dossier : {order.refund_status}
+                {order.refund_reason ? ` — ${order.refund_reason}` : ""}
+              </div>
+            )}
           </div>
 
           {/* Notes */}
