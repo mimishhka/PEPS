@@ -106,7 +106,7 @@ const QA = [
     fr: {
       q: "Que veulent dire « en attente » et « validé » ?",
       a: [
-        "En attente : la commande est payée, mais le délai suivant la livraison n'est pas écoulé — ou une réclamation est en cours d'examen. La commission existe, elle n'est pas encore acquise.",
+        "En attente : la commande est payée, mais les sept jours suivant la commande ne sont pas écoulés — ou une réclamation est en cours d'examen. La commission existe, elle n'est pas encore acquise.",
         "Validé : le délai est passé, la commission vous est acquise et compte pour votre palier. C'est ce montant qui part au prochain versement.",
         "Ce délai correspond à la période durant laquelle une commande peut encore être annulée ou remboursée. Une commande remboursée après validation est reprise sur le solde suivant.",
       ],
@@ -114,7 +114,7 @@ const QA = [
     en: {
       q: "What do \"pending\" and \"validated\" mean?",
       a: [
-        "Pending: the order is paid, but the period following delivery has not elapsed — or a claim is under review. The commission exists, it is not yet earned.",
+        "Pending: the order is paid, but the seven days following the order have not elapsed — or a claim is under review. The commission exists, it is not yet earned.",
         "Validated: the period has passed, the commission is yours and counts toward your tier. This is the amount that goes out at the next payout.",
         "That period matches the window during which an order can still be cancelled or refunded. An order refunded after validation is reversed against the next balance.",
       ],

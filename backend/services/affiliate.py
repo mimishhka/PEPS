@@ -749,13 +749,7 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
         # le seuil : ecrit en dur cote interface, il divergerait de la valeur
         # appliquee des qu'on la changerait, et l'ecran affirmerait un delai que
         # le systeme n'observe plus.
-        # Repli, quand aucune date de livraison n'est connue.
         "approval_hold_days": int(s.AFFILIATE_APPROVAL_HOLD_DAYS),
-        # Le délai qui s'applique en pratique : à compter de la LIVRAISON.
-        # Exposé séparément parce que l'écran doit pouvoir dire la vraie règle
-        # — « 4 jours après la livraison » — et non le repli, qui ne concerne
-        # qu'une minorité de commandes sans repérage.
-        "approval_after_delivery_days": int(s.AFFILIATE_APPROVAL_AFTER_DELIVERY_DAYS),
         # Seuil minimum de versement. Expose parce que l'affilie doit pouvoir
         # situer ses commissions par rapport a lui : sans ce chiffre, un solde
         # de 12 $ qui ne part pas ressemble a une retenue inexpliquee. La regle
@@ -1260,16 +1254,24 @@ def _date_ou_rien(valeur):
 _REMBOURSEMENT_EN_COURS = ("requested", "approved")
 
 
-def _echeance_acquisition(commande, referral_cree_le,
-                          jours_apres_livraison, jours_repli):
+def _echeance_acquisition(commande, referral_cree_le, jours):
     """Quand cette commission devient-elle acquise ? None = pas encore décidable.
+
+    Un seul point de départ, la COMMANDE, et le même délai pour tous les modes
+    de paiement. La date de livraison n'entre pas dans le calcul, même quand
+    elle est connue : c'est le prix de la simplicité, et il est assumé — le
+    cycle mensuel de versement absorbe largement l'écart.
 
     Isolée du parcours de la base pour être vérifiable : c'est la règle qui
     décide du versement d'argent, elle ne doit pas dépendre d'un accès Mongo
     pour être testée.
 
-    None couvre trois situations distinctes, toutes traitées pareil — on
-    n'acquiert pas :
+    Le GEL sur demande de remboursement est la protection principale, pas le
+    délai. Le délai ne couvre que la réclamation pas encore déposée ; dès
+    qu'une demande existe, la commission est bloquée jusqu'à la décision,
+    aussi longtemps qu'il le faut.
+
+    None couvre trois situations, toutes traitées pareil — on n'acquiert pas :
       · la commande n'est pas payée ;
       · une demande de remboursement est en cours, donc l'issue est inconnue ;
       · aucune date exploitable, donc aucune échéance calculable.
@@ -1279,16 +1281,10 @@ def _echeance_acquisition(commande, referral_cree_le,
     if (commande.get("refund_status") or "") in _REMBOURSEMENT_EN_COURS:
         return None
 
-    livre_le = _date_ou_rien((commande.get("shipping_info") or {}).get("delivered_at"))
-    if livre_le:
-        return livre_le + timedelta(days=float(jours_apres_livraison))
-
-    # Sans date de livraison, le droit de réclamation n'a pas de point de
-    # départ connu. On retombe sur le repli long, compté depuis la commande.
     cree_le = _date_ou_rien(referral_cree_le)
     if not cree_le:
         return None
-    return cree_le + timedelta(days=float(jours_repli))
+    return cree_le + timedelta(days=float(jours))
 
 
 async def _affiliate_approve_matured():
@@ -1296,29 +1292,22 @@ async def _affiliate_approve_matured():
 
     Trois conditions, toutes nécessaires :
 
-      1. la commande est payée ;
+      1. la commande est payée — quel que soit le mode, Interac ou crypto ;
       2. aucune demande de remboursement n'est en cours — une demande gèle la
          commission jusqu'à la décision, quelle qu'en soit la durée ;
-      3. le délai est écoulé, compté depuis la LIVRAISON.
+      3. le délai est écoulé, compté depuis la COMMANDE.
 
-    Le point (3) est la correction de fond. L'ancien calcul partait de la date
-    de commande, alors que le droit de réclamation court depuis la livraison :
-    un colis livré tardivement voyait sa commission acquise avant même la fin
-    de ce droit. Le blocage cessait de protéger au moment précis où il aurait
-    servi.
-
-    Sans date de livraison, on ne peut rien conclure : on retombe alors sur le
-    repli long, compté depuis la commande.
+    La date de livraison n'intervient plus. Un ancrage sur la livraison serait
+    plus précis, mais le cycle mensuel de versement rend l'écart négligeable
+    en pratique, et un seul point de départ se vérifie d'un coup d'œil.
     """
     maintenant = datetime.now(timezone.utc)
     now_iso = maintenant.isoformat()
 
-    # Borne de tri grossière : la livraison ne précède jamais la commande, donc
-    # aucune commission créée il y a moins de N jours ne peut être mûre. Elle
-    # sert seulement à ne pas relire toute la collection à chaque passage.
-    borne = min(float(s.AFFILIATE_APPROVAL_AFTER_DELIVERY_DAYS),
-                float(s.AFFILIATE_APPROVAL_HOLD_DAYS))
-    cutoff = (maintenant - timedelta(days=borne)).isoformat()
+    # Aucune commission créée il y a moins que le délai ne peut être mûre :
+    # la borne évite de relire toute la collection à chaque passage.
+    cutoff = (maintenant -
+              timedelta(days=float(s.AFFILIATE_APPROVAL_HOLD_DAYS))).isoformat()
 
     candidats = await s.db.affiliate_referrals.find(
         {"status": "pending", "created_at": {"$lte": cutoff}},
@@ -1331,8 +1320,7 @@ async def _affiliate_approve_matured():
     commandes = {}
     curseur = s.db.orders.find(
         {"id": {"$in": order_ids}},
-        {"_id": 0, "id": 1, "payment_status": 1, "refund_status": 1,
-         "shipping_info": 1},
+        {"_id": 0, "id": 1, "payment_status": 1, "refund_status": 1},
     )
     async for o in curseur:
         commandes[o["id"]] = o
@@ -1341,7 +1329,6 @@ async def _affiliate_approve_matured():
     for r in candidats:
         echeance = _echeance_acquisition(
             commandes.get(r["order_id"]), r.get("created_at"),
-            s.AFFILIATE_APPROVAL_AFTER_DELIVERY_DAYS,
             s.AFFILIATE_APPROVAL_HOLD_DAYS,
         )
         if echeance is not None and maintenant >= echeance:

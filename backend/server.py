@@ -9020,25 +9020,33 @@ REFUND_CLAIM_FALLBACK_DAYS = float(
     os.environ.get("REFUND_CLAIM_FALLBACK_DAYS", "30"))
 
 
-# Une commission reste bloquée exactement le temps où l'argent peut encore
-# repartir, plus le temps de traiter une réclamation — et pas un jour de plus.
+# SEPT JOURS à compter de la COMMANDE.
 #
-#   48 h pour signaler un dommage après la livraison
-# +  2 jours pour traiter la demande
-# = 4 jours à compter de la LIVRAISON
+# Un seul délai, un seul point de départ, la même règle pour tous les modes de
+# paiement. C'est aussi ce que font les programmes d'affiliation en général —
+# Amazon, ShareASale, Impact, CJ comptent tous depuis la conversion.
 #
-# Le point important est l'ancrage. L'ancien calcul partait de la création de
-# la commande, alors que le risque court depuis la livraison : sur un colis
-# livré au 13e jour, la commission devenait acquise au 14e, soit avant la fin
-# du droit de réclamation. Le blocage ne protégeait plus rien au moment où il
-# aurait dû servir.
-AFFILIATE_APPROVAL_AFTER_DELIVERY_DAYS = float(
-    os.environ.get("AFFILIATE_APPROVAL_AFTER_DELIVERY_DAYS", "4"))
-
-# Repli quand aucune date de livraison n'est connue — colis sans repérage,
-# retrait sur place, suivi muet. On ne sait rien, donc on attend : ce délai
-# est volontairement long et se compte, lui, depuis la commande.
-AFFILIATE_APPROVAL_HOLD_DAYS = 14  # délai avant qu'une commission 'pending'
+# Pourquoi sept et non quatorze : le délai ne porte PAS seul la protection.
+# Trois choses le font, et dans cet ordre —
+#
+#   1. le gel sur demande de remboursement, qui couvre le cas réel, celui d'un
+#      client qui réclame, et ne dépend d'aucun délai ;
+#   2. le renversement, si un remboursement survient après la validation mais
+#      avant le versement ;
+#   3. les VERSEMENTS MENSUELS. Ils partent le 1er et paient le mois écoulé :
+#      une commande du 3 mars validée le 10 ou le 17 est payée le 1er avril
+#      dans les deux cas. Le cycle apporte de 15 à 45 jours de coussin, quel
+#      que soit ce délai.
+#
+# Le délai ne couvre donc qu'une chose : la réclamation pas encore déposée. Et
+# ici le seul cas envisageable est le bris en transport, qui se découvre à
+# l'ouverture du colis, pas au troisième jour. Sept jours couvrent un envoi
+# courant de bout en bout.
+#
+# Le cas résiduel exige quatre coïncidences — colis lent, bris, réclamation
+# tardive, versement déjà parti — et se récupère sur le versement suivant.
+AFFILIATE_APPROVAL_HOLD_DAYS = float(
+    os.environ.get("AFFILIATE_APPROVAL_HOLD_DAYS", "7"))
 
 
 # ===========================================================================

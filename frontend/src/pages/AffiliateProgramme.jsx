@@ -145,8 +145,8 @@ export default function AffiliateProgramme() {
                        "A customer's link to your account never expires. Whether they use your link or type your code, whether they return after a month or a year, the commission is yours. The first affiliate a customer is attached to keeps them.")}
                   </Bloc>
                   <Bloc titre={L("Quand vous êtes payé", "When you get paid")}>
-                    {L(`Une commission devient payable une fois la commande validée, le délai de retour écoulé. Les versements se font en cryptomonnaie stable (USDT ou USDC, réseau de votre choix) dès que le total atteint ${argent(data.payout_min_cad)}.`,
-                       `A commission becomes payable once the order is approved and the return window has passed. Payouts are made in stablecoin (USDT or USDC, network of your choice) as soon as the total reaches ${argent(data.payout_min_cad)}.`)}
+                    {L(`Une commission est validée sept jours après la commande, quel que soit le mode de paiement. Les versements partent le 1er de chaque mois, en cryptomonnaie stable (USDT ou USDC, réseau de votre choix), dès que le total atteint ${argent(data.payout_min_cad)}.`,
+                       `A commission is validated seven days after the order, whatever the payment method. Payouts go out on the 1st of each month, in stablecoin (USDT or USDC, network of your choice), once the total reaches ${argent(data.payout_min_cad)}.`)}
                   </Bloc>
                   <Bloc titre={L("Ce qu'on vous demande", "What we ask of you")}>
                     {L("Nos produits sont destinés exclusivement à la recherche en laboratoire. Vos communications ne doivent jamais leur prêter d'usage humain, médical ou thérapeutique, ni promettre un résultat de santé.",
