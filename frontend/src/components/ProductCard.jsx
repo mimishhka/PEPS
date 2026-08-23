@@ -32,7 +32,7 @@ export default function ProductCard({ product, index = 0 }) {
 
   return (
     <div
-      className="group bg-white border border-ash rounded-2xl overflow-hidden flex flex-col card-hover"
+      className="group bg-white border border-ash rounded-xl overflow-hidden flex flex-col card-hover"
       data-testid={`product-card-${product.slug}`}
     >
       <Link to={`/product/${product.slug}`} className="block relative aspect-[4/3] overflow-hidden">
@@ -96,7 +96,7 @@ export default function ProductCard({ product, index = 0 }) {
         <button
           data-testid={`add-to-cart-${product.slug}`}
           onClick={() => add(product)}
-          className="w-full btn-pill btn-nova !py-2.5 !text-[13px] !tracking-[0.06em]"
+          className="w-full btn-pill btn-nova !py-2.5 !text-[12px] !tracking-[0.06em]"
         >
           {lang === "fr" ? "Ajouter à la commande" : "Add to order"}
         </button>

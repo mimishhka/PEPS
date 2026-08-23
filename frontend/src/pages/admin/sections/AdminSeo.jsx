@@ -190,7 +190,7 @@ export default function AdminSeo() {
                           {p.optimized ? <Check size={16} className="inline text-green-600" /> : <AlertTriangle size={16} className="inline text-amber-500" />}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <button onClick={() => setEditing(p)} className="px-3 py-1.5 rounded-md border border-ash text-xs hover:bg-clinical transition">
+                          <button onClick={() => setEditing(p)} className="px-3 py-2 rounded-md border border-ash text-xs hover:bg-clinical transition">
                             {L("Éditer", "Edit")}
                           </button>
                         </td>
@@ -283,7 +283,7 @@ function ProductSeoModal({ product, L, lang, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl border border-ash w-full max-w-lg max-h-[85vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border border-ash w-full max-w-lg max-h-[85vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-display text-lg font-bold">{lang === "fr" ? product.name_fr : product.name_en}</h3>
           <button onClick={onClose}>

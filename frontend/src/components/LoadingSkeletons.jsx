@@ -18,7 +18,7 @@ export function ProductDetailSkeleton() {
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-12">
         <Bar className="h-3 w-36 mb-8" />
         <div className="grid lg:grid-cols-2 gap-12">
-          <Bar className="aspect-square w-full rounded-2xl" />
+          <Bar className="aspect-square w-full rounded-xl" />
           <div className="pt-2">
             <Bar className="h-3 w-44 mb-5" />
             <Bar className="h-12 w-3/4 mb-6" />

@@ -71,9 +71,9 @@ export default function AdminShipping() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => setEditingZone({ ...z })} data-testid={`edit-zone-${z.id}`} className="border border-ink/30 px-2 py-1 hover:bg-ink hover:text-white"><Edit size={12} /></button>
-                <button onClick={() => delZone(z.id)} data-testid={`delete-zone-${z.id}`} className="border border-ink/30 px-2 py-1 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={12} /></button>
-                <button onClick={() => setEditingMethod(blankMethod(z.id))} data-testid={`add-method-${z.id}`} className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-3 py-1.5 flex items-center gap-1.5"><Plus size={12} /> Method</button>
+                <button onClick={() => setEditingZone({ ...z })} data-testid={`edit-zone-${z.id}`} className="border border-ink/30 px-2 py-2 hover:bg-ink hover:text-white"><Edit size={12} /></button>
+                <button onClick={() => delZone(z.id)} data-testid={`delete-zone-${z.id}`} className="border border-ink/30 px-2 py-2 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={12} /></button>
+                <button onClick={() => setEditingMethod(blankMethod(z.id))} data-testid={`add-method-${z.id}`} className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-3 py-2 flex items-center gap-1.5"><Plus size={12} /> Method</button>
               </div>
             </div>
             <div className="divide-y divide-ink/5">
@@ -85,8 +85,8 @@ export default function AdminShipping() {
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="font-bold tabular-nums">${m.cost_cad.toFixed(2)}</div>
-                    <button onClick={() => setEditingMethod({ ...m })} className="border border-ink/30 px-2 py-1 hover:bg-ink hover:text-white"><Edit size={11} /></button>
-                    <button onClick={() => delMethod(m.id)} className="border border-ink/30 px-2 py-1 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={11} /></button>
+                    <button onClick={() => setEditingMethod({ ...m })} className="border border-ink/30 px-2 py-2 hover:bg-ink hover:text-white"><Edit size={11} /></button>
+                    <button onClick={() => delMethod(m.id)} className="border border-ink/30 px-2 py-2 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={11} /></button>
                   </div>
                 </div>
               ))}
@@ -108,7 +108,7 @@ export default function AdminShipping() {
       {editingMethod && (
         <Modal onClose={() => setEditingMethod(null)} title={editingMethod.id ? "Edit Method" : "New Method"} test="method-editor">
           <F label="Name" value={editingMethod.name} onChange={(v) => setEditingMethod({ ...editingMethod, name: v })} test="m-name" />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <F label="Cost (CAD)" type="number" value={editingMethod.cost_cad} onChange={(v) => setEditingMethod({ ...editingMethod, cost_cad: v })} test="m-cost" />
             <F label="ETA (e.g. 2-3 days)" value={editingMethod.eta_days} onChange={(v) => setEditingMethod({ ...editingMethod, eta_days: v })} test="m-eta" />
           </div>

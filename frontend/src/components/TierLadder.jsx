@@ -34,7 +34,7 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
   const base = Math.round(montant * (1 - rabais) * 100) / 100;
 
   return (
-    <div className="bg-white rounded-2xl border border-ash p-6" data-testid="tier-ladder">
+    <div className="bg-white rounded-xl border border-ash p-6" data-testid="tier-ladder">
       <div className="flex items-baseline justify-between flex-wrap gap-2 mb-4">
         <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
           {L("CE QU'UNE VENTE RAPPORTE", "WHAT A SALE EARNS")}
@@ -96,7 +96,7 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
                   {meta[lang] || t.name}
                 </span>
                 {ici && (
-                  <span className="font-data text-[9px] uppercase tracking-[0.12em] px-1.5 py-0.5
+                  <span className="font-data text-[10px] uppercase tracking-[0.12em] px-1.5 py-0.5
                                    rounded-full"
                         style={{ background: `${meta.color}1f`, color: meta.color }}>
                     {L("vous", "you")}

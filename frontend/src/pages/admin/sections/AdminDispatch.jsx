@@ -252,7 +252,7 @@ export default function AdminDispatch() {
         </div>
       )}
 
-      <div className="mt-6 grid grid-cols-3 gap-4">
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Stat label="À étiqueter" value={counts.to_label} testid="stat-tolabel" />
         <Stat label="Étiquetées" value={counts.labeled} testid="stat-labeled" />
         <Stat label="En retard" value={counts.overdue} accent={counts.overdue > 0} testid="stat-overdue" />

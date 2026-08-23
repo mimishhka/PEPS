@@ -237,7 +237,7 @@ export default function AdminDashboard() {
             [L("Clients", "Customers"), stats.customers],
             [L("Produits actifs", "Active products"), stats.products],
           ].map(([k, v]) => (
-            <span key={k} className="text-[13px] text-glacier">
+            <span key={k} className="text-[12px] text-glacier">
               {k} <b className="text-nordfjord font-semibold tabular-nums">{v}</b>
             </span>
           ))}
@@ -376,7 +376,7 @@ export default function AdminDashboard() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="font-data text-[9px] uppercase tracking-[0.14em] text-glacier border-b border-ash">
+                  <tr className="font-data text-[10px] uppercase tracking-[0.14em] text-glacier border-b border-ash">
                     <th className="text-left py-2 font-medium"> </th>
                     <th className="text-right py-2 font-medium">{L("Encaissé", "Collected")}</th>
                     <th className="text-right py-2 font-medium">{L("En attente", "Pending")}</th>
@@ -496,7 +496,7 @@ function ActionCard({ tone = "calm", label, value, hint, to, testid }) {
   const body = (
     <>
       <div className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{label}</div>
-      <div className="font-display text-[26px] font-bold tabular-nums text-nordfjord mt-1 leading-none whitespace-nowrap">
+      <div className="font-display text-[24px] font-bold tabular-nums text-nordfjord mt-1 leading-none whitespace-nowrap">
         {value}
       </div>
       <div className="text-[12px] text-glacier mt-0.5 leading-snug">{hint}</div>
@@ -524,7 +524,7 @@ function DeltaCard({ label, value, delta, icon: Icon, lang }) {
           {/* whitespace-nowrap : « 1 310,73 $ » se coupait, laissant le « $ »
               seul sur une deuxième ligne. Et 26px plutôt que text-3xl (30px) :
               quatre cartes sur une rangée n'ont pas la largeur pour ça. */}
-          <div className="font-display text-[26px] leading-none font-bold mt-2 tabular-nums text-nordfjord whitespace-nowrap">{value}</div>
+          <div className="font-display text-[24px] leading-none font-bold mt-2 tabular-nums text-nordfjord whitespace-nowrap">{value}</div>
           {delta != null ? (
             <div className={`flex items-center gap-1 mt-1 text-xs font-medium ${up ? "text-success" : "text-error"}`}>
               <DeltaIcon size={13} /> {up ? "+" : ""}{delta}% <span className="text-glacier font-normal">{L("vs préc.", "vs prev.")}</span>
@@ -548,7 +548,7 @@ function MetricCard({ label, value, sub, icon: Icon }) {
           {/* whitespace-nowrap : « 1 310,73 $ » se coupait, laissant le « $ »
               seul sur une deuxième ligne. Et 26px plutôt que text-3xl (30px) :
               quatre cartes sur une rangée n'ont pas la largeur pour ça. */}
-          <div className="font-display text-[26px] leading-none font-bold mt-2 tabular-nums text-nordfjord whitespace-nowrap">{value}</div>
+          <div className="font-display text-[24px] leading-none font-bold mt-2 tabular-nums text-nordfjord whitespace-nowrap">{value}</div>
           <div className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mt-1">{sub}</div>
         </div>
         {Icon && <div className="w-9 h-9 shrink-0 ml-3 flex items-center justify-center text-white bg-nordfjord rounded-md"><Icon size={18} strokeWidth={1.6} /></div>}

@@ -185,7 +185,7 @@ export default function GuidedTour({ steps, onClose, onTab, L }) {
             </span>
           )}
           <p className="font-display font-bold text-[15px] leading-snug">{etape.titre}</p>
-          <p className="text-[13px] leading-relaxed mt-1.5 text-clinical/85">{etape.texte}</p>
+          <p className="text-[12px] leading-relaxed mt-1.5 text-clinical/85">{etape.texte}</p>
           <div className="flex items-center justify-between gap-3 mt-3.5">
             {/* Chapelet d'étincelles plutôt qu'un « 2 / 5 » muet : on voit ce
                 qui reste sans le lire. Le compteur chiffré subsiste pour les

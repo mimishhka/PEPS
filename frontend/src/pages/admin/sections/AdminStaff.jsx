@@ -321,7 +321,7 @@ function PermissionGrid({ permissions, onChange, testPrefix, canGrantSensitive =
             <span className="text-sm flex items-center gap-1.5">
               {L(a.fr, a.en)}
               {a.sensitive && (
-                <span className="text-[9px] font-medium uppercase tracking-wider text-amber-600 border border-amber-300 rounded px-1 py-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-amber-600 border border-amber-300 rounded px-1 py-0.5">
                   {L("sensible", "sensitive")}
                 </span>
               )}

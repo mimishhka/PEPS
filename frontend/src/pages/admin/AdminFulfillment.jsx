@@ -78,7 +78,7 @@ export default function AdminFulfillment() {
         </div>
       )}
 
-      <div className="mt-6 grid grid-cols-3 gap-4">
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
         {STEP_ORDER.map((step) => {
           const Icon = STEP_ICON[step];
           return (
@@ -126,7 +126,7 @@ export default function AdminFulfillment() {
                     <button onClick={() => setOpenId(openId === o.id ? null : o.id)} className="w-full text-left px-4 py-3 hover:bg-ink/[0.02]" data-testid={`fulfil-open-${o.order_number}`}>
                       <div className="flex items-center justify-between">
                         <span className="font-mono text-xs font-bold">{o.order_number}</span>
-                        {o.is_overdue && <span className="font-mono text-[9px] uppercase text-red-600 flex items-center gap-1"><AlertTriangle size={10} /> retard</span>}
+                        {o.is_overdue && <span className="font-mono text-[10px] uppercase text-red-600 flex items-center gap-1"><AlertTriangle size={10} /> retard</span>}
                       </div>
                       <div className="font-mono text-[11px] text-foreground/50 mt-1 flex items-center gap-1">
                         <MapPin size={10} /> {o.city || "—"}, {o.province || ""} · {o.units} u. · {o.items} art.
@@ -138,7 +138,7 @@ export default function AdminFulfillment() {
 
                     {openId === o.id && (
                       <div className="px-4 pb-3 border-t border-ink/10 pt-3" data-testid={`fulfil-picking-${o.order_number}`}>
-                        <div className="font-mono text-[9px] uppercase tracking-wider text-foreground/40 mb-2">Prélever</div>
+                        <div className="font-mono text-[10px] uppercase tracking-wider text-foreground/40 mb-2">Prélever</div>
                         {o.picking.length === 0 ? (
                           <div className="font-mono text-[11px] text-foreground/40">Aucun article.</div>
                         ) : (

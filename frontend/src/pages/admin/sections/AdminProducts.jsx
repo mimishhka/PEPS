@@ -135,8 +135,8 @@ export default function AdminProducts() {
                       className="border border-emerald-600/40 text-emerald-700 px-2 py-1 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 mr-1" title="Quick restock">
                       <PackagePlus size={12} />
                     </button>
-                    <button onClick={() => setEditing({ ...p, variants: [...(p.variants || [])] })} data-testid={`edit-${p.slug}`} className="border border-ink/30 px-2 py-1 hover:bg-ink hover:text-white mr-1"><Edit size={12} /></button>
-                    <button onClick={() => del(p.id)} data-testid={`delete-${p.slug}`} className="border border-ink/30 px-2 py-1 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={12} /></button>
+                    <button onClick={() => setEditing({ ...p, variants: [...(p.variants || [])] })} data-testid={`edit-${p.slug}`} className="border border-ink/30 px-2 py-2 hover:bg-ink hover:text-white mr-1"><Edit size={12} /></button>
+                    <button onClick={() => del(p.id)} data-testid={`delete-${p.slug}`} className="border border-ink/30 px-2 py-2 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={12} /></button>
                   </td>
                 </tr>
               );
@@ -643,7 +643,7 @@ function RestockModal({ product, onClose, onDone }) {
         {/* Mode toggle */}
         {!showHistory && (
           <div className="px-6 pt-4 shrink-0">
-            <div className="inline-flex border border-ink/20 rounded-sm overflow-hidden" role="tablist">
+            <div className="inline-flex border border-ink/20 rounded-md overflow-hidden" role="tablist">
               <button
                 onClick={() => switchMode("add")}
                 data-testid="restock-mode-add"
@@ -1015,7 +1015,7 @@ tb-500-5mg,5.0mg,25
             </>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                 <div className="p-4 bg-emerald-50 border border-emerald-200">
                   <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-700">{L("Appliqué", "Applied")}</div>
                   <div className="font-display text-3xl font-extrabold text-emerald-700 mt-1" data-testid="bulk-restock-applied-count">{result.counts?.applied || 0}</div>

@@ -611,7 +611,7 @@ export default function AffiliateDashboard() {
             {/* Bandeau. Tant que rien n'a ete gagne, un « 0,00 $ » en gros
                 caracteres n'enseigne rien : on montre ce qu'une vente vaut. Des
                 qu'il y a des gains, le montant reel est plus utile. */}
-            <div className="rounded-2xl bg-nordfjord p-6 flex flex-wrap items-center justify-between gap-4">
+            <div className="rounded-xl bg-nordfjord p-6 flex flex-wrap items-center justify-between gap-4">
               {Number(data?.cumulative_revenue || 0) === 0 ? (
                 <div>
                   <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
@@ -660,7 +660,7 @@ export default function AffiliateDashboard() {
                 <ol className="grid grid-cols-1 sm:grid-cols-3 gap-4 list-none p-0 m-0">
                   {steps.map((st, i) => (
                     <li key={i}
-                        className={`bg-white rounded-2xl border p-5 ${
+                        className={`bg-white rounded-xl border p-5 ${
                           i === nextStep ? "border-nova ring-1 ring-nova" : "border-ash"}`}>
                       <p className="font-data text-[10px] uppercase tracking-[0.18em] text-glacier">
                         {st.done
@@ -671,7 +671,7 @@ export default function AffiliateDashboard() {
                         {st.done && <span aria-hidden="true" style={{ color: "#2E9E6B" }}>✓</span>}
                         {st.t}
                       </p>
-                      <p className="text-[13px] text-glacier mt-0.5">{st.d}</p>
+                      <p className="text-[12px] text-glacier mt-0.5">{st.d}</p>
                     </li>
                   ))}
                 </ol>
@@ -699,7 +699,7 @@ export default function AffiliateDashboard() {
                 version precedente se cachait dans ce cas, et un solde bloque
                 sous le minimum ressemblait alors a une retenue inexpliquee. */}
             {payoutMin > 0 && (
-              <div className="bg-white rounded-2xl border border-ash p-5" data-testid="payout-estimate">
+              <div className="bg-white rounded-xl border border-ash p-5" data-testid="payout-estimate">
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
                   {L("VOTRE PROCHAIN VERSEMENT", "YOUR NEXT PAYOUT")}
                 </p>
@@ -719,7 +719,7 @@ export default function AffiliateDashboard() {
                       qui l'entourent : trois « $ » de suite sur un écran, dont
                       un qui n'est pas la même monnaie, se confondent. */}
                   {data?.fx_rate_cad_to_usd > 0 && (
-                    <span className="font-data text-[13px] tabular-nums rounded-lg px-2.5 py-1.5
+                    <span className="font-data text-[12px] tabular-nums rounded-lg px-2.5 py-1.5
                                      border whitespace-nowrap"
                           data-testid="payout-conversion"
                           style={{
@@ -755,14 +755,14 @@ export default function AffiliateDashboard() {
                      L("depuis le début", "since the start")],
                   ].map(([titre, valeur, note], i) => (
                     <div key={i} data-testid={`payout-flow-${i}`}>
-                      <p className="font-data text-[9px] uppercase tracking-[0.14em] text-glacier">
+                      <p className="font-data text-[10px] uppercase tracking-[0.14em] text-glacier">
                         {titre}
                       </p>
                       <p className={`font-data text-sm font-bold tabular-nums mt-0.5 ${
                         Number(valeur) > 0 ? "text-nordfjord" : "text-glacier/45"}`}>
                         {money(valeur)}
                       </p>
-                      <p className="font-data text-[9px] text-glacier/70 leading-tight mt-0.5">
+                      <p className="font-data text-[10px] text-glacier/70 leading-tight mt-0.5">
                         {note}
                       </p>
                     </div>
@@ -821,7 +821,7 @@ export default function AffiliateDashboard() {
                 chiffre d'affaires : afficher « encore 3 465 $ pour Silver »
                 serait une promesse fausse, puisque franchir ce seuil ne
                 changerait rien — manual_tier l'emporte sur le palier calcule. */}
-            <div className="bg-white rounded-2xl border border-ash p-6">
+            <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
                 {data?.tier_agreement
                   ? L("VOTRE TAUX CONVENU", "YOUR AGREED RATE")
@@ -869,7 +869,7 @@ export default function AffiliateDashboard() {
                 Remplace l'ancienne carte « securisez votre palier », qui
                 annoncait une retrogradation trimestrielle desormais supprimee. */}
             {data?.rolling12_revenue != null && (
-              <div className="bg-white rounded-2xl border border-ash p-6">
+              <div className="bg-white rounded-xl border border-ash p-6">
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div>
                     <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
@@ -924,7 +924,7 @@ export default function AffiliateDashboard() {
             )}
 
             {/* Activité récente */}
-            <div className="bg-white rounded-2xl border border-ash p-6">
+            <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
                 {L("ACTIVITÉ RÉCENTE", "RECENT ACTIVITY")}
               </p>
@@ -942,7 +942,7 @@ export default function AffiliateDashboard() {
             </div>
 
             {/* Referral link */}
-            <div className="bg-white rounded-2xl border border-ash p-6"
+            <div className="bg-white rounded-xl border border-ash p-6"
                  data-testid="affiliate-link-panel">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
                 {L("VOTRE LIEN ET VOTRE CODE", "YOUR LINK AND CODE")}
@@ -1019,7 +1019,7 @@ export default function AffiliateDashboard() {
 
             {/* Top products share widget */}
             {topProducts.length > 0 && (refCode || "").length > 0 && (
-              <div className="bg-white rounded-2xl border border-ash p-6" data-testid="affiliate-share-widget">
+              <div className="bg-white rounded-xl border border-ash p-6" data-testid="affiliate-share-widget">
                 <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
                   <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
                     {personalTop
@@ -1108,7 +1108,7 @@ export default function AffiliateDashboard() {
         {/* PERFORMANCE */}
         {tab === "performance" && (
           <div className="space-y-6" data-testid="affiliate-performance">
-            <div className="bg-white rounded-2xl border border-ash p-6">
+            <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
                 {L("REVENU VALIDÉ — 12 DERNIERS MOIS", "VALIDATED REVENUE — LAST 12 MONTHS")}
               </p>
@@ -1133,7 +1133,7 @@ export default function AffiliateDashboard() {
               )}
             </div>
 
-            <div className="bg-white rounded-2xl border border-ash p-6">
+            <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
                 {L("SOURCES DE VOS CLICS", "WHERE YOUR CLICKS COME FROM")}
               </p>
@@ -1150,7 +1150,7 @@ export default function AffiliateDashboard() {
               )}
             </div>
 
-            <div className="bg-white rounded-2xl border border-ash overflow-hidden">
+            <div className="bg-white rounded-xl border border-ash overflow-hidden">
               <div className="px-6 py-4 border-b border-ash flex items-center justify-between">
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
                   {L("COMMANDES VALIDÉES", "VALIDATED ORDERS")}
@@ -1178,7 +1178,7 @@ export default function AffiliateDashboard() {
               <KpiCard label={L("Approuvé", "Approved")} value={money(data?.approved_commission)} sub="CAD" />
               <KpiCard label={L("Payé", "Paid")} value={money(data?.paid_commission)} sub="CAD" accent />
             </div>
-            <div className="bg-white rounded-2xl border border-ash overflow-hidden">
+            <div className="bg-white rounded-xl border border-ash overflow-hidden">
               <div className="px-6 py-4 border-b border-ash flex items-center justify-between">
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
                   {L("HISTORIQUE DES PAIEMENTS", "PAYMENT HISTORY")}
@@ -1309,7 +1309,7 @@ export default function AffiliateDashboard() {
         {/* COMPLIANCE */}
         {tab === "compliance" && (
           <div className="space-y-6" data-testid="affiliate-compliance">
-            <div className="bg-white rounded-2xl border border-ash p-6">
+            <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
                 {L("STATUT DE CONFORMITÉ", "COMPLIANCE STATUS")}
               </p>
@@ -1317,7 +1317,7 @@ export default function AffiliateDashboard() {
                 {comp.dot} {comp[lang]}
               </span>
             </div>
-            <div className="bg-white rounded-2xl border border-ash p-6">
+            <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
                 {L("DIRECTIVES DE CONFORMITÉ", "COMPLIANCE GUIDELINES")}
               </p>
@@ -1346,7 +1346,7 @@ export default function AffiliateDashboard() {
         {/* SETTINGS */}
         {tab === "settings" && (
           <div className="space-y-6 max-w-xl" data-testid="affiliate-settings">
-            <div className="bg-white rounded-2xl border border-ash p-6">
+            <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
                 {L("PARAMÈTRES DE PAIEMENT — USDT / USDC", "PAYOUT SETTINGS — USDT / USDC")}
               </p>
@@ -1443,7 +1443,7 @@ export default function AffiliateDashboard() {
                    "⚠️ Two networks are accepted: Ethereum (0x… address) and Tron (T… address). Sending on any other network — BSC, Polygon, Solana — will result in permanent loss.")}
               </p>
             </div>
-            <div className="bg-white rounded-2xl border border-ash p-6">
+            <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">
                 {L("COMPTE", "ACCOUNT")}
               </p>
@@ -1541,7 +1541,7 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
       {modaleOuverte && (
         <TermsModal L={L} lang={lang} onClose={fermerModale} />
       )}
-      <div className="w-full max-w-lg bg-white rounded-2xl border border-ash p-8 space-y-5">
+      <div className="w-full max-w-lg bg-white rounded-xl border border-ash p-8 space-y-5">
         {/* Première acceptation ou RÉVISION : ce n'est pas la même situation.
             Dire « avant de commencer » à quelqu'un qui a déjà accepté il y a
             trois jours lui fait croire que son compte s'est réinitialisé — et
@@ -1622,7 +1622,7 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
 
 function KpiCard({ label, value, sub, accent }) {
   return (
-    <div className={`rounded-2xl border p-5 ${accent ? "bg-nordfjord border-nordfjord" : "bg-white border-ash"}`}>
+    <div className={`rounded-xl border p-5 ${accent ? "bg-nordfjord border-nordfjord" : "bg-white border-ash"}`}>
       <p className={`font-data text-[10px] font-semibold uppercase tracking-[0.2em] mb-2 ${accent ? "text-nova" : "text-glacier"}`}>
         {label}
       </p>
@@ -1834,7 +1834,7 @@ function ComplianceItem({ title, body }) {
       <span className="text-nova mt-0.5">▸</span>
       <div>
         <p className="font-semibold text-nordfjord">{title}</p>
-        <p className="text-glacier text-[13px] leading-relaxed">{body}</p>
+        <p className="text-glacier text-[12px] leading-relaxed">{body}</p>
       </div>
     </li>
   );

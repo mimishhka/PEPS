@@ -374,7 +374,7 @@ export default function AdminAffiliates() {
               [L("Panier moyen", "Avg order"), money(fin.avg_order_value)],
               [L("Clics", "Clicks"), int(attr.total_clicks)],
             ].map(([k, v]) => (
-              <span key={k} className="text-[13px] text-glacier whitespace-nowrap">
+              <span key={k} className="text-[12px] text-glacier whitespace-nowrap">
                 {k} <b className="text-nordfjord font-semibold tabular-nums">{v}</b>
               </span>
             ))}
@@ -1150,7 +1150,7 @@ function InviteModal({ L, onClose, onDone }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl border border-ash w-full max-w-md p-6 max-h-[90vh] overflow-y-auto"
+      <div className="bg-white rounded-xl border border-ash w-full max-w-md p-6 max-h-[90vh] overflow-y-auto"
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <div>
@@ -1164,7 +1164,7 @@ function InviteModal({ L, onClose, onDone }) {
           <button onClick={onClose}><X size={18} className="text-glacier" /></button>
         </div>
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label={L("Prénom *", "First name *")}>
               <input value={firstName} onChange={(e) => setFirstName(e.target.value)} data-testid="invite-first-name"
                 placeholder={L("Marie", "Marie")}
@@ -1407,7 +1407,7 @@ function BulkInviteModal({ L, onClose, onDone }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl border border-ash w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto"
+      <div className="bg-white rounded-xl border border-ash w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto"
            data-testid="affiliate-bulk-modal"
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
@@ -1504,7 +1504,7 @@ function BulkInviteModal({ L, onClose, onDone }) {
               </div>
             )}
 
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label={L("Langue de l'email", "Email language")}>
                 <select value={lang} onChange={(e) => setLangSel(e.target.value)}
                   className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova"
@@ -1530,7 +1530,7 @@ function BulkInviteModal({ L, onClose, onDone }) {
 
         {result && (
           <div data-testid="affiliate-bulk-result">
-            <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
               <div className="rounded-lg border border-success/30 bg-success/5 p-3">
                 <div className="flex items-center gap-1.5 mb-1"><CheckCircle2 size={14} className="text-success" />
                   <p className="text-[11px] uppercase tracking-wider text-glacier">{L("Envoyés", "Sent")}</p></div>
@@ -1743,7 +1743,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl border border-ash w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()} data-testid="affiliate-detail-modal">
+      <div className="bg-white rounded-xl border border-ash w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()} data-testid="affiliate-detail-modal">
         <div className="flex items-center justify-between mb-5">
           <div>
             <h3 className="font-display text-lg font-bold text-nordfjord">{a?.name || "—"}</h3>
@@ -1756,7 +1756,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
         ) : (
           <div className="space-y-6">
             {/* Identity + code */}
-            <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <Info label={L("Courriel", "Email")} value={a.email} />
               <div>
                 <p className="text-[11px] uppercase tracking-wider text-glacier">{L("Code", "Code")}</p>
@@ -2007,7 +2007,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                           <div className="flex gap-2 mt-2">
                             <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder={L("Réf. tx / hash", "Tx ref / hash")}
                               className="flex-1 rounded-md border border-ash px-2 py-1 text-xs bg-white text-nordfjord outline-none" />
-                            <button onClick={() => markPaid(p.id)} className="px-3 py-1 rounded-md bg-nordfjord text-white text-xs">{L("Confirmer", "Confirm")}</button>
+                            <button onClick={() => markPaid(p.id)} className="px-3 py-2 rounded-md bg-nordfjord text-white text-xs">{L("Confirmer", "Confirm")}</button>
                           </div>
                         ) : (
                           <button onClick={() => { setMarkingId(p.id); setRef(""); }}
@@ -2076,7 +2076,7 @@ function EditField({ label, value, onChange, type = "text", test, placeholder, s
 }
 
 function ActBtn({ onClick, children, ...rest }) {
-  return <button onClick={onClick} {...rest} className="px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical">{children}</button>;
+  return <button onClick={onClick} {...rest} className="px-3 py-2 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical">{children}</button>;
 }
 function Field({ label, children }) {
   return <label className="block"><span className="text-xs text-glacier mb-1 block">{label}</span>{children}</label>;

@@ -93,7 +93,7 @@ export default function AffiliateProgramme() {
             {state === "error" && (
               <div className="text-center py-6" data-testid="affiliate-programme-error">
                 <div className="w-14 h-14 rounded-full bg-error/15 text-error flex items-center justify-center text-2xl font-bold mx-auto mb-6">!</div>
-                <h1 className="font-display text-[22px] font-bold text-nordfjord mb-2">
+                <h1 className="font-display text-[24px] font-bold text-nordfjord mb-2">
                   {L("Page inaccessible", "Page unavailable")}
                 </h1>
                 <p className="text-sm text-glacier mb-6">{errorMsg}</p>
@@ -109,7 +109,7 @@ export default function AffiliateProgramme() {
                 <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova text-center">
                   {L("PROGRAMME D'AFFILIATION", "AFFILIATE PROGRAM")}
                 </p>
-                <h1 className="font-display text-[26px] sm:text-[30px] font-bold text-nordfjord text-center mt-2 mb-3 leading-tight">
+                <h1 className="font-display text-[24px] sm:text-[32px] font-bold text-nordfjord text-center mt-2 mb-3 leading-tight">
                   {data.first_name
                     ? L(`Ce que nous vous proposons, ${data.first_name}`,
                         `What we're offering you, ${data.first_name}`)
@@ -121,11 +121,11 @@ export default function AffiliateProgramme() {
                 </p>
 
                 {data.agreed_rate != null && (
-                  <div className="rounded-2xl border border-nova bg-nova/10 p-5 mb-8 text-center">
+                  <div className="rounded-xl border border-nova bg-nova/10 p-5 mb-8 text-center">
                     <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-1.5">
                       {L("VOTRE TAUX CONVENU", "YOUR AGREED RATE")}
                     </p>
-                    <p className="font-display text-[34px] font-bold text-nordfjord leading-none">
+                    <p className="font-display text-[32px] font-bold text-nordfjord leading-none">
                       {Math.round(data.agreed_rate * 100)} %
                     </p>
                     <p className="text-sm text-glacier mt-2.5 leading-relaxed">

@@ -260,7 +260,7 @@ function Stat({ icon: Icon, label, value }) {
     <div className="rounded-lg bg-clinical border border-ash p-2.5 text-center">
       <Icon size={14} className="mx-auto text-nova mb-1" />
       <div className="font-data font-bold text-sm text-nordfjord">{value}</div>
-      <div className="font-data text-[9px] uppercase tracking-wider text-glacier">{label}</div>
+      <div className="font-data text-[10px] uppercase tracking-wider text-glacier">{label}</div>
     </div>
   );
 }

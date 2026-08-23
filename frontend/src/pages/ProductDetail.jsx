@@ -180,7 +180,7 @@ export default function ProductDetail() {
 
         <div className="grid lg:grid-cols-2 gap-12">
           <div className="relative">
-            <div className="rounded-2xl overflow-hidden aspect-square relative">
+            <div className="rounded-xl overflow-hidden aspect-square relative">
               <ProductImage
                 src={product.image_url}
                 slug={product.slug}
@@ -230,7 +230,7 @@ export default function ProductDetail() {
                         <span className="font-display font-bold text-nordfjord">{v.name}</span>
                         <span className="font-data text-[11px] text-glacier ml-2">${vPrice?.toFixed(2)}</span>
                         {v.coa_status === "pending" && (
-                          <span className="block font-data text-[9px] uppercase tracking-[0.14em] text-warning mt-0.5">{lang === "fr" ? "COA à venir" : "COA pending"}</span>
+                          <span className="block font-data text-[10px] uppercase tracking-[0.14em] text-warning mt-0.5">{lang === "fr" ? "COA à venir" : "COA pending"}</span>
                         )}
                       </button>
                     );
@@ -377,7 +377,7 @@ export default function ProductDetail() {
                 const rstock = rvars.some((v) => Number(v.stock) > 0) || Number(p.stock) > 0;
                 return (
                   <Link key={p.id} to={`/product/${p.slug}`} data-testid="related-card"
-                    className="group rounded-2xl border border-ash bg-white p-4 hover:border-nova transition">
+                    className="group rounded-xl border border-ash bg-white p-4 hover:border-nova transition">
                     <div className="aspect-square rounded-xl mb-3 flex items-center justify-center overflow-hidden"
                       style={{ background: `hsl(${hueFor(p.slug)} 70% 96%)` }}>
                       <ProductImage
@@ -395,7 +395,7 @@ export default function ProductDetail() {
                       {lang === "fr" ? p.name_fr : p.name_en}
                     </div>
                     <div className="flex items-center justify-between mt-2">
-                      <span className="font-data text-[13px] text-nordfjord">
+                      <span className="font-data text-[12px] text-nordfjord">
                         {rprice ? `$${rprice.toFixed(2)}` : "—"}
                       </span>
                       <span className={`w-2 h-2 rounded-full ${rstock ? "bg-success" : "bg-warning"}`} />

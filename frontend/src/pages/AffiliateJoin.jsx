@@ -61,7 +61,7 @@ export default function AffiliateJoin() {
           {status === "activating" && (
             <div className="text-center">
               <div className="h-10 w-10 rounded-full border-2 border-ash border-t-nova animate-spin mx-auto mb-6" />
-              <h1 className="font-display text-[22px] font-bold text-nordfjord mb-2">
+              <h1 className="font-display text-[24px] font-bold text-nordfjord mb-2">
                 {L("Activation de votre compte…", "Activating your account…")}
               </h1>
               <p className="text-sm text-glacier">
@@ -85,7 +85,7 @@ export default function AffiliateJoin() {
           {status === "error" && (
             <div className="text-center" data-testid="affiliate-join-error">
               <div className="w-14 h-14 rounded-full bg-error/15 text-error flex items-center justify-center text-2xl font-bold mx-auto mb-6">!</div>
-              <h1 className="font-display text-[22px] font-bold text-nordfjord mb-2">
+              <h1 className="font-display text-[24px] font-bold text-nordfjord mb-2">
                 {L("Activation impossible", "Activation failed")}
               </h1>
               <p className="text-sm text-glacier mb-6">{errorMsg}</p>

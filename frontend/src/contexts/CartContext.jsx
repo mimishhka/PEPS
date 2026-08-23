@@ -116,7 +116,7 @@ export function CartProvider({ children }) {
     const name = fr ? (product.name_fr || product.name_en) : (product.name_en || product.name_fr);
     const line = `${name}${v?.name ? ` · ${v.name}` : ""}`;
     toast.custom((id) => (
-      <div className="w-[340px] max-w-[92vw] rounded-2xl border border-ash bg-white shadow-[0_20px_50px_-20px_rgba(11,46,79,.4)] p-4" data-testid="add-to-cart-toast">
+      <div className="w-[340px] max-w-[92vw] rounded-xl border border-ash bg-white shadow-[0_20px_50px_-20px_rgba(11,46,79,.4)] p-4" data-testid="add-to-cart-toast">
         <div className="flex items-start gap-3">
           <div className="w-12 h-12 rounded-lg object-cover border border-ash shrink-0 overflow-hidden">
             <ProductImage

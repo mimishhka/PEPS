@@ -105,7 +105,7 @@ export default function OrderConfirmation() {
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-16" data-testid="confirmation-page">
-      <div className="border border-nordfjord/20 rounded-2xl overflow-hidden">
+      <div className="border border-nordfjord/20 rounded-xl overflow-hidden">
         <div className="bg-nordfjord text-white px-6 py-4 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.25em]">
           <span>
             {order.payment_status === "paid"
@@ -174,7 +174,7 @@ export default function OrderConfirmation() {
       )}
 
       {interac && (
-        <div className="mt-8 border border-nordfjord/20 rounded-2xl overflow-hidden" data-testid="interac-instructions">
+        <div className="mt-8 border border-nordfjord/20 rounded-xl overflow-hidden" data-testid="interac-instructions">
           <div className="bg-nordfjord text-white px-6 py-3 font-mono text-[11px] uppercase tracking-[0.25em]" style={{ background: "#0B2E4F" }}>
             ⚡ {t("confirmation.interacHeading")}
           </div>
@@ -192,7 +192,7 @@ export default function OrderConfirmation() {
       )}
 
       {np && (
-        <div className="mt-8 border border-nordfjord/20 rounded-2xl overflow-hidden" data-testid="crypto-instructions">
+        <div className="mt-8 border border-nordfjord/20 rounded-xl overflow-hidden" data-testid="crypto-instructions">
           <div className="bg-nordfjord text-white px-6 py-3 font-mono text-[11px] uppercase tracking-[0.25em]">
             ₿ {t("confirmation.cryptoHeading")}
           </div>
@@ -260,7 +260,7 @@ export default function OrderConfirmation() {
         </div>
       )}
 
-      <div className="mt-8 border border-nordfjord/15 rounded-2xl p-6 bg-clinical">
+      <div className="mt-8 border border-nordfjord/15 rounded-xl p-6 bg-clinical">
         <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50 mb-3">{lang === "fr" ? "ARTICLES" : "ITEMS"}</div>
         <ul className="divide-y divide-nordfjord/10">
           {order.items.map((i) => (

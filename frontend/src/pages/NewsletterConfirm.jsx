@@ -72,7 +72,7 @@ export default function NewsletterConfirm() {
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-4" data-testid="newsletter-confirm-page">
-      <div className="max-w-md w-full rounded-2xl border border-nova/20 bg-white p-8 text-center shadow-sm">
+      <div className="max-w-md w-full rounded-xl border border-nova/20 bg-white p-8 text-center shadow-sm">
         <div className="flex justify-center mb-4">{content.icon}</div>
         <h1 className="text-2xl font-semibold text-nordfjord mb-2" data-testid="confirm-title">{content.title}</h1>
         <p className="text-compliance mb-6" data-testid="confirm-body">{content.body}</p>

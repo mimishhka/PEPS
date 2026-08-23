@@ -127,7 +127,7 @@ export default function Home() {
             </Reveal>
           </div>
           <Reveal delay={300} className="relative hidden lg:block">
-            <div className="relative bg-[#0D3560]/80 backdrop-blur border border-[#1E4A73] rounded-2xl p-8 shadow-[0_40px_80px_-30px_rgba(0,0,0,.5)]">
+            <div className="relative bg-[#0D3560]/80 backdrop-blur border border-[#1E4A73] rounded-xl p-8 shadow-[0_40px_80px_-30px_rgba(0,0,0,.5)]">
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <p className="font-data text-[10px] uppercase tracking-[0.22em] text-nova mb-1.5">Certificate of Analysis</p>
@@ -152,7 +152,7 @@ export default function Home() {
 
       {/* TRUST TICKER */}
       <section className="max-w-7xl mx-auto px-6 lg:px-8 -mt-10 relative z-10" data-testid="trust-marquee">
-        <div className="rounded-2xl bg-nordfjord py-5 overflow-hidden shadow-[0_24px_48px_-24px_rgba(11,46,79,.5)]">
+        <div className="rounded-xl bg-nordfjord py-5 overflow-hidden shadow-[0_24px_48px_-24px_rgba(11,46,79,.5)]">
           <div style={{
             display: "flex",
             width: "max-content",
@@ -196,11 +196,11 @@ export default function Home() {
       <section className="py-24" data-testid="newsletter-section">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <Reveal>
-            <div className="rounded-2xl bg-nordfjord px-8 lg:px-16 py-16 relative overflow-hidden">
+            <div className="rounded-xl bg-nordfjord px-8 lg:px-16 py-16 relative overflow-hidden">
               <div className="absolute -right-16 -top-16 opacity-25"><FnMark size={260} frame="#00B8D4" spark="#00B8D4" /></div>
               <div className="relative max-w-2xl">
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">Newsletter</p>
-                <h2 className="font-display text-[34px] font-semibold text-white mb-4">{newsTitle}</h2>
+                <h2 className="font-display text-[32px] font-semibold text-white mb-4">{newsTitle}</h2>
                 <p className="text-[#B7CADD] mb-9 leading-relaxed">{newsLede}</p>
                 {done ? (
                   <p className="inline-flex items-center gap-2.5 text-nova font-semibold"><Check size={18} /> {newsDone}</p>
@@ -215,7 +215,7 @@ export default function Home() {
                         className="btn-pill btn-nova disabled:opacity-40 disabled:pointer-events-none"
                         data-testid="newsletter-submit">{t("home.subscribe")}</button>
                     </div>
-                    <label className="flex items-start gap-3 text-[13px] text-[#8FB3C9] cursor-pointer select-none">
+                    <label className="flex items-start gap-3 text-[12px] text-[#8FB3C9] cursor-pointer select-none">
                       <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
                         className="mt-0.5 accent-[#00B8D4] w-4 h-4" data-testid="newsletter-consent" />
                       {t("home.newsletterConsent")}

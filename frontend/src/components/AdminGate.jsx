@@ -47,7 +47,7 @@ export default function AdminGate({ children }) {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-nordfjord px-6" data-testid="admin-gate-page">
-      <form onSubmit={submit} className="w-full max-w-sm bg-clinical rounded-2xl p-10 shadow-[0_40px_80px_-30px_rgba(0,0,0,.5)]" data-testid="admin-gate-form">
+      <form onSubmit={submit} className="w-full max-w-sm bg-clinical rounded-xl p-10 shadow-[0_40px_80px_-30px_rgba(0,0,0,.5)]" data-testid="admin-gate-form">
         <div className="flex justify-center mb-5">
           <FnMark size={44} frame="#0B2E4F" spark="#00B8D4" />
         </div>

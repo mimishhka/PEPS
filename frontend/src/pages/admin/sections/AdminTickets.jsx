@@ -137,7 +137,7 @@ export default function AdminTickets() {
 
       {tickets === null && <p className="text-glacier text-sm">{L("Chargement…", "Loading…")}</p>}
       {tickets?.length === 0 && (
-        <div className="bg-white rounded-2xl border border-ash p-10 text-center">
+        <div className="bg-white rounded-xl border border-ash p-10 text-center">
           <MessageSquare size={22} className="mx-auto text-glacier/50 mb-2" />
           <p className="text-sm text-glacier">{L("Aucun billet.", "No tickets.")}</p>
         </div>
@@ -150,7 +150,7 @@ export default function AdminTickets() {
           const retard = t.status === "open" && h > DELAI_HEURES;
           const deplie = ouvert === t.id;
           return (
-            <div key={t.id} className="bg-white rounded-2xl border border-ash overflow-hidden"
+            <div key={t.id} className="bg-white rounded-xl border border-ash overflow-hidden"
                  data-testid={`admin-ticket-${t.id}`}>
               <button onClick={() => { setOuvert(deplie ? null : t.id); setReponse(""); }}
                 className="w-full text-left p-4 flex items-start justify-between gap-4">

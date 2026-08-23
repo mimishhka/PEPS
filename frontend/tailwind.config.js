@@ -24,6 +24,40 @@ module.exports = {
         warning: "rgb(var(--fn-warning) / <alpha-value>)",
         error: "rgb(var(--fn-error) / <alpha-value>)",
         compliance: "rgb(var(--fn-compliance) / <alpha-value>)", // RUO / regulatory
+
+        /* ---- Jetons shadcn/ui, branches sur l'identite ----
+         *
+         * Les composants de components/ui/ sont ecrits pour le theme shadcn et
+         * emploient bg-primary, text-foreground, bg-muted, border-input… Ces
+         * noms n'existaient nulle part : ~450 classes ne peignaient RIEN.
+         * Boites de dialogue, menus deroulants, infobulles et champs
+         * s'affichaient donc sans thème, sans qu'aucune erreur ne le signale.
+         *
+         * Plutot que de reecrire ces composants, on declare les noms qu'ils
+         * attendent en les faisant pointer sur les MEMES variables que le
+         * reste du site. Consequence : ils suivent le mode nuit sans une ligne
+         * de plus, et il n'existe toujours qu'une seule palette.
+         *
+         * Chaque paire fond/texte s'inverse ensemble — c'est la paire qui
+         * porte le contraste, jamais la valeur absolue. */
+        background: "rgb(var(--fn-clinical) / <alpha-value>)",
+        foreground: "rgb(var(--fn-nordfjord) / <alpha-value>)",
+        "card-foreground": "rgb(var(--fn-nordfjord) / <alpha-value>)",
+        popover: "rgb(var(--fn-card) / <alpha-value>)",
+        "popover-foreground": "rgb(var(--fn-nordfjord) / <alpha-value>)",
+        primary: "rgb(var(--fn-nordfjord) / <alpha-value>)",
+        "primary-foreground": "rgb(var(--fn-clinical) / <alpha-value>)",
+        secondary: "rgb(var(--fn-clinical) / <alpha-value>)",
+        "secondary-foreground": "rgb(var(--fn-nordfjord) / <alpha-value>)",
+        muted: "rgb(var(--fn-clinical) / <alpha-value>)",
+        "muted-foreground": "rgb(var(--fn-glacier) / <alpha-value>)",
+        accent: "rgb(var(--fn-clinical) / <alpha-value>)",
+        "accent-foreground": "rgb(var(--fn-nordfjord) / <alpha-value>)",
+        destructive: "rgb(var(--fn-error) / <alpha-value>)",
+        "destructive-foreground": "rgb(var(--fn-clinical) / <alpha-value>)",
+        border: "rgb(var(--fn-ash) / <alpha-value>)",
+        input: "rgb(var(--fn-ash) / <alpha-value>)",
+        ring: "rgb(var(--fn-nova) / <alpha-value>)",
       },
       fontFamily: {
         display: ["'Space Grotesk'", "sans-serif"],
@@ -34,13 +68,21 @@ module.exports = {
       letterSpacing: {
         wordmark: "0.14em",
       },
+      /* Quatre valeurs, pas huit.
+       *
+       * Le code employait 8 noms — sm, md, DEFAULT, lg, xl, 2xl, 3xl, full —
+       * pour 3 valeurs seulement : sm/md/DEFAULT rendaient 8 px, xl et 2xl
+       * rendaient 16 px. Les alias ont ete unifies dans le code (renommage
+       * pur, rendu identique au pixel), et les doublons retires ici.
+       *
+       * 3xl etait employe 9 fois sans etre declare : il retombait sur le
+       * defaut de Tailwind. Il est desormais explicite. */
       borderRadius: {
-        sm: "8px",
         DEFAULT: "8px",
         md: "8px",
         lg: "12px",
         xl: "16px",
-        "2xl": "16px",
+        "3xl": "24px",
       },
       keyframes: {
         mesh: {

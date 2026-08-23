@@ -24,7 +24,7 @@ export default function About() {
             </p>
           </Reveal>
           <Reveal delay={90}>
-            <h1 className="font-display text-[46px] sm:text-[64px] font-bold leading-[1.02] tracking-[-0.02em] max-w-3xl">
+            <h1 className="font-display text-[44px] sm:text-[64px] font-bold leading-[1.02] tracking-[-0.02em] max-w-3xl">
               {isFr ? "Du nord. " : "From the north. "}<span className="text-nova">{isFr ? "Pour la recherche." : "For research."}</span>
             </h1>
           </Reveal>
@@ -42,7 +42,7 @@ export default function About() {
         <div className="grid sm:grid-cols-3 gap-6">
           {steps.map((s, i) => (
             <Reveal key={s.n} delay={i * 90}>
-              <div className="rounded-2xl border border-ash bg-white p-8 h-full">
+              <div className="rounded-xl border border-ash bg-white p-8 h-full">
                 <div className="flex items-center justify-between mb-5">
                   <span className="font-data text-sm font-semibold text-nova">{s.n}</span>
                   <NovaSpark size={18} />

@@ -110,7 +110,7 @@ export default function AdminCoupons() {
                     <span className="font-data font-bold">{c.code}</span>
                   </div>
                   {(c.first_order_only || c.allowed_emails?.length || c.restrict_products?.length || c.restrict_categories?.length) && (
-                    <span className="inline-block text-[9px] font-data uppercase tracking-[0.12em] bg-warning/15 text-warning px-1.5 py-0.5 mt-1 rounded">
+                    <span className="inline-block text-[10px] font-data uppercase tracking-[0.12em] bg-warning/15 text-warning px-1.5 py-0.5 mt-1 rounded">
                       {L("RESTREINT", "RESTRICTED")}
                     </span>
                   )}
@@ -179,7 +179,7 @@ function CouponEditor({ L, editing, setEditing, save }) {
       onClick={() => setEditing(null)}
     >
       <div
-        className="bg-white rounded-2xl border border-ash w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl"
+        className="bg-white rounded-xl border border-ash w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         data-testid="coupon-editor"
       >
@@ -209,7 +209,7 @@ function CouponEditor({ L, editing, setEditing, save }) {
               placeholder="SUMMER20"
               mono
             />
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <F
                 label={L("Type de rabais", "Discount type")}
                 select={[
@@ -251,7 +251,7 @@ function CouponEditor({ L, editing, setEditing, save }) {
 
           {/* Section: Limits & schedule */}
           <Section title={L("Limites & calendrier", "Limits & schedule")}>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <F
                 label={L("Début (AAAA-MM-JJ)", "Starts at (YYYY-MM-DD)")}
                 type="date"
@@ -267,7 +267,7 @@ function CouponEditor({ L, editing, setEditing, save }) {
                 test="c-expires"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <F
                 label={L("Limite totale (vide = illimité)", "Total limit (blank = ∞)")}
                 type="number"

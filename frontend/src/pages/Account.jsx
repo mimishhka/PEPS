@@ -57,7 +57,7 @@ export default function Account() {
         <div className="rounded-3xl border border-ash bg-white p-6 sm:p-7 mb-8 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4 min-w-0">
             <div
-              className="w-14 h-14 rounded-2xl bg-nordfjord text-white flex items-center justify-center font-display font-extrabold text-xl shrink-0"
+              className="w-14 h-14 rounded-xl bg-nordfjord text-white flex items-center justify-center font-display font-extrabold text-xl shrink-0"
               aria-hidden="true"
             >
               {(user?.name || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
@@ -82,7 +82,7 @@ export default function Account() {
           <Link
             to="/affiliate"
             data-testid="account-affiliate-link"
-            className="group rounded-2xl border border-nova/40 bg-gradient-to-br from-nova/8 to-transparent p-5 sm:p-6 mb-8 flex items-center gap-4 flex-wrap hover:border-nova hover:shadow-md transition"
+            className="group rounded-xl border border-nova/40 bg-gradient-to-br from-nova/8 to-transparent p-5 sm:p-6 mb-8 flex items-center gap-4 flex-wrap hover:border-nova hover:shadow-md transition"
           >
             <div className="w-11 h-11 rounded-xl bg-nova text-nordfjord flex items-center justify-center font-display font-extrabold text-lg shrink-0" aria-hidden="true">
               ★
@@ -149,7 +149,7 @@ function OrderCard({ o, t, lang }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-display font-bold text-nordfjord text-sm truncate">{o.order_number}</span>
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold font-data uppercase tracking-[0.08em] ${badge.cls}`}>{badge.label}</span>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold font-data uppercase tracking-[0.08em] ${badge.cls}`}>{badge.label}</span>
         </div>
         <div className="font-data text-[11px] text-glacier mt-0.5 truncate">
           {new Date(o.created_at).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { year: "numeric", month: "short", day: "numeric" })}
@@ -187,7 +187,7 @@ function OrdersTab({ t, lang }) {
 
   if (orders.length === 0) {
     return (
-      <div className="rounded-2xl border border-ash bg-white p-10 text-center" data-testid="account-no-orders">
+      <div className="rounded-xl border border-ash bg-white p-10 text-center" data-testid="account-no-orders">
         <p className="font-display text-lg font-bold text-nordfjord">{lang === "fr" ? "Aucune commande pour l'instant" : "No orders yet"}</p>
         <p className="text-glacier mt-1">{t("account.noOrders")}</p>
         <Link to="/catalog" className="inline-block mt-5 btn-pill btn-nova">{t("nav.catalog")} →</Link>
@@ -242,7 +242,7 @@ function ProfileTab({ t, user, refresh }) {
 
   return (
     <div className="grid lg:grid-cols-2 gap-5 max-w-4xl">
-      <form onSubmit={saveName} className="rounded-2xl border border-ash bg-white p-6 space-y-5 self-start" data-testid="profile-form">
+      <form onSubmit={saveName} className="rounded-xl border border-ash bg-white p-6 space-y-5 self-start" data-testid="profile-form">
         <h2 className="font-display text-lg font-bold text-nordfjord">{t("account.profile")}</h2>
         <div>
           <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.fullName")}</label>
@@ -254,10 +254,10 @@ function ProfileTab({ t, user, refresh }) {
         </button>
       </form>
 
-      <form onSubmit={requestEmailChange} className="rounded-2xl border border-ash bg-white p-6 space-y-5 self-start" data-testid="email-change-form">
+      <form onSubmit={requestEmailChange} className="rounded-xl border border-ash bg-white p-6 space-y-5 self-start" data-testid="email-change-form">
         <h2 className="font-display text-lg font-bold text-nordfjord">{t("account.changeEmail")}</h2>
         {emailSentTo ? (
-          <div className="rounded-2xl border border-ash bg-white p-5 text-sm" data-testid="email-change-sent">
+          <div className="rounded-xl border border-ash bg-white p-5 text-sm" data-testid="email-change-sent">
             <p className="font-bold text-nordfjord">{t("account.emailSentTitle")}</p>
             <p className="text-glacier mt-1">{t("account.emailSentBody")} <span className="font-data text-nordfjord">{emailSentTo}</span></p>
           </div>
@@ -351,7 +351,7 @@ function AddressesTab({ t }) {
       </div>
 
       {editing && (
-        <form onSubmit={save} className="rounded-2xl border border-ash bg-white p-6 mb-8 grid sm:grid-cols-2 gap-4" data-testid="address-form">
+        <form onSubmit={save} className="rounded-xl border border-ash bg-white p-6 mb-8 grid sm:grid-cols-2 gap-4" data-testid="address-form">
           <Field label={t("account.addressLabel")} value={editing.label} onChange={(v) => setEditing({ ...editing, label: v })} testid="address-label" />
           <Field label={t("checkout.fullName")} value={editing.full_name} required onChange={(v) => setEditing({ ...editing, full_name: v })} testid="address-fullname" />
           <Field label={t("checkout.address1")} value={editing.address1} required className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address1: v })} testid="address-address1" />
@@ -384,13 +384,13 @@ function AddressesTab({ t }) {
       )}
 
       {addresses.length === 0 && !editing ? (
-        <div className="rounded-2xl border border-ash bg-white p-8 text-center text-glacier" data-testid="addresses-empty">
+        <div className="rounded-xl border border-ash bg-white p-8 text-center text-glacier" data-testid="addresses-empty">
           {t("account.noAddresses")}
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 gap-4">
           {addresses.map((a) => (
-            <div key={a.id} className={`rounded-2xl border bg-white p-5 ${a.is_default ? "border-nova" : "border-ash"}`} data-testid={`address-card-${a.id}`}>
+            <div key={a.id} className={`rounded-xl border bg-white p-5 ${a.is_default ? "border-nova" : "border-ash"}`} data-testid={`address-card-${a.id}`}>
               <div className="flex items-start justify-between">
                 <div className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">
                   {a.label || t("account.addressLabel")}
@@ -491,7 +491,7 @@ function SecurityTab({ t, user, logout, navigate }) {
 
   return (
     <div className="max-w-2xl space-y-5">
-      <form onSubmit={changePassword} className="rounded-2xl border border-ash bg-white p-6 space-y-5" data-testid="password-form">
+      <form onSubmit={changePassword} className="rounded-xl border border-ash bg-white p-6 space-y-5" data-testid="password-form">
         <h2 className="font-display text-lg font-bold text-nordfjord">
           {pwLess ? (t("account.setPassword") || "Définir un mot de passe / Set a password") : t("account.changePassword")}
         </h2>
@@ -526,7 +526,7 @@ function SecurityTab({ t, user, logout, navigate }) {
         <p className="text-xs text-glacier">{t("account.passwordHint")}</p>
       </form>
 
-      <div className="rounded-2xl border border-ash bg-white p-6">
+      <div className="rounded-xl border border-ash bg-white p-6">
         <h2 className="font-display text-lg font-bold text-nordfjord mb-3">{t("account.sessions")}</h2>
         <p className="text-sm text-glacier mb-4">{t("account.sessionsHint")}</p>
         <button onClick={logoutAll} data-testid="logout-all" className="btn-pill btn-outline">
@@ -534,7 +534,7 @@ function SecurityTab({ t, user, logout, navigate }) {
         </button>
       </div>
 
-      <div className="rounded-2xl border border-error/30 bg-error/[0.03] p-6">
+      <div className="rounded-xl border border-error/30 bg-error/[0.03] p-6">
         <h2 className="font-display text-lg font-bold text-error mb-3">{t("account.dangerZone")}</h2>
         <p className="text-sm text-glacier mb-4">{t("account.deleteHint")}</p>
         {!showDelete ? (

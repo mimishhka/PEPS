@@ -103,7 +103,7 @@ export default function Footer() {
   return (
     <footer className="mt-28" data-testid="footer">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
-        <div className="rounded-2xl bg-nordfjord text-clinical px-8 lg:px-14 py-14 relative overflow-hidden shadow-[0_40px_80px_-40px_rgba(11,46,79,.6)]">
+        <div className="rounded-xl bg-nordfjord text-clinical px-8 lg:px-14 py-14 relative overflow-hidden shadow-[0_40px_80px_-40px_rgba(11,46,79,.6)]">
           <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 w-full h-full opacity-[.12]" aria-hidden="true">
             <g stroke="#00B8D4" strokeWidth="1" fill="none">
               <line x1="30" y1="50" x2="140" y2="110" /><line x1="140" y1="110" x2="250" y2="60" /><line x1="250" y1="60" x2="370" y2="130" />

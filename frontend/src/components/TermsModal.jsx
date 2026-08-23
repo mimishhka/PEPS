@@ -57,7 +57,7 @@ export default function TermsModal({ L, lang, onClose }) {
          style={{ background: "rgba(11,46,79,.72)" }}
          onClick={() => onClose(false)}
          data-testid="terms-modal">
-      <div className="w-full max-w-2xl max-h-full bg-white rounded-2xl border border-ash
+      <div className="w-full max-w-2xl max-h-full bg-white rounded-xl border border-ash
                       flex flex-col overflow-hidden shadow-2xl"
            role="dialog" aria-modal="true" aria-label={isFr ? "Conditions du programme" : "Program terms"}
            onClick={(e) => e.stopPropagation()}>
@@ -82,7 +82,7 @@ export default function TermsModal({ L, lang, onClose }) {
                 </span>
                 {isFr ? s.fr.title : s.en.title}
               </h3>
-              <div className="mt-2 space-y-2.5 text-[13px] text-glacier leading-relaxed">
+              <div className="mt-2 space-y-2.5 text-[12px] text-glacier leading-relaxed">
                 {s.paras.map((p, j) => (
                   <p key={j} className={p.strong ? "font-semibold text-nordfjord" : undefined}>
                     {isFr ? p.fr : p.en}

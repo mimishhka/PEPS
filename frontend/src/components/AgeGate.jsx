@@ -80,7 +80,7 @@ export default function AgeGate() {
                "radial-gradient(500px circle at 80% 70%, rgba(0,184,212,0.15), transparent 60%)",
            }} />
 
-      <div className="relative w-full max-w-lg rounded-2xl overflow-hidden bg-white border border-ash shadow-2xl">
+      <div className="relative w-full max-w-lg rounded-xl overflow-hidden bg-white border border-ash shadow-2xl">
         {/* Top bar — Fironova nordfjord + nova accent */}
         <div className="bg-nordfjord px-6 py-3 font-data text-[11px] uppercase tracking-[0.25em] text-white flex items-center justify-between">
           <span className="inline-flex items-center gap-2" data-testid="age-gate-tag">

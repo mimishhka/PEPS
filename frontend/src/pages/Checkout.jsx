@@ -345,7 +345,7 @@ export default function Checkout() {
             </h1>
           </div>
 
-          <div className="rounded-2xl border border-ash bg-white p-5">
+          <div className="rounded-xl border border-ash bg-white p-5">
             <h2 className="font-display text-xl font-bold text-nordfjord mb-4">{lang === "fr" ? "Contact" : "Contact"}</h2>
             <input
               type="email"
@@ -357,7 +357,7 @@ export default function Checkout() {
             />
           </div>
 
-          <div className="rounded-2xl border border-ash bg-white p-5">
+          <div className="rounded-xl border border-ash bg-white p-5">
             <h2 className="font-display text-xl font-bold text-nordfjord mb-4">
               {lang === "fr" ? "Adresse de livraison" : "Shipping address"}
             </h2>
@@ -385,7 +385,7 @@ export default function Checkout() {
             <AddressForm value={ship} setValue={setShip} lang={lang} prefix="shipping" />
           </div>
 
-          <div className="rounded-2xl border border-ash bg-white p-5">
+          <div className="rounded-xl border border-ash bg-white p-5">
             <label className="flex items-center gap-2 text-sm text-nordfjord mb-4">
               <input type="checkbox" checked={billSame} onChange={(e) => setBillSame(e.target.checked)} data-testid="checkout-bill-same" />
               {lang === "fr" ? "Adresse de facturation identique" : "Billing same as shipping"}
@@ -400,7 +400,7 @@ export default function Checkout() {
             )}
           </div>
 
-          <div className="rounded-2xl border border-ash bg-white p-5">
+          <div className="rounded-xl border border-ash bg-white p-5">
             <h2 className="font-display text-xl font-bold text-nordfjord mb-4">
               {lang === "fr" ? "Méthode de paiement" : "Payment method"}
             </h2>
@@ -420,7 +420,7 @@ export default function Checkout() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-ash bg-white p-5 space-y-3">
+          <div className="rounded-xl border border-ash bg-white p-5 space-y-3">
             <label className="flex items-start gap-2 text-sm text-nordfjord">
               <input type="checkbox" checked={confirmAge} onChange={(e) => setConfirmAge(e.target.checked)} data-testid="checkout-confirm-age" className="mt-1" />
               {/* L'âge vient de la configuration du serveur, il n'est plus
@@ -450,7 +450,7 @@ export default function Checkout() {
         </section>
 
         <aside>
-          <div className="rounded-2xl border border-ash bg-white p-5 sticky top-24" data-testid="checkout-summary">
+          <div className="rounded-xl border border-ash bg-white p-5 sticky top-24" data-testid="checkout-summary">
             <h2 className="font-display text-xl font-bold text-nordfjord mb-4">{lang === "fr" ? "Résumé" : "Summary"}</h2>
             <div className="space-y-3 max-h-[40vh] overflow-auto pr-1">
               {(items || []).map((it) => {

@@ -93,7 +93,7 @@ export default function Lab() {
         </div>
 
         {result && (
-          <div className="rounded-2xl border border-ash bg-white p-6 mb-16" data-testid="lab-verify-result">
+          <div className="rounded-xl border border-ash bg-white p-6 mb-16" data-testid="lab-verify-result">
             {result.found ? (
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
@@ -141,7 +141,7 @@ export default function Lab() {
         </button>
 
         {track && (
-          <div className="mt-6 rounded-2xl border border-ash bg-white p-6" data-testid="lab-track-result">
+          <div className="mt-6 rounded-xl border border-ash bg-white p-6" data-testid="lab-track-result">
             {track.accessRequested ? (
               <div className="font-data text-sm text-glacier">
                 {isFr

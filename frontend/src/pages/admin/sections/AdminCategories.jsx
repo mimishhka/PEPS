@@ -173,7 +173,7 @@ export default function AdminCategories() {
                     data-testid={`category-field-${f.k}`}
                     value={editing[f.k] || ""}
                     onChange={(e) => setEditing({ ...editing, [f.k]: e.target.value })}
-                    className="w-full mt-1 rounded-sm border border-ash bg-white px-3 py-2 text-sm focus:outline-none focus:border-ash"
+                    className="w-full mt-1 rounded-md border border-ash bg-white px-3 py-2 text-sm focus:outline-none focus:border-ash"
                   />
                 </div>
               ))}
@@ -184,7 +184,7 @@ export default function AdminCategories() {
                   data-testid="category-field-display_order"
                   value={editing.display_order ?? 0}
                   onChange={(e) => setEditing({ ...editing, display_order: e.target.value })}
-                  className="w-full mt-1 rounded-sm border border-ash bg-white px-3 py-2 text-sm font-mono focus:outline-none focus:border-ash"
+                  className="w-full mt-1 rounded-md border border-ash bg-white px-3 py-2 text-sm font-mono focus:outline-none focus:border-ash"
                 />
               </div>
               <label className="flex items-center gap-3 cursor-pointer">

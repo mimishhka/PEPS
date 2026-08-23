@@ -168,7 +168,7 @@ export default function AdminEmails() {
               <div className="rounded-xl border border-ash bg-white p-4">
                 <div className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-3">{L("Bouton d'action (optionnel)", "Action button (optional)")}</div>
                 <LabeledInput label="URL" value={form.cta_url} onChange={(v) => setForm({ ...form, cta_url: v })} />
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <LabeledInput label={L("Libellé FR", "Label FR")} value={form.cta_label_fr} onChange={(v) => setForm({ ...form, cta_label_fr: v })} />
                   <LabeledInput label={L("Libellé EN", "Label EN")} value={form.cta_label_en} onChange={(v) => setForm({ ...form, cta_label_en: v })} />
                 </div>

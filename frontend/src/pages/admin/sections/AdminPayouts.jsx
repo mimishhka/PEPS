@@ -124,14 +124,14 @@ export default function AdminPayouts() {
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Stat label={L("Prets a payer", "Ready to pay")} value={`${totals.ready} · ${money(totals.readyCad)} CAD`} />
         <Stat label={L("En cours", "In progress")} value={totals.pending} />
         <Stat label={L("Total releves", "Total payouts")} value={payouts.length} />
       </div>
 
       {payouts.length === 0 ? (
-        <div className="rounded-2xl border border-ash bg-white p-10 text-center text-glacier">
+        <div className="rounded-xl border border-ash bg-white p-10 text-center text-glacier">
           {L("Aucun releve de paiement. Cliquez « Generer les releves » pour agreger les commissions approuvees.",
              "No payouts yet. Click \"Generate payouts\" to aggregate approved commissions.")}
         </div>
@@ -243,7 +243,7 @@ export default function AdminPayouts() {
 
 function Stat({ label, value }) {
   return (
-    <div className="rounded-2xl border border-ash bg-white px-4 py-3">
+    <div className="rounded-xl border border-ash bg-white px-4 py-3">
       <div className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{label}</div>
       <div className="font-display font-extrabold text-nordfjord text-xl mt-1 tabular-nums">{value}</div>
     </div>
@@ -253,7 +253,7 @@ function Stat({ label, value }) {
 function Modal({ title, children, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-nordfjord/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-display text-lg font-bold text-nordfjord">{title}</h3>
           <button onClick={onClose} className="text-glacier hover:text-nordfjord"><X size={18} /></button>

@@ -163,7 +163,7 @@ export default function AdminMenus() {
                       data-testid={`menu-field-${f.k}`}
                       value={editing[f.k] || ""}
                       onChange={(e) => setEditing({ ...editing, [f.k]: e.target.value })}
-                      className="w-full mt-1 rounded-sm border border-ash bg-white px-3 py-2 text-sm focus:outline-none focus:border-ash"
+                      className="w-full mt-1 rounded-md border border-ash bg-white px-3 py-2 text-sm focus:outline-none focus:border-ash"
                     />
                   </div>
                 ))}
@@ -173,7 +173,7 @@ export default function AdminMenus() {
                     data-testid="menu-field-location"
                     value={editing.location}
                     onChange={(e) => setEditing({ ...editing, location: e.target.value })}
-                    className="w-full mt-1 rounded-sm border border-ash bg-white px-3 py-2 text-sm focus:outline-none focus:border-ash"
+                    className="w-full mt-1 rounded-md border border-ash bg-white px-3 py-2 text-sm focus:outline-none focus:border-ash"
                   >
                     <option value="header">header</option>
                     <option value="footer">footer</option>
@@ -213,11 +213,11 @@ export default function AdminMenus() {
                         <GripVertical size={14} className="text-glacier mt-2 shrink-0" />
                         <div className="grid sm:grid-cols-3 gap-2 flex-1">
                           <input placeholder="Label EN" value={it.label_en || ""} onChange={(e) => setItem(i, { label_en: e.target.value })}
-                            className="rounded-sm border border-ash bg-white px-2 py-1.5 text-sm focus:outline-none focus:border-ash" />
+                            className="rounded-md border border-ash bg-white px-2 py-1.5 text-sm focus:outline-none focus:border-ash" />
                           <input placeholder="Libellé FR" value={it.label_fr || ""} onChange={(e) => setItem(i, { label_fr: e.target.value })}
-                            className="rounded-sm border border-ash bg-white px-2 py-1.5 text-sm focus:outline-none focus:border-ash" />
+                            className="rounded-md border border-ash bg-white px-2 py-1.5 text-sm focus:outline-none focus:border-ash" />
                           <input placeholder="/catalog" value={it.url || ""} onChange={(e) => setItem(i, { url: e.target.value })}
-                            className="rounded-sm border border-ash bg-white px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-ash" />
+                            className="rounded-md border border-ash bg-white px-2 py-1.5 text-sm font-mono focus:outline-none focus:border-ash" />
                         </div>
                         <button onClick={() => setEditing({ ...editing, items: editing.items.filter((_, j) => j !== i) })}
                           className="p-1.5 hover:text-error shrink-0" data-testid={`menu-item-remove-${i}`}>
@@ -238,7 +238,7 @@ export default function AdminMenus() {
                         <label className="flex items-center gap-2">
                           <span className="text-xs text-glacier">Order</span>
                           <input type="number" value={it.display_order ?? i} onChange={(e) => setItem(i, { display_order: e.target.value })}
-                            className="w-16 rounded-sm border border-ash bg-white px-2 py-1 text-xs font-mono" />
+                            className="w-16 rounded-md border border-ash bg-white px-2 py-1 text-xs font-mono" />
                         </label>
                       </div>
                     </div>
