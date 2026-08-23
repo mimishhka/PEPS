@@ -2,7 +2,7 @@
 <html lang="en">
     <head>
         <meta charset="utf-8" />
-        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-bv3BJQ9HDRPWREafa7OTAYZEHepHMGBDm7yX52R8CKE=' 'sha256-66Px4GhpfV2S5ELudJjEey/G/YWHJDjSOVRjd3d0lig=' 'sha256-QIxQhNrDwr8xKG5igey3/nS26hAP8bT5Th08s98ql68=' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.fironova.com https://*.preview.emergentagent.com https://cloudflareinsights.com http://localhost:* http://127.0.0.1:*; frame-src 'self' https://nowpayments.io; object-src 'none'; base-uri 'self'; form-action 'self'" />
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-bv3BJQ9HDRPWREafa7OTAYZEHepHMGBDm7yX52R8CKE=' 'sha256-66Px4GhpfV2S5ELudJjEey/G/YWHJDjSOVRjd3d0lig=' 'sha256-QIxQhNrDwr8xKG5igey3/nS26hAP8bT5Th08s98ql68=' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https:; connect-src 'self' https://api.fironova.com https://*.preview.emergentagent.com https://cloudflareinsights.com http://localhost:* http://127.0.0.1:*; frame-src 'self' https://nowpayments.io; object-src 'none'; base-uri 'self'; form-action 'self'" />
         <meta name="referrer" content="no-referrer" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
 
@@ -42,8 +42,15 @@
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:image" content="https://fironova.com/brand/og-image.png" />
 
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <!-- Les polices sont desormais servies par nous, depuis /fonts.
+             Aucun appel a Google : plus aucune adresse IP de visiteur ne part
+             chez un tiers, ce qui simplifie la position au regard de la Loi 25.
+
+             Les deux graisses les plus employees sont prechargees. Sans cela,
+             le navigateur doit d'abord lire fonts.css avant de decouvrir quoi
+             telecharger — deux allers-retours au lieu d'un. -->
+        <link rel="preload" href="/fonts/inter-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+        <link rel="preload" href="/fonts/space-grotesk-700-latin.woff2" as="font" type="font/woff2" crossorigin />
         <!-- Les graisses demandees ici doivent couvrir EXACTEMENT celles que
              le code emploie, ni plus ni moins.
 
@@ -58,7 +65,7 @@
              `font-bold`, la graisse la plus lourde que cette police possede
              reellement. Plus aucune graisse au-dela de 700 n'est employee, et
              aucune n'est donc telechargee pour rien. -->
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+        <link href="/fonts/fonts.css" rel="stylesheet" />
 
         <script src="/error-filter.js"></script>
     </head>
