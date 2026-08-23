@@ -10,8 +10,22 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "../components/ui/dialog";
 
-const SHIPPING_FLAT_CAD = 20.0;
-const FREE_SHIPPING_THRESHOLD_CAD = 200.0;
+/* Le prix de livraison et le seuil de gratuite NE SONT PLUS ecrits ici.
+ *
+ * Ils l'etaient — 20 et 200 — alors que le serveur les tient dans
+ * SHIPPING_FLAT_CAD et FREE_SHIPPING_THRESHOLD_CAD, reglables par variable
+ * d'environnement, et les EXPOSE deja par /meta. Deux sources pour un meme
+ * chiffre, dont une figee.
+ *
+ * La consequence n'etait pas cosmetique. Le serveur RECALCULE la livraison au
+ * moment de la commande : changer la variable d'environnement aurait fait
+ * afficher 20 $ au client et facturer autre chose. Il aurait paye un montant
+ * qu'on ne lui avait jamais montre.
+ *
+ * Les valeurs de repli ci-dessous ne servent qu'entre le premier rendu et la
+ * reponse de /meta, ou si celle-ci echoue — jamais comme reference. */
+const LIVRAISON_REPLI = 20.0;
+const SEUIL_GRATUIT_REPLI = 200.0;
 const CHECKOUT_DRAFT_KEY = "fironova_checkout_draft_v1";
 
 function normalizePostal(country, value) {
@@ -55,7 +69,11 @@ export default function Checkout() {
 
   const [submitting, setSubmitting] = useState(false);
   const [email, setEmail] = useState("");
-  const { minAge } = useSiteConfig();
+  const { minAge, shippingFlatCad, freeShippingThresholdCad } = useSiteConfig();
+  // ?? et non || : un seuil configure a 0 (livraison toujours gratuite)
+  // est une valeur legitime que || aurait remplacee par le repli.
+  const livraison = shippingFlatCad ?? LIVRAISON_REPLI;
+  const seuilGratuit = freeShippingThresholdCad ?? SEUIL_GRATUIT_REPLI;
   const [confirmAge, setConfirmAge] = useState(false);
   const [acceptRuO, setAcceptRuO] = useState(false);
   const [acceptPolicy, setAcceptPolicy] = useState(false);
@@ -202,7 +220,7 @@ export default function Checkout() {
 
   const shippingEst = useMemo(() => {
     if (coupon?.free_shipping) return 0;
-    return Math.max(0, subtotal - discount) >= FREE_SHIPPING_THRESHOLD_CAD ? 0 : SHIPPING_FLAT_CAD;
+    return Math.max(0, subtotal - discount) >= seuilGratuit ? 0 : livraison;
   }, [subtotal, discount, coupon]);
   const total = useMemo(
     () => +(Math.max(0, subtotal - discount) + shippingEst).toFixed(2),
@@ -513,8 +531,8 @@ export default function Checkout() {
               {shippingEst > 0 && (
                 <div className="font-data text-[10px] uppercase tracking-[0.14em] text-compliance" data-testid="free-shipping-hint">
                   {lang === "fr"
-                    ? `Livraison gratuite dès ${FREE_SHIPPING_THRESHOLD_CAD.toFixed(0)}$ — plus que ${(FREE_SHIPPING_THRESHOLD_CAD - Math.max(0, subtotal - discount)).toFixed(2)}$`
-                    : `Free shipping at $${FREE_SHIPPING_THRESHOLD_CAD.toFixed(0)} — only $${(FREE_SHIPPING_THRESHOLD_CAD - Math.max(0, subtotal - discount)).toFixed(2)} to go`}
+                    ? `Livraison gratuite dès ${seuilGratuit.toFixed(0)}$ — plus que ${(seuilGratuit - Math.max(0, subtotal - discount)).toFixed(2)}$`
+                    : `Free shipping at $${seuilGratuit.toFixed(0)} — only $${(seuilGratuit - Math.max(0, subtotal - discount)).toFixed(2)} to go`}
                 </div>
               )}
               {coupon?.free_shipping && shippingEst === 0 && (

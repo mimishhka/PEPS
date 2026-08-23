@@ -6,6 +6,7 @@ from server import (
     is_canada_post_configured,
     PROVINCES_CA,
     SHIPPING_FLAT_CAD,
+    FREE_SHIPPING_THRESHOLD_CAD,
     _seo_get_settings,
 )
 
@@ -18,6 +19,11 @@ async def meta():
         "store": "FIRONOVA",
         "currency": "CAD",
         "shipping_flat_cad": SHIPPING_FLAT_CAD,
+        # Le seuil de gratuite manquait ici alors que le prix y figurait. Le
+        # checkout le portait donc en dur (200), et l'annoncait au client
+        # pendant que le serveur appliquait la valeur configuree. Les deux
+        # chiffres qui decident du total voyagent desormais ensemble.
+        "free_shipping_threshold_cad": FREE_SHIPPING_THRESHOLD_CAD,
         "provinces": PROVINCES_CA,
         "min_age": 19,
         "coa_page_enabled": COA_PAGE_ENABLED,

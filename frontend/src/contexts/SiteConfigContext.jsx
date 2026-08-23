@@ -8,6 +8,7 @@ const DEFAULTS = {
   store: "FIRONOVA",
   currency: "CAD",
   shippingFlatCad: 20,
+  freeShippingThresholdCad: 200,
   provinces: [],
   minAge: 19,
   coaPageEnabled: false, // hidden by default until explicitly enabled server-side
@@ -31,6 +32,7 @@ export function SiteConfigProvider({ children }) {
           store: r.data.store,
           currency: r.data.currency,
           shippingFlatCad: r.data.shipping_flat_cad,
+          freeShippingThresholdCad: r.data.free_shipping_threshold_cad,
           provinces: r.data.provinces || [],
           minAge: r.data.min_age,
           coaPageEnabled: !!r.data.coa_page_enabled,
