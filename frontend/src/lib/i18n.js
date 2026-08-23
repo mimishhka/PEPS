@@ -63,6 +63,9 @@ export const dict = {
       body: "These products are sold strictly for in-vitro laboratory research and are not for human or veterinary use. You must be 19+ to enter this site.",
       confirm: "I am 19+ and I understand",
       exit: "Exit",
+      deniedTitle: "Access not available",
+      deniedBody: "This site is restricted to visitors aged 19 and over. You cannot browse it at this time.",
+      deniedNote: "No personal information has been collected.",
     },
     catalog: {
       title: "Catalog",
@@ -318,6 +321,9 @@ export const dict = {
       body: "Ces produits sont vendus strictement pour la recherche de laboratoire in vitro et ne sont pas destinés à un usage humain ou vétérinaire. Vous devez avoir 19 ans ou plus pour accéder à ce site.",
       confirm: "J'ai 19 ans ou plus et je comprends",
       exit: "Quitter",
+      deniedTitle: "Accès non disponible",
+      deniedBody: "Ce site est réservé aux personnes de 19 ans et plus. Vous ne pouvez pas y accéder pour le moment.",
+      deniedNote: "Aucun renseignement personnel n'a été recueilli.",
     },
     catalog: {
       title: "Catalogue",
