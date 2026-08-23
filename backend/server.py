@@ -6684,6 +6684,28 @@ async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = 
 
 
 async def admin_delete_coupon(coupon_id: str, admin: dict = Depends(require_area("coupons", "manage"))):
+    # Un code d'affilié ne se supprime PAS depuis cet écran.
+    #
+    # Les codes d'affiliés vivent dans la même collection que les coupons
+    # ordinaires — c'est voulu : le paiement n'interroge qu'une table. Mais
+    # l'écran des coupons les affichait sans les distinguer, et rien
+    # n'empêchait de les effacer.
+    #
+    # Les conséquences sont silencieuses et graves : le code cesse d'accorder
+    # le rabais, les clients de cet affilié paient plein tarif sans que
+    # personne soit prévenu, et l'affilié constate seulement que ses ventes
+    # se sont arrêtées.
+    #
+    # La suppression passe donc par la fiche de l'affilié, où l'on voit à qui
+    # l'on retire quoi.
+    coupon = await db.coupons.find_one(
+        {"id": coupon_id}, {"_id": 0, "affiliate_id": 1, "source": 1, "code": 1})
+    if coupon and _is_affiliate_coupon(coupon):
+        raise HTTPException(
+            409,
+            f"« {coupon.get('code')} » est le code d'un affilié, pas un coupon "
+            f"promotionnel. Le supprimer romprait son rabais sans le prévenir. "
+            f"Passez par la fiche de l'affilié pour le suspendre.")
     return await _soft_delete("coupons", coupon_id, admin)
 
 

@@ -162,10 +162,20 @@ async def principal():
             bloquants += 1
             ligne(ROUGE, "aucun compte administrateur")
 
-        n_coupon = await db.coupons.count_documents({"active": True})
-        ligne(VERT if n_coupon else JAUNE,
-              f"{n_coupon} coupon(s) actif(s)",
-              "" if n_coupon else "en créer un valide et un expiré pour C-27")
+        # Les codes d'affiliés vivent dans la MÊME collection que les coupons.
+        # Les compter ensemble annonçait « 15 coupons actifs » là où il n'y
+        # avait peut-être aucun coupon promotionnel — et le test C-27 en
+        # demande deux, un valide et un expiré.
+        promo = {"active": True, "affiliate_id": None, "source": {"$ne": "affiliate"}}
+        n_promo = await db.coupons.count_documents(promo)
+        n_aff = await db.coupons.count_documents(
+            {"$or": [{"affiliate_id": {"$ne": None}}, {"source": "affiliate"}]})
+        ligne(VERT if n_promo else JAUNE,
+              f"{n_promo} coupon(s) promotionnel(s) actif(s)",
+              "" if n_promo else "en créer un valide et un expiré pour C-27")
+        if n_aff:
+            ligne(GRIS, f"{n_aff} code(s) d'affilié — comptés à part",
+                  "ils partagent la table des coupons mais n'en sont pas")
 
     print("\n─── COURRIELS ───\n")
     # Sans envoi de courriel, 16 tests sur 138 sont infaisables, et tout le

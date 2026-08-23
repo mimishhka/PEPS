@@ -109,8 +109,20 @@ export default function AdminCoupons() {
                     <Ticket size={14} className="text-nova" />
                     <span className="font-data font-bold">{c.code}</span>
                   </div>
+                  {/* Un code d'affilié n'est PAS un coupon promotionnel.
+                      Il vit dans la même table — le paiement n'interroge
+                      qu'un seul endroit — mais le supprimer romprait le
+                      rabais d'une personne réelle, sans la prévenir.
+                      Le serveur refuse désormais cette suppression ; ce
+                      marqueur évite d'aller jusqu'au refus. */}
+                  {(c.affiliate_id || c.source === "affiliate") && (
+                    <span className="inline-block text-[10px] font-data uppercase tracking-[0.12em] bg-nova/15 text-nova px-1.5 py-0.5 mt-1 rounded"
+                          data-testid={`coupon-affiliate-${c.code}`}>
+                      {L("CODE D'AFFILIÉ", "AFFILIATE CODE")}
+                    </span>
+                  )}
                   {(c.first_order_only || c.allowed_emails?.length || c.restrict_products?.length || c.restrict_categories?.length) && (
-                    <span className="inline-block text-[10px] font-data uppercase tracking-[0.12em] bg-warning/15 text-warning px-1.5 py-0.5 mt-1 rounded">
+                    <span className="inline-block text-[10px] font-data uppercase tracking-[0.12em] bg-warning/15 text-warning px-1.5 py-0.5 mt-1 ml-1 rounded">
                       {L("RESTREINT", "RESTRICTED")}
                     </span>
                   )}
