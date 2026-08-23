@@ -73,9 +73,49 @@ let webpackConfig = {
   eslint: {
     configure: {
       extends: ["plugin:react-hooks/recommended"],
+
+      /* env plutot qu'une liste de globaux ecrite a la main.
+       *
+       * `browser` fournit Blob, CustomEvent, IntersectionObserver, Event et
+       * tout le reste — ce sont precisement les 24 faux positifs du premier
+       * passage de no-undef. `jest` couvre describe / it / expect dans les
+       * fichiers de test.
+       *
+       * Une liste manuelle serait a completer indefiniment, et chaque oubli
+       * casserait le build sur du code parfaitement valide. */
+      env: { browser: true, es2021: true, node: true, jest: true },
+
+      globals: {
+        /* Trois globaux du navigateur REMIS EN ERREUR, deliberement.
+         *
+         * env.browser les declare, ce qui est correct en general — mais ce
+         * projet a son propre dialogue, useConfirm. C'est en oubliant
+         * `const confirm = useConfirm()` dans OrderDetail que trois actions
+         * destructrices — mise a la corbeille, annulation d'etiquette — ont
+         * fini par afficher « [object Object] » : le confirm natif recevait
+         * un objet la ou il attend une chaine, sans qu'aucune erreur ne soit
+         * levee.
+         *
+         * Les remettre a "off" fait echouer le build sur ce piege plutot que
+         * de le laisser passer en silence. Meme politique que dans
+         * eslint.config.js, qui sert aux passages manuels. */
+        confirm: "off",
+        alert: "off",
+        prompt: "off",
+      },
+
       rules: {
         "react-hooks/rules-of-hooks": "error",
         "react-hooks/exhaustive-deps": "warn",
+
+        /* Activee apres verification : `yarn lint` remonte 0 erreur. Elle
+         * peut donc bloquer le build sans rien casser aujourd'hui.
+         *
+         * Ce qu'elle a trouve au premier passage, et qu'aucun controle de
+         * syntaxe ne voyait : L appele dans AdminStaff alors qu'il n'etait
+         * defini que dans un composant plus bas du meme fichier — quinze
+         * appels qui plantaient au rendu. */
+        "no-undef": "error",
       },
     },
   },
