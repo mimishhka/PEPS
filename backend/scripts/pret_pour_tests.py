@@ -87,22 +87,54 @@ async def principal():
                   "python backend/scripts/mode_test.py --on")
 
     print("\n─── SERVEUR ET BASE ───\n")
-    base_url = (env.get("PUBLIC_BASE_URL") or "http://127.0.0.1:8001").rstrip("/")
-    try:
-        with urllib.request.urlopen(f"{base_url}/api/meta", timeout=6) as r:
-            ok = r.status == 200
-        ligne(VERT if ok else ROUGE, f"le serveur répond ({base_url})")
-        if not ok:
-            bloquants += 1
-    except (urllib.error.URLError, OSError) as e:
+    # LOCALHOST D'ABORD, l'adresse publique ensuite.
+    #
+    # Une première version n'essayait que PUBLIC_BASE_URL et déclarait le
+    # serveur mort sur un HTTPError — alors qu'il tournait très bien. Une
+    # adresse publique passe par un proxy, une passerelle d'aperçu, parfois une
+    # authentification : ce qu'on mesurait n'était pas le serveur.
+    candidats = ["http://127.0.0.1:8001"]
+    publique = (env.get("PUBLIC_BASE_URL") or "").rstrip("/")
+    if publique:
+        candidats.append(publique)
+
+    repond = False
+    detail = []
+    for url in candidats:
+        try:
+            with urllib.request.urlopen(f"{url}/api/meta", timeout=6) as r:
+                if r.status == 200:
+                    ligne(VERT, f"le serveur répond ({url})")
+                    repond = True
+                    break
+                detail.append(f"{url} → HTTP {r.status}")
+        except urllib.error.HTTPError as e:
+            # Un code HTTP signifie que QUELQUE CHOSE a répondu : proxy,
+            # passerelle, authentification. Le nommer évite de conclure à tort.
+            detail.append(f"{url} → HTTP {e.code} (une passerelle a répondu)")
+        except (urllib.error.URLError, OSError) as e:
+            detail.append(f"{url} → {type(e).__name__}")
+    if not repond:
         bloquants += 1
-        ligne(ROUGE, f"le serveur ne répond pas ({base_url})",
-              f"{type(e).__name__}\nsudo supervisorctl restart backend")
+        ligne(ROUGE, "le serveur ne répond sur aucune adresse",
+              "\n".join(detail) + "\nsudo supervisorctl restart backend")
 
     db, err = await base(env)
     if db is None:
-        bloquants += 1
-        ligne(ROUGE, "base de données inaccessible", err or "")
+        # Motor absent n'est PAS un défaut de l'installation : c'est le
+        # mauvais interpréteur. L'application tourne dans son propre
+        # environnement ; le python du système ne voit pas ses modules.
+        # Le dire, plutôt que d'annoncer une base en panne qui va très bien.
+        if err and "motor" in err:
+            venv = pathlib.Path("/root/.venv/bin/python")
+            ligne(JAUNE, "base non vérifiée depuis cet interpréteur",
+                  "motor appartient à l'environnement de l'application.\n"
+                  + (f"Relancer avec : {venv} backend/scripts/pret_pour_tests.py"
+                     if venv.exists() else
+                     "Relancer avec le python de l'application (celui du venv)."))
+        else:
+            bloquants += 1
+            ligne(ROUGE, "base de données inaccessible", err or "")
     else:
         ligne(VERT, "base de données accessible")
 
