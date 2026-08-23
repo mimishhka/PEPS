@@ -367,7 +367,7 @@ export default function ProductDetail() {
 
         {related.length > 0 && (
           <div className="mt-16 border-t border-ash pt-10" data-testid="related-products">
-            <h2 className="font-display text-xl font-extrabold text-nordfjord tracking-tight mb-6">
+            <h2 className="font-display text-xl font-bold text-nordfjord tracking-tight mb-6">
               {lang === "fr" ? "Souvent recherché avec" : "Often researched with"}
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

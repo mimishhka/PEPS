@@ -25,6 +25,7 @@ import TierLadder from "../components/TierLadder";
 import TierMark from "../components/TierMark";
 import ThemeToggle from "../components/ThemeToggle";
 
+import useChartColors from "../hooks/useChartColors";
 // Couleurs métal de l'échelle des paliers. Deux corrections par rapport à la
 // version précédente :
 //
@@ -111,6 +112,9 @@ function Pagination({ page, total, pageSize, onChange, L }) {
 }
 
 export default function AffiliateDashboard() {
+  // Les couleurs de graphique passent par des PROPRIETES, pas des
+  // classes : sans ce crochet elles ignorent le mode nuit.
+  const couleursGraphique = useChartColors();
   useDocumentHead({ title: "Affiliate Dashboard", path: "/affiliate", noindex: true });
   const { user } = useAuth();
   const { lang } = useLang();
@@ -1120,9 +1124,9 @@ export default function AffiliateDashboard() {
                 <div style={{ width: "100%", height: 300 }}>
                   <ResponsiveContainer>
                     <LineChart data={series} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#64748B" }} />
-                      <YAxis tick={{ fontSize: 11, fill: "#64748B" }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={couleursGraphique.grille} />
+                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: couleursGraphique.axe }} />
+                      <YAxis tick={{ fontSize: 11, fill: couleursGraphique.axe }} />
                       <Tooltip formatter={(v) => money(v)} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Line type="monotone" dataKey="revenue" name={L("CA validé", "Revenue")} stroke="#0B2E4F" strokeWidth={2} dot={false} />

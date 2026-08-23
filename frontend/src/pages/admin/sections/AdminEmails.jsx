@@ -99,7 +99,7 @@ export default function AdminEmails() {
     <div data-testid="admin-emails">
       <div className="mb-6">
         <div className="font-data text-[11px] uppercase tracking-[0.24em] text-glacier">{L("SYSTÈME", "SYSTEM")}</div>
-        <h1 className="font-display text-3xl font-extrabold tracking-tight flex items-center gap-2">
+        <h1 className="font-display text-3xl font-bold tracking-tight flex items-center gap-2">
           <Mail size={26} /> {L("Emails", "Emails")}
         </h1>
         <p className="text-sm text-glacier mt-1">

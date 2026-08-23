@@ -75,7 +75,7 @@ export default function AdminReconciliation() {
       <div className="flex items-end justify-between gap-4 mb-6">
         <div>
           <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// ORDERS</div>
-          <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2 flex items-center gap-2">
+          <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2 flex items-center gap-2">
             <Link2 size={28} /> {L("Réconciliation Paiements", "Payment Reconciliation")}
           </h1>
           <p className="text-sm text-foreground/70 mt-1">

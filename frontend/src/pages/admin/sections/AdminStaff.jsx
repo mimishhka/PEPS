@@ -113,7 +113,7 @@ export default function AdminStaff() {
       <div className="flex items-end justify-between mb-6">
         <div>
           <div className="font-data text-[11px] uppercase tracking-[0.3em] text-glacier">// TEAM</div>
-          <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">Team access</h1>
+          <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">Team access</h1>
           <p className="font-data text-xs text-glacier mt-1">{staff.length} members · {invites.length} pending</p>
         </div>
         <button

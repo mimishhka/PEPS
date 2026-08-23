@@ -52,7 +52,7 @@ export default function AdminFulfillment() {
     <div data-testid="admin-fulfillment">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-display text-3xl font-extrabold uppercase tracking-tight flex items-center gap-2">
+          <h1 className="font-display text-3xl font-bold uppercase tracking-tight flex items-center gap-2">
             <Package size={26} /> Journée
           </h1>
           <p className="font-mono text-xs text-foreground/60 mt-1">
@@ -86,7 +86,7 @@ export default function AdminFulfillment() {
               <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">
                 <Icon size={13} /> {labels[step]?.fr || step}
               </div>
-              <div className="font-display text-4xl font-extrabold mt-1">{counts[step] || 0}</div>
+              <div className="font-display text-4xl font-bold mt-1">{counts[step] || 0}</div>
             </div>
           );
         })}

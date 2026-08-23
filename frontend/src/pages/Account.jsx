@@ -57,7 +57,7 @@ export default function Account() {
         <div className="rounded-3xl border border-ash bg-white p-6 sm:p-7 mb-8 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4 min-w-0">
             <div
-              className="w-14 h-14 rounded-xl bg-nordfjord text-white flex items-center justify-center font-display font-extrabold text-xl shrink-0"
+              className="w-14 h-14 rounded-xl bg-nordfjord text-white flex items-center justify-center font-display font-bold text-xl shrink-0"
               aria-hidden="true"
             >
               {(user?.name || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
@@ -84,7 +84,7 @@ export default function Account() {
             data-testid="account-affiliate-link"
             className="group rounded-xl border border-nova/40 bg-gradient-to-br from-nova/8 to-transparent p-5 sm:p-6 mb-8 flex items-center gap-4 flex-wrap hover:border-nova hover:shadow-md transition"
           >
-            <div className="w-11 h-11 rounded-xl bg-nova text-nordfjord flex items-center justify-center font-display font-extrabold text-lg shrink-0" aria-hidden="true">
+            <div className="w-11 h-11 rounded-xl bg-nova text-nordfjord flex items-center justify-center font-display font-bold text-lg shrink-0" aria-hidden="true">
               ★
             </div>
             <div className="flex-1 min-w-0">

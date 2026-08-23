@@ -72,7 +72,7 @@ export default function AdminCoupons() {
       <div className="flex items-end justify-between mb-6">
         <div>
           <p className="font-data text-[11px] uppercase tracking-[0.24em] text-glacier">{L("PROMOTIONS", "PROMOTIONS")}</p>
-          <h1 className="font-display text-3xl font-extrabold uppercase tracking-tight text-nordfjord mt-1">Coupons</h1>
+          <h1 className="font-display text-3xl font-bold uppercase tracking-tight text-nordfjord mt-1">Coupons</h1>
           <p className="font-data text-xs text-glacier mt-1">
             {coupons.length} {L("code(s) actif(s)", "active code(s)")}
           </p>

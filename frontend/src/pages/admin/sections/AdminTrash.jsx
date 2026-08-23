@@ -85,7 +85,7 @@ export default function AdminTrash() {
     <div className="p-8" data-testid="admin-trash">
       <div className="mb-6">
         <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// TRASH</div>
-        <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">Trash</h1>
+        <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">Trash</h1>
         <p className="font-mono text-xs text-foreground/60 mt-1">
           Deleted items are recoverable here for 30 days, then permanently purged automatically
           {" "}— except orders, which are kept until you purge them manually.

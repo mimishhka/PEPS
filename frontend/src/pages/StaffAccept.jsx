@@ -62,7 +62,7 @@ export default function StaffAccept() {
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-6" data-testid="staff-accept-page">
       <form onSubmit={onSubmit} className="w-full max-w-sm">
-        <div className="font-display font-extrabold text-2xl tracking-tight mb-1">
+        <div className="font-display font-bold text-2xl tracking-tight mb-1">
           FIRONOVA<span style={{ color: "#00B8D4" }}>.</span>
         </div>
         <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-8">

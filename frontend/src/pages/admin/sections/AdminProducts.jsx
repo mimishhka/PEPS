@@ -63,7 +63,7 @@ export default function AdminProducts() {
       <div className="flex items-end justify-between mb-6">
         <div>
           <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// CATALOG</div>
-          <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">{L("Produits", "Products")}</h1>
+          <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">{L("Produits", "Products")}</h1>
           <p className="font-mono text-xs text-foreground/60 mt-1">{products.length} compounds</p>
         </div>
         <div className="flex items-center gap-3">
@@ -634,7 +634,7 @@ function RestockModal({ product, onClose, onDone }) {
         <div className="px-6 py-4 border-b border-ink/10 flex items-center justify-between shrink-0">
           <div>
             <div className={`font-mono text-[10px] uppercase tracking-[0.3em] ${accentClasses.text}`}>// {isAdd ? "QUICK RESTOCK" : "STOCK ADJUSTMENT"}</div>
-            <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight mt-1">{product.name_en}</h2>
+            <h2 className="font-display text-2xl font-bold uppercase tracking-tight mt-1">{product.name_en}</h2>
             <p className="font-mono text-[10px] text-foreground/50 mt-1">{product.slug}</p>
           </div>
           <button onClick={onClose} data-testid="restock-close" className="p-2 hover:bg-ink/5"><X size={18} /></button>
@@ -926,7 +926,7 @@ function BulkRestockCSVModal({ onClose, onDone }) {
         <div className="px-6 py-4 border-b border-ink/10 flex items-center justify-between shrink-0">
           <div>
             <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-emerald-700">// BULK RESTOCK · CSV</div>
-            <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight mt-1">{L("Réception fournisseur", "Supplier delivery")}</h2>
+            <h2 className="font-display text-2xl font-bold uppercase tracking-tight mt-1">{L("Réception fournisseur", "Supplier delivery")}</h2>
             <p className="text-xs text-foreground/60 mt-1">Upload a CSV to restock multiple products at once.</p>
           </div>
           <button onClick={onClose} data-testid="bulk-restock-close" className="p-2 hover:bg-ink/5"><X size={18} /></button>
@@ -1018,11 +1018,11 @@ tb-500-5mg,5.0mg,25
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                 <div className="p-4 bg-emerald-50 border border-emerald-200">
                   <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-700">{L("Appliqué", "Applied")}</div>
-                  <div className="font-display text-3xl font-extrabold text-emerald-700 mt-1" data-testid="bulk-restock-applied-count">{result.counts?.applied || 0}</div>
+                  <div className="font-display text-3xl font-bold text-emerald-700 mt-1" data-testid="bulk-restock-applied-count">{result.counts?.applied || 0}</div>
                 </div>
                 <div className="p-4 bg-red-50 border border-red-200">
                   <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-red-700">{L("Échoué", "Failed")}</div>
-                  <div className="font-display text-3xl font-extrabold text-red-700 mt-1" data-testid="bulk-restock-failed-count">{result.counts?.failed || 0}</div>
+                  <div className="font-display text-3xl font-bold text-red-700 mt-1" data-testid="bulk-restock-failed-count">{result.counts?.failed || 0}</div>
                 </div>
               </div>
               {(result.failed || []).length > 0 && (

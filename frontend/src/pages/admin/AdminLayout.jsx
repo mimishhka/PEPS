@@ -153,7 +153,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
       <div className="flex">
         <aside className="w-60 bg-white border-r border-ink/10 min-h-screen sticky top-0 hidden lg:flex flex-col" data-testid="admin-sidebar">
           <div className="px-6 py-6 border-b border-ink/10">
-            <div className="font-display font-extrabold text-xl tracking-tight">
+            <div className="font-display font-bold text-xl tracking-tight">
               FIRONOVA<span style={{ color: "#00B8D4" }}>.</span>
             </div>
             <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mt-1">// Admin</div>

@@ -21,7 +21,7 @@ export default function AdminAuditLog() {
     <div className="p-8" data-testid="admin-audit-log">
       <div className="mb-6">
         <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// AUDIT</div>
-        <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">
+        <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">
           {L("Journal d'activité", "Activity log")}
         </h1>
         <p className="font-mono text-xs text-foreground/60 mt-1">

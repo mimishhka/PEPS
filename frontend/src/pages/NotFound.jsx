@@ -15,7 +15,7 @@ export default function NotFound() {
       <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">
         // 404
       </div>
-      <h1 className="font-display text-5xl sm:text-7xl font-extrabold uppercase tracking-tight">
+      <h1 className="font-display text-5xl sm:text-7xl font-bold uppercase tracking-tight">
         {t("notfound.title") !== "notfound.title" ? t("notfound.title") : "Page not found"}
       </h1>
       <p className="max-w-md text-foreground/70">

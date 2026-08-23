@@ -49,7 +49,7 @@ export default function AdminShipping() {
       <div className="flex items-end justify-between mb-6">
         <div>
           <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// LOGISTICS</div>
-          <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">Shipping</h1>
+          <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">Shipping</h1>
           <p className="font-mono text-xs text-foreground/60 mt-1">{zones.length} zones</p>
         </div>
         <button onClick={() => setEditingZone({ ...blankZone })} data-testid="new-zone-btn" className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-foreground/80">

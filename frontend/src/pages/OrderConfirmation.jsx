@@ -116,7 +116,7 @@ export default function OrderConfirmation() {
         </div>
         <div className="p-8">
           <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50">{t("confirmation.orderNumber")}</div>
-          <div className="font-display text-4xl sm:text-5xl font-extrabold tracking-tight mt-2" data-testid="order-number">
+          <div className="font-display text-4xl sm:text-5xl font-bold tracking-tight mt-2" data-testid="order-number">
             {order.order_number}
           </div>
           <h1 className="font-display text-2xl uppercase tracking-tight mt-8">
@@ -134,7 +134,7 @@ export default function OrderConfirmation() {
 
       {order.payment_status === "paid" && (
         <div className="mt-8 border-2 p-5 flex items-start gap-3" style={{ borderColor: "#16a34a" }} data-testid="payment-paid-banner">
-          <span className="font-display font-extrabold text-xl leading-none" style={{ color: "#16a34a" }}>✓</span>
+          <span className="font-display font-bold text-xl leading-none" style={{ color: "#16a34a" }}>✓</span>
           <div>
             <div className="font-mono text-[11px] uppercase tracking-[0.25em]" style={{ color: "#16a34a" }}>
               {lang === "fr" ? "Paiement reçu" : "Payment received"}
@@ -150,7 +150,7 @@ export default function OrderConfirmation() {
 
       {awaitingPayment && (
         <div className="mt-8 border-2 border-warning p-5 flex items-start gap-3" style={{ borderColor: "#E8A33D" }} data-testid="payment-deadline-warning">
-          <span className="font-display font-extrabold text-xl leading-none" style={{ color: "#0B2E4F" }}>!</span>
+          <span className="font-display font-bold text-xl leading-none" style={{ color: "#0B2E4F" }}>!</span>
           <div>
             <div className="font-mono text-[11px] uppercase tracking-[0.25em]" style={{ color: "#0B2E4F" }}>
               {lang === "fr" ? "Paiement requis sous 12 heures" : "Payment required within 12 hours"}
@@ -294,7 +294,7 @@ export default function OrderConfirmation() {
             </div>
           )}
         </div>
-        <div className="border-t-2 border-nordfjord mt-3 pt-3 flex justify-between font-display font-extrabold text-xl">
+        <div className="border-t-2 border-nordfjord mt-3 pt-3 flex justify-between font-display font-bold text-xl">
           <span>TOTAL</span><span data-testid="confirm-total">${order.total.toFixed(2)} CAD</span>
         </div>
       </div>

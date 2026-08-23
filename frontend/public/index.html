@@ -44,6 +44,20 @@
 
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <!-- Les graisses demandees ici doivent couvrir EXACTEMENT celles que
+             le code emploie, ni plus ni moins.
+
+             `font-extrabold` (800) etait employe 37 fois sans etre charge. Le
+             navigateur le fabriquait en epaississant le 700 — un rendu bave,
+             different d'un navigateur a l'autre, et que rien ne signalait :
+             le texte s'affichait, simplement moins bien.
+
+             Les 37 cas portaient TOUS sur `font-display`, c'est-a-dire Space
+             Grotesk — une famille qui s'arrete a 700 chez Google Fonts. Ajouter
+             le poids 800 n'aurait donc rien corrige : ils sont passes a
+             `font-bold`, la graisse la plus lourde que cette police possede
+             reellement. Plus aucune graisse au-dela de 700 n'est employee, et
+             aucune n'est donc telechargee pour rien. -->
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
         <script src="/error-filter.js"></script>

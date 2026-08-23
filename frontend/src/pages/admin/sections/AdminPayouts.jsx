@@ -245,7 +245,7 @@ function Stat({ label, value }) {
   return (
     <div className="rounded-xl border border-ash bg-white px-4 py-3">
       <div className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{label}</div>
-      <div className="font-display font-extrabold text-nordfjord text-xl mt-1 tabular-nums">{value}</div>
+      <div className="font-display font-bold text-nordfjord text-xl mt-1 tabular-nums">{value}</div>
     </div>
   );
 }

@@ -53,7 +53,7 @@ export default function AdminBoxes() {
     <div data-testid="admin-boxes">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-display text-3xl font-extrabold uppercase tracking-tight flex items-center gap-2">
+          <h1 className="font-display text-3xl font-bold uppercase tracking-tight flex items-center gap-2">
             <Package2 size={26} /> Contenants
           </h1>
           <p className="font-mono text-xs text-foreground/60 mt-1">

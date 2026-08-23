@@ -65,7 +65,7 @@ export default function AdminSeo() {
     <div data-testid="admin-seo">
       <div className="mb-6">
         <div className="font-data text-[11px] uppercase tracking-[0.24em] text-glacier">{L("SYSTÈME", "SYSTEM")}</div>
-        <h1 className="font-display text-3xl font-extrabold tracking-tight">SEO</h1>
+        <h1 className="font-display text-3xl font-bold tracking-tight">SEO</h1>
       </div>
 
       {loading ? (

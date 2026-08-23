@@ -203,7 +203,7 @@ export default function AdminOrders() {
       <div className="flex items-end justify-between mb-6">
         <div>
           <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// ORDERS</div>
-          <h1 className="font-display text-4xl font-extrabold uppercase tracking-tight mt-2">Orders</h1>
+          <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">Orders</h1>
           <p className="font-mono text-xs text-foreground/60 mt-1">{total}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -684,7 +684,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                   <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Discount {order.coupon?.code && `(${order.coupon.code})`}</td><td className="px-4 py-1 text-right text-sm tabular-nums text-emerald-700">-${order.discount?.toFixed(2)}</td></tr>
                 )}
                 <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Shipping</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.shipping?.toFixed(2)}</td></tr>
-                <tr><td className="px-4 py-2 text-right font-bold uppercase">Total CAD</td><td className="px-4 py-2 text-right font-display font-extrabold text-lg tabular-nums" data-testid="order-total">${order.total?.toFixed(2)}</td></tr>
+                <tr><td className="px-4 py-2 text-right font-bold uppercase">Total CAD</td><td className="px-4 py-2 text-right font-display font-bold text-lg tabular-nums" data-testid="order-total">${order.total?.toFixed(2)}</td></tr>
               </tfoot>
             </table>
             </div>

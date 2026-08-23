@@ -84,7 +84,7 @@ export default function AdminCustomers() {
     <div data-testid="admin-customers">
       <div className="mb-6">
         <div className="font-data text-[11px] uppercase tracking-[0.24em] text-glacier">{L("VENTES", "SALES")}</div>
-        <h1 className="font-display text-3xl font-extrabold tracking-tight flex items-center gap-2">
+        <h1 className="font-display text-3xl font-bold tracking-tight flex items-center gap-2">
           <Users size={26} /> {L("Clients", "Customers")}
         </h1>
         <p className="text-sm text-glacier mt-1">
@@ -197,7 +197,7 @@ export default function AdminCustomers() {
             ) : detail.customer ? (
               <div className="p-5 space-y-5">
                 <div>
-                  <div className="font-display text-xl font-extrabold text-nordfjord">{detail.customer.name || "—"}</div>
+                  <div className="font-display text-xl font-bold text-nordfjord">{detail.customer.name || "—"}</div>
                   <div className="font-data text-xs text-glacier">{detail.customer.email}</div>
                   <div className="font-data text-[11px] text-glacier/70 mt-1">
                     {L("Inscrit le", "Joined")} {dateShort(detail.customer.created_at)}

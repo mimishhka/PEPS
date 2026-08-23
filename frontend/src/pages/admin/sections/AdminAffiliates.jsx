@@ -16,6 +16,7 @@ import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
 import { Th, Num, Identity, TierBadge, TIER_TONE } from "../ui";
 
+import useChartColors from "../../../hooks/useChartColors";
 const money = (n) => `$${Number(n || 0).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const int = (n) => Number(n || 0).toLocaleString("en-CA");
 
@@ -86,6 +87,9 @@ const TIER_RATE = {
 };
 
 export default function AdminAffiliates() {
+  // Les couleurs de graphique passent par des PROPRIETES, pas des
+  // classes : sans ce crochet elles ignorent le mode nuit.
+  const couleursGraphique = useChartColors();
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
 
@@ -267,7 +271,7 @@ export default function AdminAffiliates() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <p className="font-data text-[11px] uppercase tracking-[0.24em] text-glacier">{L("PROGRAMME", "PROGRAM")}</p>
-          <h1 className="font-display text-3xl font-extrabold uppercase tracking-tight text-nordfjord">{L("Affiliés", "Affiliates")}</h1>
+          <h1 className="font-display text-3xl font-bold uppercase tracking-tight text-nordfjord">{L("Affiliés", "Affiliates")}</h1>
         </div>
         <div className="flex gap-2">
           {/* « Générer les paiements » appelait /payouts/run, exactement comme
@@ -413,9 +417,9 @@ export default function AdminAffiliates() {
               <div style={{ width: "100%", height: 260 }}>
                 <ResponsiveContainer>
                   <LineChart data={ov?.monthly_series || []} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#64748B" }} />
-                    <YAxis tick={{ fontSize: 10, fill: "#64748B" }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={couleursGraphique.grille} />
+                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: couleursGraphique.axe }} />
+                    <YAxis tick={{ fontSize: 10, fill: couleursGraphique.axe }} />
                     <Tooltip formatter={(v) => money(v)} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                     <Line type="monotone" dataKey="revenue" name={L("CA validé", "Revenue")} stroke="#0B2E4F" strokeWidth={2} dot={false} />
@@ -665,10 +669,10 @@ export default function AdminAffiliates() {
                   <div style={{ width: "100%", height: 240 }}>
                     <ResponsiveContainer>
                       <LineChart data={clicks.trend || []} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#64748B" }}
+                        <CartesianGrid strokeDasharray="3 3" stroke={couleursGraphique.grille} />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: couleursGraphique.axe }}
                           tickFormatter={(d) => d.slice(5)} />
-                        <YAxis tick={{ fontSize: 10, fill: "#64748B" }} allowDecimals={false} />
+                        <YAxis tick={{ fontSize: 10, fill: couleursGraphique.axe }} allowDecimals={false} />
                         <Tooltip labelFormatter={(d) => new Date(d).toLocaleDateString()} />
                         <Line type="monotone" dataKey="clicks" name={L("Clics", "Clicks")}
                           stroke="#00B8D4" strokeWidth={2} dot={false} />

@@ -185,7 +185,7 @@ export default function AdminDispatch() {
     <div data-testid="admin-dispatch">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-display text-3xl font-extrabold uppercase tracking-tight flex items-center gap-2">
+          <h1 className="font-display text-3xl font-bold uppercase tracking-tight flex items-center gap-2">
             <Package size={26} /> Dispatch
           </h1>
           <p className="font-mono text-xs text-foreground/60 mt-1">
@@ -405,7 +405,7 @@ function Money({ label, value, accent, muted }) {
   return (
     <div className={`bg-white border p-4 ${accent ? "border-red-300" : "border-ink/10"}`}>
       <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">{label}</div>
-      <div className={`font-display text-2xl font-extrabold mt-1 ${accent ? "text-red-600" : muted ? "text-foreground/50" : ""}`}>
+      <div className={`font-display text-2xl font-bold mt-1 ${accent ? "text-red-600" : muted ? "text-foreground/50" : ""}`}>
         {v == null ? "—" : `$${v.toFixed(2)}`}
       </div>
     </div>
@@ -416,7 +416,7 @@ function Stat({ label, value, accent, testid }) {
   return (
     <div className={`bg-white border p-5 ${accent ? "border-red-300" : "border-ink/10"}`} data-testid={testid}>
       <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">{label}</div>
-      <div className={`font-display text-4xl font-extrabold mt-1 ${accent ? "text-red-600" : ""}`}>{value}</div>
+      <div className={`font-display text-4xl font-bold mt-1 ${accent ? "text-red-600" : ""}`}>{value}</div>
     </div>
   );
 }
