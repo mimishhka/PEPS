@@ -105,6 +105,27 @@ module.exports = [
        * chaine d'integration.
        */
       "no-undef": "error",
+
+      /* En AVERTISSEMENT, pas en erreur, et uniquement ici — pas dans
+       * craco.config.js. Consequence : `yarn build` n'en tient aucun compte,
+       * la chaine d'integration ne peut donc pas casser a cause de cette
+       * ligne. C'est une mesure, pas encore une regle.
+       *
+       * `args: "none"` : une fonction qui ignore son premier parametre mais
+       * se sert du second doit quand meme le declarer. Les signaler serait du
+       * bruit.
+       *
+       * `varsIgnorePattern: "^_"` : la convention pour « je sais, et c'est
+       * voulu ».
+       *
+       * A lire avant de la rendre bloquante : un import inutilise est du
+       * poids mort, mais une VARIABLE inutilisee cache parfois un vrai bogue
+       * — un resultat calcule puis oublie. */
+      "no-unused-vars": ["warn", {
+        args: "none",
+        varsIgnorePattern: "^_",
+        ignoreRestSiblings: true,
+      }],
     },
   },
   {
