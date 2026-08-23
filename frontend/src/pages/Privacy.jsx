@@ -31,8 +31,24 @@ const SECTIONS = [
         fr: "Comme la plupart des sites web, nous pouvons enregistrer des informations techniques transmises par votre navigateur lors de votre visite (« Données de journal ») : adresse IP, type et version du navigateur, pages consultées, date et heure de la visite, temps passé sur chaque page et statistiques semblables.",
       },
       {
-        en: "We may also rely on third-party analytics services (such as Google Analytics) that collect and analyze this type of data to help us improve the website. Those providers operate under their own privacy policies governing how they handle such information.",
-        fr: "Nous pouvons également recourir à des services d'analyse tiers (comme Google Analytics) qui recueillent et analysent ce type de données afin de nous aider à améliorer le site. Ces fournisseurs sont régis par leurs propres politiques de confidentialité quant au traitement de ces informations.",
+        /* Ce paragraphe nommait Google Analytics. Verification faite, aucune
+           trace de Google Analytics n'existe dans le code : ni gtag, ni
+           googletagmanager, ni identifiant de mesure. La politique annoncait
+           donc un partage de donnees avec Google qui n'a jamais lieu.
+           Sur-declarer n'est pas prudent : c'est inexact, et l'exactitude
+           compte dans les deux sens sous la Loi 25.
+
+           Les mesures d'audience, lorsqu'elles sont activees, viennent de
+           l'hebergeur (Cloudflare) et s'effectuent sans temoin ni identifiant
+           persistant. */
+        en: "Any audience measurement is carried out by our hosting provider from server-side data, without cookies and without any persistent identifier following you between visits. We do not use Google Analytics, and no advertising or tracking script is loaded on this website.",
+        fr: "Toute mesure d'audience est effectuée par notre hébergeur à partir de données côté serveur, sans témoin (cookie) ni identifiant persistant qui vous suivrait d'une visite à l'autre. Nous n'utilisons pas Google Analytics, et aucun script publicitaire ou de pistage n'est chargé sur ce site.",
+      },
+      {
+        /* Ajoute au moment ou les polices sont passees en auto-hebergement :
+           c'est un fait verifiable et favorable, il merite d'etre dit. */
+        en: "Our fonts are served from our own servers rather than from an external font service. No request leaves your browser toward a third party in order to display this website.",
+        fr: "Nos polices de caractères sont servies depuis nos propres serveurs plutôt que par un service externe. Aucune requête ne part de votre navigateur vers un tiers pour afficher ce site.",
       },
     ],
   },

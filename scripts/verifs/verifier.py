@@ -34,30 +34,45 @@ SONDES = [
 ]
 
 
-def fichiers_cibles(modifies_seulement):
-    if modifies_seulement:
+def fichiers_cibles(mode):
+    """mode : "tout" | "modifies" | "cached".
+
+    « cached » lit ce qui est MIS EN SCENE, et c'est ce que le hook de
+    pre-commit doit examiner : un fichier corrige mais non ajoute ne doit pas
+    faire passer un commit casse.
+    """
+    if mode in ("modifies", "cached"):
+        cmd = (["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"]
+               if mode == "cached"
+               else ["git", "diff", "--name-only", "HEAD"])
         try:
-            sortie = subprocess.run(
-                ["git", "diff", "--name-only", "HEAD"],
-                cwd=RACINE, capture_output=True, text=True, check=True,
-            ).stdout
+            sortie = subprocess.run(cmd, cwd=RACINE, capture_output=True,
+                                    text=True, check=True).stdout
         except (subprocess.CalledProcessError, FileNotFoundError):
-            print("git indisponible — analyse de tout le frontend")
-            return fichiers_cibles(False)
+            print("git indisponible - analyse de tout le frontend")
+            return fichiers_cibles("tout")
         return [RACINE / l for l in sortie.split()
-                if l.endswith((".jsx", ".js")) and l.startswith("frontend/")]
+                if l.endswith((".jsx", ".js")) and l.startswith("frontend/")
+                and (RACINE / l).exists()]
     src = RACINE / "frontend" / "src"
     return sorted(src.rglob("*.jsx")) + sorted(src.rglob("*.js"))
 
 
 def main():
-    modifies = "--modifies" in sys.argv
-    cibles = fichiers_cibles(modifies)
+    mode = ("cached" if "--cached" in sys.argv
+            else "modifies" if "--modifies" in sys.argv
+            else "tout")
+    cibles = fichiers_cibles(mode)
     if not cibles:
-        print("Aucun fichier à vérifier.")
+        print("Aucun fichier a verifier.")
         return 0
 
-    print(f"{len(cibles)} fichier(s) — {'modifiés' if modifies else 'tout le frontend'}\n")
+    ETIQUETTE = {"cached": "mis en scene", "modifies": "modifies",
+                 "tout": "tout le frontend"}
+    # Sortie volontairement en ASCII : la console de Git Bash sous Windows
+    # rend les accents et les tirets cadratins en caracteres brouilles, et un
+    # outil dont le rapport est illisible finit par ne plus etre lu.
+    print(f"{len(cibles)} fichier(s) - {ETIQUETTE[mode]}\n")
     echecs = 0
     for etiquette, script, par_fichier in SONDES:
         chemin = ICI / script
@@ -91,7 +106,7 @@ def main():
 
     print()
     if echecs:
-        print(f"{echecs} problème(s). Corrigez avant de committer.")
+        print(f"{echecs} probleme(s). Corrigez avant de committer.")
         return 1
     print("Tout passe.")
     return 0
