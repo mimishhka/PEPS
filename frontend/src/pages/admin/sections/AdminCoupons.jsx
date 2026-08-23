@@ -13,11 +13,22 @@ export default function AdminCoupons() {
 
   const [coupons, setCoupons] = useState([]);
   const [editing, setEditing] = useState(null);
+  // Codes d'affiliés : liste SÉPARÉE et en lecture seule. Ils partagent la
+  // collection des coupons — le paiement n'a ainsi qu'un endroit où résoudre
+  // un code — mais les mêler ici permettait d'en modifier la valeur ou de les
+  // supprimer, ce qui coupait le rabais d'un partenaire sans prévenir personne.
+  const [codesAffilies, setCodesAffilies] = useState([]);
 
   const load = () => api.get("/admin/coupons")
     .then((r) => setCoupons(r.data))
     .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message));
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    api.get("/admin/affiliate-codes")
+      .then((r) => setCodesAffilies(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setCodesAffilies([]));
+  }, []);
 
   const blank = {
     code: "", discount_type: "percent", value: 10, min_subtotal: 0,
@@ -175,6 +186,66 @@ export default function AdminCoupons() {
         </table>
         </div>
       </div>
+
+      {/* Codes d'affiliés — SÉPARÉS, et sans aucune action.
+          Pas de bouton modifier, pas de bouton supprimer : ce n'est pas un
+          oubli. Un code d'affilié se gère depuis sa fiche, seul endroit qui
+          renomme le code ET archive l'ancien en alias, de sorte que les liens
+          déjà distribués continuent de fonctionner. */}
+      {codesAffilies.length > 0 && (
+        <div className="mt-10" data-testid="affiliate-codes">
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <h2 className="font-display text-xl font-bold text-nordfjord">
+              {L("Codes d'affiliés", "Affiliate codes")}
+            </h2>
+            <span className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance border border-compliance rounded px-2 py-0.5">
+              {L("consultation seule", "read only")}
+            </span>
+          </div>
+          <p className="text-sm text-glacier mt-1 max-w-2xl">
+            {L("Ces codes appartiennent à des affiliés. Ils se modifient depuis la fiche de l'affilié, qui renomme le code et conserve l'ancien en alias — les liens déjà distribués restent valides.",
+               "These codes belong to affiliates. Change them from the affiliate's record, which renames the code and keeps the old one as an alias, so links already handed out keep working.")}
+          </p>
+          <div className="mt-4 bg-white border border-ash rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <Th>{L("Code", "Code")}</Th>
+                    <Th>{L("Affilié", "Affiliate")}</Th>
+                    <Th>{L("Rabais", "Discount")}</Th>
+                    <Th>{L("Utilisations", "Uses")}</Th>
+                    <Th>{L("Statut", "Status")}</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {codesAffilies.map((c) => (
+                    <tr key={c.code} className="border-t border-ash">
+                      <td className="px-4 py-3 font-data text-nordfjord">{c.code}</td>
+                      <td className="px-4 py-3 text-nordfjord">
+                        {c.affiliate_name || <span className="text-glacier">—</span>}
+                        {c.affiliate_email && (
+                          <span className="block font-data text-[11px] text-glacier">{c.affiliate_email}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-data tabular-nums">
+                        {c.discount_type === "percent" ? `${c.value} %` : `${c.value} $`}
+                      </td>
+                      <td className="px-4 py-3 font-data tabular-nums">{c.used_count || 0}</td>
+                      <td className="px-4 py-3">
+                        <span className={`font-data text-[10px] uppercase tracking-[0.15em] ${
+                          c.affiliate_status === "active" ? "text-success" : "text-glacier"}`}>
+                          {c.affiliate_status || (c.active ? L("actif", "active") : L("inactif", "inactive"))}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Editor modal */}
       {editing && <CouponEditor L={L} editing={editing} setEditing={setEditing} save={save} />}

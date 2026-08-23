@@ -2564,6 +2564,64 @@ def _is_affiliate_coupon(coupon: dict) -> bool:
     return bool(coupon.get("affiliate_id")) or coupon.get("source") == "affiliate"
 
 
+# Filtre Mongo : coupons PROMOTIONNELS uniquement. Les codes d'affiliés
+# partagent la collection — un seul point de recherche au paiement — mais ne
+# doivent jamais se mêler aux coupons dans l'administration.
+FILTRE_PROMO = {"affiliate_id": None, "source": {"$ne": "affiliate"}}
+FILTRE_AFFILIE = {"$or": [{"affiliate_id": {"$ne": None}}, {"source": "affiliate"}]}
+
+
+async def _trouver_coupon(identifiant: str) -> Optional[dict]:
+    """Retrouve un coupon par son id OU par son code.
+
+    La clé unique de la collection est `code`, pas `id` : c'est le code qui
+    porte l'index unique, et c'est par lui que le paiement résout un rabais.
+    Le champ `id` est une commodité ajoutée ensuite, et rien ne garantit qu'un
+    document ancien en possède un.
+
+    L'écran d'administration envoyait donc `undefined` dans l'adresse pour ces
+    documents-là, et le serveur répondait « Coupon not found » — sur un coupon
+    parfaitement visible dans la liste juste au-dessus.
+    """
+    if not identifiant or identifiant in ("undefined", "null"):
+        return None
+    doc = await db.coupons.find_one({"id": identifiant}, {"_id": 0})
+    if doc:
+        return doc
+    return await db.coupons.find_one({"code": identifiant.upper().strip()}, {"_id": 0})
+
+
+def _refuser_expiration_passee(expires_at, start_at=None) -> None:
+    """Une date d'expiration déjà passée crée un coupon mort-né.
+
+    Rien ne l'interdisait : on pouvait enregistrer un coupon expirant hier,
+    l'écran le montrait « actif », et il refusait toute commande. Le défaut se
+    découvrait au client, à la caisse.
+    """
+    if not expires_at:
+        return
+    try:
+        fin = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+        if fin.tzinfo is None:
+            fin = fin.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        raise HTTPException(400, "Date d'expiration illisible.")
+    if fin <= datetime.now(timezone.utc):
+        raise HTTPException(
+            400, "La date d'expiration est déjà passée : ce coupon serait "
+                 "refusé dès sa création.")
+    if start_at:
+        try:
+            debut = datetime.fromisoformat(str(start_at).replace("Z", "+00:00"))
+            if debut.tzinfo is None:
+                debut = debut.replace(tzinfo=timezone.utc)
+            if debut >= fin:
+                raise HTTPException(
+                    400, "La date de début est postérieure à la date de fin.")
+        except (ValueError, TypeError):
+            raise HTTPException(400, "Date de début illisible.")
+
+
 def _enforce_standard_coupon_percent_limit(discount_type: str, value: float, is_affiliate: bool) -> None:
     if is_affiliate or STANDARD_COUPON_MAX_PERCENT is None:
         return
@@ -6635,7 +6693,45 @@ async def admin_list_stock_notifications(_admin: dict = Depends(require_area("pr
 # Admin — coupons
 # ---------------------------------------------------------------------------
 async def admin_list_coupons(_admin: dict = Depends(require_area("coupons", "view"))):
-    return await db.coupons.find({"deleted_at": None}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    """Coupons PROMOTIONNELS seulement.
+
+    Les codes d'affiliés vivent dans la même collection — le paiement n'a ainsi
+    qu'un seul endroit où résoudre un code — mais ils n'ont rien à faire dans
+    cet écran. Mêlés aux coupons de campagne, on pouvait en modifier la valeur
+    ou les supprimer, ce qui coupait silencieusement le rabais d'un partenaire
+    et cassait le lien qu'il avait distribué.
+
+    Ils sont exposés séparément et en lecture seule par admin_list_affiliate_codes.
+    """
+    return await db.coupons.find(
+        {"deleted_at": None, **FILTRE_PROMO}, {"_id": 0}
+    ).sort("created_at", -1).to_list(500)
+
+
+async def admin_list_affiliate_codes(_admin: dict = Depends(require_area("coupons", "view"))):
+    """Codes d'affiliés — CONSULTATION seule, aucune modification possible.
+
+    Il n'existe volontairement ni création, ni modification, ni suppression :
+    un code d'affilié se gère depuis la fiche de l'affilié, où le changement
+    renomme le code ET archive l'ancien en alias. Le modifier ici contournerait
+    cette mécanique et laisserait des liens déjà distribués sans effet.
+    """
+    codes = await db.coupons.find(
+        {"deleted_at": None, **FILTRE_AFFILIE}, {"_id": 0}
+    ).sort("created_at", -1).to_list(500)
+    # On joint le nom de l'affilié : un code seul ne dit pas à qui il est.
+    ids = [c.get("affiliate_id") for c in codes if c.get("affiliate_id")]
+    noms = {}
+    if ids:
+        async for a in db.affiliates.find({"id": {"$in": ids}},
+                                          {"_id": 0, "id": 1, "name": 1, "email": 1, "status": 1}):
+            noms[a["id"]] = a
+    for c in codes:
+        a = noms.get(c.get("affiliate_id")) or {}
+        c["affiliate_name"] = a.get("name") or ""
+        c["affiliate_email"] = a.get("email") or ""
+        c["affiliate_status"] = a.get("status") or ""
+    return codes
 
 
 async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_area("coupons", "manage"))):
@@ -6643,6 +6739,7 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_
     if await db.coupons.find_one({"code": code}):
         raise HTTPException(409, "Coupon code already exists")
     _enforce_standard_coupon_percent_limit(payload.discount_type, payload.value, is_affiliate=False)
+    _refuser_expiration_passee(payload.expires_at, payload.start_at)
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
     doc["code"] = code
@@ -6661,13 +6758,24 @@ async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = 
     # exclude_unset : seuls les champs envoyes par le formulaire sont appliques,
     # les compteurs (used_count/used_by) et champs avances absents sont preserves.
     update = payload.model_dump(exclude_unset=True)
-    existing = await db.coupons.find_one({"id": coupon_id}, {"_id": 0, "affiliate_id": 1, "source": 1})
+    existing = await _trouver_coupon(coupon_id)
     if not existing:
         raise HTTPException(404, "Coupon not found")
+    # Un code d'affilié ne se modifie PAS ici. Il se gère depuis la fiche de
+    # l'affilié, seul endroit qui renomme le code et archive l'ancien en alias.
+    if _is_affiliate_coupon(existing):
+        raise HTTPException(
+            409, "Ce code appartient à un affilié. Modifiez-le depuis sa fiche : "
+                 "l'ancien code y est archivé en alias, ce qui garde valides les "
+                 "liens déjà distribués.")
     _enforce_standard_coupon_percent_limit(
         update.get("discount_type", payload.discount_type),
         float(update.get("value", payload.value)),
-        _is_affiliate_coupon(existing),
+        False,
+    )
+    _refuser_expiration_passee(
+        update.get("expires_at", existing.get("expires_at")),
+        update.get("start_at", existing.get("start_at")),
     )
     if "code" in update:
         update["code"] = update["code"].upper().strip()
@@ -6677,10 +6785,13 @@ async def admin_update_coupon(coupon_id: str, payload: CouponIn, _admin: dict = 
         update["restrict_products"] = [p for p in (update["restrict_products"] or []) if p]
     if "restrict_categories" in update:
         update["restrict_categories"] = [c for c in (update["restrict_categories"] or []) if c]
-    res = await db.coupons.update_one({"id": coupon_id}, {"$set": update})
+    # On écrit par CODE, la clé unique de la collection : `id` peut manquer sur
+    # les documents anciens, et c'est précisément ce qui produisait le 404.
+    res = await db.coupons.update_one({"code": existing["code"]}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Coupon not found")
-    return await db.coupons.find_one({"id": coupon_id}, {"_id": 0})
+    return await db.coupons.find_one(
+        {"code": update.get("code", existing["code"])}, {"_id": 0})
 
 
 async def admin_delete_coupon(coupon_id: str, admin: dict = Depends(require_area("coupons", "manage"))):
@@ -6698,15 +6809,18 @@ async def admin_delete_coupon(coupon_id: str, admin: dict = Depends(require_area
     #
     # La suppression passe donc par la fiche de l'affilié, où l'on voit à qui
     # l'on retire quoi.
-    coupon = await db.coupons.find_one(
-        {"id": coupon_id}, {"_id": 0, "affiliate_id": 1, "source": 1, "code": 1})
-    if coupon and _is_affiliate_coupon(coupon):
+    # Recherche par id OU par code : `id` manque sur les documents anciens, et
+    # la garde ci-dessous se serait alors laissé contourner.
+    coupon = await _trouver_coupon(coupon_id)
+    if not coupon:
+        raise HTTPException(404, "Coupon not found")
+    if _is_affiliate_coupon(coupon):
         raise HTTPException(
             409,
             f"« {coupon.get('code')} » est le code d'un affilié, pas un coupon "
             f"promotionnel. Le supprimer romprait son rabais sans le prévenir. "
             f"Passez par la fiche de l'affilié pour le suspendre.")
-    return await _soft_delete("coupons", coupon_id, admin)
+    return await _soft_delete("coupons", coupon.get("id") or coupon_id, admin)
 
 
 async def validate_coupon(code: str, subtotal: float,

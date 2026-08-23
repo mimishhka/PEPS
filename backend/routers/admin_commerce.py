@@ -50,6 +50,17 @@ async def admin_list_coupons(_admin: dict = Depends(s.require_area("coupons", "v
     return await s.admin_list_coupons(_admin)
 
 
+@router.get("/admin/affiliate-codes")
+async def admin_list_affiliate_codes(_admin: dict = Depends(s.require_area("coupons", "view"))):
+    """Codes d'affiliés, en LECTURE SEULE.
+
+    Aucun POST, PUT ni DELETE n'accompagne cette route, et c'est délibéré : un
+    code d'affilié se gère depuis la fiche de l'affilié, où le renommage
+    archive l'ancien code en alias et garde valides les liens déjà distribués.
+    """
+    return await s.admin_list_affiliate_codes(_admin)
+
+
 @router.post("/admin/coupons")
 async def admin_create_coupon(payload: s.CouponIn, _admin: dict = Depends(s.require_area("coupons", "manage"))):
     return await s.admin_create_coupon(payload, _admin)
