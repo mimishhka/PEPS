@@ -1048,8 +1048,17 @@ async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
 
     affiliate = None
     if code:
+        # Match sur le code direct OU un alias actif. Les aliases sont créés
+        # par l'admin (FITNES100 pour FITNES70, etc.) et doivent attribuer
+        # à l'affilié titulaire du code parent — sinon une vente réalisée via
+        # un alias ne rapporte rien alors même que le rabais est appliqué.
+        code_up = code.upper()
         affiliate = await s.db.affiliates.find_one(
-            {"code": code.upper(), "status": "active"}, {"_id": 0}
+            {"$or": [
+                {"code": code_up},
+                {"aliases": {"$elemMatch": {"code": code_up, "active": True}}},
+            ], "status": "active"},
+            {"_id": 0}
         )
 
     if not affiliate:

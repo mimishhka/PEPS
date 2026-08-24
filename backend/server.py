@@ -9606,12 +9606,13 @@ async def admin_affiliate_ticket_reply(ticket_id: str, payload: AffiliateTicketR
 
 
 async def _notify_ticket_reply(ticket: dict) -> None:
+    import html as html_stdlib
     email = (ticket.get("affiliate_email") or "").strip()
     if not email:
         return
     lien = f"{_trusted_public_base_url()}/affiliate"
     sujet = ticket.get("subject", "")
-    html = f"""\
+    body_html = f"""\
 <div style="font-family:Inter,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;background:#F7FAFC;padding:40px 24px;">
   <div style="background:#0B2E4F;border-radius:20px 20px 0 0;padding:28px 32px;">
     <span style="font-family:'Space Grotesk',sans-serif;color:#F7FAFC;font-size:20px;font-weight:700;letter-spacing:-0.02em;">FIRONOVA</span>
@@ -9620,7 +9621,7 @@ async def _notify_ticket_reply(ticket: dict) -> None:
   <div style="background:#ffffff;border-radius:0 0 20px 20px;padding:36px 32px;border:1px solid #E2E8F0;border-top:none;">
     <h1 style="margin:0 0 12px;font-size:20px;color:#0B2E4F;">Nous avons répondu à votre demande</h1>
     <p style="margin:0 0 8px;color:#3E5C76;font-size:14px;line-height:1.6;">
-      Votre demande « {html.escape(sujet)} » a reçu une réponse.
+      Votre demande « {html_stdlib.escape(sujet)} » a reçu une réponse.
     </p>
     <p style="margin:0 0 24px;color:#3E5C76;font-size:14px;line-height:1.6;">
       Elle vous attend dans l'onglet Aide de votre tableau de bord.
@@ -9634,7 +9635,7 @@ async def _notify_ticket_reply(ticket: dict) -> None:
   </div>
 </div>"""
     from_addr = AFFILIATE_SENDER_EMAIL or MAGIC_SENDER_EMAIL or SENDER_EMAIL
-    await _send_email(email, f"Réponse à votre demande — {sujet[:60]}", html,
+    await _send_email(email, f"Réponse à votre demande — {sujet[:60]}", body_html,
                       from_email=from_addr)
 
 
@@ -9733,12 +9734,12 @@ async def affiliate_payout_settings(payload: AffiliatePayoutSettingsIn, request:
 
 
 async def affiliate_performance(request: Request):
-    """Séries mensuelles (12 derniers mois) de CA validé pour les graphiques."""
+    """Séries mensuelles (12 derniers mois) de CA validé + commissions correspondantes."""
     aff = await get_current_affiliate(request)
     buckets: dict = {}
     cursor = db.affiliate_referrals.find(
         {"affiliate_id": aff["id"], "status": {"$in": ["approved", "paid"]}},
-        {"_id": 0, "base_amount": 1, "approved_at": 1, "created_at": 1},
+        {"_id": 0, "base_amount": 1, "commission_amount": 1, "approved_at": 1, "created_at": 1},
     )
     async for r in cursor:
         ts = r.get("approved_at") or r.get("created_at")
@@ -9749,8 +9750,14 @@ async def affiliate_performance(request: Request):
         except Exception:
             continue
         key = f"{dt.year}-{dt.month:02d}"
-        buckets[key] = round(buckets.get(key, 0.0) + float(r.get("base_amount", 0.0)), 2)
-    series = [{"month": k, "revenue": v} for k, v in sorted(buckets.items())]
+        entry = buckets.setdefault(key, {"revenue": 0.0, "commission": 0.0})
+        entry["revenue"] += float(r.get("base_amount", 0.0))
+        entry["commission"] += float(r.get("commission_amount", 0.0))
+    series = [
+        {"month": k, "revenue": round(v["revenue"], 2),
+         "commission": round(v["commission"], 2)}
+        for k, v in sorted(buckets.items())
+    ]
     return {"series": series}
 
 
