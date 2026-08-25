@@ -907,7 +907,10 @@ export default function AdminAffiliates() {
 /* ---------- Petits composants ---------- */
 
 function RiskPanel({ risk, L, lang, onOpen }) {
-  const items = risk.affiliates || [];
+  // Défenses : le backend peut renvoyer un shape simplifié (referrals bruts
+  // en fallback) ou complet (agrégats par affilié). On tolère les deux.
+  const items = Array.isArray(risk?.affiliates) ? risk.affiliates : [];
+  if (!items.length) return null;
   return (
     <div className="mb-6 rounded-xl border border-error/30 bg-error/5 overflow-hidden" data-testid="affiliate-risk-panel">
       <div className="px-5 py-3 border-b border-error/20 flex items-center gap-2">
@@ -915,44 +918,56 @@ function RiskPanel({ risk, L, lang, onOpen }) {
         <p className="font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord">
           {L("À auditer — signaux de risque", "To audit — risk signals")}
         </p>
-        <span className="ml-auto text-xs font-semibold text-error tabular-nums">{risk.flagged_count}</span>
+        <span className="ml-auto text-xs font-semibold text-error tabular-nums">{risk?.flagged_count ?? items.length}</span>
       </div>
       <div className="divide-y divide-error/10">
-        {items.map((a) => (
-          <div key={a.id} className="px-5 py-3 flex flex-wrap items-center gap-3">
-            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${a.risk_level === "high" ? "bg-error" : "bg-warning"}`} />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-nordfjord truncate">
-                {a.name}
-                {a.insufficient_data && (
-                  <span className="ml-2 text-[10px] uppercase tracking-wider text-glacier">
-                    {L("(données limitées)", "(limited data)")}
-                  </span>
-                )}
-              </p>
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                {a.signals.map((s, i) => (
-                  <span key={i}
-                    className={`text-[11px] px-2 py-0.5 rounded-full ${s.level === "high" ? "bg-error/15 text-error" : "bg-warning/15 text-warning"}`}>
-                    {lang === "fr" ? s.label_fr : s.label_en}
-                    {s.type === "reversal_rate" ? ` ${Math.round(s.value * 100)}%` : ""}
-                    {s.type === "self_orders" ? ` ×${s.value}` : ""}
-                    {s.type === "volume_spike" ? ` ×${s.value}` : ""}
-                  </span>
-                ))}
+        {items.map((a) => {
+          const signals = Array.isArray(a.signals) ? a.signals : [];
+          // Shape fallback : referral brut → on synthétise un signal lisible
+          const fallbackSignals = signals.length ? signals : (a.excluded_reason ? [{
+            type: a.excluded_reason,
+            level: "high",
+            label_fr: a.excluded_reason.replace(/_/g, " "),
+            label_en: a.excluded_reason.replace(/_/g, " "),
+          }] : []);
+          const label = a.name || a.affiliate_code || a.order_number || a.id;
+          const affiliateId = a.affiliate_id || a.id;
+          return (
+            <div key={a.id} className="px-5 py-3 flex flex-wrap items-center gap-3">
+              <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${a.risk_level === "high" ? "bg-error" : "bg-warning"}`} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-nordfjord truncate">
+                  {label}
+                  {a.insufficient_data && (
+                    <span className="ml-2 text-[10px] uppercase tracking-wider text-glacier">
+                      {L("(données limitées)", "(limited data)")}
+                    </span>
+                  )}
+                </p>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {fallbackSignals.map((s, i) => (
+                    <span key={i}
+                      className={`text-[11px] px-2 py-0.5 rounded-full ${s.level === "high" ? "bg-error/15 text-error" : "bg-warning/15 text-warning"}`}>
+                      {lang === "fr" ? (s.label_fr || s.type) : (s.label_en || s.type)}
+                      {s.type === "reversal_rate" ? ` ${Math.round((s.value || 0) * 100)}%` : ""}
+                      {s.type === "self_orders" ? ` ×${s.value ?? ""}` : ""}
+                      {s.type === "volume_spike" ? ` ×${s.value ?? ""}` : ""}
+                    </span>
+                  ))}
+                </div>
               </div>
+              <div className="flex items-center gap-3 text-[11px] text-glacier">
+                {a.validated_orders != null && <span>{L("validées", "validated")}: {a.validated_orders}</span>}
+                {a.reversed_orders != null && <span>{L("annulées", "reversed")}: {a.reversed_orders}</span>}
+                {a.self_orders_blocked != null && <span>{L("self", "self")}: {a.self_orders_blocked}</span>}
+              </div>
+              <button onClick={() => onOpen(affiliateId)}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-error/30 text-xs text-nordfjord hover:bg-white transition">
+                <Eye size={13} /> {L("Examiner", "Review")}
+              </button>
             </div>
-            <div className="flex items-center gap-3 text-[11px] text-glacier">
-              <span>{L("validées", "validated")}: {a.validated_orders}</span>
-              <span>{L("annulées", "reversed")}: {a.reversed_orders}</span>
-              <span>{L("self", "self")}: {a.self_orders_blocked}</span>
-            </div>
-            <button onClick={() => onOpen(a.id)}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-error/30 text-xs text-nordfjord hover:bg-white transition">
-              <Eye size={13} /> {L("Examiner", "Review")}
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <p className="px-5 py-2.5 text-[11px] text-glacier bg-white/40 border-t border-error/10">
         {L("Ces signaux aident à repérer qui examiner — ils ne suspendent personne automatiquement. La décision reste manuelle.",
