@@ -140,9 +140,9 @@ export default function AffiliateProgramme() {
                     {L("Vos contacts obtiennent un rabais avec votre code ou votre lien. Chaque commande payée vous verse une commission, calculée sur le sous-total des produits après ce rabais — la livraison et les taxes n'entrent pas dans le calcul.",
                        "Your contacts get a discount with your code or link. Every paid order earns you a commission, computed on the product subtotal after that discount — shipping and taxes are excluded.")}
                   </Bloc>
-                  <Bloc titre={L("Vos clients restent les vôtres", "Your customers stay yours")}>
-                    {L("Le rattachement d'un client à votre compte n'expire pas. Qu'il passe par votre lien ou tape votre code, qu'il revienne au bout d'un mois ou d'un an, la commission vous revient. Le premier affilié à qui un client est rattaché le conserve.",
-                       "A customer's link to your account never expires. Whether they use your link or type your code, whether they return after a month or a year, the commission is yours. The first affiliate a customer is attached to keeps them.")}
+                  <Bloc titre={L("Ce qui déclenche votre commission", "What earns you a commission")}>
+                    {L("Votre lien cliqué, ou votre code saisi au paiement — pour la commande concernée. Le clic dépose un témoin valable 365 jours : pendant toute cette période, les commandes passées depuis le même navigateur vous reviennent sans que votre contact ait à saisir quoi que ce soit. Une commande passée sans lien ni code n'ouvre droit à aucune commission.",
+                       "Your link clicked, or your code entered at checkout — for that particular order. The click sets a cookie valid for 365 days: throughout that period, orders placed from the same browser are credited to you with nothing for your contact to type. An order placed with neither link nor code earns no commission.")}
                   </Bloc>
                   <Bloc titre={L("Quand vous êtes payé", "When you get paid")}>
                     {L(`Une commission est validée sept jours après la commande, quel que soit le mode de paiement. Les versements partent le 1er de chaque mois, en cryptomonnaie stable (USDT ou USDC, réseau de votre choix), dès que le total atteint ${argent(data.payout_min_cad)}.`,

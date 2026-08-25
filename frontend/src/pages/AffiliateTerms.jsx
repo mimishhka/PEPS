@@ -12,12 +12,18 @@
 import useDocumentHead from "../hooks/useDocumentHead";
 import { useLang } from "../contexts/LanguageContext";
 
+// 2026-08-22b : le RATTACHEMENT DURABLE du client est supprimé. Une commande
+// n'ouvre droit à commission que si le lien ou le code a été utilisé pour elle.
+//
+// C'est le changement le plus substantiel apporté à ce texte : il retire une
+// source de revenu que les affiliés déjà inscrits avaient acceptée. Leur
+// laisser ce texte sans redemander leur accord les engagerait par des
+// conditions qu'ils n'ont jamais lues — d'où le suffixe, qui force la
+// réacceptation au prochain accès.
+//
 // 2026-08-22 : l'article sur les versements gagne l'ajustement au prix réel du
-// jeton. Changement SUBSTANTIEL — il décrit comment une somme due est convertie
-// — donc la version bouge et l'acceptation est redemandée. Une révision qui
-// modifie ce que l'affilié touche sans redemander son accord le laisserait
-// engagé par un texte qu'il n'a jamais lu.
-export const AFFILIATE_TERMS_VERSION = "2026-08-22";
+// jeton.
+export const AFFILIATE_TERMS_VERSION = "2026-08-22b";
 
 // Exporté pour que la fenêtre d'acceptation affiche EXACTEMENT ce texte, sans
 // le recopier. Deux exemplaires du même contrat divergeraient à la première
@@ -108,12 +114,12 @@ export const SECTIONS = [
     en: { title: "Sale attribution" },
     paras: [
       {
-        fr: "Une commande est attribuée à l'Affilié selon trois sources, appliquées dans cet ordre. D'abord le lien de parrainage : un témoin de connexion est déposé lors du clic et permet d'attribuer toute commande passée dans les 365 jours suivants, même sans saisie de code. Ensuite le code de réduction saisi au paiement, qui n'expire pas et vaut tant que le compte de l'Affilié est actif. Enfin le rattachement du client, établi lors de la première vente attribuée.",
-        en: "An order is attributed to the Affiliate through three sources, applied in this order. First the referral link: a cookie is set on click and attributes any order placed within the following 365 days, even without a code. Then the discount code entered at checkout, which does not expire and remains valid as long as the Affiliate's account is active. Finally the customer link, established on the first attributed sale.",
+        fr: "Une commande est attribuée à l'Affilié lorsque son lien de parrainage ou son code de réduction est utilisé pour cette commande précise. Le lien dépose un témoin de connexion valable 365 jours : toute commande passée pendant cette période depuis le même navigateur est attribuée, sans saisie de code. À défaut, le code doit être saisi au paiement. En l'absence de l'un ou de l'autre sur la commande, aucune commission n'est due, même si le client avait déjà été amené par l'Affilié.",
+        en: "An order is attributed to the Affiliate when their referral link or discount code is used for that specific order. The link sets a cookie valid for 365 days: any order placed from the same browser during that period is attributed, with no code to enter. Otherwise the code must be entered at checkout. Where neither appears on the order, no commission is due, even if the customer had previously been introduced by the Affiliate.",
       },
       {
-        fr: "Le rattachement du client permet d'attribuer toute commande ultérieure de ce client, sans limite de durée et même en l'absence de lien ou de code. Il est établi une seule fois et ne change jamais.",
-        en: "The customer link attributes any subsequent order from that customer, with no time limit and even without a link or code. It is established once and never changes.",
+        fr: "Le rattachement durable du client, qui attribuait autrefois toute commande ultérieure sans lien ni code, a été supprimé. La commission récompense un acte d'apport, et cet acte doit être visible sur la commande.",
+        en: "The permanent customer link, which once attributed every later order with no link or code, has been removed. A commission rewards an act of introduction, and that act must be visible on the order.",
       },
       {
         fr: "Si un client rattaché passe une commande par le lien ou le code d'un autre affilié, cette commande revient à ce dernier, mais le rattachement demeure inchangé pour les commandes suivantes.",
