@@ -9761,6 +9761,100 @@ async def affiliate_performance(request: Request):
     return {"series": series}
 
 
+async def affiliate_customers(request: Request):
+    """Liste des clients rattachés durablement à l'affilié.
+
+    Un client est rattaché quand une première commande a été attribuée à
+    l'affilié (via cookie, code ou binding). Toute commande future du même
+    email lui reste attribuée, sans expiration — c'est la « rétention » qui
+    fait la valeur d'un affilié dans le temps.
+
+    Retour agrégé : par client, on renvoie {email, bound_at, source,
+    orders_count, revenue_validated, commission_validated, last_order_at}.
+    """
+    aff = await get_current_affiliate(request)
+    return await _compute_affiliate_customers(aff["id"])
+
+
+async def admin_affiliate_customers(affiliate_id: str, admin: dict):
+    """Version admin — même agrégation, accessible par ID d'affilié."""
+    aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0, "id": 1})
+    if not aff:
+        raise HTTPException(404, "Affiliate not found")
+    return await _compute_affiliate_customers(affiliate_id)
+
+
+async def _compute_affiliate_customers(affiliate_id: str) -> dict:
+    bindings = await db.affiliate_bindings.find(
+        {"affiliate_id": affiliate_id},
+        {"_id": 0, "email": 1, "bound_at": 1, "source": 1, "user_id": 1},
+    ).sort("bound_at", -1).to_list(500)
+    if not bindings:
+        return {"count": 0, "customers": []}
+
+    emails = [b["email"] for b in bindings if b.get("email")]
+    pipeline = [
+        {"$match": {
+            "affiliate_id": affiliate_id,
+            "email": {"$in": emails},
+            "payment_status": {"$in": ["paid", "shipped", "delivered", "completed"]},
+        }},
+        {"$group": {
+            "_id": "$email",
+            "orders_count": {"$sum": 1},
+            "revenue_validated": {"$sum": {"$ifNull": ["$subtotal", 0]}},
+            "last_order_at": {"$max": "$created_at"},
+        }},
+    ]
+    stats_by_email = {}
+    async for row in db.orders.aggregate(pipeline):
+        stats_by_email[row["_id"]] = {
+            "orders_count": row["orders_count"],
+            "revenue_validated": round(float(row.get("revenue_validated", 0)), 2),
+            "last_order_at": row.get("last_order_at"),
+        }
+    ref_pipeline = [
+        {"$match": {
+            "affiliate_id": affiliate_id,
+            "status": {"$in": ["approved", "paid"]},
+        }},
+        {"$lookup": {
+            "from": "orders",
+            "localField": "order_id",
+            "foreignField": "id",
+            "as": "o",
+        }},
+        {"$unwind": {"path": "$o", "preserveNullAndEmptyArrays": True}},
+        {"$group": {
+            "_id": "$o.email",
+            "commission_validated": {"$sum": {"$ifNull": ["$commission_amount", 0]}},
+        }},
+    ]
+    async for row in db.affiliate_referrals.aggregate(ref_pipeline):
+        e = row.get("_id")
+        if not e:
+            continue
+        stats_by_email.setdefault(e, {}).update({
+            "commission_validated": round(float(row.get("commission_validated", 0)), 2),
+        })
+
+    customers = []
+    for b in bindings:
+        e = b["email"]
+        s_data = stats_by_email.get(e, {})
+        customers.append({
+            "email": e,
+            "bound_at": b.get("bound_at"),
+            "source": b.get("source"),
+            "has_account": bool(b.get("user_id")),
+            "orders_count": s_data.get("orders_count", 0),
+            "revenue_validated": s_data.get("revenue_validated", 0.0),
+            "commission_validated": s_data.get("commission_validated", 0.0),
+            "last_order_at": s_data.get("last_order_at"),
+        })
+    return {"count": len(customers), "customers": customers}
+
+
 # ===========================================================================
 # ENDPOINTS — ATTRIBUTION PUBLIQUE (pose du cookie)
 # ===========================================================================

@@ -79,6 +79,11 @@ async def affiliate_performance(request: Request):
     return await s.affiliate_performance(request)
 
 
+@router.get("/affiliate/customers")
+async def affiliate_customers(request: Request):
+    return await s.affiliate_customers(request)
+
+
 @router.get("/affiliate/insights")
 async def affiliate_insights(request: Request):
     return await s.affiliate_insights(request)
@@ -142,6 +147,12 @@ async def admin_affiliates_clicks(admin: dict = Depends(s.get_admin_user), days:
 @router.get("/admin/affiliates/risk")
 async def admin_affiliates_risk(admin: dict = Depends(s.get_admin_user)):
     return await s.admin_affiliates_risk(admin)
+
+
+@router.get("/admin/affiliates/{affiliate_id}/customers")
+async def admin_affiliate_customers(affiliate_id: str,
+                                     admin: dict = Depends(s.get_admin_user)):
+    return await s.admin_affiliate_customers(affiliate_id, admin)
 
 
 # Billets d'assistance. Déclarés sous /admin/affiliate-tickets et non

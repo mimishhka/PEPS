@@ -54,6 +54,15 @@ const COMPLIANCE_META = {
 
 const money = (n) => `$${Number(n || 0).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Masque un email pour préserver la vie privée du client rattaché tout en
+// donnant assez de contexte à l'affilié pour reconnaître ses propres clients.
+const maskEmail = (email) => {
+  if (!email || typeof email !== "string" || !email.includes("@")) return email || "—";
+  const [local, domain] = email.split("@");
+  const l = local.length <= 2 ? local[0] + "*" : `${local[0]}${"*".repeat(Math.min(3, local.length - 2))}${local[local.length - 1]}`;
+  return `${l}@${domain}`;
+};
+
 const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
 const toCsv = (headers, rows) =>
   [headers.map(esc).join(","), ...rows.map((r) => r.map(esc).join(","))].join("\r\n");
@@ -130,6 +139,7 @@ export default function AffiliateDashboard() {
   const [referrals, setReferrals] = useState([]);
   const [payouts, setPayouts] = useState([]);
   const [series, setSeries] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [insights, setInsights] = useState(null);
   const [, setClicksStats] = useState(null);
   const [sources, setSources] = useState(null);
@@ -153,7 +163,7 @@ export default function AffiliateDashboard() {
     try {
       // Résilient : un endpoint qui échoue ne casse pas tout le tableau de bord.
       setRefPage(1); setPayPage(1);
-      const [r, p, perf, ins, ck, src, act] = await Promise.allSettled([
+      const [r, p, perf, ins, ck, src, act, cus] = await Promise.allSettled([
         api.get("/affiliate/referrals"),
         api.get("/affiliate/payouts"),
         api.get("/affiliate/performance"),
@@ -161,6 +171,7 @@ export default function AffiliateDashboard() {
         api.get("/affiliate/clicks"),
         api.get("/affiliate/clicks/sources"),
         api.get("/affiliate/activity"),
+        api.get("/affiliate/customers"),
       ]);
       setReferrals(r.status === "fulfilled" ? (r.value.data || []) : []);
       setPayouts(p.status === "fulfilled" ? (p.value.data || []) : []);
@@ -168,6 +179,7 @@ export default function AffiliateDashboard() {
       setClicksStats(ck.status === "fulfilled" ? (ck.value.data || null) : null);
       setSources(src.status === "fulfilled" ? (src.value.data || null) : null);
       setActivity(act.status === "fulfilled" ? (act.value.data || []) : []);
+      setCustomers(cus.status === "fulfilled" ? (cus.value.data?.customers || []) : []);
       const perfData = perf.status === "fulfilled" ? perf.value.data : null;
       setSeries((perfData?.series || []).map((s) => ({
         month: s.month,
@@ -1151,6 +1163,86 @@ export default function AffiliateDashboard() {
                 </p>
               ) : (
                 <SourcesGrid sources={sources} L={L} lang={lang} />
+              )}
+            </div>
+
+            <div className="bg-white rounded-xl border border-ash overflow-hidden">
+              <div className="px-6 py-4 border-b border-ash flex items-center justify-between">
+                <div>
+                  <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+                    {L("VOS CLIENTS RATTACHÉS", "YOUR ATTACHED CUSTOMERS")}
+                  </p>
+                  <p className="font-data text-[10px] text-glacier mt-0.5">
+                    {L(
+                      "Rattachement à vie : toute commande future de ces clients vous est attribuée, avec ou sans code.",
+                      "Lifetime attachment: every future order from these customers is attributed to you, with or without a code."
+                    )}
+                  </p>
+                </div>
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-clinical text-nordfjord text-xs font-medium" data-testid="attached-customers-count">
+                  {customers.length}
+                </span>
+              </div>
+              {customers.length === 0 ? (
+                <div className="p-8 text-center text-glacier text-sm" data-testid="attached-customers-empty">
+                  {L(
+                    "Aucun client rattaché pour l'instant. Partagez votre lien ou votre code pour amener votre premier client.",
+                    "No attached customers yet. Share your link or code to bring in your first customer."
+                  )}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm" data-testid="attached-customers-table">
+                    <thead>
+                      <tr className="border-b border-ash text-glacier font-data text-[10px] uppercase tracking-[0.2em]">
+                        <th className="text-left px-6 py-3">{L("Client", "Customer")}</th>
+                        <th className="text-left px-4 py-3">{L("Rattaché le", "Attached")}</th>
+                        <th className="text-left px-4 py-3">{L("Source", "Source")}</th>
+                        <th className="text-right px-4 py-3">{L("Cmdes", "Orders")}</th>
+                        <th className="text-right px-4 py-3">{L("CA validé", "Revenue")}</th>
+                        <th className="text-right px-4 py-3">{L("Commissions", "Commissions")}</th>
+                        <th className="text-left px-4 py-3">{L("Dernière", "Last")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customers.map((c) => (
+                        <tr key={c.email} className="border-b border-ash/60 hover:bg-clinical/40"
+                            data-testid={`attached-customer-${c.email}`}>
+                          <td className="px-6 py-3">
+                            <div className="font-medium text-nordfjord truncate max-w-[240px]">
+                              {maskEmail(c.email)}
+                            </div>
+                            {c.has_account && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-data text-nova mt-0.5">
+                                ✓ {L("compte lié", "linked account")}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 font-data text-xs text-glacier">
+                            {c.bound_at ? new Date(c.bound_at).toLocaleDateString(lang) : "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-data uppercase tracking-wider bg-clinical text-nordfjord">
+                              {c.source === "click" ? L("lien", "link")
+                                : c.source === "code" ? L("code", "code")
+                                : c.source === "binding" ? L("récurrent", "returning")
+                                : c.source === "backfill" || c.source === "backfill_pass2" ? L("historique", "backfill")
+                                : (c.source || "—")}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-data font-semibold">{c.orders_count || 0}</td>
+                          <td className="px-4 py-3 text-right font-data">{money(c.revenue_validated || 0)}</td>
+                          <td className="px-4 py-3 text-right font-data font-semibold text-nova">
+                            {money(c.commission_validated || 0)}
+                          </td>
+                          <td className="px-4 py-3 font-data text-xs text-glacier">
+                            {c.last_order_at ? new Date(c.last_order_at).toLocaleDateString(lang) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
 

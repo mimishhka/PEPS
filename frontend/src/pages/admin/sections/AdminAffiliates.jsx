@@ -1645,6 +1645,8 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const [form, setForm] = useState({});
   const [resending, setResending] = useState(false);
   const [aliasBusy, setAliasBusy] = useState(null);
+  const [customers, setCustomers] = useState([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
 
   const toggleAlias = async (aliasCode, nextActive) => {
     setAliasBusy(aliasCode);
@@ -1678,6 +1680,13 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
         commission_note: a.commission_note || "",
         admin_notes: a.admin_notes || "",
       });
+      // Charge la liste des clients rattachés en parallèle — endpoint dédié.
+      setCustomersLoading(true);
+      try {
+        const cr = await api.get(`/admin/affiliates/${affiliateId}/customers`);
+        setCustomers(cr.data?.customers || []);
+      } catch { setCustomers([]); }
+      finally { setCustomersLoading(false); }
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     }
@@ -2023,6 +2032,63 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                   ))}
                 </div>
               ) : <p className="text-sm text-glacier">{L("Aucun relevé.", "No payouts.")}</p>}
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs uppercase tracking-wider text-glacier">
+                  {L("Clients rattachés (à vie)", "Attached customers (lifetime)")}
+                </p>
+                <span className="text-[11px] font-data text-glacier" data-testid="admin-attached-customers-count">
+                  {customersLoading ? L("chargement…", "loading…") : `${customers.length}`}
+                </span>
+              </div>
+              {customers.length ? (
+                <div className="overflow-x-auto rounded-lg border border-ash">
+                  <table className="w-full text-xs" data-testid="admin-attached-customers-table">
+                    <thead>
+                      <tr className="text-left text-glacier border-b border-ash">
+                        <Th>{L("Client", "Customer")}</Th>
+                        <Th>{L("Rattaché", "Attached")}</Th>
+                        <Th>{L("Source", "Source")}</Th>
+                        <Th>{L("Cmdes", "Orders")}</Th>
+                        <Th>{L("CA validé", "Revenue")}</Th>
+                        <Th>{L("Commissions", "Commissions")}</Th>
+                        <Th>{L("Dernière", "Last")}</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customers.map((c) => (
+                        <tr key={c.email} className="border-b border-ash/60"
+                            data-testid={`admin-attached-customer-${c.email}`}>
+                          <td className="px-3 py-2 text-nordfjord break-all">
+                            {c.email}
+                            {c.has_account && <span className="ml-1.5 text-[9px] uppercase tracking-wider text-nova">· acc</span>}
+                          </td>
+                          <td className="px-3 py-2 font-data text-glacier">
+                            {c.bound_at ? new Date(c.bound_at).toLocaleDateString(lang) : "—"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-data uppercase tracking-wider bg-clinical text-nordfjord">
+                              {c.source || "—"}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 font-semibold">{c.orders_count || 0}</td>
+                          <td className="px-3 py-2">{money(c.revenue_validated || 0)}</td>
+                          <td className="px-3 py-2 font-semibold text-nova">{money(c.commission_validated || 0)}</td>
+                          <td className="px-3 py-2 font-data text-glacier">
+                            {c.last_order_at ? new Date(c.last_order_at).toLocaleDateString(lang) : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-glacier">
+                  {L("Aucun client rattaché.", "No attached customers.")}
+                </p>
+              )}
             </div>
 
             <div>

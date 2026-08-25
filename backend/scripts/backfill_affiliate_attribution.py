@@ -75,16 +75,82 @@ async def _main():
         )
         n_attributed += 1
 
+        # 2b. Créer le binding client → affilié (rattachement durable) si absent.
+        # $setOnInsert n'écrase JAMAIS un binding déjà présent (règle: un client
+        # reste acquis à celui qui l'a amené en premier, même après backfill).
+        try:
+            await db.affiliate_bindings.update_one(
+                {"email": order_email},
+                {"$setOnInsert": {
+                    "email": order_email,
+                    "affiliate_id": aff["id"],
+                    "affiliate_code": aff["code"],
+                    "source": "backfill",
+                    "bound_at": datetime.now(timezone.utc).isoformat(),
+                }},
+                upsert=True,
+            )
+        except Exception as e:
+            print(f"  WARN binding not stored for {order_email}: {type(e).__name__}")
+
         # 3. Si la commande est déjà payée, créer le referral (idempotent)
         if order.get("payment_status") == "paid":
             order["affiliate_id"] = aff["id"]  # nécessaire pour la fn
             await affiliate_on_order_paid(order)
             n_referred += 1
 
-    print(f"\n=== BACKFILL {'DRY-RUN' if DRY_RUN else 'APPLIED'} ===")
+    print(f"\n=== BACKFILL {'DRY-RUN' if DRY_RUN else 'APPLIED'} (pass 1: attributions) ===")
     print(f"attributed : {n_attributed}")
     print(f"referrals created (paid orders) : {n_referred}")
     print(f"skipped    : {n_skipped}")
+
+    # ------------------------------------------------------------------
+    # Pass 2 — Bindings pour les commandes déjà attribuées mais sans lien
+    # sticky enregistré (cas des attributions faites avant l'introduction
+    # des bindings, ou par un backfill antérieur qui ne les créait pas).
+    # ------------------------------------------------------------------
+    print("\n[backfill] pass 2 : ensure sticky bindings for attributed orders")
+    n_bindings = 0
+    n_bindings_skip = 0
+    cursor = db.orders.find(
+        {"affiliate_id": {"$exists": True, "$ne": None}},
+        {"_id": 0, "id": 1, "email": 1, "user_id": 1, "affiliate_id": 1, "affiliate_code": 1},
+    )
+    async for order in cursor:
+        email = (order.get("email") or "").lower().strip()
+        aff_id = order.get("affiliate_id")
+        aff_code = order.get("affiliate_code")
+        if not email or not aff_id:
+            n_bindings_skip += 1
+            continue
+        existing = await db.affiliate_bindings.find_one({"email": email}, {"_id": 0, "affiliate_id": 1})
+        if existing:
+            n_bindings_skip += 1
+            continue
+        if DRY_RUN:
+            print(f"  BIND {email} → {aff_code}")
+            n_bindings += 1
+            continue
+        try:
+            await db.affiliate_bindings.update_one(
+                {"email": email},
+                {"$setOnInsert": {
+                    "email": email,
+                    "affiliate_id": aff_id,
+                    "affiliate_code": aff_code,
+                    "source": "backfill_pass2",
+                    "bound_at": datetime.now(timezone.utc).isoformat(),
+                    **({"user_id": order["user_id"]} if order.get("user_id") else {}),
+                }},
+                upsert=True,
+            )
+            n_bindings += 1
+            print(f"  BIND {email} → {aff_code}")
+        except Exception as e:
+            print(f"  ERR binding {email}: {type(e).__name__}")
+    print(f"\n=== PASS 2 {'DRY-RUN' if DRY_RUN else 'APPLIED'} ===")
+    print(f"bindings created : {n_bindings}")
+    print(f"bindings skipped (already present or no email) : {n_bindings_skip}")
 
 
 asyncio.run(_main())
