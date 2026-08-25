@@ -1199,7 +1199,17 @@ async def affiliate_on_order_paid(order: dict) -> None:
         commission = 0.0
     else:
         excluded_reason = None
-        status = "pending"
+        # Si le hold est nul, la commission est acquise immédiatement à la
+        # confirmation de paiement (à condition qu'aucun remboursement ne soit
+        # en cours). Sinon la maturation se fera via `_affiliate_approve_matured`
+        # une fois le délai `AFFILIATE_APPROVAL_HOLD_DAYS` écoulé.
+        refund_in_progress = (order.get("refund_status") or "") in _REMBOURSEMENT_EN_COURS
+        auto_approve = (
+            float(s.AFFILIATE_APPROVAL_HOLD_DAYS) <= 0
+            and order.get("payment_status") == "paid"
+            and not refund_in_progress
+        )
+        status = "approved" if auto_approve else "pending"
         # Taux au palier EFFECTIF courant de l'affilié
         metrics = await _affiliate_compute_metrics(affiliate_id)
         commission = round(base * metrics["commission_rate"], 2)
@@ -1217,7 +1227,7 @@ async def affiliate_on_order_paid(order: dict) -> None:
         "status": status,                       # pending|approved|paid<reversed|excluded
         "excluded_reason": excluded_reason,
         "created_at": now,
-        "approved_at": None,
+        "approved_at": now if status == "approved" else None,
         "paid_at": None,
         "payout_id": None,
     }
