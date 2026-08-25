@@ -8959,7 +8959,7 @@ AFFILIATE_INVITE_TTL_HOURS = 168          # 7 jours
 # une date se recoupe avec l'archive du document. Changer cette valeur redemande
 # l'acceptation à tout le monde — c'est le seul mécanisme de redemande, donc ne
 # la modifier que lorsque le texte change réellement.
-AFFILIATE_TERMS_VERSION = os.environ.get("AFFILIATE_TERMS_VERSION", "2026-08-22")
+AFFILIATE_TERMS_VERSION = os.environ.get("AFFILIATE_TERMS_VERSION", "2026-08-22b")
 
 # Fenêtre d'attribution du clic. Portée de 30 à 365 jours : le rattachement
 # durable ne couvre que les clients qui REVIENNENT, jamais leur première
@@ -9762,12 +9762,18 @@ async def affiliate_performance(request: Request):
 
 
 async def affiliate_customers(request: Request):
-    """Liste des clients rattachés durablement à l'affilié.
+    """Liste des clients que l'affilié a APPORTÉS. Historique, pas un droit.
 
-    Un client est rattaché quand une première commande a été attribuée à
-    l'affilié (via cookie, code ou binding). Toute commande future du même
-    email lui reste attribuée, sans expiration — c'est la « rétention » qui
-    fait la valeur d'un affilié dans le temps.
+    Un client entre dans cette liste quand une commande lui a été attribuée
+    via le lien ou le code de l'affilié.
+
+    CE QUE CETTE LISTE N'EST PAS : une garantie de revenu. Les commandes
+    futures de ces mêmes clients n'ouvrent droit à commission QUE si le lien
+    ou le code est utilisé à nouveau. Un client peut donc figurer ici et
+    commander sans rien rapporter.
+
+    La distinction compte : présenter cette liste comme une « rétention »
+    laisserait croire à un revenu récurrent qui n'existe pas.
 
     Retour agrégé : par client, on renvoie {email, bound_at, source,
     orders_count, revenue_validated, commission_validated, last_order_at}.

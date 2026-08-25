@@ -1169,13 +1169,20 @@ export default function AffiliateDashboard() {
             <div className="bg-white rounded-xl border border-ash overflow-hidden">
               <div className="px-6 py-4 border-b border-ash flex items-center justify-between">
                 <div>
+                  {/* « APPORTÉS » et non « RATTACHÉS », et la nuance n'est pas
+                      cosmétique. Le sous-titre annonçait un rattachement à vie
+                      qui attribuait toute commande future, avec ou sans code.
+                      Cette règle a été retirée : une commande n'ouvre droit à
+                      commission que si le lien ou le code est utilisé POUR
+                      ELLE. Laisser l'ancienne promesse ferait compter l'affilié
+                      sur un revenu qui n'arrivera pas. */}
                   <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
-                    {L("VOS CLIENTS RATTACHÉS", "YOUR ATTACHED CUSTOMERS")}
+                    {L("CLIENTS QUE VOUS AVEZ APPORTÉS", "CUSTOMERS YOU BROUGHT IN")}
                   </p>
                   <p className="font-data text-[10px] text-glacier mt-0.5">
                     {L(
-                      "Rattachement à vie : toute commande future de ces clients vous est attribuée, avec ou sans code.",
-                      "Lifetime attachment: every future order from these customers is attributed to you, with or without a code."
+                      "Historique de vos apports. Leurs commandes futures ne vous rapportent QUE si votre lien ou votre code est utilisé.",
+                      "A record of who you brought in. Their future orders earn you a commission ONLY when your link or code is used."
                     )}
                   </p>
                 </div>
@@ -1186,8 +1193,8 @@ export default function AffiliateDashboard() {
               {customers.length === 0 ? (
                 <div className="p-8 text-center text-glacier text-sm" data-testid="attached-customers-empty">
                   {L(
-                    "Aucun client rattaché pour l'instant. Partagez votre lien ou votre code pour amener votre premier client.",
-                    "No attached customers yet. Share your link or code to bring in your first customer."
+                    "Aucun client apporté pour l'instant. Partagez votre lien ou votre code pour amener votre premier client.",
+                    "No customers brought in yet. Share your link or code to bring in your first customer."
                   )}
                 </div>
               ) : (

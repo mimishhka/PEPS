@@ -24,17 +24,17 @@ const QA = [
     fr: {
       q: "Mon code ou mon lien expirent-ils ?",
       a: [
-        "Non, ni l'un ni l'autre. Et un client que vous avez amené vous reste acquis, même s'il commande des années plus tard sans rien saisir.",
-        "Trois choses vous font gagner une commission, dans cet ordre : le clic sur votre lien, la saisie de votre code au paiement, et à défaut de l'un et l'autre, le rattachement établi la première fois que ce client est venu par vous.",
-        "Concrètement : un client arrivé par votre lien il y a deux ans, qui revient aujourd'hui directement sur le site et commande sans code, vous rapporte toujours votre commission. Il n'a rien à saisir, rien à retenir. Le rattachement suit son compte autant que son courriel : s'il change d'adresse, il reste reconnu comme votre client.",
+        "Ni l'un ni l'autre : votre code vaut tant que votre compte est actif, et votre lien de même.",
+        "Mais la commission se gagne commande par commande : il faut que votre lien ait été cliqué, ou votre code saisi, POUR CETTE COMMANDE-LÀ. Le clic dépose un témoin valable 365 jours, pendant lesquels le même navigateur vous attribue les commandes sans rien à saisir.",
+        "Concrètement : un client arrivé par votre lien il y a deux ans, qui revient aujourd'hui directement sur le site et commande sans code, ne vous rapporte rien. Il figure toujours dans vos « clients apportés », mais cette liste est un historique — elle n'ouvre droit à aucune commission.",
       ],
     },
     en: {
       q: "Do my code or my link expire?",
       a: [
-        "Neither does. And a customer you brought stays yours, even if they order years later without entering anything.",
-        "Three things earn you a commission, in this order: a click on your link, your code entered at checkout, and failing both, the link established the first time that customer came through you.",
-        "In practice: a customer who arrived through your link two years ago, returning today directly to the site and ordering without a code, still earns you your commission. Nothing to enter, nothing to remember. The link follows their account as well as their email: if they change address, they remain recognised as your customer.",
+        "Neither: your code is valid as long as your account is active, and so is your link.",
+        "But a commission is earned order by order: your link must have been clicked, or your code entered, FOR THAT PARTICULAR ORDER. The click sets a cookie valid for 365 days, during which the same browser credits orders to you with nothing to type.",
+        "In practice: a customer who arrived through your link two years ago, returning today straight to the site and ordering without a code, earns you nothing. They still appear in your "customers you brought in", but that list is a record — it grants no commission.",
       ],
     },
   },
@@ -43,17 +43,17 @@ const QA = [
     fr: {
       q: "Un autre affilié peut-il me prendre mon client ?",
       a: [
-        "Il peut toucher la commission d'une commande, pas vous prendre le client.",
+        "Chaque commande se gagne séparément : personne ne « possède » un client.",
         "Si votre client passe une fois par le lien ou le code d'un autre affilié, cette commande-là lui revient — il a déclenché cette vente, et il serait injuste qu'il travaille pour rien.",
-        "Mais votre rattachement, lui, ne bouge pas. Dès la commande suivante sans signal particulier, le client vous revient. Le rattachement se pose une seule fois, à la première vente, et ne change jamais ensuite.",
+        "Il n'y a pas de rattachement durable : une commande passée sans lien ni code ne rapporte à personne. C'est la contrepartie de la règle — vous ne perdez jamais un client acquis, parce qu'aucun client n'est acquis d'avance.",
       ],
     },
     en: {
       q: "Can another affiliate take my customer?",
       a: [
-        "They can earn the commission on one order, not take the customer from you.",
+        "Each order is earned separately: nobody "owns" a customer.",
         "If your customer goes once through another affiliate's link or code, that order goes to them — they triggered that sale, and it would be unfair for them to work for nothing.",
-        "But your link does not move. From the next order without a particular signal, the customer comes back to you. The link is set once, on the first sale, and never changes afterward.",
+        "There is no permanent attachment: an order placed with no link and no code earns nobody anything. That is the other side of the rule — you never lose a customer you had won, because no customer is won in advance.",
       ],
     },
   },
@@ -64,7 +64,7 @@ const QA = [
       a: [
         "Sur le sous-total des produits après le rabais accordé à votre contact. La livraison et les taxes n'entrent jamais dans le calcul.",
         "Exemple au palier Standard, à 10 % : une commande de 150 $ de produits, moins le rabais de 10 % de votre contact, donne une base de 135 $ — soit 13,50 $ de commission.",
-        "C'est cette base, et non le total payé par le client, qui apparaît partout dans votre tableau de bord. À noter : un client fidèle qui commande sans utiliser votre code n'obtient pas de rabais, donc la base est le sous-total entier — et votre commission est plus élevée.",
+        "C'est cette base, et non le total payé par le client, qui apparaît partout dans votre tableau de bord. À noter : une commande passée sans votre code ni votre lien n'ouvre droit à aucune commission — il n'y a donc pas de base à calculer.",
       ],
     },
     en: {
@@ -72,7 +72,7 @@ const QA = [
       a: [
         "On the product subtotal after the discount granted to your contact. Shipping and taxes never enter the calculation.",
         "Example at the Standard tier, 10%: a $150 product order, less your contact's 10% discount, gives a base of $135 — so $13.50 in commission.",
-        "It is this base, not the total paid by the customer, that appears throughout your dashboard. Note: a returning customer who orders without using your code gets no discount, so the base is the full subtotal — and your commission is higher.",
+        "It is this base, not the total paid by the customer, that appears throughout your dashboard. Note: an order placed without your code or link earns no commission at all — so there is no base to calculate.",
       ],
     },
   },

@@ -1006,31 +1006,31 @@ async def affiliate_capture_click(request: Request, response: Response, code: st
 
 
 async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
-    """Attache l'affilié à la commande (champ additif). TROIS sources, par ordre.
+    """Attache l'affilié à la commande. DEUX sources, et rien d'autre.
 
     1. Le cookie fn_ref, posé au clic sur un lien de parrainage.
     2. À défaut, le code de réduction saisi au paiement.
-    3. À défaut, le rattachement durable du client, mémorisé sur son courriel.
 
-    Les deux dernières manquaient, et le trou était réel. Un affilié partage
-    naturellement son CODE — à l'oral, dans une publication, sans lien
-    cliquable. Le client obtenait son rabais et l'affilié ne touchait rien.
-    Et le cookie expirant à 30 jours, un client fidèle revenu plus tard
-    cessait purement et simplement de compter pour celui qui l'avait amené.
+    Le code compte autant que le lien, et c'est nécessaire : un affilié partage
+    naturellement son CODE — à l'oral, dans une conversation, sans rien de
+    cliquable. Sans cette seconde source, le client obtenait son rabais et
+    l'affilié ne touchait rien.
 
-    Le code, lui, n'expire pas : il vaut tant que l'affilié est actif.
+    IL N'Y A PAS DE TROISIÈME SOURCE. La commission récompense un ACTE
+    d'apport, et cet acte doit être visible SUR LA COMMANDE.
 
-    Deux notions distinctes, et c'est délibéré :
+    Deux notions à ne pas confondre, et la distinction est tout le sujet :
 
-    — L'ATTRIBUTION de la commande suit le signal le plus frais. Celui dont le
-      lien ou le code a déclenché CETTE vente touche la commission, même si le
-      client était rattaché à quelqu'un d'autre. Sans cela, un affilié qui fait
-      revenir un ancien client travaillerait pour rien.
+    — L'ATTRIBUTION décide de la commission. Elle exige un lien ou un code sur
+      la commande. Rien d'autre n'y donne droit.
 
-    — Le RATTACHEMENT du client, lui, ne bouge jamais une fois posé. Il revient
-      à celui qui a amené la personne en premier, et sert de repli quand plus
-      aucun signal n'est présent — un client fidèle qui commande directement
-      continue donc de compter pour lui, sans limite de durée.
+    — Le RATTACHEMENT n'est plus qu'un HISTORIQUE : il enregistre qui a amené
+      qui, alimente la liste « clients apportés » du tableau de bord, et
+      n'ouvre droit à RIEN. Il est écrit ci-dessous, jamais lu ici.
+
+    Conséquences symétriques, et il faut assumer les deux : on ne gagne rien
+    sur un client fidèle qui commande sans rien saisir, mais on ne perd jamais
+    non plus un client au profit d'un rattachement posé par quelqu'un d'autre.
 
     Anti auto-parrainage : refuse si l'email de commande == email affilié.
     À appeler DANS checkout() juste avant db.orders.insert_one(order_doc)."""
@@ -1061,29 +1061,18 @@ async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
             {"_id": 0}
         )
 
-    if not affiliate:
-        # Aucun signal sur cette commande : on retombe sur le rattachement
-        # durable du client. C'est ce qui rend une clientèle fidèle réellement
-        # acquise à l'affilié qui l'a apportée.
-        #
-        # Deux clés, et le COMPTE passe en premier. Un client connecté peut
-        # changer l'adresse de son compte, ou commander avec une adresse de
-        # livraison différente : chercher d'abord par courriel le perdrait
-        # alors que son compte, lui, n'a pas bougé. Le courriel reste la
-        # seconde clé, indispensable aux commandes passées sans compte.
-        cle = None
-        _uid = str(order_doc.get("user_id") or "").strip()
-        if _uid:
-            cle = {"user_id": _uid}
-        lien = await s.db.affiliate_bindings.find_one(cle, {"_id": 0}) if cle else None
-        if not lien and order_email:
-            lien = await s.db.affiliate_bindings.find_one({"email": order_email}, {"_id": 0})
-        if lien:
-            affiliate = await s.db.affiliates.find_one(
-                {"id": lien["affiliate_id"], "status": "active"}, {"_id": 0}
-            )
-            source = "binding"
-
+    # AUCUN REPLI SUR LE RATTACHEMENT. Sans lien ni code SUR CETTE COMMANDE,
+    # il n'y a pas de commission — même si ce client a déjà été amené par cet
+    # affilié, et même s'il figure dans sa liste de clients apportés.
+    #
+    # Le repli existait : il attribuait à l'affilié toutes les commandes
+    # futures d'un client, indéfiniment, sans qu'il ait rien fait pour
+    # celles-là. Un client apporté une fois rapportait à vie.
+    #
+    # La table affiliate_bindings continue d'être ALIMENTÉE plus bas — elle
+    # enregistre qui a amené qui, ce qui a une valeur d'historique — mais elle
+    # n'est plus JAMAIS LUE pour décider d'une commission. Écrire sans lire
+    # est ici volontaire, et la différence est tout le sujet.
     if not affiliate:
         return
 
@@ -1102,7 +1091,10 @@ async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
     # Premier rattachement seulement : $setOnInsert n'écrase jamais un lien
     # existant, ce qui garantit qu'un client reste acquis à celui qui l'a
     # amené même si un autre affilié déclenche une vente entre-temps.
-    if order_email and source != "binding":
+    # `source` ne vaut plus jamais "binding" : la condition d'origine
+    # excluait le cas où l'attribution venait du rattachement lui-même,
+    # ce qui ne peut plus se produire.
+    if order_email:
         try:
             await s.db.affiliate_bindings.update_one(
                 {"email": order_email},
