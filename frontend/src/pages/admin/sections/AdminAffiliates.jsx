@@ -1695,7 +1695,9 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
         commission_note: a.commission_note || "",
         admin_notes: a.admin_notes || "",
       });
-      // Charge la liste des clients rattachés en parallèle — endpoint dédié.
+      // Charge la liste des clients apportés en parallèle — endpoint dédié.
+      // Historique seulement : ces clients ne rapportent une commission
+      // que si le lien ou le code est utilisé sur la commande.
       setCustomersLoading(true);
       try {
         const cr = await api.get(`/admin/affiliates/${affiliateId}/customers`);
@@ -2051,8 +2053,15 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
 
             <div>
               <div className="flex items-center justify-between mb-2">
+                {/* « à vie » retiré : le rattachement n'attribue plus rien.
+                    Une commande n'ouvre droit à commission que si le lien ou
+                    le code est utilisé POUR ELLE. Cette liste reste un
+                    historique de qui a été amené par qui — utile, mais elle
+                    ne promet aucun revenu futur. Même formulation que dans le
+                    tableau de bord de l'affilié, pour que les deux écrans
+                    disent la même chose. */}
                 <p className="text-xs uppercase tracking-wider text-glacier">
-                  {L("Clients rattachés (à vie)", "Attached customers (lifetime)")}
+                  {L("Clients apportés (historique)", "Customers brought in (record)")}
                 </p>
                 <span className="text-[11px] font-data text-glacier" data-testid="admin-attached-customers-count">
                   {customersLoading ? L("chargement…", "loading…") : `${customers.length}`}
@@ -2064,7 +2073,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     <thead>
                       <tr className="text-left text-glacier border-b border-ash">
                         <Th>{L("Client", "Customer")}</Th>
-                        <Th>{L("Rattaché", "Attached")}</Th>
+                        <Th>{L("Apporté le", "Brought in")}</Th>
                         <Th>{L("Source", "Source")}</Th>
                         <Th>{L("Cmdes", "Orders")}</Th>
                         <Th>{L("CA validé", "Revenue")}</Th>
@@ -2101,7 +2110,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 </div>
               ) : (
                 <p className="text-sm text-glacier">
-                  {L("Aucun client rattaché.", "No attached customers.")}
+                  {L("Aucun client apporté.", "No customers brought in.")}
                 </p>
               )}
             </div>
