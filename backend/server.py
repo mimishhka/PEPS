@@ -10889,16 +10889,27 @@ async def admin_affiliate_update(affiliate_id: str, payload: AffiliateAdminUpdat
                 "archived_by": admin.get("email", ""),
             }
             update["code"] = new_code
-            # Désactive l'ancien coupon (single source of truth = coupon actuel).
+            # L'ANCIEN COUPON RESTE ACTIF, à son pourcentage d'origine.
+            #
+            # Il était désactivé ici, ce qui contredisait tout le reste : l'alias
+            # est archivé avec active=True et crédite bien l'affilié, mais sans
+            # coupon vivant le code n'accorde AUCUN rabais. Un contact à qui on
+            # avait donné « MIREIL10 » le saisissait, ne voyait rien se passer,
+            # et abandonnait — alors que les conditions et l'écran promettent
+            # que les liens déjà distribués restent valides.
+            #
+            # Il garde son pourcentage d'origine, et c'est voulu : quelqu'un à
+            # qui on a promis 10 % obtient 10 %, même si l'affilié est passé à
+            # 15 % depuis. Le nouveau code porte le nouveau taux.
             try:
                 await db.coupons.update_one(
                     {"code": old_code, "source": "affiliate"},
-                    {"$set": {"active": False,
-                              "deactivated_at": datetime.now(timezone.utc).isoformat(),
-                              "deactivated_reason": "code_renamed"}},
+                    {"$set": {"active": True,
+                              "superseded_by": new_code,
+                              "superseded_at": datetime.now(timezone.utc).isoformat()}},
                 )
             except Exception as e:
-                logging.warning("[affiliate] désactivation coupon %s: %s", old_code, e)
+                logging.warning("[affiliate] maintien coupon %s: %s", old_code, e)
             # Crée / réactive le coupon au nouveau code + nouveau %
             try:
                 await _affiliate_ensure_coupon(new_code, affiliate_id, percent=float(new_pct))
