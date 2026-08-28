@@ -3,7 +3,6 @@ aliases, metrics, invitations, and payout generation/scheduling."""
 
 import asyncio
 import hashlib
-import hmac
 import logging
 import os
 import re
@@ -93,17 +92,12 @@ def _affiliate_hash_token(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _affiliate_ip_salt() -> bytes:
-    # Dérivé de JWT_SECRET (déjà obligatoire) — pas de nouvelle variable d'env
-    # requise. Permet de comparer "même IP ?" sans jamais stocker l'IP en clair.
-    secret = os.environ.get("JWT_SECRET", "fironova-fallback-salt")
-    return hashlib.sha256(("aff-ip::" + secret).encode("utf-8")).digest()
-
-
-def _affiliate_hash_ip(ip: Optional[str]) -> Optional[str]:
-    if not ip:
-        return None
-    return hmac.new(_affiliate_ip_salt(), ip.encode("utf-8"), hashlib.sha256).hexdigest()
+# _affiliate_ip_salt() et _affiliate_hash_ip() vivaient ici. Elles servaient à
+# comparer « même IP ? » sans stocker l'adresse en clair — utile tant qu'il
+# fallait repérer les commandes d'un affilié à lui-même. Cette règle étant
+# retirée, plus personne n'appelait ces fonctions et plus aucune empreinte
+# n'était lue. Les garder aurait laissé le code prêt à recalculer des
+# empreintes que les conditions annoncent désormais ne plus produire.
 
 
 def _affiliate_referrer_domain(url: str) -> str:
@@ -985,16 +979,24 @@ async def affiliate_capture_click(request: Request, response: Response, code: st
     if not affiliate:
         return
     now = datetime.now(timezone.utc)
-    response.set_cookie(
-        s.AFFILIATE_COOKIE_NAME, code,
-        max_age=s.AFFILIATE_COOKIE_DAYS * 86400,
-        httponly=True, samesite="lax", secure=True, path="/",
-    )
+    # `max_age` OMIS quand AFFILIATE_COOKIE_DAYS vaut 0 : le temoin devient un
+    # temoin de SESSION, efface a la fermeture du navigateur. Passer max_age=0
+    # aurait fait l'inverse de ce qu'on veut — la plupart des navigateurs
+    # traitent 0 comme « expire immediatement » et supprimeraient le temoin
+    # aussitot pose, donc plus aucune attribution par lien du tout.
+    parametres_temoin = {
+        "httponly": True, "samesite": "lax", "secure": True, "path": "/",
+    }
+    if s.AFFILIATE_COOKIE_DAYS > 0:
+        parametres_temoin["max_age"] = s.AFFILIATE_COOKIE_DAYS * 86400
+    response.set_cookie(s.AFFILIATE_COOKIE_NAME, code, **parametres_temoin)
     click_doc = {
         "id": str(uuid.uuid4()),
         "affiliate_id": affiliate["id"],
         "code": code,
-        "ip_hash": _affiliate_hash_ip(s._client_ip(request)),  # noqa: F821
+        # Plus d'empreinte d'IP sur le clic : elle n'était lue nulle part une
+        # fois la détection d'auto-parrainage retirée, et la conserver ferait
+        # mentir la politique de confidentialité.
         "user_agent": (request.headers.get("user-agent", "") or "")[:300],
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(days=s.AFFILIATE_CLICK_TTL_DAYS)).isoformat(),
@@ -1076,14 +1078,14 @@ async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
     if not affiliate:
         return
 
-    affiliate_user_id = str(affiliate.get("user_id") or "").strip()
-    order_user_id = str(order_doc.get("user_id") or "").strip()
-    # Auto-parrainage direct (même email ou même compte utilisateur) : bloqué.
-    if order_email and order_email == (affiliate.get("email") or "").lower().strip():
-        return
-    if affiliate_user_id and order_user_id and affiliate_user_id == order_user_id:
-        return
-
+    # L'AUTO-PARRAINAGE N'EST PLUS BLOQUÉ. Deux gardes se trouvaient ici — même
+    # courriel, même compte — et refusaient de rattacher la commande, donc
+    # aucune commission. Décision commerciale de ne plus l'interdire : un
+    # affilié commande avec son propre code comme n'importe quel client, et
+    # cette commande lui rapporte comme les autres.
+    #
+    # Le rabais, lui, n'a jamais été bloqué : le coupon s'appliquait déjà. Seule
+    # l'attribution l'était.
     order_doc["affiliate_id"] = affiliate["id"]
     order_doc["affiliate_code"] = affiliate["code"]
     order_doc["affiliate_source"] = source
@@ -1127,43 +1129,19 @@ async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
         except Exception as exc:  # pragma: no cover
             logging.warning("[affiliate] compte non rattaché error_type=%s",
                             type(exc).__name__)
-    order_doc["affiliate_ip_hash"] = _affiliate_hash_ip(s._client_ip(request))  # noqa: F821
+    # `affiliate_ip_hash` n'est plus posé sur la commande : son unique lecteur
+    # était la détection d'auto-parrainage, supprimée.
 
 
-async def _affiliate_is_self_order(affiliate: dict, order: dict) -> bool:
-    """self-order = email OU adresse de livraison OU IP hachée en commun avec
-    l'affilié ou avec une commande antérieure déjà marquée self-order."""
-    aff_email = (affiliate.get("email") or "").lower().strip()
-    order_email = (order.get("email") or "").lower().strip()
-    if aff_email and order_email and aff_email == order_email:
-        return True
-
-    aff_user_id = str(affiliate.get("user_id") or "").strip()
-    order_user_id = str(order.get("user_id") or "").strip()
-    if aff_user_id and order_user_id and aff_user_id == order_user_id:
-        return True
-
-    # IP du clic/commande == IP connue de l'affilié (invite/activation)
-    order_ip_hash = order.get("affiliate_ip_hash")
-    if order_ip_hash and order_ip_hash == affiliate.get("ip_hash"):
-        return True
-
-    # Adresse de livraison identique à une adresse connue de l'affilié
-    addr = order.get("shipping_address") or {}
-    norm = _affiliate_norm_address(addr)
-    if norm and norm in (affiliate.get("known_addresses") or []):
-        return True
-    return False
-
-
-def _affiliate_norm_address(addr: dict) -> str:
-    if not addr:
-        return ""
-    parts = [
-        (addr.get("address1") or "").lower().strip(),
-        (addr.get("postal_code") or "").lower().replace(" ", ""),
-    ]
-    return "|".join(p for p in parts if p)
+# _affiliate_is_self_order() et _affiliate_norm_address() vivaient ici. Elles
+# comparaient courriel, compte, empreinte d'IP et adresse de livraison pour
+# écarter les commandes d'un affilié à lui-même. L'auto-parrainage n'étant plus
+# interdit, elles n'avaient plus d'appelant.
+#
+# Leur disparition entraîne celle du rapprochement d'empreintes d'IP, qui
+# n'existait que pour elles : le champ `ip_hash` de l'affilié, celui du clic et
+# `affiliate_ip_hash` sur la commande ne sont plus écrits. Les conditions
+# annonçaient ce rapprochement — elles sont mises à jour en conséquence.
 
 
 async def affiliate_on_order_paid(order: dict) -> None:
@@ -1184,27 +1162,26 @@ async def affiliate_on_order_paid(order: dict) -> None:
     if base <= 0:
         return
 
-    # Exclusion self-order
-    if await _affiliate_is_self_order(affiliate, order):
-        excluded_reason = "self_order"
-        status = "excluded"
-        commission = 0.0
-    else:
-        excluded_reason = None
-        # Si le hold est nul, la commission est acquise immédiatement à la
-        # confirmation de paiement (à condition qu'aucun remboursement ne soit
-        # en cours). Sinon la maturation se fera via `_affiliate_approve_matured`
-        # une fois le délai `AFFILIATE_APPROVAL_HOLD_DAYS` écoulé.
-        refund_in_progress = (order.get("refund_status") or "") in _REMBOURSEMENT_EN_COURS
-        auto_approve = (
-            float(s.AFFILIATE_APPROVAL_HOLD_DAYS) <= 0
-            and order.get("payment_status") == "paid"
-            and not refund_in_progress
-        )
-        status = "approved" if auto_approve else "pending"
-        # Taux au palier EFFECTIF courant de l'affilié
-        metrics = await _affiliate_compute_metrics(affiliate_id)
-        commission = round(base * metrics["commission_rate"], 2)
+    # Plus d'exclusion pour auto-parrainage : la commande d'un affilié passée
+    # avec son propre code est traitée comme toute autre. Le bloc retiré ici
+    # mettait le referral en statut « excluded » avec une commission nulle et
+    # le motif « self_order » — c'est ce motif que le panneau de risque de
+    # l'admin affichait.
+    excluded_reason = None
+    # Si le hold est nul, la commission est acquise immédiatement à la
+    # confirmation de paiement (à condition qu'aucun remboursement ne soit
+    # en cours). Sinon la maturation se fera via `_affiliate_approve_matured`
+    # une fois le délai `AFFILIATE_APPROVAL_HOLD_DAYS` écoulé.
+    refund_in_progress = (order.get("refund_status") or "") in _REMBOURSEMENT_EN_COURS
+    auto_approve = (
+        float(s.AFFILIATE_APPROVAL_HOLD_DAYS) <= 0
+        and order.get("payment_status") == "paid"
+        and not refund_in_progress
+    )
+    status = "approved" if auto_approve else "pending"
+    # Taux au palier EFFECTIF courant de l'affilié
+    metrics = await _affiliate_compute_metrics(affiliate_id)
+    commission = round(base * metrics["commission_rate"], 2)
 
     now = datetime.now(timezone.utc).isoformat()
     doc = {

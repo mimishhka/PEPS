@@ -66,7 +66,16 @@ class DummyReferrals:
         return types.SimpleNamespace(matched_count=len(self.docs))
 
 
-def test_affiliate_attach_to_order_rejects_self_order_by_user_id(server_module):
+def test_affiliate_attach_to_order_accepts_self_order_by_user_id(server_module):
+    """L'auto-parrainage n'est plus bloqué.
+
+    Ce test verifiait l'inverse : que la commande d'un affilie a lui-meme ne
+    lui soit PAS rattachee. La regle a change — un affilie commande avec son
+    propre code comme n'importe quel client, et la commande lui rapporte. On
+    garde le test en le retournant plutot que de le supprimer : il tient
+    desormais la nouvelle regle, et signalera une reintroduction accidentelle
+    de l'ancienne.
+    """
     affiliate = {"id": "aff-1", "code": "SELF", "status": "active", "user_id": "user-1"}
     server_module.db = types.SimpleNamespace(affiliates=DummyAffiliates(affiliate))
 
@@ -75,8 +84,8 @@ def test_affiliate_attach_to_order_rejects_self_order_by_user_id(server_module):
 
     asyncio.run(server_module.affiliate_attach_to_order(order_doc, request))
 
-    assert "affiliate_id" not in order_doc
-    assert "affiliate_code" not in order_doc
+    assert order_doc.get("affiliate_id") == "aff-1"
+    assert order_doc.get("affiliate_code") == "SELF"
 
 
 def test_mark_paid_does_not_reactivate_reversed_referrals(server_module):

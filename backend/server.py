@@ -2640,6 +2640,34 @@ async def _coupon_discount(coupon: dict, subtotal: float,
     sans email ni items reste strictement retrocompatible."""
     if not coupon or not coupon.get("active"):
         raise HTTPException(400, "Invalid coupon code")
+
+    # Un code d'affilié ne vaut que tant que son compte est actif.
+    #
+    # Suspendre un affilié ne changeait RIEN au rabais : le statut est porté par
+    # le document `affiliates`, le rabais par un document `coupons` distinct, et
+    # rien ne les reliait. Un affilié suspendu pour fraude continuait donc de
+    # faire économiser ses contacts — sans commission, ce qui rendait le défaut
+    # invisible dans les chiffres.
+    #
+    # Le contrôle est fait ICI, et non en désactivant le coupon au moment de la
+    # suspension, parce que cette couche est la seule que traversent À LA FOIS
+    # la validation du panier et le calcul final au paiement. Un drapeau
+    # recopié peut se désynchroniser ; une lecture du statut, non.
+    if _is_affiliate_coupon(coupon):
+        _code = (coupon.get("code") or "").upper()
+        # La recherche par `aliases.code` est indispensable : après un
+        # changement de rabais, l'ancien code reste un coupon vivant, et son
+        # propriétaire ne se retrouve plus par `affiliates.code`. Sans cette
+        # branche, un affilié suspendu aurait gardé ses anciens codes valides.
+        aff = await db.affiliates.find_one(
+            {"$or": [{"id": coupon.get("affiliate_id")},
+                     {"code": _code},
+                     {"aliases.code": _code}]},
+            {"_id": 0, "status": 1},
+        )
+        if not aff or aff.get("status") != "active":
+            raise HTTPException(400, "Invalid coupon code")
+
     if coupon.get("expires_at"):
         try:
             if datetime.fromisoformat(coupon["expires_at"].replace("Z", "+00:00")) < datetime.now(timezone.utc):
@@ -8959,18 +8987,27 @@ AFFILIATE_INVITE_TTL_HOURS = 168          # 7 jours
 # une date se recoupe avec l'archive du document. Changer cette valeur redemande
 # l'acceptation à tout le monde — c'est le seul mécanisme de redemande, donc ne
 # la modifier que lorsque le texte change réellement.
-AFFILIATE_TERMS_VERSION = os.environ.get("AFFILIATE_TERMS_VERSION", "2026-08-22b")
+AFFILIATE_TERMS_VERSION = os.environ.get("AFFILIATE_TERMS_VERSION", "2026-08-25b")
 
-# Fenêtre d'attribution du clic. Portée de 30 à 365 jours : le rattachement
-# durable ne couvre que les clients qui REVIENNENT, jamais leur première
-# commande. Un visiteur qui cliquait un lien, hésitait, puis achetait au 35e
-# jour sans saisir le code ne rapportait donc rien à l'affilié — alors que
-# c'est lui qui l'avait amené. Trois à six mois de réflexion sont ordinaires
-# sur ce type de produit.
+# Le témoin d'attribution ne SURVIT PLUS À LA VISITE.
 #
-# 365 et non davantage : les navigateurs plafonnent la durée de vie d'un témoin
-# autour de 400 jours et rogneraient silencieusement toute valeur supérieure.
-AFFILIATE_COOKIE_DAYS = int(os.environ.get("AFFILIATE_COOKIE_DAYS", "365"))
+# Il valait 365 jours. La règle du programme a changé : la commission se gagne
+# quand le lien, le code QR ou le code de réduction est UTILISÉ pour la commande
+# — pas parce qu'un clic a eu lieu l'an dernier. Un témoin d'un an créditait
+# l'affilié sur des commandes où le client n'avait rien fait, ce qui est
+# exactement le rattachement durable que nous avons supprimé, sous un autre nom.
+#
+# 0 = témoin de session : le navigateur l'efface en se fermant. C'est la durée
+# la plus courte qui permette encore au clic de produire son effet, puisque
+# l'achat se fait quelques pages plus loin. Le pendant côté navigateur est
+# `sessionStorage` dans useAffiliateRef.js — les deux meurent ensemble, et il
+# FAUT qu'ils meurent ensemble : sinon le rabais et la commission cesseraient à
+# des moments différents.
+#
+# La variable d'environnement reste, pour pouvoir rallonger sans redéployer.
+# Toute valeur > 0 rétablit un témoin persistant, avec les conséquences
+# ci-dessus — et les conditions devraient alors être réécrites.
+AFFILIATE_COOKIE_DAYS = int(os.environ.get("AFFILIATE_COOKIE_DAYS", "0"))
 # Rétention des enregistrements de clics (purge auto). Volontairement DÉCOUPLÉ
 # de AFFILIATE_COOKIE_DAYS malgré l'écart apparent : ces documents servent aux
 # statistiques, pas à l'attribution — celle-ci lit la valeur du témoin, jamais
@@ -9008,7 +9045,8 @@ AFFILIATE_TIER_LABELS = {
 try:
     from services.affiliate import (  # noqa: F401
         _affiliate_tier_for_revenue, _affiliate_tier_index, _affiliate_tier_bounds,
-        _affiliate_hash_token, _affiliate_hash_ip, _affiliate_referrer_domain,
+        _palier_effectif,
+        _affiliate_hash_token, _affiliate_referrer_domain,
         _affiliate_normalize_custom_code, _affiliate_gen_code_v2, _fetch_cad_to_usd_rate,
         _normalize_payout, _detect_payout_network, _affiliate_quarter_start, _affiliate_compute_metrics,
         _affiliate_compute_list_metrics, _affiliate_public, _affiliate_send_invite,
@@ -9021,7 +9059,8 @@ try:
 except ImportError:  # package-relative import (uvicorn backend.server:app)
     from backend.services.affiliate import (  # noqa: F401
         _affiliate_tier_for_revenue, _affiliate_tier_index, _affiliate_tier_bounds,
-        _affiliate_hash_token, _affiliate_hash_ip, _affiliate_referrer_domain,
+        _palier_effectif,
+        _affiliate_hash_token, _affiliate_referrer_domain,
         _affiliate_normalize_custom_code, _affiliate_gen_code_v2, _fetch_cad_to_usd_rate,
         _normalize_payout, _detect_payout_network, _affiliate_quarter_start, _affiliate_compute_metrics,
         _affiliate_compute_list_metrics, _affiliate_public, _affiliate_send_invite,
@@ -9436,8 +9475,10 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request,
             "code": code,
             "coupon_percent": discount_percent_effective,
             "activated_at": now.isoformat(),
-            "ip_hash": _affiliate_hash_ip(_client_ip(request)),
-            "known_addresses": [],
+            # `ip_hash` et `known_addresses` ne sont plus enregistrés :
+            # l'auto-parrainage n'est plus interdit, et ces deux champs
+            # n'existaient que pour le détecter. `known_addresses` n'a
+            # d'ailleurs jamais été alimenté — il était lu, jamais écrit.
             "payout_address": _payout_addr,
             "payout_currency": _payout_cur,
             "invite_token_hash": None,
@@ -9506,6 +9547,14 @@ async def affiliate_ticket_create(payload: AffiliateTicketIn, request: Request):
     collections obligerait à deux requêtes pour afficher trois messages."""
     aff = await get_current_affiliate(request)
     now = datetime.now(timezone.utc).isoformat()
+    # Palier EFFECTIF, celui que l'affilie lit sur son tableau de bord. Un
+    # echec de calcul ne doit pas empecher d'ouvrir un billet : le contexte est
+    # un confort pour l'admin, la demande d'aide est l'essentiel.
+    try:
+        _snapshot_tier = (await _affiliate_compute_metrics(aff["id"]))["tier"]
+    except Exception as e:
+        logging.warning("[affiliate] palier indisponible pour le billet: %s", e)
+        _snapshot_tier = ""
     doc = {
         "id": str(uuid.uuid4()),
         "affiliate_id": aff["id"],
@@ -9521,7 +9570,12 @@ async def affiliate_ticket_create(payload: AffiliateTicketIn, request: Request):
         # expliquent la question d'aujourd'hui. Les relire au moment de
         # répondre donnerait un état qui a peut-être changé entre-temps.
         "snapshot": {
-            "tier": aff.get("manual_tier") or "",
+            # `manual_tier` n'est pas le palier de l'affilie : c'est une
+            # surcharge, vide pour la plupart d'entre eux. L'instantane
+            # affichait donc « — » a l'admin pour quelqu'un qui est au palier
+            # or, et bronze pour quelqu'un dont le chiffre d'affaires vaut or.
+            # Le contexte d'un billet doit montrer ce que la personne VOIT.
+            "tier": _snapshot_tier,
             "payout_address": aff.get("payout_address", ""),
             "payout_currency": aff.get("payout_currency", ""),
         },
@@ -10218,8 +10272,6 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
             "commission_note": payload.commission_note or "",
             "payout_currency": payout_currency,
             "payout_address": "",
-            "ip_hash": None,
-            "known_addresses": [],
             "aliases": [],
             "invite_token_hash": _affiliate_hash_token(raw),
             "invite_expires_at": expires,
@@ -10242,8 +10294,20 @@ async def admin_affiliate_resend(affiliate_id: str,
     aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
     if not aff:
         raise HTTPException(404, "Affiliate not found")
-    if aff.get("status") == "active":
-        raise HTTPException(400, "Affiliate already active — no invite to resend")
+    # SEUL un compte encore « invited » peut recevoir un renvoi.
+    #
+    # La condition ne rejetait que « active », donc un compte SUSPENDU passait.
+    # Et plus bas, ce renvoi écrit `status: "invited"` : renvoyer l'invitation à
+    # quelqu'un qu'on venait de suspendre levait sa suspension et lui donnait un
+    # lien pour se réactiver lui-même. Une mesure disciplinaire s'annulait par
+    # un bouton présenté comme un simple renvoi de courriel.
+    if aff.get("status") != "invited":
+        raise HTTPException(
+            400,
+            "Affiliate already active — no invite to resend"
+            if aff.get("status") == "active"
+            else "Suspended affiliate — restore the account before inviting again",
+        )
     await _rate_limit("affiliate_invite", affiliate_id, AFFILIATE_INVITE_MAX,  # noqa: F821
                 AFFILIATE_INVITE_WINDOW, "Trop de renvois. Réessayez plus tard.")
     raw = secrets.token_urlsafe(32)
@@ -10394,8 +10458,6 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
                     "manual_tier": None,
                     "commission_note": payload.commission_note or "",
                     "payout_address": "",
-                    "ip_hash": None,
-                    "known_addresses": [],
                     "aliases": [],
                     "invite_sent_count": 1,
                     "created_at": now.isoformat(),
@@ -10522,8 +10584,12 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
     active = await db.affiliates.count_documents({"status": "active"})
     invited = await db.affiliates.count_documents({"status": "invited"})
     suspended = await db.affiliates.count_documents({"status": "suspended"})
+    # tier_agreement fait PARTIE du calcul du palier : sans entente le palier
+    # manuel n'est qu'un plancher, avec entente il fige. Absent de cette
+    # projection, le champ vaudrait None pour tout le monde et la distribution
+    # traiterait chaque entente comme une simple surcharge.
     active_affiliates = await _cursor_all(db.affiliates.find(
-        {"status": "active"}, {"_id": 0, "id": 1, "manual_tier": 1}
+        {"status": "active"}, {"_id": 0, "id": 1, "manual_tier": 1, "tier_agreement": 1}
     ))
 
     # --- Finances (agrégées dans MongoDB) ---
@@ -10654,13 +10720,19 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
         manual_tier = str(affiliate.get("manual_tier") or "").strip().lower() or None
         if manual_tier not in valid_tiers:
             manual_tier = None
-        # Meme regle que _affiliate_compute_metrics() : palier sur les douze mois
-        # glissants, surcharge manuelle prioritaire, aucune retrogradation
-        # trimestrielle. L'ancienne version classait sur le cumul a vie puis
-        # retrogradait si le trimestre passait sous le plancher CUMULE du palier
-        # — un seuil qu'un affilie regulier ne pouvait pas tenir chaque
-        # trimestre. L'admin voyait donc un palier que l'affilie n'avait pas.
-        tier = manual_tier or _affiliate_tier_for_revenue(rolling12)
+        # Le commentaire precedent annoncait « meme regle que
+        # _affiliate_compute_metrics() » et la ligne disait le contraire :
+        # `manual_tier or theorique` fait TOUJOURS gagner le manuel, ce qui est
+        # exactement la formule que _palier_effectif() a ete ecrite pour
+        # remplacer. Elle ignorait `tier_agreement` et rangeait un affilie
+        # ajuste a bronze dans la case bronze alors que son chiffre d'affaires
+        # lui valait or — donc la statistique repetait le defaut que le
+        # commentaire se felicitait d'avoir corrige.
+        tier = _palier_effectif(
+            manual_tier,
+            _affiliate_tier_for_revenue(rolling12),
+            bool(affiliate.get("tier_agreement")),
+        )
         tier_distribution[tier] = tier_distribution.get(tier, 0) + 1
 
     # --- Attribution (clics / conversion) ---
@@ -10780,10 +10852,17 @@ async def admin_affiliates_clicks(admin: dict = Depends(get_admin_user),  # noqa
 
 
 async def admin_affiliates_risk(admin: dict = Depends(get_admin_user)):  # noqa: F821
-    """Détection de risque : referrals exclus (auto-parrainage, IP partagée)
-    et affiliés à surveiller. Retourne la liste + le compte signalé."""
+    """Détection de risque : referrals écartés, à examiner manuellement.
+
+    « self_order » est explicitement exclu de ce panneau. C'était l'unique motif
+    jamais produit, et il n'est plus une anomalie : commander avec son propre
+    code est désormais permis, rabais et commission compris. Les referrals
+    d'avant ce changement gardent leur statut en base — ils décrivent ce qui
+    s'est réellement passé — mais les afficher comme des signaux de risque
+    ferait signaler à l'admin un comportement qui ne l'est plus.
+    """
     flagged = await db.affiliate_referrals.find(
-        {"status": "excluded"},
+        {"status": "excluded", "excluded_reason": {"$ne": "self_order"}},
         {"_id": 0, "id": 1, "order_number": 1, "commission_amount": 1,
          "base_amount": 1, "excluded_reason": 1, "status": 1, "affiliate_id": 1},
     ).sort("created_at", -1).to_list(200)
