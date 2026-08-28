@@ -34,7 +34,7 @@ const QA = [
       a: [
         "Neither: your code is valid as long as your account is active, and so is your link.",
         "But a commission is earned order by order: your link must have been clicked, or your code entered, FOR THAT PARTICULAR ORDER. The click sets a cookie valid for 365 days, during which the same browser credits orders to you with nothing to type.",
-        "In practice: a customer who arrived through your link two years ago, returning today straight to the site and ordering without a code, earns you nothing. They still appear in your "customers you brought in", but that list is a record — it grants no commission.",
+        "In practice: a customer who arrived through your link two years ago, returning today straight to the site and ordering without a code, earns you nothing. They still appear in your “customers you brought in”, but that list is a record — it grants no commission.",
       ],
     },
   },
@@ -51,7 +51,7 @@ const QA = [
     en: {
       q: "Can another affiliate take my customer?",
       a: [
-        "Each order is earned separately: nobody "owns" a customer.",
+        "Each order is earned separately: nobody “owns” a customer.",
         "If your customer goes once through another affiliate's link or code, that order goes to them — they triggered that sale, and it would be unfair for them to work for nothing.",
         "There is no permanent attachment: an order placed with no link and no code earns nobody anything. That is the other side of the rule — you never lose a customer you had won, because no customer is won in advance.",
       ],
