@@ -17,7 +17,7 @@ import { useLang } from "../contexts/LanguageContext";
 // — donc la version bouge et l'acceptation est redemandée. Une révision qui
 // modifie ce que l'affilié touche sans redemander son accord le laisserait
 // engagé par un texte qu'il n'a jamais lu.
-export const AFFILIATE_TERMS_VERSION = "2026-08-22b";
+export const AFFILIATE_TERMS_VERSION = "2026-08-25b";
 
 // Exporté pour que la fenêtre d'acceptation affiche EXACTEMENT ce texte, sans
 // le recopier. Deux exemplaires du même contrat divergeraient à la première
@@ -108,20 +108,20 @@ export const SECTIONS = [
     en: { title: "Sale attribution" },
     paras: [
       {
-        fr: "Une commande est attribuée à l'Affilié lorsque son lien de parrainage ou son code de réduction est utilisé pour cette commande précise. Le lien dépose un témoin de connexion valable 365 jours : toute commande passée pendant cette période depuis le même navigateur est attribuée, sans saisie de code. À défaut, le code doit être saisi au paiement. En l'absence de l'un ou de l'autre sur la commande, aucune commission n'est due, même si le client avait déjà été amené par l'Affilié.",
-        en: "An order is attributed to the Affiliate through three sources, applied in this order. First the referral link: a cookie is set on click and attributes any order placed within the following 365 days, even without a code. Then the discount code entered at checkout, which does not expire and remains valid as long as the Affiliate's account is active. Finally the customer link, established on the first attributed sale.",
+        fr: "Une commande est attribuée à l'Affilié lorsque son lien de parrainage, son code QR ou son code de réduction est utilisé pour cette commande précise. Le lien et le code QR déposent un témoin de connexion valable le temps de la visite : la commande passée au cours de cette visite est attribuée, sans saisie de code. Passé ce moment, le code doit être saisi au paiement. En l'absence de l'un ou de l'autre sur la commande, aucune commission n'est due, même si le client avait déjà été amené par l'Affilié.",
+        en: "An order is attributed to the Affiliate when their referral link, QR code or discount code is used for that particular order. The link and QR code set a cookie lasting for the duration of the visit: an order placed during that visit is attributed, with no code to enter. Beyond that point, the code must be entered at checkout. With neither on the order, no commission is due, even if the customer had previously been brought in by the Affiliate.",
       },
       {
         fr: "Le rattachement durable du client, qui attribuait autrefois toute commande ultérieure sans lien ni code, a été supprimé. La liste des clients apportés que l'Affilié consulte dans son tableau de bord est un historique : elle n'ouvre droit à aucune commission.",
         en: "The permanent customer attachment, which once attributed every later order with no link or code, has been removed. The list of customers brought in that the Affiliate sees in their dashboard is a record: it grants no commission.",
       },
       {
-        fr: "Si un client rattaché passe une commande par le lien ou le code d'un autre affilié, cette commande revient à ce dernier, mais le rattachement demeure inchangé pour les commandes suivantes.",
-        en: "If a linked customer places an order through another affiliate's link or code, that order goes to the latter, but the link remains unchanged for subsequent orders.",
+        fr: "Chaque commande est attribuée séparément. Si un client passe une commande par le lien ou le code d'un autre affilié, cette commande revient à ce dernier ; aucune antériorité ne prime, et la commande suivante sera attribuée de la même manière, à celui dont le lien ou le code aura été utilisé.",
+        en: "Each order is attributed separately. If a customer places an order through another affiliate's link or code, that order goes to the latter; no prior relationship takes precedence, and the next order will be attributed the same way, to whoever's link or code was used.",
       },
       {
-        fr: "Le rattachement est reconnu par l'adresse courriel et, lorsque le client dispose d'un compte, par ce compte. Une commande passée avec une adresse différente et sans compte ne peut pas être reliée. Un témoin de connexion peut par ailleurs être effacé par le visiteur ou perdu lors d'un changement d'appareil.",
-        en: "The link is recognised by email address and, where the customer has an account, by that account. An order placed with a different address and without an account cannot be connected. A cookie may also be deleted by the visitor or lost when changing device.",
+        fr: "L'attribution par le lien ou le code QR repose sur un témoin de connexion, qui peut être refusé, effacé par le visiteur, ou absent en navigation privée. Elle ne franchit ni la fermeture du navigateur, ni le passage à un autre appareil. Le code de réduction, lui, ne dépend d'aucun de ces éléments : saisi au paiement, il attribue la commande dans tous les cas.",
+        en: "Attribution by link or QR code relies on a cookie, which may be refused, deleted by the visitor, or absent in private browsing. It does not survive closing the browser, nor moving to another device. The discount code depends on none of this: entered at checkout, it attributes the order in every case.",
       },
     ],
   },
@@ -201,12 +201,12 @@ export const SECTIONS = [
   },
   {
     id: "fraude",
-    fr: { title: "Fraude et auto-parrainage" },
-    en: { title: "Fraud and self-referral" },
+    fr: { title: "Fraude" },
+    en: { title: "Fraud" },
     paras: [
       {
-        fr: "Les commandes passées par l'Affilié lui-même ne génèrent aucune commission. Sont considérées comme telles les commandes partageant avec l'Affilié l'adresse courriel, le compte client, l'adresse de livraison ou l'empreinte technique de connexion. Ces commandes apparaissent dans l'historique de l'Affilié avec la mention correspondante ; elles ne sont pas dissimulées.",
-        en: "Orders placed by the Affiliate themselves generate no commission. This includes orders sharing with the Affiliate an email address, customer account, shipping address or technical connection fingerprint. Such orders appear in the Affiliate's history with the corresponding note; they are not hidden.",
+        fr: "L'Affilié peut commander pour lui-même en utilisant son propre code. Ces commandes ouvrent droit au rabais et à la commission dans les mêmes conditions que toute autre commande, et comptent dans le chiffre d'affaires servant au calcul du palier. La clause antérieure, qui écartait ces commandes de toute commission et permettait de les identifier par recoupement de l'adresse courriel, du compte client, de l'adresse de livraison ou de l'empreinte technique de connexion, est retirée.",
+        en: "The Affiliate may order for themselves using their own code. Such orders qualify for the discount and the commission on the same terms as any other order, and count towards the revenue used to determine the tier. The earlier clause, which excluded such orders from any commission and allowed them to be identified by cross-referencing email address, customer account, shipping address or technical connection fingerprint, is withdrawn.",
       },
       {
         fr: "FIRONOVA se réserve le droit d'annuler toute commission obtenue par des moyens frauduleux ou contraires aux présentes conditions, y compris rétroactivement, et de suspendre le compte concerné.",
@@ -224,8 +224,8 @@ export const SECTIONS = [
         en: "The processing of personal information is described in the privacy policy, which forms an integral part of these terms.",
       },
       {
-        fr: "Aux fins de la prévention de la fraude, FIRONOVA compare des empreintes cryptographiques irréversibles d'adresses IP, sans conserver celles-ci sous forme lisible. Fait exception l'adresse enregistrée lors de l'acceptation des présentes conditions, conservée en clair à titre de preuve de l'engagement.",
-        en: "For fraud prevention purposes, FIRONOVA compares irreversible cryptographic fingerprints of IP addresses, without retaining them in readable form. An exception applies to the address recorded when accepting these terms, kept in clear as evidence of the commitment.",
+        fr: "FIRONOVA ne compare plus d'empreintes d'adresses IP. Ce rapprochement, décrit dans une version antérieure des présentes conditions, servait uniquement à écarter les commandes de l'Affilié à lui-même ; cette règle ayant été retirée, les empreintes ne sont plus ni calculées ni conservées. Seule demeure l'adresse enregistrée lors de l'acceptation des présentes conditions, conservée en clair à titre de preuve de l'engagement.",
+        en: "FIRONOVA no longer compares IP address fingerprints. This cross-referencing, described in an earlier version of these terms, served solely to exclude the Affiliate's own orders; that rule having been withdrawn, fingerprints are no longer computed or retained. Only the address recorded when accepting these terms remains, kept in clear as evidence of the commitment.",
       },
       {
         fr: "L'Affilié qui traite des renseignements personnels dans le cadre de sa promotion en est le responsable et doit se conformer à la législation applicable.",

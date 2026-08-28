@@ -51,8 +51,16 @@ export function ConfirmProvider({ children }) {
         <AlertDialogContent className="bg-white">
           <AlertDialogHeader>
             <AlertDialogTitle>{options?.title || DEFAULT_TITLE.en}</AlertDialogTitle>
+            {/* whitespace-pre-line : un appelant qui enumere plusieurs
+                consequences les separe par des sauts de ligne. Sans cette
+                regle, le HTML les recolle en un seul bloc — et une boite de
+                confirmation qu'on ne relit pas ne confirme rien. Les espaces
+                ordinaires restent collapses, donc aucun appelant existant ne
+                change d'apparence. */}
             {options?.description ? (
-              <AlertDialogDescription>{options.description}</AlertDialogDescription>
+              <AlertDialogDescription className="whitespace-pre-line">
+                {options.description}
+              </AlertDialogDescription>
             ) : null}
           </AlertDialogHeader>
           <AlertDialogFooter>

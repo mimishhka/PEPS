@@ -13,6 +13,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
 import api, { formatApiError } from "../../../lib/api";
+import { useConfirm } from "../../../components/ConfirmDialog";
 import { useLang } from "../../../contexts/LanguageContext";
 import { Th, Num, Identity, TierBadge, TIER_TONE } from "../ui";
 
@@ -614,7 +615,12 @@ export default function AdminAffiliates() {
                           <td className="px-4 py-2 text-right"><Num value={a.pending_commission} format={money} /></td>
                           <td className="px-4 py-2 text-right">
                             <div className="flex gap-1 justify-end min-w-[9.5rem]">
-                              {pending && <ResendButton affiliateId={a.id} L={L} />}
+                              {/* `pending` couvre « invité » ET « suspendu » —
+                                  bon pour griser la rangée, faux pour ce
+                                  bouton : il reapparaissait des qu'on
+                                  suspendait quelqu'un, proposant de renvoyer
+                                  une invitation a un compte sanctionne. */}
+                              {a.status === "invited" && <ResendButton affiliateId={a.id} L={L} />}
                               <button onClick={() => setDetail(a.id)}
                                 className="px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical transition">
                                 {L("Détails", "Details")}
@@ -950,7 +956,6 @@ function RiskPanel({ risk, L, lang, onOpen }) {
                       className={`text-[11px] px-2 py-0.5 rounded-full ${s.level === "high" ? "bg-error/15 text-error" : "bg-warning/15 text-warning"}`}>
                       {lang === "fr" ? (s.label_fr || s.type) : (s.label_en || s.type)}
                       {s.type === "reversal_rate" ? ` ${Math.round((s.value || 0) * 100)}%` : ""}
-                      {s.type === "self_orders" ? ` ×${s.value ?? ""}` : ""}
                       {s.type === "volume_spike" ? ` ×${s.value ?? ""}` : ""}
                     </span>
                   ))}
@@ -959,7 +964,6 @@ function RiskPanel({ risk, L, lang, onOpen }) {
               <div className="flex items-center gap-3 text-[11px] text-glacier">
                 {a.validated_orders != null && <span>{L("validées", "validated")}: {a.validated_orders}</span>}
                 {a.reversed_orders != null && <span>{L("annulées", "reversed")}: {a.reversed_orders}</span>}
-                {a.self_orders_blocked != null && <span>{L("self", "self")}: {a.self_orders_blocked}</span>}
               </div>
               <button onClick={() => onOpen(affiliateId)}
                 className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md border border-error/30 text-xs text-nordfjord hover:bg-white transition">
@@ -1662,6 +1666,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const [aliasBusy, setAliasBusy] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [customersLoading, setCustomersLoading] = useState(false);
+  const confirm = useConfirm();
 
   const toggleAlias = async (aliasCode, nextActive) => {
     setAliasBusy(aliasCode);
@@ -1737,6 +1742,56 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
       if (k === "coupon_percent") { patch[k] = Number(v); return; }
       patch[k] = v;
     });
+
+    /* Confirmation sur les seuls changements a consequence.
+     *
+     * Trois reglages de ce formulaire ne touchent pas que l'admin : le palier
+     * et l'entente changent ce que l'affilie GAGNE et ce qu'il LIT sur son
+     * ecran, et le pourcentage de rabais RENOMME son code. Les autres (nom,
+     * adresse, notes) se corrigent sans dommage — les confirmer a chaque fois
+     * aurait rendu la boite banale, donc ignoree.
+     *
+     * On enonce la valeur d'arrivee, pas « etes-vous sur ? » : c'est la seule
+     * formulation ou relire la phrase suffit a attraper l'erreur.
+     */
+    const avant = data?.affiliate || {};
+    const lignes = [];
+
+    const palierAvant = avant.manual_tier || "";
+    const palierApres = form.manual_tier || "";
+    if (palierAvant !== palierApres) {
+      const nom = (t) => (t ? t : L("Automatique", "Automatic"));
+      lignes.push(L(`Palier : ${nom(palierAvant)} → ${nom(palierApres)}.`,
+                    `Tier: ${nom(palierAvant)} → ${nom(palierApres)}.`));
+    }
+
+    const ententeAvant = Boolean(avant.tier_agreement);
+    const ententeApres = Boolean(form.tier_agreement);
+    if (ententeAvant !== ententeApres) {
+      lignes.push(ententeApres
+        ? L("Entente activée : le palier est figé et l'affilié lira qu'il ne baissera pas automatiquement.",
+            "Agreement enabled: the tier is frozen and the affiliate will read that it will not drop automatically.")
+        : L("Entente retirée : le palier redevient un simple plancher, sans engagement de permanence.",
+            "Agreement removed: the tier becomes a simple floor again, with no commitment of permanence."));
+    }
+
+    const pctAvant = avant.coupon_percent ?? "";
+    const pctApres = form.coupon_percent ?? "";
+    if (String(pctAvant) !== String(pctApres) && pctApres !== "") {
+      lignes.push(L(`Rabais client : ${pctAvant || 0} % → ${pctApres} %. Le code sera renommé ; l'ancien restera valide en alias.`,
+                    `Customer discount: ${pctAvant || 0}% → ${pctApres}%. The code will be renamed; the old one stays valid as an alias.`));
+    }
+
+    if (lignes.length) {
+      const ok = await confirm({
+        title: L("Confirmer ces changements", "Confirm these changes"),
+        description: lignes.join("\n"),
+        confirmLabel: L("Appliquer", "Apply"),
+        cancelLabel: L("Annuler", "Cancel"),
+      });
+      if (!ok) return;
+    }
+
     await setPatch(patch);
     setEditing(false);
   };
@@ -1892,106 +1947,111 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
 
             {/* Editable fields */}
             {editing && (
-              <div className="rounded-xl border border-nova/40 bg-nova/5 p-4 space-y-3" data-testid="affiliate-edit-form">
+              <div className="rounded-xl border border-nova/40 bg-nova/5 p-4 space-y-4" data-testid="affiliate-edit-form">
                 <p className="font-data text-[11px] uppercase tracking-[0.2em] text-nova">
                   {L("PARAMÈTRES ÉDITABLES", "EDITABLE SETTINGS")}
                 </p>
-                <div className="grid sm:grid-cols-2 gap-3">
+
+                <EditGroupe titre={L("Identité", "Identity")}>
                   <EditField label={L("Nom d'affichage", "Display name")}
                     value={form.name} onChange={(v) => setForm({ ...form, name: v })}
-                    test="edit-name" />
-                  <EditField label={L("% promo public (coupon)", "Public promo % (coupon)")}
+                    test="edit-name"
+                    hint={L("Ce que l'affilié voit dans son espace.",
+                            "What the affiliate sees in their account.")} />
+                </EditGroupe>
+
+                <EditGroupe titre={L("Rabais accordé aux clients", "Discount given to customers")}>
+                  <EditField label={L("Pourcentage de rabais", "Discount percentage")}
                     type="number" min={0} max={100} step={1}
                     value={form.coupon_percent} onChange={(v) => setForm({ ...form, coupon_percent: v })}
-                    test="edit-coupon-percent" />
-                  <EditField label={L("Adresse de paiement", "Payout address")}
+                    test="edit-coupon-percent"
+                    hint={L("Ce que ses contacts économisent avec son code. Le modifier RENOMME le code ; l'ancien reste valide en alias.",
+                            "What their contacts save with the code. Changing this RENAMES the code; the old one stays valid as an alias.")} />
+                </EditGroupe>
+
+                <EditGroupe titre={L("Versement", "Payout")}>
+                  <EditField label={L("Adresse de réception", "Receiving address")}
                     value={form.payout_address} onChange={(v) => setForm({ ...form, payout_address: v })}
                     test="edit-payout-address"
-                    placeholder={L("0x… (ERC-20) ou T… (TRC-20) — renseignée par l'affilié",
-                                   "0x… (ERC-20) or T… (TRC-20) — set by the affiliate")} />
-                  {/* Ces deux aides annonçaient « Interac email, IBAN » et
-                      « CAD / BTC » — des vestiges d'un ancien design
-                      multi-méthodes. Le code n'accepte que USDT/USDC sur
-                      ERC-20 ou TRC-20 : suivre l'aide menait droit au rejet.
-                      La devise devient une liste, puisqu'il n'y a que deux
+                    placeholder="0x… / T…"
+                    hint={L("Renseignée par l'affilié lui-même. 0x… pour ERC-20, T… pour TRC-20.",
+                            "Set by the affiliate. 0x… for ERC-20, T… for TRC-20.")} />
+                  {/* Les aides annonçaient « Interac email, IBAN » et « CAD /
+                      BTC » — vestiges d'un ancien design multi-méthodes. Le
+                      code n'accepte que USDT/USDC : suivre l'aide menait au
+                      rejet. La devise est une liste, il n'y a que deux
                       valeurs valides. */}
-                  <EditField label={L("Devise de versement", "Payout currency")}
+                  <EditField label={L("Devise", "Currency")}
                     value={form.payout_currency} onChange={(v) => setForm({ ...form, payout_currency: v })}
                     test="edit-payout-currency"
-                    select={["usdt", "usdc"]} />
-                  <EditField label={L("Palier manuel (override)", "Manual tier override")}
+                    options={[{ value: "usdt", label: "USDT" }, { value: "usdc", label: "USDC" }]}
+                    hint={L("Deux stablecoins seulement — rien d'autre n'est accepté.",
+                            "Two stablecoins only — nothing else is accepted.")} />
+                </EditGroupe>
+
+                {/* Le palier a SA PROPRE section, et ce n'est pas décoratif.
+                    Il était le cinquième champ d'une grille plate, entre la
+                    devise de versement et rien : un testeur l'a cherché sans
+                    le trouver. C'est le seul réglage ici qui change ce que
+                    l'affilié GAGNE. */}
+                <EditGroupe titre={L("Palier de commission", "Commission tier")}
+                  apres={form.manual_tier
+                    ? <PalierConsequence form={form} setForm={setForm} L={L} />
+                    : <EntenteAbsente L={L} />}>
+                  <EditField label={L("Palier", "Tier")}
                     value={form.manual_tier} onChange={(v) => setForm({ ...form, manual_tier: v })}
                     test="edit-manual-tier"
-                    placeholder={L("laisser vide pour auto", "leave blank for auto")}
-                    select={["", "standard", "bronze", "silver", "gold", "platinum", "diamond"]} />
-                </div>
+                    options={[
+                      { value: "", label: L("Automatique — suit le chiffre d'affaires", "Automatic — follows revenue") },
+                      { value: "standard", label: "Standard — 10 %" },
+                      { value: "bronze", label: "Bronze — 12 %" },
+                      { value: "silver", label: L("Argent — 14 %", "Silver — 14%") },
+                      { value: "gold", label: L("Or — 16 %", "Gold — 16%") },
+                      { value: "platinum", label: L("Platine — 18 %", "Platinum — 18%") },
+                      { value: "diamond", label: L("Diamant — 20 %", "Diamond — 20%") },
+                    ]}
+                    hint={L("« Automatique » recalcule le palier sur les douze derniers mois. Tout autre choix garantit au minimum ce palier.",
+                            "“Automatic” recalculates the tier over the last twelve months. Any other choice guarantees at least that tier.")} />
+                </EditGroupe>
 
-                {/* Consequence explicite du palier manuel. Ce champ ne fige pas
-                    seulement un taux : il change ce que l'affilie LIT sur son
-                    ecran, avec un engagement — « accorde par entente », « ne
-                    peut pas redescendre ». Une erreur de manipulation ici
-                    promet donc quelque chose qu'on ne voulait pas promettre.
-                    On cite la phrase exacte plutot que de la resumer. */}
-                {form.manual_tier ? (
-                  <div className="rounded-md border border-warning/40 bg-warning/5 px-3 py-2.5"
-                       data-testid="manual-tier-warning">
-                    <p className="text-[11px] text-glacier">
-                      {L("Le palier cesse de suivre le chiffre d'affaires. Pour revenir au calcul automatique sur douze mois glissants, remettez le champ ci-dessus à vide.",
-                         "The tier stops following revenue. To return to the automatic rolling-12-month calculation, set the field above back to blank.")}
-                    </p>
-
-                    {/* L'engagement est un acte separe du figeage du palier.
-                        Cocher cette case change ce que l'affilie LIT : sans
-                        elle, on lui dit que son taux est fixe ; avec elle, on
-                        lui promet l'absence de baisse automatique et un avis en
-                        cas de changement. Une erreur de manipulation sur le
-                        palier ne doit pas emporter cette promesse — d'ou la
-                        case distincte. */}
-                    <label className="mt-2.5 flex items-start gap-2 cursor-pointer">
-                      <input type="checkbox" className="mt-0.5"
-                        data-testid="edit-tier-agreement"
-                        checked={Boolean(form.tier_agreement)}
-                        onChange={(e) => setForm({ ...form, tier_agreement: e.target.checked })} />
-                      <span className="text-[11px] text-nordfjord font-semibold">
-                        {L("Entente négociée avec cet affilié",
-                           "Negotiated agreement with this affiliate")}
-                      </span>
-                    </label>
-
-                    <p className="mt-1.5 text-[11px] text-glacier italic">
-                      {form.tier_agreement
-                        ? L("L'affilié lira : « Ce taux vous est accordé par entente. Il ne varie pas avec votre volume de ventes et ne baisse jamais automatiquement. Toute modification ferait l'objet d'un avis de notre part. » — vous restez libre de le modifier, à charge de l'en aviser.",
-                            "The affiliate will read: “This rate is set by agreement. It does not vary with your sales volume and never decreases automatically. Any change would be communicated to you.” — you remain free to change it, provided you notify them.")
-                        : L("L'affilié lira : « Ce taux est fixé par l'administration et ne suit pas votre volume de ventes. » Aucun engagement de permanence.",
-                            "The affiliate will read: “This rate is set by the administration and does not follow your sales volume.” No commitment of permanence.")}
-                    </p>
-                  </div>
-                ) : null}
-                <div>
-                  <label className="text-[11px] uppercase tracking-wider text-glacier">
-                    {L("Note commission (visible sur relevé)", "Commission note (shown on statements)")}
+                {/* Les deux notes se ressemblaient au point d'etre
+                    interchangeables : meme taille, meme gris, seul le libelle
+                    les distinguait. L'une est LUE PAR L'AFFILIE, l'autre non.
+                    Se tromper de champ, c'est lui montrer une note interne. */}
+                <EditGroupe titre={L("Notes", "Notes")}>
+                  <label className="block">
+                    <span className="text-[13px] font-medium text-nordfjord mb-1 block">
+                      {L("Note de commission", "Commission note")}
+                    </span>
+                    <textarea value={form.commission_note} onChange={(e) => setForm({ ...form, commission_note: e.target.value })}
+                      data-testid="edit-commission-note"
+                      className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova transition"
+                      rows={3} />
+                    <span className="text-[12px] text-nova mt-1 block leading-snug">
+                      {L("Visible par l'affilié sur ses relevés.", "Visible to the affiliate on their statements.")}
+                    </span>
                   </label>
-                  <textarea value={form.commission_note} onChange={(e) => setForm({ ...form, commission_note: e.target.value })}
-                    data-testid="edit-commission-note"
-                    className="w-full mt-1 rounded-md border border-ash px-2 py-1.5 text-xs bg-white text-nordfjord outline-none"
-                    rows={2} />
-                </div>
-                <div>
-                  <label className="text-[11px] uppercase tracking-wider text-glacier">
-                    {L("Notes internes (privées, non visibles par l'affilié)", "Internal notes (private, not shown to affiliate)")}
+                  <label className="block">
+                    <span className="text-[13px] font-medium text-nordfjord mb-1 block">
+                      {L("Notes internes", "Internal notes")}
+                    </span>
+                    <textarea value={form.admin_notes} onChange={(e) => setForm({ ...form, admin_notes: e.target.value })}
+                      data-testid="edit-admin-notes"
+                      className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova transition"
+                      rows={3} />
+                    <span className="text-[12px] text-glacier mt-1 block leading-snug">
+                      {L("Privées — l'affilié ne les voit jamais.", "Private — the affiliate never sees these.")}
+                    </span>
                   </label>
-                  <textarea value={form.admin_notes} onChange={(e) => setForm({ ...form, admin_notes: e.target.value })}
-                    data-testid="edit-admin-notes"
-                    className="w-full mt-1 rounded-md border border-ash px-2 py-1.5 text-xs bg-white text-nordfjord outline-none"
-                    rows={3} />
-                </div>
+                </EditGroupe>
+
                 <div className="flex justify-end gap-2 pt-1">
                   <button onClick={() => setEditing(false)}
-                    className="px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical">
+                    className="px-4 py-2 rounded-lg border border-ash text-sm text-nordfjord hover:bg-clinical transition">
                     {L("Annuler", "Cancel")}
                   </button>
                   <button onClick={saveForm} data-testid="affiliate-edit-save"
-                    className="px-4 py-1.5 rounded-md bg-nordfjord text-white text-xs font-medium hover:opacity-90">
+                    className="px-5 py-2 rounded-lg bg-nordfjord text-white text-sm font-medium hover:opacity-90 transition">
                     {L("Enregistrer", "Save")}
                   </button>
                 </div>
@@ -2149,23 +2209,139 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   );
 }
 
-function EditField({ label, value, onChange, type = "text", test, placeholder, select, min, max, step }) {
+/* Champ de formulaire — refait pour être lisible.
+ *
+ * Ce qui ne fonctionnait pas : libellé en 11 px, majuscules et gris pâle, sur
+ * un champ en 12 px. Sept réglages se suivaient dans une grille plate, sans
+ * regroupement ni explication. Un testeur a cherché le palier manuel et ne
+ * l'a pas trouvé — il était pourtant là, cinquième d'affilée.
+ *
+ * Trois changements : le libellé passe en casse normale et en 13 px, le champ
+ * en 14 px, et une AIDE d'une ligne peut accompagner chaque réglage. Cette
+ * aide est facultative mais compte : « % promo public (coupon) » ne dit pas
+ * ce qu'on règle.
+ *
+ * `options` remplace `select` quand il faut des libellés lisibles : une liste
+ * affichant « standard », « bronze » en minuscules laisse deviner les taux au
+ * lieu de les montrer.
+ */
+function EditField({ label, value, onChange, type = "text", test, placeholder,
+                    select, options, min, max, step, hint }) {
+  const champ = "w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white " +
+                "text-nordfjord outline-none focus:border-nova transition";
+  const liste = options || (select ? select.map((o) => ({ value: o, label: o || "—" })) : null);
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wider text-glacier mb-1 block">{label}</span>
-      {select ? (
+      <span className="text-[13px] font-medium text-nordfjord mb-1 block">{label}</span>
+      {liste ? (
         <select value={value ?? ""} onChange={(e) => onChange(e.target.value)}
-          data-testid={test}
-          className="w-full rounded-md border border-ash px-2 py-1.5 text-xs bg-white text-nordfjord outline-none">
-          {select.map((opt) => <option key={opt} value={opt}>{opt || "—"}</option>)}
+          data-testid={test} className={champ}>
+          {liste.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       ) : (
         <input type={type} value={value ?? ""} onChange={(e) => onChange(e.target.value)}
           data-testid={test} placeholder={placeholder}
-          min={min} max={max} step={step}
-          className="w-full rounded-md border border-ash px-2 py-1.5 text-xs bg-white text-nordfjord outline-none" />
+          min={min} max={max} step={step} className={champ} />
       )}
+      {hint && <span className="text-[12px] text-glacier mt-1 block leading-snug">{hint}</span>}
     </label>
+  );
+}
+
+/* Regroupe les réglages par sujet. Sans cela, « Devise de versement » et
+ * « Palier manuel » se touchent alors qu'ils n'ont rien à voir — et l'œil ne
+ * sait plus où s'arrêter. */
+function EditGroupe({ titre, children, apres }) {
+  return (
+    <fieldset className="rounded-xl border border-ash bg-white p-4">
+      <legend className="px-2 text-[12px] font-data uppercase tracking-[0.16em] text-nova">
+        {titre}
+      </legend>
+      <div className="grid sm:grid-cols-2 gap-4">{children}</div>
+      {/* `apres` occupe toute la largeur, sous la grille. L'avertissement du
+          palier vivait a l'exterieur du groupe : il commentait un champ auquel
+          plus rien ne le rattachait visuellement. */}
+      {apres ? <div className="mt-4">{apres}</div> : null}
+    </fieldset>
+  );
+}
+
+/* Ce qu'on lit quand AUCUN palier manuel n'est choisi.
+ *
+ * Sans ce bloc, la section n'affichait qu'une liste sur « Automatique » et
+ * rien d'autre : tout le dispositif des ententes negociees restait invisible,
+ * conditionne a `form.manual_tier`. Une fonction qui n'apparait qu'apres avoir
+ * devine le geste qui la revele n'existe pas pour qui ne l'a pas ecrite —
+ * c'est ce qui a fait echouer A-34, et ce qui a fait croire a une regression.
+ *
+ * On ne deverrouille rien : on annonce simplement ou se trouve la suite.
+ */
+function EntenteAbsente({ L }) {
+  return (
+    <p className="text-[12px] text-glacier leading-relaxed" data-testid="tier-agreement-hint">
+      {L("Le palier suit le chiffre d'affaires sur douze mois glissants. Pour fixer un palier vous-même — ou enregistrer une entente négociée avec cet affilié — choisissez un palier dans la liste ci-dessus.",
+         "The tier follows revenue over a rolling twelve months. To set a tier yourself — or record a negotiated agreement with this affiliate — pick a tier in the list above.")}
+    </p>
+  );
+}
+
+/* Consequence explicite du palier manuel.
+ *
+ * Ce reglage ne fige pas seulement un taux : il change ce que l'affilie LIT
+ * sur son ecran, avec un engagement — « accorde par entente », « ne peut pas
+ * redescendre ». Une erreur de manipulation promet donc quelque chose qu'on
+ * ne voulait pas promettre. On cite la phrase exacte plutot que de la resumer.
+ *
+ * Defini au niveau module, et non dans le rendu de DetailModal : un composant
+ * recree a chaque rendu est un type neuf pour React, qui demonte et remonte
+ * son sous-arbre — la case a cocher perdrait le focus a chaque frappe.
+ */
+function PalierConsequence({ form, setForm, L }) {
+  return (
+    <div className="rounded-lg border border-warning/40 bg-warning/5 px-3.5 py-3"
+         data-testid="manual-tier-warning">
+      {/* Ce texte disait « le palier cesse de suivre le chiffre d'affaires »
+          dans les deux cas. C'est faux sans entente : _palier_effectif()
+          retient alors le MEILLEUR des deux, si bien qu'un palier manuel agit
+          en PLANCHER et laisse la progression se faire. L'encadre promettait
+          un gel qui n'a lieu que sous entente — il decrivait a l'admin un
+          comportement que le serveur n'applique pas. */}
+      <p className="text-[13px] text-nordfjord leading-relaxed">
+        {form.tier_agreement
+          ? L("Sous entente, le palier est FIGÉ à cette valeur : il ne suit plus le chiffre d'affaires, ni à la hausse ni à la baisse.",
+              "Under agreement, the tier is FROZEN at this value: it no longer follows revenue, up or down.")
+          : L("Sans entente, ce palier agit comme un PLANCHER garanti. Si le chiffre d'affaires ouvre droit à mieux, c'est le palier le plus avantageux qui s'applique.",
+              "With no agreement, this tier acts as a guaranteed FLOOR. If revenue earns better, the more favourable tier applies.")}
+      </p>
+      <p className="text-[12px] text-glacier mt-1.5">
+        {L("Pour revenir au calcul automatique, choisissez « Automatique » dans la liste ci-dessus.",
+           "To return to automatic calculation, pick “Automatic” in the list above.")}
+      </p>
+
+      {/* L'engagement est un acte SEPARE du figeage du palier. Cocher cette
+          case change ce que l'affilie LIT : sans elle, on lui dit que son taux
+          est fixe ; avec elle, on lui promet l'absence de baisse automatique
+          et un avis en cas de changement. Une erreur de manipulation sur le
+          palier ne doit pas emporter cette promesse — d'ou la case distincte. */}
+      <label className="mt-3 flex items-start gap-2.5 cursor-pointer rounded-lg
+                        border border-ash bg-white px-3 py-2.5 hover:border-nova transition">
+        <input type="checkbox" className="mt-0.5 h-4 w-4 accent-nordfjord"
+          data-testid="edit-tier-agreement"
+          checked={Boolean(form.tier_agreement)}
+          onChange={(e) => setForm({ ...form, tier_agreement: e.target.checked })} />
+        <span className="text-[13px] text-nordfjord font-semibold">
+          {L("Entente négociée avec cet affilié", "Negotiated agreement with this affiliate")}
+        </span>
+      </label>
+
+      <p className="mt-2 text-[12px] text-glacier italic leading-relaxed">
+        {form.tier_agreement
+          ? L("L'affilié lira : « Ce taux vous est accordé par entente. Il ne varie pas avec votre volume de ventes et ne baisse jamais automatiquement. Toute modification ferait l'objet d'un avis de notre part. » — vous restez libre de le modifier, à charge de l'en aviser.",
+              "The affiliate will read: “This rate is set by agreement. It does not vary with your sales volume and never decreases automatically. Any change would be communicated to you.” — you remain free to change it, provided you notify them.")
+          : L("L'affilié lira : « Ce taux est fixé par l'administration et ne suit pas votre volume de ventes. » Aucun engagement de permanence.",
+              "The affiliate will read: “This rate is set by the administration and does not follow your sales volume.” No commitment of permanence.")}
+      </p>
+    </div>
   );
 }
 

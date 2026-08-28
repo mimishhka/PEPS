@@ -15,6 +15,8 @@ import { Link, useNavigate } from "react-router-dom";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { useLang } from "../contexts/LanguageContext";
 import useAffiliate from "../hooks/useAffiliate";
+import { useAuth } from "../contexts/AuthContext";
+import { oublierVisiteVue } from "../components/GuidedTour";
 import { DashboardSkeleton } from "../components/LoadingSkeletons";
 import api from "../lib/api";
 
@@ -25,7 +27,7 @@ const QA = [
       q: "Mon code ou mon lien expirent-ils ?",
       a: [
         "Ni l'un ni l'autre : votre code vaut tant que votre compte est actif, et votre lien de même.",
-        "Mais la commission se gagne commande par commande : il faut que votre lien ait été cliqué, ou votre code saisi, POUR CETTE COMMANDE-LÀ. Le clic dépose un témoin valable 365 jours, pendant lesquels le même navigateur vous attribue les commandes sans rien à saisir.",
+        "Mais la commission se gagne commande par commande : il faut que votre lien ait été cliqué, votre code QR scanné, ou votre code saisi, POUR CETTE COMMANDE-LÀ. Le clic ou le scan vaut pour la visite en cours ; ensuite, rien n'est retenu et votre contact doit saisir votre code.",
         "Concrètement : un client arrivé par votre lien il y a deux ans, qui revient aujourd'hui directement sur le site et commande sans code, ne vous rapporte rien. Il figure toujours dans vos « clients apportés », mais cette liste est un historique — elle n'ouvre droit à aucune commission.",
       ],
     },
@@ -33,7 +35,7 @@ const QA = [
       q: "Do my code or my link expire?",
       a: [
         "Neither: your code is valid as long as your account is active, and so is your link.",
-        "But a commission is earned order by order: your link must have been clicked, or your code entered, FOR THAT PARTICULAR ORDER. The click sets a cookie valid for 365 days, during which the same browser credits orders to you with nothing to type.",
+        "But a commission is earned order by order: your link must have been clicked, your QR code scanned, or your code entered, FOR THAT PARTICULAR ORDER. The click or scan counts for the current visit; after that nothing is remembered and your contact must enter your code.",
         "In practice: a customer who arrived through your link two years ago, returning today straight to the site and ordering without a code, earns you nothing. They still appear in your “customers you brought in”, but that list is a record — it grants no commission.",
       ],
     },
@@ -165,17 +167,17 @@ const QA = [
     fr: {
       q: "Puis-je commander avec mon propre code ?",
       a: [
-        "Vous pouvez commander et bénéficier du rabais, mais ces commandes ne génèrent pas de commission. Le programme récompense les ventes que vous apportez, pas vos propres achats.",
-        "La détection est automatique et compare l'adresse courriel, le compte et l'adresse de livraison.",
-        "Une commande écartée pour cette raison apparaît dans votre historique avec la mention correspondante — elle n'est pas cachée.",
+        "Oui. Votre code vous donne le même rabais qu'à vos contacts, et la commande vous rapporte votre commission au taux de votre palier, comme n'importe quelle autre.",
+        "Vous cumulez donc les deux sur vos propres achats : le rabais au moment de payer, la commission ensuite. Rien à demander, rien de particulier à faire — saisissez votre code au paiement.",
+        "Ces commandes comptent aussi dans votre chiffre d'affaires, donc elles font progresser votre palier.",
       ],
     },
     en: {
       q: "Can I order using my own code?",
       a: [
-        "You may order and get the discount, but those orders generate no commission. The program rewards the sales you bring, not your own purchases.",
-        "Detection is automatic and compares email address, account and shipping address.",
-        "An order excluded for this reason appears in your history with the corresponding note — it is not hidden.",
+        "Yes. Your code gives you the same discount as your contacts, and the order earns you your commission at your tier rate, like any other.",
+        "So you get both on your own purchases: the discount when you pay, the commission afterwards. Nothing to request, nothing special to do — just enter your code at checkout.",
+        "These orders also count towards your revenue, so they move you up the tiers.",
       ],
     },
   },
@@ -205,6 +207,9 @@ export default function AffiliateFaq() {
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
   const navigate = useNavigate();
+  // Appelé AVANT le retour anticipé sur `loading` : React exige la même suite
+  // de crochets à chaque rendu, et ce fichier a déjà connu ce défaut.
+  const { user } = useAuth();
   const { affiliate, loading, error } = useAffiliate(lang);
 
   if (loading) return <DashboardSkeleton />;
@@ -284,9 +289,15 @@ export default function AffiliateFaq() {
               bouton, la promesse serait fausse. Le marqueur vit dans la fiche
               affilié et non dans le navigateur : on demande au serveur de le
               lever, puis on renvoie au tableau de bord, qui redémarre de
-              lui-même. Effacer un repère local n'aurait plus aucun effet. */}
+              lui-même.
+
+              Il existe DÉSORMAIS un repère local en plus, posé quand
+              l'enregistrement serveur de la fin de visite échoue. Il faut donc
+              l'effacer ici aussi : sans cela, le serveur relèverait bien son
+              marqueur et ce bouton ne ferait toujours rien. */}
           <button
             onClick={async () => {
+              oublierVisiteVue(user?.id);
               try {
                 await api.post("/affiliate/tour/reset");
               } catch { /* la visite reste simplement telle quelle */ }

@@ -42,6 +42,55 @@ function Spark({ size = 12, className = "", style }) {
   );
 }
 
+/* Filet local, en complément du marqueur serveur — pas à sa place.
+ *
+ * La fiche affilié reste la source de vérité : c'est elle qui empêche la
+ * visite de rejouer sur un autre appareil. Mais l'enregistrement tient à un
+ * seul POST dont l'échec était avalé sans trace. Quand il rate, le serveur
+ * ignore que la visite a été donnée et la resert à la connexion suivante ;
+ * celle-là réussit, et le défaut ne se reproduit plus — d'où un retour unique,
+ * juste après la première connexion, impossible à reproduire ensuite.
+ *
+ * Ce marqueur ne corrige pas l'écriture serveur, il en amortit l'échec sur CE
+ * navigateur. La contrepartie est assumée : si le serveur n'a jamais reçu la
+ * fin, la visite ne rejouera pas non plus ici — mieux vaut la manquer que la
+ * resservir à quelqu'un qui l'a déjà suivie, et « revoir la visite » reste
+ * offert depuis la FAQ.
+ *
+ * La clé porte l'identifiant : sur un poste partagé, la visite d'une personne
+ * ne doit pas être comptée comme vue par une autre.
+ */
+const CLE_VISITE = "fn_tour_done";
+
+export function visiteDejaVue(identifiant) {
+  if (!identifiant) return false;
+  try {
+    return window.localStorage.getItem(`${CLE_VISITE}:${identifiant}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function marquerVisiteVue(identifiant) {
+  if (!identifiant) return;
+  try {
+    window.localStorage.setItem(`${CLE_VISITE}:${identifiant}`, "1");
+  } catch {
+    // Stockage indisponible : le marqueur serveur reste seul en charge.
+  }
+}
+
+// Indispensable au bouton « Revoir la visite guidée » : le serveur relève son
+// propre marqueur, mais celui-ci bloquerait encore l'ouverture.
+export function oublierVisiteVue(identifiant) {
+  if (!identifiant) return;
+  try {
+    window.localStorage.removeItem(`${CLE_VISITE}:${identifiant}`);
+  } catch {
+    // Sans conséquence : l'ouverture reste commandée par la fiche affilié.
+  }
+}
+
 // Ce composant ne mémorise RIEN. Savoir si la visite a déjà été donnée relève
 // de la fiche affilié, côté serveur : un marqueur dans le navigateur la faisait
 // rejouer entièrement sur un autre appareil ou après un nettoyage. Le parent
@@ -107,6 +156,26 @@ export default function GuidedTour({ steps, onClose, onTab, L }) {
       minuteurs.push(t);
       window.addEventListener("resize", mesurer);
       minuteurs.push(() => window.removeEventListener("resize", mesurer));
+
+      // LE DÉFILEMENT AUSSI. La bulle et le voile sont en `position: fixed`,
+      // donc exprimés dans le repère de la fenêtre, et `mesurer` lit un
+      // `getBoundingClientRect()` qui l'est également. Les deux ne restent
+      // d'accord qu'au moment de la mesure : dès que la page défile, la cible
+      // se déplace dans la fenêtre et la bulle, elle, ne bouge pas. Elle
+      // finissait à côté de ce qu'elle désignait, voire au-dessus d'un autre
+      // élément.
+      //
+      // On remesurait bien après le `scrollIntoView` initial, pendant 700 ms —
+      // ce qui couvrait le défilement AUTOMATIQUE et masquait le défaut. Le
+      // défilement de l'utilisateur, lui, n'était écouté nulle part.
+      //
+      // `capture: true` est nécessaire : l'événement `scroll` ne remonte pas,
+      // et une cible placée dans un conteneur défilant interne ne déclencherait
+      // rien sur `window` sans la phase de capture.
+      const surDefilement = { capture: true, passive: true };
+      window.addEventListener("scroll", mesurer, surDefilement);
+      minuteurs.push(() =>
+        window.removeEventListener("scroll", mesurer, { capture: true }));
     };
 
     attendre(12);   // ~1 s d'attente maximum

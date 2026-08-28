@@ -18,7 +18,7 @@ import { useLang } from "../contexts/LanguageContext";
 import { DashboardSkeleton } from "../components/LoadingSkeletons";
 import useAffiliate from "../hooks/useAffiliate";
 import useDocumentHead from "../hooks/useDocumentHead";
-import GuidedTour from "../components/GuidedTour";
+import GuidedTour, { visiteDejaVue, marquerVisiteVue } from "../components/GuidedTour";
 import AffiliateSupport from "../components/AffiliateSupport";
 import TermsModal from "../components/TermsModal";
 import TierLadder from "../components/TierLadder";
@@ -384,14 +384,17 @@ export default function AffiliateDashboard() {
     // SERVEUR dit qu'elle n'a pas déjà été donnée. Ce dernier point vient de
     // la fiche affilié et non du navigateur : autrement la visite rejouait
     // entièrement sur un autre appareil ou après un nettoyage.
-    if (data && data.terms_ok !== false && data.tour_done !== true) {
+    // Le marqueur local s'ajoute aux trois conditions : il rattrape le cas où
+    // l'enregistrement serveur de la fin de visite n'est jamais arrivé.
+    if (data && data.terms_ok !== false && data.tour_done !== true
+        && !visiteDejaVue(user?.id)) {
       // Court délai : laisse la mise en page se stabiliser avant de mesurer
       // la première cible, sans quoi la bulle apparaît décalée.
       const t = setTimeout(() => setTourOuvert(true), 600);
       return () => clearTimeout(t);
     }
     return undefined;
-  }, [data]);
+  }, [data, user?.id]);
 
   // Terminer ET quitter marquent la visite comme donnée : quelqu'un qui sort à
   // la deuxième bulle a décidé qu'il n'en voulait pas. L'échec de l'appel est
@@ -402,11 +405,41 @@ export default function AffiliateDashboard() {
     // Retour à la vue globale. La visite se termine sur l'onglet Aide ; y
     // laisser quelqu'un lui ferait croire qu'il a atterri là par erreur.
     setTab("overview");
+
+    // Marqueur local POSÉ D'ABORD, avant tout appel réseau : c'est le seul
+    // geste qui ne peut pas échouer, et il suffit à empêcher le retour de la
+    // visite sur ce navigateur.
+    marquerVisiteVue(user?.id);
+
+    // Une seconde tentative en cas d'échec. L'ancienne version n'en faisait
+    // qu'une et avalait l'erreur sans rien enregistrer : un incident réseau
+    // d'une seconde effaçait définitivement le fait que la visite avait été
+    // suivie jusqu'au bout.
+    let enregistre = false;
+    for (let essai = 0; essai < 2 && !enregistre; essai += 1) {
+      try {
+        await api.post("/affiliate/tour/done");
+        enregistre = true;
+      } catch (e) {
+        if (essai === 1) {
+          // Silencieux pour l'affilié — le pire est que la visite soit
+          // reproposée sur un AUTRE appareil — mais tracé pour nous : c'est
+          // par cette porte que le défaut était sorti sans laisser d'indice.
+          console.warn("[affiliate] fin de visite non enregistrée", e);
+        }
+      }
+    }
+
+    // Mise à jour optimiste du cache : useAffiliate dédoublonne pendant 60 s
+    // et ne revalide pas au retour de focus. Sans ce coup de pouce, un retour
+    // rapide sur le tableau de bord relisait `tour_done: false`.
     try {
-      await api.post("/affiliate/tour/done");
-      await refreshAffiliate();
-    } catch { /* sans conséquence */ }
-  }, [refreshAffiliate]);
+      await refreshAffiliate(
+        (courant) => (courant ? { ...courant, tour_done: true } : courant),
+        { revalidate: true },
+      );
+    } catch { /* le cache se remettra d'aplomb au prochain chargement */ }
+  }, [refreshAffiliate, user?.id]);
 
   if (loading || affiliateLoading) {
     return <DashboardSkeleton />;
@@ -833,10 +866,14 @@ export default function AffiliateDashboard() {
               <MiniInsight label={L("Panier moyen", "Avg order")} value={money(insights?.avg_order_value)} />
             </div>
 
-            {/* Palier. Un palier fixe par l'administration ne bouge pas avec le
-                chiffre d'affaires : afficher « encore 3 465 $ pour Silver »
-                serait une promesse fausse, puisque franchir ce seuil ne
-                changerait rien — manual_tier l'emporte sur le palier calcule. */}
+            {/* Palier. La bascule se fait sur tier_agreement, PAS sur
+                l'existence d'un palier manuel — ce commentaire disait
+                l'inverse (« manual_tier l'emporte sur le palier calcule »),
+                ce qui n'est plus vrai depuis _palier_effectif() : sans
+                entente, un palier force n'est qu'un plancher et la
+                progression continue. Afficher « encore 3 465 $ pour Argent »
+                reste donc juste dans ce cas, et faux SOUS ENTENTE seulement,
+                ou franchir le seuil ne change effectivement rien. */}
             <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
                 {data?.tier_agreement
