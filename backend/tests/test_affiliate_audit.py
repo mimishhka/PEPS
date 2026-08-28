@@ -273,3 +273,196 @@ def test_report_sous_le_seuil_garde_son_message(server_module, monkeypatch):
 
     assert envoyes
     assert "seuil" in envoyes[0]["html"]
+
+
+# ---------------------------------------------------------------------------
+# 3. Le webhook de versement traite TOUT le lot
+# ---------------------------------------------------------------------------
+
+class PayoutsLot:
+    """Collection de versements partageant un meme np_batch_id."""
+
+    def __init__(self, docs):
+        self.docs = docs
+
+    def find(self, query, projection=None):
+        batch = query.get("np_batch_id")
+        trouves = [{"id": d["id"]} for d in self.docs if d.get("np_batch_id") == batch]
+
+        class Curseur:
+            async def to_list(self, _n):
+                return trouves
+
+        return Curseur()
+
+    async def update_many(self, query, update):
+        ids = query.get("id", {}).get("$in", [])
+        for d in self.docs:
+            if d["id"] in ids:
+                d.update(update.get("$set", {}))
+        return types.SimpleNamespace(modified_count=len(ids))
+
+
+class ReferralsLot:
+    def __init__(self, docs):
+        self.docs = docs
+
+    async def update_many(self, query, update):
+        ids = query.get("payout_id", {}).get("$in", [])
+        statut = query.get("status")
+        touches = 0
+        for d in self.docs:
+            if d.get("payout_id") not in ids:
+                continue
+            if isinstance(statut, dict):
+                if d.get("status") not in statut.get("$in", []):
+                    continue
+            elif statut is not None and d.get("status") != statut:
+                continue
+            d.update(update.get("$set", {}))
+            touches += 1
+        return types.SimpleNamespace(modified_count=touches)
+
+
+class RequeteWebhook:
+    def __init__(self, corps=b"{}"):
+        self._corps = corps
+        self.headers = {"x-nowpayments-sig": "peu-importe"}
+        self.client = None
+
+    async def body(self):
+        return self._corps
+
+
+def _prepare_webhook(server_module, monkeypatch, payload):
+    """Neutralise tout ce qui n'est pas l'objet du test.
+
+    La signature HMAC et la deduplication ne sont pas ce qu'on verifie ici —
+    reproduire la canonicalisation exacte rendrait le test fragile sans rien
+    prouver de plus sur le comportement qui nous interesse : le traitement de
+    TOUS les versements du lot.
+    """
+    import services.nowpayments as np_mod
+
+    async def pas_de_limite(*a, **k):
+        return None
+
+    async def evenement_neuf(*a, **k):
+        return True
+
+    monkeypatch.setattr(server_module, "_rate_limit", pas_de_limite, raising=False)
+    monkeypatch.setattr(server_module, "_client_ip", lambda r: "1.2.3.4", raising=False)
+    monkeypatch.setattr(server_module, "_register_webhook_event", evenement_neuf,
+                        raising=False)
+    monkeypatch.setattr(server_module, "NOWPAYMENTS_IPN_SECRET", "secret", raising=False)
+    monkeypatch.setattr(np_mod, "_verify_nowpayments_signature",
+                        lambda raw, sig: (payload, b"{}"), raising=False)
+    return np_mod
+
+
+def test_webhook_lot_confirme_TOUS_les_versements(server_module, monkeypatch):
+    """`find_one` ne traitait qu'un versement sur douze.
+
+    admin_affiliate_batch_payout pose le MEME np_batch_id sur tout le lot. Le
+    webhook en prenait un seul : les autres restaient « processing » a vie
+    alors que la crypto etait partie, et leurs commissions gardaient un
+    payout_id non nul — donc invisibles pour le generateur suivant. Ni
+    reversees, ni re-payees.
+    """
+    np_mod = _prepare_webhook(server_module, monkeypatch,
+                              {"id": "batch-9", "status": "finished"})
+
+    payouts = [
+        {"id": "p1", "np_batch_id": "batch-9", "status": "processing"},
+        {"id": "p2", "np_batch_id": "batch-9", "status": "processing"},
+        {"id": "p3", "np_batch_id": "batch-9", "status": "processing"},
+    ]
+    referrals = [
+        {"id": "r1", "payout_id": "p1", "status": "approved"},
+        {"id": "r2", "payout_id": "p2", "status": "approved"},
+        {"id": "r3", "payout_id": "p3", "status": "approved"},
+    ]
+    server_module.db = types.SimpleNamespace(
+        affiliate_payouts=PayoutsLot(payouts),
+        affiliate_referrals=ReferralsLot(referrals),
+    )
+
+    asyncio.run(np_mod.nowpayments_payout_ipn(RequeteWebhook()))
+
+    assert [p["status"] for p in payouts] == ["paid", "paid", "paid"]
+    assert [r["status"] for r in referrals] == ["paid", "paid", "paid"]
+
+
+def test_webhook_lot_en_echec_libere_les_commissions(server_module, monkeypatch):
+    """Un lot en echec laissait les commissions rattachees a un versement mort.
+
+    Le generateur filtre sur `payout_id: None` : sans cette remise a zero, de
+    l'argent du restait immobilise sans qu'aucun ecran ne le signale.
+    """
+    np_mod = _prepare_webhook(server_module, monkeypatch,
+                              {"id": "batch-7", "status": "failed"})
+
+    payouts = [
+        {"id": "p1", "np_batch_id": "batch-7", "status": "processing"},
+        {"id": "p2", "np_batch_id": "batch-7", "status": "processing"},
+    ]
+    referrals = [
+        {"id": "r1", "payout_id": "p1", "status": "approved"},
+        {"id": "r2", "payout_id": "p2", "status": "approved"},
+    ]
+    server_module.db = types.SimpleNamespace(
+        affiliate_payouts=PayoutsLot(payouts),
+        affiliate_referrals=ReferralsLot(referrals),
+    )
+
+    asyncio.run(np_mod.nowpayments_payout_ipn(RequeteWebhook()))
+
+    assert [p["status"] for p in payouts] == ["failed", "failed"]
+    assert all(r["payout_id"] is None for r in referrals), (
+        "les commissions restent liees a un versement mort"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 4. L'invitation ne leve PAS une suspension
+# ---------------------------------------------------------------------------
+
+def test_invitation_refuse_un_affilie_suspendu(server_module):
+    """admin_affiliate_resend refusait deja ; l'invitation, non.
+
+    Elle ne rejetait que « active » — et ecrit `status: "invited"` plus bas.
+    Reinviter l'adresse d'un affilie suspendu levait donc sa sanction et lui
+    envoyait un lien pour se reactiver lui-meme.
+    """
+    class Affiliates:
+        async def find_one(self, query, projection=None):
+            return {"id": "aff-1", "email": "marie@example.com",
+                    "status": "suspended", "code": "MARIE10"}
+
+    server_module.db = types.SimpleNamespace(affiliates=Affiliates())
+    payload = server_module.AffiliateInviteIn(
+        email="marie@example.com", first_name="Marie", last_name="Tremblay",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.admin_affiliate_invite(
+            payload, {"email": "admin@example.com"}))
+    assert exc.value.status_code == 409
+    assert "suspended" in str(exc.value.detail).lower()
+
+
+def test_invitation_refuse_toujours_un_affilie_actif(server_module):
+    """La garde d'origine ne doit pas avoir ete perdue en ajoutant la nouvelle."""
+    class Affiliates:
+        async def find_one(self, query, projection=None):
+            return {"id": "aff-2", "email": "luc@example.com", "status": "active"}
+
+    server_module.db = types.SimpleNamespace(affiliates=Affiliates())
+    payload = server_module.AffiliateInviteIn(
+        email="luc@example.com", first_name="Luc", last_name="Gagnon",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.admin_affiliate_invite(
+            payload, {"email": "admin@example.com"}))
+    assert exc.value.status_code == 409
