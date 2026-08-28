@@ -102,7 +102,16 @@ def test_mark_paid_does_not_reactivate_reversed_referrals(server_module):
     admin = {"email": "admin@example.com"}
     result = asyncio.run(server_module.admin_affiliate_mark_paid("payout-1", types.SimpleNamespace(reference="ref-1", note=""), admin))
 
-    assert result["status"] == "paid"
+    # `paid_manual` et non `paid` : admin_affiliate_mark_paid distingue
+    # volontairement un versement saisi a la main d'un versement confirme par
+    # le webhook NOWPayments (server.py, docstring de la fonction). Le test
+    # attendait encore `paid` et echouait depuis l'introduction de cette
+    # distinction — sans que personne le voie, la suite ne tournant pas.
+    #
+    # C'est le COMPORTEMENT qui est juste ; seule l'attente etait perimee.
+    assert result["status"] == "paid_manual"
+    # Le coeur du test, celui que son nom annonce : la commission approuvee
+    # passe a paid, celle deja annulee NE redevient PAS payable.
     assert referrals[0]["status"] == "paid"
     assert referrals[1]["status"] == "reversed"
 
