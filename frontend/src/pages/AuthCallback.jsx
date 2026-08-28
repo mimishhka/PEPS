@@ -4,7 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { MolecularMesh, Wordmark, FnMark } from "../components/brand";
-import { sanitizeRedirectTarget } from "../lib/redirects";
+import { sanitizeRedirectTarget, consumeRedirectTarget } from "../lib/redirects";
 
 export default function AuthCallback() {
   useDocumentHead({ title: "Connexion", path: "/auth/callback", noindex: true });
@@ -20,7 +20,18 @@ export default function AuthCallback() {
     ran.current = true;
     const token = new URLSearchParams(location.search).get("token");
     if (!token) { setStatus("error"); return; }
-    const redirectTo = sanitizeRedirectTarget("/account", "/account");
+    // Cette ligne passait "/account" en valeur ET en repli : elle ne pouvait
+    // renvoyer que "/account". Toute destination demandée avant la connexion
+    // était perdue — un affilié allant sur /affiliate se connectait pour
+    // atterrir sur son compte client, sans que rien ne le signale.
+    //
+    // Trois sources, dans l'ordre : le paramètre `next` de l'URL s'il existe
+    // un jour (le lien du courriel n'en porte pas aujourd'hui), la
+    // destination mémorisée avant l'envoi, puis le repli.
+    const redirectTo = sanitizeRedirectTarget(
+      new URLSearchParams(location.search).get("next") || consumeRedirectTarget(),
+      "/account"
+    );
     const cleanUrl = `${location.pathname}${location.hash}`;
     window.history.replaceState({}, "", cleanUrl);
     (async () => {

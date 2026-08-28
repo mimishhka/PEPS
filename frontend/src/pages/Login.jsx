@@ -6,7 +6,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { MolecularMesh, Wordmark, FnMark } from "../components/brand";
-import { sanitizeRedirectTarget } from "../lib/redirects";
+import { sanitizeRedirectTarget, rememberRedirectTarget } from "../lib/redirects";
 
 export default function Login() {
   useDocumentHead({ title: "Sign in", path: "/login", noindex: true });
@@ -53,6 +53,9 @@ export default function Login() {
     e.preventDefault();
     const normalized = email.trim().toLowerCase();
     if (!normalized) { toast.error(t("auth.email") || "Email requis"); return; }
+    // La destination est mémorisée AVANT l'envoi : au retour, la personne
+    // arrive sur /auth/callback par une URL neuve, sans rien de ce contexte.
+    rememberRedirectTarget(nextUrl());
     setBusy(true);
     const res = await requestMagic({ email: normalized, create: false, lang });
     setBusy(false);

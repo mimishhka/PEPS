@@ -1,10 +1,11 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useSiteConfig } from "../contexts/SiteConfigContext";
 import api, { formatApiError } from "../lib/api";
+import { codeAffiliePourPaiement } from "../hooks/useAffiliateRef";
 import { toast } from "sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
@@ -234,6 +235,19 @@ export default function Checkout() {
     return true;
   }, [items, email, confirmAge, acceptRuO, acceptPolicy]);
 
+  /* Où en est l'application automatique du code porté par le lien.
+   *
+   * Déclaré AVANT removeCoupon, qui l'utilise. Il vivait après : le code
+   * fonctionnait — le gestionnaire ne s'exécute qu'une fois le rendu terminé —
+   * mais toute reprise qui appellerait removeCoupon pendant le rendu aurait
+   * levé un ReferenceError, et rien ne l'aurait signalé avant l'exécution.
+   *
+   *   "jamais"     — rien tenté
+   *   "sans-email" — tenté alors que le champ courriel était encore vide
+   *   "fait"       — terminé, avec ou sans succès : on ne retente plus
+   */
+  const etatCodeLien = useRef("jamais");
+
   const applyCoupon = async () => {
     const code = couponInput.trim();
     if (!code) return;
@@ -253,7 +267,64 @@ export default function Checkout() {
     }
   };
 
-  const removeCoupon = () => { setCoupon(null); setCouponInput(""); };
+  const removeCoupon = () => {
+    setCoupon(null);
+    setCouponInput("");
+    // Le retrait est un CHOIX, pas un accident : sans ce drapeau, l'effet
+    // ci-dessous remettrait aussitôt le code du lien et le client verrait son
+    // geste annulé sous ses yeux.
+    etatCodeLien.current = "fait";
+  };
+
+  /* Application automatique du code porté par le lien d'affiliation.
+   *
+   * Arriver par le lien créditait l'affilié sans accorder le moindre rabais :
+   * le témoin d'attribution est `httpOnly`, donc invisible d'ici, et le champ
+   * de code restait vide. Le contact payait plein tarif alors que le même code
+   * saisi à la main l'aurait fait économiser.
+   *
+   * Quatre précautions :
+   *  — on ne touche à rien si un coupon est déjà appliqué ou si le champ
+   *    contient une saisie, y compris restaurée du brouillon ;
+   *  — DEUX tentatives au plus, et la seconde seulement si la première a eu
+   *    lieu avant que le courriel soit saisi. Le serveur exige une identité
+   *    pour certains coupons (usage par client, première commande) : une
+   *    tentative unique, faite champ vide, échouait alors définitivement et
+   *    le client ne voyait jamais son rabais. Sans ce compteur, l'autre excès
+   *    guette — `email` étant dans les dépendances, une relance libre
+   *    enverrait une requête à chaque frappe ;
+   *  — l'échec est SILENCIEUX. Le client n'a rien demandé : lui afficher
+   *    « Code invalide » pour un code qu'il n'a pas tapé n'aurait aucun sens.
+   *    C'est le cas d'un affilié suspendu depuis le clic.
+   */
+  useEffect(() => {
+    if (etatCodeLien.current === "fait") return;
+    if (coupon || couponInput.trim()) return;
+    if (!items?.length || subtotal <= 0) return;
+    const courriel = email.trim();
+    // Deuxième passage réservé au moment où le courriel arrive.
+    if (etatCodeLien.current === "sans-email" && !courriel) return;
+    const code = codeAffiliePourPaiement();
+    if (!code) return;
+    // Marqué AVANT l'appel : deux rendus rapprochés ne doivent pas lancer
+    // deux requêtes concurrentes.
+    etatCodeLien.current = courriel ? "fait" : "sans-email";
+    (async () => {
+      try {
+        const params = new URLSearchParams({ code, subtotal: String(subtotal) });
+        if (courriel) params.set("email", courriel);
+        params.set("items", JSON.stringify(items.map((i) => ({ product_id: i.product_id }))));
+        const { data } = await api.post(`/coupons/validate?${params.toString()}`);
+        setCoupon(data);
+        setCouponInput(data.code);
+        etatCodeLien.current = "fait";
+        toast.success(lang === "fr" ? "Code de parrainage appliqué" : "Referral code applied",
+                      { description: data.code });
+      } catch {
+        /* silencieux — voir ci-dessus */
+      }
+    })();
+  }, [items, subtotal, email, coupon, couponInput, lang]);
 
   const submit = async () => {
     const shipNorm = { ...ship, postal_code: normalizePostal(ship.country, ship.postal_code) };

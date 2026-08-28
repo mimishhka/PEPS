@@ -13,7 +13,20 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
     );
   }
   if (!user) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+    // La destination part AUSSI dans l'URL, pas seulement dans l'état de
+    // navigation : `state` ne survit ni à un rechargement de la page de
+    // connexion, ni au détour par le courriel du lien magique.
+    //
+    // `search` et `hash` sont conservés — `pathname` seul perdait les
+    // paramètres, et une page atteinte avec un filtre revenait nue.
+    const cible = `${location.pathname}${location.search}${location.hash}`;
+    return (
+      <Navigate
+        to={`/login?next=${encodeURIComponent(cible)}`}
+        state={{ from: cible }}
+        replace
+      />
+    );
   }
   // "staff" a un accès admin partiel — quelles sections il voit dépend de
   // ses permissions, vérifiées à l'affichage de chaque section ET, surtout,
