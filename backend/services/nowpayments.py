@@ -455,21 +455,47 @@ async def nowpayments_payout_ipn(request: Request):
     np_status = str(payload.get("status", "")).lower()
     if not batch_id:
         return {"ok": True}
-    payout = await s.db.affiliate_payouts.find_one({"np_batch_id": batch_id}, {"_id": 0})
-    if not payout:
+    # TOUS les versements du lot, pas un seul.
+    #
+    # `admin_affiliate_batch_payout` pose le MÊME `np_batch_id` sur chaque
+    # versement du lot (update_many). Ce webhook faisait `find_one` : sur un lot
+    # de douze affilies, onze restaient en « processing » indefiniment alors que
+    # la cryptomonnaie etait partie. Leurs commissions gardaient un `payout_id`
+    # non nul, donc le generateur suivant les ignorait — ni reversees, ni
+    # re-payees : elles sortaient de tous les cycles, sans aucun signal.
+    payouts = await s.db.affiliate_payouts.find(
+        {"np_batch_id": batch_id}, {"_id": 0, "id": 1}
+    ).to_list(1000)
+    if not payouts:
         return {"ok": True}
+    ids = [p["id"] for p in payouts]
     now = datetime.now(timezone.utc).isoformat()
     if np_status in ("finished", "sent", "completed"):
-        await s.db.affiliate_payouts.update_one({"id": payout["id"]},
-            {"$set": {"status": "paid", "np_status": np_status, "paid_at": now, "reference": batch_id}})
+        await s.db.affiliate_payouts.update_many(
+            {"id": {"$in": ids}},
+            {"$set": {"status": "paid", "np_status": np_status,
+                      "paid_at": now, "reference": batch_id}},
+        )
         await s.db.affiliate_referrals.update_many(
-            {"payout_id": payout["id"], "status": {"$in": ["pending", "approved"]}},
+            {"payout_id": {"$in": ids}, "status": {"$in": ["pending", "approved"]}},
             {"$set": {"status": "paid", "paid_at": now}},
         )
     elif np_status in ("failed", "rejected"):
-        await s.db.affiliate_payouts.update_one({"id": payout["id"]},
-            {"$set": {"status": "failed", "np_status": np_status, "updated_at": now}})
+        # L'echec LIBERE les commissions. Sans cette remise a zero du
+        # `payout_id`, elles restaient rattachees a un versement mort : le
+        # generateur filtre sur `payout_id: None` et ne les aurait jamais
+        # reprises. L'argent du etait immobilise sans qu'aucun ecran ne le dise.
+        await s.db.affiliate_payouts.update_many(
+            {"id": {"$in": ids}},
+            {"$set": {"status": "failed", "np_status": np_status, "updated_at": now}},
+        )
+        await s.db.affiliate_referrals.update_many(
+            {"payout_id": {"$in": ids}, "status": "approved"},
+            {"$set": {"payout_id": None}},
+        )
     else:
-        await s.db.affiliate_payouts.update_one({"id": payout["id"]},
-            {"$set": {"np_status": np_status, "updated_at": now}})
+        await s.db.affiliate_payouts.update_many(
+            {"id": {"$in": ids}},
+            {"$set": {"np_status": np_status, "updated_at": now}},
+        )
     return {"ok": True}

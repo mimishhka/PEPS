@@ -500,8 +500,20 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
     """
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(days=365)
+    # `tier_agreement` FAIT PARTIE du calcul — sans lui, _palier_effectif est
+    # appelée en permanence en mode « sans entente ».
+    #
+    # La projection ne demandait que `manual_tier`. Le champ était donc toujours
+    # absent du document, `bool(None)` valait False, et une entente n'a JAMAIS
+    # figé quoi que ce soit. C'est cette fonction qui fournit le taux à la
+    # création de chaque commission (affiliate_on_order_paid) : la règle était
+    # violée sur le chemin de l'argent, et dans un seul sens — un affilié dont
+    # le chiffre d'affaires dépassait le palier convenu était payé au-dessus de
+    # l'entente. La liste admin, elle, reçoit le document complet et affichait
+    # donc le bon palier : les deux écrans se contredisaient sur la même
+    # personne, ce qui rendait l'écart indétectable de l'intérieur.
     affiliate = await s.db.affiliates.find_one(
-        {"id": affiliate_id}, {"_id": 0, "manual_tier": 1}
+        {"id": affiliate_id}, {"_id": 0, "manual_tier": 1, "tier_agreement": 1}
     )
     manual_tier = str((affiliate or {}).get("manual_tier") or "").strip().lower() or None
     if manual_tier and manual_tier not in {tier[0] for tier in s.AFFILIATE_TIERS}:
@@ -1221,6 +1233,39 @@ async def affiliate_on_order_reversed(order_id: str, full: bool = True) -> None:
         {"$set": {"status": "reversed", "reversed_at": now}},
     )
 
+    # LES COMMISSIONS DÉJÀ VERSÉES aussi — elles étaient hors du filtre.
+    #
+    # Le statut `paid` n'était repris nulle part : vous remboursiez le client,
+    # l'affilié gardait sa commission, et le referral continuait d'alimenter son
+    # chiffre d'affaires de palier. Rien ne le signalait. Les conditions
+    # promettent pourtant la reprise « sur le solde suivant ».
+    #
+    # Le versement, lui, est irréversible — la cryptomonnaie est partie. On
+    # marque donc la commission reprise ET on inscrit la créance
+    # (`clawback_amount`, `clawback_pending`), de sorte qu'elle sorte des
+    # totaux et du calcul de palier tout en restant chiffrée et retrouvable.
+    # Le recouvrement effectif reste un geste humain : aucun mécanisme de solde
+    # négatif n'existe, et en inventer un ici irait bien au-delà d'une
+    # correction.
+    deja_verses = await s.db.affiliate_referrals.find(
+        {"order_id": order_id, "status": "paid"},
+        {"_id": 0, "id": 1, "affiliate_id": 1, "commission_amount": 1},
+    ).to_list(50)
+    for r in deja_verses:
+        montant = float(r.get("commission_amount") or 0.0)
+        await s.db.affiliate_referrals.update_one(
+            {"id": r["id"]},
+            {"$set": {"status": "reversed", "reversed_at": now,
+                      "reversed_after_payout": True,
+                      "clawback_amount": montant,
+                      "clawback_pending": True}},
+        )
+        logging.warning(
+            "[affiliate] commission DÉJÀ VERSÉE reprise — affilié=%s commande=%s "
+            "montant=%.2f : récupération manuelle requise",
+            r.get("affiliate_id"), order_id, montant,
+        )
+
 #                                    devienne 'approved' (fenêtre refund)
 
 
@@ -1470,10 +1515,23 @@ async def affiliate_ensure_indexes():
 # ===========================================================================
 async def _defer_affiliate_payout_below_threshold(
     aff: dict, period: str, amount_cad: float, referral_count: int,
-    threshold_cad: float,
+    threshold_cad: float, motif: str = "seuil",
 ) -> bool:
-    """Enregistre un report de payout (montant < seuil) et notifie l'affilié
-    UNE seule fois par (affiliate_id, period). Idempotent via unique index.
+    """Enregistre un report de payout et notifie l'affilié UNE seule fois par
+    (affiliate_id, period). Idempotent via unique index.
+
+    `motif` distingue les DEUX raisons de reporter, qui n'ont rien à voir :
+
+      "seuil" — le solde est sous AFFILIATE_PAYOUT_MIN_CAD ;
+      "prix"  — le prix du stablecoin est hors bande, le versement est suspendu
+                par prudence, quel que soit le montant.
+
+    Ce paramètre n'existait pas : le second cas empruntait le message du
+    premier. Un affilié à qui l'on devait 340 $ recevait un courriel affirmant
+    que 340,00 $ est inférieur à 25,00 $, et qu'il lui restait « 0,00 $ CAD à
+    générer » — puisque `max(0, seuil - montant)` vaut zéro quand le montant
+    dépasse le seuil. Incompréhensible, et la vraie raison n'apparaissait que
+    dans les journaux du serveur.
 
     Retourne True si un email a été mis en file d'attente (premier report),
     False si déjà notifié pour cette période (re-run scheduler)."""
@@ -1487,6 +1545,7 @@ async def _defer_affiliate_payout_below_threshold(
         "amount_cad": round(float(amount_cad), 2),
         "threshold_cad": round(float(threshold_cad), 2),
         "referral_count": int(referral_count),
+        "motif": motif,
         "created_at": now.isoformat(),
         "email_status": "pending",
     }
@@ -1506,8 +1565,12 @@ async def _defer_affiliate_payout_below_threshold(
 
     lang = (aff.get("preferred_lang") or "fr").lower()
     first_name = aff.get("first_name") or aff.get("name") or ""
-    subject_fr = f"FIRONOVA — Votre paiement d'affilié de {period} est reporté au prochain cycle"
-    subject_en = f"FIRONOVA — Your {period} affiliate payout is deferred to next cycle"
+    if motif == "prix":
+        subject_fr = f"FIRONOVA — Votre paiement d'affilié de {period} est reporté par précaution"
+        subject_en = f"FIRONOVA — Your {period} affiliate payout is held as a precaution"
+    else:
+        subject_fr = f"FIRONOVA — Votre paiement d'affilié de {period} est reporté au prochain cycle"
+        subject_en = f"FIRONOVA — Your {period} affiliate payout is deferred to next cycle"
     subject = subject_fr if lang == "fr" else subject_en
 
     amount_str = f"{amount_cad:.2f} $ CAD"
@@ -1517,6 +1580,48 @@ async def _defer_affiliate_payout_below_threshold(
 
     hello_fr = f"Bonjour {first_name}," if first_name else "Bonjour,"
     hello_en = f"Hello {first_name}," if first_name else "Hello,"
+
+    _prix_fr = f"""
+      <p style="margin:0 0 16px">{hello_fr}</p>
+      <p style="margin:0 0 16px">
+        Vos commissions pour la période <strong>{period}</strong> s'élèvent à
+        <strong>{amount_str}</strong>. Ce montant vous est entièrement dû.
+      </p>
+      <p style="margin:0 0 16px">
+        Le versement est toutefois <strong>suspendu par précaution</strong> : le cours du
+        stablecoin utilisé pour les paiements s'écarte trop de sa valeur de référence pour
+        que nous puissions convertir votre solde de façon fiable. Envoyer la quantité
+        habituelle vous livrerait moins que la somme due.
+      </p>
+      <p style="margin:0 0 16px">
+        <strong>Votre solde reste intégralement à votre crédit</strong> et le versement partira
+        dès que le cours sera revenu dans sa bande normale, sans démarche de votre part.
+      </p>
+      <p style="margin:24px 0 0;color:#666;font-size:12px">
+        Cette mesure existe pour vous protéger : nous préférons reporter un paiement
+        plutôt que de vous verser moins que ce que nous vous devons.
+      </p>
+    """
+    _prix_en = f"""
+      <p style="margin:0 0 16px">{hello_en}</p>
+      <p style="margin:0 0 16px">
+        Your commissions for period <strong>{period}</strong> total
+        <strong>{amount_str}</strong>. That amount is owed to you in full.
+      </p>
+      <p style="margin:0 0 16px">
+        The payout is nonetheless <strong>on hold as a precaution</strong>: the stablecoin used
+        for payouts has drifted too far from its reference value for us to convert your
+        balance reliably. Sending the usual quantity would deliver you less than you are owed.
+      </p>
+      <p style="margin:0 0 16px">
+        <strong>Your balance stays fully to your credit</strong> and the payout will go out as
+        soon as the price is back within its normal band, with nothing for you to do.
+      </p>
+      <p style="margin:24px 0 0;color:#666;font-size:12px">
+        This exists to protect you: we would rather delay a payment than pay you less
+        than we owe.
+      </p>
+    """
 
     body_fr = f"""
       <p style="margin:0 0 16px">{hello_fr}</p>
@@ -1558,6 +1663,13 @@ async def _defer_affiliate_payout_below_threshold(
         inefficient. Grouping payouts maximizes what you actually receive.
       </p>
     """
+    # Le motif « prix » remplace les textes du seuil : le montant est dû en
+    # entier, c'est la CONVERSION qui est suspendue. On ne parle donc ni de
+    # seuil, ni de « ce qu'il reste à générer » — la phrase qui affichait
+    # « 0,00 $ CAD » à un affilié créditeur de plusieurs centaines de dollars.
+    if motif == "prix":
+        body_fr, body_en = _prix_fr, _prix_en
+
     body = body_fr if lang == "fr" else body_en
 
     html = f"""<!DOCTYPE html>
@@ -1775,8 +1887,12 @@ async def _generate_payouts_for_period(period: str, fx_rate: float,
                 "[payouts] %s suspendu — prix %s hors bande (%.6f)",
                 aff.get("code"), payout_currency.upper(), token_price,
             )
+            # motif="prix" : le solde peut être très au-dessus du seuil. Sans
+            # ce marqueur, l'affilié recevait le message « montant inférieur au
+            # seuil minimum », arithmétiquement absurde dans ce cas.
             await _defer_affiliate_payout_below_threshold(
                 aff, period, total, len(grp["ids"]), s.AFFILIATE_PAYOUT_MIN_CAD,
+                motif="prix",
             )
             continue
 

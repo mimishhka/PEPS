@@ -2663,10 +2663,29 @@ async def _coupon_discount(coupon: dict, subtotal: float,
             {"$or": [{"id": coupon.get("affiliate_id")},
                      {"code": _code},
                      {"aliases.code": _code}]},
-            {"_id": 0, "status": 1},
+            {"_id": 0, "status": 1, "code": 1, "aliases": 1},
         )
         if not aff or aff.get("status") != "active":
             raise HTTPException(400, "Invalid coupon code")
+        # UN ALIAS DÉSACTIVÉ N'ACCORDE PLUS RIEN.
+        #
+        # `admin_affiliate_alias_toggle` promet dans sa documentation qu'un
+        # alias inactif « ne permet plus l'attribution ni l'application du
+        # rabais ». Il n'écrivait que dans `affiliates` : l'attribution
+        # s'arrêtait bien, le rabais non — il vit dans `coupons`, et ce contrôle
+        # ne regardait que le statut de l'AFFILIÉ.
+        #
+        # Conséquence : un ancien code très généreux qu'on désactivait parce
+        # qu'il circulait sur un forum continuait d'accorder sa remise
+        # indéfiniment, et SANS commission — donc sans rien d'anormal dans les
+        # tableaux de bord. La perte n'apparaissait que dans la marge.
+        #
+        # Le code PRINCIPAL n'est pas concerné : il n'a pas d'entrée d'alias.
+        if _code and _code != (aff.get("code") or "").upper():
+            alias = next((a for a in (aff.get("aliases") or [])
+                          if str(a.get("code") or "").upper() == _code), None)
+            if alias is not None and not alias.get("active", True):
+                raise HTTPException(400, "Invalid coupon code")
 
     if coupon.get("expires_at"):
         try:
@@ -10232,6 +10251,22 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
     existing = await db.affiliates.find_one({"email": email}, {"_id": 0})
     if existing and existing.get("status") == "active":
         raise HTTPException(409, "This email is already an active affiliate")
+    # UN COMPTE SUSPENDU NE SE RÉINVITE PAS.
+    #
+    # `admin_affiliate_resend` refuse tout statut autre que « invited », mais
+    # cette route-ci ne rejetait que « active » — et elle écrit `status:
+    # "invited"` plus bas. Réinviter l'adresse d'un affilié suspendu levait donc
+    # sa suspension et lui envoyait un lien pour se réactiver lui-même. Une
+    # sanction s'annulait par le formulaire d'invitation, sans trace.
+    #
+    # La réhabilitation reste possible, mais elle doit être un geste explicite :
+    # rouvrir la fiche et cliquer « Réactiver ».
+    if existing and existing.get("status") == "suspended":
+        raise HTTPException(
+            409,
+            "This affiliate is suspended — restore the account from their "
+            "profile before inviting again",
+        )
 
     if existing:
         await db.affiliates.update_one(
@@ -10435,6 +10470,14 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
             existing = await db.affiliates.find_one({"email": email}, {"_id": 0})
             if existing and existing.get("status") == "active":
                 skipped.append({"email": email, "reason": "Already active"})
+                continue
+            # Même garde que l'invitation unitaire — et elle compte davantage
+            # ici : réimporter le fichier CSV d'origine aurait réhabilité EN UNE
+            # FOIS toutes les personnes suspendues depuis, chacune recevant un
+            # lien d'activation. Elles sont écartées et listées, pas traitées en
+            # silence.
+            if existing and existing.get("status") == "suspended":
+                skipped.append({"email": email, "reason": "Suspended — restore first"})
                 continue
 
             raw = secrets.token_urlsafe(32)
