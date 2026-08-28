@@ -1193,6 +1193,7 @@ async def affiliate_on_order_paid(order: dict) -> None:
         "order_email": order.get("email"),
         "base_amount": base,
         "commission_amount": commission,
+        "order_total": round(float(order.get("total") or base), 2),
         "status": status,                       # pending|approved|paid<reversed|excluded
         "excluded_reason": excluded_reason,
         "created_at": now,
@@ -1623,38 +1624,115 @@ async def _monthly_payouts_scheduler():
             else:
                 period = f"{paid_local.year}-{paid_local.month - 1:02d}"
 
-            try:
-                await s.db.payout_runs.insert_one({
-                    "id": str(uuid.uuid4()),
-                    "period": period,
-                    "auto": True,
-                    "started_at": datetime.now(timezone.utc).isoformat(),
-                    "status": "running",
-                })
-            except Exception:
-                logging.info("[monthly-payouts] period %s already ran, skip", period)
-                continue
+            await _run_auto_payout_period(period, reuse_existing_run=False)
 
+            # S6 — rattrapage des runs automatiques échoués. Un run qui a planté
+            # laisse la période orpheline : le mois suivant a une période
+            # différente, et rien ne rejouait le mois perdu (il ne se rattrapait
+            # qu'à la main via force-run). On reprend ici tout run `auto` passé
+            # en statut `failed`, sans limite d'ancienneté, pour ne pas laisser
+            # de commissions approuvées jamais versées.
+            #
+            # Contrainte : `payout_runs` porte un index unique (period, auto) —
+            # on NE crée donc pas de nouvelle ligne pour une période déjà
+            # inscrite ; on réutilise la ligne `failed` existante (reuse_existing_run).
             try:
-                # Appelle la génération existante (crée les payouts 'ready')
-                fx_rate, fx_source = await _fetch_cad_to_usd_rate()
-                fx_captured_at = datetime.now(timezone.utc).isoformat()
-                await _generate_payouts_for_period(period, fx_rate, fx_source, fx_captured_at)
-                await s.db.payout_runs.update_one(
-                    {"period": period, "auto": True},
-                    {"$set": {"status": "done",
-                              "ended_at": datetime.now(timezone.utc).isoformat()}},
-                )
-                logging.info("[monthly-payouts] period %s generated", period)
+                failed = await s.db.payout_runs.find(
+                    {"auto": True, "status": "failed"},
+                    {"_id": 0, "period": 1},
+                ).to_list(50)
+                for run in failed:
+                    rp = run.get("period")
+                    if rp and rp != period:
+                        await _run_auto_payout_period(rp, reuse_existing_run=True)
             except Exception as e:
-                await s.db.payout_runs.update_one(
-                    {"period": period, "auto": True},
-                    {"$set": {"status": "failed", "error": str(e)}},
-                )
-                logging.error("[monthly-payouts] period %s failed: %s", period, e)
+                logging.error("[monthly-payouts] retry sweep error: %s", e)
         except Exception as e:
             logging.error("[monthly-payouts] scheduler loop error: %s", e)
             await asyncio.sleep(3600)
+
+
+async def _run_auto_payout_period(period: str, reuse_existing_run: bool = False) -> None:
+    """Exécute le run auto d'une période, en réutilisant le même code pour le
+    chemin mensuel et pour le rattrapage des runs échoués (S6).
+
+    - chemin mensuel (`reuse_existing_run=False`) : on réserve la période par
+      un INSERT ; l'index unique (period, auto) fait échouer proprement
+      l'insert si elle a déjà tourné → skip (anti-double).
+    - chemin de rejeu (`reuse_existing_run=True`) : la ligne `failed` existe
+      déjà (même index) ; on la remet à `running` et on la réutilise pour ne
+      pas créer de doublon (period, auto).
+
+    Les `update` ciblent la ligne de cette période spécifique (et non un id
+    généré) pour rester alignés sur l'index unique : une seule ligne par
+    période, dont le statut reflète la dernière tentative."""
+    if reuse_existing_run:
+        reset = await s.db.payout_runs.find_one_and_update(
+            {"period": period, "auto": True},
+            {"$set": {"status": "running",
+                      "started_at": datetime.now(timezone.utc).isoformat(),
+                      "error": None}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if not reset:
+            logging.info("[monthly-payouts] period %s no failed run to retry, skip", period)
+            return
+    else:
+        try:
+            await s.db.payout_runs.insert_one({
+                "id": str(uuid.uuid4()),
+                "period": period,
+                "auto": True,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "status": "running",
+            })
+        except Exception:
+            logging.info("[monthly-payouts] period %s already ran, skip", period)
+            return
+
+    try:
+        # Appelle la génération existante (crée les payouts 'ready')
+        fx_rate, fx_source = await _fetch_cad_to_usd_rate()
+        fx_captured_at = datetime.now(timezone.utc).isoformat()
+        await _generate_payouts_for_period(period, fx_rate, fx_source, fx_captured_at)
+        await s.db.payout_runs.update_one(
+            {"period": period, "auto": True},
+            {"$set": {"status": "done",
+                      "ended_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        logging.info("[monthly-payouts] period %s generated", period)
+    except Exception as e:
+        await s.db.payout_runs.update_one(
+            {"period": period, "auto": True},
+            {"$set": {"status": "failed", "error": str(e)}},
+        )
+        logging.error("[monthly-payouts] period %s failed: %s", period, e)
+
+
+async def _affiliate_payout_amounts(payout_currency: str, amount_cad: float,
+                                    fx_rate: float):
+    """Calcule (amount_target, amount_usd, token_price, price_source, deferred).
+
+    Source unique de vérité pour la quantité de jetons d'un versement, partagée
+    par le scheduler mensuel (`_generate_payouts_for_period`) et le run admin
+    manuel. La dette est libellée en CAD ; c'est donc la quantité de jetons qui
+    s'ajuste au prix du stablecoin — calcul en UN SEUL arrondi depuis le montant
+    CANADIEN (jamais depuis amount_usd déjà arrondi), à SIX décimales (précision
+    native USDT/USDC sur Ethereum comme sur Tron).
+
+    `deferred=True` indique un prix hors bande : il ne faut PAS verser
+    maintenant — la quantité habituelle livrerait moins que la somme due, et
+    l'ajuster sur un prix qu'on ne peut pas croire serait pire.
+    """
+    cur = (payout_currency or "usdt").lower()
+    if cur not in s.AFFILIATE_PAYOUT_CURRENCIES:
+        return amount_cad, None, 1.0, "n/a", False
+    amount_usd = round(amount_cad * fx_rate, 2)
+    token_price, price_source = await _fetch_stable_price(cur)
+    if price_source == "out_of_band":
+        return None, amount_usd, token_price, price_source, True
+    amount_target = round(amount_cad * fx_rate / token_price, 6)
+    return amount_target, amount_usd, token_price, price_source, False
 
 
 async def _generate_payouts_for_period(period: str, fx_rate: float,
@@ -1685,42 +1763,23 @@ async def _generate_payouts_for_period(period: str, fx_rate: float,
             continue
         payout_currency = (aff.get("payout_currency") or "usdt").lower()
         amount_cad = total
-        token_price, price_source = 1.0, "n/a"
-        if payout_currency in s.AFFILIATE_PAYOUT_CURRENCIES:
-            amount_usd = round(amount_cad * fx_rate, 2)
-            token_price, price_source = await _fetch_stable_price(payout_currency)
+        amount_target, amount_usd, token_price, price_source, deferred = \
+            await _affiliate_payout_amounts(payout_currency, amount_cad, fx_rate)
 
-            if price_source == "out_of_band":
-                # Le jeton a décroché, ou le prix reçu est aberrant. On ne verse
-                # pas : envoyer la quantité habituelle livrerait moins que la
-                # somme due, et l'ajuster sur un prix qu'on ne peut pas croire
-                # serait pire. Le solde reste au crédit de l'affilié.
-                logging.error(
-                    "[payouts] %s suspendu — prix %s hors bande (%.6f)",
-                    aff.get("code"), payout_currency.upper(), token_price,
-                )
-                await _defer_affiliate_payout_below_threshold(
-                    aff, period, total, len(grp["ids"]), s.AFFILIATE_PAYOUT_MIN_CAD,
-                )
-                continue
+        if deferred:
+            # Le jeton a décroché, ou le prix reçu est aberrant. On ne verse
+            # pas : envoyer la quantité habituelle livrerait moins que la
+            # somme due, et l'ajuster sur un prix qu'on ne peut pas croire
+            # serait pire. Le solde reste au crédit de l'affilié.
+            logging.error(
+                "[payouts] %s suspendu — prix %s hors bande (%.6f)",
+                aff.get("code"), payout_currency.upper(), token_price,
+            )
+            await _defer_affiliate_payout_below_threshold(
+                aff, period, total, len(grp["ids"]), s.AFFILIATE_PAYOUT_MIN_CAD,
+            )
+            continue
 
-            # La dette est libellée en DOLLARS CANADIENS. C'est donc la quantité
-            # de jetons qui s'ajuste, pas la valeur livrée : à 0,95, on envoie
-            # 5 % de jetons en plus pour que l'affilié reçoive bien son dû.
-            #
-            # Calcul en UN SEUL arrondi, depuis le montant en dollars canadiens
-            # et non depuis amount_usd déjà arrondi : deux arrondis successifs
-            # ajoutaient jusqu'à un cent, mesuré.
-            #
-            # SIX décimales, et non deux : c'est la précision native de l'USDT
-            # comme de l'USDC, sur Ethereum comme sur Tron. Arrondir au cent
-            # jetait une précision que la chaîne accepte, et laissait un écart
-            # d'un demi-cent que rien ne rattrapait ensuite. À six décimales
-            # l'écart tombe à zéro.
-            amount_target = round(amount_cad * fx_rate / token_price, 6)
-        else:
-            amount_usd = None
-            amount_target = amount_cad
         payout_id = str(uuid.uuid4())
         try:
             await s.db.affiliate_payouts.insert_one({

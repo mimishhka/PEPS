@@ -256,6 +256,12 @@ export const dict = {
       contact: "Contact",
       rights: "All rights reserved.",
     },
+    cookies: {
+      title: "Cookies & Attribution",
+      body: "We use a first-party, session-only cookie when you arrive through an affiliate link so we can credit that visit. It is set on our own domain, cannot be read by third parties, and disappears when you close your browser. It never contains personal information.",
+      accept: "Accept",
+      learnMore: "Learn more",
+    },
   },
   fr: {
     nav: {
@@ -513,6 +519,12 @@ export const dict = {
       faq: "FAQ",
       contact: "Contact",
       rights: "Tous droits réservés.",
+    },
+    cookies: {
+      title: "Témoins & attribution",
+      body: "Nous posons un témoin first-party, limité à la session, lorsque vous arrivez par un lien d'affiliation afin de créditer cette visite. Il est installé sur notre propre domaine, ne peut être lu par des tiers et disparaît à la fermeture du navigateur. Il ne contient jamais de données personnelles.",
+      accept: "Accepter",
+      learnMore: "En savoir plus",
     },
   },
 };

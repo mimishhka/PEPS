@@ -23,12 +23,12 @@ const TERMS = [
     fr: { title: "Avertissement et conditions d'utilisation" },
     paras: [
       {
-        en: "FIRONOVA provides no warranty or guarantee, express or implied, concerning any product sold or any information published on this website. Before acquiring anything from us, you are responsible for consulting a licensed physician or qualified healthcare professional of your own choosing.",
-        fr: "FIRONOVA n'offre aucune garantie, expresse ou implicite, concernant les produits vendus ou les informations publiées sur ce site. Avant toute acquisition, il vous incombe de consulter un médecin autorisé ou un professionnel de la santé qualifié de votre choix.",
+        en: "FIRONOVA provides no warranty or guarantee, express or implied, concerning any product sold or any information published on this website. The information on this site is provided for scientific and educational purposes only.",
+        fr: "FIRONOVA n'offre aucune garantie, expresse ou implicite, concernant les produits vendus ou les informations publiées sur ce site. Les informations présentées sur ce site le sont à des fins scientifiques et pédagogiques uniquement.",
       },
       {
-        en: "Nothing offered on this website constitutes medical advice, a diagnosis, a treatment or a means of preventing or curing any illness or health condition. Always seek the opinion of a licensed medical professional for any health-related question.",
-        fr: "Rien de ce qui est offert sur ce site ne constitue un avis médical, un diagnostic, un traitement ou un moyen de prévenir ou de guérir une maladie ou un problème de santé. Adressez-vous toujours à un professionnel de la santé autorisé pour toute question d'ordre médical.",
+        en: "Nothing offered on this website constitutes medical advice, a diagnosis, a treatment or a means of preventing or curing any illness or health condition. Nothing sold here is intended for human or veterinary use, and nothing on this site should be read as medical advice.",
+        fr: "Rien de ce qui est offert sur ce site ne constitue un avis médical, un diagnostic, un traitement ou un moyen de prévenir ou de guérir une maladie ou un problème de santé. Aucun produit vendu ici n'est destiné à un usage humain ou vétérinaire, et rien sur ce site ne saurait être interprété comme un conseil médical.",
       },
       {
         en: "All information presented on FIRONOVA is supplied strictly for in-vitro laboratory research and educational purposes. Products sold here are not approved or authorized by any regulatory authority to diagnose, treat, mitigate, prevent or cure any disease or condition.",

@@ -510,8 +510,8 @@ export default function AffiliateDashboard() {
     // c'est-à-dire pour la seule personne à qui la visite s'adresse.
     { cible: "affiliate-link-panel", ton: "nova", onglet: "overview",
       titre: L("Votre lien et votre code", "Your link and code"),
-      texte: L("Partagez l'un ou l'autre. Le lien reconnaît vos visiteurs pendant un an ; le code, lui, n'expire jamais et fonctionne même à l'oral.",
-               "Share either one. The link recognises your visitors for a year; the code never expires and works even spoken aloud.") },
+      texte: L("Partagez l'un ou l'autre. Le lien crédite la visite en cours ; après quoi, votre contact doit saisir votre code. Le code, lui, n'expire jamais et fonctionne même à l'oral.",
+               "Share either one. The link credits the current visit; after that, your contact needs to enter your code. The code never expires and works even spoken aloud.") },
     { cible: "affiliate-kpis", ton: "acquis", onglet: "overview",
       titre: L("Validé ne veut pas dire versé", "Validated is not paid"),
       texte: L(`Une commande devient « validée » ${data?.approval_hold_days ?? 7} jours après avoir été passée. C'est ce montant qui fait progresser votre palier. Si une réclamation est déposée, la commission reste en attente jusqu'à la décision.`,
@@ -617,10 +617,10 @@ export default function AffiliateDashboard() {
               </p>
             )}
             <p className="font-data text-xs text-glacier mt-2">
-              {L("Prochaine réévaluation", "Next review")} : {data?.next_review ? new Date(data.next_review).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { year: "numeric", month: "long", day: "numeric" }) : "—"}
-              {" · "}
               {/* Placé ici plutôt que dans un onglet : les questions viennent
-                  quand on regarde ses chiffres, pas quand on cherche un menu. */}
+                  quand on regarde ses chiffres, pas quand on cherche un menu.
+                  L'ancienne « prochaine réévaluation » a disparu avec la
+                  rétrogradation trimestrielle (P2-2). */}
               <Link to="/affiliate/faq" data-testid="affiliate-faq-link" className="text-nova underline">
                 {L("Questions fréquentes", "FAQ")}
               </Link>
@@ -1150,8 +1150,8 @@ export default function AffiliateDashboard() {
                   {personalTop
                     ? L("Ces produits ont déjà convaincu votre audience. Un rappel bien placé peut relancer les ventes.",
                         "These products already resonate with your audience. A well-timed reminder can drive repeat sales.")
-                    : L("Astuce : ces liens produits convertissent 3-5× mieux que le lien home, car ils atterrissent directement sur un composé précis.",
-                        "Tip: product links convert 3-5× better than the home link because they land directly on a specific compound.")}
+                    : L("Astuce : ces liens produits atterrissent directement sur un composé précis — vos prospects voient immédiatement de quoi il s'agit.",
+                        "Tip: product links land directly on a specific compound, so your prospects know right away what they are looking at.")}
                 </p>
               </div>
             )}
@@ -1962,7 +1962,13 @@ function ReferralStatus({ status, lang }) {
 function PayoutStatus({ status, L }) {
   const map = {
     ready: { fr: "Prêt", en: "Ready", cls: "bg-warning/15 text-warning" },
+    queued_manual: { fr: "En file (manuel)", en: "Queued (manual)", cls: "bg-ash/50 text-glacier" },
+    dispatching: { fr: "Envoi en cours", en: "Dispatching", cls: "bg-nova/15 text-nordfjord" },
+    processing: { fr: "Traitement", en: "Processing", cls: "bg-nova/15 text-nordfjord" },
     paid: { fr: "Payé", en: "Paid", cls: "bg-success/15 text-success" },
+    paid_manual: { fr: "Payé (manuel)", en: "Paid (manual)", cls: "bg-success/15 text-success" },
+    failed: { fr: "Échec", en: "Failed", cls: "bg-error/15 text-error" },
+    reversed: { fr: "Annulé", en: "Reversed", cls: "bg-error/15 text-error" },
   };
   const m = map[status] || map.ready;
   return <span className={`px-2.5 py-1 rounded-full font-data text-[10px] font-semibold ${m.cls}`}>{L(m.fr, m.en)}</span>;

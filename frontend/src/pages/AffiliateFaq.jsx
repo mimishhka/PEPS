@@ -130,7 +130,7 @@ const QA = [
         "Une fois par mois, pour les commissions validées, sous réserve d'un solde atteignant 25 $ CAD.",
         "En dessous de ce seuil, rien n'est perdu : votre solde reste à votre crédit et s'ajoute au mois suivant jusqu'à l'atteindre.",
         "Le versement part en USDT ou USDC, selon votre choix, converti depuis le dollar canadien au taux officiel de la Banque du Canada le jour du paiement. Les frais de réseau sont déduits du montant versé.",
-        "Votre commission est due en dollars canadiens, et c'est ce montant que vous recevez. Si le jeton s'écarte du dollar américain — c'est arrivé à l'USDC en 2023, tombé à 0,87 $ — la quantité envoyée est augmentée d'autant. Vous ne perdez rien à un décrochage. En cas d'écart trop important pour être fiable, le versement est reporté et votre solde conservé.",
+        "Votre commission est due en dollars canadiens, et c'est ce montant que vous recevez. Si le jeton s'écarte du dollar américain — c'est arrivé à l'USDC en 2023, tombé à 0,87 $ — la quantité envoyée est ajustée en conséquence, pour que la valeur reçue reste proche de celle due. En cas d'écart trop important pour être fiable, le versement est reporté et votre solde conservé.",
       ],
     },
     en: {
@@ -139,7 +139,7 @@ const QA = [
         "Once a month, for validated commissions, subject to a balance reaching CAD $25.",
         "Below that threshold nothing is lost: your balance stays to your credit and carries over month to month until it is reached.",
         "The payout goes out in USDT or USDC, at your choice, converted from Canadian dollars at the official Bank of Canada rate on the day of payment. Network fees are deducted from the amount paid.",
-        "Your commission is owed in Canadian dollars, and that is the amount you receive. If the token drifts from the US dollar — as USDC did in 2023, falling to $0.87 — the quantity sent is increased accordingly. You lose nothing to a depeg. Where the gap is too large to be trusted, the payout is deferred and your balance kept.",
+        "Your commission is owed in Canadian dollars, and that is the amount you receive. If the token drifts from the US dollar — as USDC did in 2023, falling to $0.87 — the quantity sent is adjusted accordingly, so the value received stays close to what is owed. Where the gap is too large to be trusted, the payout is deferred and your balance kept.",
       ],
     },
   },

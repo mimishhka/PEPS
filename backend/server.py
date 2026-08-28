@@ -9054,7 +9054,7 @@ try:
         affiliate_on_order_paid, affiliate_on_order_reversed, affiliate_maintenance_watchdog,
         _process_affiliate_email_job, _affiliate_email_worker, affiliate_ensure_indexes,
         _defer_affiliate_payout_below_threshold, _monthly_payouts_scheduler,
-        _generate_payouts_for_period,
+        _generate_payouts_for_period, _affiliate_payout_amounts,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
     from backend.services.affiliate import (  # noqa: F401
@@ -9068,7 +9068,7 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
         affiliate_on_order_paid, affiliate_on_order_reversed, affiliate_maintenance_watchdog,
         _process_affiliate_email_job, _affiliate_email_worker, affiliate_ensure_indexes,
         _defer_affiliate_payout_below_threshold, _monthly_payouts_scheduler,
-        _generate_payouts_for_period,
+        _generate_payouts_for_period, _affiliate_payout_amounts,
     )
 
 
@@ -9773,6 +9773,11 @@ async def affiliate_payouts(request: Request):
 
 
 async def affiliate_payout_settings(payload: AffiliatePayoutSettingsIn, request: Request):
+    # P2-4 — une adresse de paiement est sensible (mise à jour d'un compte de
+    # réception jetons). Plafond dédié et bas pour limiter la rotation forcée
+    # d'adresses (une seule suffit pour changer de cap).
+    await _rate_limit("affiliate_payout_settings", _client_ip(request), 10, 60,
+                      "Trop de modifications de coordonnées de paiement (max 10/min).")
     aff = await get_current_affiliate(request)
     address, currency, network = _normalize_payout(payload.payout_address, payload.payout_currency)
     await db.affiliates.update_one(
@@ -10367,6 +10372,13 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
     - Le rabais renseigné (ou default_discount_percent) sera appliqué à
       l'activation via le code v2 `BASE + %`.
     """
+    # P2-4 — plafond agrégé par admin sur 24h, indépendant de la taille d'un
+    # seul payload (déjà borné à 500). Un compte admin compromis ne peut pas
+    # inviter des milliers de comptes à la volée.
+    await _rate_limit("admin_bulk_invite",
+                      str(admin.get("id") or admin.get("sub") or "unknown"),
+                      500, 86400,
+                      "Plafond d'invitations en masse atteint (500/24h). Réessayez demain.")
     lang = (payload.lang or "fr").lower()
     if lang not in ("fr", "en"):
         lang = "fr"
@@ -11116,15 +11128,45 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
                 deferral_entry["notified"] = notified
             created.append(deferral_entry)
             continue
-        # Devise cible : USDT/USDC → 1:1 avec USD (peggé). Sinon on garde la valeur legacy.
+        # Montant de jetons calculé par le HELPER partagé avec le scheduler
+        # (un seul arrondi depuis le CAD, 6 décimales, ajusté au prix du
+        # stablecoin). Un même calcul pour les deux chemins = pas de divergence
+        # de quantité selon qu'on passe par le run mensuel ou le run admin.
         payout_currency = (aff.get("payout_currency") or "usdt").lower()
         amount_cad = total
-        if payout_currency in AFFILIATE_PAYOUT_CURRENCIES:
-            amount_usd = round(amount_cad * fx_rate, 2)
-            amount_target = amount_usd    # USDT/USDC ≈ USD
-        else:
-            amount_usd = None
-            amount_target = amount_cad
+        amount_target, amount_usd, token_price, price_source, deferred = \
+            await _affiliate_payout_amounts(payout_currency, amount_cad, fx_rate)
+
+        if deferred:
+            # Stablecoin hors bande : on ne verse pas maintenant.
+            if dry_run:
+                created.append({
+                    "affiliate_id": affiliate_id,
+                    "affiliate_code": aff.get("code"),
+                    "amount": None,
+                    "amount_cad": amount_cad,
+                    "amount_usd": amount_usd,
+                    "currency": payout_currency,
+                    "referral_count": len(grp["ids"]),
+                    "payout_id": None,
+                    "deferred": True,
+                    "reason": "stable price out of band",
+                    "dry_run": True,
+                })
+            else:
+                notified = await _defer_affiliate_payout_below_threshold(
+                    aff, period, total, len(grp["ids"]), AFFILIATE_PAYOUT_MIN_CAD,
+                )
+                created.append({
+                    "affiliate_id": affiliate_id,
+                    "affiliate_code": aff.get("code"),
+                    "amount_cad": total,
+                    "threshold_cad": AFFILIATE_PAYOUT_MIN_CAD,
+                    "referral_count": len(grp["ids"]),
+                    "deferred": True,
+                    "notified": notified,
+                })
+            continue
         payout_id = str(uuid.uuid4())
         if dry_run:
             # aperçu uniquement — pas d'écriture BDD, pas de payout_id assigné
@@ -11150,6 +11192,9 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
                 "amount_cad": amount_cad,            # référence brute CAD (transparence)
                 "amount_usd": amount_usd,            # équivalent USD (pour USDT/USDC)
                 "currency": payout_currency,
+                # Prix/stablecoin et provenance, pour l'audit (comme le scheduler).
+                "token_price_usd": token_price,
+                "token_price_source": price_source,
                 "fx_rate_cad_to_usd": fx_rate if payout_currency in AFFILIATE_PAYOUT_CURRENCIES else None,
                 "fx_source": fx_source if payout_currency in AFFILIATE_PAYOUT_CURRENCIES else None,
                 "fx_captured_at": fx_captured_at,
@@ -11382,7 +11427,14 @@ async def admin_affiliate_payouts_csv(admin: dict = Depends(get_admin_user)) -> 
         amt = p.get("amount")
         if not addr or cur not in AFFILIATE_PAYOUT_CURRENCIES or not amt:
             continue
-        np_currency = "usdterc20" if cur == "usdt" else "usdcerc20"
+        # Réseau déduit de l'adresse elle-même, comme dans le batch : c'est
+        # l'adresse qui décide de la destination réelle des fonds. Un réseau
+        # non supporté par la table ne doit PAS partir avec un code forcé
+        # (perte de fonds sur un mauvais réseau) — la ligne est omise.
+        net = _detect_payout_network(addr)
+        np_currency = NOWPAYMENTS_PAYOUT_CURRENCY.get((cur, net or ""))
+        if not np_currency:
+            continue
         rows.append([addr, np_currency, f"{float(amt):.2f}", p["id"],
                      p.get("affiliate_code", ""), p.get("period", "")])
     import io, csv
