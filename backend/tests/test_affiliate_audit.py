@@ -231,11 +231,20 @@ def test_report_pour_prix_ne_parle_pas_de_seuil(server_module, monkeypatch):
 
     assert envoyes, "aucun courriel mis en file"
     corps = envoyes[0]["html"]
+
+    # On vise la PHRASE trompeuse, pas une suite de caracteres.
+    #
+    # Premiere version de ce test : `"0.00" not in corps`. Elle echouait sur un
+    # code pourtant correct, parce que le montant du — "340.00 $ CAD" — contient
+    # lui-meme "0.00". Une assertion qui se declenche sur la donnee legitime ne
+    # prouve rien et fait perdre du temps a celui qui la lit.
     assert "seuil minimum" not in corps, "le message du seuil est reutilise a tort"
-    assert "0.00" not in corps and "0,00" not in corps, (
-        "le montant restant a generer n'a aucun sens pour ce motif"
+    assert "a generer" not in corps and "à générer" not in corps, (
+        "« il vous reste X a generer » n'a aucun sens quand le solde depasse le seuil"
     )
-    assert "suspendu par précaution" in corps or "précaution" in corps
+    # Le montant du doit apparaitre en entier : c'est tout le propos du message.
+    assert "340.00" in corps
+    assert "précaution" in corps
 
 
 def test_report_sous_le_seuil_garde_son_message(server_module, monkeypatch):
