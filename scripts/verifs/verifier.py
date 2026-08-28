@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Lance les quatre sondes sur le frontend. Aucune dépendance à installer.
+"""Lance les cinq sondes sur le frontend. Aucune dépendance à installer.
 
     python scripts/verifs/verifier.py            # tout le frontend
     python scripts/verifs/verifier.py --modifies # seulement les fichiers modifiés
@@ -16,6 +16,13 @@ projet :
                 ce qui fait deux expressions là où JSX en attend une
     imports     un composant rendu sans être importé — le fichier reste
                 valide, le build casse
+    chaines     un guillemet droit non échappé au milieu d'une chaîne —
+                « Parsing error: Unexpected token ». Les quatre sondes
+                ci-dessus sont STRUCTURELLES et répondaient « ok » sur un
+                fichier que le build refusait.
+
+Aucune de ces sondes ne remplace `yarn lint`, qui seul analyse vraiment la
+syntaxe. Elles attrapent des pannes déjà survenues ; le lint reste le juge.
 
 Sortie : code 0 si tout passe, 1 sinon. Utilisable tel quel dans un hook de
 pre-commit ou une intégration continue.
@@ -31,6 +38,7 @@ SONDES = [
     ("hooks",       "hooks.py",      True),
     ("commentaires", "jsxcomment.py", True),
     ("imports",     "imports.py",    False),  # analyse le projet d'un bloc
+    ("chaines",     "chaines.py",    False),
 ]
 
 
