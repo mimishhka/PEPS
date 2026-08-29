@@ -117,12 +117,24 @@ def test_mark_paid_does_not_reactivate_reversed_referrals(server_module):
 
 
 def test_execute_rejects_second_attempt_once_payout_is_claimed(server_module, monkeypatch):
+    # Devise et adresse REELLEMENT executables.
+    #
+    # La doublure portait "btc" et une adresse Bitcoin — donnees incidentes a
+    # l'epoque, puisque admin_payout_execute acceptait n'importe quelle devise.
+    # Elle en refuse desormais toute autre qu'USDT/USDC, et exige un couple
+    # (devise, reseau) reconnu : le repli `or "btc"` faisait demander l'envoi de
+    # 250 BTC pour 250 $ CAD dus, la devise partant en outre sans suffixe de
+    # reseau sur une operation irreversible.
+    #
+    # Ce test porte sur la revendication atomique du payout, pas sur la devise :
+    # on lui donne donc un couple valide (adresse ERC-20, 0x + 40 hex) pour
+    # qu'il atteigne ce qu'il verifie.
     payout = {
         "id": "payout-2",
         "status": "ready",
         "amount": 10,
-        "currency": "btc",
-        "payout_address": "bc1qtest",
+        "currency": "usdt",
+        "payout_address": "0x000000000000000000000000000000000000dead",
         "affiliate_code": "AFF",
         "period": "2026-08",
     }

@@ -466,3 +466,76 @@ def test_invitation_refuse_toujours_un_affilie_actif(server_module):
         asyncio.run(server_module.admin_affiliate_invite(
             payload, {"email": "admin@example.com"}))
     assert exc.value.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# 7. Le versement manuel refuse une devise ou un reseau non supporte
+# ---------------------------------------------------------------------------
+
+def test_execute_refuse_une_devise_non_supportee(server_module, monkeypatch):
+    """Le repli `or "btc"` pouvait demander l'envoi de 250 BTC pour 250 $ CAD.
+
+    Pour une devise hors AFFILIATE_PAYOUT_CURRENCIES, _affiliate_payout_amounts
+    renvoie le montant CANADIEN tel quel comme quantite de jetons.
+    """
+    monkeypatch.setattr(server_module, "NOWPAYMENTS_PAYOUT_ENABLED", True,
+                        raising=False)
+
+    class Payouts:
+        async def find_one(self, query, projection=None):
+            return {"id": "p-9", "status": "ready", "amount": 250.0,
+                    "currency": "btc", "payout_address": "bc1qtest",
+                    "affiliate_code": "AFF", "period": "2026-08"}
+
+    server_module.db = types.SimpleNamespace(affiliate_payouts=Payouts())
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.admin_payout_execute(
+            "p-9", {"email": "admin@example.com"}))
+    assert exc.value.status_code == 400
+
+
+def test_execute_refuse_un_reseau_inconnu(server_module, monkeypatch):
+    """Une devise valide ne suffit pas : l'adresse doit designer un reseau connu.
+
+    Le chemin en lot refusait deja d'envoyer sans correspondance
+    (jeton, reseau) explicite — un envoi sur le mauvais reseau est
+    irreversible. Le versement unitaire transmettait « usdt » nu.
+    """
+    monkeypatch.setattr(server_module, "NOWPAYMENTS_PAYOUT_ENABLED", True,
+                        raising=False)
+
+    class Payouts:
+        async def find_one(self, query, projection=None):
+            return {"id": "p-10", "status": "ready", "amount": 100.0,
+                    "currency": "usdt", "payout_address": "adresse-invalide",
+                    "affiliate_code": "AFF", "period": "2026-08"}
+
+    server_module.db = types.SimpleNamespace(affiliate_payouts=Payouts())
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.admin_payout_execute(
+            "p-10", {"email": "admin@example.com"}))
+    assert exc.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# 8. Un rabais de 0 % est refuse
+# ---------------------------------------------------------------------------
+
+def test_rabais_nul_est_refuse(server_module):
+    """0 % renommait le code sans creer de coupon : le nouveau code etait mort.
+
+    Pendant ce temps l'ancien restait actif a son taux d'origine — l'inverse
+    exact du geste de l'administrateur.
+    """
+    class Affiliates:
+        async def find_one(self, query, projection=None):
+            return {"id": "aff-1", "email": "marie@example.com",
+                    "status": "active", "code": "MARIE10", "coupon_percent": 10.0}
+
+    server_module.db = types.SimpleNamespace(affiliates=Affiliates())
+    payload = server_module.AffiliateAdminUpdateIn(coupon_percent=0)
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.admin_affiliate_update(
+            "aff-1", payload, {"email": "admin@example.com"}))
+    assert exc.value.status_code == 400
