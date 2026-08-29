@@ -117,6 +117,20 @@ function Pagination({ page, total, pageSize, onChange, L }) {
   );
 }
 
+function TableSkeleton({ cols, rows = 5 }) {
+  return (
+    <tbody>
+      {Array.from({ length: rows }).map((_, i) => (
+        <tr key={i} className="border-b border-ash/60">
+          <td colSpan={cols} className="px-6 py-3.5">
+            <div className="h-3 w-full max-w-[220px] rounded bg-ash/50 animate-pulse" />
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  );
+}
+
 export default function AffiliateDashboard() {
   // Les couleurs de graphique passent par des PROPRIETES, pas des
   // classes : sans ce crochet elles ignorent le mode nuit.
@@ -149,6 +163,13 @@ export default function AffiliateDashboard() {
   const [codeCopie, setCodeCopie] = useState(false);
   const [refPage, setRefPage] = useState(1);
   const [payPage, setPayPage] = useState(1);
+  // Pagination SERVEUR (items+total) : l'état ne porte que la page courante.
+  // `refTotal`/`payTotal` alimentent le Pagination ; les drapeaux *Loading
+  // montrent le squelette de table pendant le changement de page.
+  const [refTotal, setRefTotal] = useState(0);
+  const [payTotal, setPayTotal] = useState(0);
+  const [refLoading, setRefLoading] = useState(false);
+  const [payLoading, setPayLoading] = useState(false);
 
   // Payout settings form
   const [payAddr, setPayAddr] = useState("");
@@ -158,27 +179,26 @@ export default function AffiliateDashboard() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // Résilient : un endpoint qui échoue ne casse pas tout le tableau de bord.
+      // Un seul aller-retour : `/affiliate/dashboard` agrège toutes les
+      // sections. Le serveur est résilient (une section en échec est
+      // remplacée par un repli sûr) — c'est le Promise.allSettled d'avant,
+      // mais côté serveur, donc sans les 8 round-trips.
       setRefPage(1); setPayPage(1);
-      const [r, p, perf, ins, ck, src, act, cus] = await Promise.allSettled([
-        api.get("/affiliate/referrals"),
-        api.get("/affiliate/payouts"),
-        api.get("/affiliate/performance"),
-        api.get("/affiliate/insights"),
-        api.get("/affiliate/clicks"),
-        api.get("/affiliate/clicks/sources"),
-        api.get("/affiliate/activity"),
-        api.get("/affiliate/customers"),
-      ]);
-      setReferrals(r.status === "fulfilled" ? (r.value.data || []) : []);
-      setPayouts(p.status === "fulfilled" ? (p.value.data || []) : []);
-      setInsights(ins.status === "fulfilled" ? (ins.value.data || null) : null);
-      setClicksStats(ck.status === "fulfilled" ? (ck.value.data || null) : null);
-      setSources(src.status === "fulfilled" ? (src.value.data || null) : null);
-      setActivity(act.status === "fulfilled" ? (act.value.data || []) : []);
-      setCustomers(cus.status === "fulfilled" ? (cus.value.data?.customers || []) : []);
-      const perfData = perf.status === "fulfilled" ? perf.value.data : null;
-      setSeries((perfData?.series || []).map((s) => ({
+      const { data } = await api.get("/affiliate/dashboard", {
+        params: { ref_page: 1, pay_page: 1, page_size: PAGE_SIZE },
+      });
+      const items = (section) => section?.items ?? [];
+      setReferrals(items(data?.referrals));
+      setRefTotal(data?.referrals?.total ?? 0);
+      setPayouts(items(data?.payouts));
+      setPayTotal(data?.payouts?.total ?? 0);
+      setInsights(data?.insights || null);
+      setClicksStats(data?.clicks || null);
+      setSources(data?.clicks_sources || null);
+      setActivity(Array.isArray(data?.activity) ? data.activity : []);
+      setCustomers(Array.isArray(data?.customers?.customers) ? data.customers.customers : []);
+      const perfSeries = data?.performance?.series || [];
+      setSeries(perfSeries.map((s) => ({
         month: s.month,
         revenue: s.revenue,
         commission: s.commission,
@@ -318,35 +338,87 @@ export default function AffiliateDashboard() {
     catch { toast.error(L("Ouverture impossible", "Unable to open")); }
   };
 
-  const exportReferrals = () =>
-    downloadCsv(
-      `fironova-referrals-${refCode}.csv`,
-      ["Order", "Base", "Commission", "Status", "Date"],
-      referrals.map((r) => [
-        r.order_number, r.base_amount, r.commission_amount, r.status,
-        fmtDate(r.created_at, lang),
-      ])
-    );
+  const exportReferrals = async () => {
+    try {
+      // L'état ne porte que la page courante (pagination serveur) : un export
+      // doit couvrir TOUTES les lignes, on re-fetche donc la liste plate
+      // (contrat de l'endpoint sans paramètre `page`).
+      const { data } = await api.get("/affiliate/referrals", { params: { limit: 500 } });
+      const rows = Array.isArray(data) ? data : [];
+      downloadCsv(
+        `fironova-referrals-${refCode}.csv`,
+        ["Order", "Base", "Commission", "Status", "Date"],
+        rows.map((r) => [
+          r.order_number, r.base_amount, r.commission_amount, r.status,
+          fmtDate(r.created_at, lang),
+        ])
+      );
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
+  };
 
-  const exportPayouts = () =>
-    downloadCsv(
-      `fironova-payouts-${refCode}.csv`,
-      ["Period", "Amount CAD", "FX CAD to USD", "FX source", "Amount received", "Currency", "Status", "Paid at", "Reference"],
-      payouts.map((p) => [
-        p.period,
-        p.amount_cad ?? p.amount,
-        p.fx_rate_cad_to_usd || "",
-        p.fx_source || "",
-        p.amount,
-        p.currency,
-        p.status,
-        p.paid_at || "",
-        p.reference || "",
-      ])
-    );
+  const exportPayouts = async () => {
+    try {
+      const { data } = await api.get("/affiliate/payouts");
+      const rows = Array.isArray(data) ? data : [];
+      downloadCsv(
+        `fironova-payouts-${refCode}.csv`,
+        ["Period", "Amount CAD", "FX CAD to USD", "FX source", "Amount received", "Currency", "Status", "Paid at", "Reference"],
+        rows.map((p) => [
+          p.period,
+          p.amount_cad ?? p.amount,
+          p.fx_rate_cad_to_usd || "",
+          p.fx_source || "",
+          p.amount,
+          p.currency,
+          p.status,
+          p.paid_at || "",
+          p.reference || "",
+        ])
+      );
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
+  };
 
-  const refPageRows = referrals.slice((refPage - 1) * PAGE_SIZE, refPage * PAGE_SIZE);
-  const payPageRows = payouts.slice((payPage - 1) * PAGE_SIZE, payPage * PAGE_SIZE);
+  const refPageRows = referrals;
+  const payPageRows = payouts;
+
+  // Changement de page : re-fetch serveur de cette SEULE section. La pagination
+  // vit côté serveur (items+total) — le dashboard ne transporte plus la liste
+  // entière, seulement la page affichée.
+  const goRefPage = useCallback(async (p) => {
+    setRefLoading(true);
+    try {
+      const { data } = await api.get("/affiliate/referrals", {
+        params: { page: p, page_size: PAGE_SIZE },
+      });
+      setReferrals(data?.items || []);
+      setRefTotal(data?.total || 0);
+      setRefPage(p);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setRefLoading(false);
+    }
+  }, []);
+
+  const goPayPage = useCallback(async (p) => {
+    setPayLoading(true);
+    try {
+      const { data } = await api.get("/affiliate/payouts", {
+        params: { page: p, page_size: PAGE_SIZE },
+      });
+      setPayouts(data?.items || []);
+      setPayTotal(data?.total || 0);
+      setPayPage(p);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setPayLoading(false);
+    }
+  }, []);
 
   const savePayout = async () => {
     if (!payAddr.trim()) {
@@ -1346,9 +1418,9 @@ export default function AffiliateDashboard() {
                   <Download size={13} /> CSV
                 </button>
               </div>
-              <ReferralTable rows={refPageRows} lang={lang} L={L} money={money} />
-              <Pagination page={refPage} total={referrals.length} pageSize={PAGE_SIZE}
-                onChange={setRefPage} L={L} />
+              <ReferralTable rows={refPageRows} lang={lang} L={L} money={money} loading={refLoading} />
+              <Pagination page={refPage} total={refTotal} pageSize={PAGE_SIZE}
+                onChange={goRefPage} L={L} />
             </div>
           </div>
         )}
@@ -1428,7 +1500,10 @@ export default function AffiliateDashboard() {
                           <th className="px-6 py-3">{L("Référence", "Reference")}</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      {payLoading ? (
+                        <TableSkeleton cols={6} />
+                      ) : (
+                        <tbody>
                         {payPageRows.map((p) => {
                           // Fallback pour les payouts legacy sans champs de conversion.
                           const amountCad = p.amount_cad ?? p.amount;
@@ -1471,7 +1546,8 @@ export default function AffiliateDashboard() {
                             </tr>
                           );
                         })}
-                      </tbody>
+                        </tbody>
+                      )}
                     </table>
                   </div>
                   <p className="px-6 pt-4 pb-1 font-data text-[10px] text-glacier/80 leading-relaxed border-t border-ash/60">
@@ -1484,8 +1560,8 @@ export default function AffiliateDashboard() {
                     {L("Les commissions sont calculées en CAD, converties en USD au taux officiel de la Banque du Canada le jour du versement, puis payées en jetons. Si le jeton s'écarte du dollar américain, la quantité envoyée est ajustée pour que vous receviez bien le montant dû.",
                        "Commissions are computed in CAD, converted to USD at the Bank of Canada official rate on payout day, then paid in tokens. If the token drifts from the US dollar, the quantity sent is adjusted so you receive the amount owed.")}
                   </p>
-                  <Pagination page={payPage} total={payouts.length} pageSize={PAGE_SIZE}
-                    onChange={setPayPage} L={L} />
+                  <Pagination page={payPage} total={payTotal} pageSize={PAGE_SIZE}
+                    onChange={goPayPage} L={L} />
                 </>
               )}
             </div>
@@ -1960,8 +2036,8 @@ function ActivityRow({ e, L, lang, money, fmtDateTime }) {
   );
 }
 
-function ReferralTable({ rows, lang, L, money }) {
-  if (!rows.length) {
+function ReferralTable({ rows, lang, L, money, loading }) {
+  if (!loading && !rows.length) {
     return <p className="text-glacier text-sm py-12 text-center">{L("Aucune commande validée.", "No validated orders.")}</p>;
   }
   return (
@@ -1976,19 +2052,23 @@ function ReferralTable({ rows, lang, L, money }) {
             <th className="px-6 py-3">{L("Date", "Date")}</th>
           </tr>
         </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} className="border-b border-ash/60">
-              <td className="px-6 py-3 font-data text-nordfjord">{r.order_number || "—"}</td>
-              <td className="px-6 py-3 text-glacier">{money(r.base_amount)}</td>
-              <td className="px-6 py-3 font-semibold text-nordfjord">{money(r.commission_amount)}</td>
-              <td className="px-6 py-3"><ReferralStatus status={r.status} lang={lang} /></td>
-              <td className="px-6 py-3 font-data text-[11px] text-glacier">
-                {r.created_at ? new Date(r.created_at).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA") : "—"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
+        {loading ? (
+          <TableSkeleton cols={5} />
+        ) : (
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className="border-b border-ash/60">
+                <td className="px-6 py-3 font-data text-nordfjord">{r.order_number || "—"}</td>
+                <td className="px-6 py-3 text-glacier">{money(r.base_amount)}</td>
+                <td className="px-6 py-3 font-semibold text-nordfjord">{money(r.commission_amount)}</td>
+                <td className="px-6 py-3"><ReferralStatus status={r.status} lang={lang} /></td>
+                <td className="px-6 py-3 font-data text-[11px] text-glacier">
+                  {r.created_at ? new Date(r.created_at).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA") : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        )}
       </table>
     </div>
   );

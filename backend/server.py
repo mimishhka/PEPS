@@ -9816,20 +9816,50 @@ async def affiliate_me(request: Request, lang: str = "fr"):
     return out
 
 
-async def affiliate_referrals(request: Request, limit: int = 200):
+async def affiliate_referrals(request: Request, limit: int = 200,
+                              page: Optional[int] = None, page_size: int = 10):
+    """Références de l'affilié (hors « excluded »), tri par `created_at` desc.
+
+    Deux contrats, choisis par la présence de `page` :
+      - Sans `page` : LISTE PLATE (contrat historique — l'export CSV et les
+        tests E2E en dépendent), plafonnée à 500 lignes.
+      - Avec `page` : enveloppe paginée serveur {items, total, page,
+        page_size} — utilisée par le tableau de bord pour ne transporter que
+        la page affichée.
+    """
     aff = await get_current_affiliate(request)
-    rows = await db.affiliate_referrals.find(
-        {"affiliate_id": aff["id"], "status": {"$ne": "excluded"}},
-        {"_id": 0, "order_email": 0, "affiliate_ip_hash": 0},
-    ).sort("created_at", -1).to_list(min(limit, 500))
+    q = {"affiliate_id": aff["id"], "status": {"$ne": "excluded"}}
+    proj = {"_id": 0, "order_email": 0, "affiliate_ip_hash": 0}
+    if page is not None:
+        page = max(1, int(page))
+        page_size = min(max(1, int(page_size)), 50)
+        total = await db.affiliate_referrals.count_documents(q)
+        rows = await db.affiliate_referrals.find(q, proj).sort(
+            "created_at", -1
+        ).skip((page - 1) * page_size).limit(page_size).to_list(page_size)
+        return {"items": rows, "total": total, "page": page, "page_size": page_size}
+    rows = await db.affiliate_referrals.find(q, proj).sort(
+        "created_at", -1).to_list(min(limit, 500))
     return rows
 
 
-async def affiliate_payouts(request: Request):
+async def affiliate_payouts(request: Request,
+                            page: Optional[int] = None, page_size: int = 10):
+    """Paiements de l'affilié. Même double contrat que `/affiliate/referrals` :
+    liste plate par défaut (export CSV, tests), enveloppe paginée
+    {items,total,page,page_size} dès que `page` est fourni."""
     aff = await get_current_affiliate(request)
-    rows = await db.affiliate_payouts.find(
-        {"affiliate_id": aff["id"]}, {"_id": 0}
-    ).sort("created_at", -1).to_list(200)
+    q = {"affiliate_id": aff["id"]}
+    if page is not None:
+        page = max(1, int(page))
+        page_size = min(max(1, int(page_size)), 50)
+        total = await db.affiliate_payouts.count_documents(q)
+        rows = await db.affiliate_payouts.find(q, {"_id": 0}).sort(
+            "created_at", -1
+        ).skip((page - 1) * page_size).limit(page_size).to_list(page_size)
+        return {"items": rows, "total": total, "page": page, "page_size": page_size}
+    rows = await db.affiliate_payouts.find(q, {"_id": 0}).sort(
+        "created_at", -1).to_list(200)
     return rows
 
 
@@ -10277,6 +10307,44 @@ async def affiliate_activity(request: Request, limit: int = 20):
 
     events.sort(key=lambda e: str(e.get("at") or ""), reverse=True)
     return events[:limit]
+
+
+async def affiliate_dashboard(request: Request, ref_page: int = 1, pay_page: int = 1,
+                              page_size: int = 10):
+    """Tableau de bord affilié en UNE requête.
+
+    Avant, le frontend assemblait le dashboard en 8 appels parallèles. Cet
+    endpoint les regroupe en un seul aller-retour — le gain est le nombre de
+    round-trips (TLS + cookie + auth), pas une moindre charge serveur : chaque
+    section réutilise exactement la logique des endpoints individuels et garde
+    la MÊME forme de réponse que ceux-ci, donc rien ne change côté affichage.
+
+    Referrals et payouts reviennent paginés côté serveur (page_size par
+    défaut 10, la pagination du dashboard). Une section en échec est
+    remplacée par un repli sûr ([] pour les listes, None pour les objets) —
+    miroir du Promise.allSettled que le frontend faisait : un endpoint en
+    panne ne doit pas priver l'affilié de tout son tableau de bord.
+    """
+    page_size = min(max(1, int(page_size)), 50)
+    ref_page = max(1, int(ref_page))
+    pay_page = max(1, int(pay_page))
+    out: dict = {"page_size": page_size}
+
+    async def _safe(name: str, coro):
+        try:
+            out[name] = await coro
+        except Exception:
+            out[name] = [] if name in ("referrals", "payouts", "activity") else None
+
+    await _safe("referrals", affiliate_referrals(request, page=ref_page, page_size=page_size))
+    await _safe("payouts", affiliate_payouts(request, page=pay_page, page_size=page_size))
+    await _safe("performance", affiliate_performance(request))
+    await _safe("insights", affiliate_insights(request))
+    await _safe("clicks", affiliate_clicks(request))
+    await _safe("clicks_sources", affiliate_clicks_sources(request))
+    await _safe("activity", affiliate_activity(request))
+    await _safe("customers", affiliate_customers(request))
+    return out
 
 
 async def affiliate_ref(code: str, request: Request, response: Response,

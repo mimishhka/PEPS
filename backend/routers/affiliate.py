@@ -60,13 +60,22 @@ async def affiliate_ticket_reply(ticket_id: str, payload: s.AffiliateTicketReply
 
 
 @router.get("/affiliate/referrals")
-async def affiliate_referrals(request: Request, limit: int = 200):
-    return await s.affiliate_referrals(request, limit)
+async def affiliate_referrals(request: Request, limit: int = 200,
+                              page: Optional[int] = None, page_size: int = 10):
+    return await s.affiliate_referrals(request, limit, page, page_size)
 
 
 @router.get("/affiliate/payouts")
-async def affiliate_payouts(request: Request):
-    return await s.affiliate_payouts(request)
+async def affiliate_payouts(request: Request,
+                            page: Optional[int] = None, page_size: int = 10):
+    return await s.affiliate_payouts(request, page, page_size)
+
+
+@router.get("/affiliate/dashboard")
+async def affiliate_dashboard(request: Request, ref_page: int = 1, pay_page: int = 1,
+                              page_size: int = 10):
+    """Toutes les sections du tableau de bord en un seul aller-retour."""
+    return await s.affiliate_dashboard(request, ref_page, pay_page, page_size)
 
 
 @router.put("/affiliate/payout-settings")
