@@ -136,7 +136,7 @@ export default function AffiliateDashboard() {
   // classes : sans ce crochet elles ignorent le mode nuit.
   const couleursGraphique = useChartColors();
   useDocumentHead({ title: "Affiliate Dashboard", path: "/affiliate", noindex: true });
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
   const {
@@ -204,7 +204,11 @@ export default function AffiliateDashboard() {
         commission: s.commission,
       })));
     } catch (e) {
-      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+      // Un 403 ici = compte suspendu ou retiré : l'écran dédié s'affiche déjà
+      // plus bas, un toast par-dessus ferait doublon. Tout le reste se signale.
+      if (e?.response?.status !== 403) {
+        toast.error(formatApiError(e.response?.data?.detail) || e.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -515,6 +519,49 @@ export default function AffiliateDashboard() {
   }
 
   if (affiliateError?.response?.status === 403) {
+    // Un seul statut HTTP (403) pour deux réalités : « pas affilié » et
+    // « affilié suspendu ». Le backend porte un code dans la réponse pour les
+    // distinguer — sinon un compte suspendu lirait « programme privé » comme
+    // s'il n'avait jamais rejoint, ce qui masquerait la raison réelle.
+    const detail403 = affiliateError.response.data?.detail;
+    const suspendu = detail403 && (typeof detail403 === "object" ? detail403.code : detail403) === "suspended";
+
+    if (suspendu) {
+      return (
+        <div className="bg-clinical min-h-screen">
+          <div className="max-w-2xl mx-auto px-6 py-24 text-center" data-testid="affiliate-suspended">
+            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-error mb-3">
+              {L("COMPTE SUSPENDU", "ACCOUNT SUSPENDED")}
+            </p>
+            <h1 className="font-display text-[32px] font-bold text-nordfjord mb-4">
+              {L("Votre compte a été suspendu", "Your account has been suspended")}
+            </h1>
+            <p className="text-glacier leading-relaxed mb-2">
+              {L(
+                "Votre participation au programme d'affiliation est temporairement suspendue.",
+                "Your participation in the affiliate program has been temporarily suspended."
+              )}
+            </p>
+            <p className="text-glacier leading-relaxed mb-8">
+              {L(
+                "Contactez-nous pour en savoir plus : les commissions déjà acquises et vérifiées restent tracées, et aucun versement en cours n'est perdu.",
+                "Contact us for details: already earned and verified commissions remain recorded, and no pending payout is lost."
+              )}
+            </p>
+            <div className="flex items-center justify-center gap-3 flex-wrap">
+              <a href="mailto:info@fironova.com"
+                className="btn-pill btn-nova" data-testid="suspended-support">
+                {L("Contacter le support", "Contact support")}
+              </a>
+              <button onClick={logout} className="btn-pill btn-outline" data-testid="suspended-logout">
+                {L("Se déconnecter", "Log out")}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="bg-clinical min-h-screen">
         <div className="max-w-2xl mx-auto px-6 py-24 text-center" data-testid="affiliate-not-member">

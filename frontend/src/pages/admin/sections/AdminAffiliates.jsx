@@ -1875,7 +1875,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                         <span className="text-nordfjord">{p.period} · {money(p.amount)} <span className="uppercase text-xs text-glacier">{p.currency}</span></span>
                         <span className={`text-xs px-2 py-0.5 rounded-full ${p.status === "paid" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>{p.status}</span>
                       </div>
-                      {p.status === "ready" && (
+                      {["ready", "failed"].includes(p.status) && (
                         markingId === p.id ? (
                           <div className="flex gap-2 mt-2">
                             <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder={L("Réf. tx / hash", "Tx ref / hash")}

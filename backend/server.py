@@ -9332,7 +9332,14 @@ async def get_current_affiliate(request: Request) -> dict:
     if not aff:
         raise HTTPException(403, "Not an affiliate")
     if aff.get("status") == "suspended":
-        raise HTTPException(403, "Affiliate account suspended")
+        # Le front a besoin de savoir POURQUOI on le refuse : un compte
+        # suspendu doit voir « compte suspendu », pas « invitation only ».
+        # Le corps porte donc un code discriminable, pas seulement le texte.
+        raise HTTPException(
+            status_code=403,
+            detail={"message": "Affiliate account suspended",
+                    "code": "suspended"},
+        )
     return aff
 
 
@@ -10503,6 +10510,14 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
     await _affiliate_send_invite(email, first_name, link, payload.lang or "fr",
                                  taux_convenu=taux_convenu,
                                  lien_programme=f"{base}/affiliate/programme?token={raw}")
+    # Une invitation est l'acte d'entrée dans le programme : elle est tracée
+    # (création ou ré-invitation) avec l'affilié ciblé et l'admin à l'origine.
+    asyncio.create_task(_log_action(
+        admin, "affiliate_invite",
+        f"affiliate={aff_id} email={email} created={not bool(existing)} "
+        f"lang={payload.lang or 'fr'}",
+        "affiliates",
+    ))
     return {"ok": True, "affiliate_id": aff_id, "invite_link": link}
 
 
@@ -10548,10 +10563,19 @@ async def admin_affiliate_resend(affiliate_id: str,
     if aff.get("tier_agreement") and aff.get("manual_tier"):
         taux_convenu = {nom: taux for nom, taux, _f, _c in AFFILIATE_TIERS}.get(
             aff["manual_tier"])
+    # La langue du renvoi est celle de l'affilié, pas un « fr » imposé — un
+    # anglophone recevait systématiquement un courriel en français.
+    langue = (aff.get("lang") or "fr") if aff.get("lang") in ("fr", "en") else "fr"
     await _affiliate_send_invite(aff["email"],
                                  (aff.get("first_name") or aff.get("name") or ""),
-                                 link, "fr", taux_convenu=taux_convenu,
+                                 link, langue, taux_convenu=taux_convenu,
                                  lien_programme=f"{base}/affiliate/programme?token={raw}")
+    # Un renvoi d'invitation est un acte d'administration : tracé.
+    asyncio.create_task(_log_action(
+        admin, "affiliate_invite_resend",
+        f"affiliate={affiliate_id} email={aff['email']} lang={langue}",
+        "affiliates",
+    ))
     return {"ok": True, "invite_link": link, "sent_to": aff["email"]}
 
 
@@ -10741,6 +10765,15 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
             )
             failed.append({"email": email, "error": "invite_processing_failed"})
 
+    # Une invitation en masse est un acte d'administration : tracé par l'admin
+    # à l'origine, avec les compteurs de résultat (envoyés / ignorés / en échec).
+    asyncio.create_task(_log_action(
+        admin, "affiliate_bulk_invite",
+        f"total={len(payload.rows)} sent={len(results)} queued="
+        f"{sum(1 for r in results if r['email_status'] == 'queued')} "
+        f"skipped={len(skipped)} failed={len(failed)}",
+        "affiliates",
+    ))
     return {
         "ok": True,
         "total": len(payload.rows),
@@ -11313,6 +11346,17 @@ async def admin_affiliate_update(affiliate_id: str, payload: AffiliateAdminUpdat
     fresh = await db.affiliates.find_one(
         {"id": affiliate_id}, {"_id": 0, "invite_token_hash": 0}
     )
+    # Audit : toute modification d'un affilié est tracée, surtout celles qui
+    # touchent l'argent (adresse de versement, devise, palier, rabais, code)
+    # ou le statut du compte (suspension). On journalise la liste des champs
+    # modifiés, pas leurs valeurs complètes (certains sont sensibles).
+    if update:
+        champs = ",".join(sorted(k for k in update.keys() if k != "invite_token_hash"))
+        asyncio.create_task(_log_action(
+            admin, "affiliate_admin_update",
+            f"affiliate={affiliate_id} code={fresh.get('code')} fields={champs}",
+            "affiliates",
+        ))
     return fresh
 
 
@@ -11336,6 +11380,13 @@ async def admin_affiliate_alias_toggle(affiliate_id: str, alias_code: str,
     )
     if not res.matched_count:
         raise HTTPException(404, "Alias not found")
+    # Un alias actif permet l'attribution et le rabais : sa bascule est un
+    # acte sur l'argent, il est tracé.
+    asyncio.create_task(_log_action(
+        admin, "affiliate_alias_toggle",
+        f"affiliate={affiliate_id} alias={alias_code.upper()} active={bool(payload.active)}",
+        "affiliates",
+    ))
     return await db.affiliates.find_one(
         {"id": affiliate_id}, {"_id": 0, "invite_token_hash": 0}
     )
@@ -11491,13 +11542,40 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
                     {"$set": {"payout_id": existing_payout["id"]}},
                 )
             continue
-        await db.affiliate_referrals.update_many(
-            {"id": {"$in": grp["ids"]}},
+        # `payout_id: None` DANS LE FILTRE — comme le scheduler (services/
+        # affiliate.py:2035-2069). L'agrégation ci-dessus sélectionne les
+        # commissions libres, mais l'affectation doit vérifier qu'elles le sont
+        # ENCORE : un autre run (admin en double, admin + planificateur) peut
+        # avoir revendiqué les mêmes entre-temps. Sans cette garde, deux
+        # versements de périodes différentes couvriraient les mêmes
+        # commissions — double paiement si les deux partaient. L'index unique
+        # (affiliate_id, period) ne protège PAS ce cas.
+        revendiquees = await db.affiliate_referrals.update_many(
+            {"id": {"$in": grp["ids"]}, "payout_id": None},
             {"$set": {"payout_id": payout_id}},
         )
+        if revendiquees.modified_count != len(grp["ids"]):
+            # On n'a pas obtenu tout ce que le montant du versement suppose.
+            # Le laisser en « ready » le rendrait payable tel quel, pour une
+            # somme qui ne correspond plus à ce qu'il couvre. « review » le
+            # retire des deux chemins d'envoi (execute et lot exigent « ready »)
+            # sans rien perdre : un humain tranche.
+            await db.affiliate_payouts.update_one(
+                {"id": payout_id},
+                {"$set": {"status": "review",
+                          "review_reason": "referrals_partiellement_revendiques",
+                          "referral_count_revendique": revendiquees.modified_count}},
+            )
+            await _log_action(
+                admin, "affiliate_payout_review",
+                f"payout={payout_id} affiliate={aff.get('code')} "
+                f"claimed={revendiquees.modified_count}/{len(grp['ids'])} cause=double_revendication",
+                "affiliates",
+            )
         created.append({"affiliate_id": affiliate_id, "amount": amount_target,
                         "amount_cad": amount_cad, "currency": payout_currency,
-                        "payout_id": payout_id})
+                        "payout_id": payout_id,
+                        "review": revendiquees.modified_count != len(grp["ids"])})
     payouts_only = [c for c in created if c.get("payout_id")]
     deferred = [c for c in created if c.get("deferred")]
     if not dry_run:
