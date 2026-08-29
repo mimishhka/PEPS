@@ -1873,7 +1873,9 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     <div key={p.id} className="rounded-lg border border-ash p-3 text-sm">
                       <div className="flex items-center justify-between">
                         <span className="text-nordfjord">{p.period} · {money(p.amount)} <span className="uppercase text-xs text-glacier">{p.currency}</span></span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${p.status === "paid" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>{p.status}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${["paid", "paid_manual"].includes(p.status) ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>
+                          {p.status === "paid_manual" ? L("Payé (manuel)", "Paid (manual)") : p.status}
+                        </span>
                       </div>
                       {["ready", "failed"].includes(p.status) && (
                         markingId === p.id ? (

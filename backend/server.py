@@ -11212,6 +11212,17 @@ async def admin_affiliate_update(affiliate_id: str, payload: AffiliateAdminUpdat
                 "affilié inutilisable. Renvoyez-lui plutôt son invitation.",
             )
 
+    # T8 (miroir) : rétrograder un affilié déjà activé vers « invited » est une
+    # transition sans état de sortie. « invited » = jamais activé (pas de code
+    # ni d'accès) ; un actif ou un suspendu y perdrait son code et sa capacité
+    # à se connecter, sans qu'aucune invitation ne soit réellement envoyée.
+    if update.get("status") == "invited" and aff.get("status") in ("active", "suspended"):
+        raise HTTPException(
+            400,
+            "Un affilié déjà activé ne peut pas redevenir « invité » : il "
+            "perdrait son code et son accès. Suspendez-le ou désactivez-le.",
+        )
+
     clear_manual_tier = bool(update.pop("clear_manual_tier", False))
     if clear_manual_tier:
         update["manual_tier"] = None

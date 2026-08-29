@@ -1500,13 +1500,22 @@ async def _process_affiliate_email_job() -> bool:
         attempts = int(job.get("attempts", 1))
         terminal = attempts >= 5
         delay_seconds = min(3600, 30 * (2 ** max(0, attempts - 1)))
+        unset_fields = {"lease_expires_at": ""}
+        if terminal:
+            # Echec definitif : le lien d'invitation (token brut) ne sera plus
+            # jamais envoye tel quel. L'effacer evite qu'il reste en base,
+            # reutilisable a tout moment ou fuyant (un expediteur de spam qui
+            # tombe dessus n'attendrait que ca). Un re-envoi passe toujours par
+            # un lien neuf.
+            unset_fields["link"] = ""
+            unset_fields["programme_link"] = ""
         await s.db.affiliate_email_jobs.update_one(
             {"id": job["id"], "status": "sending"},
             {"$set": {
                 "status": "failed" if terminal else "retry",
                 "available_at": (datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)).isoformat(),
                 "error_type": type(exc).__name__,
-            }, "$unset": {"lease_expires_at": ""}},
+            }, "$unset": unset_fields},
         )
         logging.warning(
             "[affiliate] queued email failed job=%s attempt=%d error_type=%s",
