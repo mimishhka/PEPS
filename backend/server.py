@@ -11500,6 +11500,14 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
                         "payout_id": payout_id})
     payouts_only = [c for c in created if c.get("payout_id")]
     deferred = [c for c in created if c.get("deferred")]
+    if not dry_run:
+        run_total_cad = round(sum(float(c.get("amount_cad") or 0.0) for c in payouts_only), 2)
+        asyncio.create_task(_log_action(
+            admin, "affiliate_payout_run",
+            f"period={period} payouts_created={len(payouts_only)} "
+            f"deferred={len(deferred)} total_cad={run_total_cad}",
+            "affiliates",
+        ))
     return {"ok": True, "period": period, "payouts_created": len(payouts_only),
             "payouts_deferred": len(deferred),
             "threshold_cad": AFFILIATE_PAYOUT_MIN_CAD,
@@ -11628,6 +11636,10 @@ async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
             "error": ("NOWPayments Mass Payouts non activé (NOWPAYMENTS_PAYOUT_ENABLED=false) — "
                       "les payouts ont été mis en file d'attente manuelle. Utilisez l'export CSV."),
         }
+    # (le retour du mode manuel ci-dessus est déjà journalisé ci-dessous par
+    # l'appelant via la réponse `queued_manual` — l'action d'effectuer le lot
+    # est tracée au point de succès réseau principal, et au moment de
+    # l'envoi via l'export CSV l'admin conserve la preuve dans l'outbox)
 
     async def _do_call(token: str):
         import httpx
@@ -11679,6 +11691,11 @@ async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
         {"$set": {"status": "processing", "np_batch_id": batch_id,
                   "np_dispatched_at": now_iso, "np_dispatched_by": admin.get("email")}},
     )
+    asyncio.create_task(_log_action(
+        admin, "affiliate_payout_batch",
+        f"batch={batch_id} sent={len(ids_sent)} skipped={len(skipped)}",
+        "affiliates",
+    ))
     return {"ok": True, "batch_id": batch_id, "sent": len(ids_sent),
             "skipped": skipped, "response": resp}
 
@@ -11832,16 +11849,111 @@ async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMark
         {"$set": {"status": "paid", "paid_at": now}},
     )
     fresh = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
+    asyncio.create_task(_log_action(
+        admin, "affiliate_payout_mark_paid",
+        (f"payout={payout_id} affiliate={payout.get('affiliate_code')}"
+         f" amount_cad={payout.get('amount_cad')} reference={payload.reference.strip()}"
+         f" from_status={payout.get('status')}"),
+        "affiliates",
+    ))
     return fresh
 
 
 async def admin_affiliate_payouts_all(admin: dict = Depends(get_admin_user),  # noqa: F821
-                                      status: Optional[str] = None):
-    filt = {}
+                                      status: Optional[str] = None,
+                                      q: Optional[str] = None,
+                                      period: Optional[str] = None,
+                                      min_: Optional[float] = None,
+                                      max_: Optional[float] = None,
+                                      page: Optional[int] = None,
+                                      page_size: int = 50):
+    """Liste des versements. Double contrat (choisi par la présence de `page`) :
+
+      - Sans `page` : LISTE PLATE (contrat historique — l'écran actuel en
+        dépend), enrichie en option par la recherche `q`.
+      - Avec `page` : enveloppe paginée {items, total, page, page_size}.
+
+    Recherche `q` : un texte libre portant sur le code affilié (match 1:1
+    sur `affiliate_code`) OU la partie locale/domaine de l'adresse de
+    versement. La recherche par EMAIL d'affilié est volontairement absente /
+    limitée : l'email complet du compte n'est PAS stocké sur le payout
+    (seulement `payout_address`). Retrouver « l'affilié » se fait donc par
+    son code, ou en remontant du payout vers la fiche affilié dans le détail.
+    """
+    filt: dict = {}
     if status:
         filt["status"] = status
+    if period:
+        filt["period"] = period
+    if min_ is not None or max_ is not None:
+        lo = float(min_) if min_ is not None else 0
+        hi = float(max_) if max_ is not None else 1e18
+        filt["amount_cad"] = {"$gte": lo, "$lte": hi}
+    if q:
+        s = str(q).strip()
+        if s:
+            filt["$or"] = [
+                {"affiliate_code": {"$regex": s, "$options": "i"}},
+                {"payout_address": {"$regex": s, "$options": "i"}},
+                {"reference": {"$regex": s, "$options": "i"}},
+            ]
+    if page is not None:
+        page = max(1, int(page))
+        page_size = min(max(1, int(page_size)), 200)
+        total = await db.affiliate_payouts.count_documents(filt)
+        rows = await db.affiliate_payouts.find(
+            filt, {"_id": 0}).sort("created_at", -1
+            ).skip((page - 1) * page_size).limit(page_size).to_list(page_size)
+        return {"items": rows, "total": total, "page": page, "page_size": page_size}
     rows = await _cursor_all(db.affiliate_payouts.find(filt, {"_id": 0}).sort("created_at", -1))
     return rows
+
+
+async def admin_affiliate_payout_detail(payout_id: str, admin: dict):
+    """Fiche de reconstitution d'un versement : le payout et CHAQUE commission
+    qui le compose (lignes de l'affilié rattachées au payout_id), avec un
+    total recalculé depuis les lignes.
+
+    C'est la pièce de preuve pour un auditeur : un versement ne s'explique
+    pas par un montant isolé mais par la somme de commissions approuvées
+    qu'il couvre. On renvoie à la fois le payout et ses lignes, plus les
+    trois montants de contrôle (lignes_sum, payout_amount, écart) pour qu'un
+    écart éventuel soit visible au lieu d'être passé sous silence.
+    """
+    payout = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
+    if not payout:
+        raise HTTPException(404, "Payout not found")
+
+    # Affilié (email, nom) pour l'identification — rejoint via affilate_id.
+    aff_info = None
+    aff = await db.affiliates.find_one({"id": payout.get("affiliate_id")},
+                                       {"_id": 0, "email": 1, "name": 1, "code": 1, "tier": 1})
+    if aff:
+        aff_info = aff
+
+    ids = payout.get("referral_ids") or []
+    lines = []
+    if ids:
+        cursor = db.affiliate_referrals.find(
+            {"id": {"$in": ids}, "payout_id": payout_id},
+            {"_id": 0, "id": 1, "order_number": 1, "order_id": 1,
+             "base_amount": 1, "commission_amount": 1, "order_total": 1,
+             "status": 1, "approved_at": 1, "created_at": 1},
+        ).sort("created_at", -1)
+        async for r in cursor:
+            lines.append(r)
+
+    lines_sum = round(sum(float(l.get("commission_amount") or 0.0) for l in lines), 2)
+    payout_amount = round(float(payout.get("amount_cad") or payout.get("amount") or 0.0), 2)
+    return {
+        "payout": payout,
+        "affiliate": aff_info,
+        "lines": lines,
+        "lines_count": len(lines),
+        "lines_sum_cad": lines_sum,
+        "payout_amount_cad": payout_amount,
+        "difference": round(payout_amount - lines_sum, 2),
+    }
 
 # ===== FIRONOVA_AFFILIATE_BLOCK_END =====
 

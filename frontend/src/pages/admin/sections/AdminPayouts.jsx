@@ -1,7 +1,7 @@
 // frontend/src/pages/admin/sections/AdminPayouts.jsx
 // Gestion dédiée des paiements affiliés (payouts) — flux NOWPayments semi-auto.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DollarSign, Zap, ShieldCheck, RefreshCw, CheckCircle2, X, Send, Download } from "lucide-react";
+import { DollarSign, Zap, ShieldCheck, RefreshCw, CheckCircle2, X, Send, Download, Search, FileText } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
@@ -60,10 +60,25 @@ export default function AdminPayouts() {
   const [batchBusy, setBatchBusy] = useState(false);
   const [runs, setRuns] = useState([]);
   const confirm = useConfirm();
+  // Recherche / filtres (Pilier A). `q` est debounce ci-dessous.
+  const [q, setQ] = useState("");
+  const [qDebounced, setQDebounced] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  const [fPeriod, setFPeriod] = useState("");
+  // Fiche de reconstitution (Pilier B) : payout + lignes de commission.
+  const [detail, setDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (filters = {}) => {
     try {
-      const { data } = await api.get("/admin/affiliates/payouts/all");
+      // Pilier A — recherche serveur : q (code/adresse/référence), status,
+      // period. Sans filtres, comportement identique à avant (liste plate).
+      const params = {};
+      if (filters.q) params.q = filters.q;
+      if (filters.status) params.status = filters.status;
+      if (filters.period) params.period = filters.period;
+      const { data } = await api.get("/admin/affiliates/payouts/all", { params });
       setPayouts(Array.isArray(data) ? data : (data.payouts || []));
     } catch (e) {
       setPayouts([]);
@@ -79,6 +94,54 @@ export default function AdminPayouts() {
   }, []);
 
   useEffect(() => { load(); loadRuns(); }, [load, loadRuns]);
+
+  // Debounce de la recherche : on n'appelle le serveur qu'après 350ms
+  // d'accalmie, pas à chaque frappe.
+  useEffect(() => {
+    const t = setTimeout(() => setQDebounced(q), 350);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  // Rechargement quand un filtre change.
+  const filtresActifs = { q: qDebounced, status: fStatus, period: fPeriod };
+  const cleFiltre = `${qDebounced}::${fStatus}::${fPeriod}`;
+  useEffect(() => {
+    if (cleFiltre === "::") return;
+    load(filtresActifs);
+    setSelection(new Set());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cleFiltre]);
+
+  // Fiche de reconstitution (Pilier B) : payout + lignes + contrôles.
+  const ouvrirDetail = async (p) => {
+    setDetailOpen(p.id);
+    setDetailLoading(true);
+    setDetail(null);
+    try {
+      const { data } = await api.get(`/admin/affiliates/payouts/${p.id}/detail`);
+      setDetail(data);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const exporterDetail = () => {
+    if (!detail) return;
+    const rows = detail.lines || [];
+    const toCsv = (vals) => `"${vals.map((v) => String(v ?? "").replace(/"/g, '""')).join('","')}"`;
+    const header = toCsv(["Commande", "Base CAD", "Commission CAD", "Statut", "Date"]);
+    const body = rows.map((r) =>
+      toCsv([r.order_number, r.base_amount, r.commission_amount, r.status,
+        (r.created_at || "").slice(0, 10)])).join("\r\n");
+    const blob = new Blob(["\uFEFF" + header + "\r\n" + body], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `payout-${detail.payout?.id}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
 
   const basculer = (id) => {
     setSelection((prev) => {
@@ -261,6 +324,38 @@ export default function AdminPayouts() {
         <Stat label={L("Total releves", "Total payouts")} value={payouts.length} />
       </div>
 
+      {/* Barre de recherche / filtres (Pilier A) — recherche SERVEUR (code
+          affilié, adresse de versement, référence) + statut + période. */}
+      <div className="flex items-center gap-2 flex-wrap bg-white rounded-xl border border-ash p-3">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-glacier" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={L("Code affilié, adresse ou référence…", "Affiliate code, address or reference…")}
+            data-testid="payout-search"
+            className="w-full rounded-lg border border-ash pl-9 pr-3 py-2 text-sm outline-none focus:border-nova bg-white" />
+        </div>
+        <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} data-testid="payout-filter-status"
+          className="rounded-lg border border-ash px-3 py-2 text-sm outline-none focus:border-nova bg-white">
+          <option value="">{L("Tous statuts", "All statuses")}</option>
+          {Object.entries(STATUS).map(([k, v]) => (
+            <option key={k} value={k}>{L(v.fr, v.en)}</option>
+          ))}
+        </select>
+        <input
+          value={fPeriod}
+          onChange={(e) => setFPeriod(e.target.value)}
+          placeholder="2026-06"
+          data-testid="payout-filter-period"
+          className="rounded-lg border border-ash px-3 py-2 text-sm outline-none focus:border-nova bg-white w-[110px]" />
+        <button onClick={() => { setQ(""); setQDebounced(""); setFStatus(""); setFPeriod(""); load(); }}
+          data-testid="payout-clear-filters"
+          className="btn-pill btn-outline text-xs px-3 py-2 flex items-center gap-1.5">
+          <X size={13} /> {L("Effacer", "Clear")}
+        </button>
+      </div>
+
       {payouts.length === 0 ? (
         <div className="rounded-xl border border-ash bg-white p-10 text-center text-glacier">
           {L("Aucun releve de paiement. Cliquez « Generer les releves » pour agreger les commissions approuvees.",
@@ -324,6 +419,11 @@ export default function AdminPayouts() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
+                  <button onClick={() => ouvrirDetail(p)} disabled={busy === p.id || detailLoading}
+                    data-testid={`detail-${p.id}`}
+                    className="btn-pill btn-outline text-xs px-3 py-2 flex items-center gap-1.5 disabled:opacity-40">
+                    <FileText size={13} /> {L("Detail", "Detail")}
+                  </button>
                   {p.status === "ready" && (
                     <button onClick={() => execute(p)} disabled={busy === p.id} data-testid={`execute-${p.id}`}
                       className="btn-pill btn-nova text-xs px-3 py-2 flex items-center gap-1.5 disabled:opacity-40">
@@ -426,6 +526,98 @@ export default function AdminPayouts() {
           </div>
         </Modal>
       )}
+
+      {/* Fiche de reconstitution (Pilier B) — la pièce de preuve : un versement
+          n'est pas un montant isolé mais la somme de commissions approuvées.
+          L'écart éventuel entre la somme des lignes et le montant du payout est
+          affiché, pas caché. */}
+      {detailOpen && (
+        <Modal onClose={() => { setDetailOpen(null); setDetail(null); }}
+          title={L("Reconstitution du versement", "Payout breakdown")}>
+          {detailLoading ? (
+            <div className="py-8 text-center text-glacier">{L("Chargement…", "Loading…")}</div>
+          ) : detail ? (
+            <div className="space-y-4">
+              <div className="flex justify-between gap-4">
+                <div>
+                  <p className="font-data text-[11px] uppercase tracking-wider text-glacier">{L("Affilié", "Affiliate")}</p>
+                  <p className="font-display font-bold text-nordfjord">{detail.affiliate?.code || detail.payout?.affiliate_code || "—"}</p>
+                  <p className="text-xs text-glacier">{detail.affiliate?.email || ""}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-data text-[11px] uppercase tracking-wider text-glacier">{L("Période", "Period")}</p>
+                  <p className="font-bold text-nordfjord">{detail.payout?.period}</p>
+                  <p className="text-xs text-glacier">{STATUS[detail.payout?.status] ? L(STATUS[detail.payout?.status].fr, STATUS[detail.payout?.status].en) : detail.payout?.status}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-ash p-3">
+                  <p className="font-data text-[10px] uppercase tracking-wider text-glacier">{L("Montant payout", "Payout amount")}</p>
+                  <p className="font-display font-bold text-nordfjord tabular-nums">{money(detail.payout_amount_cad)} CAD</p>
+                </div>
+                <div className="rounded-lg border border-ash p-3">
+                  <p className="font-data text-[10px] uppercase tracking-wider text-glacier">{L("Somme des lignes", "Sum of lines")}</p>
+                  <p className="font-display font-bold text-nordfjord tabular-nums">{money(detail.lines_sum_cad)} CAD</p>
+                </div>
+              </div>
+
+              {detail.difference !== 0 && (
+                <div className={`rounded-lg border p-3 text-sm ${detail.difference < 0 ? "border-error/30 bg-error/5 text-error" : "border-warning/30 bg-warning/5 text-warning"}`}>
+                  {L(`Écart de ${money(Math.abs(detail.difference))} CAD entre les lignes et le montant du versement. Vérifiez la référence (${detail.payout?.reference || "—"}).`,
+                     `Difference of ${money(Math.abs(detail.difference))} CAD between lines and payout amount. Check the reference (${detail.payout?.reference || "—"}).`)}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <p className="font-data text-[11px] uppercase tracking-wider text-nova">
+                  {L("Lignes de commission", "Commission lines")} ({detail.lines_count})
+                </p>
+                <button onClick={exporterDetail} data-testid="detail-export"
+                  className="btn-pill btn-outline text-xs px-3 py-1.5 flex items-center gap-1.5">
+                  <Download size={13} /> {L("Export", "Export")}
+                </button>
+              </div>
+
+              {detail.lines.length === 0 ? (
+                <p className="text-sm text-glacier py-4 text-center">
+                  {L("Aucune ligne rattachée — versement sans commissions détaillées (peut précéder la migration).",
+                     "No attached lines — payout without detailed commissions (may predate data migration).")}
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-ash">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left font-data text-[10px] uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
+                        <th className="px-3 py-2">{L("Commande", "Order")}</th>
+                        <th className="px-3 py-2 text-right">{L("Base", "Base")}</th>
+                        <th className="px-3 py-2 text-right">{L("Commission", "Commission")}</th>
+                        <th className="px-3 py-2">{L("Statut", "Status")}</th>
+                        <th className="px-3 py-2">{L("Date", "Date")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detail.lines.map((r) => (
+                        <tr key={r.id} className="border-b border-ash/50 last:border-0">
+                          <td className="px-3 py-2 font-data text-nordfjord">{r.order_number || "—"}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{money(r.base_amount)}</td>
+                          <td className="px-3 py-2 text-right font-semibold tabular-nums">{money(r.commission_amount)}</td>
+                          <td className="px-3 py-2">
+                            <span className="font-data text-[10px] uppercase px-2 py-0.5 rounded-full bg-ash/40 text-glacier">{r.status}</span>
+                          </td>
+                          <td className="px-3 py-2 text-glacier text-xs">{(r.created_at || "").slice(0, 10)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-glacier py-4 text-center">{L("Impossible de charger le détail.", "Could not load detail.")}</p>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
@@ -442,7 +634,7 @@ function Stat({ label, value }) {
 function Modal({ title, children, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-nordfjord/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-display text-lg font-bold text-nordfjord">{title}</h3>
           <button onClick={onClose} className="text-glacier hover:text-nordfjord"><X size={18} /></button>

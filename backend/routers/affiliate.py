@@ -220,8 +220,21 @@ async def admin_affiliate_mark_paid(payout_id: str, payload: s.AffiliatePayoutMa
 
 
 @router.get("/admin/affiliates/payouts/all")
-async def admin_affiliate_payouts_all(admin: dict = Depends(s.get_admin_user), status: Optional[str] = None):
-    return await s.admin_affiliate_payouts_all(admin, status)
+async def admin_affiliate_payouts_all(admin: dict = Depends(s.get_admin_user),
+                                      status: Optional[str] = None,
+                                      q: Optional[str] = None,
+                                      period: Optional[str] = None,
+                                      min_: Optional[float] = None,
+                                      max_: Optional[float] = None,
+                                      page: Optional[int] = None,
+                                      page_size: int = 50):
+    return await s.admin_affiliate_payouts_all(admin, status, q, period, min_, max_, page, page_size)
+
+
+@router.get("/admin/affiliates/payouts/{payout_id}/detail")
+async def admin_affiliate_payout_detail(payout_id: str, admin: dict = Depends(s.get_admin_user)):
+    """Fiche de reconstitution : payout + toutes les commissions qui le composent."""
+    return await s.admin_affiliate_payout_detail(payout_id, admin)
 
 
 @router.post("/admin/affiliates/payouts/{payout_id}/execute")
