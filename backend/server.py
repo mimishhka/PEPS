@@ -11793,12 +11793,39 @@ async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMark
         raise HTTPException(404, "Payout not found")
     if payout.get("status") in ("paid", "paid_manual"):
         raise HTTPException(400, "Payout already marked paid")
+
+    # ON NE MARQUE PAS PAYÉ UN VERSEMENT EN COURS DE TRANSMISSION.
+    #
+    # Seuls « paid » et « paid_manual » étaient refusés. Un versement en
+    # `creating` ou `dispatching` — donc déjà confié au fournisseur, en attente
+    # du code 2FA ou de l'envoi — pouvait être marqué payé à la main. L'admin
+    # croyait régulariser une ligne bloquée ; le versement partait ensuite
+    # normalement, et l'affilié était payé DEUX FOIS, la seconde hors système
+    # et sans trace exploitable.
+    #
+    # `processing` reste autorisé, et c'est délibéré : c'est exactement le cas
+    # de récupération documenté — l'argent est parti, la notification du
+    # fournisseur n'est jamais arrivée, et le marquage manuel avec la référence
+    # de transaction est le seul moyen de remettre les compteurs d'aplomb. On
+    # garde trace de cette provenance.
+    if payout.get("status") in ("creating", "dispatching"):
+        raise HTTPException(
+            400,
+            "Ce versement est en cours de transmission au fournisseur. Attendez "
+            "son issue : le marquer payé maintenant exposerait à un second envoi. "
+            "S'il reste bloqué, interrogez d'abord son statut.",
+        )
+    reconcilie_depuis = payout.get("status") if payout.get("status") == "processing" else None
     now = datetime.now(timezone.utc).isoformat()
     await db.affiliate_payouts.update_one(
         {"id": payout_id},
         {"$set": {"status": "paid_manual", "reference": payload.reference.strip(),
                   "note": payload.note or "", "paid_at": now,
-                  "paid_by": admin.get("email")}},
+                  "paid_by": admin.get("email"),
+                  # Trace la régularisation d'un versement resté « processing » :
+                  # sans elle, rien ne distinguerait plus tard un paiement fait
+                  # hors système d'un rattrapage de notification manquante.
+                  "reconcilie_depuis": reconcilie_depuis}},
     )
     await db.affiliate_referrals.update_many(
         {"payout_id": payout_id, "status": {"$in": ["pending", "approved"]}},
