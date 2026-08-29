@@ -1,9 +1,10 @@
 // frontend/src/pages/admin/sections/AdminPayouts.jsx
 // Gestion dédiée des paiements affiliés (payouts) — flux NOWPayments semi-auto.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DollarSign, Zap, ShieldCheck, RefreshCw, CheckCircle2, X } from "lucide-react";
+import { DollarSign, Zap, ShieldCheck, RefreshCw, CheckCircle2, X, Send, Download } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
+import { useConfirm } from "../../../components/ConfirmDialog";
 import { useLang } from "../../../contexts/LanguageContext";
 
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
@@ -49,6 +50,16 @@ export default function AdminPayouts() {
   const [code, setCode] = useState("");
   const [markFor, setMarkFor] = useState(null);
   const [ref, setRef] = useState("");
+  // Rapatries depuis l'onglet PAYOUTS d'Affiliates : envoi en lot, export CSV
+  // et historique des executions. Deux entrees nommees « Payouts » portaient
+  // chacune la moitie des actions, et celle du menu — l'endroit evident —
+  // n'avait ni le lot ni l'export. Deux ecrans sur le meme sujet finissent
+  // toujours par diverger : « Marquer paye » existait deja en double, avec
+  // deux boites de dialogue differentes.
+  const [selection, setSelection] = useState(new Set());
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [runs, setRuns] = useState([]);
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -59,7 +70,86 @@ export default function AdminPayouts() {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     }
   }, []);
-  useEffect(() => { load(); }, [load]);
+
+  const loadRuns = useCallback(async () => {
+    try {
+      const r = await api.get("/admin/affiliates/payouts/runs?limit=20");
+      setRuns(r.data?.runs || []);
+    } catch { /* l'historique est un confort : son echec ne bloque rien */ }
+  }, []);
+
+  useEffect(() => { load(); loadRuns(); }, [load, loadRuns]);
+
+  const basculer = (id) => {
+    setSelection((prev) => {
+      const suivant = new Set(prev);
+      if (suivant.has(id)) suivant.delete(id); else suivant.add(id);
+      return suivant;
+    });
+  };
+
+  const basculerTout = () => {
+    const eligibles = (payouts || []).filter((p) => p.status === "ready").map((p) => p.id);
+    setSelection((prev) => (prev.size === eligibles.length ? new Set() : new Set(eligibles)));
+  };
+
+  const envoyerEnLot = async () => {
+    if (!selection.size) return;
+    // Recapitulatif AVANT le code 2FA. « Tout selectionner » porte sur tous les
+    // versements prets, pas sur les lignes visibles : sans ce total, on valide
+    // a l'aveugle un envoi irreversible.
+    const choisis = (payouts || []).filter((p) => selection.has(p.id));
+    const totalCad = choisis.reduce((somme, p) => somme + Number(p.amount_cad ?? p.amount ?? 0), 0);
+    const ok = await confirm({
+      title: L(`Envoyer ${choisis.length} versement(s) ?`, `Send ${choisis.length} payout(s)?`),
+      description: L(
+        `Total : ${money(totalCad)} CAD vers ${choisis.length} affilié(s). L'envoi de cryptomonnaie est irréversible.`,
+        `Total: ${money(totalCad)} CAD to ${choisis.length} affiliate(s). Sending cryptocurrency is irreversible.`),
+      confirmLabel: L("Continuer", "Continue"),
+      cancelLabel: L("Annuler", "Cancel"),
+      destructive: true,
+    });
+    if (!ok) return;
+
+    const otp = window.prompt(L("Code 2FA Google Authenticator (Mass Payouts NOWPayments) :",
+                                "2FA code from Google Authenticator (NOWPayments Mass Payouts):"));
+    if (!otp) return;
+    setBatchBusy(true);
+    try {
+      const { data } = await api.post("/admin/affiliates/payouts/batch", {
+        payout_ids: [...selection], otp,
+      });
+      if (data.ok) {
+        toast.success(L(`${data.sent} paiement(s) envoyé(s)`, `${data.sent} payout(s) sent`));
+      } else if (data.queued_manual) {
+        toast.warning(L(`${data.queued_manual} mis en file manuelle. Utilisez l'export CSV.`,
+                         `${data.queued_manual} queued manually. Use the CSV export.`));
+      } else {
+        toast.error(data.error || L("Envoi en lot échoué", "Batch failed"));
+      }
+      setSelection(new Set());
+      await load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const exporterCsv = async () => {
+    // Le lien direct ne peut pas porter l'en-tete Authorization : on passe par
+    // un blob telecharge.
+    try {
+      const r = await api.get("/admin/affiliates/payouts/export.csv", { responseType: "blob" });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url; a.download = "fironova-payouts-nowpayments.csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
+  };
 
   const runPayouts = async () => {
     setBusy("run");
@@ -142,10 +232,27 @@ export default function AdminPayouts() {
           <h1 className="font-display text-3xl font-bold text-nordfjord">{L("Paiements affilies", "Affiliate payouts")}</h1>
           <p className="text-glacier text-sm mt-1">{L("Generez, executez et suivez les versements de commissions.", "Generate, execute and track commission payouts.")}</p>
         </div>
-        <button onClick={runPayouts} disabled={busy === "run"} data-testid="run-payouts"
-          className="btn-pill btn-nova disabled:opacity-40 flex items-center gap-2">
-          <DollarSign size={16} /> {L("Generer les releves", "Generate payouts")}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {selection.size > 0 && (
+            <span className="font-data text-[11px] uppercase tracking-wider text-nordfjord
+                             bg-nova/15 border border-nova/30 rounded-full px-3 py-1.5">
+              {selection.size} {L("sélectionné(s)", "selected")}
+            </span>
+          )}
+          <button onClick={envoyerEnLot} disabled={!selection.size || batchBusy}
+            data-testid="batch-send"
+            className="btn-pill btn-outline disabled:opacity-40 flex items-center gap-2">
+            <Send size={15} /> {batchBusy ? L("Envoi…", "Sending…") : L("Envoyer en lot", "Send batch")}
+          </button>
+          <button onClick={exporterCsv} data-testid="export-csv"
+            className="btn-pill btn-outline flex items-center gap-2">
+            <Download size={15} /> {L("Export CSV", "Export CSV")}
+          </button>
+          <button onClick={runPayouts} disabled={busy === "run"} data-testid="run-payouts"
+            className="btn-pill btn-nova disabled:opacity-40 flex items-center gap-2">
+            <DollarSign size={16} /> {L("Generer les releves", "Generate payouts")}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -161,10 +268,31 @@ export default function AdminPayouts() {
         </div>
       ) : (
         <div className="space-y-2">
+          {payouts.some((p) => p.status === "ready") && (
+            <label className="flex items-center gap-3 px-4 py-2 text-xs text-glacier cursor-pointer">
+              <input type="checkbox" className="h-4 w-4 accent-nordfjord"
+                checked={selection.size > 0
+                  && selection.size === payouts.filter((p) => p.status === "ready").length}
+                onChange={basculerTout}
+                data-testid="select-all" />
+              {L("Tout sélectionner — y compris les lignes hors écran",
+                 "Select all — including rows off screen")}
+            </label>
+          )}
           {payouts.map((p) => {
             const st = STATUS[p.status] || statutInconnu(p.status);
             return (
               <div key={p.id} className="rounded-xl border border-ash bg-white p-4 flex items-center gap-4 flex-wrap" data-testid={`payout-${p.id}`}>
+                {/* La case n'existe que sur « ready » : c'est le seul statut que
+                    l'envoi en lot accepte. Proposer de cocher un versement que
+                    le serveur refusera ensuite serait une fausse piste. */}
+                <input type="checkbox" className="h-4 w-4 accent-nordfjord shrink-0"
+                  disabled={p.status !== "ready"}
+                  checked={selection.has(p.id)}
+                  onChange={() => basculer(p.id)}
+                  aria-label={L("Sélectionner ce versement", "Select this payout")}
+                  data-testid={`select-${p.id}`}
+                  style={p.status !== "ready" ? { visibility: "hidden" } : undefined} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-display font-bold text-nordfjord">{p.affiliate_code || "—"}</span>
@@ -227,6 +355,43 @@ export default function AdminPayouts() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Historique des generations. Il repond a une question precise, posee
+          chaque mois : « est-ce que le planificateur a bien tourne ? ». Sans
+          lui, une periode ratee ne se decouvre qu'en constatant l'absence de
+          versements — c'est-a-dire trop tard. */}
+      {runs.length > 0 && (
+        <div className="rounded-xl border border-ash bg-white overflow-hidden" data-testid="payout-runs">
+          <p className="px-5 py-3 font-data text-[11px] uppercase tracking-[0.2em] text-nova border-b border-ash">
+            {L("Générations récentes", "Recent runs")}
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <tbody>
+                {runs.map((r) => (
+                  <tr key={`${r.period}-${r.started_at}`} className="border-b border-ash/60 last:border-0">
+                    <td className="px-5 py-2.5 font-data text-nordfjord whitespace-nowrap">{r.period}</td>
+                    <td className="px-3 py-2.5 text-glacier text-xs">
+                      {r.auto ? L("automatique", "automatic") : L("manuelle", "manual")}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className={`font-data text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                        r.status === "done" ? "bg-success/15 text-success"
+                          : r.status === "failed" ? "bg-error/10 text-error"
+                          : "bg-glacier/15 text-glacier"}`}>
+                        {r.status}
+                      </span>
+                    </td>
+                    <td className="px-5 py-2.5 text-glacier text-xs text-right">
+                      {r.error ? <span className="text-error">{r.error}</span> : (r.ended_at || r.started_at || "")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

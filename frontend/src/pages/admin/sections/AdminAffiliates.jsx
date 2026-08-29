@@ -113,101 +113,10 @@ export default function AdminAffiliates() {
   const [fStatus, setFStatus] = useState("");
   const [fTier, setFTier] = useState("");
   const [affPage, setAffPage] = useState(1);
-  const [payPage, setPayPage] = useState(1);
   const [clicks, setClicks] = useState(null);
   const [clicksLoading, setClicksLoading] = useState(false);
-  const [payouts, setPayouts] = useState([]);
-  const [selectedPayouts, setSelectedPayouts] = useState(new Set());
-  const [batchBusy, setBatchBusy] = useState(false);
 
-  const toggleSelect = (id) => {
-    setSelectedPayouts((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-  const toggleSelectAll = () => {
-    const eligible = payouts.filter((p) => p.status === "ready").map((p) => p.id);
-    setSelectedPayouts((prev) => (prev.size === eligible.length ? new Set() : new Set(eligible)));
-  };
-  const batchSendNowPayments = async () => {
-    if (!selectedPayouts.size) return;
 
-    // RÉCAPITULATIF AVANT D'ENVOYER DE LA CRYPTOMONNAIE.
-    //
-    // Il n'y en avait aucun : on demandait le code 2FA, puis on envoyait. Or
-    // « Tout sélectionner » porte sur TOUS les versements prêts de l'historique,
-    // pas sur les dix lignes affichées — l'administrateur qui coche l'en-tête
-    // en pensant « cette page » en envoyait quarante-sept. La seule indication
-    // était une pastille de comptage à l'autre bout de la barre, et aucun
-    // montant cumulé n'apparaissait nulle part. L'opération est irréversible
-    // par nature.
-    const choisis = payouts.filter((p) => selectedPayouts.has(p.id));
-    const totalCad = choisis.reduce((somme, p) => somme + Number(p.amount_cad || 0), 0);
-    const ok = await confirm({
-      title: L(`Envoyer ${choisis.length} versement(s) ?`,
-               `Send ${choisis.length} payout(s)?`),
-      description: L(
-        `Total : ${money(totalCad)} vers ${choisis.length} affilié(s). L'envoi de cryptomonnaie est irréversible — vérifiez le nombre, il peut dépasser les lignes affichées à l'écran.`,
-        `Total: ${money(totalCad)} to ${choisis.length} affiliate(s). Sending cryptocurrency is irreversible — check the count, it may exceed the rows shown on screen.`),
-      confirmLabel: L("Continuer", "Continue"),
-      cancelLabel: L("Annuler", "Cancel"),
-      destructive: true,
-    });
-    if (!ok) return;
-
-    const otp = window.prompt(L("Code 2FA Google Authenticator (Mass Payouts NOWPayments) :",
-                                "2FA code from Google Authenticator (NOWPayments Mass Payouts):"));
-    if (!otp) return;
-    setBatchBusy(true);
-    try {
-      const { data } = await api.post("/admin/affiliates/payouts/batch", {
-        payout_ids: [...selectedPayouts], otp,
-      });
-      if (data.ok) {
-        toast.success(L(`${data.sent} paiement(s) envoyé(s) via NOWPayments`,
-                         `${data.sent} payout(s) sent via NOWPayments`));
-      } else if (data.queued_manual) {
-        toast.warning(L(`${data.queued_manual} mis en file manuelle. Utilisez l'export CSV.`,
-                         `${data.queued_manual} queued manually. Use CSV export.`));
-      } else {
-        toast.error(data.error || "Batch failed");
-      }
-      setSelectedPayouts(new Set());
-      loadPayouts();
-    } catch (e) {
-      toast.error(formatApiError(e.response?.data?.detail) || e.message);
-    } finally {
-      setBatchBusy(false);
-    }
-  };
-  const exportNowPaymentsCsv = () => {
-    // Ouvre l'endpoint en incluant le Bearer via un fetch → blob download (le lien
-    // direct ne peut pas porter le header Authorization).
-    (async () => {
-      try {
-        const r = await api.get("/admin/affiliates/payouts/export.csv",
-                                 { responseType: "blob" });
-        const url = URL.createObjectURL(r.data);
-        const a = document.createElement("a");
-        a.href = url; a.download = "fironova-payouts-nowpayments.csv";
-        document.body.appendChild(a); a.click(); a.remove();
-        URL.revokeObjectURL(url);
-      } catch (e) {
-        toast.error(formatApiError(e.response?.data?.detail) || e.message);
-      }
-    })();
-  };
-
-  const [payoutRuns, setPayoutRuns] = useState([]);
-  const loadPayoutRuns = async () => {
-    try {
-      const r = await api.get("/admin/affiliates/payouts/runs?limit=20");
-      setPayoutRuns(r.data?.runs || []);
-    } catch { /* ignore */ }
-  };
-  useEffect(() => { if (tab === "payouts") loadPayoutRuns(); }, [tab]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -227,16 +136,6 @@ export default function AdminAffiliates() {
     }
   }, []);
 
-  const loadPayouts = useCallback(async () => {
-    try {
-      const { data } = await api.get("/admin/affiliates/payouts/all");
-      setPayouts(data || []);
-      setPayPage(1);
-    } catch (e) {
-      toast.error(formatApiError(e.response?.data?.detail) || e.message);
-    }
-  }, []);
-
   const loadClicks = useCallback(async () => {
     setClicksLoading(true);
     try {
@@ -250,7 +149,6 @@ export default function AdminAffiliates() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { if (tab === "payouts") loadPayouts(); }, [tab, loadPayouts]);
   useEffect(() => { if (tab === "clicks") loadClicks(); }, [tab, loadClicks]);
 
   const fin = ov?.financial || {};
@@ -269,7 +167,6 @@ export default function AdminAffiliates() {
     return true;
   });
   const affPageRows = filteredRows.slice((affPage - 1) * PAGE_SIZE, affPage * PAGE_SIZE);
-  const payPageRows = payouts.slice((payPage - 1) * PAGE_SIZE, payPage * PAGE_SIZE);
   const tierOptions = [...new Set(rows.map((r) => r.tier).filter(Boolean))];
 
   const exportAffiliates = () =>
@@ -287,16 +184,6 @@ export default function AdminAffiliates() {
       ])
     );
 
-  const exportPayoutsAll = () =>
-    downloadCsv(
-      "payouts.csv",
-      ["Period", "Affiliate", "Amount", "Currency", "Status", "Refs", "TxRef"],
-      payouts.map((p) => [
-        p.period, p.affiliate_code, p.amount, p.currency, p.status,
-        p.referral_count || 0, p.reference || "",
-      ])
-    );
-
   return (
     <div data-testid="admin-affiliates">
       {/* Header */}
@@ -306,12 +193,10 @@ export default function AdminAffiliates() {
           <h1 className="font-display text-3xl font-bold uppercase tracking-tight text-nordfjord">{L("Affiliés", "Affiliates")}</h1>
         </div>
         <div className="flex gap-2">
-          {/* « Générer les paiements » appelait /payouts/run, exactement comme
-              le bouton de la page Paiements. Deux boutons pour un seul effet,
-              dont un placé dans l'en-tête de la page — loin de l'onglet
-              Paiements et de son envoi groupé. La génération reste sur la page
-              Paiements ; l'onglet ci-dessous garde ses fonctions propres
-              (sélection multiple, envoi groupé NOWPayments avec un seul 2FA). */}
+          {/* Tout ce qui concerne l'argent vit désormais sur la page Paiements :
+              génération, envoi à l'unité, envoi groupé, export CSV, historique
+              des exécutions. Cette page garde ce qui la concerne — la liste des
+              affiliés, leurs fiches, les invitations et l'attribution. */}
           <button onClick={() => setShowBulk(true)} data-testid="affiliate-bulk-open"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-ash text-sm font-medium text-nordfjord hover:bg-clinical transition">
             <Upload size={16} /> {L("Import CSV", "Import CSV")}
@@ -325,7 +210,15 @@ export default function AdminAffiliates() {
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 flex-wrap">
-        {[["overview", L("Aperçu", "Overview")], ["clicks", L("Attribution", "Attribution")], ["payouts", L("Paiements", "Payouts")]].map(([k, label]) => (
+        {/* L'onglet « Paiements » a ete RETIRE d'ici.
+            Deux entrees du meme nom coexistaient — celle-ci et l'ecran
+            Paiements du menu — chacune portant la moitie des actions. Celle du
+            menu, l'endroit evident, n'avait ni l'envoi en lot ni l'export ;
+            celle-ci n'avait ni l'envoi unitaire ni la resynchronisation. Et
+            « Marquer paye » existait dans les deux, avec deux boites de
+            dialogue differentes. Tout est desormais dans l'ecran Paiements ;
+            Affilies garde ce qui le concerne : liste, fiches, attribution. */}
+        {[["overview", L("Aperçu", "Overview")], ["clicks", L("Attribution", "Attribution")]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             data-testid={`affiliate-tab-${k}`}
             className={`px-4 py-2 rounded-full font-data text-xs font-semibold uppercase tracking-wider transition ${
@@ -763,173 +656,6 @@ export default function AdminAffiliates() {
         )}
 
         {/* Payouts tab */}
-        {!loading && tab === "payouts" && (
-          <div className="space-y-4" data-testid="affiliate-payouts">
-            <div className="bg-white border border-ash rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-ash flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-3">
-                  <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier">
-                    {L("HISTORIQUE DES PAIEMENTS", "PAYMENT HISTORY")}
-                  </p>
-                  {selectedPayouts.size > 0 && (
-                    <span className="font-data text-[11px] text-nova bg-nova/10 px-2 py-0.5 rounded-full">
-                      {selectedPayouts.size} {L("sélectionné(s)", "selected")}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={batchSendNowPayments}
-                    disabled={!selectedPayouts.size || batchBusy}
-                    data-testid="batch-send-nowpayments"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-nordfjord text-white text-xs font-medium hover:opacity-90 disabled:opacity-40 transition"
-                    title={L("Envoyer les paiements sélectionnés via NOWPayments Mass Payouts (1 seul 2FA)",
-                             "Send selected payouts via NOWPayments Mass Payouts (single 2FA)")}>
-                    {batchBusy ? L("Envoi…", "Sending…") : L("Batch → NOWPayments", "Batch → NOWPayments")}
-                  </button>
-                  <button onClick={exportNowPaymentsCsv}
-                    data-testid="export-nowpayments-csv"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-nova text-nova text-xs font-medium hover:bg-nova/10 transition"
-                    title={L("Exporter le CSV au format NOWPayments (import manuel)",
-                             "Export CSV in NOWPayments format (manual import)")}>
-                    <Download size={13} /> {L("Export NOWPayments", "Export NOWPayments")}
-                  </button>
-                  <button onClick={exportPayoutsAll}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical transition">
-                    <Download size={13} /> {L("CSV complet", "Full CSV")}
-                  </button>
-                </div>
-              </div>
-              {payouts.length === 0 ? (
-                <p className="text-sm text-glacier py-12 text-center">{L("Aucun paiement.", "No payouts.")}</p>
-              ) : (
-                <>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-left text-xs uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
-                          <Th><input type="checkbox"
-                              data-testid="payouts-select-all"
-                              checked={selectedPayouts.size > 0 && selectedPayouts.size === payouts.filter((p) => p.status === "ready").length}
-                              onChange={toggleSelectAll}
-                              className="w-4 h-4 accent-nova cursor-pointer" /></Th>
-                          <Th>{L("Période", "Period")}</Th>
-                          <Th>{L("Affilié", "Affiliate")}</Th>
-                          <Th align="right">{L("Montant", "Amount")}</Th>
-                          <Th>{L("Devise", "Currency")}</Th>
-                          <Th>{L("Statut", "Status")}</Th>
-                          <Th>{L("Réf.", "Ref.")}</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {payPageRows.map((p) => {
-                          const isReady = p.status === "ready";
-                          const isSelected = selectedPayouts.has(p.id);
-                          return (
-                            <tr key={p.id} className="border-b border-ash/60 hover:bg-clinical/60">
-                              <td className="px-4 py-3">
-                                {isReady ? (
-                                  <input type="checkbox"
-                                    data-testid={`payout-select-${p.id}`}
-                                    checked={isSelected}
-                                    onChange={() => toggleSelect(p.id)}
-                                    className="w-4 h-4 accent-nova cursor-pointer" />
-                                ) : <span className="text-glacier/30">—</span>}
-                              </td>
-                              <td className="px-4 py-3 font-data text-nordfjord">{p.period}</td>
-                              <td className="px-4 py-3 font-mono text-xs text-nordfjord">{p.affiliate_code || "—"}</td>
-                              <td className="px-4 py-3 text-right font-semibold text-nordfjord tabular-nums">{money(p.amount)}</td>
-                              <td className="px-4 py-3 uppercase text-glacier text-xs">{p.currency}</td>
-                              <td className="px-4 py-3">
-                                <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                                  p.status === "paid" ? "bg-success/15 text-success"
-                                    : p.status === "processing" ? "bg-nova/15 text-nova"
-                                    : p.status === "queued_manual" ? "bg-warning/15 text-warning"
-                                    : "bg-glacier/15 text-glacier"
-                                }`}>
-                                  {p.status}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-[11px] text-glacier break-all max-w-[180px]">{p.reference || p.np_batch_id || "—"}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                  <AdminPagination page={payPage} total={payouts.length} onChange={setPayPage} L={L} />
-                </>
-              )}
-            </div>
-
-            {/* Historique des runs scheduler (audit) */}
-            <div className="bg-white border border-ash rounded-xl overflow-hidden mt-6"
-                 data-testid="payout-runs-history">
-              <div className="px-5 py-3 border-b border-ash flex items-center justify-between">
-                <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier">
-                  {L("HISTORIQUE DES RUNS (SCHEDULER + MANUELS)",
-                     "SCHEDULER RUNS HISTORY (AUTO + MANUAL)")}
-                </p>
-                <button onClick={loadPayoutRuns}
-                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-ash text-[11px] text-nordfjord hover:bg-clinical transition">
-                  <RefreshCw size={11} /> {L("Actualiser", "Refresh")}
-                </button>
-              </div>
-              {payoutRuns.length === 0 ? (
-                <p className="text-sm text-glacier py-8 text-center">
-                  {L("Aucun run enregistré.", "No runs recorded.")}
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
-                        <Th>{L("Période", "Period")}</Th>
-                        <Th>{L("Type", "Kind")}</Th>
-                        <Th>{L("Statut", "Status")}</Th>
-                        <Th align="right">{L("Créés", "Created")}</Th>
-                        <Th>{L("Démarré", "Started")}</Th>
-                        <Th>{L("Déclenché par", "Triggered by")}</Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {payoutRuns.map((r) => (
-                        <tr key={r.id} className="border-b border-ash/60"
-                            data-testid={`payout-run-${r.id}`}>
-                          <td className="px-4 py-2 font-data text-nordfjord">{r.period}</td>
-                          <td className="px-4 py-2">
-                            <span className={`text-[10px] font-data uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                              r.is_auto ? "bg-nova/15 text-nova" : "bg-glacier/15 text-glacier"
-                            }`}>
-                              {r.is_auto ? L("AUTO", "AUTO") : L("MANUEL", "MANUAL")}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2">
-                            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                              r.status === "done" ? "bg-success/15 text-success"
-                                : r.status === "failed" ? "bg-error/15 text-error"
-                                : "bg-warning/15 text-warning"
-                            }`}>
-                              {r.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2 text-right font-data text-nordfjord tabular-nums">
-                            {r.payouts_created ?? "—"}
-                          </td>
-                          <td className="px-4 py-2 font-data text-[11px] text-glacier">
-                            {r.started_at ? new Date(r.started_at).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA") : "—"}
-                          </td>
-                          <td className="px-4 py-2 font-data text-[11px] text-glacier truncate max-w-[180px]">
-                            {r.triggered_by || (r.is_auto ? "system" : "—")}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
       </>
       )}
