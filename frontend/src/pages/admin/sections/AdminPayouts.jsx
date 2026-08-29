@@ -8,13 +8,37 @@ import { useLang } from "../../../contexts/LanguageContext";
 
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
 
+/* Les NEUF statuts que le serveur produit, pas cinq.
+ *
+ * Il en manquait quatre, et le repli etait `STATUS.ready` — donc un versement
+ * en `review`, `paid_manual`, `dispatching` ou `queued_manual` s'affichait
+ * « Pret ». Le cas le plus grave est `review` : ce statut existe justement
+ * parce que le montant du versement ne correspond plus a ce qu'il couvre, et
+ * l'ecran invitait a l'envoyer. Le refus cote serveur tenait, mais
+ * l'administrateur ne comprenait pas pourquoi.
+ *
+ * `paid_manual` affiche « Paye » comme `paid` : pour qui lit l'ecran, c'est le
+ * meme fait. La distinction sert a l'audit, elle est dans la ligne de detail.
+ */
 const STATUS = {
-  ready:      { fr: "Pret", en: "Ready", cls: "bg-warning/15 text-warning border border-warning/30" },
-  creating:   { fr: "2FA requis", en: "2FA required", cls: "bg-nova/15 text-nova border border-nova/30" },
-  processing: { fr: "En traitement", en: "Processing", cls: "bg-glacier/15 text-glacier border border-glacier/30" },
-  paid:       { fr: "Paye", en: "Paid", cls: "bg-success/15 text-success border border-success/30" },
-  failed:     { fr: "Echoue", en: "Failed", cls: "bg-error/10 text-error border border-error/25" },
+  ready:        { fr: "Pret", en: "Ready", cls: "bg-warning/15 text-warning border border-warning/30" },
+  creating:     { fr: "2FA requis", en: "2FA required", cls: "bg-nova/15 text-nova border border-nova/30" },
+  dispatching:  { fr: "Envoi en cours", en: "Dispatching", cls: "bg-nova/15 text-nova border border-nova/30" },
+  processing:   { fr: "En traitement", en: "Processing", cls: "bg-glacier/15 text-glacier border border-glacier/30" },
+  paid:         { fr: "Paye", en: "Paid", cls: "bg-success/15 text-success border border-success/30" },
+  paid_manual:  { fr: "Paye (manuel)", en: "Paid (manual)", cls: "bg-success/15 text-success border border-success/30" },
+  failed:       { fr: "Echoue", en: "Failed", cls: "bg-error/10 text-error border border-error/25" },
+  queued_manual:{ fr: "A payer a la main", en: "Manual queue", cls: "bg-glacier/15 text-glacier border border-glacier/30" },
+  review:       { fr: "A verifier", en: "Needs review", cls: "bg-error/10 text-error border border-error/25" },
 };
+
+// Repli EXPLICITE : un statut inconnu s'affiche tel quel, en neutre, plutot que
+// d'emprunter l'apparence d'un autre. Un libelle brut se remarque et se
+// signale ; « Pret » sur un versement qui ne l'est pas ne se remarque jamais.
+const statutInconnu = (s) => ({
+  fr: s || "—", en: s || "—",
+  cls: "bg-glacier/10 text-glacier border border-glacier/25",
+});
 
 export default function AdminPayouts() {
   const { lang } = useLang();
@@ -138,7 +162,7 @@ export default function AdminPayouts() {
       ) : (
         <div className="space-y-2">
           {payouts.map((p) => {
-            const st = STATUS[p.status] || STATUS.ready;
+            const st = STATUS[p.status] || statutInconnu(p.status);
             return (
               <div key={p.id} className="rounded-xl border border-ash bg-white p-4 flex items-center gap-4 flex-wrap" data-testid={`payout-${p.id}`}>
                 <div className="min-w-0 flex-1">
