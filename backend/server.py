@@ -11001,6 +11001,32 @@ async def admin_affiliate_update(affiliate_id: str, payload: AffiliateAdminUpdat
     update = {k: v for k, v in payload.model_dump(exclude_none=True).items()}
     if "coupon_percent" in payload.model_fields_set and payload.coupon_percent is None:
         update["coupon_percent"] = None
+
+    # ON N'ACTIVE PAS UN COMPTE QUI N'A PAS ETE ACTIVE.
+    #
+    # `status` etait applique tel quel, sans aucune verification de transition.
+    # `invited -> active` court-circuitait donc entierement affiliate_join, seul
+    # endroit ou sont crees le compte utilisateur (user_id), le code
+    # (_affiliate_gen_code_v2) et le coupon lie (_affiliate_ensure_coupon).
+    #
+    # Un administrateur voulant « debloquer » un invite qui n'a jamais clique se
+    # retrouvait avec un affilie `active` sans code, sans compte et sans coupon.
+    # Il comptait dans les effectifs, apparaissait dans les listes, n'avait
+    # AUCUN moyen de se connecter (get_current_affiliate cherche par user_id) —
+    # et le renvoi d'invitation lui etait desormais refuse, puisqu'il n'est plus
+    # « invited ». Cul-de-sac dont la seule sortie etait un second PATCH.
+    #
+    # On ne construit pas une machine a etats complete ici : on interdit la
+    # seule transition qui fabrique un etat impossible.
+    if update.get("status") == "active" and aff.get("status") != "active":
+        if not aff.get("user_id") or not aff.get("code"):
+            raise HTTPException(
+                400,
+                "Ce compte n'a jamais été activé par son titulaire : il n'a ni "
+                "code ni compte utilisateur. Le passer à « actif » créerait un "
+                "affilié inutilisable. Renvoyez-lui plutôt son invitation.",
+            )
+
     clear_manual_tier = bool(update.pop("clear_manual_tier", False))
     if clear_manual_tier:
         update["manual_tier"] = None

@@ -93,6 +93,13 @@ export default function AdminAffiliates() {
   const couleursGraphique = useChartColors();
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
+  // INDISPENSABLE, et pas seulement pratique : sans ce crochet, `confirm`
+  // dans ce composant designerait le `window.confirm` du navigateur. Il
+  // recevrait notre objet d'options, l'afficherait « [object Object] », et
+  // aucun controle statique ne le signalerait — `confirm` est une variable
+  // globale, donc `no-undef` la juge valide. Ce projet a deja perdu du temps
+  // sur exactement ce piege.
+  const confirm = useConfirm();
 
   const [ov, setOv] = useState(null);
   const [rows, setRows] = useState([]);
@@ -126,6 +133,30 @@ export default function AdminAffiliates() {
   };
   const batchSendNowPayments = async () => {
     if (!selectedPayouts.size) return;
+
+    // RÉCAPITULATIF AVANT D'ENVOYER DE LA CRYPTOMONNAIE.
+    //
+    // Il n'y en avait aucun : on demandait le code 2FA, puis on envoyait. Or
+    // « Tout sélectionner » porte sur TOUS les versements prêts de l'historique,
+    // pas sur les dix lignes affichées — l'administrateur qui coche l'en-tête
+    // en pensant « cette page » en envoyait quarante-sept. La seule indication
+    // était une pastille de comptage à l'autre bout de la barre, et aucun
+    // montant cumulé n'apparaissait nulle part. L'opération est irréversible
+    // par nature.
+    const choisis = payouts.filter((p) => selectedPayouts.has(p.id));
+    const totalCad = choisis.reduce((somme, p) => somme + Number(p.amount_cad || 0), 0);
+    const ok = await confirm({
+      title: L(`Envoyer ${choisis.length} versement(s) ?`,
+               `Send ${choisis.length} payout(s)?`),
+      description: L(
+        `Total : ${money(totalCad)} vers ${choisis.length} affilié(s). L'envoi de cryptomonnaie est irréversible — vérifiez le nombre, il peut dépasser les lignes affichées à l'écran.`,
+        `Total: ${money(totalCad)} to ${choisis.length} affiliate(s). Sending cryptocurrency is irreversible — check the count, it may exceed the rows shown on screen.`),
+      confirmLabel: L("Continuer", "Continue"),
+      cancelLabel: L("Annuler", "Cancel"),
+      destructive: true,
+    });
+    if (!ok) return;
+
     const otp = window.prompt(L("Code 2FA Google Authenticator (Mass Payouts NOWPayments) :",
                                 "2FA code from Google Authenticator (NOWPayments Mass Payouts):"));
     if (!otp) return;

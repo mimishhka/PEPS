@@ -72,9 +72,19 @@ export default function AdminCoupons() {
 
   const del = async (id) => {
     if (!await confirm({ title: L("Supprimer ce coupon ?", "Delete this coupon?"), destructive: true })) return;
-    await api.delete(`/admin/coupons/${id}`);
-    toast.success(L("Supprimé", "Deleted"));
-    load();
+    // `save()` est enveloppe, `del` ne l'etait pas : tout refus du serveur
+    // produisait une promesse rejetee non traitee — ni message d'erreur, ni
+    // retour visuel. Un membre du personnel ayant `coupons:view` mais pas
+    // `coupons:manage` confirmait la suppression et ne voyait RIEN se passer.
+    // Il recommencait, concluait a un bug de l'interface, ou pire : croyait la
+    // suppression faite et ne verifiait pas.
+    try {
+      await api.delete(`/admin/coupons/${id}`);
+      toast.success(L("Supprimé", "Deleted"));
+      load();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
   };
 
   return (
