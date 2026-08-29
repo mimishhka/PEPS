@@ -9724,6 +9724,15 @@ async def admin_affiliate_ticket_reply(ticket_id: str, payload: AffiliateTicketR
         # enregistrée : la réponse est le résultat, l'avis n'est qu'un rappel.
         logging.warning("[ticket] avis non envoyé id=%s error_type=%s",
                         ticket_id, type(exc).__name__)
+    # Une réponse support admin est un acte d'administration. On trace le fait,
+    # pas le contenu — une conversation peut évoquer une adresse de versement
+    # ou un montant, sensible (même règle que pour l'avis courriel).
+    asyncio.create_task(_log_action(
+        admin, "affiliate_ticket_reply",
+        f"ticket={ticket_id} affiliate={res.get('affiliate_code')} "
+        f"subject={res.get('subject','')[:80]}",
+        "affiliates",
+    ))
     return res
 
 
@@ -9772,6 +9781,14 @@ async def admin_affiliate_ticket_status(ticket_id: str, payload: AffiliateTicket
     )
     if not res:
         raise HTTPException(404, "Billet introuvable")
+    # Un changement de statut de billet (ouvert → en cours → résolu) est un
+    # acte d'administration : on trace qui l'a fait, de quoi, et de quel état.
+    asyncio.create_task(_log_action(
+        admin, "affiliate_ticket_status",
+        f"ticket={ticket_id} affiliate={res.get('affiliate_code')} "
+        f"status={payload.status} subject={res.get('subject','')[:80]}",
+        "affiliates",
+    ))
     return res
 
 
@@ -11804,6 +11821,16 @@ async def admin_affiliate_payouts_csv(admin: dict = Depends(get_admin_user)) -> 
             continue
         rows.append([addr, np_currency, f"{float(amt):.2f}", p["id"],
                      p.get("affiliate_code", ""), p.get("period", "")])
+    # Télécharger un CSV de versements, c'est emporter hors du système la
+    # liste des paiements prêts à partir (avec adresses et montants) : un
+    # acte sensible vis-à-vis de l'argent, tracé ici. Les ids
+    # (ExternalId) identifient précisément ce qui a été exporté.
+    exported_ids = [r[3] for r in rows[1:]]
+    asyncio.create_task(_log_action(
+        admin, "affiliate_payouts_csv_export",
+        f"count={len(exported_ids)} payout_ids={','.join(exported_ids)}",
+        "affiliates",
+    ))
     import io, csv
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -12736,6 +12763,15 @@ async def admin_payout_status(payout_id: str, admin: dict = Depends(get_admin_us
     if mapped != payout.get("status"):
         now = datetime.now(timezone.utc).isoformat()
         upd = {"status": mapped, "np_status": np_status, "updated_at": now}
+        # Une sync fait bouger l'état vers le paiement final : c'est un moment
+        # où l'argent « se déclare » payé ou échoué. On trace cette mutation
+        # d'état (avant → après), plus ce que NOWPayments rapportait.
+        asyncio.create_task(_log_action(
+            admin, "affiliate_payout_status_sync",
+            f"payout={payout_id} from={payout.get('status')} to={mapped} "
+            f"np_status={np_status}",
+            "affiliates",
+        ))
         if mapped == "paid":
             upd["paid_at"] = now
             upd["reference"] = str(data.get("id") or batch_id)
