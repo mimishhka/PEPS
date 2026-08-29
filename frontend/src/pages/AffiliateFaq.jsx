@@ -214,6 +214,38 @@ export default function AffiliateFaq() {
 
   if (loading) return <DashboardSkeleton />;
 
+  // Une PANNE n'est pas un REFUS.
+  //
+  // La condition disait `403 || !affiliate` : elle se déclenchait donc aussi
+  // sur un 500, un délai dépassé ou une coupure de dix secondes. Un affilié
+  // actif qui cliquait « Questions fréquentes » depuis son tableau de bord
+  // pendant un incident lisait « Cette page est réservée aux affiliés — le
+  // programme se fait sur invitation », avec un lien de retour à l'accueil. Il
+  // pouvait raisonnablement en conclure que son compte avait été fermé.
+  //
+  // On ne montre plus cet écran que pour le vrai refus.
+  if (error && error?.response?.status !== 403) {
+    return (
+      <div className="bg-clinical min-h-screen grid place-items-center px-6">
+        <div className="max-w-md text-center space-y-3" data-testid="faq-unavailable">
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+            {L("INDISPONIBLE", "UNAVAILABLE")}
+          </p>
+          <h1 className="font-display text-2xl font-bold text-nordfjord">
+            {L("Cette page n'a pas pu être chargée", "This page could not be loaded")}
+          </h1>
+          <p className="text-sm text-glacier">
+            {L("Votre compte n'est pas en cause. Réessayez dans un instant.",
+               "Your account is not at fault. Try again in a moment.")}
+          </p>
+          <Link to="/affiliate" className="inline-block mt-2 text-nova underline text-sm">
+            {L("Retour au tableau de bord", "Back to dashboard")}
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   // 403 = compte valide mais pas affilié. On ne redirige pas silencieusement :
   // quelqu'un arrivé ici par un lien partagé doit comprendre pourquoi il n'y a
   // rien à voir, plutôt que de se retrouver sur l'accueil sans explication.

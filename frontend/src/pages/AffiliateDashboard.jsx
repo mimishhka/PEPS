@@ -466,6 +466,44 @@ export default function AffiliateDashboard() {
     );
   }
 
+  /* SANS FICHE, ON N'AFFICHE PAS UN TABLEAU DE BORD FAUX.
+   *
+   * Seul le 403 avait un écran dédié. Pour un 500, un délai dépassé ou une
+   * coupure réseau, `data` vaut null, les deux gardes ci-dessus sont franchies
+   * et tout le rendu part avec `data?.x` partout. Un affilié Diamant à 20 %
+   * lisait alors : palier vide, « · 0 % », « une commande de 100 $ vous
+   * rapporte 0,00 $ », et — parce que `next_tier` est absent — « 🏆 Palier
+   * maximal atteint ». Le panneau de versement disparaissait, et le bouton
+   * « Copier » du lien restait actif : il copiait une chaîne vide en affichant
+   * « Copié ✓ ». La personne partageait un lien mort.
+   *
+   * Aucune de ces valeurs n'est fausse au sens du code — elles sont toutes le
+   * repli d'un champ absent. C'est précisément le problème : rien ne distingue
+   * « zéro » de « je ne sais pas ».
+   */
+  if (!data) {
+    return (
+      <div className="bg-clinical min-h-screen">
+        <div className="max-w-2xl mx-auto px-6 py-24 text-center" data-testid="affiliate-unavailable">
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
+            {L("DONNÉES INDISPONIBLES", "DATA UNAVAILABLE")}
+          </p>
+          <h1 className="font-display text-[32px] font-bold text-nordfjord mb-4">
+            {L("Vos chiffres n'ont pas pu être chargés", "Your figures could not be loaded")}
+          </h1>
+          <p className="text-glacier leading-relaxed mb-8">
+            {L("Rien n'est perdu : vos commissions et votre palier sont intacts. C'est l'affichage qui n'a pas pu récupérer vos données.",
+               "Nothing is lost: your commissions and tier are intact. It is the display that could not fetch your data.")}
+          </p>
+          <button onClick={() => refreshAffiliate()}
+            className="btn-pill btn-nova" data-testid="affiliate-retry">
+            {L("Réessayer", "Try again")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const tierColor = TIER_META[data?.tier]?.color || "#64748B";
   const tierLabel = TIER_META[data?.tier]?.[lang] || data?.tier;
   const comp = COMPLIANCE_META[data?.compliance_status] || COMPLIANCE_META.compliant;
@@ -1083,8 +1121,13 @@ export default function AffiliateDashboard() {
                     {personalTop
                       ? L("Classés par revenu généré grâce à votre code",
                           "Ranked by revenue generated through your code")
-                      : L("1 clic = attribution automatique à votre code",
-                          "1 click = auto-attributed to your code")}
+                      {/* « attribution automatique » sans borne laissait croire
+                          que le clic suffit, pour toujours. Il vaut pour la
+                          visite en cours. Ce panneau s'affiche aux affiliés
+                          SANS vente — donc aux moins informés, ceux qui vont
+                          bâtir leur idée du programme sur cette ligne. */}
+                      : L("Un clic vous crédite la commande passée pendant cette visite",
+                          "One click credits you the order placed during that visit")}
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
