@@ -539,3 +539,86 @@ def test_rabais_nul_est_refuse(server_module):
         asyncio.run(server_module.admin_affiliate_update(
             "aff-1", payload, {"email": "admin@example.com"}))
     assert exc.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# 9. Un compte suspendu ne peut pas être réglé manuellement
+# ---------------------------------------------------------------------------
+
+def test_mark_paid_refuse_un_affilie_suspendu(server_module):
+    """Un paiement « prêt » d'un compte suspendu ne doit pas passer en manuel.
+
+    Le batch et l'automatique filtrent déjà les suspendus ; le marquage manuel
+    était la porte de sortie qui laissait payer un compte gelé.
+    """
+    class Payouts:
+        async def find_one(self, query, projection=None):
+            return {"id": "p-sus", "status": "ready", "amount_cad": 100.0,
+                    "affiliate_code": "MARIE10"}
+
+    class Affiliates:
+        async def find_one(self, query, projection=None):
+            return {"status": "suspended", "code": "MARIE10"}
+
+    server_module.db = types.SimpleNamespace(
+        affiliate_payouts=Payouts(), affiliates=Affiliates())
+    payload = server_module.AffiliatePayoutMarkIn(reference="tx-hash-1")
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.admin_affiliate_mark_paid(
+            "p-sus", payload, {"email": "admin@example.com"}))
+    assert exc.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# 10. Un versement « review » n'est pas payable tant qu'il n'est pas résolu
+# ---------------------------------------------------------------------------
+
+def test_mark_paid_refuse_un_versement_en_revue(server_module):
+    """Attribution partielle (double revendication) = montant non adossé aux
+    commissions réellement rattachées. Payable à tort, on verserait une somme
+    qui ne correspond plus à ce qu'elle couvre.
+    """
+    class Payouts:
+        async def find_one(self, query, projection=None):
+            return {"id": "p-review", "status": "review",
+                    "review_reason": "referrals_partiellement_revendiques",
+                    "amount_cad": 100.0, "affiliate_code": "PAUL10"}
+
+    class Affiliates:
+        async def find_one(self, query, projection=None):
+            return {"status": "active", "code": "PAUL10"}
+
+    server_module.db = types.SimpleNamespace(
+        affiliate_payouts=Payouts(), affiliates=Affiliates())
+    payload = server_module.AffiliatePayoutMarkIn(reference="tx-hash-2")
+
+    # L'ordre des gardes : un affilié actif passe la garde « suspendu »,
+    # puis le statut « review » doit être refusé.
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.admin_affiliate_mark_paid(
+            "p-review", payload, {"email": "admin@example.com"}))
+    assert exc.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# 11. Un affilié déjà activé ne redevient pas « invité »
+# ---------------------------------------------------------------------------
+
+def test_update_refuse_active_vers_invite(server_module):
+    """« invited » = jamais activé (ni code ni accès). Rétrograder un actif y
+    le priverait de sa capacité à se connecter, sans qu'aucune invitation ne
+    soit réellement envoyée — un état sans sortie.
+    """
+    class Affiliates:
+        async def find_one(self, query, projection=None):
+            return {"id": "aff-3", "email": "pierre@example.com",
+                    "status": "active", "code": "PIERRE10"}
+
+    server_module.db = types.SimpleNamespace(affiliates=Affiliates())
+    payload = server_module.AffiliateAdminUpdateIn(status="invited")
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.admin_affiliate_update(
+            "aff-3", payload, {"email": "admin@example.com"}))
+    assert exc.value.status_code == 400
