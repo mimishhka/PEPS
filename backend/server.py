@@ -5104,22 +5104,64 @@ async def admin_refund_order(order_id: str, payload: RefundIn, admin: dict = Dep
     elif total > 0:
         remaining_ratio = max(0.0, (total - new_refunded) / total)
         now_iso = datetime.now(timezone.utc).isoformat()
+        # `base_amount` SUIT la commission — il ne suivait pas.
+        #
+        # Seul `commission_amount` était recalculé. Or c'est `base_amount` que
+        # _affiliate_compute_metrics additionne pour le chiffre d'affaires des
+        # douze mois glissants, celui qui fixe le palier. Un affilié dont les
+        # commandes étaient remboursées à moitié voyait donc sa commission
+        # baisser mais son palier rester gonflé indéfiniment — et le palier
+        # gouverne le taux de TOUTES ses ventes suivantes.
+        #
+        # Sur le RATIO lui-même, je n'ai rien changé, contrairement à ce que
+        # l'audit suggérait. Il porte sur le total livraison comprise alors que
+        # la base l'exclut ; mais faute de savoir quelle part d'un
+        # remboursement vise les produits, la répartition proportionnelle est
+        # une convention défendable. Un remboursement de la seule livraison
+        # réduit un peu la commission, un remboursement produit en réduit un
+        # peu moins : l'écart est borné et symétrique. Trancher autrement
+        # demanderait de ventiler le remboursement à la saisie — un choix
+        # produit, pas une correction.
+        #
+        # Le filtre exclut les commissions déjà rattachées à un versement :
+        # leur montant a été figé à la génération du payout, le modifier après
+        # coup ferait diverger le referral et la somme réellement envoyée.
         await db.affiliate_referrals.update_many(
-            {"order_id": order_id, "status": {"$in": ["pending", "approved"]}},
+            {"order_id": order_id, "status": {"$in": ["pending", "approved"]},
+             "payout_id": None},
             [
                 {"$set": {
                     "original_commission_amount": {
                         "$ifNull": ["$original_commission_amount", "$commission_amount"]
+                    },
+                    "original_base_amount": {
+                        "$ifNull": ["$original_base_amount", "$base_amount"]
                     },
                 }},
                 {"$set": {
                     "commission_amount": {
                         "$round": [{"$multiply": ["$original_commission_amount", remaining_ratio]}, 2]
                     },
+                    "base_amount": {
+                        "$round": [{"$multiply": ["$original_base_amount", remaining_ratio]}, 2]
+                    },
                     "refund_adjusted_at": now_iso,
                 }},
             ],
         )
+        # Une commission déjà rattachée à un versement ne peut plus être
+        # ajustée en silence : on la signale, faute de quoi l'écart entre le
+        # remboursement et la somme versée n'apparaîtrait nulle part.
+        figees = await db.affiliate_referrals.count_documents(
+            {"order_id": order_id, "status": {"$in": ["pending", "approved"]},
+             "payout_id": {"$ne": None}}
+        )
+        if figees:
+            logging.warning(
+                "[affiliate] remboursement partiel commande=%s : %d commission(s) "
+                "déjà rattachée(s) à un versement, montant NON ajusté",
+                order_id, figees,
+            )
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
     provider_refund_id = (
         updated.get("provider_refund_id")
@@ -12169,7 +12211,36 @@ async def admin_payout_execute(payout_id: str, admin: dict = Depends(get_admin_u
     amount = float(payout.get("amount", 0))
     if amount <= 0:
         raise HTTPException(400, "Montant de payout invalide.")
-    currency = (payout.get("currency") or "btc").lower()
+
+    # DEVISE ET RÉSEAU, comme le chemin en lot — et non la devise brute.
+    #
+    # Deux défauts se cumulaient ici. D'abord le repli `or "btc"` : les scripts
+    # de démonstration écrivent `payout_currency: "btc"`, et pour une devise
+    # hors AFFILIATE_PAYOUT_CURRENCIES, `_affiliate_payout_amounts` renvoie le
+    # montant CANADIEN tel quel comme quantité de jetons. Exécuter un tel
+    # versement demandait donc l'envoi de 250 BTC pour 250 $ CAD dus.
+    #
+    # Ensuite l'absence de réseau : « usdt » partait sans suffixe, alors que le
+    # chemin en lot refuse d'envoyer sans correspondance (jeton, réseau)
+    # explicite — un envoi sur le mauvais réseau est irréversible.
+    #
+    # Le réseau se déduit de l'ADRESSE : c'est elle qui décide de la
+    # destination réelle des fonds.
+    currency = (payout.get("currency") or "").lower()
+    if currency not in AFFILIATE_PAYOUT_CURRENCIES:
+        raise HTTPException(
+            400,
+            f"Devise de versement non supportée ({currency or 'absente'}). "
+            "Seuls USDT et USDC peuvent être envoyés automatiquement.",
+        )
+    reseau = _detect_payout_network(address)
+    np_currency = NOWPAYMENTS_PAYOUT_CURRENCY.get((currency, reseau or ""))
+    if not np_currency:
+        raise HTTPException(
+            400,
+            f"Couple devise/réseau non supporté ({currency.upper()} sur "
+            f"{reseau or 'réseau inconnu'}). Vérifiez l'adresse de l'affilié.",
+        )
 
     # Transition atomique de l'état "ready" vers "creating" pour éviter les
     # exécutions concurrentes et les doubles batches NOWPayments.
@@ -12188,7 +12259,10 @@ async def admin_payout_execute(payout_id: str, admin: dict = Depends(get_admin_u
     if not claimed.modified_count:
         raise HTTPException(400, "Payout déjà en cours d'exécution ou déjà traité.")
 
-    withdrawals = [{"address": address, "currency": currency, "amount": amount}]
+    # `np_currency` et non `currency` : NOWPayments attend le code AVEC réseau
+    # (« usdttrc20 », « usdcerc20 »). Envoyer « usdt » nu laissait le
+    # fournisseur choisir, sur une opération irréversible.
+    withdrawals = [{"address": address, "currency": np_currency, "amount": amount}]
     desc = f"Fironova affiliate {payout.get('affiliate_code')} — {payout.get('period')}"
     try:
         resp = await _np_create_payout(withdrawals, description=desc)

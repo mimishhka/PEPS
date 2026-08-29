@@ -177,7 +177,24 @@ async def _affiliate_gen_code_v2(base_source: str, discount_percent: float,
         }
         if exclude_id:
             q["id"] = {"$ne": exclude_id}
-        return await s.db.affiliates.find_one(q, {"_id": 1}) is not None
+        if await s.db.affiliates.find_one(q, {"_id": 1}) is not None:
+            return True
+        # LA COLLECTION `coupons` COMPTE AUSSI comme collision.
+        #
+        # Ce contrôle ne regardait que `affiliates`. Un code généré pouvait donc
+        # tomber sur un coupon PROMOTIONNEL existant — « NOEL15 » pour « Noel
+        # Nutrition » à 15 %, par exemple. _affiliate_ensure_coupon adopte alors
+        # le coupon trouvé sans le marquer : il reste `source: promo`, sans
+        # `affiliate_id`. Conséquences en chaîne : _is_affiliate_coupon répond
+        # False, donc le contrôle de suspension ne s'applique pas ; le coupon
+        # satisfait FILTRE_PROMO, donc il apparaît dans l'écran des promos et y
+        # devient modifiable et supprimable. Toute la séparation entre les deux
+        # types de coupons tombait pour ce code.
+        #
+        # La protection existait déjà dans l'autre sens (créer une promo au nom
+        # d'un code d'affilié est refusé en 409) : elle n'était bonne que d'un
+        # côté.
+        return await s.db.coupons.find_one({"code": c}, {"_id": 1}) is not None
 
     if not await _exists(candidate):
         return candidate
@@ -740,7 +757,23 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
         "coupon_percent": (float(aff["coupon_percent"])
                            if aff.get("coupon_percent") is not None
                            else float(s.AFFILIATE_COUPON_PERCENT)),
-        "aliases": aff.get("aliases", []),
+        # Alias FILTRÉS, et non le tableau brut.
+        #
+        # _affiliate_public est une liste blanche stricte partout ailleurs ;
+        # cette ligne renvoyait le tableau tel quel. Or chaque entrée porte
+        # `archived_by` et `toggled_by` — l'adresse courriel de l'employé qui a
+        # manipulé la fiche. Une donnée interne traversait donc la frontière
+        # vers un partenaire externe, par GET /api/affiliate/me, sans aucun
+        # besoin fonctionnel : l'écran n'affiche que les codes et leur état.
+        # Une adresse nominative vérifiée est la matière première d'un
+        # hameçonnage ciblé.
+        "aliases": [
+            {"code": a.get("code"),
+             "active": a.get("active", True),
+             "discount_percent_at_creation": a.get("discount_percent_at_creation"),
+             "archived_at": a.get("archived_at")}
+            for a in (aff.get("aliases") or [])
+        ],
         "activated_at": aff.get("activated_at"),
         "created_at": aff.get("created_at"),
         # Bareme complet des paliers. Expose plutot que recopie cote interface :
