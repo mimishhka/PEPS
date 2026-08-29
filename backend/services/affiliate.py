@@ -537,46 +537,79 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
         manual_tier = None
 
     q_start = _affiliate_quarter_start()
-    cumulative = 0.0      # depuis toujours — informatif, affiché à l'affilié
-    rolling12 = 0.0       # 365 derniers jours — c'est LUI qui fixe le palier
-    quarter = 0.0         # trimestre en cours — informatif uniquement désormais
-    pending_commission = 0.0
-    approved_commission = 0.0
-    paid_commission = 0.0
-    validated_orders = 0
 
-    cursor = s.db.affiliate_referrals.find(
-        {"affiliate_id": affiliate_id}, {"_id": 0}
-    )
-    async for r in cursor:
-        status = r.get("status")
-        base = float(r.get("base_amount", 0.0))       # produits HT
-        comm = float(r.get("commission_amount", 0.0))
-        if status in ("approved", "paid"):
-            cumulative += base
-            validated_orders += 1
-            created = r.get("approved_at") or r.get("created_at")
-            if created:
-                try:
-                    dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    if dt >= window_start:
-                        rolling12 += base
-                    if dt >= q_start:
-                        quarter += base
-                except Exception:
-                    # Date illisible : la vente compte au cumul mais pas dans la
-                    # fenêtre. Prudent — mieux vaut sous-estimer un palier que
-                    # l'accorder sur une donnée qu'on ne sait pas dater.
-                    logging.warning("[affiliate] date de referral illisible (%r) — hors fenetre 12 mois",
-                                    created)
-        if status == "pending":
-            pending_commission += comm
-        elif status == "approved":
-            approved_commission += comm
-        elif status == "paid":
-            paid_commission += comm
+    # Agrégation SERVEUR au lieu d'une boucle Python : la note de la fonction
+    # voulait additionner les références validées sans jamais les charger toutes
+    # en mémoire. L'ancienne boucle transférait la totalité de l'historique d'un
+    # affilié vers FastAPI à chaque appel — or cette fonction est invoquée à
+    # CHAQUE commande payée (affiliate_on_order_paid) en plus du tableau de bord.
+    #
+    # Équivalence sémantique STRICTE avec l'ancienne boucle :
+    #   - cumulative/validated_orders : seules les ventes approved|paid comptent,
+    #     sur base_amount ;
+    #   - rolling12/quarter : en plus d'être approved|paid, la date effective
+    #     (approved_at sinon created_at) doit SE PARSER et être >= window/q. Un
+    #     champ manquant OU illisible est EXCLU de la fenêtre (mais toujours
+    #     compté au cumul) — le même repli « prudent » qu'avant, qui préfère
+    #     sous-estimer un palier que l'accorder sur une date incertaine ;
+    #   - dates lues `$type` date/timestamp directement, sinon `$dateFromString`
+    #     (onError/onNull -> null -> hors fenêtre), soit exactement le
+    #     comportement de _date_ou_rien().
+    pipeline = [
+        {"$match": {"affiliate_id": affiliate_id}},
+        {"$project": {
+            "_id": 0,
+            "status": 1,
+            "base": {"$ifNull": ["$base_amount", 0.0]},
+            "comm": {"$ifNull": ["$commission_amount", 0.0]},
+            # Date effective = approved_at sinon created_at (replie sur null).
+            "eff": {"$switch": {
+                "branches": [
+                    {"$case": {"$in": [
+                        {"$type": {"$ifNull": ["$approved_at", "$created_at", None]}},
+                        ["date", "timestamp"],
+                    ]}, "then": {"$ifNull": ["$approved_at", "$created_at", None]}},
+                ],
+                "default": {"$dateFromString": {
+                    "dateString": {"$ifNull": ["$approved_at", "$created_at", None]},
+                    "onError": None,
+                    "onNull": None,
+                }},
+            }},
+        }},
+        {"$group": {
+            "_id": None,
+            "cumulative": {"$sum": {"$cond": [
+                {"$in": ["$status", ["approved", "paid"]]}, "$base", 0.0]}},
+            "validated_orders": {"$sum": {"$cond": [
+                {"$in": ["$status", ["approved", "paid"]]}, 1, 0]}},
+            "rolling12": {"$sum": {"$cond": [
+                {"$and": [
+                    {"$in": ["$status", ["approved", "paid"]]},
+                    {"$gte": ["$eff", window_start]},
+                ]}, "$base", 0.0]}},
+            "quarter": {"$sum": {"$cond": [
+                {"$and": [
+                    {"$in": ["$status", ["approved", "paid"]]},
+                    {"$gte": ["$eff", q_start]},
+                ]}, "$base", 0.0]}},
+            "pending_commission": {"$sum": {"$cond": [
+                {"$eq": ["$status", "pending"]}, "$comm", 0.0]}},
+            "approved_commission": {"$sum": {"$cond": [
+                {"$eq": ["$status", "approved"]}, "$comm", 0.0]}},
+            "paid_commission": {"$sum": {"$cond": [
+                {"$eq": ["$status", "paid"]}, "$comm", 0.0]}},
+        }},
+    ]
+    totals = await s.db.affiliate_referrals.aggregate(pipeline).to_list(1)
+    t = totals[0] if totals else {}
+    cumulative = float(t.get("cumulative", 0.0))
+    rolling12 = float(t.get("rolling12", 0.0))
+    quarter = float(t.get("quarter", 0.0))
+    pending_commission = float(t.get("pending_commission", 0.0))
+    approved_commission = float(t.get("approved_commission", 0.0))
+    paid_commission = float(t.get("paid_commission", 0.0))
+    validated_orders = int(t.get("validated_orders", 0))
 
     # Palier selon le CA des 12 derniers mois. Plus de rétrogradation
     # trimestrielle : la fenêtre glissante fait déjà redescendre le total quand
@@ -1529,11 +1562,40 @@ async def affiliate_ensure_indexes():
     )
     await s.db.affiliates.create_index("email", unique=True)
     await s.db.affiliates.create_index("user_id", sparse=True)
+    # Anti-double-compte au niveau BASE : un même compte utilisateur ne doit
+    # être lié qu'à UN affilié. La garde existe déjà dans affiliate_join (409),
+    # mais relève d'une vérification applicative ; cet index rend la contrainte
+    # structurelle. Partiel sur les chaînes pour ne pas faire collisionner les
+    # null (les affiliés non liés à un compte). En cas de doublons hérités en
+    # prod, la création échoue proprement : on LOG un avertissement au lieu de
+    # planter le startup — l'admin déduplique puis relance, l'index prend alors.
+    try:
+        await s.db.affiliates.create_index(
+            "user_id", unique=True,
+            partialFilterExpression={"user_id": {"$type": "string"}},
+            name="user_id_1_unique_partial",
+        )
+    except Exception as e:  # pragma: no cover
+        logging.warning(
+            "[affiliate] index unique user_id non créé (doublons existants ?) : %s",
+            e,
+        )
     await s.db.affiliate_referrals.create_index("order_id", unique=True)
     await s.db.affiliate_referrals.create_index("affiliate_id")
     await s.db.affiliate_referrals.create_index("status")
+    # Index composés : servent les requêtes de calcul les plus chaudes
+    # (metrics par affilié, liste du dashboard, pipeline de payout).
+    await s.db.affiliate_referrals.create_index(
+        [("affiliate_id", 1), ("status", 1)],
+    )
+    await s.db.affiliate_referrals.create_index(
+        [("status", 1), ("payout_id", 1)],
+    )
     await s.db.affiliate_clicks.create_index("affiliate_id")
     await s.db.affiliate_clicks.create_index("expires_at")
+    await s.db.affiliate_clicks.create_index(
+        [("affiliate_id", 1), ("created_at", -1)],
+    )
     await s.db.affiliate_payouts.create_index("id", unique=True)
     await s.db.affiliate_payouts.create_index(
         [("affiliate_id", 1), ("period", 1)], unique=True,

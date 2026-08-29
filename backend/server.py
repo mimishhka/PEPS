@@ -10037,28 +10037,51 @@ async def affiliate_insights(request: Request):
     aff = await get_current_affiliate(request)
     aff_id = aff["id"]
 
-    # Referrals non exclus
-    referrals = await _cursor_all(db.affiliate_referrals.find(
-        {"affiliate_id": aff_id, "status": {"$ne": "excluded"}},
-        {"_id": 0, "order_total": 1, "commission_amount": 1, "status": 1, "created_at": 1},
-    ))
-
-    # Un referral "validé" = commande payée (approved/paid/approuvé)
-    VALIDATED = {"approved", "paid"}
+    # Referrals non exclus — agrégation SERVEUR au lieu de tout charger en
+    # mémoire. Seul le mois (YYYY-MM issu de created_at) est extrait puis on
+    # somme commission/revenue par mois. Équivalent strict de l'ancienne
+    # boucle, qui ne comptait que les ventes validées (approved|paid) — c'est
+    # exactement le filtre porté par le $match ci-dessous.
+    pipeline = [
+        {"$match": {"affiliate_id": aff_id, "status": {"$in": ["approved", "paid"]}}},
+        {"$project": {
+            "_id": 0,
+            "comm": {"$ifNull": ["$commission_amount", 0.0]},
+            "rev": {"$ifNull": ["$order_total", 0.0]},
+            # Mois = YYYY-MM extrait de created_at, quel que soit son type
+            # (chaîne ISO posée à la création, ou datetime hérité) — même
+            # résultat que le `[:7]` de l'ancienne boucle.
+            "month": {"$switch": {
+                "branches": [
+                    {"$case": {"$in": [
+                        {"$type": {"$ifNull": ["$created_at", None]}},
+                        ["date", "timestamp"],
+                    ]}, "then": {
+                        "$dateToString": {
+                            "format": "%Y-%m",
+                            "date": {"$ifNull": ["$created_at", None]},
+                        }}},
+                ],
+                "default": {"$substrCP": [{"$ifNull": ["$created_at", ""]}, 0, 7]},
+            }},
+        }},
+        {"$group": {
+            "_id": "$month",
+            "commission": {"$sum": "$comm"},
+            "revenue": {"$sum": "$rev"},
+            "orders": {"$sum": 1},
+        }},
+    ]
     by_month = {}
     validated_orders = 0
     validated_revenue = 0.0
-    for r in referrals:
-        st = str(r.get("status", "")).lower()
-        comm = float(r.get("commission_amount", 0.0))
-        rev = float(r.get("order_total", 0.0))
-        ts = str(r.get("created_at", ""))[:7]  # YYYY-MM
-        if st in VALIDATED:
-            validated_orders += 1
-            validated_revenue += rev
-            m = by_month.setdefault(ts, {"commission": 0.0, "revenue": 0.0})
-            m["commission"] += comm
-            m["revenue"] += rev
+    async for row in db.affiliate_referrals.aggregate(pipeline):
+        by_month[row["_id"]] = {
+            "commission": float(row.get("commission", 0.0)),
+            "revenue": float(row.get("revenue", 0.0)),
+        }
+        validated_orders += int(row.get("orders", 0))
+        validated_revenue += float(row.get("revenue", 0.0))
 
     now_month = datetime.now(timezone.utc).isoformat()[:7]
     current_month = by_month.get(now_month, {"commission": 0.0, "revenue": 0.0})
