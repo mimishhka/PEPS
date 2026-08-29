@@ -11043,6 +11043,32 @@ async def admin_affiliate_update(affiliate_id: str, payload: AffiliateAdminUpdat
     # continue de fonctionner sur les vieux liens partagés).
     new_pct = update.get("coupon_percent")
     old_pct = aff.get("coupon_percent")
+
+    # UN RABAIS DE 0 % PRODUIT UN CODE MORT — on le refuse.
+    #
+    # `0.0` passe le modèle (ge=0) et passe `new_pct is not None`. Le renommage
+    # s'exécutait donc : _affiliate_gen_code_v2(base, 0.0) donne le suffixe
+    # « 00 », soit MARIE00, écrit dans affiliates.code. Mais
+    # _affiliate_ensure_coupon retourne None sans rien créer pour un
+    # pourcentage nul. Pendant ce temps l'ancien coupon reste actif à son taux
+    # d'origine et l'ancien code est archivé en alias actif.
+    #
+    # Résultat exactement inverse du geste : le nouveau code, celui que le
+    # tableau de bord affiche à l'affilié et qu'il partage, est refusé au
+    # paiement — et l'ancien continue d'accorder 10 %.
+    #
+    # Couper le rabais tout en gardant la commission n'est pas absurde, mais ce
+    # n'est pas ce que fait ce champ : sans coupon, le contact ne peut plus
+    # saisir le code du tout, donc l'attribution par code meurt avec lui. Cela
+    # demanderait un réglage distinct, pas un pourcentage à zéro.
+    if (new_pct is not None and float(new_pct) == 0.0
+            and float(old_pct or 0) != 0.0):
+        raise HTTPException(
+            400,
+            "Un rabais de 0 % créerait un code que le paiement refuse, tandis "
+            "que l'ancien resterait actif. Pour retirer un affilié du "
+            "programme, suspendez son compte.",
+        )
     if (new_pct is not None
             and explicit_code is None
             and aff.get("status") == "active"

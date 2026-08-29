@@ -1876,7 +1876,33 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                   {resending ? L("Envoi…", "Sending…") : L("Renvoyer l'invitation", "Resend invite")}
                 </ActBtn>
               )}
-              {a.status === "active" && <ActBtn onClick={() => setPatch({ status: "suspended" })}>{L("Suspendre", "Suspend")}</ActBtn>}
+              {/* La suspension DEMANDE confirmation — elle ne le faisait pas.
+                  C'est l'action la plus lourde de cet écran : le statut est lu
+                  à chaque validation de coupon ET au paiement, donc le code de
+                  l'affilié cesse instantanément d'accorder son rabais, codes
+                  principaux ET alias, et plus aucune commande ne lui est
+                  attribuée. Il n'en est averti par rien ; il constate l'arrêt
+                  de ses ventes.
+                  Le formulaire d'édition confirmait déjà un changement de
+                  palier — un réglage bien moins grave. La suspension avait été
+                  oubliée de cette liste, et son bouton est voisin de
+                  « Marquer en révision », de même apparence. */}
+              {a.status === "active" && (
+                <ActBtn onClick={async () => {
+                  const ok = await confirm({
+                    title: L("Suspendre cet affilié ?", "Suspend this affiliate?"),
+                    description: L(
+                      `Effet immédiat : le code ${a.code || ""} et tous ses alias cessent d'accorder le rabais, et plus aucune commande ne lui est attribuée. Ses contacts verront « code invalide » au paiement. L'affilié n'en est pas averti automatiquement.`,
+                      `Immediate effect: code ${a.code || ""} and all its aliases stop granting the discount, and no order is credited to them any more. Their contacts will see “invalid code” at checkout. The affiliate is not notified automatically.`),
+                    confirmLabel: L("Suspendre", "Suspend"),
+                    cancelLabel: L("Annuler", "Cancel"),
+                    destructive: true,
+                  });
+                  if (ok) setPatch({ status: "suspended" });
+                }} data-testid="affiliate-suspend">
+                  {L("Suspendre", "Suspend")}
+                </ActBtn>
+              )}
               {a.status === "suspended" && <ActBtn onClick={() => setPatch({ status: "active" })}>{L("Réactiver", "Reactivate")}</ActBtn>}
               {a.compliance_status !== "review" && <ActBtn onClick={() => setPatch({ compliance_status: "review" })}>{L("Marquer en révision", "Flag review")}</ActBtn>}
               {a.compliance_status !== "compliant" && <ActBtn onClick={() => setPatch({ compliance_status: "compliant" })}>{L("Marquer conforme", "Mark compliant")}</ActBtn>}

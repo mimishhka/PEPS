@@ -1970,9 +1970,40 @@ async def _generate_payouts_for_period(period: str, fx_rate: float,
                     {"$set": {"payout_id": existing_payout["id"]}},
                 )
             continue
-        await s.db.affiliate_referrals.update_many(
-            {"id": {"$in": grp["ids"]}},
+        # `payout_id: None` DANS LE FILTRE — il y manquait.
+        #
+        # L'agregation ci-dessus selectionne les commissions libres, mais
+        # l'affectation ne verifiait pas qu'elles le soient ENCORE. Entre les
+        # deux, un autre processus peut avoir revendique les memes : le
+        # planificateur mensuel tourne sous verrou de worker, tandis que
+        # admin_affiliate_run_payouts s'execute hors de ce verrou et sur une
+        # periode par defaut differente. L'index unique porte sur
+        # (affiliate_id, period) : il ne protege donc PAS deux runs de periodes
+        # differentes. Les deux inserts passaient, les deux update_many
+        # s'ecrasaient, et deux versements couvraient les memes commissions —
+        # double paiement si les deux partaient.
+        #
+        # La branche de recuperation juste au-dessus filtrait deja correctement.
+        revendiquees = await s.db.affiliate_referrals.update_many(
+            {"id": {"$in": grp["ids"]}, "payout_id": None},
             {"$set": {"payout_id": payout_id}},
         )
+        if revendiquees.modified_count != len(grp["ids"]):
+            # On n'a pas obtenu tout ce que le montant du versement suppose.
+            # Le laisser en « ready » le rendrait payable tel quel, pour une
+            # somme qui ne correspond plus a ce qu'il couvre. « review » le
+            # retire des deux chemins d'envoi (execute et lot exigent « ready »)
+            # sans rien perdre : un humain tranche.
+            await s.db.affiliate_payouts.update_one(
+                {"id": payout_id},
+                {"$set": {"status": "review",
+                          "review_reason": "referrals_partiellement_revendiques",
+                          "referral_count_revendique": revendiquees.modified_count}},
+            )
+            logging.error(
+                "[payouts] %s periode=%s : %d commissions revendiquees sur %d "
+                "attendues — versement mis en revue, NON envoye",
+                aff.get("code"), period, revendiquees.modified_count, len(grp["ids"]),
+            )
         count += 1
     return count
