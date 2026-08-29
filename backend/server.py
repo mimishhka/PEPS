@@ -11662,9 +11662,23 @@ async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
     if not payouts:
         raise HTTPException(400, "No eligible payouts (status must be 'ready')")
 
+    # T1 : un affilié suspendu ne doit pas partir dans un lot de paiement.
+    # On charge en une passe les codes suspendus parmi les payouts chargés,
+    # puis on les écarte individuellement (avec motif, pour l'admin).
+    codes_suspendus: set = set()
+    codes = {p.get("affiliate_code") for p in payouts if p.get("affiliate_code")}
+    if codes:
+        async for aff in db.affiliates.find(
+                {"code": {"$in": list(codes)}, "status": "suspended"},
+                {"_id": 0, "code": 1}):
+            codes_suspendus.add(aff["code"])
+
     withdrawals = []
     skipped = []
     for p in payouts:
+        if p.get("affiliate_code") in codes_suspendus:
+            skipped.append({"payout_id": p["id"], "reason": "affiliate suspended"})
+            continue
         addr = (p.get("payout_address") or "").strip()
         cur = (p.get("currency") or "").lower()
         amt = p.get("amount")
@@ -11804,12 +11818,24 @@ async def admin_affiliate_payouts_csv(admin: dict = Depends(get_admin_user)) -> 
         {"_id": 0, "id": 1, "payout_address": 1, "currency": 1, "amount": 1,
          "affiliate_code": 1, "period": 1},
     )
+    # T1 : un export ne doit pas embarquer les versements d'un affilié
+    # suspendu. On charge les codes suspendus en une passe et on les écarte.
+    bruts = await cursor.to_list(1000)
+    codes_pay = {p.get("affiliate_code") for p in bruts if p.get("affiliate_code")}
+    codes_suspendus = set()
+    if codes_pay:
+        async for aff in db.affiliates.find(
+                {"code": {"$in": list(codes_pay)}, "status": "suspended"},
+                {"_id": 0, "code": 1}):
+            codes_suspendus.add(aff["code"])
     rows = [["Address", "Currency", "Amount", "ExternalId", "AffiliateCode", "Period"]]
-    async for p in cursor:
+    for p in bruts:
         addr = (p.get("payout_address") or "").strip()
         cur = (p.get("currency") or "").lower()
         amt = p.get("amount")
         if not addr or cur not in AFFILIATE_PAYOUT_CURRENCIES or not amt:
+            continue
+        if p.get("affiliate_code") in codes_suspendus:
             continue
         # Réseau déduit de l'adresse elle-même, comme dans le batch : c'est
         # l'adresse qui décide de la destination réelle des fonds. Un réseau
@@ -11819,7 +11845,7 @@ async def admin_affiliate_payouts_csv(admin: dict = Depends(get_admin_user)) -> 
         np_currency = NOWPAYMENTS_PAYOUT_CURRENCY.get((cur, net or ""))
         if not np_currency:
             continue
-        rows.append([addr, np_currency, f"{float(amt):.2f}", p["id"],
+        rows.append([addr, np_currency, f"{float(amt):.6f}", p["id"],
                      p.get("affiliate_code", ""), p.get("period", "")])
     # Télécharger un CSV de versements, c'est emporter hors du système la
     # liste des paiements prêts à partir (avec adresses et montants) : un
@@ -11915,6 +11941,26 @@ async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMark
         raise HTTPException(404, "Payout not found")
     if payout.get("status") in ("paid", "paid_manual"):
         raise HTTPException(400, "Payout already marked paid")
+
+    # Un compte suspendu ne doit pas être réglé hors du flux normal. Le
+    # batch et l'automatique excluent déjà les suspendus ; le marquage
+    # manuel ne doit pas être la porte de sortie.
+    if payout.get("affiliate_code"):
+        aff = await db.affiliates.find_one(
+            {"code": payout["affiliate_code"]}, {"_id": 0, "status": 1})
+        if aff and aff.get("status") == "suspended":
+            raise HTTPException(400, "Affilié suspendu : versement bloqué")
+
+    # Un versement « review » (revendication partiellement échouée, voir
+    # run_payouts) ne correspond plus au montant qu'il couvre. Le laisser
+    # marquer payé paierait une somme non adossée aux commissions réellement
+    # revendiquées. Il doit d'abord être résolu/retiré du lot.
+    if payout.get("status") == "review":
+        raise HTTPException(
+            400,
+            "Versement en révision (attribution partielle). Vérifiez les "
+            "commissions réellement rattachées avant tout règlement.",
+        )
 
     # ON NE MARQUE PAS PAYÉ UN VERSEMENT EN COURS DE TRANSMISSION.
     #
