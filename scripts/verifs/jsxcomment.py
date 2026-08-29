@@ -29,6 +29,25 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 OUVRE = re.compile(r"(?:&&|\?|=>|return|:)\s*\(\s*$")
 COMMENTAIRE = re.compile(r"^\s*\{\s*/\*")
 
+# SECOND CAS, ajoute apres avoir laisse passer une vraie panne.
+#
+# Cette sonde ne connaissait qu'une forme : le commentaire juste apres une
+# parenthese OUVRANTE. Un commentaire glisse ENTRE LES DEUX BRANCHES d'un
+# ternaire lui echappait entierement — la ligne precedente se termine alors par
+# une parenthese FERMANTE, pas ouvrante :
+#
+#     {personalTop
+#       ? L("a", "b")
+#       {/* commentaire */}          <- invalide, Babel echoue ici
+#       : L("c", "d")}
+#
+# La regle qui l'attrape est simple et sans faux positif : un commentaire JSX
+# ne peut jamais preceder legalement une ligne qui COMMENCE par `:` ou `?`.
+# Ces deux caracteres signifient qu'on est au milieu d'une expression, et un
+# `{/* */}` n'y a pas sa place — il n'est valide que la ou JSX attend des
+# enfants.
+SUITE_TERNAIRE = re.compile(r"^\s*[:?](?!\?)")
+
 
 def check(rel: str) -> list[str]:
     path = ROOT / rel
@@ -36,6 +55,32 @@ def check(rel: str) -> list[str]:
         return []
     lignes = path.read_text(encoding="utf-8", errors="ignore").splitlines()
     mauvais = []
+
+    # Cas 2 : commentaire coince entre les deux branches d'un ternaire. On part
+    # du COMMENTAIRE et on regarde ce qui suit, alors que le cas 1 part de la
+    # parenthese — les deux fautes n'ont pas la meme forme, il faut les deux
+    # lectures.
+    i = 0
+    while i < len(lignes):
+        if not COMMENTAIRE.match(lignes[i]):
+            i += 1
+            continue
+        # Fin du commentaire : la ligne qui porte `*/` (la meme si tout tient
+        # sur une ligne).
+        fin = i
+        while fin < len(lignes) and "*/" not in lignes[fin]:
+            fin += 1
+        for j in range(fin + 1, min(fin + 4, len(lignes))):
+            if not lignes[j].strip():
+                continue
+            if SUITE_TERNAIRE.match(lignes[j]):
+                mauvais.append(
+                    f"L{i + 1}: commentaire JSX au milieu d'un ternaire, "
+                    f"juste avant L{j + 1}  ->  {lignes[j].strip()[:40]}"
+                )
+            break
+        i = fin + 1
+
     for i, l in enumerate(lignes):
         if not OUVRE.search(l):
             continue

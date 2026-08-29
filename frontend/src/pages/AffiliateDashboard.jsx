@@ -1117,15 +1117,15 @@ export default function AffiliateDashboard() {
                       ? L("VOS MEILLEURS PRODUITS", "YOUR BEST-SELLING PRODUCTS")
                       : L("PRODUITS À METTRE EN AVANT", "PRODUCTS TO PROMOTE")}
                   </p>
+                  {/* « attribution automatique » sans borne laissait croire que
+                      le clic suffit, pour toujours. Il vaut pour la visite en
+                      cours. Ce panneau s'affiche aux affiliés SANS vente —
+                      donc aux moins informés, ceux qui vont bâtir leur idée du
+                      programme sur cette ligne. */}
                   <p className="font-data text-[10px] text-glacier">
                     {personalTop
                       ? L("Classés par revenu généré grâce à votre code",
                           "Ranked by revenue generated through your code")
-                      {/* « attribution automatique » sans borne laissait croire
-                          que le clic suffit, pour toujours. Il vaut pour la
-                          visite en cours. Ce panneau s'affiche aux affiliés
-                          SANS vente — donc aux moins informés, ceux qui vont
-                          bâtir leur idée du programme sur cette ligne. */}
                       : L("Un clic vous crédite la commande passée pendant cette visite",
                           "One click credits you the order placed during that visit")}
                   </p>
