@@ -9907,10 +9907,53 @@ async def admin_affiliate_customers(affiliate_id: str, admin: dict):
     aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0, "id": 1})
     if not aff:
         raise HTTPException(404, "Affiliate not found")
-    return await _compute_affiliate_customers(affiliate_id)
+    # masquer=False : l'administration gère les comptes clients, elle a déjà
+    # accès aux courriels partout ailleurs. C'est la transmission à l'AFFILIÉ
+    # qui posait question, pas la lecture interne.
+    return await _compute_affiliate_customers(affiliate_id, masquer=False)
 
 
-async def _compute_affiliate_customers(affiliate_id: str) -> dict:
+def _masquer_courriel(email: str) -> str:
+    """`marie.tremblay@gmail.com` -> `m***y@gmail.com`.
+
+    Assez pour qu'un affilié reconnaisse un contact dont il connaît déjà
+    l'adresse ; pas assez pour en constituer une liste.
+    """
+    e = (email or "").strip()
+    if "@" not in e:
+        return "—"
+    local, _, domaine = e.partition("@")
+    if len(local) <= 2:
+        masque = (local[:1] or "?") + "*"
+    else:
+        masque = f"{local[0]}{'*' * min(3, len(local) - 2)}{local[-1]}"
+    return f"{masque}@{domaine}"
+
+
+def _cle_client(email: str) -> str:
+    """Identifiant stable et non réversible, pour servir de clé d'affichage.
+
+    L'interface se servait du COURRIEL comme clé React et comme `data-testid` —
+    ce qui réinjectait l'adresse complète dans le HTML de la page, contournant
+    tout masquage visuel. Un identifiant dérivé remplit la même fonction sans
+    transporter la donnée.
+    """
+    return hashlib.sha256((email or "").strip().lower().encode("utf-8")).hexdigest()[:16]
+
+
+async def _compute_affiliate_customers(affiliate_id: str, masquer: bool = True) -> dict:
+    """`masquer` : l'AFFILIÉ ne reçoit que des adresses masquées, l'admin non.
+
+    Le masquage vivait uniquement dans le navigateur : le serveur envoyait
+    l'adresse entière, que n'importe qui lisait dans la réponse JSON ou dans le
+    `data-testid` du tableau. La protection avait l'apparence d'exister sans
+    exister — le pire des deux états.
+
+    Communiquer les coordonnées d'un client à un partenaire externe demande une
+    base juridique que rien n'établit ici. La donnée ne quitte donc plus le
+    serveur pour l'affilié ; l'écran d'administration, lui, garde l'accès
+    complet, qui relève d'un tout autre régime.
+    """
     bindings = await db.affiliate_bindings.find(
         {"affiliate_id": affiliate_id},
         {"_id": 0, "email": 1, "bound_at": 1, "source": 1, "user_id": 1},
@@ -9969,7 +10012,8 @@ async def _compute_affiliate_customers(affiliate_id: str) -> dict:
         e = b["email"]
         s_data = stats_by_email.get(e, {})
         customers.append({
-            "email": e,
+            "id": _cle_client(e),
+            "email": _masquer_courriel(e) if masquer else e,
             "bound_at": b.get("bound_at"),
             "source": b.get("source"),
             "has_account": bool(b.get("user_id")),

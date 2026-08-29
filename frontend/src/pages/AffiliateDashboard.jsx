@@ -54,14 +54,11 @@ const COMPLIANCE_META = {
 
 const money = (n) => `$${Number(n || 0).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-// Masque un email pour préserver la vie privée du client rattaché tout en
-// donnant assez de contexte à l'affilié pour reconnaître ses propres clients.
-const maskEmail = (email) => {
-  if (!email || typeof email !== "string" || !email.includes("@")) return email || "—";
-  const [local, domain] = email.split("@");
-  const l = local.length <= 2 ? local[0] + "*" : `${local[0]}${"*".repeat(Math.min(3, local.length - 2))}${local[local.length - 1]}`;
-  return `${l}@${domain}`;
-};
+// maskEmail() vivait ici. Le masquage se fait DÉSORMAIS CÔTÉ SERVEUR
+// (_masquer_courriel dans server.py) : la garder aurait laissé croire que la
+// protection est affaire d'affichage, ce qui était exactement le défaut —
+// l'adresse complète voyageait dans la réponse JSON et se lisait dans les
+// outils de développement, masque ou pas.
 
 const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
 const toCsv = (headers, rows) =>
@@ -1292,12 +1289,18 @@ export default function AffiliateDashboard() {
                       </tr>
                     </thead>
                     <tbody>
+                      {/* `c.id` — un identifiant dérivé — et non le courriel.
+                          Le `data-testid` réinjectait l'adresse COMPLÈTE dans
+                          le HTML de la page : le masquage à l'écran ne servait
+                          à rien, il suffisait d'inspecter l'élément. L'adresse
+                          arrive désormais déjà masquée du serveur, donc plus
+                          rien à masquer ici. */}
                       {customers.map((c) => (
-                        <tr key={c.email} className="border-b border-ash/60 hover:bg-clinical/40"
-                            data-testid={`attached-customer-${c.email}`}>
+                        <tr key={c.id || c.email} className="border-b border-ash/60 hover:bg-clinical/40"
+                            data-testid={`attached-customer-${c.id || ""}`}>
                           <td className="px-6 py-3">
                             <div className="font-medium text-nordfjord truncate max-w-[240px]">
-                              {maskEmail(c.email)}
+                              {c.email || "—"}
                             </div>
                             {c.has_account && (
                               <span className="inline-flex items-center gap-1 text-[10px] font-data text-nova mt-0.5">
