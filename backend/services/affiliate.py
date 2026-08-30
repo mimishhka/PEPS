@@ -1063,7 +1063,7 @@ async def affiliate_capture_click(request: Request, response: Response, code: st
     # traitent 0 comme « expire immediatement » et supprimeraient le temoin
     # aussitot pose, donc plus aucune attribution par lien du tout.
     parametres_temoin = {
-        "httponly": True, "samesite": "lax", "secure": True, "path": "/",
+        "httponly": True, "samesite": "lax", "secure": bool(s.IS_PRODUCTION), "path": "/",
     }
     if s.AFFILIATE_COOKIE_DAYS > 0:
         parametres_temoin["max_age"] = s.AFFILIATE_COOKIE_DAYS * 86400
@@ -1261,6 +1261,18 @@ async def affiliate_on_order_paid(order: dict) -> None:
     metrics = await _affiliate_compute_metrics(affiliate_id)
     commission = round(base * metrics["commission_rate"], 2)
 
+    # Auto-achat : commande passée par l'affilié avec son propre code/lien.
+    # Décision commerciale assumée — le rabais ET la commission sont conservés.
+    # On ne fait que FLAGGER pour le suivi admin ; ce n'est pas un signal de
+    # risque (le panneau de risque l'ignore, à dessein).
+    is_self = (
+        (order.get("email") or "").strip().lower() == (affiliate.get("email") or "").strip().lower()
+        or (
+            bool(order.get("user_id")) and bool(affiliate.get("user_id"))
+            and str(order.get("user_id")).strip() == str(affiliate.get("user_id")).strip()
+        )
+    )
+
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "id": str(uuid.uuid4()),
@@ -1278,6 +1290,7 @@ async def affiliate_on_order_paid(order: dict) -> None:
         "approved_at": now if status == "approved" else None,
         "paid_at": None,
         "payout_id": None,
+        "self_order": is_self,
     }
     try:
         await s.db.affiliate_referrals.insert_one(doc)
@@ -1601,7 +1614,7 @@ async def affiliate_ensure_indexes():
         [("status", 1), ("payout_id", 1)],
     )
     await s.db.affiliate_clicks.create_index("affiliate_id")
-    await s.db.affiliate_clicks.create_index("expires_at")
+    await s.db.affiliate_clicks.create_index("expires_at", expireAfterSeconds=0)
     await s.db.affiliate_clicks.create_index(
         [("affiliate_id", 1), ("created_at", -1)],
     )
@@ -1613,6 +1626,14 @@ async def affiliate_ensure_indexes():
     await s.db.affiliate_email_jobs.create_index("id", unique=True)
     await s.db.affiliate_email_jobs.create_index([("status", 1), ("available_at", 1), ("created_at", 1)])
     await s.db.affiliate_email_jobs.create_index("expires_at", expireAfterSeconds=0)
+    # Runs de paiement (NP-…) : le tri de l'historique admin et l'unicité du
+    # numéro. run_id vient d'un compteur atomique, donc unique est sûr ; on
+    # défend quand même le démarrage en cas de doublons hérités.
+    await s.db["affiliate_payment_runs"].create_index([("created_at", -1)])
+    try:
+        await s.db["affiliate_payment_runs"].create_index("run_id", unique=True)
+    except Exception as e:  # pragma: no cover
+        logging.warning("[affiliate] index unique run_id non créé : %s", e)
 
 # ===========================================================================
 # Item 3.2 — Seuil minimum de payout affilié (AFFILIATE_PAYOUT_MIN_CAD)

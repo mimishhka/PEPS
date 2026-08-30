@@ -1415,8 +1415,6 @@ function BulkInviteModal({ L, onClose, onDone }) {
 
 function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const [data, setData] = useState(null);
-  const [markingId, setMarkingId] = useState(null);
-  const [ref, setRef] = useState("");
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [resending, setResending] = useState(false);
@@ -1569,15 +1567,6 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
       await navigator.clipboard.writeText(data.affiliate.code);
       toast.success(L("Code copié", "Code copied"));
     } catch { toast.error(L("Copie impossible", "Copy failed")); }
-  };
-
-  const markPaid = async (payoutId) => {
-    if (!ref.trim()) { toast.error(L("Référence de transaction requise", "Transaction reference required")); return; }
-    try {
-      await api.post(`/admin/affiliates/payouts/${payoutId}/mark-paid`, { reference: ref.trim() });
-      toast.success(L("Paiement confirmé", "Payment confirmed"));
-      setMarkingId(null); setRef(""); load(); onChange();
-    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
 
   const a = data?.affiliate;
@@ -1878,16 +1867,9 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                         </span>
                       </div>
                       {["ready", "failed"].includes(p.status) && (
-                        markingId === p.id ? (
-                          <div className="flex gap-2 mt-2">
-                            <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder={L("Réf. tx / hash", "Tx ref / hash")}
-                              className="flex-1 rounded-md border border-ash px-2 py-1 text-xs bg-white text-nordfjord outline-none" />
-                            <button onClick={() => markPaid(p.id)} className="px-3 py-2 rounded-md bg-nordfjord text-white text-xs">{L("Confirmer", "Confirm")}</button>
-                          </div>
-                        ) : (
-                          <button onClick={() => { setMarkingId(p.id); setRef(""); }}
-                            className="mt-2 px-3 py-1 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical">{L("Marquer payé", "Mark paid")}</button>
-                        )
+                        <p className="text-[11px] text-glacier mt-1">
+                          {L("À marquer payé depuis l'écran Paiements", "Mark paid from the Payouts screen")}
+                        </p>
                       )}
                       {p.reference && <p className="text-[11px] text-glacier mt-1 break-all">{L("Réf", "Ref")}: {p.reference}</p>}
                     </div>
@@ -1979,7 +1961,9 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                           <td className="px-3 py-2 text-nordfjord">{r.order_number || "—"}</td>
                           <td className="px-3 py-2">{money(r.base_amount)}</td>
                           <td className="px-3 py-2">{money(r.commission_amount)}</td>
-                          <td className="px-3 py-2">{r.status}{r.excluded_reason ? ` (${r.excluded_reason})` : ""}</td>
+                          <td className="px-3 py-2">{r.status}{r.excluded_reason ? ` (${r.excluded_reason})` : ""}
+                            {r.self_order && <span className="ml-1 inline-block text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-nova/15 text-nova">{L("auto-achat", "self-order")}</span>}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
