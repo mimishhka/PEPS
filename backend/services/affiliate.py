@@ -876,10 +876,11 @@ def _affiliate_invite_html(name: str, link: str, lang: str,
         # l'écran, après défilement et clic explicite.
         apres = ("Le détail du programme — commissions, attribution, "
                  "paiements — vous attend dans votre espace dès l'activation.")
-        acces = ("Pour vos prochaines connexions : utilisez simplement le lien "
-                 "magique — un courriel de connexion envoyé à cette adresse — ou, "
-                 "si vous préférez, définissez un mot de passe depuis votre tableau "
-                 "de bord (Paramètres → Mot de passe).")
+        acces = ("Pour vos prochaines connexions, entrez votre adresse sur la "
+                 "page de connexion : un courriel avec votre lien de connexion "
+                 "vous sera envoyé à cette adresse. Cliquez-le pour accéder à "
+                 "votre compte. Vous préférez un mot de passe ? Définissez-le "
+                 "depuis votre tableau de bord (Paramètres → Mot de passe).")
         if entente:
             heading = "Nous sommes heureux de vous compter parmi nous"
             intro = ("Nous avons convenu ensemble des conditions de votre "
@@ -907,8 +908,9 @@ def _affiliate_invite_html(name: str, link: str, lang: str,
         salut = f"Hello {name}," if name else "Hello,"
         apres = ("The full program — commissions, attribution, payouts — is "
                  "waiting in your account as soon as you activate.")
-        acces = ("For your next sign-ins: simply use the magic link — a sign-in "
-                 "email sent to this address — or, if you prefer, set a password "
+        acces = ("For your next sign-ins, enter your email on the sign-in page: "
+                 "an email with your sign-in link will be sent to this address. "
+                 "Click it to access your account. Prefer a password? Set one "
                  "from your dashboard (Settings → Password).")
         if entente:
             heading = "We're glad to have you with us"
