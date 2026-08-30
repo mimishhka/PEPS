@@ -91,7 +91,12 @@ export default function ForgotPassword() {
                     : (lang === "fr" ? "Envoyer le lien" : "Send reset link")}
                 </button>
               </form>
-              <p className="text-sm text-glacier pt-6 mt-6 border-t border-ash text-center">
+              <p className="text-xs text-glacier leading-relaxed mt-5 text-center">
+                {lang === "fr"
+                  ? "Pas de mot de passe ? Votre compte a peut-être été activé par lien magique. Connectez-vous depuis l'onglet « Lien magique » de la page de connexion."
+                  : "No password? Your account may have been activated by magic link. Sign in from the \"Magic link\" tab on the sign-in page."}
+              </p>
+              <p className="text-sm text-glacier pt-4 mt-5 border-t border-ash text-center">
                 <Link to="/login" className="text-nova hover:text-nordfjord transition" data-testid="forgot-back-link">
                   {lang === "fr" ? "← Retour à la connexion" : "← Back to sign in"}
                 </Link>

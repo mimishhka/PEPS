@@ -876,6 +876,10 @@ def _affiliate_invite_html(name: str, link: str, lang: str,
         # l'écran, après défilement et clic explicite.
         apres = ("Le détail du programme — commissions, attribution, "
                  "paiements — vous attend dans votre espace dès l'activation.")
+        acces = ("Pour vos prochaines connexions : utilisez simplement le lien "
+                 "magique — un courriel de connexion envoyé à cette adresse — ou, "
+                 "si vous préférez, définissez un mot de passe depuis votre tableau "
+                 "de bord (Paramètres → Mot de passe).")
         if entente:
             heading = "Nous sommes heureux de vous compter parmi nous"
             intro = ("Nous avons convenu ensemble des conditions de votre "
@@ -903,6 +907,9 @@ def _affiliate_invite_html(name: str, link: str, lang: str,
         salut = f"Hello {name}," if name else "Hello,"
         apres = ("The full program — commissions, attribution, payouts — is "
                  "waiting in your account as soon as you activate.")
+        acces = ("For your next sign-ins: simply use the magic link — a sign-in "
+                 "email sent to this address — or, if you prefer, set a password "
+                 "from your dashboard (Settings → Password).")
         if entente:
             heading = "We're glad to have you with us"
             intro = ("We've agreed together on the terms of your participation. "
@@ -961,6 +968,7 @@ def _affiliate_invite_html(name: str, link: str, lang: str,
     <a href="{cta_href}" style="display:inline-block;background:#00B8D4;color:#0B2E4F;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:999px;font-size:15px;">{cta} &rarr;</a>
     {secondaire}
     <p style="color:#334155;font-size:14px;line-height:1.6;margin:24px 0 0;">{apres}</p>
+    <p style="color:#334155;font-size:14px;line-height:1.6;margin:16px 0 0;">{acces}</p>
     <p style="color:#64748B;font-size:12px;line-height:1.6;margin:20px 0 0;font-family:'JetBrains Mono',monospace;">{expiry}</p>
     <p style="color:#94A3B8;font-size:12px;line-height:1.6;margin:8px 0 0;">{ignore}</p>
     <hr style="border:none;border-top:1px solid #E2E8F0;margin:24px 0 12px;">
