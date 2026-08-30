@@ -33,6 +33,16 @@ const STATUS = {
   review:       { fr: "A verifier", en: "Needs review", cls: "bg-error/10 text-error border border-error/25" },
 };
 
+/* Types de runs de paiement (traçabilité NP-…) : un envoi groupé (batch),
+ * un envoi unitaire (single), une régularisation manuelle (manual) ou un lot
+ * mis en file d'attente manuelle pour export CSV (queued). */
+const RUN_TYPE = {
+  batch:  { fr: "Envoi groupé", en: "Batch" },
+  single: { fr: "Envoi unitaire", en: "Single" },
+  manual: { fr: "Régularisation manuelle", en: "Manual" },
+  queued: { fr: "En file manuelle", en: "Manual queue" },
+};
+
 // Repli EXPLICITE : un statut inconnu s'affiche tel quel, en neutre, plutot que
 // d'emprunter l'apparence d'un autre. Un libelle brut se remarque et se
 // signale ; « Pret » sur un versement qui ne l'est pas ne se remarque jamais.
@@ -59,6 +69,8 @@ export default function AdminPayouts() {
   const [selection, setSelection] = useState(new Set());
   const [batchBusy, setBatchBusy] = useState(false);
   const [runs, setRuns] = useState([]);
+  // Historique des runs de paiement (batch / single / manual / queued).
+  const [paymentRuns, setPaymentRuns] = useState([]);
   const confirm = useConfirm();
   // Recherche / filtres (Pilier A). `q` est debounce ci-dessous.
   const [q, setQ] = useState("");
@@ -93,7 +105,14 @@ export default function AdminPayouts() {
     } catch { /* l'historique est un confort : son echec ne bloque rien */ }
   }, []);
 
-  useEffect(() => { load(); loadRuns(); }, [load, loadRuns]);
+  const loadPaymentRuns = useCallback(async () => {
+    try {
+      const r = await api.get("/admin/affiliates/payments/runs?limit=20");
+      setPaymentRuns(r.data?.runs || []);
+    } catch { /* idem : l'historique est un confort */ }
+  }, []);
+
+  useEffect(() => { load(); loadRuns(); loadPaymentRuns(); }, [load, loadRuns, loadPaymentRuns]);
 
   // Debounce de la recherche : on n'appelle le serveur qu'après 350ms
   // d'accalmie, pas à chaque frappe.
@@ -192,6 +211,7 @@ export default function AdminPayouts() {
       }
       setSelection(new Set());
       await load();
+      await loadPaymentRuns();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
@@ -231,6 +251,7 @@ export default function AdminPayouts() {
       toast.success(L("Payout cree — saisissez le code 2FA recu par courriel.", "Payout created — enter the 2FA code from your email."));
       setVerifyFor({ ...p, np_batch_id: data.np_batch_id });
       await load();
+      await loadPaymentRuns();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
     finally { setBusy(""); }
   };
@@ -265,6 +286,7 @@ export default function AdminPayouts() {
       toast.success(L("Marque comme paye.", "Marked as paid."));
       setMarkFor(null); setRef("");
       await load();
+      await loadPaymentRuns();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
     finally { setBusy(""); }
   };
@@ -395,6 +417,7 @@ export default function AdminPayouts() {
                   </div>
                   <div className="font-data text-[11px] text-glacier mt-0.5">
                     {p.period} · {p.referral_count} {L("filleuls", "referrals")} · {String(p.currency || "").toUpperCase()}
+                    {p.run_id ? <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-glacier/10 text-nordfjord px-1.5 py-px uppercase tracking-wide">#{p.run_id}</span> : null}
                     {p.np_error ? <span className="text-error"> · {p.np_error}</span> : null}
                   </div>
                 </div>
@@ -489,6 +512,36 @@ export default function AdminPayouts() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Historique des RUNS DE PAIEMENT — la traçabilité des ENVOIS, distincte
+          des générations ci-dessus. Chaque envoi groupé, unitaire ou
+          régularisation manuelle reçoit un numéro NP-… ; ce panneau liste ces
+          runs avec le nombre de versements et le total payé. */}
+      {paymentRuns.length > 0 && (
+        <div className="rounded-xl border border-ash bg-white overflow-hidden" data-testid="payment-runs">
+          <p className="px-5 py-3 font-data text-[11px] uppercase tracking-[0.2em] text-nova border-b border-ash">
+            {L("Runs de paiement", "Payment runs")}
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <tbody>
+                {paymentRuns.map((r) => {
+                  const rt = RUN_TYPE[r.type] || { fr: r.type || "—", en: r.type || "—" };
+                  return (
+                    <tr key={r.run_id} className="border-b border-ash/60 last:border-0">
+                      <td className="px-5 py-2.5 font-data font-bold text-nordfjord whitespace-nowrap">{r.run_id}</td>
+                      <td className="px-3 py-2.5 text-glacier text-xs">{L(rt.fr, rt.en)}</td>
+                      <td className="px-3 py-2.5 text-glacier text-xs">{r.count} {L("versements", "payouts")}</td>
+                      <td className="px-3 py-2.5 font-data text-nordfjord tabular-nums text-right">{money(r.total_cad)} CAD</td>
+                      <td className="px-5 py-2.5 text-glacier text-xs text-right">{r.created_at || ""}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

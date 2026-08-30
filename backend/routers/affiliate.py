@@ -279,3 +279,11 @@ async def admin_affiliate_payout_runs(admin: dict = Depends(s.get_admin_user),
 @router.get("/admin/affiliates/payouts/{payout_id}/status")
 async def admin_payout_status(payout_id: str, admin: dict = Depends(s.get_admin_user)):
     return await s.admin_payout_status(payout_id, admin)
+
+
+@router.get("/admin/affiliates/payments/runs")
+async def admin_affiliate_payment_runs(admin: dict = Depends(s.get_admin_user),
+                                       limit: int = 50):
+    """Historique des runs de paiement (batch / single / manual / queued) :
+    numéro NP-…, type, date, nb de payouts et totaux CAD."""
+    return await s.admin_affiliate_payment_runs(admin, limit)

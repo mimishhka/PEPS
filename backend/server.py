@@ -11747,6 +11747,11 @@ async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
             {"id": {"$in": [w["unique_external_id"] for w in withdrawals]}, "status": "dispatching"},
             {"$set": {"status": "queued_manual", "queued_at": now_iso}},
         )
+        # Run de paiement « queued » : le lot est prêt pour l'envoi CSV manuel.
+        await _create_payout_run("queued", [w["unique_external_id"] for w in withdrawals], {
+            "status": "queued_manual",
+            "by": admin.get("email"),
+        })
         return {
             "ok": False,
             "batch_id": None,
@@ -11811,6 +11816,13 @@ async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
         {"$set": {"status": "processing", "np_batch_id": batch_id,
                   "np_dispatched_at": now_iso, "np_dispatched_by": admin.get("email")}},
     )
+    # Run de paiement du lot envoyé : identifiant traçable NP-… lié au
+    # np_batch_id NOWPayments, pour relier chaque versement à son envoi.
+    await _create_payout_run("batch", ids_sent, {
+        "status": "processing",
+        "np_batch_id": batch_id,
+        "by": admin.get("email"),
+    })
     asyncio.create_task(_log_action(
         admin, "affiliate_payout_batch",
         f"batch={batch_id} sent={len(ids_sent)} skipped={len(skipped)}",
@@ -12006,6 +12018,13 @@ async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMark
                   # hors système d'un rattrapage de notification manquante.
                   "reconcilie_depuis": reconcilie_depuis}},
     )
+    # Run de paiement de régularisation manuelle : rattache ce versement à un
+    # identifiant traçable (NP-…) pour l'historique des runs de paiement.
+    await _create_payout_run("manual", [payout_id], {
+        "status": "paid_manual",
+        "by": admin.get("email"),
+        "note": (payload.reference or "").strip(),
+    })
     await db.affiliate_referrals.update_many(
         {"payout_id": payout_id, "status": {"$in": ["pending", "approved"]}},
         {"$set": {"status": "paid", "paid_at": now}},
@@ -12019,6 +12038,83 @@ async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMark
         "affiliates",
     ))
     return fresh
+
+
+
+# --------------------------------------------------------------------------
+# RUNS DE PAIEMENT (audit) — numéro NP-YYYY-XXXX atomique + collection dédiée.
+# Un « run de paiement » est un envoi groupé (batch) OU une régularisation
+# manuelle, chacun identifiable. Chaque payout porte `run_id` (le n° NP) et
+# `run_type` (batch / single / manual / queued) pour relier un versement à son
+# envoi, ce que seul `np_batch_id` (NOWPayments uniquement) ne permettait pas.
+# --------------------------------------------------------------------------
+
+async def _next_payout_run_number(year: int) -> str:
+    """Remonte le compteur atomique de l'année et rend NP-YYYY-XXXX."""
+    counters = db["counters"]
+    doc = await counters.find_one_and_update(
+        {"_id": "payout_run", "year": year},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    seq = int(doc["seq"])
+    return f"NP-{year}-{seq:04d}"
+
+
+async def _create_payout_run(run_type: str, payout_ids, meta: dict = None):
+    """Insère un run de paiement et pose run_id / run_type sur ses payouts."""
+    if not payout_ids:
+        return None
+    ids = [str(i) for i in payout_ids]
+    now = datetime.now(timezone.utc).isoformat()
+    year = datetime.now(timezone.utc).year
+    run_id = await _next_payout_run_number(year)
+    resolved = []
+    total_cad = 0.0
+    async for p in db.affiliate_payouts.find({"id": {"$in": ids}},
+                                             {"_id": 0, "id": 1, "amount_cad": 1,
+                                              "affiliate_code": 1, "status": 1}):
+        resolved.append({
+            "payout_id": p["id"],
+            "affiliate_code": p.get("affiliate_code"),
+            "amount_cad": p.get("amount_cad"),
+            "status": p.get("status"),
+        })
+        total_cad += float(p.get("amount_cad") or 0.0)
+    # Pose l'identifiant traçable sur chaque payout du run.
+    await db.affiliate_payouts.update_many(
+        {"id": {"$in": ids}},
+        {"$set": {"run_id": run_id, "run_type": run_type}},
+    )
+    doc = {
+        "run_id": run_id,
+        "nr": run_id,
+        "year": year,
+        "type": run_type,
+        "status": (meta or {}).get("status", "created"),
+        "np_batch_id": (meta or {}).get("np_batch_id"),
+        "payouts": [r["payout_id"] for r in resolved],
+        "affiliates": [r["affiliate_code"] for r in resolved if r["affiliate_code"]],
+        "count": len(resolved),
+        "total_cad": round(total_cad, 2),
+        "created_at": now,
+        "by": (meta or {}).get("by"),
+        "note": (meta or {}).get("note"),
+    }
+    await db["affiliate_payment_runs"].insert_one(doc)
+    return doc
+
+
+async def admin_affiliate_payment_runs(admin: dict = Depends(get_admin_user),  # noqa: F821
+                                       limit: int = 50):
+    """Historique des runs de paiement (batch / single / manual / queued) avec
+    pour chacun le numéro NP, le type, la date, le nombre de payouts et les
+    totaux CAD — la vue que fournit les « runs de paiement » côté admin."""
+    limit = min(max(1, int(limit)), 200)
+    rows = await db["affiliate_payment_runs"].find(
+        {}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"runs": rows}
 
 
 async def admin_affiliate_payouts_all(admin: dict = Depends(get_admin_user),  # noqa: F821
@@ -12768,6 +12864,12 @@ async def admin_payout_execute(payout_id: str, admin: dict = Depends(get_admin_u
         "status": "creating", "np_batch_id": batch_id, "np_error": None,
         "executed_by": admin.get("email"), "executed_at": now,
     }})
+    # Run de paiement unitaire (envoi isolé) : identifiant traçable NP-….
+    await _create_payout_run("single", [payout_id], {
+        "status": "creating",
+        "np_batch_id": batch_id,
+        "by": admin.get("email"),
+    })
     asyncio.create_task(_log_action(admin, "affiliate_payout_execute", f"payout={payout_id} batch={batch_id} amount={amount} {currency}", "settings"))
     return {"ok": True, "status": "creating", "np_batch_id": batch_id,
             "message": "Payout créé. Un code de vérification 2FA a été envoyé à l'adresse courriel du compte NOWPayments. Saisissez-le pour finaliser."}
