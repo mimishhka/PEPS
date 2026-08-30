@@ -281,6 +281,14 @@ async def admin_payout_status(payout_id: str, admin: dict = Depends(s.get_admin_
     return await s.admin_payout_status(payout_id, admin)
 
 
+@router.put("/affiliate/password")
+async def affiliate_change_password(payload: s.PasswordChangeIn, response: Response,
+                                    request: Request,
+                                    aff: dict = Depends(s.get_current_affiliate)):
+    """Définit/change le mot de passe de l'affilié connecté."""
+    return await s.affiliate_change_password(payload, response, request, aff)
+
+
 @router.get("/admin/affiliates/payments/runs")
 async def admin_affiliate_payment_runs(admin: dict = Depends(s.get_admin_user),
                                        limit: int = 50):

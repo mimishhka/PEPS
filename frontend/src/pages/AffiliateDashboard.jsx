@@ -136,7 +136,7 @@ export default function AffiliateDashboard() {
   // classes : sans ce crochet elles ignorent le mode nuit.
   const couleursGraphique = useChartColors();
   useDocumentHead({ title: "Affiliate Dashboard", path: "/affiliate", noindex: true });
-  const { user, logout } = useAuth();
+  const { user, logout, refresh } = useAuth();
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
   const {
@@ -175,6 +175,12 @@ export default function AffiliateDashboard() {
   const [payAddr, setPayAddr] = useState("");
   const [payCur, setPayCur] = useState("btc");
   const [savingPay, setSavingPay] = useState(false);
+
+  // Mot de passe : un affilié est créé passwordless — le champ « actuel »
+  // n'apparaît que s'il en a déjà défini un.
+  const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
+  const [savingPw, setSavingPw] = useState(false);
+  const pwLess = !!user?.passwordless;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -441,6 +447,30 @@ export default function AffiliateDashboard() {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
       setSavingPay(false);
+    }
+  };
+
+  const savePassword = async () => {
+    if (!pw.next || pw.next.length < 8) {
+      toast.error(L("Le mot de passe doit contenir au moins 8 caractères.", "Password must be at least 8 characters."));
+      return;
+    }
+    if (pw.next !== pw.confirm) {
+      toast.error(L("Les mots de passe ne correspondent pas.", "Passwords do not match."));
+      return;
+    }
+    setSavingPw(true);
+    try {
+      const payload = { new_password: pw.next };
+      if (!pwLess) payload.current_password = pw.current;
+      await api.put("/affiliate/password", payload);
+      await refresh();
+      setPw({ current: "", next: "", confirm: "" });
+      toast.success(L("Mot de passe enregistré.", "Password saved."));
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setSavingPw(false);
     }
   };
 
@@ -1769,6 +1799,50 @@ export default function AffiliateDashboard() {
               <p className="font-data text-xs text-glacier mt-2">
                 {L("Code de parrainage", "Referral code")} : <span className="text-nordfjord font-semibold">{refCode}</span>
               </p>
+            </div>
+            <div className="bg-white rounded-xl border border-ash p-6">
+              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">
+                {L("MOT DE PASSE", "PASSWORD")}
+              </p>
+              {pwLess ? (
+                <p className="text-xs text-glacier mb-4 leading-relaxed">
+                  {L("Votre compte a été activé par invitation, sans mot de passe. Définissez-en un pour pouvoir vous connecter directement à l'avenir.",
+                     "Your account was activated by invitation, without a password. Set one so you can sign in directly in the future.")}
+                </p>
+              ) : (
+                <p className="text-xs text-glacier mb-4 leading-relaxed">
+                  {L("Changez le mot de passe de votre compte.", "Change your account password.")}
+                </p>
+              )}
+              {!pwLess && (
+                <label className="block mb-3">
+                  <span className="font-data text-xs text-glacier">{L("Mot de passe actuel", "Current password")}</span>
+                  <input type="password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })}
+                    data-testid="affiliate-pw-current"
+                    className="mt-1 w-full rounded-lg border border-ash px-4 py-3 font-data text-sm text-nordfjord focus:border-nova outline-none" />
+                </label>
+              )}
+              <label className="block mb-3">
+                <span className="font-data text-xs text-glacier">{L("Nouveau mot de passe", "New password")}</span>
+                <input type="password" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })}
+                  data-testid="affiliate-pw-new"
+                  className="mt-1 w-full rounded-lg border border-ash px-4 py-3 font-data text-sm text-nordfjord focus:border-nova outline-none" />
+                <span className="block mt-1 text-[10px] text-glacier/80">
+                  {L("8 caractères minimum, avec une majuscule, une minuscule, un chiffre et un caractère spécial.",
+                     "At least 8 characters, with uppercase, lowercase, a number and a special character.")}
+                </span>
+              </label>
+              <label className="block mb-5">
+                <span className="font-data text-xs text-glacier">{L("Confirmer le mot de passe", "Confirm password")}</span>
+                <input type="password" value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
+                  data-testid="affiliate-pw-confirm"
+                  className="mt-1 w-full rounded-lg border border-ash px-4 py-3 font-data text-sm text-nordfjord focus:border-nova outline-none" />
+              </label>
+              <button onClick={savePassword} disabled={savingPw}
+                data-testid="affiliate-save-password"
+                className="px-6 py-3 rounded-full bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50">
+                {savingPw ? L("Enregistrement…", "Saving…") : L("Enregistrer", "Save")}
+              </button>
             </div>
           </div>
         )}

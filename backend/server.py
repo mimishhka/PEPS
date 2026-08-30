@@ -9343,6 +9343,32 @@ async def get_current_affiliate(request: Request) -> dict:
     return aff
 
 
+async def affiliate_change_password(payload: PasswordChangeIn, response: Response, request: Request,
+                                    aff: dict = Depends(get_current_affiliate)):
+    """Définit (ou change) le mot de passe d'un affilié depuis son tableau de
+    bord. Un affilié est créé passwordless : le premier enregistrement n'exige
+    donc aucun ancien mot de passe — le cookie de session fait foi — puis le
+    compte bascule en authentification par mot de passe."""
+    user = await db.users.find_one({"id": aff["user_id"]})
+    if not user:
+        raise HTTPException(404, "Account not found")
+    await _rate_limit_email("affiliate_password", user["email"], 5, 900,
+                             "Too many password attempts. Try again later.")
+    _assert_current_password(user, payload.current_password)
+    new_tv = user.get("token_version", 0) + 1
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"password_hash": hash_password(payload.new_password),
+                  "token_version": new_tv, "passwordless": False}},
+    )
+    await db.refresh_sessions.update_many(
+        {"user_id": user["id"], "revoked_at": None},
+        {"$set": {"revoked_at": datetime.now(timezone.utc), "revoke_reason": "password_change"}},
+    )
+    await _start_session(response, request, {**user, "token_version": new_tv})
+    return {"ok": True}
+
+
 # ===========================================================================
 # ENDPOINTS — AFFILIÉ (dashboard)
 # ===========================================================================
