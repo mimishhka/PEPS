@@ -565,6 +565,10 @@ function OrderDetail({ order, onClose, onUpdate }) {
   const openRefundCase = async () => {
     const motif = refundReason.trim();
     if (!motif) return;
+    if (motif.length < 10) {
+      toast.error("Le motif doit comporter au moins 10 caractères.");
+      return;
+    }
     try {
       await api.post(`/orders/${order.id}/refund-request`, { reason: motif });
       toast.success("Dossier ouvert — la commission affiliée est gelée");
@@ -863,19 +867,25 @@ function OrderDetail({ order, onClose, onUpdate }) {
             </div>
           </div>
 
-          {/* Status quick switches */}
-          <div className="bg-white border border-ink/10 p-4 grid sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Payment Status</label>
-              <select value={order.payment_status} onChange={(e) => updateStatus("payment_status", e.target.value)} data-testid="payment-status-select" className="w-full border border-ink/20 px-3 py-2 text-sm bg-white">
-                {PAYMENT_OPTS.map((s) => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Fulfillment Status</label>
-              <select value={order.fulfillment_status} onChange={(e) => updateStatus("fulfillment_status", e.target.value)} data-testid="fulfillment-status-select" className="w-full border border-ink/20 px-3 py-2 text-sm bg-white">
-                {FULFILLMENT_OPTS.map((s) => <option key={s}>{s}</option>)}
-              </select>
+          {/* Actions de statut — remplacent les menus déroulants libres : chaque
+              transition a désormais UN chemin dédié avec ses effets de bord.
+              La préparation (packing/packed) avance depuis l'écran Fulfillment,
+              l'expédition via le suivi, le remboursement via les boutons Refund. */}
+          <div className="bg-white border border-ink/10 p-4">
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3">Actions de statut</div>
+            <div className="flex flex-wrap gap-2">
+              {["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status) && (
+                <button onClick={() => updateStatus("payment_status", "cancelled")} data-testid="cancel-order-btn"
+                  className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:border-red-500 hover:text-red-500">
+                  Annuler
+                </button>
+              )}
+              {["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status) && (
+                <button onClick={() => updateStatus("payment_status", "failed")} data-testid="mark-failed-btn"
+                  className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:border-amber-500 hover:text-amber-500">
+                  Marquer échoué
+                </button>
+              )}
             </div>
           </div>
 

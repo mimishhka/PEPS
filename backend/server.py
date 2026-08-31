@@ -4324,6 +4324,12 @@ async def admin_update_order(
             and existing.get("payment_status") == "paid"):
         raise HTTPException(400, "Une commande payée ne peut pas repasser en attente de paiement.")
 
+    # M2 : le remboursement passe par admin_refund_order (pose refunded_amount,
+    # restock conditionnel, reverse de la commission). Le poser ici directement
+    # contournerait tous ces effets de bord — d'où ce refus explicite.
+    if payment_status == "refunded" and existing.get("payment_status") != "refunded":
+        raise HTTPException(400, "Utilisez le flux de remboursement dédié (bouton Refund).")
+
     if payment_status == "paid":
         updated = await _mark_order_paid(order_id)
         if fulfillment_status:
