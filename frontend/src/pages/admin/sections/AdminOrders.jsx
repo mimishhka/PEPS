@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Download, Search, X, FileText, CheckCircle2, Save, Truck, MessageSquarePlus, Mail, Undo2, Trash2, AlertTriangle, Send, Tag } from "lucide-react";
+import { Download, Search, X, FileText, CheckCircle2, Save, Truck, MessageSquarePlus, Mail, Undo2, Trash2, AlertTriangle, Send } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
@@ -438,9 +438,6 @@ function OrderDetail({ order, onClose, onUpdate }) {
   };
   const [tracking, setTracking] = useState(order.shipping_info?.tracking_number || "");
   const [carrier, setCarrier] = useState(order.shipping_info?.carrier || "Canada Post");
-  const [cpRates, setCpRates] = useState(null);       // null = pas chargé, [] = non configuré
-  const [cpService, setCpService] = useState("");
-  const [cpBusy, setCpBusy] = useState(false);
   const [deliverySyncBusy, setDeliverySyncBusy] = useState(false);
   const [shipInfo, setShipInfo] = useState(order.shipping_info || {});
   const manifestUrl = shipInfo.cp_transmitted && order.dispatch_batch
@@ -449,57 +446,8 @@ function OrderDetail({ order, onClose, onUpdate }) {
 
   useEffect(() => { setShipInfo(order.shipping_info || {}); }, [order.shipping_info]);
 
-  // Services disponibles pour CETTE destination.
-  useEffect(() => {
-    let cancelled = false;
-    api.get(`/admin/orders/${order.id}/shipping-rates`)
-      .then((r) => {
-        if (cancelled) return;
-        const list = r.data?.rates || [];
-        setCpRates(r.data?.configured ? list : []);
-        if (list.length) setCpService((v) => v || list[0].service_code);
-      })
-      .catch(() => { if (!cancelled) setCpRates([]); });
-    return () => { cancelled = true; };
-  }, [order.id]);
-
-  const createLabel = async () => {
-    if (!cpService) { toast.error("Select a shipping service first."); return; }
-    setCpBusy(true);
-    try {
-      const { data } = await api.post(`/admin/orders/${order.id}/create-label`, { service_code: cpService });
-      setShipInfo(data.shipping_info);
-      setTracking(data.shipping_info.tracking_number || "");
-      setCarrier(data.shipping_info.carrier || "Canada Post");
-      // Idempotent côté serveur : un 2e clic ne facture pas un 2e colis.
-      toast.success(data.already_existed
-        ? "A label already exists for this order — reusing it."
-        : `Label created — tracking ${data.shipping_info.tracking_number}`);
-    } catch (e) {
-      toast.error(formatApiError(e.response?.data?.detail));
-    } finally {
-      setCpBusy(false);
-    }
-  };
-
-  const voidLabel = async () => {
-    if (!await confirm({ title: "Void this Canada Post label?", description: "Only possible before the manifest is transmitted.", destructive: true })) return;
-    setCpBusy(true);
-    try {
-      await api.post(`/admin/orders/${order.id}/void-label`);
-      setShipInfo({});
-      setTracking("");
-      toast.success("Label voided.");
-    } catch (e) {
-      toast.error(formatApiError(e.response?.data?.detail));
-    } finally {
-      setCpBusy(false);
-    }
-  };
   const [noteText, setNoteText] = useState("");
   const [noteVisible, setNoteVisible] = useState(false);
-  const [refundAmount, setRefundAmount] = useState("");
-  const [refundReason, setRefundReason] = useState("");
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -559,36 +507,6 @@ function OrderDetail({ order, onClose, onUpdate }) {
       await api.post(`/admin/orders/${order.id}/notes`, { text: noteText, visible_to_customer: noteVisible });
       if (noteVisible) toast.success("Note added — email sent to customer");
       setNoteText(""); setNoteVisible(false); onUpdate();
-    } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
-  };
-
-  const openRefundCase = async () => {
-    const motif = refundReason.trim();
-    if (!motif) return;
-    if (motif.length < 10) {
-      toast.error("Le motif doit comporter au moins 10 caractères.");
-      return;
-    }
-    try {
-      await api.post(`/orders/${order.id}/refund-request`, { reason: motif });
-      toast.success("Dossier ouvert — la commission affiliée est gelée");
-      setRefundReason("");
-      // onUpdate et non load : OrderDetail ne recoit que { order, onClose,
-      // onUpdate }. Un appel a load() aurait compile sans broncher et plante a
-      // l'usage — les controles statiques ne verifient pas la portee.
-      onUpdate();
-    } catch (e) {
-      toast.error(formatApiError(e.response?.data?.detail) || e.message);
-    }
-  };
-
-  const issueRefund = async () => {
-    const amt = parseFloat(refundAmount);
-    if (!amt || amt <= 0) { toast.error("Enter a valid refund amount"); return; }
-    try {
-      const { data } = await api.post(`/admin/orders/${order.id}/refund`, { amount: amt });
-      toast.success(`Refunded $${amt.toFixed(2)} — total refunded $${data.refunded_amount?.toFixed(2)}`);
-      setRefundAmount(""); onUpdate();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
 
@@ -756,121 +674,42 @@ function OrderDetail({ order, onClose, onUpdate }) {
               <div className="font-mono text-[10px] text-foreground/50 mt-2">Shipped at: {order.shipping_info.shipped_at}</div>
             )}
 
-            {/* Postes Canada — le champ manuel ci-dessus reste le repli si
-                l'API n'est pas configurée. */}
-            <div className="mt-4 pt-4 border-t border-ink/10">
-              {shipInfo?.label_url && (
-                <div className="flex flex-wrap items-center gap-3 mb-3">
+            {/* Postes Canada — l'étiquette se génère depuis l'écran Dispatch.
+                Ici, lecture seule : télécharger l'étiquette / le manifeste. */}
+            {shipInfo?.label_url && (
+              <div className="mt-4 pt-4 border-t border-ink/10 flex flex-wrap items-center gap-3">
+                <a
+                  href={`${API_BASE.replace(/\/api$/, "")}${shipInfo.label_url}`}
+                  target="_blank" rel="noopener noreferrer"
+                  data-testid="download-label-btn"
+                  className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 inline-flex items-center gap-2"
+                >
+                  <Download size={14} /> Download label PDF
+                </a>
+                <span className={`font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 border ${
+                  shipInfo.cp_transmitted ? "border-green-600 text-green-700" : "border-red-600 text-red-700"}`}>
+                  {shipInfo.cp_transmitted ? "Manifest transmitted" : "Not transmitted"}
+                </span>
+                {manifestUrl && (
                   <a
-                    href={`${API_BASE.replace(/\/api$/, "")}${shipInfo.label_url}`}
-                    target="_blank" rel="noopener noreferrer"
-                    data-testid="download-label-btn"
-                    className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 inline-flex items-center gap-2"
+                    href={manifestUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="download-manifest-btn"
+                    className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
                   >
-                    <Download size={14} /> Download label PDF
+                    <Download size={14} /> Download manifest PDF
                   </a>
-                  <span className={`font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 border ${
-                    shipInfo.cp_transmitted ? "border-green-600 text-green-700" : "border-red-600 text-red-700"}`}>
-                    {shipInfo.cp_transmitted ? "Manifest transmitted" : "Not transmitted"}
-                  </span>
-                  {manifestUrl && (
-                    <a
-                      href={manifestUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      data-testid="download-manifest-btn"
-                      className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
-                    >
-                      <Download size={14} /> Download manifest PDF
-                    </a>
-                  )}
-                  {!shipInfo.cp_transmitted && (
-                    <button onClick={voidLabel} disabled={cpBusy} data-testid="void-label-btn"
-                      className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-50">
-                      Void label
-                    </button>
-                  )}
-                </div>
-              )}
-              {cpRates === null && (
-                <div className="font-mono text-[10px] text-foreground/50">Checking Canada Post…</div>
-              )}
-              {cpRates !== null && cpRates.length === 0 && (
-                <div className="font-mono text-[10px] text-foreground/50">
-                  Canada Post not configured — use the manual tracking field above.
-                </div>
-              )}
-              {cpRates !== null && cpRates.length > 0 && (
-                <>
-                  {shipInfo?.label_url ? (
-                    <div className="flex flex-wrap items-center gap-3">
-                      <a
-                        href={`${API_BASE.replace(/\/api$/, "")}${shipInfo.label_url}`}
-                        target="_blank" rel="noopener noreferrer"
-                        data-testid="download-label-btn"
-                        className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 inline-flex items-center gap-2"
-                      >
-                        <Download size={14} /> Download label PDF
-                      </a>
-                      <span className={`font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 border ${
-                        shipInfo.cp_transmitted ? "border-green-600 text-green-700" : "border-red-600 text-red-700"}`}>
-                        {shipInfo.cp_transmitted ? "Manifest transmitted" : "Not transmitted"}
-                      </span>
-                      {manifestUrl && (
-                        <a
-                          href={manifestUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          data-testid="download-manifest-btn"
-                          className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
-                        >
-                          <Download size={14} /> Download manifest PDF
-                        </a>
-                      )}
-                      {!shipInfo.cp_transmitted && (
-                        <button onClick={voidLabel} disabled={cpBusy} data-testid="void-label-btn"
-                          className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-50">
-                          Void label
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap items-end gap-3">
-                      <div className="flex-1 min-w-[220px]">
-                        <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Canada Post service</label>
-                        <select
-                          value={cpService}
-                          onChange={(e) => setCpService(e.target.value)}
-                          data-testid="cp-service-select"
-                          className="w-full border border-ink/20 px-3 py-2 text-sm bg-white"
-                        >
-                          {cpRates.map((r) => (
-                            <option key={r.service_code} value={r.service_code}>
-                              {r.service_name} — ${Number(r.cost_cad).toFixed(2)}
-                              {r.eta_days ? ` (${r.eta_days}d)` : ""}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <button
-                        onClick={createLabel}
-                        disabled={cpBusy}
-                        data-testid="create-label-btn"
-                        className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 inline-flex items-center gap-2 disabled:opacity-50"
-                      >
-                        <Tag size={14} /> {cpBusy ? "Working…" : "Generate label"}
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Actions de statut — remplacent les menus déroulants libres : chaque
               transition a désormais UN chemin dédié avec ses effets de bord.
               La préparation (packing/packed) avance depuis l'écran Fulfillment,
-              l'expédition via le suivi, le remboursement via les boutons Refund. */}
+              l'expédition via le suivi, l'étiquetage via Dispatch, le
+              remboursement via l'écran Refunds. */}
           <div className="bg-white border border-ink/10 p-4">
             <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3">Actions de statut</div>
             <div className="flex flex-wrap gap-2">
@@ -889,64 +728,18 @@ function OrderDetail({ order, onClose, onUpdate }) {
             </div>
           </div>
 
-          {/* Refund */}
-          <div className="bg-white border border-ink/10 p-4">
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3 flex items-center gap-2"><Undo2 size={12} /> Refund</div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <input
-                type="number" min="0.01" step="0.01"
-                value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)}
-                placeholder={`Amount (max $${(order.total - (order.refunded_amount || 0)).toFixed(2)})`}
-                data-testid="refund-amount-input"
-                className="border border-ink/20 px-3 py-2 text-sm w-56"
-              />
-              <button onClick={issueRefund} data-testid="issue-refund-btn" className="bg-red-600 text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:bg-red-700">
-                Issue Refund
-              </button>
-              <div className="font-mono text-[10px] text-foreground/60" data-testid="refunded-so-far">
-                Refunded so far: ${(order.refunded_amount || 0).toFixed(2)} / ${order.total?.toFixed(2)}
-              </div>
-            </div>
-
-            {/* Ouverture d'un DOSSIER, distincte du remboursement direct
-                ci-dessus. La différence tient en une phrase : le dossier GÈLE
-                immédiatement la commission de l'affilié, le temps de décider.
-                Un remboursement direct, lui, règle tout d'un coup — si l'examen
-                prend deux jours, la commission peut être acquise entre-temps.
-
-                Aucun écran n'ouvrait de dossier jusqu'ici : la file, l'écran
-                de décision et le compteur de retard attendaient un statut que
-                rien ne posait. */}
-            {!order.refund_status && order.payment_status === "paid" && (
-              <div className="mt-3 pt-3 border-t border-ink/10 flex items-center gap-3 flex-wrap">
-                <input
-                  value={refundReason}
-                  onChange={(e) => setRefundReason(e.target.value)}
-                  placeholder="Motif — requis pour ouvrir un dossier"
-                  data-testid="refund-case-reason"
-                  className="border border-ink/20 px-3 py-2 text-sm flex-1 min-w-[16rem]"
-                />
-                <button
-                  onClick={openRefundCase}
-                  disabled={!refundReason.trim()}
-                  data-testid="open-refund-case-btn"
-                  className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:border-nova hover:text-nova disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Ouvrir un dossier
-                </button>
-                <span className="font-mono text-[10px] text-foreground/50">
-                  gèle la commission affiliée
-                </span>
-              </div>
-            )}
-            {order.refund_status && (
-              <div className="mt-3 pt-3 border-t border-ink/10 font-mono text-[10px] text-foreground/60"
-                   data-testid="refund-case-state">
+          {/* Remboursement — géré depuis l'écran Refunds (un seul endroit, avec
+              la file de dossiers et le SLA). Ici, lecture seule de l'état. */}
+          {order.refund_status && (
+            <div className="bg-white border border-ink/10 p-4">
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-2">Remboursement</div>
+              <div className="font-mono text-[11px] text-foreground/70" data-testid="refund-case-state">
                 Dossier : {order.refund_status}
                 {order.refund_reason ? ` — ${order.refund_reason}` : ""}
+                {order.refunded_amount > 0 ? ` · Remboursé : $${order.refunded_amount.toFixed(2)}` : ""}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Notes */}
           <div className="bg-white border border-ink/10 p-4">

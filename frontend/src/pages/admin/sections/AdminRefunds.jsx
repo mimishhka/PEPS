@@ -41,6 +41,7 @@ export default function AdminRefunds() {
   const [amounts, setAmounts] = useState({});
   const [txRefs, setTxRefs] = useState({});
   const [types, setTypes] = useState({});
+  const [methods, setMethods] = useState({});
 
   const enRetard = compterEnRetard(items);
 
@@ -72,13 +73,20 @@ export default function AdminRefunds() {
     } finally { setBusy(""); }
   };
 
-  const markProcessed = async (id) => {
-    const tx = (txRefs[id] || "").trim();
+  const markProcessed = async (id, item) => {
+    const isReplace = item?.refund_approved_type === "replace";
+    const tx = isReplace ? "REPLACE" : (txRefs[id] || "").trim();
     if (!tx) { toast.error(L("Référence tx requise", "TX reference required")); return; }
     setBusy(id);
     try {
-      await api.post(`/admin/orders/${id}/refund-processed`, { tx_reference: tx, admin_note: notes[id] || "" });
-      toast.success(L("Remboursement enregistré comme envoyé", "Refund marked as sent"));
+      await api.post(`/admin/orders/${id}/refund-processed`, {
+        tx_reference: tx,
+        admin_note: notes[id] || "",
+        refund_method: methods[id] || undefined,
+      });
+      toast.success(isReplace
+        ? L("Remplacement enregistré", "Replacement recorded")
+        : L("Remboursement enregistré comme envoyé", "Refund marked as sent"));
       await load();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
@@ -175,6 +183,7 @@ export default function AdminRefunds() {
                         <option value="full">{L("Complet", "Full")}</option>
                         <option value="partial">{L("Partiel", "Partial")}</option>
                         <option value="store_credit">{L("Crédit boutique", "Store credit")}</option>
+                        <option value="replace">{L("Remplacer le produit", "Replace product")}</option>
                       </select>
                       <input type="text" placeholder={L("Note admin", "Admin note")}
                         value={notes[r.id] || ""} onChange={(e) => setNotes({...notes, [r.id]: e.target.value})}
@@ -193,14 +202,25 @@ export default function AdminRefunds() {
                   {r.refund_status === "approved" && (
                     <>
                       <div className="text-xs text-blue-800">
-                        <b>{L("Approuvé", "Approved")} : {r.refund_approved_amount} CAD ({r.refund_approved_type})</b>
+                        <b>{L("Approuvé", "Approved")} : {r.refund_approved_type === "replace"
+                          ? L("remplacement", "replacement")
+                          : `${r.refund_approved_amount} CAD (${r.refund_approved_type})`}</b>
                       </div>
-                      <input type="text" placeholder={L("TX hash / référence", "TX hash / reference")}
-                        value={txRefs[r.id] || ""} onChange={(e) => setTxRefs({...txRefs, [r.id]: e.target.value})}
-                        data-testid={`tx-${r.id}`} className="border rounded px-2 py-1 text-xs w-full font-mono"/>
-                      <button onClick={() => markProcessed(r.id)} disabled={busy===r.id}
+                      {r.refund_approved_type !== "replace" && (
+                        <>
+                          <input type="text" placeholder={L("TX hash / référence", "TX hash / reference")}
+                            value={txRefs[r.id] || ""} onChange={(e) => setTxRefs({...txRefs, [r.id]: e.target.value})}
+                            data-testid={`tx-${r.id}`} className="border rounded px-2 py-1 text-xs w-full font-mono"/>
+                          <select value={methods[r.id] || "crypto"} onChange={(e) => setMethods({...methods, [r.id]: e.target.value})}
+                            data-testid={`method-${r.id}`} className="border rounded px-2 py-1 text-xs w-full">
+                            <option value="crypto">{L("Crypto", "Crypto")}</option>
+                            <option value="interac">{L("Interac", "Interac")}</option>
+                          </select>
+                        </>
+                      )}
+                      <button onClick={() => markProcessed(r.id, r)} disabled={busy===r.id}
                         data-testid={`processed-${r.id}`} className="btn-pill btn-nova text-xs px-3 py-1">
-                        {L("Marquer envoyé", "Mark sent")}</button>
+                        {r.refund_approved_type === "replace" ? L("Marquer expédié", "Mark shipped") : L("Marquer envoyé", "Mark sent")}</button>
                     </>
                   )}
                 </div>

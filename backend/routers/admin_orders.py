@@ -80,6 +80,13 @@ async def admin_refund_decision(order_id: str, payload: s.RefundDecisionIn,
     return await s.admin_refund_decision(order_id, payload, admin)
 
 
+@router.post("/admin/orders/{order_id}/refund-case")
+async def admin_refund_case(order_id: str, payload: s.RefundRequestIn,
+                            admin: dict = Depends(s.require_area("orders", "manage"))):
+    """L'admin ouvre un dossier de remboursement (sans détourner l'endpoint client)."""
+    return await s.admin_refund_case(order_id, payload, admin)
+
+
 @router.post("/admin/orders/{order_id}/refund-processed")
 async def admin_refund_processed(order_id: str, payload: s.RefundProcessedIn,
                                  admin: dict = Depends(s.require_area("orders", "manage"))):

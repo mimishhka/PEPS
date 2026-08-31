@@ -3892,19 +3892,24 @@ async def order_tracking(order_id: str, request: Request):
 class RefundRequestIn(BaseModel):
     reason: str = Field(min_length=10, max_length=1000)
     amount_requested: Optional[float] = None
-    refund_type: str = Field(default="full", pattern="^(full|partial|store_credit)$")
+    refund_type: str = Field(default="full", pattern="^(full|partial|store_credit|replace)$")
+
+
+class AdminRefundCaseIn(BaseModel):
+    reason: str = Field(min_length=3, max_length=1000)
 
 
 class RefundDecisionIn(BaseModel):
     action: str = Field(pattern="^(approve|deny)$")
     approved_amount: Optional[float] = None
-    approved_type: Optional[str] = Field(default=None, pattern="^(full|partial|store_credit)$")
+    approved_type: Optional[str] = Field(default=None, pattern="^(full|partial|store_credit|replace)$")
     admin_note: str = ""
 
 
 class RefundProcessedIn(BaseModel):
     tx_reference: str = Field(min_length=3)
     admin_note: str = ""
+    refund_method: Optional[str] = Field(default=None, pattern="^(interac|crypto)$")
 
 
 def _refund_eligibility_reason(order: dict) -> Optional[str]:
@@ -3947,6 +3952,33 @@ def _refund_eligibility_reason(order: dict) -> Optional[str]:
     return None
 
 
+async def _set_refund_requested(order_id: str, reason: str, amount_requested, refund_type: str) -> str:
+    """Pose un dossier de remboursement à « requested » (source unique pour le
+    client ET l'admin). Le simple fait de demander gèle la commission affiliée
+    via _echeance_acquisition, tant que la décision n'est pas rendue."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "refund_status": "requested", "refund_requested_at": now_iso,
+        "refund_reason": reason, "refund_amount_requested": amount_requested,
+        "refund_type_requested": refund_type,
+    }})
+    return now_iso
+
+
+async def admin_refund_case(order_id: str, payload: RefundRequestIn,
+                            admin: dict = Depends(require_area("orders", "manage"))):
+    """L'admin ouvre un dossier de remboursement — ne détourne plus l'endpoint
+    client (avec son rate-limit et sa règle de longueur de motif)."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    ineligible = _refund_eligibility_reason(order)
+    if ineligible:
+        raise HTTPException(400, ineligible)
+    await _set_refund_requested(order_id, payload.reason.strip(), payload.amount_requested, payload.refund_type)
+    return {"ok": True, "refund_status": "requested"}
+
+
 async def order_request_refund(order_id: str, payload: RefundRequestIn, request: Request):
     await _rate_limit("refund_request", _client_ip(request), 5, 3600,
                        "Trop de demandes. Réessayez plus tard.")
@@ -3961,13 +3993,7 @@ async def order_request_refund(order_id: str, payload: RefundRequestIn, request:
     ineligible = _refund_eligibility_reason(order)
     if ineligible:
         raise HTTPException(400, ineligible)
-    now_iso = datetime.now(timezone.utc).isoformat()
-    await db.orders.update_one({"id": order_id}, {"$set": {
-        "refund_status": "requested", "refund_requested_at": now_iso,
-        "refund_reason": payload.reason.strip(),
-        "refund_amount_requested": payload.amount_requested,
-        "refund_type_requested": payload.refund_type,
-    }})
+    await _set_refund_requested(order_id, payload.reason.strip(), payload.amount_requested, payload.refund_type)
     try:
         await _send_email(
             os.environ.get("ADMIN_NOTIFICATION_EMAIL", ADMIN_EMAIL),
@@ -4001,6 +4027,22 @@ async def admin_refund_decision(order_id: str, payload: RefundDecisionIn, admin:
         except Exception:
             pass
         return {"ok": True, "refund_status": "denied"}
+    if payload.approved_type == "replace":
+        # Résolution par REMPLACEMENT : pas de montant monétaire, la commission
+        # reste acquise (la vente aboutit via le produit remplacé).
+        await db.orders.update_one({"id": order_id}, {"$set": {
+            "refund_status": "approved", "refund_decided_at": now_iso,
+            "refund_decided_by": admin.get("email"),
+            "refund_approved_type": "replace", "refund_approved_amount": 0,
+            "refund_admin_note": payload.admin_note or "",
+        }})
+        try:
+            await _send_email(order.get("email", ""),
+                "Votre remplacement FIRONOVA est approuvé",
+                f"<p>Un produit de remplacement pour <b>{order.get('order_number')}</b> va être préparé.</p>")
+        except Exception:
+            pass
+        return {"ok": True, "refund_status": "approved", "approved_type": "replace"}
     total = float(order.get("total") or 0)
     amount = payload.approved_amount if payload.approved_amount is not None else total
     if amount <= 0 or amount > total:
@@ -4028,6 +4070,30 @@ async def admin_refund_processed(order_id: str, payload: RefundProcessedIn, admi
         raise HTTPException(404, "Order not found")
     if order.get("refund_status") != "approved":
         raise HTTPException(400, f"Cannot mark processed — status is {order.get('refund_status')}")
+
+    if order.get("refund_approved_type") == "replace":
+        # Résolution par REMPLACEMENT : pas de règlement monétaire, pas de
+        # reverse de commission (la vente aboutit via le produit remplacé). On
+        # clôt le dossier et on trace le remplacement.
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await db.orders.update_one({"id": order_id}, {"$set": {
+            "refund_status": "processed", "refund_processed_at": now_iso,
+            "refund_tx_reference": payload.tx_reference.strip(),
+            "refund_processed_by": admin.get("email"),
+            "refund_admin_note_processed": payload.admin_note or "",
+            "refund_method": payload.refund_method,
+        }, "$push": {"notes": {
+            "text": f"Résolution par remplacement — {payload.admin_note or 'produit de remplacement à expédier'}",
+            "admin_email": admin.get("email"),
+            "visible_to_customer": False,
+            "ts": now_iso,
+        }}})
+        try:
+            await _send_email(order.get("email", ""), "Votre remplacement FIRONOVA",
+                f"<p>Un produit de remplacement pour <b>{order.get('order_number')}</b> est en préparation.</p>")
+        except Exception:
+            pass
+        return {"ok": True, "refund_status": "processed", "resolution": "replace"}
 
     # RÈGLEMENT COMPTABLE — il manquait entièrement.
     #
@@ -4068,6 +4134,7 @@ async def admin_refund_processed(order_id: str, payload: RefundProcessedIn, admi
         "refund_tx_reference": payload.tx_reference.strip(),
         "refund_processed_by": admin.get("email"),
         "refund_admin_note_processed": payload.admin_note or "",
+        "refund_method": payload.refund_method,
     }})
     try:
         await _send_email(order.get("email", ""),
@@ -4086,11 +4153,12 @@ async def admin_refunds_list(status: Optional[str] = None, limit: int = 50):
     limit = max(1, min(200, int(limit)))
     cursor = db.orders.find(q, {
         "_id": 0, "id": 1, "order_number": 1, "email": 1, "total": 1,
-        "fulfillment_status": 1, "paid_at": 1,
+        "fulfillment_status": 1, "paid_at": 1, "payment_method": 1,
         "refund_status": 1, "refund_requested_at": 1, "refund_reason": 1,
         "refund_amount_requested": 1, "refund_type_requested": 1,
         "refund_approved_amount": 1, "refund_approved_type": 1,
         "refund_admin_note": 1, "refund_tx_reference": 1, "refund_processed_at": 1,
+        "refund_method": 1,
     }).sort("refund_requested_at", -1).limit(limit)
     return {"items": [d async for d in cursor], "total": await db.orders.count_documents(q)}
 
@@ -8179,6 +8247,9 @@ async def seed_admin_and_products():
     await db.orders.create_index("email")
     await db.orders.create_index([("affiliate_id", 1), ("payment_status", 1)])
     await db.orders.create_index([("paid_at", -1), ("payment_status", 1)])
+    # File des remboursements (écran Refunds) : filtre par statut + tri par date
+    # de demande, sans index chaque ouverture = COLLSCAN complet des commandes.
+    await db.orders.create_index([("refund_status", 1), ("refund_requested_at", -1)])
     # Filtrage admin par rôle (staff, affiliés, clients) — évite un scan complet users.
     await db.users.create_index("role")
     await db.coupons.create_index("code", unique=True)
