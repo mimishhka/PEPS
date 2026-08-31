@@ -86,8 +86,8 @@ async def account_update_profile(payload: ProfileUpdateIn, user: dict = Depends(
 
 
 @router.put("/account/password")
-async def account_change_password(payload: PasswordChangeIn, response: Response, user: dict = Depends(get_current_user)):
-    return await s.account_change_password(payload, response, user)
+async def account_change_password(payload: PasswordChangeIn, response: Response, request: Request, user: dict = Depends(get_current_user)):
+    return await s.account_change_password(payload, response, request, user)
 
 
 @router.post("/account/email/request-change")

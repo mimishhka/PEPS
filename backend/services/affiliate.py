@@ -89,7 +89,7 @@ def _affiliate_next_tier(tier: str):
 # ===========================================================================
 
 def _affiliate_hash_token(raw: str) -> str:
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return s._hash_magic_token(raw)
 
 
 # _affiliate_ip_salt() et _affiliate_hash_ip() vivaient ici. Elles servaient à
@@ -1592,6 +1592,10 @@ async def affiliate_ensure_indexes():
     )
     await s.db.affiliates.create_index("email", unique=True)
     await s.db.affiliates.create_index("user_id", sparse=True)
+    # M7 : l'attribution par alias (`aliases.code`) est lue au checkout (coupon
+    # affilié) et au clic de parrainage. Sans index multikey, chaque lecture
+    # balaye toute la collection sur le chemin chaud.
+    await s.db.affiliates.create_index("aliases.code")
     # Anti-double-compte au niveau BASE : un même compte utilisateur ne doit
     # être lié qu'à UN affilié. La garde existe déjà dans affiliate_join (409),
     # mais relève d'une vérification applicative ; cet index rend la contrainte

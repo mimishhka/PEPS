@@ -38,6 +38,11 @@ def _verify_nowpayments_signature(raw_body: bytes, signature: str) -> tuple[dict
 async def _nowpayments_create(order_id: str, total_cad: float, pay_currency: str):
     """Create a NOWPayments invoice (embeddable widget, exact amount). Falls back to mock if no API key."""
     if not s.NOWPAYMENTS_API_KEY:
+        # M9 : ne jamais montrer d'adresse de test à un client réel. Sans clé en
+        # production, on refuse l'encaissement crypto au lieu de créer une
+        # commande qui ne pourra jamais être payée.
+        if s.IS_PRODUCTION:
+            raise HTTPException(503, "Crypto payment provider not configured")
         return {
             "mock": True,
             "payment_id": f"mock-{order_id[:8]}",

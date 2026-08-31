@@ -1457,7 +1457,7 @@ async def _issue_magic_token(email: str, name: str, is_signup: bool,
 
 
 def _hash_token(raw: str) -> str:
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return _hash_magic_token(raw)
 
 
 def _trusted_public_base_url() -> str:
@@ -2752,6 +2752,19 @@ async def _coupon_discount(coupon: dict, subtotal: float,
     return discount, applied
 
 
+async def _release_idem_lock(idem_key: str) -> None:
+    """Libère un verrou d'idempotence checkout en cas d'échec de validation.
+
+    Sans cela, un coupon invalide ou un produit épuisé laissait un verrou
+    orphelin 24h, et le client ne pouvait plus réessayer (409 parasite)."""
+    if not idem_key:
+        return
+    try:
+        await db.idempotency.delete_one({"_id": idem_key})
+    except Exception:  # pragma: no cover
+        pass
+
+
 async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] = None, customer_email: Optional[str] = None):
     line_items = []
     subtotal = 0.0
@@ -2795,6 +2808,7 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
             "sku": v.get("sku", p["slug"].upper()),
             "name_en": p["name_en"],
             "name_fr": p["name_fr"],
+            "category": p.get("category") or "",
             "price_cad": unit_price,
             "qty": it.qty,
             "line_total": line_total,
@@ -3396,130 +3410,6 @@ def _checkout_breaker_record_failure() -> None:
         )
 
 
-class CompensationContext:
-    """Context-manager qui exécute une série d'écritures avec rollback.
-
-    Chaque étape enregistre son compensator :
-        async with CompensationContext(label="checkout") as ctx:
-            oid = await db.orders.insert_one(order)
-            ctx.register("delete_order", db.orders.delete_one, {"id": order["id"]})
-            await db.products.update_one(...)
-            ctx.register("restore_stock", db.products.update_one, ...)
-
-    Si le body raise, les compensations sont rejouées en ordre inverse.
-    Si une compensation elle-même échoue, on écrit dans
-    checkout_compensation_failures (audit + queue admin retry).
-
-    Utilise les transactions natives Mongo si dispo (replica set) — dans
-    ce cas les compensations ne sont jamais exécutées (rollback DB fait
-    par Mongo). Sinon fallback saga applicatif.
-    """
-
-    def __init__(self, label: str, order_id: Optional[str] = None):
-        self.label = label
-        self.order_id = order_id
-        self._compensations: list = []
-        self._writes: list = []
-        self._session = None
-        self._use_transaction = False
-
-    async def __aenter__(self):
-        # Détection replica set — tentative de transaction native
-        try:
-            self._session = await client.start_session()
-            await self._session.__aenter__()
-            self._session.start_transaction()
-            self._use_transaction = True
-            logging.debug("[compensation] native Mongo transaction for %s", self.label)
-        except Exception as e:
-            # Standalone Mongo : pas de transactions. Fallback saga.
-            if self._session is not None:
-                try:
-                    await self._session.__aexit__(None, None, None)
-                except Exception:
-                    pass
-                self._session = None
-            self._use_transaction = False
-            logging.debug(
-                "[compensation] saga fallback for %s (no transactions: %s)",
-                self.label, type(e).__name__,
-            )
-        return self
-
-    def register(self, name: str, coro_func, *args, **kwargs):
-        """Enregistre une compensation. `coro_func` doit être un callable async."""
-        self._compensations.append({"name": name, "func": coro_func, "args": args, "kwargs": kwargs})
-        self._writes.append(name)
-
-    async def __aexit__(self, exc_type, exc, tb):
-        if self._use_transaction and self._session:
-            try:
-                if exc_type is None:
-                    await self._session.commit_transaction()
-                else:
-                    await self._session.abort_transaction()
-            finally:
-                try:
-                    await self._session.__aexit__(exc_type, exc, tb)
-                except Exception:
-                    pass
-            return False  # ne pas avaler l'exception
-
-        # Saga path
-        if exc_type is None:
-            return False
-        # Body a raise → rejouer les compensations en ordre inverse
-        failed_compensations = []
-        for step in reversed(self._compensations):
-            try:
-                await step["func"](*step["args"], **step["kwargs"])
-            except Exception as compensation_err:
-                failed_compensations.append({
-                    "stage": step["name"],
-                    "error": f"{type(compensation_err).__name__}: {compensation_err}",
-                })
-                logging.error(
-                    "[compensation] step %s FAILED during %s rollback: %s",
-                    step["name"], self.label, compensation_err,
-                )
-        if failed_compensations:
-            try:
-                await db.checkout_compensation_failures.insert_one({
-                    "id": str(uuid.uuid4()),
-                    "order_id": self.order_id,
-                    "label": self.label,
-                    "original_error": f"{type(exc).__name__}: {exc}",
-                    "collections_written": self._writes,
-                    "failed_compensations": failed_compensations,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "status": "pending_manual_review",
-                    "assigned_admin": None,
-                    "resolved_at": None,
-                    "resolution_note": None,
-                })
-                _checkout_breaker_record_failure()
-                # Fire-and-forget admin alert
-                try:
-                    admin_to = os.environ.get("ADMIN_NOTIFICATION_EMAIL", ADMIN_EMAIL)
-                    subject = f"[FIRONOVA] Checkout compensation failed — {self.order_id or 'unknown'}"
-                    html = (
-                        f"<p>Une compensation checkout a échoué et doit être réconciliée manuellement.</p>"
-                        f"<ul><li>Label : {self.label}</li>"
-                        f"<li>Order id : {self.order_id or '-'}</li>"
-                        f"<li>Étapes en échec : {len(failed_compensations)}</li></ul>"
-                        f"<p>Voir /ops-portal-fn7k2q → Reconciliation → Checkout failures.</p>"
-                    )
-                    await _send_email(admin_to, subject, html)
-                except Exception:
-                    pass
-            except Exception as ledger_err:
-                logging.critical(
-                    "[compensation] FAILED TO PERSIST LEDGER for %s: %s",
-                    self.label, ledger_err,
-                )
-        return False  # ne pas avaler l'exception d'origine
-
-
 # --- Admin reconciliation for checkout compensation failures (B4 SMART) --
 
 class CheckoutFailureResolveIn(BaseModel):
@@ -3672,10 +3562,16 @@ async def checkout(payload: CheckoutIn, request: Request):
         # Compat legacy pour les doubles/mocks de tests qui n'acceptent pas le
         # nouvel argument optionnel customer_email.
         if "customer_email" not in str(e):
+            await _release_idem_lock(idem_key)
             raise
         line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder = await _build_order_totals(
             payload.items, payload.coupon_code
         )
+    except Exception:
+        # M4 : la validation (coupon invalide, produit introuvable, stock
+        # insuffisant) ne doit pas laisser un verrou d'idempotence orphelin.
+        await _release_idem_lock(idem_key)
+        raise
 
     order_id = str(uuid.uuid4())
     # Numérotation Fironova : FN-AAMMJJ-XXXXXX (l'ancien préfixe NP- venait
@@ -3684,7 +3580,11 @@ async def checkout(payload: CheckoutIn, request: Request):
 
     # Réservation atomique AVANT tout appel réseau au PSP. Ferme la fenêtre
     # check-then-act qui laissait deux clients acheter le même dernier flacon.
-    reserved = await _reserve_stock_atomic(line_items)
+    try:
+        reserved = await _reserve_stock_atomic(line_items)
+    except Exception:
+        await _release_idem_lock(idem_key)
+        raise
 
     payment_info: dict = {}
     if payload.payment_method == "interac":
@@ -3704,6 +3604,7 @@ async def checkout(payload: CheckoutIn, request: Request):
             np = await _nowpayments_create(order_id, total, payload.pay_currency or "btc")
         except Exception:
             await _release_stock_atomic(reserved)
+            await _release_idem_lock(idem_key)
             raise
         payment_info = {"type": "nowpayments", "provider_response": np}
         payment_status = "awaiting_crypto"
@@ -4400,9 +4301,23 @@ async def admin_update_order(
     if payment_status is not None and payment_status not in valid_payment_statuses:
         raise HTTPException(400, f"Invalid payment status: {payment_status}")
 
+    # M2 : liste fermée des statuts d'exécution, pour ne plus laisser passer de
+    # valeur arbitraire qui tomberait silencieusement dans un mauvais seau.
+    valid_fulfillment_statuses = {"pending", "preorder", "processing", "packing",
+                                  "packed", "shipped", "delivered", "cancelled",
+                                  "failed", "refunded"}
+    if fulfillment_status is not None and fulfillment_status not in valid_fulfillment_statuses:
+        raise HTTPException(400, f"Invalid fulfillment status: {fulfillment_status}")
+
     existing = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not existing:
         raise HTTPException(404, "Order not found")
+
+    # M2 : une commande payée ne peut pas repasser en attente de paiement — le
+    # paiement est irréversible et aucun effet de bord ne serait renversé.
+    if (payment_status in ("awaiting_etransfer", "awaiting_crypto")
+            and existing.get("payment_status") == "paid"):
+        raise HTTPException(400, "Une commande payée ne peut pas repasser en attente de paiement.")
 
     if payment_status == "paid":
         updated = await _mark_order_paid(order_id)
@@ -6520,8 +6435,16 @@ async def admin_ops_signals(_admin: dict = Depends(require_area("orders", "view"
 
 
 async def admin_adjust_stock(product_id: str, payload: StockAdjustIn, _admin: dict = Depends(require_area("products", "manage"))):
-    res = await db.products.update_one({"id": product_id}, {"$inc": {"stock": payload.delta}})
+    # M6 : décrément gardé atomiquement pour ne jamais passer sous zéro, comme
+    # les autres chemins de retrait (admin_bulk_restock). Le $gte sur le filtre
+    # fait échouer le $inc dès que le stock serait insuffisant.
+    filt = {"id": product_id}
+    if payload.delta < 0:
+        filt["stock"] = {"$gte": -payload.delta}
+    res = await db.products.update_one(filt, {"$inc": {"stock": payload.delta}})
     if res.matched_count == 0:
+        if await db.products.find_one({"id": product_id}, {"_id": 1}):
+            raise HTTPException(400, "Stock insuffisant pour ce retrait")
         raise HTTPException(404, "Product not found")
     if payload.delta > 0:
         asyncio.create_task(_maybe_notify_restock(product_id, None))
@@ -8713,11 +8636,16 @@ async def _release_ready_preorder_orders() -> int:
             continue
         now = datetime.now(timezone.utc).isoformat()
         res = await db.orders.update_one(
-            {"id": order["id"], "fulfillment_status": "preorder"},
+            {"id": order["id"], "fulfillment_status": "preorder", "payment_status": "paid"},
             {"$set": {
                 "fulfillment_status": "processing",
                 "dispatch_batch": compute_dispatch_batch(now),
                 "preorder_released_at": now,
+                # C4 : `preorder` servait à la fois « pas encore décrémenté » (au
+                # checkout) et « jamais décrémenté » (au restock). Une fois
+                # libéré, le stock EST décrémenté : on efface le flag pour que
+                # l'annulation restocke correctement cette ligne.
+                "items.$[].preorder": False,
             }, "$push": {"notes": {
                 "id": str(uuid.uuid4()),
                 "text": "Preorder auto-released: all items back in stock.",
@@ -8728,6 +8656,20 @@ async def _release_ready_preorder_orders() -> int:
         if res.modified_count:
             released += 1
             logging.info("Preorder order %s released to processing", order.get("order_number", order["id"]))
+        else:
+            # M1 : la commande a changé d'état entre la lecture et l'écriture
+            # (annulation concurrente). Le stock vient d'être décrémenté : on le
+            # remet pour ne pas perdre de la marchandise.
+            for rollback in reserved_lines:
+                rb_qty = int(rollback.get("qty", 1))
+                rb_vid = rollback.get("variant_id")
+                if rb_vid in (None, "", "_default"):
+                    await db.products.update_one({"id": rollback.get("product_id")}, {"$inc": {"stock": rb_qty}})
+                else:
+                    await db.products.update_one(
+                        {"id": rollback.get("product_id"), "variants.id": rb_vid},
+                        {"$inc": {"variants.$.stock": rb_qty}},
+                    )
     return released
 
 
@@ -12174,7 +12116,7 @@ async def admin_affiliate_payouts_all(admin: dict = Depends(get_admin_user),  # 
         hi = float(max_) if max_ is not None else 1e18
         filt["amount_cad"] = {"$gte": lo, "$lte": hi}
     if q:
-        s = str(q).strip()
+        s = re.escape(str(q).strip())
         if s:
             filt["$or"] = [
                 {"affiliate_code": {"$regex": s, "$options": "i"}},

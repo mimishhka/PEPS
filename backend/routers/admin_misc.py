@@ -28,8 +28,8 @@ async def admin_cancel_staff_invite(invite_id: str, admin: dict = Depends(s.get_
 
 
 @router.post("/staff/accept")
-async def staff_accept_invite(payload: s.StaffAcceptIn, response: Response):
-    return await s.staff_accept_invite(payload, response)
+async def staff_accept_invite(payload: s.StaffAcceptIn, response: Response, request: Request):
+    return await s.staff_accept_invite(payload, response, request)
 
 
 @router.put("/admin/staff/{user_id}/permissions")
