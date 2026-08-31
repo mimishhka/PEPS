@@ -3523,6 +3523,11 @@ async def checkout(payload: CheckoutIn, request: Request):
     # personnalisé, qui échoue derrière certains ingress) — l'en-tête reste
     # accepté pour rétro-compatibilité.
     raw_idem_key = ((getattr(payload, "idempotency_key", None) or request.headers.get("Idempotency-Key", ""))).strip()
+    if not raw_idem_key:
+        # M3 : clé d'idempotence obligatoire — sans elle, un double-clic sur
+        # « Payer » créerait deux commandes. Le front en envoie systématiquement
+        # une (générée à l'ouverture du checkout, réutilisée en cas de retry).
+        raise HTTPException(400, "Idempotency key is required")
     if len(raw_idem_key) > 200:
         raise HTTPException(400, "Idempotency key is too long")
     user = await _resolve_user(request)
@@ -6241,6 +6246,13 @@ async def admin_fulfillment_advance(order_id: str, payload: FulfillmentTransitio
         raise HTTPException(404, "Commande introuvable")
     if order.get("payment_status") != "paid":
         raise HTTPException(400, "La commande doit être payée avant préparation.")
+    # M5 : ce bouton AVANCE la préparation. Il ne doit pas permettre de revenir
+    # en arrière (une erreur de coche se corrige depuis la fiche commande, via
+    # le statut libre, pas ici). L'ordre des étapes physiques est strict.
+    _FULFILLMENT_ORDER = {"pending": 0, "preorder": 0, "processing": 1, "packing": 2, "packed": 3}
+    current = order.get("fulfillment_status") or "pending"
+    if _FULFILLMENT_ORDER.get(target, -1) < _FULFILLMENT_ORDER.get(current, -1):
+        raise HTTPException(400, "Impossible de revenir à une étape précédente depuis l'avancement.")
     await _advance_one(order, target, _admin.get("email", "system"))
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
