@@ -17,6 +17,11 @@ export default function OrderConfirmation() {
   const [order, setOrder] = useState(state?.order || null);
   const [copied, setCopied] = useState("");
   const [remainingMs, setRemainingMs] = useState(null);
+  const [msgs, setMsgs] = useState([]);
+  const [msgText, setMsgText] = useState("");
+  const [msgFile, setMsgFile] = useState(null);
+  const [msgBusy, setMsgBusy] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const fragmentToken = typeof window !== "undefined"
     ? new URLSearchParams(window.location.hash.replace(/^#/, "")).get("access_token") || ""
     : "";
@@ -91,12 +96,41 @@ export default function OrderConfirmation() {
     return () => clearInterval(iv);
   }, [order, guestToken]);
 
+  useEffect(() => {
+    if (!order?.id) return;
+    api.get(`/orders/${order.id}/messages`, guestRequestConfig(guestToken))
+      .then((r) => setMsgs(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setMsgs([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.id]);
+
   if (!order) return <div className="p-16 font-mono text-xs uppercase tracking-[0.25em]">{t("common.loading")}</div>;
 
   const copy = (text, label) => {
     navigator.clipboard.writeText(text);
     setCopied(label);
     setTimeout(() => setCopied(""), 1500);
+  };
+
+  const reloadMsgs = () => {
+    api.get(`/orders/${order.id}/messages`, guestRequestConfig(guestToken))
+      .then((r) => setMsgs(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setMsgs([]));
+  };
+
+  const sendMsg = async () => {
+    if (!msgText.trim() && !msgFile) return;
+    setMsgBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("text", msgText.trim());
+      if (msgFile) fd.append("file", msgFile);
+      await api.post(`/orders/${order.id}/messages`, fd, guestRequestConfig(guestToken));
+      setMsgText(""); setMsgFile(null);
+      reloadMsgs();
+    } catch (e) { /* non bloquant */ } finally {
+      setMsgBusy(false);
+    }
   };
 
   const awaitingPayment = ["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status);
@@ -297,6 +331,36 @@ export default function OrderConfirmation() {
         <div className="border-t-2 border-nordfjord mt-3 pt-3 flex justify-between font-display font-bold text-xl">
           <span>TOTAL</span><span data-testid="confirm-total">${order.total.toFixed(2)} CAD</span>
         </div>
+      </div>
+
+      <div className="mt-10 border border-nordfjord/20 rounded-xl overflow-hidden">
+        <button onClick={() => setShowChat((v) => !v)} className="w-full text-left px-6 py-4 font-mono text-xs uppercase tracking-[0.25em] text-foreground/70 hover:bg-clinical" data-testid="problem-toggle">
+          {lang === "fr" ? "Un problème avec votre commande ?" : "An issue with your order?"} <span className="float-right">{showChat ? "−" : "+"}</span>
+        </button>
+        {showChat && (
+          <div className="px-6 pb-6 space-y-3">
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {msgs.map((m) => (
+                <div key={m.id} className={`rounded-lg p-3 max-w-[85%] ${m.sender === "admin" ? "bg-nordfjord text-white ml-auto" : "bg-clinical"}`}>
+                  <div className="text-xs font-bold mb-1">{m.sender === "admin" ? "Support" : (lang === "fr" ? "Vous" : "You")}</div>
+                  {m.text && <div className="text-sm whitespace-pre-wrap">{m.text}</div>}
+                  {m.image_url && <img src={m.image_url} alt="pièce jointe" className="mt-2 max-h-48 rounded border" />}
+                  <div className="font-mono text-[10px] opacity-60 mt-1">{(m.created_at || "").slice(0, 16).replace("T", " ")}</div>
+                </div>
+              ))}
+              {!msgs.length && <div className="font-mono text-[10px] text-foreground/50">{lang === "fr" ? "Aucun message." : "No messages."}</div>}
+            </div>
+            <div className="flex gap-2 items-center">
+              <input value={msgText} onChange={(e) => setMsgText(e.target.value)} placeholder={lang === "fr" ? "Décrivez le problème…" : "Describe the issue…"} data-testid="customer-msg-input" className="flex-1 border border-nordfjord/30 rounded px-3 py-2 text-sm" />
+              <label className="border border-nordfjord/30 rounded px-3 py-2 text-sm cursor-pointer hover:bg-clinical" title={lang === "fr" ? "Joindre une photo" : "Attach a photo"}>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => setMsgFile(e.target.files?.[0] || null)} />
+                📎
+              </label>
+              <button onClick={sendMsg} disabled={msgBusy} data-testid="customer-msg-send" className="bg-nordfjord text-white rounded font-mono text-xs uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-50">{lang === "fr" ? "Envoyer" : "Send"}</button>
+            </div>
+            {msgFile && <div className="font-mono text-[10px] text-foreground/60">Pièce jointe : {msgFile.name}</div>}
+          </div>
+        )}
       </div>
 
       <div className="mt-10 flex gap-4">

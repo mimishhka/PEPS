@@ -28,7 +28,7 @@ import bcrypt
 import jwt
 import httpx
 import resend
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File, Body
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File, Form, Body
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
@@ -181,6 +181,10 @@ MAX_COA_UPLOAD_MB = float(os.environ.get("MAX_COA_UPLOAD_MB", "10"))
 IMAGE_UPLOAD_DIR = UPLOAD_DIR / "images"
 IMAGE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_IMAGE_UPLOAD_MB = float(os.environ.get("MAX_IMAGE_UPLOAD_MB", "5"))
+
+# Photos des échanges clients (messages de commande). Servies à /uploads/messages/<file>.
+MESSAGE_UPLOAD_DIR = UPLOAD_DIR / "messages"
+MESSAGE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 _IMAGE_FORMAT_EXT = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp", "GIF": "gif"}
 
@@ -327,6 +331,8 @@ app.mount("/uploads/coa", ImmutableStaticFiles(directory=str(COA_UPLOAD_DIR)), n
 app.mount("/uploads/images", ImmutableStaticFiles(directory=str(IMAGE_UPLOAD_DIR)), name="uploads-images")
 app.mount("/api/uploads/coa", ImmutableStaticFiles(directory=str(COA_UPLOAD_DIR)), name="uploads-api-coa")
 app.mount("/api/uploads/images", ImmutableStaticFiles(directory=str(IMAGE_UPLOAD_DIR)), name="uploads-api-images")
+app.mount("/uploads/messages", ImmutableStaticFiles(directory=str(MESSAGE_UPLOAD_DIR)), name="uploads-messages")
+app.mount("/api/uploads/messages", ImmutableStaticFiles(directory=str(MESSAGE_UPLOAD_DIR)), name="uploads-api-messages")
 
 
 # ---------------------------------------------------------------------------
@@ -2447,25 +2453,10 @@ async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(
     return {"url": rel_path, "original_filename": filename, "size_bytes": len(contents)}
 
 
-async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
-    """Uploads a product image (PNG, JPEG, WebP, GIF) and returns a URL to use in
-    the image_url field. Storage is local disk under UPLOAD_DIR/images, served
-    statically at /uploads/images/<file>."""
-    filename = file.filename or ""
-
-    contents = await file.read()
-    size_mb = len(contents) / (1024 * 1024)
-    if size_mb > MAX_IMAGE_UPLOAD_MB:
-        raise HTTPException(400, f"File too large — max {MAX_IMAGE_UPLOAD_MB:.0f} MB")
-
-    # Validation PAR LE CONTENU (magic bytes), pas par le Content-Type déclaré
-    # par le client : un Content-Type est triviable, un header de fichier ne l'est pas.
-    _IMAGE_FORMAT_EXT = {
-        "PNG": "png",
-        "JPEG": "jpg",
-        "WEBP": "webp",
-        "GIF": "gif",
-    }
+def _validate_and_save_image(contents: bytes, target_dir) -> str:
+    """Valide (magic bytes, pas le Content-Type) et enregistre une image.
+    Rend le nom de fichier sûr. Partagé entre les images produit et les photos
+    des échanges clients, pour ne pas dupliquer la logique de validation."""
     try:
         prev_max = PILImage.MAX_IMAGE_PIXELS
         PILImage.MAX_IMAGE_PIXELS = 50_000_000  # borne anti-decompression-bomb
@@ -2477,16 +2468,24 @@ async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depend
             PILImage.MAX_IMAGE_PIXELS = prev_max
     except Exception:
         raise HTTPException(400, "File is not a valid image")
-
     ext = _IMAGE_FORMAT_EXT.get(fmt)
     if not ext:
         raise HTTPException(400, "Only PNG, JPEG, WebP, and GIF images are allowed")
-
     safe_name = f"{uuid.uuid4().hex}.{ext}"
-    dest = IMAGE_UPLOAD_DIR / safe_name
-    with open(dest, "wb") as f:
+    with open(target_dir / safe_name, "wb") as f:
         f.write(contents)
+    return safe_name
 
+
+async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
+    """Uploads a product image (PNG, JPEG, WebP, GIF) and returns a URL to use in
+    the image_url field. Storage is local disk under UPLOAD_DIR/images, served
+    statically at /uploads/images/<file>."""
+    filename = file.filename or ""
+    contents = await file.read()
+    if len(contents) / (1024 * 1024) > MAX_IMAGE_UPLOAD_MB:
+        raise HTTPException(400, f"File too large — max {MAX_IMAGE_UPLOAD_MB:.0f} MB")
+    safe_name = _validate_and_save_image(contents, IMAGE_UPLOAD_DIR)
     rel_path = f"/api/uploads/images/{safe_name}"
     return {"url": rel_path, "original_filename": filename, "size_bytes": len(contents)}
 
@@ -3977,6 +3976,119 @@ async def admin_refund_case(order_id: str, payload: RefundRequestIn,
         raise HTTPException(400, ineligible)
     await _set_refund_requested(order_id, payload.reason.strip(), payload.amount_requested, payload.refund_type)
     return {"ok": True, "refund_status": "requested"}
+
+
+# --- Échanges client/commande (photo produit endommagé, coordination) ---
+
+async def _order_reader_allowed(order: dict, request: Request) -> bool:
+    """Qui peut lire/écrire le fil d'une commande : le propriétaire du compte, ou
+    l'invité porteur du jeton d'accès. Même règle d'accès que la commande."""
+    user = await _resolve_user(request)
+    if user and (order.get("user_id") == user.get("id") or user.get("role") in ("admin", "staff")):
+        return True
+    if order.get("user_id"):
+        return False
+    return _guest_order_accessible(order, request)
+
+
+async def _list_order_messages(order_id: str) -> list:
+    return await db.order_messages.find({"order_id": order_id}, {"_id": 0}).sort("created_at", 1).to_list(300)
+
+
+async def _post_order_message(order_id: str, sender: str, author: str, text: str,
+                              file: UploadFile | None) -> dict:
+    image_url = None
+    if file is not None and (file.filename or "").strip():
+        contents = await file.read()
+        if len(contents) / (1024 * 1024) > MAX_IMAGE_UPLOAD_MB:
+            raise HTTPException(400, f"File too large — max {MAX_IMAGE_UPLOAD_MB:.0f} MB")
+        safe_name = _validate_and_save_image(contents, MESSAGE_UPLOAD_DIR)
+        image_url = f"/api/uploads/messages/{safe_name}"
+    doc = {
+        "id": str(uuid.uuid4()),
+        "order_id": order_id,
+        "sender": sender,
+        "author": author,
+        "text": (text or "").strip(),
+        "image_url": image_url,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "read_by_admin": sender == "admin",
+        "read_by_customer": sender == "customer",
+    }
+    await db.order_messages.insert_one(doc)
+    return doc
+
+
+async def order_messages(order_id: str, request: Request):
+    """Le client (propriétaire ou invité) lit le fil de sa commande."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if not await _order_reader_allowed(order, request):
+        raise HTTPException(403, "Not authorized")
+    await db.order_messages.update_many(
+        {"order_id": order_id, "sender": "admin"},
+        {"$set": {"read_by_customer": True}},
+    )
+    return await _list_order_messages(order_id)
+
+
+async def order_post_message(order_id: str, request: Request,
+                             text: str = Form("", max_length=2000),
+                             file: UploadFile = File(None)):
+    """Le client envoie un message (et éventuellement une photo)."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if not await _order_reader_allowed(order, request):
+        raise HTTPException(403, "Not authorized")
+    text = (text or "").strip()
+    if not text and not (file is not None and (file.filename or "").strip()):
+        raise HTTPException(400, "Message vide")
+    doc = await _post_order_message(order_id, "customer", order.get("email") or "client", text, file)
+    try:
+        await _send_email(
+            os.environ.get("ADMIN_NOTIFICATION_EMAIL", ADMIN_EMAIL),
+            f"[FIRONOVA] Message client — {order.get('order_number')}",
+            f"<p>Nouveau message sur la commande <b>{order.get('order_number')}</b>.</p>"
+            f"<p>{text[:500]}</p><p>Voir /ops-portal-fn7k2q.</p>",
+        )
+    except Exception:
+        pass
+    return {"ok": True, "message": doc}
+
+
+async def admin_order_messages(order_id: str, _admin: dict = Depends(require_area("orders", "view"))):
+    if not await db.orders.find_one({"id": order_id}, {"_id": 1}):
+        raise HTTPException(404, "Order not found")
+    await db.order_messages.update_many(
+        {"order_id": order_id, "sender": "customer"},
+        {"$set": {"read_by_admin": True}},
+    )
+    return await _list_order_messages(order_id)
+
+
+async def admin_order_post_message(order_id: str, _admin: dict = Depends(require_area("orders", "manage")),
+                                   text: str = Form("", max_length=2000),
+                                   file: UploadFile = File(None)):
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    text = (text or "").strip()
+    if not text and not (file is not None and (file.filename or "").strip()):
+        raise HTTPException(400, "Message vide")
+    doc = await _post_order_message(order_id, "admin", _admin.get("email") or "support", text, file)
+    if order.get("email"):
+        try:
+            await _send_email(
+                order["email"],
+                "Réponse FIRONOVA sur votre commande",
+                f"<p>Un message a été ajouté à votre commande <b>{order.get('order_number')}</b>.</p>"
+                f"<p>{text[:500]}</p><p>Répondez depuis votre page de commande.</p>",
+            )
+        except Exception:
+            pass
+    return {"ok": True, "message": doc}
 
 
 async def order_request_refund(order_id: str, payload: RefundRequestIn, request: Request):
@@ -8250,6 +8362,7 @@ async def seed_admin_and_products():
     # File des remboursements (écran Refunds) : filtre par statut + tri par date
     # de demande, sans index chaque ouverture = COLLSCAN complet des commandes.
     await db.orders.create_index([("refund_status", 1), ("refund_requested_at", -1)])
+    await db.order_messages.create_index([("order_id", 1), ("created_at", 1)])
     # Filtrage admin par rôle (staff, affiliés, clients) — évite un scan complet users.
     await db.users.create_index("role")
     await db.coupons.create_index("code", unique=True)

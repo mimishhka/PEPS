@@ -448,6 +448,11 @@ function OrderDetail({ order, onClose, onUpdate }) {
 
   const [noteText, setNoteText] = useState("");
   const [noteVisible, setNoteVisible] = useState(false);
+  const [refundReason, setRefundReason] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [msgText, setMsgText] = useState("");
+  const [msgFile, setMsgFile] = useState(null);
+  const [msgBusy, setMsgBusy] = useState(false);
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -461,6 +466,42 @@ function OrderDetail({ order, onClose, onUpdate }) {
       toast.success("Payment confirmed — moved to Processing");
       onUpdate();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
+  };
+
+  const openRefundCase = async () => {
+    const motif = refundReason.trim();
+    if (!motif) return;
+    try {
+      await api.post(`/admin/orders/${order.id}/refund-case`, { reason: motif });
+      toast.success("Dossier ouvert — la commission affiliée est gelée");
+      setRefundReason("");
+      onUpdate();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+
+  const loadMessages = useCallback(() => {
+    api.get(`/admin/orders/${order.id}/messages`)
+      .then((r) => setMessages(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setMessages([]));
+  }, [order.id]);
+  useEffect(() => { loadMessages(); }, [loadMessages]);
+
+  const sendMessage = async () => {
+    if (!msgText.trim() && !msgFile) { toast.error("Message vide"); return; }
+    setMsgBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("text", msgText.trim());
+      if (msgFile) fd.append("file", msgFile);
+      await api.post(`/admin/orders/${order.id}/messages`, fd);
+      setMsgText(""); setMsgFile(null);
+      loadMessages();
+      toast.success("Message envoyé");
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setMsgBusy(false);
+    }
   };
 
   const updateStatus = async (field, value) => {
@@ -728,18 +769,64 @@ function OrderDetail({ order, onClose, onUpdate }) {
             </div>
           </div>
 
-          {/* Remboursement — géré depuis l'écran Refunds (un seul endroit, avec
-              la file de dossiers et le SLA). Ici, lecture seule de l'état. */}
-          {order.refund_status && (
-            <div className="bg-white border border-ink/10 p-4">
-              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-2">Remboursement</div>
+          {/* Remboursement — décision et règlement dans l'écran Refunds. Ici :
+              ouvrir un dossier (gèle la commission) ou lire l'état. */}
+          <div className="bg-white border border-ink/10 p-4">
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-2">Remboursement</div>
+            {order.refund_status ? (
               <div className="font-mono text-[11px] text-foreground/70" data-testid="refund-case-state">
                 Dossier : {order.refund_status}
                 {order.refund_reason ? ` — ${order.refund_reason}` : ""}
                 {order.refunded_amount > 0 ? ` · Remboursé : $${order.refunded_amount.toFixed(2)}` : ""}
               </div>
+            ) : (
+              <div className="flex items-center gap-3 flex-wrap">
+                <input
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  placeholder="Motif (erreur / dommage — sous 48 h)"
+                  data-testid="refund-case-reason"
+                  className="border border-ink/20 px-3 py-2 text-sm flex-1 min-w-[16rem]"
+                />
+                <button onClick={openRefundCase} disabled={!refundReason.trim()}
+                  data-testid="open-refund-case-btn"
+                  className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:border-nova hover:text-nova disabled:opacity-40 disabled:cursor-not-allowed">
+                  Ouvrir un dossier
+                </button>
+                <span className="font-mono text-[10px] text-foreground/50">gèle la commission affiliée</span>
+              </div>
+            )}
+          </div>
+
+          {/* Conversation client — photo produit endommagé, coordination d'un
+              remplacement. Le fil est la source de vérité, pas la boîte mail. */}
+          <div className="bg-white border border-ink/10 p-4">
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3 flex items-center gap-2"><MessageSquarePlus size={12} /> Conversation</div>
+            <div className="space-y-2 mb-3 max-h-64 overflow-y-auto">
+              {messages.map((m) => (
+                <div key={m.id} className={`rounded-lg p-3 max-w-[85%] ${m.sender === "admin" ? "bg-ink text-white ml-auto" : "bg-secondary/60"}`}>
+                  <div className="text-xs font-bold mb-1">{m.sender === "admin" ? "Support" : "Client"}</div>
+                  {m.text && <div className="text-sm whitespace-pre-wrap">{m.text}</div>}
+                  {m.image_url && (
+                    <a href={`${API_BASE.replace(/\/api$/, "")}${m.image_url}`} target="_blank" rel="noopener noreferrer">
+                      <img src={`${API_BASE.replace(/\/api$/, "")}${m.image_url}`} alt="pièce jointe" className="mt-2 max-h-48 rounded border border-ink/10 bg-white" />
+                    </a>
+                  )}
+                  <div className="font-mono text-[10px] opacity-60 mt-1">{(m.created_at || "").slice(0, 16).replace("T", " ")}</div>
+                </div>
+              ))}
+              {!messages.length && <div className="font-mono text-[10px] text-foreground/50">Aucun message.</div>}
             </div>
-          )}
+            <div className="flex gap-2 items-center">
+              <input value={msgText} onChange={(e) => setMsgText(e.target.value)} placeholder="Répondre au client…" data-testid="msg-input" className="flex-1 border border-ink/20 px-3 py-2 text-sm" />
+              <label className="border border-ink/20 px-3 py-2 text-sm cursor-pointer hover:bg-ink/5" title="Joindre une photo">
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => setMsgFile(e.target.files?.[0] || null)} />
+                📎
+              </label>
+              <button onClick={sendMessage} disabled={msgBusy} data-testid="msg-send" className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-50">Envoyer</button>
+            </div>
+            {msgFile && <div className="font-mono text-[10px] text-foreground/50 mt-1">Pièce jointe : {msgFile.name}</div>}
+          </div>
 
           {/* Notes */}
           <div className="bg-white border border-ink/10 p-4">

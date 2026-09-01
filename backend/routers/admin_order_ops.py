@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile, Form
 
 import server as s
 
@@ -43,6 +43,18 @@ async def admin_create_label(order_id: str, payload: s.CreateLabelIn, _admin: di
 @router.post("/admin/orders/{order_id}/void-label")
 async def admin_void_label(order_id: str, _admin: dict = Depends(s.require_area("orders", "manage"))):
     return await s.admin_void_label(order_id, _admin)
+
+
+@router.get("/admin/orders/{order_id}/messages")
+async def admin_order_messages(order_id: str, _admin: dict = Depends(s.require_area("orders", "view"))):
+    return await s.admin_order_messages(order_id, _admin)
+
+
+@router.post("/admin/orders/{order_id}/messages")
+async def admin_order_post_message(order_id: str, _admin: dict = Depends(s.require_area("orders", "manage")),
+                                   text: str = Form("", max_length=2000),
+                                   file: UploadFile = File(None)):
+    return await s.admin_order_post_message(order_id, _admin, text, file)
 
 @router.post("/admin/shipping/void-untransmitted")
 async def admin_void_untransmitted_labels(_admin: dict = Depends(s.require_area("orders", "manage"))):
