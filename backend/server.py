@@ -4016,6 +4016,8 @@ async def _post_order_message(order_id: str, sender: str, author: str, text: str
         "read_by_customer": sender == "customer",
     }
     await db.order_messages.insert_one(doc)
+    if sender == "customer":
+        await db.orders.update_one({"id": order_id}, {"$set": {"has_unread_customer_message": True}})
     return doc
 
 
@@ -4065,6 +4067,7 @@ async def admin_order_messages(order_id: str, _admin: dict = Depends(require_are
         {"order_id": order_id, "sender": "customer"},
         {"$set": {"read_by_admin": True}},
     )
+    await db.orders.update_one({"id": order_id}, {"$set": {"has_unread_customer_message": False}})
     return await _list_order_messages(order_id)
 
 
@@ -9106,6 +9109,37 @@ async def startup_event():
     _WORKER_LOCK_TASK = asyncio.create_task(_worker_lock_supervisor())
 
 
+async def _cleanup_orphan_message_images_once() -> int:
+    """Supprime les photos de messages non référencées (échec d'insertion, etc.)."""
+    referenced = set()
+    async for m in db.order_messages.find({"image_url": {"$ne": None}}, {"_id": 0, "image_url": 1}):
+        fn = (m.get("image_url") or "").rstrip("/").split("/")[-1]
+        if fn:
+            referenced.add(fn)
+    deleted = 0
+    if MESSAGE_UPLOAD_DIR.exists():
+        for f in MESSAGE_UPLOAD_DIR.iterdir():
+            if f.is_file() and f.name not in referenced:
+                try:
+                    f.unlink()
+                    deleted += 1
+                except Exception:
+                    pass
+    if deleted:
+        logging.info("[messages] purged %d orphan images", deleted)
+    return deleted
+
+
+async def _message_images_cleanup_watchdog() -> None:
+    """Purge quotidienne des photos orphelines des échanges clients."""
+    while True:
+        try:
+            await _cleanup_orphan_message_images_once()
+        except Exception as e:
+            logging.error("[messages] cleanup error: %s", e)
+        await asyncio.sleep(24 * 3600)
+
+
 async def _start_background_workers() -> None:
     """Lance les tâches de fond. Appelé une seule fois, verrou en main."""
     asyncio.create_task(_unpaid_orders_watchdog())
@@ -9125,6 +9159,7 @@ async def _start_background_workers() -> None:
     asyncio.create_task(_affiliate_email_worker())
     asyncio.create_task(_email_outbox_worker())
     asyncio.create_task(_email_outbox_janitor())
+    asyncio.create_task(_message_images_cleanup_watchdog())
 
 
 async def _worker_lock_supervisor() -> None:

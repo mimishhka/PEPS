@@ -298,6 +298,14 @@ export default function AdminOrders() {
                       Late payment
                     </span>
                   )}
+                  {o.has_unread_customer_message && (
+                    <span
+                      className="inline-flex mt-1 items-center rounded-full border border-nova bg-nova/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-nova"
+                      data-testid={`unread-message-badge-${o.order_number}`}
+                    >
+                      Message
+                    </span>
+                  )}
                   <div className="font-mono text-[10px] text-foreground/50">{(o.created_at || "").slice(0, 10)}</div>
                   {o.dispatch_batch && (
                     <div className="font-mono text-[10px] text-glacier" data-testid={`dispatch-batch-${o.order_number}`}>
