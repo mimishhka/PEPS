@@ -7128,10 +7128,14 @@ async def admin_delete_coupon(coupon_id: str, admin: dict = Depends(require_area
 
 async def validate_coupon(code: str, subtotal: float,
                           email: Optional[str] = None,
-                          items: Optional[str] = None):
+                          items: Optional[str] = None,
+                          request: Request = None):
     """Validation cote client. email et items (JSON) sont OPTIONNELS : sans eux,
     seules les regles de base sont verifiees (retrocompatible avec l'appel actuel).
     La validation finale complete est toujours faite au checkout."""
+    if request is not None:
+        await _rate_limit("coupon_validate", _client_ip(request), 30, 300,
+                           "Trop de vérifications. Réessayez plus tard.")
     coupon = await db.coupons.find_one({"code": code.upper().strip()}, {"_id": 0})
     line_items = None
     if items:

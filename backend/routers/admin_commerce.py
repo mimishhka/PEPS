@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 import server as s
 
@@ -77,8 +77,8 @@ async def admin_delete_coupon(coupon_id: str, admin: dict = Depends(s.require_ar
 
 
 @router.post("/coupons/validate")
-async def validate_coupon(code: str, subtotal: float, email: Optional[str] = None, items: Optional[str] = None):
-    return await s.validate_coupon(code, subtotal, email, items)
+async def validate_coupon(code: str, subtotal: float, email: Optional[str] = None, items: Optional[str] = None, request: Request = None):
+    return await s.validate_coupon(code, subtotal, email, items, request)
 
 
 @router.get("/admin/shipping/zones")
