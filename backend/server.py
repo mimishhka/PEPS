@@ -859,6 +859,14 @@ class GuestOrderAccessIn(BaseModel):
 _SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 
 
+def _validate_slug(v: str) -> str:
+    """Validation de slug partagée (catégories, menus) — était dupliquée."""
+    v = v.strip().lower()
+    if not _SLUG_RE.match(v):
+        raise ValueError("slug must match ^[a-z0-9-]+$")
+    return v
+
+
 class CategoryIn(BaseModel):
     slug: str = Field(min_length=1, max_length=60)
     name_en: str = Field(min_length=1, max_length=120)
@@ -869,10 +877,7 @@ class CategoryIn(BaseModel):
     @field_validator("slug")
     @classmethod
     def _check_slug(cls, v: str) -> str:
-        v = v.strip().lower()
-        if not _SLUG_RE.match(v):
-            raise ValueError("slug must match ^[a-z0-9-]+$")
-        return v
+        return _validate_slug(v)
 
 
 class CategoryOut(CategoryIn):
@@ -903,10 +908,7 @@ class MenuIn(BaseModel):
     @field_validator("slug")
     @classmethod
     def _check_slug(cls, v: str) -> str:
-        v = v.strip().lower()
-        if not _SLUG_RE.match(v):
-            raise ValueError("slug must match ^[a-z0-9-]+$")
-        return v
+        return _validate_slug(v)
 
 
 class MenuOut(MenuIn):

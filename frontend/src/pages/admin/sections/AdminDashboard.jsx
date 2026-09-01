@@ -25,6 +25,16 @@ export default function AdminDashboard() {
   const [analyticsError, setAnalyticsError] = useState(false);
   const [pulse, setPulse] = useState(null);
   const [affiliate, setAffiliate] = useState(null);
+  // Alerte seuil de taxe : fermable, et ré-affichée seulement si le NIVEAU
+  // change (ex. « approche » → « dépassé »), pas à chaque visite.
+  const [dismissedTaxLevel, setDismissedTaxLevel] = useState(() => {
+    try { return localStorage.getItem("fironova_tax_alert_dismissed") || ""; } catch { return ""; }
+  });
+  const dismissTaxAlert = () => {
+    const lvl = enhanced?.tax_threshold?.level || "";
+    try { localStorage.setItem("fironova_tax_alert_dismissed", lvl); } catch { /* ignore */ }
+    setDismissedTaxLevel(lvl);
+  };
 
   useEffect(() => {
     let active = true;
@@ -161,12 +171,12 @@ export default function AdminDashboard() {
       )}
 
       {/* Alerte seuil de taxe (30k CAD sur 12 mois glissants) */}
-      {enhanced?.tax_threshold && enhanced.tax_threshold.level !== "ok" && (
+      {enhanced?.tax_threshold && enhanced.tax_threshold.level !== "ok" && dismissedTaxLevel !== enhanced.tax_threshold.level && (
         <div className={`mb-6 rounded-xl border p-4 flex items-start gap-3 ${
           enhanced.tax_threshold.level === "exceeded"
             ? "border-error/40 bg-error/5" : "border-warning/40 bg-warning/5"}`} data-testid="tax-alert">
           <AlertTriangle size={18} className={enhanced.tax_threshold.level === "exceeded" ? "text-error mt-0.5" : "text-warning mt-0.5"} />
-          <div>
+          <div className="min-w-0">
             <p className="font-medium text-sm text-nordfjord">
               {enhanced.tax_threshold.level === "exceeded"
                 ? L("Seuil de taxe dépassé", "Tax threshold exceeded")
@@ -182,6 +192,8 @@ export default function AdminDashboard() {
                     ` ${enhanced.tax_threshold.remaining.toLocaleString("en-CA")} $ remaining before the $30,000 threshold. Prepare your GST/QST registration.`)}
             </p>
           </div>
+          <button onClick={dismissTaxAlert} aria-label={L("Fermer", "Dismiss")} data-testid="tax-alert-dismiss"
+            className="ml-auto text-glacier hover:text-nordfjord text-lg leading-none">×</button>
         </div>
       )}
 
