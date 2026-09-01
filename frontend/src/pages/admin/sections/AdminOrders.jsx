@@ -306,6 +306,14 @@ export default function AdminOrders() {
                       Message
                     </span>
                   )}
+                  {o.replaces_order_id && (
+                    <span
+                      className="inline-flex mt-1 items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-amber-700"
+                      data-testid={`replacement-badge-${o.order_number}`}
+                    >
+                      Remplacement
+                    </span>
+                  )}
                   <div className="font-mono text-[10px] text-foreground/50">{(o.created_at || "").slice(0, 10)}</div>
                   {o.dispatch_batch && (
                     <div className="font-mono text-[10px] text-glacier" data-testid={`dispatch-batch-${o.order_number}`}>

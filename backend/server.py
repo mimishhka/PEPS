@@ -4179,6 +4179,69 @@ async def admin_refund_decision(order_id: str, payload: RefundDecisionIn, admin:
     return {"ok": True, "refund_status": "approved", "approved_amount": amount, "approved_type": approved_type}
 
 
+async def _create_replacement_order(original: dict) -> dict:
+    """Crée une commande de remplacement (0 $, déjà réglée) qui repasse par
+    Dispatch pour être étiquetée et expédiée. Décrémente le stock du produit
+    remplacé — le produit de remplacement sort réellement de l'inventaire."""
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    repl_id = str(uuid.uuid4())
+    items = []
+    for it in original.get("items") or []:
+        items.append({
+            "product_id": it.get("product_id"),
+            "variant_id": it.get("variant_id"),
+            "variant_name": it.get("variant_name", ""),
+            "slug": it.get("slug", ""),
+            "sku": it.get("sku", ""),
+            "name_en": it.get("name_en", ""),
+            "name_fr": it.get("name_fr", ""),
+            "category": it.get("category", ""),
+            "price_cad": it.get("price_cad", 0),
+            "qty": it.get("qty", 1),
+            "line_total": 0.0,
+            "image_url": it.get("image_url", ""),
+            "preorder": False,
+            "weight_grams": float(it.get("weight_grams") or 50.0),
+        })
+    if not items:
+        raise HTTPException(400, "Aucun article à remplacer sur la commande")
+    await _reserve_stock_atomic(items)
+    repl = {
+        "id": repl_id,
+        "order_number": f"{original.get('order_number')}-R",
+        "user_id": original.get("user_id"),
+        "email": original.get("email"),
+        "items": items,
+        "subtotal": 0.0,
+        "discount": 0.0,
+        "tax": 0.0,
+        "shipping": 0.0,
+        "total": 0.0,
+        "currency": "CAD",
+        "shipping_address": original.get("shipping_address"),
+        "shipping_info": {"carrier": "", "tracking_number": "", "shipped_at": None},
+        "payment_method": original.get("payment_method"),
+        "payment_status": "paid",
+        "payment_info": {"type": "replacement", "replaces_order_id": original.get("id")},
+        "fulfillment_status": "processing",
+        "has_preorder": False,
+        "notes": [{
+            "id": str(uuid.uuid4()),
+            "text": f"Remplacement de {original.get('order_number')}",
+            "author": "system",
+            "created_at": now_iso,
+        }],
+        "replaces_order_id": original.get("id"),
+        "created_at": now_iso,
+        "paid_at": now_iso,
+        "dispatch_batch": compute_dispatch_batch(now),
+        "compliance": original.get("compliance"),
+    }
+    await db.orders.insert_one(repl)
+    return repl
+
+
 async def admin_refund_processed(order_id: str, payload: RefundProcessedIn, admin: dict):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
@@ -4189,26 +4252,34 @@ async def admin_refund_processed(order_id: str, payload: RefundProcessedIn, admi
     if order.get("refund_approved_type") == "replace":
         # Résolution par REMPLACEMENT : pas de règlement monétaire, pas de
         # reverse de commission (la vente aboutit via le produit remplacé). On
-        # clôt le dossier et on trace le remplacement.
+        # crée une commande de remplacement (0 $, déjà réglée) qui repasse par
+        # Dispatch, puis on clôt le dossier.
         now_iso = datetime.now(timezone.utc).isoformat()
+        try:
+            replacement = await _create_replacement_order(order)
+        except HTTPException as e:
+            raise HTTPException(409, f"Remplacement impossible ({e.detail}) — dossier inchangé.") from e
         await db.orders.update_one({"id": order_id}, {"$set": {
             "refund_status": "processed", "refund_processed_at": now_iso,
             "refund_tx_reference": payload.tx_reference.strip(),
             "refund_processed_by": admin.get("email"),
             "refund_admin_note_processed": payload.admin_note or "",
             "refund_method": payload.refund_method,
+            "replacement_order_id": replacement["id"],
         }, "$push": {"notes": {
-            "text": f"Résolution par remplacement — {payload.admin_note or 'produit de remplacement à expédier'}",
+            "text": f"Résolution par remplacement — commande {replacement['order_number']} créée.",
             "admin_email": admin.get("email"),
             "visible_to_customer": False,
             "ts": now_iso,
         }}})
         try:
             await _send_email(order.get("email", ""), "Votre remplacement FIRONOVA",
-                f"<p>Un produit de remplacement pour <b>{order.get('order_number')}</b> est en préparation.</p>")
+                f"<p>Un produit de remplacement pour <b>{order.get('order_number')}</b> est en préparation"
+                f" (n° {replacement['order_number']}).</p>")
         except Exception:
             pass
-        return {"ok": True, "refund_status": "processed", "resolution": "replace"}
+        return {"ok": True, "refund_status": "processed", "resolution": "replace",
+                "replacement_order_id": replacement["id"]}
 
     # RÈGLEMENT COMPTABLE — il manquait entièrement.
     #
