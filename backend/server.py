@@ -12354,7 +12354,7 @@ async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMark
 
 async def _next_payout_run_number(year: int) -> str:
     """Remonte le compteur atomique de l'année et rend NP-YYYY-XXXX."""
-    counters = db["counters"]
+    counters = db.counters
     doc = await counters.find_one_and_update(
         {"_id": "payout_run", "year": year},
         {"$inc": {"seq": 1}},
@@ -12366,47 +12366,56 @@ async def _next_payout_run_number(year: int) -> str:
 
 
 async def _create_payout_run(run_type: str, payout_ids, meta: dict = None):
-    """Insère un run de paiement et pose run_id / run_type sur ses payouts."""
+    """Insère un run de paiement et pose run_id / run_type sur ses payouts.
+
+    Effet de bord NON bloquant : si l'enregistrement du run échoue (collection
+    absente, doublon, doublure de test partielle…), le paiement continue — on
+    log et on rend None. Le run est une traçabilité, pas une condition du
+    versement."""
     if not payout_ids:
         return None
-    ids = [str(i) for i in payout_ids]
-    now = datetime.now(timezone.utc).isoformat()
-    year = datetime.now(timezone.utc).year
-    run_id = await _next_payout_run_number(year)
-    resolved = []
-    total_cad = 0.0
-    async for p in db.affiliate_payouts.find({"id": {"$in": ids}},
-                                             {"_id": 0, "id": 1, "amount_cad": 1,
-                                              "affiliate_code": 1, "status": 1}):
-        resolved.append({
-            "payout_id": p["id"],
-            "affiliate_code": p.get("affiliate_code"),
-            "amount_cad": p.get("amount_cad"),
-            "status": p.get("status"),
-        })
-        total_cad += float(p.get("amount_cad") or 0.0)
-    # Pose l'identifiant traçable sur chaque payout du run.
-    await db.affiliate_payouts.update_many(
-        {"id": {"$in": ids}},
-        {"$set": {"run_id": run_id, "run_type": run_type}},
-    )
-    doc = {
-        "run_id": run_id,
-        "nr": run_id,
-        "year": year,
-        "type": run_type,
-        "status": (meta or {}).get("status", "created"),
-        "np_batch_id": (meta or {}).get("np_batch_id"),
-        "payouts": [r["payout_id"] for r in resolved],
-        "affiliates": [r["affiliate_code"] for r in resolved if r["affiliate_code"]],
-        "count": len(resolved),
-        "total_cad": round(total_cad, 2),
-        "created_at": now,
-        "by": (meta or {}).get("by"),
-        "note": (meta or {}).get("note"),
-    }
-    await db["affiliate_payment_runs"].insert_one(doc)
-    return doc
+    try:
+        ids = [str(i) for i in payout_ids]
+        now = datetime.now(timezone.utc).isoformat()
+        year = datetime.now(timezone.utc).year
+        run_id = await _next_payout_run_number(year)
+        resolved = []
+        total_cad = 0.0
+        async for p in db.affiliate_payouts.find({"id": {"$in": ids}},
+                                                 {"_id": 0, "id": 1, "amount_cad": 1,
+                                                  "affiliate_code": 1, "status": 1}):
+            resolved.append({
+                "payout_id": p["id"],
+                "affiliate_code": p.get("affiliate_code"),
+                "amount_cad": p.get("amount_cad"),
+                "status": p.get("status"),
+            })
+            total_cad += float(p.get("amount_cad") or 0.0)
+        # Pose l'identifiant traçable sur chaque payout du run.
+        await db.affiliate_payouts.update_many(
+            {"id": {"$in": ids}},
+            {"$set": {"run_id": run_id, "run_type": run_type}},
+        )
+        doc = {
+            "run_id": run_id,
+            "nr": run_id,
+            "year": year,
+            "type": run_type,
+            "status": (meta or {}).get("status", "created"),
+            "np_batch_id": (meta or {}).get("np_batch_id"),
+            "payouts": [r["payout_id"] for r in resolved],
+            "affiliates": [r["affiliate_code"] for r in resolved if r["affiliate_code"]],
+            "count": len(resolved),
+            "total_cad": round(total_cad, 2),
+            "created_at": now,
+            "by": (meta or {}).get("by"),
+            "note": (meta or {}).get("note"),
+        }
+        await db.affiliate_payment_runs.insert_one(doc)
+        return doc
+    except Exception as e:  # pragma: no cover
+        logging.warning("[payout] run de paiement non enregistré: %s", type(e).__name__)
+        return None
 
 
 async def admin_affiliate_payment_runs(admin: dict = Depends(get_admin_user),  # noqa: F821
@@ -12415,7 +12424,7 @@ async def admin_affiliate_payment_runs(admin: dict = Depends(get_admin_user),  #
     pour chacun le numéro NP, le type, la date, le nombre de payouts et les
     totaux CAD — la vue que fournit les « runs de paiement » côté admin."""
     limit = min(max(1, int(limit)), 200)
-    rows = await db["affiliate_payment_runs"].find(
+    rows = await db.affiliate_payment_runs.find(
         {}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     return {"runs": rows}
 

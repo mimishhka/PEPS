@@ -1641,9 +1641,9 @@ async def affiliate_ensure_indexes():
     # Runs de paiement (NP-…) : le tri de l'historique admin et l'unicité du
     # numéro. run_id vient d'un compteur atomique, donc unique est sûr ; on
     # défend quand même le démarrage en cas de doublons hérités.
-    await s.db["affiliate_payment_runs"].create_index([("created_at", -1)])
+    await s.db.affiliate_payment_runs.create_index([("created_at", -1)])
     try:
-        await s.db["affiliate_payment_runs"].create_index("run_id", unique=True)
+        await s.db.affiliate_payment_runs.create_index("run_id", unique=True)
     except Exception as e:  # pragma: no cover
         logging.warning("[affiliate] index unique run_id non créé : %s", e)
 
