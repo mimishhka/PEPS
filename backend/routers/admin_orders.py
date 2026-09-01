@@ -49,6 +49,11 @@ async def admin_dispatch_batch(date: Optional[str] = None, _admin: dict = Depend
     return await s.admin_dispatch_batch(date, _admin)
 
 
+@router.get("/admin/orders/{order_id}")
+async def admin_order_detail(order_id: str, _admin: dict = Depends(s.require_area("orders", "view"))):
+    return await s.admin_order_detail(order_id, _admin)
+
+
 @router.put("/admin/orders/{order_id}/status")
 async def admin_update_order(
     order_id: str,

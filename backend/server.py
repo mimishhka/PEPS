@@ -1119,7 +1119,7 @@ async def _rate_limit(bucket: str, key: str, max_hits: int, window_seconds: int,
 
 
 async def _rate_limit_email(bucket: str, email: str, max_hits: int, window_seconds: int, detail: str):
-    await _rate_limit(bucket, f"email:{email.lower().strip()}", max_hits, window_seconds, detail)
+    await _rate_limit(bucket, f"email:{_private_ref(email.lower().strip())}", max_hits, window_seconds, detail)
 
 
 async def _cursor_all(cursor) -> list:
@@ -1687,6 +1687,8 @@ async def forgot_password(payload: ForgotPasswordIn, request: Request):
 
 
 async def reset_password(payload: ResetPasswordIn, response: Response, request: Request):
+    await _rate_limit("reset_verify", _client_ip(request), 10, 900,
+                       "Trop de tentatives. Réessayez plus tard.")
     token_hash = _hash_magic_token(payload.token.strip())
     rec = await db.magic_tokens.find_one({"token_hash": token_hash, "purpose": "reset"})
     if not rec:
@@ -3102,6 +3104,12 @@ async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Op
     if not res.modified_count:
         return None  # déjà payée : un autre chemin a gagné la course
 
+    # Ledger de paiement : la transaction passe de « awaiting » à « paid » pour
+    # refléter le règlement effectif — elle n'était jamais mise à jour.
+    await db.payment_transactions.update_one(
+        {"order_id": order_id}, {"$set": {"status": "paid", "paid_at": paid_at}},
+    )
+
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         return None
@@ -3580,7 +3588,7 @@ async def checkout(payload: CheckoutIn, request: Request):
     order_id = str(uuid.uuid4())
     # Numérotation Fironova : FN-AAMMJJ-XXXXXX (l'ancien préfixe NP- venait
     # de NORDPEP ; les commandes existantes gardent leur numéro).
-    order_number = f"FN-{datetime.now(timezone.utc).strftime('%y%m%d')}-{order_id[:6].upper()}"
+    order_number = f"FN-{datetime.now(timezone.utc).strftime('%y%m%d')}-{order_id[:8].upper()}"
 
     # Réservation atomique AVANT tout appel réseau au PSP. Ferme la fenêtre
     # check-then-act qui laissait deux clients acheter le même dernier flacon.
@@ -4475,6 +4483,15 @@ async def admin_orders(status_group: Optional[str] = None, _admin: dict = Depend
     filt = _status_group_filter(status_group)
     filt["deleted_at"] = None
     return await db.orders.find(filt, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+async def admin_order_detail(order_id: str, _admin: dict = Depends(require_area("orders", "view"))):
+    """Une commande seule — évite au front de recharger la liste (plafonnée à
+    500) puis de retrouver la commande par un find client fragile."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    return order
 
 
 async def admin_orders_page(
@@ -8421,6 +8438,12 @@ async def seed_admin_and_products():
     await db.products.create_index([("active", 1), ("category", 1)])
     await db.products.create_index([("active", 1), ("featured", 1)])
     await db.orders.create_index("order_number")
+    # Unicité du numéro de commande (référence Interac). Best-effort : des
+    # doublons hérités feraient échouer la création — on log au lieu de planter.
+    try:
+        await db.orders.create_index("order_number", unique=True, name="order_number_1_unique")
+    except Exception as e:  # pragma: no cover
+        logging.warning("[orders] index unique order_number non créé (doublons ?) : %s", e)
     await db.orders.create_index("user_id")
     await db.orders.create_index("id", unique=True)
     # Écrans admin & watchdog : sans ces index, chaque poll = COLLSCAN complet.
@@ -10495,6 +10518,12 @@ async def affiliate_top_products(request: Request, limit: int = 5):
     }
 
 
+def _top_clicks(d, n=8):
+    """Top N des sources de clics — hoisté car défini deux fois à l'identique."""
+    return [{"source": k, "clicks": v}
+            for k, v in sorted(d.items(), key=lambda kv: kv[1], reverse=True)[:n]]
+
+
 async def affiliate_clicks(request: Request, days: int = 30):
     aff = await get_current_affiliate(request)
     days = max(7, min(int(days), 90))
@@ -10551,15 +10580,11 @@ async def affiliate_clicks_sources(request: Request, days: int = 30):
         dev = str(c.get("device") or "").strip() or "unknown"
         devices[dev] = devices.get(dev, 0) + 1
 
-    def _top(d, n=8):
-        return [{"source": k, "clicks": v}
-                for k, v in sorted(d.items(), key=lambda kv: kv[1], reverse=True)[:n]]
-
     return {
         "days": days,
         "total_clicks": total,
-        "top_pages": _top(pages),
-        "top_referrers": _top(refs),
+        "top_pages": _top_clicks(pages),
+        "top_referrers": _top_clicks(refs),
         "devices": devices,
     }
 
@@ -11379,10 +11404,6 @@ async def admin_affiliates_clicks(admin: dict = Depends(get_admin_user),  # noqa
         d = (start_date + timedelta(days=i)).isoformat()
         series.append({"date": d, "clicks": trend.get(d, 0)})
 
-    def _top(d, n=8):
-        return [{"source": k, "clicks": v}
-                for k, v in sorted(d.items(), key=lambda kv: kv[1], reverse=True)[:n]]
-
     # Conversions validées sur la même fenêtre (approved|paid)
     conversions_30d = 0
     rcursor = db.affiliate_referrals.find(
@@ -11402,8 +11423,8 @@ async def admin_affiliates_clicks(admin: dict = Depends(get_admin_user),  # noqa
         "conversions_30d": conversions_30d,
         "active_affiliates": len(per_aff),
         "trend": series,
-        "top_pages": _top(pages),
-        "top_referrers": _top(refs),
+        "top_pages": _top_clicks(pages),
+        "top_referrers": _top_clicks(refs),
         "devices": devices,
         "top_affiliates": top_affiliates,
     }

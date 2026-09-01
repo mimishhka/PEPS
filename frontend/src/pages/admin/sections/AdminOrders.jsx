@@ -372,8 +372,8 @@ export default function AdminOrders() {
 
       {selected && <OrderDetail order={selected} onClose={closeDetail} onUpdate={() => {
         load();
-        api.get(`/admin/orders`)
-          .then((r) => setSelected(r.data.find((x) => x.id === selected.id) || null))
+        api.get(`/admin/orders/${selected.id}`)
+          .then((r) => setSelected(r.data))
           .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message));
       }} />}
     </div>

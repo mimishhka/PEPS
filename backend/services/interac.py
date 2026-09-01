@@ -113,7 +113,7 @@ def _strip_html(html: str) -> str:
 
 def _extract_interac_refs(text: str) -> list:
     """Références de commande 'FN-XXXXXX-XXXXXX' trouvées dans un texte (dédupliquées)."""
-    return sorted({r.upper() for r in re.findall(r"FN-\d{6}-[0-9A-F]{6}", text.upper())})
+    return sorted({r.upper() for r in re.findall(r"FN-\d{6}-[0-9A-F]{6,8}", text.upper())})
 
 
 def _parse_amounts(text: str) -> list:
@@ -204,8 +204,11 @@ async def _process_interac_deposit_emails() -> int:
                     "author": "system",
                     "created_at": datetime.now(timezone.utc).isoformat(),
                 }}})
+                # Montant divergent : MIS EN FILE pour réconciliation (et non
+                # seulement noté) — sinon le dépôt resterait invisible hors de la
+                # note de cette seule commande, et l'email serait marqué lu à tort.
+                acted = await _queue_interac_reconciliation_item(msg, text, reason="amount_mismatch")
                 logging.warning("Interac deposit: montant divergent pour %s — revue manuelle", ref)
-                acted = True
                 break
             fresh = await s._mark_order_paid(
                 order["id"],
