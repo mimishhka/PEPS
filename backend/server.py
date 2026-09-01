@@ -6418,7 +6418,11 @@ async def admin_fulfillment_day(date: Optional[str] = None,
     day_local_end = day_local_start + timedelta(days=1)
     day_start_utc = day_local_start.astimezone(timezone.utc).isoformat()
     day_end_utc = day_local_end.astimezone(timezone.utc).isoformat()
-    orders = db.orders.find(
+    # `await` INDISPENSABLE : avec Motor, .to_list() renvoie une coroutine.
+    # Sans lui, `orders` n'est pas une liste de commandes et la boucle plus bas
+    # leve « '_asyncio.Future' object has no attribute 'get' » — l'ecran
+    # Preparation repondait 500 a chaque ouverture.
+    orders = await db.orders.find(
         {
             "payment_status": "paid",
             "$or": [
