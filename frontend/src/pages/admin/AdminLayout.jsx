@@ -149,19 +149,19 @@ export default function AdminLayout({ basePath = "/admin" }) {
   const landingPath = navGroups[0]?.items[0]?.to || basePath;
 
   return (
-    <div className="min-h-screen bg-[#f7f7f7] -mt-px" data-testid="admin-shell">
+    <div className="min-h-screen bg-clinical" data-testid="admin-shell">
       <div className="flex">
-        <aside className="w-60 bg-white border-r border-ink/10 min-h-screen sticky top-0 hidden lg:flex flex-col" data-testid="admin-sidebar">
-          <div className="px-6 py-6 border-b border-ink/10">
-            <div className="font-display font-bold text-xl tracking-tight">
+        <aside className="w-60 bg-card border-r border-ash/60 min-h-screen sticky top-0 hidden lg:flex flex-col" data-testid="admin-sidebar">
+          <div className="px-6 py-6 border-b border-ash/60">
+            <div className="font-display font-bold text-xl tracking-tight text-nordfjord">
               FIRONOVA<span style={{ color: "#00B8D4" }}>.</span>
             </div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mt-1">// Admin</div>
+            <div className="font-data text-[10px] tracking-[0.2em] text-glacier mt-1">Administration</div>
           </div>
           <nav className="flex-1 py-3 overflow-y-auto">
             {navGroups.map((group, gi) => (
-              <div key={group.id} className={gi > 0 ? "mt-1" : ""}>
-                <div className="px-6 pt-4 pb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-foreground/40">
+              <div key={group.id} className={gi > 0 ? "mt-2" : ""}>
+                <div className="px-6 pt-4 pb-1.5 font-data text-[10px] font-medium tracking-[0.14em] text-glacier/70">
                   {group.label}
                 </div>
                 {group.items.map((n) => {
@@ -174,18 +174,18 @@ export default function AdminLayout({ basePath = "/admin" }) {
                       end={n.end}
                       data-testid={n.testid || `admin-nav-${n.label.toLowerCase()}`}
                       className={({ isActive }) =>
-                        `flex items-center gap-3 px-6 py-2.5 text-sm transition-colors ${
+                        `flex items-center gap-3 mx-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                           isActive
-                            ? "bg-ink text-white font-medium"
-                            : "text-foreground/70 hover:bg-secondary"
+                            ? "bg-nova/15 text-nordfjord font-medium"
+                            : "text-glacier hover:bg-clinical hover:text-nordfjord"
                         }`
                       }
                     >
-                      <n.icon size={16} strokeWidth={1.6} />
+                      <n.icon size={16} strokeWidth={1.75} />
                       <span className="flex-1">{n.label}</span>
                       {badge && (
                         <span
-                          className="bg-red-600 text-white font-mono text-[10px] px-1.5 py-0.5 rounded-full"
+                          className="bg-error text-white font-data text-[10px] min-w-[18px] h-[18px] grid place-items-center px-1 rounded-full"
                           data-testid={n.signal ? `nav-badge-${n.signal}` : "sidebar-low-stock-badge"}
                         >
                           {badge}
@@ -197,36 +197,36 @@ export default function AdminLayout({ basePath = "/admin" }) {
               </div>
             ))}
           </nav>
-          <div className="border-t border-ink/10 p-4 space-y-2">
+          <div className="border-t border-ash/60 p-4 space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 truncate">
+              <div className="font-data text-[11px] text-glacier truncate">
                 {user?.email}
               </div>
               <ThemeToggle />
             </div>
             <button
               onClick={() => { logout(); navigate("/"); }}
-              className="w-full flex items-center justify-center gap-2 border border-ink py-2 text-xs font-mono uppercase tracking-[0.2em] hover:bg-ink hover:text-white"
+              className="w-full flex items-center justify-center gap-2 rounded-lg border border-ash py-2 text-xs font-medium text-glacier hover:bg-clinical hover:text-nordfjord transition-colors"
               data-testid="admin-logout"
             >
-              <LogOut size={12} /> {L("Déconnexion", "Logout")}
+              <LogOut size={14} /> {L("Déconnexion", "Logout")}
             </button>
           </div>
         </aside>
 
         <main className="flex-1 min-w-0">
-          <div className="bg-white border-b border-ink/10 px-8 py-4 flex items-center justify-between" data-testid="admin-topbar">
-            <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/60">
-              {L("USAGE EN LABORATOIRE UNIQUEMENT · 19+", "FOR LABORATORY RESEARCH USE ONLY · 19+")}
+          <div className="bg-card border-b border-ash/60 px-8 py-4 flex items-center justify-between" data-testid="admin-topbar">
+            <div className="font-data text-[11px] tracking-[0.14em] text-compliance">
+              {L("Usage en laboratoire uniquement · 19+", "For laboratory research use only · 19+")}
             </div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/60">
+            <div className="font-data text-[11px] text-glacier">
               {new Date().toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { weekday: "short", year: "numeric", month: "short", day: "numeric" })}
             </div>
           </div>
           {signals && signals.pending_manifest > 0 && !location.pathname.includes("/dispatch") && (
-            <div className="bg-red-50 border-b border-red-300 text-red-900 px-8 py-3 font-mono text-xs flex items-center justify-between gap-3" data-testid="manifest-alert">
+            <div className="bg-warning/10 border-b border-warning/30 text-nordfjord px-8 py-3 font-data text-xs flex items-center justify-between gap-3" data-testid="manifest-alert">
               <span className="flex items-center gap-2">
-                <AlertCircle size={14} />
+                <AlertCircle size={14} className="text-warning" />
                 {L(
                   `${signals.pending_manifest} étiquette(s) non transmise(s) — surcharge de 2 $/article tant que le manifeste n'est pas envoyé.`,
                   `${signals.pending_manifest} label(s) not transmitted — $2/item surcharge until the manifest is sent.`
@@ -293,30 +293,50 @@ export const statusLabel = (status, lang) => {
 };
 
 export const StatusBadge = ({ status, lang }) => {
-  const map = {
-    paid: { bg: "#0d9d57", color: "#fff", icon: CheckCircle2 },
-    awaiting_etransfer: { bg: "#f59e0b", color: "#fff", icon: Clock },
-    awaiting_crypto: { bg: "#f59e0b", color: "#fff", icon: Clock },
-    refunded: { bg: "#6b7280", color: "#fff", icon: AlertCircle },
-    pending: { bg: "#f3f4f6", color: "#111", icon: Clock },
-    processing: { bg: "#3b82f6", color: "#fff", icon: Package },
-    packing: { bg: "#6366f1", color: "#fff", icon: Package },
-    packed: { bg: "#8b5cf6", color: "#fff", icon: CheckCircle2 },
-    shipped: { bg: "#7c3aed", color: "#fff", icon: Truck },
-    delivered: { bg: "#10b981", color: "#fff", icon: CheckCircle2 },
-    cancelled: { bg: "#ef4444", color: "#fff", icon: X },
-    failed: { bg: "#ef4444", color: "#fff", icon: X },
-    preorder: { bg: "#f97316", color: "#fff", icon: Clock },
+  // Ton unique pour la signalisation : la couleur signale une exception,
+  // jamais l'ordinaire. Une seule paire fond/texte porte le sens ; plus aucun
+  // hex saturé étranger à la palette. Les états "au repos" (pending,
+  // awaiting_*, refunded) empruntent le neutre `compliance`, réservé par
+  // l'identité aux mentions calmes et officielles.
+  const tone = {
+    paid: "success",
+    delivered: "success",
+    cancelled: "error",
+    failed: "error",
+    pending: "compliance",
+    awaiting_etransfer: "compliance",
+    awaiting_crypto: "compliance",
+    refunded: "compliance",
+    processing: "nova",
+    packing: "nova",
+    packed: "nova",
+    shipped: "nova",
+    preorder: "warning",
+  }[status] || "compliance";
+
+  const iconFor = {
+    paid: CheckCircle2,
+    delivered: CheckCircle2,
+    packing: Package,
+    packed: CheckCircle2,
+    shipped: Truck,
+    failed: X,
+    cancelled: X,
   };
-  const conf = map[status] || { bg: "#f3f4f6", color: "#111", icon: Clock };
-  const Icon = conf.icon;
+  const Icon = iconFor[status] || Clock;
+
   return (
     <span
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.15em]"
-      style={{ background: conf.bg, color: conf.color }}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium ${
+        tone === "success" ? "bg-success/15 text-success" :
+        tone === "error" ? "bg-error/15 text-error" :
+        tone === "warning" ? "bg-warning/20 text-warning" :
+        tone === "nova" ? "bg-nova/15 text-nordfjord" :
+        "bg-compliance/15 text-compliance"
+      }`}
       data-testid={`status-${status}`}
     >
-      <Icon size={11} strokeWidth={2} />
+      <Icon size={12} strokeWidth={2} />
       {statusLabel(status, lang)}
     </span>
   );

@@ -216,6 +216,15 @@
     box-shadow: 0 12px 28px -12px rgba(11, 46, 79, 0.25);
   }
 
+  /* Surface admin — carte blanche à ombre douce. Remplaçe peu à peu les
+     bordures dures `border-ink/10` : une élévation, pas une ligne. */
+  .surface {
+    background: rgb(var(--fn-card));
+    border: 1px solid rgb(var(--fn-ash) / 0.55);
+    border-radius: 16px;
+    box-shadow: 0 1px 2px rgb(11 46 79 / 0.04), 0 8px 24px -16px rgb(11 46 79 / 0.18);
+  }
+
   /* scroll reveal */
   .reveal {
     opacity: 0;
