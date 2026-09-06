@@ -661,42 +661,42 @@ function RestockModal({ product, onClose, onDone }) {
   };
 
   const isAdd = mode === "add";
-  const accent = isAdd ? "emerald" : "amber";
+  const accent = isAdd ? "success" : "warning";
   const accentClasses = {
-    emerald: { text: "text-emerald-700", bg: "bg-emerald-600", bgHover: "hover:bg-emerald-700", border: "border-emerald-600", focus: "focus:border-emerald-600", bgLight: "bg-emerald-50 border-emerald-200 text-emerald-800", badge: "bg-emerald-100 text-emerald-700 border-emerald-300" },
-    amber: { text: "text-amber-700", bg: "bg-amber-600", bgHover: "hover:bg-amber-700", border: "border-amber-600", focus: "focus:border-amber-600", bgLight: "bg-amber-50 border-amber-200 text-amber-800", badge: "bg-amber-100 text-amber-700 border-amber-300" },
+    success: { text: "text-success", bg: "bg-success", bgHover: "hover:opacity-90", border: "border-success", focus: "focus:border-success", bgLight: "bg-success/10 border-success/30 text-success", badge: "bg-success/15 text-success" },
+    warning: { text: "text-warning", bg: "bg-warning", bgHover: "hover:opacity-90", border: "border-warning", focus: "focus:border-warning", bgLight: "bg-warning/10 border-warning/30 text-warning", badge: "bg-warning/20 text-warning" },
   }[accent];
 
   return (
     <div className="fixed inset-0 bg-ink/60 z-50 flex items-center justify-center p-4"
          onClick={onClose} data-testid="restock-modal-overlay">
-      <div className="bg-white w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col"
+      <div className="bg-card w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col rounded-xl"
            onClick={(e) => e.stopPropagation()} data-testid="restock-modal">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-ink/10 flex items-center justify-between shrink-0">
+        <div className="px-6 py-4 border-b border-ash/60 flex items-center justify-between shrink-0">
           <div>
-            <div className={`font-mono text-[10px] uppercase tracking-[0.3em] ${accentClasses.text}`}>// {isAdd ? "QUICK RESTOCK" : "STOCK ADJUSTMENT"}</div>
-            <h2 className="font-display text-2xl font-bold uppercase tracking-tight mt-1">{product.name_en}</h2>
-            <p className="font-mono text-[10px] text-foreground/50 mt-1">{product.slug}</p>
+            <div className={`font-data text-[11px] tracking-[0.14em] ${accentClasses.text}`}>{isAdd ? "Réapprovisionnement" : "Ajustement de stock"}</div>
+            <h2 className="font-display text-2xl font-bold tracking-tight mt-1 text-nordfjord">{product.name_en}</h2>
+            <p className="font-data text-[10px] text-glacier mt-1">{product.slug}</p>
           </div>
-          <button onClick={onClose} data-testid="restock-close" className="p-2 hover:bg-ink/5"><X size={18} /></button>
+          <button onClick={onClose} data-testid="restock-close" className="p-2 hover:bg-clinical rounded-lg text-glacier"><X size={18} /></button>
         </div>
 
         {/* Mode toggle */}
         {!showHistory && (
           <div className="px-6 pt-4 shrink-0">
-            <div className="inline-flex border border-ink/20 rounded-md overflow-hidden" role="tablist">
+            <div className="inline-flex border border-ash rounded-lg overflow-hidden p-0.5" role="tablist">
               <button
                 onClick={() => switchMode("add")}
                 data-testid="restock-mode-add"
-                className={`px-4 py-2 font-mono text-xs uppercase tracking-[0.2em] flex items-center gap-2 transition-colors ${isAdd ? "bg-emerald-600 text-white" : "bg-white text-foreground/60 hover:bg-ink/5"}`}
+                className={`px-4 py-2 font-data text-xs flex items-center gap-2 transition-colors rounded-lg ${isAdd ? "bg-success text-white" : "text-glacier hover:bg-clinical"}`}
               >
                 <PackagePlus size={12} /> {L("Ajouter", "Add stock")}
               </button>
               <button
                 onClick={() => switchMode("remove")}
                 data-testid="restock-mode-remove"
-                className={`px-4 py-2 font-mono text-xs uppercase tracking-[0.2em] flex items-center gap-2 transition-colors ${!isAdd ? "bg-amber-600 text-white" : "bg-white text-foreground/60 hover:bg-ink/5"}`}
+                className={`px-4 py-2 font-data text-xs flex items-center gap-2 transition-colors rounded-lg ${!isAdd ? "bg-warning text-white" : "text-glacier hover:bg-clinical"}`}
               >
                 <Minus size={12} /> {L("Retirer", "Remove stock")}
               </button>
@@ -733,12 +733,12 @@ function RestockModal({ product, onClose, onDone }) {
                     const next = current + signed;
                     const insufficient = mode === "remove" && delta > current;
                     return (
-                      <tr key={key} className={`border-b border-ink/5 ${insufficient ? "bg-red-50" : ""}`} data-testid={`restock-row-${key}`}>
-                        <td className="py-3 font-medium">{v.name || "(no name)"}</td>
-                        <td className="py-3 text-right font-mono text-xs text-foreground/60">{current}</td>
+                      <tr key={key} className={`border-b border-ash/40 ${insufficient ? "bg-error/5" : ""}`} data-testid={`restock-row-${key}`}>
+                        <td className="py-3 font-medium text-nordfjord">{v.name || "(no name)"}</td>
+                        <td className="py-3 text-right font-data text-xs text-glacier">{current}</td>
                         <td className="py-3">
                           <div className="flex items-center justify-center gap-1">
-                            <span className={`font-mono font-bold text-base ${isAdd ? "text-emerald-700" : "text-amber-700"}`}>{isAdd ? "+" : "−"}</span>
+                            <span className={`font-data font-bold text-base ${isAdd ? "text-success" : "text-warning"}`}>{isAdd ? "+" : "−"}</span>
                             <input
                               type="number"
                               min="0"
@@ -746,7 +746,7 @@ function RestockModal({ product, onClose, onDone }) {
                               value={deltas[key] || ""}
                               onChange={(e) => setDelta(key, e.target.value)}
                               placeholder="0"
-                              className={`w-20 border ${insufficient ? "border-red-500" : "border-ink/30"} px-2 py-2 text-center font-mono text-base font-bold focus:outline-none ${accentClasses.focus}`}
+                              className={`w-20 border rounded-lg ${insufficient ? "border-error" : "border-ash"} px-2 py-2 text-center font-data text-base font-bold focus:outline-none ${accentClasses.focus}`}
                               data-testid={`restock-input-${key}`}
                             />
                           </div>
@@ -759,19 +759,19 @@ function RestockModal({ product, onClose, onDone }) {
                                 type="button"
                                 onClick={() => setQuick(key, n)}
                                 data-testid={`restock-quick-${key}-${n}`}
-                                className={`text-[10px] font-mono px-2 py-1.5 border border-ink/15 hover:${accentClasses.bg} hover:text-white hover:${accentClasses.border}`}
+                                className={`text-[10px] font-data px-2 py-1.5 border rounded-md border-ash hover:${accentClasses.bg} hover:text-white`}
                               >
                                 {isAdd ? "+" : "-"}{n}
                               </button>
                             ))}
                           </div>
                         </td>
-                        <td className="py-3 text-right font-mono text-sm font-bold" data-testid={`restock-new-total-${key}`}>
+                        <td className="py-3 text-right font-data text-sm font-bold" data-testid={`restock-new-total-${key}`}>
                           {delta > 0 ? (
                             insufficient
-                              ? <span className="text-red-600">— </span>
+                              ? <span className="text-error">— </span>
                               : <span className={accentClasses.text}>{next}</span>
-                          ) : <span className="text-foreground/40">{next}</span>}
+                          ) : <span className="text-glacier/50">{next}</span>}
                         </td>
                       </tr>
                     );
@@ -837,18 +837,18 @@ function RestockModal({ product, onClose, onDone }) {
                     {history.map((m) => {
                       const isRestock = (m.movement_type || (m.delta > 0 ? "restock" : "adjustment")) === "restock";
                       return (
-                        <tr key={m.id} className="border-b border-ink/5" data-testid={`history-row-${m.id}`}>
-                          <td className="py-2 font-mono">{new Date(m.created_at).toLocaleString()}</td>
+                        <tr key={m.id} className="border-b border-ash/40" data-testid={`history-row-${m.id}`}>
+                          <td className="py-2 font-data text-glacier">{new Date(m.created_at).toLocaleString()}</td>
                           <td className="py-2">
-                            <span className={`text-[10px] px-1.5 py-0.5 border font-mono uppercase tracking-[0.1em] ${isRestock ? "bg-emerald-100 text-emerald-700 border-emerald-300" : "bg-amber-100 text-amber-700 border-amber-300"}`}>
+                            <span className={`text-[10px] px-1.5 py-0.5 border rounded-full font-data ${isRestock ? "bg-success/15 text-success border-success/30" : "bg-warning/20 text-warning border-warning/30"}`}>
                               {m.source === "csv_bulk" ? "csv" : (isRestock ? "restock" : "adjust")}
                             </span>
                           </td>
-                          <td className="py-2">{m.variant_name || <span className="text-foreground/40">—</span>}</td>
-                          <td className={`py-2 text-right font-mono font-bold ${m.delta > 0 ? "text-emerald-700" : "text-amber-700"}`}>{m.delta > 0 ? "+" : ""}{m.delta}</td>
-                          <td className="py-2 text-right font-mono text-foreground/60">{m.stock_before} → {m.stock_after}</td>
-                          <td className="py-2 font-mono text-foreground/60">{m.admin_email || "—"}</td>
-                          <td className="py-2 text-foreground/70">{m.reason || <span className="text-foreground/40">—</span>}</td>
+                          <td className="py-2 text-nordfjord">{m.variant_name || <span className="text-glacier/50">—</span>}</td>
+                          <td className={`py-2 text-right font-data font-semibold ${m.delta > 0 ? "text-success" : "text-warning"}`}>{m.delta > 0 ? "+" : ""}{m.delta}</td>
+                          <td className="py-2 text-right font-data text-glacier">{m.stock_before} → {m.stock_after}</td>
+                          <td className="py-2 font-data text-glacier">{m.admin_email || "—"}</td>
+                          <td className="py-2 text-glacier">{m.reason || <span className="text-glacier/50">—</span>}</td>
                         </tr>
                       );
                     })}
@@ -965,13 +965,13 @@ function BulkRestockCSVModal({ onClose, onDone }) {
          onClick={onClose} data-testid="bulk-restock-overlay">
       <div className="bg-white w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col"
            onClick={(e) => e.stopPropagation()} data-testid="bulk-restock-modal">
-        <div className="px-6 py-4 border-b border-ink/10 flex items-center justify-between shrink-0">
+        <div className="px-6 py-4 border-b border-ash/60 flex items-center justify-between shrink-0">
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-emerald-700">// BULK RESTOCK · CSV</div>
-            <h2 className="font-display text-2xl font-bold uppercase tracking-tight mt-1">{L("Réception fournisseur", "Supplier delivery")}</h2>
-            <p className="text-xs text-foreground/60 mt-1">Upload a CSV to restock multiple products at once.</p>
+            <div className="font-data text-[11px] tracking-[0.14em] text-success">Réception fournisseur CSV</div>
+            <h2 className="font-display text-2xl font-bold tracking-tight mt-1 text-nordfjord">{L("Réception fournisseur", "Supplier delivery")}</h2>
+            <p className="text-xs text-glacier mt-1">Upload a CSV to restock multiple products at once.</p>
           </div>
-          <button onClick={onClose} data-testid="bulk-restock-close" className="p-2 hover:bg-ink/5"><X size={18} /></button>
+          <button onClick={onClose} data-testid="bulk-restock-close" className="p-2 hover:bg-clinical rounded-lg text-glacier"><X size={18} /></button>
         </div>
 
         <div className="p-6 overflow-y-auto flex-1">
@@ -1028,13 +1028,13 @@ tb-500-5mg,5.0mg,25
                     </thead>
                     <tbody>
                       {rows.slice(0, 50).map((r) => (
-                        <tr key={r.line} className="border-b border-ink/5">
-                          <td className="py-2 font-mono text-foreground/60">{r.line}</td>
-                          <td className="py-2 font-mono">{r.sku || <span className="text-foreground/40">—</span>}</td>
-                          <td className="py-2 font-mono">{r.product_slug || <span className="text-foreground/40">—</span>}</td>
-                          <td className="py-2 font-mono">{r.variant_name || <span className="text-foreground/40">—</span>}</td>
-                          <td className={`py-2 text-right font-mono font-bold ${r.quantity > 0 ? "text-emerald-700" : "text-amber-700"}`}>{r.quantity > 0 ? "+" : ""}{r.quantity}</td>
-                          <td className="py-2 text-foreground/70">{r.note || <span className="text-foreground/40">—</span>}</td>
+                        <tr key={r.line} className="border-b border-ash/40">
+                          <td className="py-2 font-data text-glacier">{r.line}</td>
+                          <td className="py-2 font-data text-nordfjord">{r.sku || <span className="text-glacier/50">—</span>}</td>
+                          <td className="py-2 font-data text-nordfjord">{r.product_slug || <span className="text-glacier/50">—</span>}</td>
+                          <td className="py-2 font-data text-nordfjord">{r.variant_name || <span className="text-glacier/50">—</span>}</td>
+                          <td className={`py-2 text-right font-data font-semibold ${r.quantity > 0 ? "text-success" : "text-warning"}`}>{r.quantity > 0 ? "+" : ""}{r.quantity}</td>
+                          <td className="py-2 text-glacier">{r.note || <span className="text-glacier/50">—</span>}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1058,13 +1058,13 @@ tb-500-5mg,5.0mg,25
           ) : (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                <div className="p-4 bg-emerald-50 border border-emerald-200">
-                  <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-700">{L("Appliqué", "Applied")}</div>
-                  <div className="font-display text-3xl font-bold text-emerald-700 mt-1" data-testid="bulk-restock-applied-count">{result.counts?.applied || 0}</div>
+                <div className="p-4 bg-success/10 border border-success/30 rounded-xl">
+                  <div className="font-data text-[11px] text-success">{L("Appliqué", "Applied")}</div>
+                  <div className="font-display text-3xl font-bold text-success mt-1" data-testid="bulk-restock-applied-count">{result.counts?.applied || 0}</div>
                 </div>
-                <div className="p-4 bg-red-50 border border-red-200">
-                  <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-red-700">{L("Échoué", "Failed")}</div>
-                  <div className="font-display text-3xl font-bold text-red-700 mt-1" data-testid="bulk-restock-failed-count">{result.counts?.failed || 0}</div>
+                <div className="p-4 bg-error/10 border border-error/30 rounded-xl">
+                  <div className="font-data text-[11px] text-error">{L("Échoué", "Failed")}</div>
+                  <div className="font-display text-3xl font-bold text-error mt-1" data-testid="bulk-restock-failed-count">{result.counts?.failed || 0}</div>
                 </div>
               </div>
               {(result.failed || []).length > 0 && (
@@ -1096,20 +1096,20 @@ tb-500-5mg,5.0mg,25
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-ink/10 flex items-center justify-end gap-2 shrink-0 bg-secondary/30">
+        <div className="px-6 py-4 border-t border-ash/60 flex items-center justify-end gap-2 shrink-0 bg-clinical/50 rounded-b-xl">
           {result ? (
             <button onClick={onDone} data-testid="bulk-restock-done"
-              className="bg-emerald-600 text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2 hover:bg-emerald-700">
+              className="bg-success text-white font-data text-xs rounded-lg px-4 py-2 hover:opacity-90">
               {L("Terminé", "Done")}
             </button>
           ) : (
             <>
               <button onClick={onClose} data-testid="bulk-restock-cancel"
-                className="border border-ink/30 font-mono text-xs uppercase tracking-[0.25em] px-4 py-2 hover:bg-ink hover:text-white">
+                className="border border-ash font-data text-xs rounded-lg px-4 py-2 text-nordfjord hover:bg-clinical">
                 {L("Annuler", "Cancel")}
               </button>
               <button onClick={submit} disabled={!rows.length || submitting} data-testid="bulk-restock-submit"
-                className="bg-emerald-600 text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2 hover:bg-emerald-700 disabled:opacity-40 flex items-center gap-2">
+                className="bg-success text-white font-data text-xs rounded-lg px-4 py-2 hover:opacity-90 disabled:opacity-40 flex items-center gap-2">
                 <Upload size={12} /> {submitting ? "Applying…" : `Apply ${rows.length} row(s)`}
               </button>
             </>
