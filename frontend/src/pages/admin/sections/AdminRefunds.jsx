@@ -163,15 +163,15 @@ export default function AdminRefunds() {
                     <div className="text-xs text-compliance mt-1"><b>Note admin :</b> {r.refund_admin_note}</div>
                   )}
                   {r.refund_tx_reference && (
-                    <div className="text-xs text-emerald-800 mt-1 font-mono">TX : {r.refund_tx_reference}</div>
+                    <div className="text-xs text-success mt-1 font-data">TX : {r.refund_tx_reference}</div>
                   )}
                 </div>
                 <div className="min-w-[280px] flex flex-col gap-2 items-end">
-                  <span className={`text-[10px] font-mono uppercase tracking-widest px-2 py-1 rounded ${
-                    r.refund_status === "processed" ? "bg-emerald-100 text-emerald-800" :
-                    r.refund_status === "approved" ? "bg-blue-100 text-blue-800" :
-                    r.refund_status === "denied" ? "bg-gray-200 text-gray-800" :
-                    "bg-amber-100 text-amber-800"}`}>{r.refund_status}</span>
+                  <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full ${
+                    r.refund_status === "processed" ? "bg-success/15 text-success" :
+                    r.refund_status === "approved" ? "bg-nova/15 text-nordfjord" :
+                    r.refund_status === "denied" ? "bg-glacier/15 text-glacier" :
+                    "bg-warning/20 text-warning"}`}>{r.refund_status}</span>
 
                   {r.refund_status === "requested" && (
                     <>
@@ -201,7 +201,7 @@ export default function AdminRefunds() {
 
                   {r.refund_status === "approved" && (
                     <>
-                      <div className="text-xs text-blue-800">
+                      <div className="text-xs text-nordfjord">
                         <b>{L("Approuvé", "Approved")} : {r.refund_approved_type === "replace"
                           ? L("remplacement", "replacement")
                           : `${r.refund_approved_amount} CAD (${r.refund_approved_type})`}</b>
