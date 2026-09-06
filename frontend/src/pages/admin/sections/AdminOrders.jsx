@@ -156,22 +156,22 @@ export default function AdminOrders() {
     <div className="p-8" data-testid="admin-orders">
       {manifest?.configured && manifest.pending_count > 0 && (
         <div
-          className="mb-6 border-2 border-red-600 bg-red-50 px-5 py-4 flex flex-wrap items-center justify-between gap-4"
+          className="mb-6 border border-warning/40 bg-warning/10 px-5 py-4 rounded-xl flex flex-wrap items-center justify-between gap-4"
           data-testid="manifest-warning"
         >
           <div className="flex items-start gap-3">
-            <AlertTriangle size={20} className="text-red-600 shrink-0 mt-0.5" />
+            <AlertTriangle size={20} className="text-warning shrink-0 mt-0.5" />
             <div>
-              <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-red-700 font-bold">
+              <div className="font-data text-[11px] font-semibold text-nordfjord">
                 {manifest.pending_count} label(s) created but not transmitted
               </div>
-              <div className="text-sm text-red-800 mt-1">
+              <div className="text-sm text-glacier mt-1">
                 Transmit the manifest before end of day. Canada Post bills untransmitted shipments
                 with a <strong>$2 surcharge per item</strong> and removes the automation discount.
                 {" "}The manifest does not exist until you transmit — transmitting is what creates it.
               </div>
               {manifest.orphan_count > 0 && (
-                <div className="text-sm text-red-800 mt-2" data-testid="manifest-orphans">
+                <div className="text-sm text-glacier mt-2" data-testid="manifest-orphans">
                   <strong>{manifest.orphan_count} of these cannot be transmitted</strong> — they have
                   a label but no Canada Post group, so "Transmit manifest" will not clear them. Void
                   and recreate those labels: {manifest.orphans?.join(", ")}
@@ -185,7 +185,7 @@ export default function AdminOrders() {
               disabled={txBusy}
               data-testid="void-untransmitted-btn"
               title="Cancel these labels with Canada Post instead of shipping them"
-              className="border border-red-600 text-red-700 font-mono text-xs uppercase tracking-[0.2em] px-4 py-2.5 flex items-center gap-2 disabled:opacity-50"
+              className="border border-error/50 text-error font-data text-xs rounded-lg px-4 py-2.5 flex items-center gap-2 hover:bg-error/5 disabled:opacity-50"
             >
               <Undo2 size={14} /> Void all
             </button>
@@ -193,7 +193,7 @@ export default function AdminOrders() {
               onClick={transmitManifest}
               disabled={txBusy || !manifest.transmittable_count}
               data-testid="transmit-manifest-btn"
-              className="bg-red-600 text-white font-mono text-xs uppercase tracking-[0.2em] px-5 py-2.5 flex items-center gap-2 disabled:opacity-50"
+              className="bg-error text-white font-data text-xs rounded-lg px-5 py-2.5 flex items-center gap-2 disabled:opacity-50 hover:opacity-90"
             >
               <Send size={14} /> {txBusy ? "Transmitting…" : "Transmit manifest"}
             </button>
@@ -202,16 +202,16 @@ export default function AdminOrders() {
       )}
       <div className="flex items-end justify-between mb-6">
         <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// ORDERS</div>
-          <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">Orders</h1>
-          <p className="font-mono text-xs text-foreground/60 mt-1">{total}</p>
+          <div className="font-data text-[11px] tracking-[0.18em] text-nova">Aperçu</div>
+          <h1 className="font-display text-3xl font-bold tracking-tight mt-1 text-nordfjord">Orders</h1>
+          <p className="font-data text-xs text-glacier mt-1">{total} commande(s)</p>
         </div>
         <div className="flex items-center gap-2">
           <a
             href={`${API_BASE}/admin/orders.csv${tab === "all" ? "" : `?status_group=${tab}`}`}
             target="_blank" rel="noopener noreferrer"
             data-testid="export-orders-csv"
-            className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-foreground/80"
+            className="bg-nordfjord text-white font-data text-xs px-4 py-2.5 rounded-lg flex items-center gap-2 hover:opacity-90"
           >
             <Download size={14} /> CSV
           </a>
@@ -219,7 +219,7 @@ export default function AdminOrders() {
             href={`${API_BASE}/admin/orders.xlsx${tab === "all" ? "" : `?status_group=${tab}`}`}
             target="_blank" rel="noopener noreferrer"
             data-testid="export-orders-xlsx"
-            className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-ink hover:text-white"
+            className="border border-ash font-data text-xs px-4 py-2.5 rounded-lg flex items-center gap-2 text-nordfjord hover:bg-clinical"
           >
             <Download size={14} /> Excel
           </a>
@@ -227,16 +227,16 @@ export default function AdminOrders() {
       </div>
 
       {/* Status group tabs */}
-      <div className="flex gap-0 mb-4 border border-ink/15 bg-white w-fit" data-testid="orders-tabs">
+      <div className="flex gap-1 mb-4 bg-card border border-ash/60 rounded-lg w-fit p-1" data-testid="orders-tabs">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             data-testid={`orders-tab-${t.key}`}
-            className={`font-mono text-xs uppercase tracking-[0.2em] px-5 py-2.5 flex items-center gap-2 ${tab === t.key ? "bg-ink text-white" : "hover:bg-secondary"}`}
+            className={`font-data text-xs px-4 py-2 rounded-md flex items-center gap-2 transition-colors ${tab === t.key ? "bg-nordfjord text-white" : "text-glacier hover:bg-clinical hover:text-nordfjord"}`}
           >
             {t.label}
-            <span className={`text-[10px] px-1.5 py-0.5 ${tab === t.key ? "bg-white/20" : "bg-secondary"}`} data-testid={`orders-count-${t.key}`}>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${tab === t.key ? "bg-white/20" : "bg-ash/50"}`} data-testid={`orders-count-${t.key}`}>
               {counts[t.key] ?? "…"}
             </span>
           </button>
