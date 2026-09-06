@@ -8,12 +8,12 @@ import { useLang } from "../../../contexts/LanguageContext";
 import { Th } from "../ui";
 
 const SEGMENTS = {
-  loyal:    { fr: "Fidèles",   en: "Loyal",    color: "bg-nova/15 text-nova border-nova/30" },
+  loyal:    { fr: "Fidèles",   en: "Loyal",    color: "bg-nova/15 text-nordfjord border-nova/30" },
   active:   { fr: "Actifs",    en: "Active",   color: "bg-success/15 text-success border-success/30" },
-  cooling:  { fr: "Refroidissent", en: "Cooling", color: "bg-amber-100 text-amber-700 border-amber-300" },
-  at_risk:  { fr: "À risque",  en: "At risk",  color: "bg-orange-100 text-orange-700 border-orange-300" },
-  dormant:  { fr: "Inactifs",  en: "Dormant",  color: "bg-red-100 text-red-700 border-red-300" },
-  prospect: { fr: "Sans achat", en: "No purchase", color: "bg-slate-100 text-slate-500 border-slate-300" },
+  cooling:  { fr: "Refroidissent", en: "Cooling", color: "bg-warning/15 text-warning border-warning/30" },
+  at_risk:  { fr: "À risque",  en: "At risk",  color: "bg-warning/20 text-warning border-warning/30" },
+  dormant:  { fr: "Inactifs",  en: "Dormant",  color: "bg-error/15 text-error border-error/30" },
+  prospect: { fr: "Sans achat", en: "No purchase", color: "bg-glacier/15 text-glacier border-glacier/30" },
 };
 const PAGE_SIZE = 50;
 
