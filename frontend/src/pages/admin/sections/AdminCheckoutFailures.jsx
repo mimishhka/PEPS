@@ -115,8 +115,8 @@ export default function AdminCheckoutFailures() {
         <div
           className={`rounded-xl border p-4 flex items-center justify-between gap-4 ${
             breaker.is_open
-              ? "bg-red-50 border-red-300 text-red-900"
-              : "bg-emerald-50 border-emerald-300 text-emerald-900"
+              ? "bg-error/10 border-error/40 text-nordfjord"
+              : "bg-success/10 border-success/40 text-nordfjord"
           }`}
           data-testid="breaker-banner"
         >
@@ -206,10 +206,10 @@ export default function AdminCheckoutFailures() {
                 </div>
                 <div className="flex flex-col items-end gap-2 min-w-[220px]">
                   <span
-                    className={`text-[10px] font-mono uppercase tracking-widest px-2 py-1 rounded ${
-                      f.status === "resolved" ? "bg-emerald-100 text-emerald-800" :
-                      f.status === "retry_attempted" ? "bg-amber-100 text-amber-800" :
-                      "bg-red-100 text-red-800"
+                    className={`text-[11px] font-medium px-2 py-1 rounded-full ${
+                      f.status === "resolved" ? "bg-success/15 text-success" :
+                      f.status === "retry_attempted" ? "bg-warning/20 text-warning" :
+                      "bg-error/15 text-error"
                     }`}
                   >
                     {f.status}
