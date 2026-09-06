@@ -53,23 +53,23 @@ export default function AdminBoxes() {
     <div data-testid="admin-boxes">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-display text-3xl font-bold uppercase tracking-tight flex items-center gap-2">
+          <h1 className="font-display text-3xl font-bold tracking-tight flex items-center gap-2 text-nordfjord">
             <Package2 size={26} /> Contenants
           </h1>
-          <p className="font-mono text-xs text-foreground/60 mt-1">
+          <p className="font-data text-xs text-glacier mt-1">
             Enveloppes / boîtes utilisées pour l'expédition. Le plus petit contenant dont la capacité couvre la commande est choisi automatiquement (tare + dimensions envoyées à Postes Canada).
           </p>
         </div>
         {!editing && (
           <button onClick={() => setEditing({ ...EMPTY })} data-testid="box-add"
-            className="bg-ink text-white font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/80 flex items-center gap-2">
+            className="bg-nordfjord text-white font-data text-xs rounded-lg px-4 py-2 hover:opacity-90 flex items-center gap-2">
             <Plus size={14} /> Ajouter
           </button>
         )}
       </div>
 
       {editing && (
-        <div className="mt-6 bg-white border border-ink/10 p-5" data-testid="box-form">
+        <div className="mt-6 bg-card border border-ash/60 rounded-xl p-5" data-testid="box-form">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <Field label="Nom" value={editing.name} onChange={(v) => setEditing({ ...editing, name: v })} testid="box-name" full />
             <Field label="Longueur (cm)" type="number" value={editing.length_cm} onChange={(v) => setEditing({ ...editing, length_cm: v })} testid="box-length" />
@@ -78,32 +78,32 @@ export default function AdminBoxes() {
             <Field label="Poids à vide (g)" type="number" value={editing.tare_grams} onChange={(v) => setEditing({ ...editing, tare_grams: v })} testid="box-tare" />
             <Field label="Capacité (unités)" type="number" value={editing.max_units} onChange={(v) => setEditing({ ...editing, max_units: v })} testid="box-maxunits" />
           </div>
-          <label className="flex items-center gap-2 font-mono text-xs mt-4">
-            <input type="checkbox" checked={editing.active} onChange={(e) => setEditing({ ...editing, active: e.target.checked })} data-testid="box-active" />
+          <label className="flex items-center gap-2 font-data text-xs mt-4 text-nordfjord">
+            <input type="checkbox" checked={editing.active} onChange={(e) => setEditing({ ...editing, active: e.target.checked })} data-testid="box-active" className="accent-nova" />
             Actif
           </label>
           <div className="flex gap-2 mt-4">
-            <button onClick={save} data-testid="box-save" className="bg-ink text-white font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/80 flex items-center gap-2">
+            <button onClick={save} data-testid="box-save" className="bg-nordfjord text-white font-data text-xs rounded-lg px-4 py-2 hover:opacity-90 flex items-center gap-2">
               <Save size={14} /> Enregistrer
             </button>
-            <button onClick={() => setEditing(null)} data-testid="box-cancel" className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/5 flex items-center gap-2">
+            <button onClick={() => setEditing(null)} data-testid="box-cancel" className="border border-ash font-data text-xs rounded-lg px-4 py-2 hover:bg-clinical flex items-center gap-2 text-nordfjord">
               <X size={14} /> Annuler
             </button>
           </div>
         </div>
       )}
 
-      <div className="mt-6 bg-white border border-ink/10 overflow-x-auto">
+      <div className="mt-6 bg-card border border-ash/60 rounded-xl overflow-x-auto">
         {loading ? (
-          <div className="px-6 py-10 text-center font-mono text-xs text-foreground/50">Chargement…</div>
+          <div className="px-6 py-10 text-center font-data text-xs text-glacier">Chargement…</div>
         ) : boxes.length === 0 ? (
-          <div className="px-6 py-10 text-center font-mono text-xs text-foreground/50" data-testid="boxes-empty">
+          <div className="px-6 py-10 text-center font-data text-xs text-glacier" data-testid="boxes-empty">
             Aucun contenant. Ajoute au moins une enveloppe pour un calcul de poids correct.
           </div>
         ) : (
           <table className="w-full">
             <thead>
-              <tr className="font-mono text-[10px] uppercase tracking-wider text-foreground/60 text-left">
+              <tr className="text-left">
                 <Th>Nom</Th>
                 <Th>Dimensions (L×l×é)</Th>
                 <Th>Tare</Th>
@@ -114,16 +114,16 @@ export default function AdminBoxes() {
             </thead>
             <tbody>
               {boxes.map((b) => (
-                <tr key={b.id} className="border-t border-ink/10 font-mono text-xs" data-testid={`box-row-${b.id}`}>
-                  <td className="px-4 py-3 font-bold">{b.name}</td>
-                  <td className="px-4 py-3">{b.length_cm} × {b.width_cm} × {b.height_cm} cm</td>
-                  <td className="px-4 py-3">{b.tare_grams} g</td>
-                  <td className="px-4 py-3">{b.max_units} u.</td>
-                  <td className="px-4 py-3">{b.active ? <span className="text-green-700">actif</span> : <span className="text-foreground/40">inactif</span>}</td>
+                <tr key={b.id} className="border-t border-ash/40 font-data text-xs" data-testid={`box-row-${b.id}`}>
+                  <td className="px-4 py-3 font-semibold text-nordfjord">{b.name}</td>
+                  <td className="px-4 py-3 text-glacier">{b.length_cm} × {b.width_cm} × {b.height_cm} cm</td>
+                  <td className="px-4 py-3 text-glacier">{b.tare_grams} g</td>
+                  <td className="px-4 py-3 text-glacier">{b.max_units} u.</td>
+                  <td className="px-4 py-3">{b.active ? <span className="text-success">actif</span> : <span className="text-glacier/50">inactif</span>}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex gap-3">
-                      <button onClick={() => setEditing(b)} data-testid={`box-edit-${b.id}`} className="underline hover:text-ink/70">Modifier</button>
-                      <button onClick={() => remove(b.id)} data-testid={`box-delete-${b.id}`} className="text-red-600 hover:opacity-70 inline-flex items-center gap-1">
+                      <button onClick={() => setEditing(b)} data-testid={`box-edit-${b.id}`} className="underline text-nova hover:opacity-70">Modifier</button>
+                      <button onClick={() => remove(b.id)} data-testid={`box-delete-${b.id}`} className="text-error hover:opacity-70 inline-flex items-center gap-1">
                         <Trash2 size={12} /> Suppr.
                       </button>
                     </div>
