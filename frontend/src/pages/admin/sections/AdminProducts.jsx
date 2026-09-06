@@ -80,13 +80,13 @@ export default function AdminProducts() {
     <div className="p-8" data-testid="admin-products">
       <div className="flex items-end justify-between mb-6">
         <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// CATALOG</div>
-          <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">{L("Produits", "Products")}</h1>
+          <div className="font-data text-[11px] tracking-[0.18em] text-nova">Catalogue</div>
+          <h1 className="font-display text-3xl font-bold tracking-tight mt-1 text-nordfjord">{L("Produits", "Products")}</h1>
           {/* Ne s'affiche que s'il y a des demandes : un encadré vide en
               permanence finit par ne plus être lu. */}
           {Object.keys(attentesParProduit).length > 0 && (
-            <div className="mt-3 border border-nova/40 bg-nova/5 px-4 py-3" data-testid="restock-requests">
-              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-nova">
+            <div className="mt-3 border border-nova/40 bg-nova/5 px-4 py-3 rounded-xl" data-testid="restock-requests">
+              <div className="font-data text-[11px] font-medium text-nordfjord">
                 {L("Demandes de réapprovisionnement", "Back-in-stock requests")}
                 {" — "}{attentes.length} {L("inscription(s)", "subscriber(s)")}
               </div>
@@ -96,8 +96,8 @@ export default function AdminProducts() {
                   .map(([pid, n]) => {
                     const prod = products.find((p) => p.id === pid);
                     return (
-                      <span key={pid} className="text-sm">
-                        <b>{n}</b>{" "}
+                      <span key={pid} className="text-sm text-glacier">
+                        <b className="text-nordfjord">{n}</b>{" "}
                         {prod ? (L(prod.name_fr, prod.name_en) || prod.slug)
                               : L("produit retiré", "removed product")}
                       </span>
@@ -106,25 +106,25 @@ export default function AdminProducts() {
               </div>
             </div>
           )}
-          <p className="font-mono text-xs text-foreground/60 mt-1">{products.length} compounds</p>
+          <p className="font-data text-xs text-glacier mt-1">{products.length} composés</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <a href={`${API_BASE}/admin/products.csv`} target="_blank" rel="noopener noreferrer" data-testid="export-products-csv"
-             className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-ink hover:text-white">
+             className="border border-ash font-data text-xs rounded-lg px-4 py-2.5 flex items-center gap-2 text-nordfjord hover:bg-clinical">
             <Download size={14} /> Export CSV
           </a>
           <button onClick={() => setCsvOpen(true)} data-testid="bulk-restock-csv-btn"
-            className="border border-emerald-600 text-emerald-700 font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-emerald-600 hover:text-white">
-            <Upload size={14} /> Bulk Restock CSV
+            className="border border-nova/50 text-nordfjord font-data text-xs rounded-lg px-4 py-2.5 flex items-center gap-2 hover:bg-nova/10">
+            <Upload size={14} /> Restock CSV
           </button>
           <button onClick={() => setEditing({ ...blank })} data-testid="new-product-btn"
-            className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-foreground/80">
-            <Plus size={14} /> Add New Product
+            className="bg-nordfjord text-white font-data text-xs rounded-lg px-4 py-2.5 flex items-center gap-2 hover:opacity-90">
+            <Plus size={14} /> Ajouter
           </button>
         </div>
       </div>
 
-      <div className="bg-white border border-ink/10 overflow-x-auto">
+      <div className="bg-card border border-ash/60 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr>
@@ -140,7 +140,7 @@ export default function AdminProducts() {
               const totalStock = (p.variants || []).reduce((s, v) => s + (v.stock || 0), 0);
               const lowest = (p.variants || []).reduce((m, v) => v.price < m ? v.price : m, Infinity);
               return (
-                <tr key={p.id} className="border-t border-ink/5" data-testid={`product-row-${p.slug}`}>
+                <tr key={p.id} className="border-t border-ash/40 hover:bg-clinical/50" data-testid={`product-row-${p.slug}`}>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-3">
                       <img
@@ -150,35 +150,35 @@ export default function AdminProducts() {
                         height="40"
                         loading="lazy"
                         decoding="async"
-                        className="w-10 h-10 object-cover"
+                        className="w-10 h-10 object-cover rounded-lg"
                         style={{ filter: "grayscale(0.4)" }}
                       />
                       <div>
-                        <div className="font-bold">{p.name_en}</div>
-                        <div className="font-mono text-[10px] text-foreground/50">{p.slug} · from ${(lowest === Infinity ? 0 : lowest).toFixed(2)}</div>
+                        <div className="font-semibold text-nordfjord">{p.name_en}</div>
+                        <div className="font-data text-[10px] text-glacier">{p.slug} · from ${(lowest === Infinity ? 0 : lowest).toFixed(2)}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-3 font-mono text-xs uppercase">{p.category}</td>
-                  <td className="px-6 py-3 font-mono text-xs">
-                    <span className="font-bold">{(p.variants || []).length}</span>
-                    <span className="text-foreground/50"> · {totalStock} units</span>
+                  <td className="px-6 py-3 font-data text-xs text-glacier">{p.category}</td>
+                  <td className="px-6 py-3 font-data text-xs text-glacier">
+                    <span className="font-semibold text-nordfjord">{(p.variants || []).length}</span>
+                    <span> · {totalStock} units</span>
                   </td>
                   <td className="px-6 py-3">
                     {!p.active
-                      ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-gray-400 text-white px-2 py-0.5">{L("Masqué", "Hidden")}</span>
+                      ? <span className="inline-flex items-center text-[11px] font-medium rounded-full px-2.5 py-0.5 bg-glacier/15 text-glacier">{L("Masqué", "Hidden")}</span>
                       : totalStock === 0
-                      ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-red-600 text-white px-2 py-0.5">{L("Rupture", "Out")}</span>
-                      : <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-emerald-600 text-white px-2 py-0.5">{L("Actif", "Active")}</span>}
-                    {p.featured && <Star size={12} className="inline ml-2 fill-yellow-500 text-yellow-500" />}
+                      ? <span className="inline-flex items-center text-[11px] font-medium rounded-full px-2.5 py-0.5 bg-error/15 text-error">{L("Rupture", "Out")}</span>
+                      : <span className="inline-flex items-center text-[11px] font-medium rounded-full px-2.5 py-0.5 bg-success/15 text-success">{L("Actif", "Active")}</span>}
+                    {p.featured && <Star size={12} className="inline ml-2 fill-warning text-warning" />}
                   </td>
                   <td className="px-6 py-3 text-right">
                     <button onClick={() => setRestocking(p)} data-testid={`restock-${p.slug}`}
-                      className="border border-emerald-600/40 text-emerald-700 px-2 py-1 hover:bg-emerald-600 hover:text-white hover:border-emerald-600 mr-1" title="Quick restock">
+                      className="border border-ash text-nova rounded-md px-2 py-1 hover:bg-nova/10 mr-1" title="Quick restock">
                       <PackagePlus size={12} />
                     </button>
-                    <button onClick={() => setEditing({ ...p, variants: [...(p.variants || [])] })} data-testid={`edit-${p.slug}`} className="border border-ink/30 px-2 py-2 hover:bg-ink hover:text-white mr-1"><Edit size={12} /></button>
-                    <button onClick={() => del(p.id)} data-testid={`delete-${p.slug}`} className="border border-ink/30 px-2 py-2 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={12} /></button>
+                    <button onClick={() => setEditing({ ...p, variants: [...(p.variants || [])] })} data-testid={`edit-${p.slug}`} className="border border-ash text-glacier rounded-md px-2 py-2 hover:bg-clinical hover:text-nordfjord mr-1"><Edit size={12} /></button>
+                    <button onClick={() => del(p.id)} data-testid={`delete-${p.slug}`} className="border border-ash text-glacier rounded-md px-2 py-2 hover:bg-error hover:text-white hover:border-error"><Trash2 size={12} /></button>
                   </td>
                 </tr>
               );
