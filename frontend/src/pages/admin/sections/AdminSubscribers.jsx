@@ -38,8 +38,8 @@ export default function AdminSubscribers() {
     <div className="p-8" data-testid="admin-subscribers">
       <div className="flex items-end justify-between mb-6 flex-wrap gap-4">
         <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-glacier">// SUBSCRIBERS</div>
-          <h1 className="font-display text-3xl font-bold tracking-[-0.01em] mt-2 text-ink">Launch list</h1>
+          <div className="font-data text-[11px] tracking-[0.18em] text-nova">Abonnés</div>
+          <h1 className="font-display text-3xl font-bold tracking-[-0.01em] mt-2 text-nordfjord">Launch list</h1>
         </div>
         <a
           href={`${API_BASE}/admin/subscribers.csv${status === "all" ? "" : `?status=${status}`}`}
@@ -58,9 +58,9 @@ export default function AdminSubscribers() {
           { l: "Converted", v: stats.converted },
           { l: "Conversion", v: `${stats.rate}%` },
         ].map((c) => (
-          <div key={c.l} className="bg-white border border-ash rounded-md px-4 py-3">
-            <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-glacier">{c.l}</div>
-            <div className="font-mono text-2xl font-bold tabular-nums text-ink mt-1">{c.v}</div>
+          <div key={c.l} className="bg-card border border-ash/60 rounded-lg px-4 py-3">
+            <div className="font-data text-[10px] text-glacier">{c.l}</div>
+            <div className="font-data text-2xl font-bold tabular-nums text-nordfjord mt-1">{c.v}</div>
           </div>
         ))}
       </div>
@@ -84,7 +84,7 @@ export default function AdminSubscribers() {
         <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-ash font-mono text-[10px] uppercase tracking-[0.2em] text-glacier">
+            <tr className="border-b border-ash/60 font-data text-[11px] text-glacier">
               <Th>Email</Th>
               <Th>Lang</Th>
               <Th>Source</Th>
@@ -102,22 +102,22 @@ export default function AdminSubscribers() {
             )}
             {rows.map((r) => (
               <tr key={r.id} className="border-b border-ash last:border-0" data-testid={`subscriber-row-${r.id}`}>
-                <td className="px-4 py-3 font-mono text-xs text-ink">{r.email}</td>
-                <td className="px-4 py-3 font-mono text-xs uppercase text-glacier">{r.lang}</td>
-                <td className="px-4 py-3 font-mono text-xs text-glacier">{r.source || "—"}</td>
+                <td className="px-4 py-3 font-data text-xs text-nordfjord">{r.email}</td>
+                <td className="px-4 py-3 font-data text-xs text-glacier">{r.lang}</td>
+                <td className="px-4 py-3 font-data text-xs text-glacier">{r.source || "—"}</td>
                 <td className="px-4 py-3">
-                  <span className={`rounded-full font-mono text-[10px] uppercase tracking-[0.2em] px-2.5 py-1 border ${
+                  <span className={`rounded-full font-data text-[10px] px-2.5 py-1 border ${
                     r.status === "subscribed" ? "bg-nordfjord text-white border-nordfjord" : "border-ash text-glacier"}`}>
                     {r.status}
                   </span>
                 </td>
                 <td className="px-4 py-3">
                   {r.converted
-                    ? <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#2E9E6B]">Registered</span>
-                    : <span className="font-mono text-[10px] text-glacier">—</span>}
+                    ? <span className="font-data text-[10px] text-success">Registered</span>
+                    : <span className="font-data text-[10px] text-glacier">—</span>}
                 </td>
                 {/* consent_at + consent_ip = la preuve exigée en cas de plainte CASL */}
-                <td className="px-4 py-3 font-mono text-[10px] text-glacier">
+                <td className="px-4 py-3 font-data text-[10px] text-glacier">
                   {r.consent_at ? `${String(r.consent_at).slice(0, 10)} · ${r.consent_ip || "—"}` : "—"}
                 </td>
               </tr>
