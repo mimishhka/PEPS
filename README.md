@@ -1,60 +1,66 @@
-# Here are your Instructions
+# PEPS Ecommerce Rebuild
 
-## Backend layout
+Clean full-stack rebuild of the PEPS/Fironova ecommerce project. The previous repository was inspected only as concept/reference material; this branch is a fresh foundation with a simpler architecture, clearer domain boundaries, safer auth, payment reconciliation, affiliate tracking, admin review workflows, migrations, tests, and responsive ecommerce UI.
 
-`backend/server.py` holds the FastAPI app, configuration, Pydantic models, and the
-route handlers. Integration and domain logic lives under `backend/services/`:
+## Current Concepts Preserved
 
-| Module | Owns |
-| --- | --- |
-| `services/mail.py` | Resend transport, email outbox worker, janitor, template catalogue and rendering |
-| `services/canada_post.py` | Rating, shipment/label and manifest generation, artifact download, voiding, delivery tracking sync |
-| `services/interac.py` | Microsoft Graph mailbox polling and Interac e-Transfer auto-confirmation |
-| `services/nowpayments.py` | Crypto invoices, IPN verification and handling, mass payouts |
-| `services/affiliate.py` | Tiers, referral attribution, coupon codes and aliases, metrics, invitations, payouts |
-| `services/stock.py` | Atomic reservation/release, restock, back-in-stock and low-stock alerts |
+- Bilingual-ready peptide ecommerce storefront with visible 19+ and Research Use Only compliance.
+- Product catalog with SKU, lot, purity, COA URL, featured products, stock, and pricing.
+- Cart and checkout with free shipping threshold, terms acceptance, and customer email/account continuity.
+- Customer account/order history workflow.
+- Admin dashboard for products, orders, customers, affiliates, payouts, refunds, failures, and reconciliation.
+- Affiliate/referral links using `?ref=CODE`, first-click attribution, click metadata, commissions, payout threshold, payout status, and admin review.
+- Payment provider ideas from the old app: Interac/manual confirmation, card provider, NOWPayments/crypto, provider webhooks, idempotency, failure/refund handling, and manual reconciliation queue.
 
-Routes stay in `server.py` and `backend/routers/`; a service never declares one.
-Services read configuration, the Mongo handle, and anything still in `server.py`
-through `import server as s`. `server.py` registers itself in `sys.modules` under
-both `server` and `backend.server`, so either entrypoint works, and it re-exports
-the service symbols that existing call sites resolve by bare name.
+## New Architecture
 
-Outbound side effects — provider HTTP calls, email sends, stock mutations — are
-always invoked as `s.<name>`, even from inside the owning service, so `server` stays
-the single namespace where a caller can substitute them.
+```text
+backend/app.py              FastAPI app factory and routes
+backend/domain.py           Pure domain services for checkout, payment events, affiliates, payouts
+backend/migrations/001_initial.sql
+backend/tests/test_critical_flows.py
+frontend/src/App.tsx        Responsive storefront/admin prototype wired around real workflows
+frontend/src/styles.css     PEPS/Fironova visual system: paper, garnet, copper, signal red
+```
 
-## Environment configuration
+The backend is intentionally split between API and domain logic. The domain layer is testable without HTTP, and external providers are behind a `PaymentProvider` interface so Stripe, Interac, NOWPayments, and future processors can be swapped without rewriting checkout.
 
-Copy `.env.example` to `.env` and populate your Canada Post credentials before running the backend.
+## Security Posture
 
-Required Canada Post settings:
+- Browser sessions use `HttpOnly` cookies; JWTs are not returned for browser storage.
+- Admin/staff authorization is role-based. There is no hidden admin link or auto-login.
+- CORS uses explicit origins only.
+- Request bodies are validated with Pydantic schemas.
+- Payment webhooks use idempotency records and should be paired with provider signature verification secrets in production.
+- Secrets live in environment variables, never in committed files.
 
-- `CANADA_POST_API_KEY`
-- `CANADA_POST_CUSTOMER_NUMBER`
-- `CANADA_POST_ORIGIN_POSTAL_CODE`
-- `CANADA_POST_ENVIRONMENT=prod`
+## Local Setup
 
-Optional sender info:
+```bash
+cp .env.example .env
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+uvicorn app:app --reload
 
-- `CANADA_POST_SENDER_NAME`
-- `CANADA_POST_SENDER_ADDRESS`
-- `CANADA_POST_SENDER_CITY`
-- `CANADA_POST_SENDER_PROVINCE`
-- `CANADA_POST_SENDER_PHONE`
+cd ../frontend
+npm install
+npm run dev
+```
 
-Do not commit `.env` to source control.
+## Tests
 
-Production cookie, proxy, CSP, CDN, and verification requirements are documented in
-[`backend/docs/PRODUCTION_SECURITY.md`](backend/docs/PRODUCTION_SECURITY.md).
+```bash
+cd backend
+pytest
+```
 
-## Google OAuth setup
+The included tests cover checkout totals, stock reservation, affiliate commission creation, webhook idempotency, refund/failure handling, click attribution, and payout review state changes.
 
-To enable Google Sign-In for customers, add these variables to your `.env` (see `.env.example`):
+## Production Notes
 
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `GOOGLE_REDIRECT_URI` (must point to the backend callback, e.g. `https://api.fironova.com/api/auth/google/callback`)
-
-When enabled, users can sign in via Google; the backend will create or attach the account and set the same httpOnly session cookie used by email/password login.
-
+- Run the SQL migration in `backend/migrations/001_initial.sql` before booting production.
+- Configure `JWT_SECRET`, `ADMIN_PASSWORD`, payment keys, webhook secrets, sender email, and fulfillment provider secrets in the deployment secret store.
+- Keep `CORS_ORIGINS` explicit; never use `*` with credentials.
+- Add provider-specific webhook signature checks before enabling live payments.
