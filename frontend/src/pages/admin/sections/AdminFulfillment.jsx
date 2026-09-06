@@ -76,29 +76,29 @@ export default function AdminFulfillment() {
     <div data-testid="admin-fulfillment">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-display text-3xl font-bold uppercase tracking-tight flex items-center gap-2">
+          <h1 className="font-display text-3xl font-bold tracking-tight flex items-center gap-2 text-nordfjord">
             <Package size={26} /> Journée
           </h1>
-          <p className="font-mono text-xs text-foreground/60 mt-1">
+          <p className="font-data text-xs text-glacier mt-1">
             Poste d'expédition — préparer, empaqueter, étiqueter, envoyer. Cutoff 13 h (HE).
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={openPicking} disabled={(counts.processing + counts.packing) === 0} data-testid="fulfil-picking"
-            className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-3 py-2 hover:bg-ink/5 disabled:opacity-40 flex items-center gap-2">
+            className="border border-ash font-data text-xs px-3 py-2 rounded-lg hover:bg-clinical disabled:opacity-40 flex items-center gap-2 text-nordfjord">
             <ClipboardList size={14} /> Liste de prélèvement
           </button>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="fulfil-date"
-            className="border border-ink/20 px-3 py-2 font-mono text-sm" />
-          <button onClick={load} data-testid="fulfil-refresh" className="border border-ink/20 p-2 hover:bg-ink/5">
+            className="border border-ash px-3 py-2 font-data text-sm rounded-lg" />
+          <button onClick={load} data-testid="fulfil-refresh" className="border border-ash p-2 hover:bg-clinical rounded-lg">
             <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
       </div>
 
       {counts.overdue > 0 && (
-        <div className="mt-6 flex items-center gap-2 bg-red-50 border border-red-300 text-red-900 px-4 py-3 font-mono text-xs" data-testid="fulfil-overdue-banner">
-          <AlertTriangle size={15} /> {counts.overdue} commande(s) en retard — lot antérieur non expédié. Traiter en priorité.
+        <div className="mt-6 flex items-center gap-2 bg-warning/10 border border-warning/30 text-nordfjord px-4 py-3 font-data text-xs rounded-xl" data-testid="fulfil-overdue-banner">
+          <AlertTriangle size={15} className="text-warning" /> {counts.overdue} commande(s) en retard — lot antérieur non expédié. Traiter en priorité.
         </div>
       )}
 
@@ -106,11 +106,11 @@ export default function AdminFulfillment() {
         {STEP_ORDER.map((step) => {
           const Icon = STEP_ICON[step];
           return (
-            <div key={step} className="bg-white border border-ink/10 p-5" data-testid={`fulfil-stat-${step}`}>
-              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">
+            <div key={step} className="bg-card border border-ash/60 rounded-xl p-5" data-testid={`fulfil-stat-${step}`}>
+              <div className="flex items-center gap-2 font-data text-[11px] text-glacier">
                 <Icon size={13} /> {labels[step]?.fr || step}
               </div>
-              <div className="font-display text-4xl font-bold mt-1">{counts[step] || 0}</div>
+              <div className="font-display text-4xl font-bold mt-1 text-nordfjord">{counts[step] || 0}</div>
             </div>
           );
         })}
@@ -130,8 +130,8 @@ export default function AdminFulfillment() {
             : baseRows;
           return (
             <div key={step} data-testid={`fulfil-col-${step}`}>
-                <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 mb-3 flex items-center gap-2 flex-wrap">
-                  <Icon size={14} /> {labels[step]?.fr || step} <span className="text-foreground/30">({rows.length})</span>
+                <h2 className="font-data text-xs text-glacier font-medium mb-3 flex items-center gap-2 flex-wrap">
+                  <Icon size={14} /> {labels[step]?.fr || step} <span className="text-glacier/50">({rows.length})</span>
                   {/* Avancement groupé — l'endpoint existait sans bouton.
                       Il n'apparaît que sur les colonnes qui ont une étape
                       suivante et au moins une commande : une colonne vide ou
@@ -141,7 +141,7 @@ export default function AdminFulfillment() {
                       onClick={() => advanceAll(step)}
                       disabled={bulkStep === step}
                       data-testid={`fulfil-bulk-${step}`}
-                      className="ml-auto border border-ink/25 px-2.5 py-1 text-[10px] tracking-[0.15em] hover:border-nova hover:text-nova disabled:opacity-40"
+                      className="ml-auto border border-ash px-2.5 py-1 text-[11px] rounded-md text-glacier hover:border-nova hover:text-nova disabled:opacity-40"
                     >
                       {bulkStep === step ? "…" : `Tout → ${NEXT_LABEL[step]}`}
                     </button>
@@ -149,7 +149,7 @@ export default function AdminFulfillment() {
                 </h2>
                 <div className="space-y-3">
                   {rows.length === 0 ? (
-                    <div className="bg-white border border-ink/10 px-4 py-8 text-center font-mono text-[11px] text-foreground/40">
+                    <div className="bg-card border border-ash/60 rounded-xl px-4 py-8 text-center font-data text-[11px] text-glacier">
                       Vide
                     </div>
                   ) : rows.map((o) => {
@@ -160,25 +160,25 @@ export default function AdminFulfillment() {
                     o.tracking_number
                   );
                   return (
-                  <div key={o.id} className={`bg-white border ${o.is_overdue ? "border-red-300" : "border-ink/10"}`} data-testid={`fulfil-card-${o.order_number}`}>
+                  <div key={o.id} className={`bg-card border rounded-xl ${o.is_overdue ? "border-warning/50" : "border-ash/60"}`} data-testid={`fulfil-card-${o.order_number}`}>
                     <button onClick={() => setOpenId(openId === o.id ? null : o.id)} className="w-full text-left px-4 py-3">
                       <div className="flex items-center justify-between">
-                        <span className="font-mono text-xs font-bold">{o.order_number}</span>
-                        {o.is_overdue && <span className="font-mono text-[10px] uppercase text-red-600 flex items-center gap-1"><AlertTriangle size={10} /> retard</span>}
+                        <span className="font-data text-xs font-semibold text-nordfjord">{o.order_number}</span>
+                        {o.is_overdue && <span className="font-data text-[10px] text-warning flex items-center gap-1"><AlertTriangle size={10} /> retard</span>}
                       </div>
-                      <div className="font-mono text-[11px] text-foreground/50 mt-1 flex items-center gap-1">
+                      <div className="font-data text-[11px] text-glacier mt-1 flex items-center gap-1">
                         <MapPin size={10} /> {o.city || "—"}, {o.province || ""} · {o.units} u.
                       </div>
                     </button>
 
                     {openId === o.id && (
-                      <div className="px-4 pb-3 border-t border-ink/10 pt-3" data-testid={`fulfil-picking-${o.order_number}`}>
-                        <div className="font-mono text-[10px] uppercase tracking-wider text-foreground/40 mb-2">Prélever</div>
+                      <div className="px-4 pb-3 border-t border-ash/60 pt-3" data-testid={`fulfil-picking-${o.order_number}`}>
+                        <div className="font-data text-[10px] text-glacier mb-2">Prélever</div>
                         <ul className="space-y-1">
                           {o.picking.map((p, i) => (
-                            <li key={i} className="font-mono text-[11px] flex justify-between">
-                              <span>{p.name_fr || p.name_en} {p.variant_name && <span className="text-foreground/50">· {p.variant_name}</span>}</span>
-                              <span className="font-bold">{p.qty}×</span>
+                            <li key={i} className="font-data text-[11px] flex justify-between text-nordfjord">
+                              <span>{p.name_fr || p.name_en} {p.variant_name && <span className="text-glacier">· {p.variant_name}</span>}</span>
+                              <span className="font-semibold">{p.qty}×</span>
                             </li>
                           ))}
                         </ul>
@@ -188,13 +188,13 @@ export default function AdminFulfillment() {
                     {NEXT[step] && !isShippedHistory && (
                       <div className="px-4 pb-3">
                         <button onClick={() => advance(o, NEXT[step])} disabled={busyId === o.id} data-testid={`fulfil-advance-${o.order_number}`}
-                          className="w-full bg-ink text-white font-mono text-[11px] uppercase tracking-wider px-3 py-2 hover:bg-ink/80 disabled:opacity-40 flex items-center justify-center gap-1">
+                          className="w-full bg-nordfjord text-white font-data text-xs px-3 py-2 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-1">
                           {busyId === o.id ? "…" : <>{NEXT_LABEL[step]} <ChevronRight size={13} /></>}
                         </button>
                       </div>
                     )}
                     {step === "packed" && (
-                      <div className="px-4 pb-3 font-mono text-[10px] text-foreground/50 text-center">
+                      <div className="px-4 pb-3 font-data text-[10px] text-glacier text-center">
                         {isShippedHistory ? "Étiquetée" : "Prête pour étiquetage"}
                       </div>
                     )}
