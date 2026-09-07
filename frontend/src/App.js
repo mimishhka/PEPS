@@ -60,6 +60,8 @@ const Admin = lazy(() => import("./pages/admin/AdminLayout"));
 const ADMIN_PATH = "/ops-portal-fn7k2q";
 
 import "./index.css";
+import "./storefront.css";
+import "./storefront-commerce.css";
 
 function Shell({ children }) {
   return (
@@ -68,7 +70,7 @@ function Shell({ children }) {
       <AgeGate />
       <Header />
       <CartDrawer />
-      <main className="flex-1">{children}</main>
+      <main id="main-content" tabIndex={-1} className="flex-1">{children}</main>
       <Footer />
       <Toaster position="bottom-right" />
     </div>

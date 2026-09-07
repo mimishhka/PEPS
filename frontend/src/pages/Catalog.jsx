@@ -4,6 +4,7 @@ import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import ProductCard from "../components/ProductCard.jsx";
+import { getProductPricing } from "../lib/productPricing";
 
 // Les catégories thématiques ont été retirées de la boutique : leurs libellés
 // (« Healing & Recovery », « Weight Management »…) décrivaient un effet
@@ -34,34 +35,37 @@ export default function Catalog() {
     const q = query.trim().toLowerCase();
     if (q) {
       arr = arr.filter((p) =>
-        [p.name_en, p.name_fr, p.slug, p.sequence, p.cas_number]
+        [p.name_en, p.name_fr, p.slug, p.sequence, p.cas_number, ...(p.variants || []).map((v) => v.sku)]
           .filter(Boolean)
           .some((s) => String(s).toLowerCase().includes(q))
       );
     }
-    if (sort === "price-asc") arr.sort((a, b) => a.price_cad - b.price_cad);
-    if (sort === "price-desc") arr.sort((a, b) => b.price_cad - a.price_cad);
-    if (sort === "name") arr.sort((a, b) => a.name_en.localeCompare(b.name_en));
+    if (sort === "price-asc") arr.sort((a, b) => getProductPricing(a).price - getProductPricing(b).price);
+    if (sort === "price-desc") arr.sort((a, b) => getProductPricing(b).price - getProductPricing(a).price);
+    if (sort === "name") arr.sort((a, b) => String((lang === "fr" ? a.name_fr : a.name_en) || a.name_en || a.slug).localeCompare(String((lang === "fr" ? b.name_fr : b.name_en) || b.name_en || b.slug), lang));
     return arr;
-  }, [products, sort, query]);
+  }, [products, sort, query, lang]);
 
   return (
-    <div data-testid="catalog-page" className="bg-clinical min-h-screen">
-      <div className="max-w-7xl mx-auto px-6 lg:px-8 pt-16 pb-10">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4 flex items-center gap-2">
+    <div data-testid="catalog-page" className="fn-catalog bg-clinical min-h-screen">
+      <div className="fn-container fn-catalog-heading">
+        <p className="fn-kicker mb-4">
           <span className="inline-block w-8 h-px bg-nova" /> {lang === "fr" ? "CATALOGUE" : "CATALOG"}
         </p>
-        <h1 className="font-display text-[42px] sm:text-[52px] font-semibold text-nordfjord leading-tight">
+        <h1 className="fn-catalog-title">
           {lang === "fr" ? "La bibliothèque complète" : "The full library"}
         </h1>
+        <p className="fn-catalog-description">{lang === "fr" ? "Explorez les composés, comparez les spécifications et consultez la documentation disponible." : "Explore compounds, compare specifications, and find available documentation."}</p>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 lg:px-8 pb-24">
+      <div className="fn-container pb-24">
         <section>
-          <div className="flex flex-col sm:flex-row gap-3 mb-8">
-            <div className="flex-1 flex items-center gap-2.5 bg-white border border-ash rounded-full px-5 py-3">
+          <div className="fn-catalog-controls">
+            <div className="fn-catalog-search">
               <Search size={16} className="text-glacier shrink-0" />
               <input
+                type="search"
+                aria-label={lang === "fr" ? "Rechercher par nom, SKU, séquence ou CAS" : "Search by name, SKU, sequence, or CAS"}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={lang === "fr" ? "Rechercher un composé, un SKU…" : "Search compounds, SKU…"}
@@ -69,10 +73,11 @@ export default function Catalog() {
                 className="flex-1 bg-transparent outline-none text-nordfjord text-[15px] placeholder:text-glacier"
               />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="fn-catalog-sorts" role="group" aria-label={lang === "fr" ? "Trier les composés" : "Sort compounds"}>
               <button
                 onClick={() => setSort("price-asc")}
                 data-testid="catalog-sort-price-asc"
+                aria-pressed={sort === "price-asc"}
                 className={`rounded-full font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border-[1.5px] transition-colors ${sort === "price-asc" ? "border-nova text-nova" : "border-ash text-glacier hover:border-nova hover:text-nova"}`}
               >
                 {lang === "fr" ? "Prix ↑" : "Price ↑"}
@@ -80,6 +85,7 @@ export default function Catalog() {
               <button
                 onClick={() => setSort("price-desc")}
                 data-testid="catalog-sort-price-desc"
+                aria-pressed={sort === "price-desc"}
                 className={`rounded-full font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border-[1.5px] transition-colors ${sort === "price-desc" ? "border-nova text-nova" : "border-ash text-glacier hover:border-nova hover:text-nova"}`}
               >
                 {lang === "fr" ? "Prix ↓" : "Price ↓"}
@@ -87,6 +93,7 @@ export default function Catalog() {
               <button
                 onClick={() => setSort("name")}
                 data-testid="catalog-sort-name"
+                aria-pressed={sort === "name"}
                 className={`rounded-full font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border-[1.5px] transition-colors ${sort === "name" ? "border-nova text-nova" : "border-ash text-glacier hover:border-nova hover:text-nova"}`}
               >
                 {lang === "fr" ? "Nom" : "Name"}
@@ -94,6 +101,7 @@ export default function Catalog() {
             </div>
           </div>
 
+          {!loading && !loadError && <p className="fn-results-count" role="status" data-testid="catalog-results-count">{sorted.length} {lang === "fr" ? "composé(s)" : "compound(s)"}</p>}
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="catalog-loading">
               {Array.from({ length: 6 }).map((_, i) => (

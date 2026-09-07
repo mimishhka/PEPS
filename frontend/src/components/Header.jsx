@@ -1,6 +1,6 @@
 import { Link, NavLink, useNavigate, useLocation } from "react-router-dom";
-import { ShoppingBag, User, Menu, X, Lock } from "lucide-react";
-import { useState, useEffect } from "react";
+import { ShoppingBag, User, Menu, X } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -14,198 +14,52 @@ export default function Header() {
   const { count, setOpen } = useCart();
   const { coaPageEnabled } = useSiteConfig();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [menuNav, setMenuNav] = useState(null);
+  const menuButton = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
-
-  // NOTE: keep in sync with ADMIN_PATH in App.js
+  const fr = lang === "fr";
   const ADMIN_PATH = "/ops-portal-fn7k2q";
+  const enterAdmin = () => navigate(user?.role === "admin" ? ADMIN_PATH : "/login?next=" + encodeURIComponent(ADMIN_PATH));
+  const loginHref = "/login?next=" + encodeURIComponent(location.pathname + (location.search || "") + (location.hash || ""));
 
-  const enterAdmin = async () => {
-    if (user?.role === "admin") {
-      navigate(ADMIN_PATH);
-      return;
-    }
-    navigate(`/login?next=${encodeURIComponent(ADMIN_PATH)}`);
-  };
-
-  const fallbackNav = [
-    { to: "/catalog", label: t("nav.catalog") },
-    ...(coaPageEnabled ? [{ to: "/lab", label: t("nav.lab") }] : []),
-    { to: "/about", label: t("nav.about") },
-  ];
-
-  const loginHref = `/login?next=${encodeURIComponent(`${location.pathname}${location.search || ""}${location.hash || ""}`)}`;
-
-  const [menuNav, setMenuNav] = useState(null);
   useEffect(() => {
     let cancelled = false;
     api.get("/menus", { params: { location: "header" } })
-      .then((r) => {
-        if (cancelled) return;
-        const menu = Array.isArray(r.data) ? r.data[0] : null;
-        setMenuNav(menu?.items?.length ? menu.items : []);
-      })
+      .then((r) => { if (!cancelled) setMenuNav(Array.isArray(r.data) ? r.data[0]?.items || [] : []); })
       .catch(() => { if (!cancelled) setMenuNav([]); });
     return () => { cancelled = true; };
   }, []);
+  useEffect(() => { setMobileOpen(false); }, [location.pathname, location.search]);
+  useEffect(() => {
+    if (!mobileOpen) return undefined;
+    const close = (e) => { if (e.key === "Escape") { setMobileOpen(false); menuButton.current?.focus(); } };
+    document.addEventListener("keydown", close);
+    return () => document.removeEventListener("keydown", close);
+  }, [mobileOpen]);
 
-  const navItems =
-    menuNav && menuNav.length
-      ? menuNav
-          .filter((it) => (it.url === "/lab" ? coaPageEnabled : true))
-          .map((it) => ({
-            to: it.url,
-            label: lang === "fr" ? it.label_fr : it.label_en,
-            newTab: it.open_new_tab,
-          }))
-      : fallbackNav;
+  const fallbackNav = [{ to: "/catalog", label: t("nav.catalog") }, ...(coaPageEnabled ? [{ to: "/lab", label: t("nav.lab") }] : []), { to: "/about", label: t("nav.about") }];
+  const navItems = menuNav?.length ? menuNav.filter((it) => it.url !== "/lab" || coaPageEnabled).map((it) => ({ to: it.url, label: fr ? it.label_fr : it.label_en, newTab: it.open_new_tab })) : fallbackNav;
+  const renderNav = (n, mobile = false) => n.newTab || /^https?:/.test(n.to)
+    ? <a key={n.to} href={n.to} target={n.newTab ? "_blank" : undefined} rel={n.newTab ? "noopener noreferrer" : undefined} onClick={() => setMobileOpen(false)} className="fn-nav-link" data-testid={(mobile ? "mobile-" : "") + "nav-link-" + n.to.slice(1)}>{n.label}</a>
+    : <NavLink key={n.to} to={n.to} onClick={() => setMobileOpen(false)} className={({ isActive }) => "fn-nav-link" + (isActive ? " is-active" : "")} data-testid={(mobile ? "mobile-" : "") + "nav-link-" + n.to.slice(1)}>{n.label}</NavLink>;
 
-  return (
-    <>
-      {/* Le fond `bg-nordfjord` s'inverse la nuit et devient clair. Le cyan
-          pâle écrit dessus, parfait sur bleu marine, disparaissait alors sur
-          fond blanc. La nuit, le texte passe donc à l'encre sombre — c'est la
-          paire fond/texte qui porte le contraste, pas la valeur. */}
-      <div className="bg-nordfjord text-center py-2 px-4 font-data text-[11px] font-semibold uppercase tracking-[0.22em] text-[#9FD9E8] dark:text-clinical">
-        <span data-testid="header-compliance-band">{t("footer.compliance")}</span>
-      </div>
-      <header className="sticky top-0 z-40 bg-clinical/85 backdrop-blur border-b border-ash/70">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8 flex items-center justify-between h-16">
-          {/* Le symbole et le mot étaient peints en Nordfjord codé en dur. Sur
-              les pages de compte en mode nuit, le fond passe au sombre et le
-              logo devenait un bleu marine sur du presque noir — pratiquement
-              invisible. currentColor le fait suivre `text-nordfjord`, dont la
-              valeur s'inverse. L'étoile garde son Nova Cyan : c'est l'accent
-              unique, et il tient sur les deux fonds. */}
-          <Link to="/" data-testid="header-logo" className="flex items-center gap-3 group text-nordfjord" aria-label="FIRONOVA">
-            <FnMark size={30} frame="currentColor" spark="#00B8D4" className="transition-transform duration-500 group-hover:rotate-[30deg]" />
-            <Wordmark size={19} color="currentColor" />
-          </Link>
-          <nav className="hidden md:flex items-center gap-8">
-            {navItems.map((n) => (
-              <NavLink
-                key={n.to}
-                to={n.to}
-                data-testid={`nav-link-${n.to.slice(1)}`}
-                className={({ isActive }) =>
-                  `font-data text-xs font-semibold uppercase tracking-[0.18em] ${
-                    isActive ? "text-nordfjord" : "text-glacier hover:text-nordfjord"
-                  } transition-colors`
-                }
-              >
-                {n.label}
-              </NavLink>
-            ))}
-          </nav>
-          <div className="flex items-center gap-3 sm:gap-4">
-            <button
-              data-testid="admin-quick-access"
-              onClick={enterAdmin}
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-full font-data text-[11px] font-semibold uppercase tracking-[0.2em] bg-nordfjord text-white px-3.5 py-1.5 hover:bg-glacier transition-colors"
-              aria-label="Ops"
-            >
-              <Lock size={11} strokeWidth={2} />
-              OPS
-            </button>
-            <button
-              data-testid="lang-toggle"
-              onClick={toggle}
-              className="rounded-full font-data text-xs font-semibold uppercase tracking-[0.18em] border-[1.5px] border-ash px-3 py-1.5 hover:border-nova transition-colors inline-flex items-center gap-1.5"
-              aria-label="Toggle language"
-              title={lang === "fr" ? "Passer à l'anglais" : "Switch to French"}
-            >
-              <span className={lang === "fr" ? "text-nordfjord" : "text-glacier/60"} data-testid="lang-fr">FR</span>
-              <span className="text-ash">·</span>
-              <span className={lang === "en" ? "text-nordfjord" : "text-glacier/60"} data-testid="lang-en">EN</span>
-            </button>
-            <button
-              data-testid="cart-button"
-              onClick={() => setOpen(true)}
-              className="relative font-data text-xs font-semibold uppercase tracking-[0.18em] flex items-center gap-2 text-nordfjord hover:text-nova transition-colors"
-            >
-              <span className="relative inline-flex">
-                <ShoppingBag size={18} strokeWidth={1.5} />
-                {count > 0 && (
-                  <span
-                    data-testid="cart-count-badge"
-                    className="absolute -top-2 -right-3 rounded-full bg-nova text-nordfjord text-[10px] font-bold leading-none px-1.5 py-1 min-w-[18px] text-center"
-                  >
-                    {count}
-                  </span>
-                )}
-              </span>
-              <span className="hidden sm:inline">{t("nav.cart")}</span>
-            </button>
-            {user ? (
-              <div className="hidden md:flex items-center gap-3">
-                <Link to="/account" data-testid="nav-account" className="font-data text-xs font-semibold uppercase tracking-[0.18em] flex items-center gap-1.5 text-nordfjord hover:text-nova transition-colors">
-                  <User size={16} strokeWidth={1.5} /> {user.name?.split(" ")[0] || t("nav.account")}
-                </Link>
-                <button
-                  onClick={logout}
-                  data-testid="nav-logout"
-                  className="font-data text-xs font-semibold uppercase tracking-[0.18em] text-glacier hover:text-nordfjord transition-colors"
-                >
-                  {t("nav.logout")}
-                </button>
-              </div>
-            ) : (
-              <Link
-                to={loginHref}
-                data-testid="nav-login"
-                className="hidden md:inline-flex items-center gap-1.5 font-data text-xs font-semibold uppercase tracking-[0.18em] text-nordfjord hover:text-nova transition-colors"
-              >
-                <User size={16} strokeWidth={1.5} />
-              </Link>
-            )}
-            <button
-              className="md:hidden text-nordfjord"
-              data-testid="mobile-menu-toggle"
-              onClick={() => setMobileOpen((v) => !v)}
-              aria-label="Menu"
-            >
-              {mobileOpen ? <X size={20} /> : <Menu size={20} />}
-            </button>
-          </div>
+  return <>
+    <a href="#main-content" className="fn-skip-link" data-testid="skip-to-content">{fr ? "Aller au contenu" : "Skip to content"}</a>
+    <div className="fn-compliance-band"><span data-testid="header-compliance-band">{t("footer.compliance")}</span></div>
+    <header className="fn-header">
+      <div className="fn-header-inner fn-container">
+        <Link to="/" data-testid="header-logo" className="fn-logo" aria-label={fr ? "FIRONOVA — Accueil" : "FIRONOVA — Home"}><FnMark size={32} frame="currentColor" spark="#00B8D4" /><Wordmark size={20} color="currentColor" /></Link>
+        <nav className="fn-desktop-nav" aria-label={fr ? "Navigation principale" : "Main navigation"}>{navItems.map((n) => renderNav(n))}</nav>
+        <div className="fn-header-actions">
+          <button data-testid="admin-quick-access" onClick={enterAdmin} className="fn-ops" aria-label={fr ? "Portail des opérations" : "Operations portal"}>OPS</button>
+          <button data-testid="lang-toggle" onClick={toggle} className="fn-language" aria-label={fr ? "Passer à l’anglais" : "Switch to French"}><span className={fr ? "selected" : ""} data-testid="lang-fr">FR</span><span aria-hidden="true">/</span><span className={!fr ? "selected" : ""} data-testid="lang-en">EN</span></button>
+          <div className="fn-account-actions"><Link to={user ? "/account" : loginHref} data-testid={user ? "nav-account" : "nav-login"} className="fn-icon-button" aria-label={t(user ? "nav.account" : "nav.login")}><User size={19} strokeWidth={1.5} /></Link>{user && <button onClick={logout} data-testid="nav-logout" className="fn-logout">{t("nav.logout")}</button>}</div>
+          <button data-testid="cart-button" onClick={() => setOpen(true)} className="fn-icon-button" aria-label={t("nav.cart") + " (" + count + ")"}><ShoppingBag size={20} strokeWidth={1.5} /><span className="fn-cart-count" data-testid={count > 0 ? "cart-count-badge" : undefined}>{count}</span></button>
+          <button ref={menuButton} className="fn-icon-button fn-mobile-toggle" data-testid="mobile-menu-toggle" onClick={() => setMobileOpen((v) => !v)} aria-label={mobileOpen ? (fr ? "Fermer le menu" : "Close menu") : (fr ? "Ouvrir le menu" : "Open menu")} aria-expanded={mobileOpen} aria-controls="mobile-navigation">{mobileOpen ? <X size={22} /> : <Menu size={22} />}</button>
         </div>
-        {mobileOpen && (
-          <div className="md:hidden border-t border-ash/70 bg-clinical px-6 py-4" data-testid="mobile-menu">
-            <nav className="flex flex-col gap-3">
-              {navItems.map((n) => (
-                <Link
-                  key={n.to}
-                  to={n.to}
-                  onClick={() => setMobileOpen(false)}
-                  className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-2 text-nordfjord"
-                >
-                  {n.label}
-                </Link>
-              ))}
-              <button
-                onClick={() => { setMobileOpen(false); enterAdmin(); }}
-                data-testid="admin-quick-access-mobile"
-                className="rounded-full font-data text-xs font-semibold uppercase tracking-[0.18em] py-2 text-left bg-nordfjord text-white px-4 inline-flex items-center gap-2 w-fit"
-              >
-                <Lock size={11} strokeWidth={2} /> OPS
-              </button>
-              {user ? (
-                <>
-                  <Link to="/account" onClick={() => setMobileOpen(false)} className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-2 text-nordfjord">
-                    {t("nav.account")}
-                  </Link>
-                  <button onClick={() => { logout(); setMobileOpen(false); }} className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-2 text-left text-nordfjord">
-                    {t("nav.logout")}
-                  </button>
-                </>
-              ) : (
-                <Link to={loginHref} onClick={() => setMobileOpen(false)} className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-2 text-nordfjord">
-                  {t("nav.login")} →
-                </Link>
-              )}
-            </nav>
-          </div>
-        )}
-      </header>
-    </>
-  );
+      </div>
+      {mobileOpen && <div id="mobile-navigation" className="fn-mobile-menu fn-container" data-testid="mobile-menu"><nav aria-label={fr ? "Navigation mobile" : "Mobile navigation"}>{navItems.map((n) => renderNav(n, true))}<Link to={user ? "/account" : loginHref} onClick={() => setMobileOpen(false)} data-testid="mobile-account-link">{t(user ? "nav.account" : "nav.login")}</Link>{user && <button onClick={() => { logout(); setMobileOpen(false); }} data-testid="mobile-logout">{t("nav.logout")}</button>}<button onClick={() => { setMobileOpen(false); enterAdmin(); }} data-testid="admin-quick-access-mobile">OPS</button></nav></div>}
+    </header>
+  </>;
 }
