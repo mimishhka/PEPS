@@ -172,7 +172,7 @@ export default function ProductDetail() {
   ];
 
   return (
-    <div data-testid="product-detail-page" className="bg-clinical min-h-screen">
+    <div data-testid="product-detail-page" className="fn-product-detail bg-clinical min-h-screen">
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-12">
         <Link to="/catalog" data-testid="back-to-catalog" className="inline-flex items-center gap-2 font-data text-[12px] uppercase tracking-[0.16em] text-glacier hover:text-nordfjord transition-colors mb-8">
           ← {lang === "fr" ? "Retour au catalogue" : "Back to catalog"}
