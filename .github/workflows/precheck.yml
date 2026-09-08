@@ -59,8 +59,21 @@ jobs:
         working-directory: frontend
         run: yarn lint
 
+      # NODE_OPTIONS : le decoupage en etapes a designe cette phase, et elle
+      # seule. La construction reussit en local (262 s, code 0, CI=true compris)
+      # et echoue sur le runner — qui dispose de 7 Go et d'un processeur bien
+      # plus lent. Un depassement du tas de V8 est de loin l'explication la plus
+      # frequente pour une construction Create React App qui ne casse QU'EN
+      # integration continue.
+      #
+      # C'est une hypothese, pas un diagnostic : les journaux d'execution
+      # demandent une session GitHub, que je n'ai pas. Le reglage est sans
+      # inconvenient — il releve un plafond, il n'en abaisse aucun. Si l'etape
+      # tombe encore, c'est qu'il faut chercher ailleurs.
       - name: Build frontend
         working-directory: frontend
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: yarn build
 
       - name: Tests frontend
@@ -171,21 +184,10 @@ jobs:
       # appelle seed_admin_and_products() a son demarrage, et les tests creent
       # ensuite leurs propres affilies via l'API d'administration.
       #
-      # continue-on-error PENDANT LA MISE EN ROUTE. Ces 170 tests n'ont jamais
-      # tourne en integration continue et je n'ai pas pu les EXECUTER en local :
-      # il y faut MongoDB, soit 592 Mo a telecharger sur la machine de
-      # developpement. Ce que j'ai verifie, c'est qu'ils se COLLECTENT tous
-      # proprement avec cet environnement — 170 collectes, zero erreur — ce qui
-      # elimine les pannes d'import et de niveau module.
-      #
-      # Le reste doit se constater ici. Tant que ce drapeau est la, un echec
-      # s'affiche sans faire passer l'ecusson au rouge : la tache vient d'etre
-      # remise au vert apres dix-sept jours, et une nouvelle source de rouge
-      # non diagnostiquee la rendrait a nouveau illisible.
-      #
-      # A RETIRER des que la premiere execution complete est verte.
-      - name: Run backend integration tests (mise en route, non bloquant)
-        continue-on-error: true
+      # Ils sont passes du premier coup, execution 34257801355. Le drapeau
+      # continue-on-error de la mise en route est donc retire : ces 170 tests
+      # sont bloquants comme les autres.
+      - name: Run backend integration tests
         working-directory: backend
         run: |
           FICHIERS=$(grep -l REACT_APP_BACKEND_URL tests/test_*.py | tr '\n' ' ')

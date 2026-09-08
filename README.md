@@ -7,12 +7,23 @@
 **Si l'écusson ci-dessus est rouge, `main` est cassée.** Il se met à jour tout
 seul et se voit depuis la page d'accueil du dépôt.
 
-Ce n'est pas une précaution théorique : la tâche `backend-tests` a été **rouge
-pendant dix-sept jours** sans que personne le remarque, du 21 août au 7 septembre
-2026. Trois tests décrivaient un comportement que le code n'avait plus, et deux
-défauts réels — une fuite de données personnelles dans les journaux, un worker
-qui rejouait quatre fois une erreur de programmation — attendaient dans les
-échecs que quelqu'un les lise.
+Ce n'est pas une précaution théorique. La chaîne a été **rouge du 15 août au
+8 septembre 2026** — vingt-quatre jours, les deux tâches, sans une seule
+exécution verte. Et pas pour la raison qu'on croyait : l'étape *Install backend
+dependencies* échouait, si bien qu'**aucun test backend ne s'exécutait**, pas même
+les cinq fichiers qui étaient listés. La tâche `backend-tests` avait été ajoutée
+le 15 août et n'avait jamais réussi une seule fois.
+
+Deux leçons y sont inscrites dans la configuration :
+
+- **Une étape par phase.** Les journaux d'exécution demandent une session
+  GitHub ; les *noms* et *résultats* des étapes sont publics. Tant que tout
+  tenait dans un seul « Run unified precheck », son échec ne disait rien de plus
+  que « quelque chose a cassé ». Découpé, il désigne la phase fautive à lui seul.
+- **L'intégration continue n'installe pas `requirements.txt`** mais
+  `requirements-ci.txt` : les dix-huit modules que le backend importe vraiment,
+  au lieu d'une centaine dont plusieurs compilent depuis les sources ou viennent
+  d'un hôte privé.
 
 ### Être prévenue
 
@@ -20,7 +31,7 @@ qui rejouait quatre fois une erreur de programmation — attendaient dans les
 **Settings → Notifications → Actions** de votre *compte* — pas du dépôt.
 
 **Quand c'est quelqu'un d'autre** : GitHub ne prévient personne, et c'est par ce
-trou que les dix-sept jours sont passés. La tâche `alerte-echec` du workflow
+trou que les vingt-quatre jours sont passés. La tâche `alerte-echec` du workflow
 comble ça, mais elle attend une adresse :
 
 > Créez un secret de dépôt nommé **`CI_WEBHOOK_URL`** contenant l'URL d'un
@@ -39,10 +50,9 @@ Le secret n'apparaît jamais dans les journaux.
 | `backend-tests` | MongoDB 7, les **107 tests unitaires**, puis démarrage du serveur et les **170 tests d'intégration** |
 | `alerte-echec` | prévient sur `CI_WEBHOOK_URL` si la chaîne casse — inerte sans ce secret |
 
-Les tests d'intégration démarrent en **non bloquant** : ils n'ont jamais tourné
-en intégration continue, et un échec afficherait le détail sans faire passer
-l'écusson au rouge. Le drapeau `continue-on-error` est à retirer dès la première
-exécution verte. Voir [`backend/docs/TESTS.md`](backend/docs/TESTS.md).
+Les 170 tests d'intégration sont **passés du premier coup** le 2026-09-08 : ils
+sont bloquants comme les autres. Voir
+[`backend/docs/TESTS.md`](backend/docs/TESTS.md).
 
 ## Backend layout
 
