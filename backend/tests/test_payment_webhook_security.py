@@ -13,6 +13,10 @@ from pymongo.errors import DuplicateKeyError
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+# Les points d'entree de versement sont limites en debit : sans cette
+# collection, le limiteur repond 503 et le test ne verifie plus rien.
+from tests.fake_mongo import CompteurDeDebit  # noqa: E402
+
 
 @pytest.fixture
 def server_module(monkeypatch):
@@ -178,7 +182,7 @@ def test_batch_payout_claim_prevents_double_provider_call(server_module, monkeyp
     async def fake_jwt(force=False):
         return "jwt"
 
-    server_module.db = types.SimpleNamespace(affiliate_payouts=Payouts())
+    server_module.db = types.SimpleNamespace(affiliate_payouts=Payouts(), rate_limit_counters=CompteurDeDebit())
     server_module.NOWPAYMENTS_PAYOUT_ENABLED = True
     monkeypatch.setattr(server_module, "_refresh_np_jwt", fake_jwt)
     monkeypatch.setattr(server_module.httpx, "AsyncClient", HttpClient)

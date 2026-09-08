@@ -109,6 +109,16 @@ NOWPAYMENTS_IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "")
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 APP_ENV = os.environ.get("APP_ENV", os.environ.get("ENV", os.environ.get("ENVIRONMENT", ""))).strip().lower()
 IS_PRODUCTION = APP_ENV in {"prod", "production"}
+# La documentation de l'API ne s'ouvre que sur un APP_ENV EXPLICITEMENT de
+# developpement. `not IS_PRODUCTION` faisait l'inverse : une variable oubliee —
+# le cas le plus courant — laissait /docs, /redoc et /openapi.json ouverts a
+# tout le monde, avec la carte complete des 231 points d'entree. Un oubli doit
+# fermer, pas ouvrir.
+#
+# Le reste des garde-fous (temoins Secure, CORS, Canada Post) reste sur
+# IS_PRODUCTION : les basculer aussi casserait le developpement local en HTTP,
+# et ce n'est pas ce qui etait expose.
+EXPOSE_API_DOCS = APP_ENV in {"dev", "develop", "development", "local", "test"}
 if IS_PRODUCTION and not PUBLIC_BASE_URL:
     raise RuntimeError(
         "PUBLIC_BASE_URL est obligatoire en production. Définissez-la avant de démarrer le serveur."
@@ -310,9 +320,9 @@ db = client[DB_NAME]
 app = FastAPI(
     title="FIRONOVA API",
     version="1.0.0",
-    docs_url=None if IS_PRODUCTION else "/docs",
-    redoc_url=None if IS_PRODUCTION else "/redoc",
-    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+    docs_url="/docs" if EXPOSE_API_DOCS else None,
+    redoc_url="/redoc" if EXPOSE_API_DOCS else None,
+    openapi_url="/openapi.json" if EXPOSE_API_DOCS else None,
 )
 api = APIRouter(prefix="/api")
 
@@ -1084,6 +1094,14 @@ def _client_ip(request: Request) -> str:
 CHECKOUT_MAX_PER_MINUTE = int(os.environ.get("CHECKOUT_MAX_PER_MINUTE", "20"))
 WEBHOOK_MAX_PER_MINUTE = int(os.environ.get("WEBHOOK_MAX_PER_MINUTE", "120"))
 PUBLIC_MUTATION_MAX_PER_MINUTE = int(os.environ.get("PUBLIC_MUTATION_MAX_PER_MINUTE", "120"))
+# Versements : les SEULS points d'entree qui font sortir de l'argent. Ils sont
+# derriere l'authentification administrateur, mais c'est precisement pour cela
+# qu'ils meritent une limite : une boucle de reessai cote client, un double clic
+# repete ou une session volee n'ont ici aucun plafond naturel. Les valeurs sont
+# larges pour un humain qui traite une liste, etroites pour une machine.
+PAYOUT_EXECUTE_MAX_PER_MINUTE = int(os.environ.get("PAYOUT_EXECUTE_MAX_PER_MINUTE", "20"))
+PAYOUT_BATCH_MAX_PER_MINUTE = int(os.environ.get("PAYOUT_BATCH_MAX_PER_MINUTE", "5"))
+PAYOUT_MARK_PAID_MAX_PER_MINUTE = int(os.environ.get("PAYOUT_MARK_PAID_MAX_PER_MINUTE", "30"))
 
 
 async def _rate_limit_distributed(bucket: str, key: str, max_hits: int, window_seconds: int, detail: str):
@@ -9170,13 +9188,22 @@ async def _backfill_affiliate_coupons() -> None:
 
 @app.on_event("startup")
 async def startup_event():
-    # Warn if APP_ENV is not set — /docs and /openapi.json remain public, and
-    # any other production-only guards keyed on IS_PRODUCTION stay off.
+    # APP_ENV absente : la documentation est FERMEE (c'est le defaut sur), mais
+    # les garde-fous de production — temoins Secure, CORS strict, refus du bac a
+    # sable Canada Post — restent inactifs. L'avertissement porte desormais sur
+    # eux, et non sur /docs qui n'est plus concerne.
     if not APP_ENV:
         logging.warning(
-            "[config] APP_ENV is not set — running in DEV mode. "
-            "/docs, /redoc and /openapi.json are publicly exposed. "
-            "Set APP_ENV=production before deploying."
+            "[config] APP_ENV n'est pas definie — les garde-fous de production "
+            "sont inactifs (temoins non Secure, CORS permissif, bac a sable "
+            "Canada Post tolere). La documentation de l'API, elle, reste fermee. "
+            "Definissez APP_ENV=production avant de deployer."
+        )
+    if EXPOSE_API_DOCS:
+        logging.warning(
+            "[config] APP_ENV=%s — /docs, /redoc et /openapi.json sont OUVERTS. "
+            "A ne jamais utiliser sur un serveur accessible depuis Internet.",
+            APP_ENV,
         )
     # Warn about unconfigured optional services so issues are visible in logs.
     _svc_checks = {
@@ -11990,6 +12017,11 @@ async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
     - Nécessite `NOWPAYMENTS_PAYOUT_ENABLED=true` + `NOWPAYMENTS_JWT` en env.
     - Le webhook `/api/webhook/nowpayments-payout` (déjà en place) confirmera
       le passage à `paid`."""
+    await _rate_limit(
+        "payout_batch", f"admin:{_private_ref(admin.get('email', ''))}",
+        PAYOUT_BATCH_MAX_PER_MINUTE, 60,
+        "Trop d'envois en lot en peu de temps. Réessayez dans une minute.",
+    )
     # Charge les payouts demandés
     payouts = await db.affiliate_payouts.find(
         {"id": {"$in": payload.payout_ids}, "status": "ready"},
@@ -12284,6 +12316,11 @@ async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMark
     """Confirme le paiement crypto manuellement : enregistre la référence de
     transaction (tx hash) — statut `paid_manual` pour distinguer d'un paiement
     confirmé automatiquement via NOWPayments (statut `paid`)."""
+    await _rate_limit(
+        "payout_mark_paid", f"admin:{_private_ref(admin.get('email', ''))}",
+        PAYOUT_MARK_PAID_MAX_PER_MINUTE, 60,
+        "Trop de confirmations de versement en peu de temps. Réessayez dans une minute.",
+    )
     payout = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
     if not payout:
         raise HTTPException(404, "Payout not found")
@@ -13116,6 +13153,11 @@ class PayoutVerifyIn(BaseModel):
 async def admin_payout_execute(payout_id: str, admin: dict = Depends(get_admin_user)):  # noqa: F821
     """Étape 1/2 — crée le payout crypto via NOWPayments. Un code 2FA est
     envoyé par NOWPayments à l'email marchand. Le payout passe en 'creating'."""
+    await _rate_limit(
+        "payout_execute", f"admin:{_private_ref(admin.get('email', ''))}",
+        PAYOUT_EXECUTE_MAX_PER_MINUTE, 60,
+        "Trop d'exécutions de versement en peu de temps. Réessayez dans une minute.",
+    )
     if not NOWPAYMENTS_PAYOUT_ENABLED:
         raise HTTPException(400, "Les payouts automatiques NOWPayments sont désactivés (NOWPAYMENTS_PAYOUT_ENABLED=false). Utilisez le paiement manuel + mark-paid.")
     payout = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})

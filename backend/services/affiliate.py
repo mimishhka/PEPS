@@ -1091,7 +1091,11 @@ async def affiliate_capture_click(request: Request, response: Response, code: st
         # mentir la politique de confidentialité.
         "user_agent": (request.headers.get("user-agent", "") or "")[:300],
         "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(days=s.AFFILIATE_CLICK_TTL_DAYS)).isoformat(),
+        # DATE BSON, et non chaine ISO. Un index TTL n'agit que sur une vraie
+        # date : ecrit en chaine, l'index cree plus bas ne supprimait jamais
+        # rien, et la retention ne tenait que par le menage horaire du
+        # watchdog — c'est-a-dire pas du tout si le watchdog s'arrete.
+        "expires_at": now + timedelta(days=s.AFFILIATE_CLICK_TTL_DAYS),
     }
     click_doc["page"] = (page or "")[:300]
     click_doc["referrer"] = (referrer or "")[:300]
@@ -1469,10 +1473,27 @@ async def _affiliate_approve_matured():
 
 
 async def _affiliate_clicks_cleanup():
-    """Purge des clics expirés (rétention limitée — proportionnalité Loi 25)."""
-    now = datetime.now(timezone.utc).isoformat()
+    """Purge des clics expirés (rétention limitée — proportionnalité Loi 25).
+
+    Deux formes cohabitent le temps que les anciens documents disparaissent :
+    `expires_at` est desormais une date BSON, mais tout ce qui a ete ecrit
+    avant est une chaine ISO.
+
+    LE $type N'EST PAS DECORATIF. Mongo compare A TRAVERS les types, selon un
+    ordre global ou String passe AVANT Date. Sans contrainte de type,
+    « expires_at < <date> » serait donc vrai pour TOUTE chaine, expiree ou non,
+    et cette purge effacerait les clics encore valides ecrits sous l'ancienne
+    forme. Chaque branche ne compare qu'a l'interieur de son propre type.
+
+    L'index TTL, lui, ne s'occupe que des dates : les chaines heritees
+    disparaissent par cette purge-ci.
+    """
+    now = datetime.now(timezone.utc)
     try:
-        await s.db.affiliate_clicks.delete_many({"expires_at": {"$lt": now}})
+        await s.db.affiliate_clicks.delete_many({"$or": [
+            {"expires_at": {"$type": "date", "$lt": now}},
+            {"expires_at": {"$type": "string", "$lt": now.isoformat()}},
+        ]})
     except Exception as e:  # pragma: no cover
         logging.error("[affiliate] clicks cleanup failed: %s", e)
 
@@ -1574,6 +1595,35 @@ async def _affiliate_email_worker():
         await asyncio.sleep(0 if processed else 2)
 
 
+async def _index_ttl(collection, champ: str) -> None:
+    """Cree un index TTL, et REPARE celui qui existerait sans l'option.
+
+    Mongo refuse de modifier les options d'un index existant : demander un TTL
+    sur un champ deja indexe sans TTL leve IndexOptionsConflict. Comme la
+    creation des index se fait en serie et sans filet, cette exception faisait
+    tomber TOUTE la suite — les index composes du tableau de bord n'existaient
+    donc pas non plus. C'est arrive en production.
+
+    Ici, le conflit est traite pour ce qu'il est : on supprime l'ancien index et
+    on recree le bon. Toute autre erreur est journalisee sans interrompre le
+    reste.
+    """
+    try:
+        await collection.create_index(champ, expireAfterSeconds=0)
+        return
+    except Exception as e:
+        if type(e).__name__ not in ("IndexOptionsConflict", "OperationFailure"):
+            logging.warning("[affiliate] index TTL %s non cree : %s", champ, e)
+            return
+    try:
+        await collection.drop_index(f"{champ}_1")
+        await collection.create_index(champ, expireAfterSeconds=0)
+        logging.warning("[affiliate] index TTL %s recree (ancien index sans TTL "
+                        "supprime)", champ)
+    except Exception as e:  # pragma: no cover
+        logging.error("[affiliate] index TTL %s irreparable : %s", champ, e)
+
+
 async def affiliate_ensure_indexes():
     """Index — à appeler dans seed_admin_and_products() ou au startup."""
     await s.db.affiliates.create_index("id", unique=True)
@@ -1645,7 +1695,7 @@ async def affiliate_ensure_indexes():
         [("status", 1), ("payout_id", 1)],
     )
     await s.db.affiliate_clicks.create_index("affiliate_id")
-    await s.db.affiliate_clicks.create_index("expires_at", expireAfterSeconds=0)
+    await _index_ttl(s.db.affiliate_clicks, "expires_at")
     await s.db.affiliate_clicks.create_index(
         [("affiliate_id", 1), ("created_at", -1)],
     )
@@ -1656,7 +1706,7 @@ async def affiliate_ensure_indexes():
     await s.db.affiliate_payouts.create_index("affiliate_id")
     await s.db.affiliate_email_jobs.create_index("id", unique=True)
     await s.db.affiliate_email_jobs.create_index([("status", 1), ("available_at", 1), ("created_at", 1)])
-    await s.db.affiliate_email_jobs.create_index("expires_at", expireAfterSeconds=0)
+    await _index_ttl(s.db.affiliate_email_jobs, "expires_at")
     # Runs de paiement (NP-…) : le tri de l'historique admin et l'unicité du
     # numéro. run_id vient d'un compteur atomique, donc unique est sûr ; on
     # défend quand même le démarrage en cas de doublons hérités.

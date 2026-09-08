@@ -20,6 +20,10 @@ from fastapi import HTTPException
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+# Les points d'entree de versement sont limites en debit : sans cette
+# collection, le limiteur repond 503 et le test ne verifie plus rien.
+from tests.fake_mongo import CompteurDeDebit, FakeCollection  # noqa: E402
+
 
 @pytest.fixture
 def server_module(monkeypatch):
@@ -487,7 +491,7 @@ def test_execute_refuse_une_devise_non_supportee(server_module, monkeypatch):
                     "currency": "btc", "payout_address": "bc1qtest",
                     "affiliate_code": "AFF", "period": "2026-08"}
 
-    server_module.db = types.SimpleNamespace(affiliate_payouts=Payouts())
+    server_module.db = types.SimpleNamespace(affiliate_payouts=Payouts(), rate_limit_counters=CompteurDeDebit())
     with pytest.raises(HTTPException) as exc:
         asyncio.run(server_module.admin_payout_execute(
             "p-9", {"email": "admin@example.com"}))
@@ -510,7 +514,7 @@ def test_execute_refuse_un_reseau_inconnu(server_module, monkeypatch):
                     "currency": "usdt", "payout_address": "adresse-invalide",
                     "affiliate_code": "AFF", "period": "2026-08"}
 
-    server_module.db = types.SimpleNamespace(affiliate_payouts=Payouts())
+    server_module.db = types.SimpleNamespace(affiliate_payouts=Payouts(), rate_limit_counters=CompteurDeDebit())
     with pytest.raises(HTTPException) as exc:
         asyncio.run(server_module.admin_payout_execute(
             "p-10", {"email": "admin@example.com"}))
@@ -561,6 +565,7 @@ def test_mark_paid_refuse_un_affilie_suspendu(server_module):
             return {"status": "suspended", "code": "MARIE10"}
 
     server_module.db = types.SimpleNamespace(
+        rate_limit_counters=CompteurDeDebit(),
         affiliate_payouts=Payouts(), affiliates=Affiliates())
     payload = server_module.AffiliatePayoutMarkIn(reference="tx-hash-1")
 
@@ -590,6 +595,7 @@ def test_mark_paid_refuse_un_versement_en_revue(server_module):
             return {"status": "active", "code": "PAUL10"}
 
     server_module.db = types.SimpleNamespace(
+        rate_limit_counters=CompteurDeDebit(),
         affiliate_payouts=Payouts(), affiliates=Affiliates())
     payload = server_module.AffiliatePayoutMarkIn(reference="tx-hash-2")
 
@@ -622,3 +628,78 @@ def test_update_refuse_active_vers_invite(server_module):
         asyncio.run(server_module.admin_affiliate_update(
             "aff-3", payload, {"email": "admin@example.com"}))
     assert exc.value.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# 12. Limitation de debit sur les versements
+# ---------------------------------------------------------------------------
+
+def test_execute_refuse_au_dela_du_plafond_par_minute(server_module):
+    """Les seuls points d'entree qui font SORTIR de l'argent ont un plafond.
+
+    L'authentification administrateur ne suffit pas : une boucle de reessai
+    cote client, un double clic repete ou une session volee n'ont ici aucune
+    limite naturelle. Le compteur repond « plafond depasse » et l'appel doit
+    s'arreter AVANT de lire le versement — donc avant tout contact avec le
+    fournisseur.
+    """
+    class Plafond:
+        async def find_one_and_update(self, *args, **kwargs):
+            return {"count": 999}
+
+    class Payouts:
+        async def find_one(self, query, projection=None):
+            raise AssertionError("le versement ne devrait meme pas etre lu")
+
+    server_module.NOWPAYMENTS_PAYOUT_ENABLED = True
+    server_module.db = types.SimpleNamespace(
+        affiliate_payouts=Payouts(), rate_limit_counters=Plafond())
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.admin_payout_execute(
+            "p-1", {"email": "admin@example.com"}))
+    assert exc.value.status_code == 429
+
+
+# ---------------------------------------------------------------------------
+# 13. Purge des clics : deux formes de date, aucune perte
+# ---------------------------------------------------------------------------
+
+def test_purge_des_clics_ne_supprime_que_les_expires(server_module):
+    """LE piege : Mongo compare a travers les types, String AVANT Date.
+
+    Sans contrainte `$type`, « expires_at < <date> » est vrai pour TOUTE
+    chaine, expiree ou non : la purge effacerait les clics encore valides
+    ecrits sous l'ancienne forme. Les deux formes cohabitent le temps que ces
+    documents disparaissent, donc chaque branche doit rester dans son type.
+
+    La derniere assertion le CONSTATE au lieu de le supposer : la doublure
+    reproduit l'ordre des types de Mongo (voir _rang_bson).
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from services import affiliate as service
+    from tests.fake_mongo import _matches
+
+    maintenant = datetime.now(timezone.utc)
+    passe = maintenant - timedelta(days=1)
+    futur = maintenant + timedelta(days=30)
+
+    clics = FakeCollection([
+        {"id": "date-expire", "expires_at": passe},
+        {"id": "date-valide", "expires_at": futur},
+        {"id": "chaine-expiree", "expires_at": passe.isoformat()},
+        {"id": "chaine-valide", "expires_at": futur.isoformat()},
+    ])
+    server_module.db = types.SimpleNamespace(affiliate_clicks=clics)
+
+    asyncio.run(service._affiliate_clicks_cleanup())
+
+    assert sorted(d["id"] for d in clics.docs) == ["chaine-valide", "date-valide"]
+
+    # Et voici pourquoi le $type est indispensable : la meme comparaison sans
+    # lui attrape une chaine qui n'expire que dans trente jours.
+    chaine_valide = {"expires_at": futur.isoformat()}
+    assert _matches(chaine_valide, {"expires_at": {"$lt": maintenant}}) is True
+    assert _matches(chaine_valide,
+                    {"expires_at": {"$type": "date", "$lt": maintenant}}) is False

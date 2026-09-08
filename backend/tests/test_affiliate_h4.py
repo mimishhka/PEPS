@@ -9,6 +9,10 @@ from fastapi import HTTPException
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+# Les points d'entree de versement sont limites en debit : sans cette
+# collection, le limiteur repond 503 et le test ne verifie plus rien.
+from tests.fake_mongo import CompteurDeDebit  # noqa: E402
+
 
 @pytest.fixture
 def server_module(monkeypatch):
@@ -95,6 +99,7 @@ def test_mark_paid_does_not_reactivate_reversed_referrals(server_module):
         {"id": "r2", "payout_id": "payout-1", "status": "reversed"},
     ]
     server_module.db = types.SimpleNamespace(
+        rate_limit_counters=CompteurDeDebit(),
         affiliate_payouts=DummyPayouts(payout),
         affiliate_referrals=DummyReferrals(referrals),
     )
@@ -151,6 +156,7 @@ def test_execute_rejects_second_attempt_once_payout_is_claimed(server_module, mo
             return types.SimpleNamespace(modified_count=1)
 
     server_module.db = types.SimpleNamespace(
+        rate_limit_counters=CompteurDeDebit(),
         affiliate_payouts=ClaimingPayouts(payout),
         affiliate_referrals=types.SimpleNamespace(),
     )

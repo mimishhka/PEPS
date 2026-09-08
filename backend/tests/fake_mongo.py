@@ -8,6 +8,7 @@ which a plain stub returning canned documents could never catch.
 
 import copy
 import re
+from datetime import datetime
 from typing import Any, Optional
 
 
@@ -45,12 +46,40 @@ def _matches(doc: dict, filt: dict) -> bool:
     return True
 
 
+# Ordre de comparaison des types BSON, tel que Mongo l'applique quand deux
+# valeurs de types differents se retrouvent face a face. Seule la partie utile
+# ici est reproduite ; l'essentiel est que String vienne AVANT Date.
+_RANGS_BSON = [
+    (type(None), 1), (bool, 4), (int, 2), (float, 2), (str, 3),
+    (dict, 5), (list, 6), (datetime, 9),
+]
+
+
+def _rang_bson(value: Any) -> int:
+    for typ, rang in _RANGS_BSON:
+        if type(value) is typ:
+            return rang
+    return 99
+
+
 def _match_field(value: Any, cond: Any, present: bool = True) -> bool:
     if not isinstance(cond, dict):
         return value == cond
     for op, operand in cond.items():
         if op == "$exists":
             if present != bool(operand):
+                return False
+            continue
+        if op == "$type":
+            # Mongo ordonne les types entre eux, si bien qu'une comparaison
+            # « $lt » traverse les types sans $type pour la contraindre. La
+            # doublure doit donc connaitre cet operateur, sinon un filtre qui
+            # protege des donnees ici n'en protegerait aucune la-bas.
+            attendus = operand if isinstance(operand, list) else [operand]
+            reels = {datetime: "date", str: "string", bool: "bool",
+                     int: "int", float: "double", list: "array", dict: "object"}
+            reel = next((n for t, n in reels.items() if type(value) is t), None)
+            if reel not in attendus:
                 return False
             continue
         if op == "$in":
@@ -63,11 +92,26 @@ def _match_field(value: Any, cond: Any, present: bool = True) -> bool:
         elif op == "$ne":
             if value == operand:
                 return False
-        elif op == "$lte":
-            if value is None or not value <= operand:
+        elif op in ("$lt", "$lte", "$gt", "$gte"):
+            if value is None:
                 return False
-        elif op == "$gte":
-            if value is None or not value >= operand:
+            # Mongo compare A TRAVERS les types, selon un ordre global ou
+            # String passe AVANT Date. « $lt <date> » est donc vrai pour TOUTE
+            # chaine — et une purge sans contrainte $type effacerait des
+            # documents parfaitement valides.
+            #
+            # Python, lui, leve TypeError. Reproduire l'ordre de Mongo est le
+            # seul moyen pour qu'un test puisse constater ce danger ici plutot
+            # qu'en production.
+            try:
+                gauche, droite = value, operand
+                if _rang_bson(value) != _rang_bson(operand):
+                    gauche, droite = _rang_bson(value), _rang_bson(operand)
+                ok = {"$lt": gauche < droite, "$lte": gauche <= droite,
+                      "$gt": gauche > droite, "$gte": gauche >= droite}[op]
+            except TypeError:
+                return False
+            if not ok:
                 return False
         elif op == "$regex":
             flags = re.IGNORECASE if "i" in cond.get("$options", "") else 0
@@ -198,5 +242,28 @@ class FakeCollection:
         self.docs.append(copy.deepcopy(doc))
         return _Result(1, 1)
 
+    async def delete_many(self, filt=None, **kwargs):
+        restants = [d for d in self.docs if not _matches(d, filt)]
+        supprimes = len(self.docs) - len(restants)
+        self.docs[:] = restants
+        return _Result(supprimes, supprimes)
+
     def by_id(self, doc_id: str) -> Optional[dict]:
         return next((d for d in self.docs if d.get("id") == doc_id), None)
+
+
+class CompteurDeDebit:
+    """Collection `rate_limit_counters` toujours sous le plafond.
+
+    Les points d'entree de versement sont limites en debit. Le limiteur echoue
+    VOLONTAIREMENT en 503 quand sa collection est injoignable — un limiteur
+    qu'on ne peut pas interroger ne doit pas laisser passer le trafic. Un test
+    qui remplace `db` par un objet sans cette collection recevait donc 503 au
+    lieu du comportement qu'il voulait verifier.
+
+    Ce compteur repond toujours « une seule frappe », ce qui laisse passer sans
+    jamais masquer autre chose.
+    """
+
+    async def find_one_and_update(self, *args, **kwargs):
+        return {"count": 1}
