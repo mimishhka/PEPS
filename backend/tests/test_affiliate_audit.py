@@ -703,3 +703,80 @@ def test_purge_des_clics_ne_supprime_que_les_expires(server_module):
     assert _matches(chaine_valide, {"expires_at": {"$lt": maintenant}}) is True
     assert _matches(chaine_valide,
                     {"expires_at": {"$type": "date", "$lt": maintenant}}) is False
+
+
+# ---------------------------------------------------------------------------
+# 14. Le tableau de bord affilie ne masque pas un refus d'acces
+# ---------------------------------------------------------------------------
+
+def test_dashboard_propage_le_refus_au_lieu_de_renvoyer_du_vide(server_module, monkeypatch):
+    """Une session expiree doit donner 403, pas « 0 parrainage, 0 $ ».
+
+    affiliate_dashboard enveloppe ses huit sections dans un filet pour qu'une
+    panne partielle ne vide pas l'ecran. Ce filet attrapait aussi le refus
+    d'acces : l'affilie recevait 200 avec toutes les sections vides, ce qui est
+    indiscernable d'une perte de donnees quand on suit ses revenus.
+    """
+    class Affiliates:
+        async def find_one(self, query, projection=None):
+            return None  # l'utilisateur n'est pas (ou plus) affilie
+
+    async def faux_utilisateur(request):
+        return {"id": "u-1", "email": "kyro@example.com"}
+
+    server_module.db = types.SimpleNamespace(affiliates=Affiliates())
+    monkeypatch.setattr(server_module, "get_current_user", faux_utilisateur)
+
+    requete = types.SimpleNamespace(cookies={}, headers={})
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.affiliate_dashboard(requete))
+    assert exc.value.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# 15. Une mutation d'administration non tracable est refusee
+# ---------------------------------------------------------------------------
+
+def test_mutation_admin_refusee_si_le_journal_daudit_echoue(server_module, monkeypatch):
+    """Le journal d'audit est la piece qu'on produit en cas de contestation.
+
+    Il etait ecrit par asyncio.create_task sans garder de reference — le
+    ramasse-miettes pouvait tuer la tache avant execution — et _log_action
+    avalait l'echec d'ecriture. Des entrees disparaissaient sans aucun signe.
+    """
+    class JournalCasse:
+        async def insert_one(self, doc):
+            raise RuntimeError("mongo indisponible")
+
+    async def faux_utilisateur(request):
+        return {"id": "a-1", "email": "admin@example.com", "role": "admin"}
+
+    server_module.db = types.SimpleNamespace(admin_audit_log=JournalCasse())
+    monkeypatch.setattr(server_module, "get_current_user", faux_utilisateur)
+    monkeypatch.setattr(server_module, "_has_area_permission", lambda *a, **k: True)
+
+    dependance = server_module.require_area("orders", "manage")
+    requete = types.SimpleNamespace(
+        method="POST", url=types.SimpleNamespace(path="/api/admin/orders/o-1/refund"))
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(dependance(requete, {"id": "a-1", "email": "admin@example.com"}))
+    assert exc.value.status_code == 503
+
+
+def test_lecture_admin_reste_possible_si_le_journal_echoue(server_module, monkeypatch):
+    """Seules les MUTATIONS sont refusees. Une lecture n'ecrit rien au journal,
+    donc elle ne doit pas dependre de lui."""
+    class JournalCasse:
+        async def insert_one(self, doc):
+            raise RuntimeError("mongo indisponible")
+
+    server_module.db = types.SimpleNamespace(admin_audit_log=JournalCasse())
+    monkeypatch.setattr(server_module, "_has_area_permission", lambda *a, **k: True)
+
+    dependance = server_module.require_area("orders", "view")
+    requete = types.SimpleNamespace(
+        method="GET", url=types.SimpleNamespace(path="/api/admin/orders"))
+
+    user = {"id": "a-1", "email": "admin@example.com"}
+    assert asyncio.run(dependance(requete, user)) == user

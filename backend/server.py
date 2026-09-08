@@ -613,9 +613,24 @@ def require_area(area: str, level: str = "view"):
         if not allowed:
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         if level == "manage":
-            asyncio.create_task(_log_action(
+            # AWAIT, ET NON create_task.
+            #
+            # `asyncio.create_task` sans garder de reference laisse le
+            # ramasse-miettes libre de tuer la tache AVANT qu'elle s'execute :
+            # c'est un piege documente d'asyncio, et il faisait disparaitre des
+            # entrees sans le moindre signe. L'echec d'ecriture, lui, etait
+            # avale par _log_action.
+            #
+            # Le journal des actions d'administration est la piece qu'on veut
+            # pouvoir produire en cas de contestation. Il ne peut pas etre
+            # « au mieux ». strict=True refuse donc l'action si la trace echoue.
+            #
+            # Le cout est nul en pratique : une insertion sur la connexion Mongo
+            # que la requete utilise deja de toute facon.
+            await _log_action(
                 user, action=f"{request.method} {request.url.path}", area=area,
-            ))
+                strict=True,
+            )
         return user
     return _dep
 
@@ -4908,7 +4923,18 @@ STAFF_INVITE_TTL_HOURS = 72
 #     permissions, révocation) sont journalisées avec un détail lisible,
 #     puisqu'elles ne passent pas par require_area() (réservées owner-only).
 # ---------------------------------------------------------------------------
-async def _log_action(user: dict, action: str, detail: str = "", area: str = "") -> None:
+async def _log_action(user: dict, action: str, detail: str = "", area: str = "",
+                      strict: bool = False) -> None:
+    """Journal des actions d'administration.
+
+    `strict=True` REFUSE l'action quand la trace ne peut pas etre ecrite. C'est
+    le comportement voulu pour une mutation : une action d'administration qu'on
+    ne peut pas tracer ne doit pas avoir lieu. Une trace incomplete vaut moins
+    qu'un refus, surtout sur une boutique ou l'on manipule stocks et versements.
+
+    `strict=False` reste le defaut pour les traces accessoires, ou l'echec ne
+    justifie pas d'annuler un travail deja fait.
+    """
     try:
         await db.admin_audit_log.insert_one({
             "id": str(uuid.uuid4()),
@@ -4923,6 +4949,12 @@ async def _log_action(user: dict, action: str, detail: str = "", area: str = "")
         })
     except Exception as e:
         logging.error("[audit] failed to log action=%s: %s", action, e)
+        if strict:
+            raise HTTPException(
+                503,
+                "Action refusée : la trace d'audit n'a pas pu être écrite. "
+                "Réessayez ; si cela persiste, la base de données est en cause.",
+            )
 
 
 def _staff_invite_html(accept_url: str, inviter_name: str, lang: str = "fr") -> str:
@@ -8465,7 +8497,16 @@ async def seed_admin_and_products():
     await db.products.create_index("id", unique=True)
     await db.products.create_index([("active", 1), ("category", 1)])
     await db.products.create_index([("active", 1), ("featured", 1)])
-    await db.orders.create_index("order_number")
+    # Un SEUL index sur order_number. L'index simple qui se trouvait ici faisait
+    # doublon avec l'index unique ci-dessous : un index unique sert aussi bien
+    # les lectures. Le garder ne coûtait rien en lecture et une écriture de plus
+    # à CHAQUE commande créée.
+    #
+    # Il reste en base sur les déploiements existants ; le supprimer demande un
+    # `db.orders.dropIndex("order_number_1")` à la main, ce que ce code ne fait
+    # pas de lui-même — supprimer un index en production est une décision, pas
+    # un effet de bord du démarrage.
+    #
     # Unicité du numéro de commande (référence Interac). Best-effort : des
     # doublons hérités feraient échouer la création — on log au lieu de planter.
     try:
@@ -10070,12 +10111,19 @@ async def admin_affiliate_ticket_reply(ticket_id: str, payload: AffiliateTicketR
     # Une réponse support admin est un acte d'administration. On trace le fait,
     # pas le contenu — une conversation peut évoquer une adresse de versement
     # ou un montant, sensible (même règle que pour l'avis courriel).
-    asyncio.create_task(_log_action(
+    # Le SUJET a ete retire : le commentaire ci-dessus annonce « on trace le
+    # fait, pas le contenu », et la ligne d'en dessous ecrivait le sujet. Un
+    # sujet de billet est du texte libre redige par l'affilie. L'identifiant
+    # suffit — il ouvre le billet, ou le contenu est a sa place.
+    #
+    # Et `await` plutot que create_task, pour la meme raison que dans
+    # require_area : une tache non referencee peut etre ramassee avant de
+    # s'executer.
+    await _log_action(
         admin, "affiliate_ticket_reply",
-        f"ticket={ticket_id} affiliate={res.get('affiliate_code')} "
-        f"subject={res.get('subject','')[:80]}",
+        f"ticket={ticket_id} affiliate={res.get('affiliate_code')}",
         "affiliates",
-    ))
+    )
     return res
 
 
@@ -10700,9 +10748,25 @@ async def affiliate_dashboard(request: Request, ref_page: int = 1, pay_page: int
     pay_page = max(1, int(pay_page))
     out: dict = {"page_size": page_size}
 
+    # L'AUTHENTIFICATION D'ABORD, ET HORS DU FILET.
+    #
+    # Le filet ci-dessous attrapait aussi le refus d'acces : get_current_affiliate
+    # leve une HTTPException, `except Exception` la capturait comme une panne de
+    # section, et l'affilie recevait 200 avec toutes les sections vides. Il ne
+    # lisait pas « reconnectez-vous » mais « 0 parrainage, 0 $ » — indiscernable
+    # d'une perte de donnees pour quelqu'un qui suit ses revenus.
+    #
+    # Une section en panne est un incident partiel. Une session expiree est un
+    # refus, et le client doit le recevoir comme tel pour rediriger vers la
+    # connexion.
+    await get_current_affiliate(request)
+
     async def _safe(name: str, coro):
         try:
             out[name] = await coro
+        except HTTPException:
+            # 401/403 : ne jamais masquer un refus derriere une section vide.
+            raise
         except Exception:
             out[name] = [] if name in ("referrals", "payouts", "activity") else None
 

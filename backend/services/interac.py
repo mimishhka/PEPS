@@ -82,12 +82,31 @@ async def _graph_access_token() -> Optional[str]:
 
 
 async def _graph_unread_messages(token: str) -> list:
-    """Messages non lus de la boîte Interac (Graph app-only)."""
+    """Messages non lus de la boîte Interac (Graph app-only).
+
+    LE FILTRE PORTE AUSSI SUR L'EXPÉDITEUR, et ce n'est pas une optimisation.
+
+    La fenêtre est de 50 messages. Un message qui ne vient pas de l'expéditeur
+    de confiance est ignoré par la boucle appelante — et laissé NON LU, à
+    dessein : ce n'est pas à ce service de toucher au courrier des autres.
+    Conséquence : cinquante courriels non lus sans rapport suffisaient à
+    saturer la fenêtre en permanence, et les vraies notifications de dépôt
+    n'étaient jamais atteintes. L'auto-confirmation Interac s'arrêtait, sans
+    la moindre erreur dans les journaux.
+
+    En filtrant côté serveur, la fenêtre ne contient que des candidats. La
+    vérification d'expéditeur côté client reste en place : un filtre est une
+    requête, pas un contrôle de sécurité.
+    """
+    expediteur = (s.INTERAC_TRUSTED_SENDER or "").strip().lower().replace("'", "''")
+    filtre = "isRead eq false"
+    if expediteur:
+        filtre += f" and from/emailAddress/address eq '{expediteur}'"
     async with httpx.AsyncClient(timeout=30) as cx:
         r = await cx.get(
             f"{s._GRAPH_API_URL}/users/{s.INTERAC_GRAPH_USER}/mailFolders/inbox/messages",
             params={
-                "$filter": "isRead eq false",
+                "$filter": filtre,
                 "$top": 50,
                 "$select": "id,subject,from,body,receivedDateTime,internetMessageHeaders",
             },
