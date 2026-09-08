@@ -90,8 +90,9 @@ appelée au démarrage du serveur, ce qui crée le compte administrateur à part
 de `ADMIN_EMAIL` / `ADMIN_PASSWORD` ; les tests créent ensuite leurs propres
 affiliés via l'API d'administration.
 
-Les 170 tests d'intégration sont passés dès leur première exécution
-(2026-09-08). Ils sont bloquants.
+Les 170 tests d'intégration **n'ont encore jamais été verts**. Ils portent
+`continue-on-error: true` et publient leur résumé d'échec dans le *nom* d'un
+artefact, parce que les journaux d'exécution demandent une session GitHub.
 
 Piège rencontré en les branchant : `test_iter8_invoice_ipn.py` lisait son secret
 uniquement dans `/app/backend/.env`, un chemin absolu qui n'existe que sur le

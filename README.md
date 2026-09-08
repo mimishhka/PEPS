@@ -50,8 +50,9 @@ Le secret n'apparaît jamais dans les journaux.
 | `backend-tests` | MongoDB 7, les **107 tests unitaires**, puis démarrage du serveur et les **170 tests d'intégration** |
 | `alerte-echec` | prévient sur `CI_WEBHOOK_URL` si la chaîne casse — inerte sans ce secret |
 
-Les 170 tests d'intégration sont **passés du premier coup** le 2026-09-08 : ils
-sont bloquants comme les autres. Voir
+Les 170 tests d'intégration **ne passent pas encore** et restent non bloquants.
+Leur résumé d'échec est publié comme *nom* d'artefact à chaque exécution — le
+seul canal lisible sans session GitHub. Voir
 [`backend/docs/TESTS.md`](backend/docs/TESTS.md).
 
 ## Backend layout

@@ -74,7 +74,38 @@ jobs:
         working-directory: frontend
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-        run: yarn build
+        run: |
+          set -o pipefail
+          yarn build 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      # LE NOM D'UN ARTEFACT EST PUBLIC ; le contenu des journaux ne l'est pas.
+      #
+      # C'est tout l'objet de cette etape. Sans session GitHub, « Build frontend
+      # : failure » est tout ce qu'on peut lire — et deux tentatives de
+      # correction a l'aveugle, c'est deja une de trop. La premiere ligne
+      # d'erreur du journal devient donc le NOM de l'artefact, lisible par
+      # l'API publique.
+      #
+      # L'artefact lui-meme contient le journal complet, telechargeable par
+      # quiconque a un compte.
+      - name: Journal du build (le nom porte l'erreur)
+        if: failure()
+        run: |
+          LIGNE=$(grep -m1 -iE "error|failed|heap|ENOSPC|killed" "$RUNNER_TEMP/build.log" || true)
+          [ -n "$LIGNE" ] || LIGNE=$(tail -3 "$RUNNER_TEMP/build.log" | head -1)
+          # Le nom d'un artefact refuse " : < > | * ? \ /
+          PROPRE=$(printf '%s' "$LIGNE" | tr -c 'A-Za-z0-9 ._-' '_' | cut -c1-90)
+          printf 'build-%s\n' "${PROPRE:-inconnu}" > "$RUNNER_TEMP/nom.txt"
+          cat "$RUNNER_TEMP/nom.txt"
+          echo "NOM_ARTEFACT=$(cat "$RUNNER_TEMP/nom.txt")" >> "$GITHUB_ENV"
+
+      - name: Televerser le journal du build
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NOM_ARTEFACT }}
+          path: ${{ runner.temp }}/build.log
+          retention-days: 7
 
       - name: Tests frontend
         working-directory: frontend
@@ -184,15 +215,47 @@ jobs:
       # appelle seed_admin_and_products() a son demarrage, et les tests creent
       # ensuite leurs propres affilies via l'API d'administration.
       #
-      # Ils sont passes du premier coup, execution 34257801355. Le drapeau
-      # continue-on-error de la mise en route est donc retire : ces 170 tests
-      # sont bloquants comme les autres.
-      - name: Run backend integration tests
+      # J'AVAIS CONCLU A TORT QU'ILS PASSAIENT. A l'execution 34257801355, cette
+      # etape etait marquee « success » — mais elle portait continue-on-error,
+      # et c'est precisement ce que fait ce drapeau : il force la CONCLUSION a
+      # « success » quel que soit le resultat reel. L'API des taches n'expose
+      # pas le champ `outcome`, qui seul dit la verite.
+      #
+      # Retire, ils echouent : execution 34258803375. Le drapeau revient donc,
+      # et cette fois pour ce qu'il est — un aveu que ces 170 tests ne passent
+      # pas encore et que personne ne les a jamais vus tourner.
+      #
+      # Meme traitement que le build : la premiere ligne d'echec devient le NOM
+      # d'un artefact, seul canal lisible sans session GitHub.
+      - name: Run backend integration tests (non bloquant, jamais encore verts)
+        id: integration
+        continue-on-error: true
         working-directory: backend
         run: |
+          set -o pipefail
           FICHIERS=$(grep -l REACT_APP_BACKEND_URL tests/test_*.py | tr '\n' ' ')
           echo "Fichiers d'integration : $FICHIERS"
-          python -m pytest -q $FICHIERS
+          python -m pytest -q $FICHIERS 2>&1 | tee "$RUNNER_TEMP/integration.log"
+
+      # Le resume de pytest — « 12 failed, 158 passed » — devient le nom de
+      # l'artefact, donc lisible sans session. La liste des tests en echec suit
+      # dans le fichier.
+      - name: Journal des tests d'integration (le nom porte le resume)
+        if: steps.integration.outcome == 'failure'
+        run: |
+          RESUME=$(grep -oE "[0-9]+ failed[^|]*" "$RUNNER_TEMP/integration.log" | tail -1 || true)
+          [ -n "$RESUME" ] || RESUME=$(tail -2 "$RUNNER_TEMP/integration.log" | head -1)
+          PROPRE=$(printf '%s' "$RESUME" | tr -c 'A-Za-z0-9 ._-' '_' | cut -c1-90)
+          echo "NOM_INTEGRATION=integration-${PROPRE:-inconnu}" >> "$GITHUB_ENV"
+          echo "integration-${PROPRE:-inconnu}"
+
+      - name: Televerser le journal d'integration
+        if: steps.integration.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NOM_INTEGRATION }}
+          path: ${{ runner.temp }}/integration.log
+          retention-days: 7
 
       - name: Show backend log on failure
         if: failure()
