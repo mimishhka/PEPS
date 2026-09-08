@@ -12,8 +12,37 @@ problemes = []
 # On ne verifie donc QUE les noms commencant par une majuscule.
 BUILTINS = {"Fragment", "React", "Suspense", "StrictMode"}
 
+
+def blanchir(m):
+    """Remplace un commentaire par des espaces, en gardant ses sauts de ligne.
+
+    Les numeros de ligne rapportes doivent rester ceux du fichier : effacer
+    purement et simplement decalerait tout ce qui suit.
+    """
+    return re.sub(r"[^\n]", " ", m.group())
+
+
+def sans_commentaires(src: str) -> str:
+    """Les commentaires ne rendent aucun composant.
+
+    Ce projet DECRIT abondamment du JSX en prose — « setDetail(undefined) laisse
+    detail faux, donc {detail && <Modal/>} ne rend rien ». Sans ce nettoyage,
+    chaque explication de ce genre etait signalee comme un composant manquant, et
+    la sonde punissait le fait de documenter.
+
+    Les imports commentes disparaissent aussi, ce qui est correct : un import
+    mis en commentaire ne rend effectivement rien disponible.
+    """
+    src = re.sub(r"\{/\*.*?\*/\}", blanchir, src, flags=re.S)
+    src = re.sub(r"/\*.*?\*/", blanchir, src, flags=re.S)
+    # Uniquement les lignes ENTIEREMENT en commentaire, comme dans tags.py : ce
+    # projet utilise « // » comme prefixe decoratif en fin de ligne, et couper
+    # la fin d'une ligne de code avalerait du JSX reel.
+    return re.sub(r"^\s*//[^\n]*$", blanchir, src, flags=re.M)
+
+
 for f in sorted(racine.rglob("*.jsx")) + sorted(racine.rglob("*.js")):
-    src = f.read_text(encoding="utf-8", errors="replace")
+    src = sans_commentaires(f.read_text(encoding="utf-8", errors="replace"))
 
     # Noms rendus disponibles par un import.
     dispo = set(BUILTINS)
