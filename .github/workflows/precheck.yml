@@ -155,6 +155,16 @@ jobs:
       # echouaient en cascade, sans que rien ne pointe la limite de debit.
       TRUSTED_PROXIES: 127.0.0.1
       RESEND_API_KEY: ""
+      # Interac : un expediteur de confiance FICTIF, uniquement pour que le
+      # module s'initialise. Sans lui, _process_interac_deposit_emails sort
+      # immediatement en journalisant « auto-confirm disabled », et les tests
+      # qui touchent ce chemin echouent sur un motif qui n'a rien a voir avec
+      # ce qu'ils verifient.
+      #
+      # Aucun risque : rien ne se connecte a Microsoft Graph en integration
+      # continue (INTERAC_GRAPH_* restent vides), et la verification
+      # d'authentification du message reste en place.
+      INTERAC_TRUSTED_SENDER: notify@payments.interac.ca
       NOWPAYMENTS_API_KEY: ""
       NOWPAYMENTS_IPN_SECRET: ci-nowpayments-secret
 

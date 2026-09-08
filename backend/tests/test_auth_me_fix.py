@@ -62,9 +62,21 @@ def test_admin_endpoint_with_admin_session():
 
 
 def test_catalog_products_available():
-    """GET /api/products should return >= 12 products."""
+    """Le catalogue public est peuple, et ne contient QUE des produits actifs.
+
+    Le seuil « >= 12 » qui se trouvait ici decrivait un ENVIRONNEMENT, pas une
+    exigence : sur la previsualisation, des produits ont ete actives a la main.
+    Le jeu d'amorcage, lui, compte 19 produits dont 5 actifs — une base fraiche
+    en renvoie donc 5, et c'est le nombre voulu.
+
+    L'invariant reel est ailleurs : /api/products filtre sur active=True, donc
+    tout ce qu'il renvoie doit etre actif, et le catalogue ne doit pas etre
+    vide. Cela tient sur n'importe quelle base.
+    """
     r = requests.get(f"{BASE_URL}/api/products")
     assert r.status_code == 200
     data = r.json()
     items = data if isinstance(data, list) else data.get("items", data.get("products", []))
-    assert len(items) >= 12, f"Expected >=12 products, got {len(items)}"
+    assert items, "catalogue public vide"
+    inactifs = [p.get("slug") for p in items if p.get("active") is False]
+    assert not inactifs, f"produits inactifs exposes publiquement : {inactifs}"

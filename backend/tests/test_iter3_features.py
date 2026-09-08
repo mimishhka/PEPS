@@ -57,17 +57,31 @@ def _first_product():
 
 # ----------------------- featured products -----------------------
 def test_products_featured_filter_returns_six():
+    """Le filtre `featured` est un SOUS-ENSEMBLE coherent du catalogue.
+
+    Les nombres codes en dur ici — « >= 12 » puis « exactement 6 » — decrivaient
+    la previsualisation, ou des produits ont ete actives a la main. Le jeu
+    d'amorcage compte 19 produits dont 5 actifs, et parmi les 6 slugs marques
+    « featured » plusieurs sont inactifs : sur une base fraiche, ces deux
+    nombres sont faux tous les deux.
+
+    Ce qui doit tenir partout : le filtre rend un sous-ensemble non vide du
+    catalogue, et chaque element qu'il rend porte bien la marque.
+    """
     r_all = requests.get(f"{BASE_URL}/api/products")
     assert r_all.status_code == 200
     all_products = r_all.json()
-    assert len(all_products) >= 12, f"expected >=12 products got {len(all_products)}"
+    assert all_products, "catalogue public vide"
 
     r = requests.get(f"{BASE_URL}/api/products", params={"featured": "true"})
     assert r.status_code == 200
     featured = r.json()
-    assert 1 <= len(featured) <= 12
-    # Spec says ~6 (seeded set is 6)
-    assert len(featured) == 6, f"expected exactly 6 featured got {len(featured)}: {[p['slug'] for p in featured]}"
+    assert featured, "aucun produit en vedette"
+    slugs = {p["slug"] for p in all_products}
+    hors_catalogue = [p["slug"] for p in featured if p["slug"] not in slugs]
+    assert not hors_catalogue, f"en vedette mais absents du catalogue : {hors_catalogue}"
+    non_marques = [p["slug"] for p in featured if p.get("featured") is not True]
+    assert not non_marques, f"rendus par le filtre sans la marque : {non_marques}"
     for p in featured:
         assert p.get("featured") is True
 
