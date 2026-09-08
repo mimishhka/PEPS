@@ -88,7 +88,8 @@ class TestAuth:
     def test_register_and_login(self, new_user):
         r = requests.post(
             f"{BASE_URL}/api/auth/register",
-            json={"email": new_user["email"], "password": new_user["password"], "name": "Smoke User"},
+            json={"email": new_user["email"], "password": new_user["password"],
+                  "first_name": "Smoke", "last_name": "User"},
             headers=_hdr(),
             timeout=15,
         )

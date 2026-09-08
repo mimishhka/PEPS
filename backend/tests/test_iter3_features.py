@@ -34,7 +34,8 @@ def user_session():
     password = "Pass12345!"
     session = requests.Session()
     r = session.post(f"{BASE_URL}/api/auth/register",
-                     json={"email": email, "password": password, "name": "Iter3 User"})
+                     json={"email": email, "password": password,
+                           "first_name": "Iter3", "last_name": "User"})
     assert r.status_code == 200, r.text
     j = r.json()
     client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))

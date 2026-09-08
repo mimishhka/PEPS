@@ -73,7 +73,8 @@ def _register_and_get_token(email: str, password: str, name: str) -> str | None:
     # Register (email verify off for pre-existing? Force email_verified after)
     r = requests.post(
         f"{PUBLIC_URL}/api/auth/register",
-        json={"email": email, "password": password, "name": name},
+        json={"email": email, "password": password,
+              "first_name": name.split()[0], "last_name": (name.split() + ["Test"])[1]},
         timeout=15,
     )
     # 200 or 409 both acceptable — we'll flip email_verified in DB below.

@@ -30,7 +30,8 @@ def non_admin_token():
     password = "Str0ngP@ss!23"
     session = requests.Session()
     r = session.post(f"{BASE_URL}/api/auth/register",
-                     json={"email": email, "password": password, "name": "TestUser"},
+                     json={"email": email, "password": password,
+                           "first_name": "Test", "last_name": "User"},
                      timeout=30)
     if r.status_code not in (200, 201):
         # try login endpoint if signup unavailable
