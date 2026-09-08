@@ -277,6 +277,77 @@ jobs:
           path: ${{ runner.temp }}/integration.log
           retention-days: 7
 
+      # LE COMPTE NE DIT PAS LA CAUSE.
+      #
+      # « 30 failed, 40 errors » se lit depuis le nom de l'artefact, mais le
+      # journal lui-meme demande une session GitHub pour etre telecharge. J'ai
+      # donc diagnostique a l'aveugle une fois, et je me suis trompe : j'ai cru
+      # a la limite de debit sur la connexion, corrige l'environnement, et les
+      # chiffres sont revenus IDENTIQUES au test pres.
+      #
+      # Cette etape rend le motif lisible sans session. Elle extrait la section
+      # « short test summary info » de pytest, regroupe les messages distincts,
+      # et publie les cinq premiers comme NOMS d'artefacts vides. Un nom
+      # d'artefact se lit dans l'API publique ; un journal, non.
+      #
+      # Le nom porte le message, l'artefact est vide : c'est le canal qui
+      # compte, pas le contenu.
+      - name: Publier les motifs d'echec (le nom porte le message)
+        if: steps.integration.outcome == 'failure'
+        run: |
+          python - <<'PY'
+          import os, re, pathlib
+          journal = pathlib.Path(os.environ["RUNNER_TEMP"], "integration.log").read_text(
+              encoding="utf-8", errors="replace")
+          lignes = [l.strip() for l in journal.splitlines()
+                    if l.startswith(("FAILED ", "ERROR "))]
+          motifs, vus = [], set()
+          for l in lignes:
+              # « ERROR tests/x.py::test_y - AssertionError: message » -> le motif
+              motif = l.split(" - ", 1)[1] if " - " in l else l.split(" ", 1)[-1]
+              cle = motif[:60]
+              if cle in vus:
+                  continue
+              vus.add(cle)
+              motifs.append(motif)
+          dossier = pathlib.Path(os.environ["RUNNER_TEMP"], "motifs")
+          dossier.mkdir(exist_ok=True)
+          for i, motif in enumerate(motifs[:5], 1):
+              propre = re.sub(r'[^A-Za-z0-9 ._-]', '_', motif)[:150]
+              (dossier / f"motif{i}.txt").write_text(motif, encoding="utf-8")
+              print(f"motif {i}: {propre}")
+              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+                  f.write(f"MOTIF{i}=cause{i}-{propre}\n")
+          print(f"{len(lignes)} lignes d'echec, {len(motifs)} motif(s) distinct(s)")
+          PY
+
+      - name: Motif 1
+        if: steps.integration.outcome == 'failure' && env.MOTIF1 != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MOTIF1 }}
+          path: ${{ runner.temp }}/motifs/motif1.txt
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Motif 2
+        if: steps.integration.outcome == 'failure' && env.MOTIF2 != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MOTIF2 }}
+          path: ${{ runner.temp }}/motifs/motif2.txt
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Motif 3
+        if: steps.integration.outcome == 'failure' && env.MOTIF3 != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MOTIF3 }}
+          path: ${{ runner.temp }}/motifs/motif3.txt
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Show backend log on failure
         if: failure()
         run: cat /tmp/fironova-uvicorn.log
