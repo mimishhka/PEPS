@@ -269,6 +269,17 @@ jobs:
       #
       # Meme traitement que le build : la premiere ligne d'echec devient le NOM
       # d'un artefact, seul canal lisible sans session GitHub.
+      # Le catalogue seme sort avec stock: 0 — ce qui est juste, le stock reel
+      # s'ajoute depuis l'administration a la reception de la marchandise. Mais
+      # une base fraiche a donc un catalogue sans marchandise, et TOUS les tests
+      # qui passent en caisse echouent sur « Insufficient stock ».
+      #
+      # Le script refuse de tourner sans drapeau explicite ET sans un DB_NAME
+      # qui ressemble a une base jetable : il ne peut pas toucher la production.
+      - name: Approvisionner le catalogue de test
+        working-directory: backend
+        run: python scripts/preparer_base_de_test.py --je-confirme-base-de-test
+
       - name: Run backend integration tests (non bloquant, jamais encore verts)
         id: integration
         continue-on-error: true
