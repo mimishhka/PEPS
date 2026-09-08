@@ -143,6 +143,13 @@ def test_admin_affiliates_list_overview_risk(admin_tok):
     for k in ("financial", "affiliates", "alerts", "attribution",
               "monthly_series", "top_affiliates", "tier_distribution"):
         assert k in ov, f"overview missing {k}"
+    # Le classement est CLIQUABLE : chaque entrée doit porter son identifiant et
+    # son nombre de commandes. Les deux manquaient, si bien que la ligne
+    # affichait « 0 commandes » et que le clic n'ouvrait rien — React se
+    # plaignait au passage d'une clé absente, `key={undefined}`.
+    for t in ov["top_affiliates"]:
+        assert t.get("id"), f"top_affiliates sans id: {t}"
+        assert "orders" in t, f"top_affiliates sans orders: {t}"
 
     r = requests.get(f"{BASE_URL}/api/admin/affiliates/risk", headers=h, timeout=20)
     assert r.status_code == 200, r.text
