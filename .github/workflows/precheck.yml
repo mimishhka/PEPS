@@ -91,7 +91,12 @@ jobs:
       - name: Journal du build (le nom porte l'erreur)
         if: failure()
         run: |
-          LIGNE=$(grep -m1 -iE "error|failed|heap|ENOSPC|killed" "$RUNNER_TEMP/build.log" || true)
+          # Priorite a la LIGNE UTILE. « Treating warnings as errors » est le
+          # symptome, pas la cause : ce qu'il faut lire, c'est le fichier et la
+          # regle. On cherche donc d'abord un chemin src/ ou un numero de ligne,
+          # et on ne retombe sur le message generique qu'a defaut.
+          LIGNE=$(grep -m1 -E "src/|Line [0-9]+:|react-hooks|no-undef|no-unused-vars" "$RUNNER_TEMP/build.log" || true)
+          [ -n "$LIGNE" ] || LIGNE=$(grep -m1 -iE "error|failed|heap|ENOSPC|killed" "$RUNNER_TEMP/build.log" || true)
           [ -n "$LIGNE" ] || LIGNE=$(tail -3 "$RUNNER_TEMP/build.log" | head -1)
           # Le nom d'un artefact refuse " : < > | * ? \ /
           PROPRE=$(printf '%s' "$LIGNE" | tr -c 'A-Za-z0-9 ._-' '_' | cut -c1-90)
