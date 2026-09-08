@@ -11231,6 +11231,10 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
                     "_id": "$affiliate_id",
                     "revenue": {"$sum": {"$ifNull": ["$order_total", 0]}},
                     "commission": {"$sum": {"$ifNull": ["$commission_amount", 0]}},
+                    # Le classement affiche « N commandes » sous chaque nom.
+                    # Personne ne comptait : l'ecran annoncait « 0 commandes »
+                    # a cote d'un chiffre d'affaires non nul.
+                    "orders": {"$sum": 1},
                     "cumulative": {"$sum": {"$ifNull": ["$base_amount", 0]}},
                     # 365 derniers jours — c'est CETTE somme qui fixe le palier,
                     # comme dans _affiliate_compute_metrics(). Sans elle, l'admin
@@ -11277,6 +11281,7 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
         row.get("_id"): {
             "revenue": float(row.get("revenue", 0.0)),
             "commission": float(row.get("commission", 0.0)),
+            "orders": int(row.get("orders", 0)),
         }
         for row in facets.get("per_affiliate", []) if row.get("_id")
     }
@@ -11300,9 +11305,14 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
         a = affiliates_by_id.get(aid)
         if a:
             top_affiliates.append({
+                # L'identifiant etait omis alors qu'il etait deja en main :
+                # le classement s'en sert pour ouvrir la fiche. Sans lui, le
+                # bouton ne faisait rien et React signalait une cle absente.
+                "id": aid,
                 "code": a.get("code"), "name": a.get("name"),
                 "revenue": round(per_aff[aid]["revenue"], 2),
                 "commission": round(per_aff[aid]["commission"], 2),
+                "orders": per_aff[aid]["orders"],
             })
 
     # --- Distribution des tiers ---
