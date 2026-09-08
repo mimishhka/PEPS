@@ -78,6 +78,27 @@ jobs:
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements.txt --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/
 
+      # Avant de demarrer quoi que ce soit : ces tests n'ont besoin ni de la
+      # base ni du serveur. Ils echouent en quelques secondes plutot qu'apres
+      # une minute d'attente sur uvicorn.
+      #
+      # La liste se CALCULE au lieu d'etre recopiee. Les tests d'integration se
+      # reconnaissent a REACT_APP_BACKEND_URL : ils frappent un backend vivant
+      # et font `assert BASE_URL` au niveau module. `grep -L` retourne donc
+      # exactement les fichiers unitaires — et un nouveau fichier unitaire est
+      # couvert sans que personne pense a l'ajouter ici.
+      #
+      # Cette etape existe parce que cinq fichiers seulement etaient lances,
+      # sur dix-sept. Les douze autres — dont toute la suite d'affiliation —
+      # n'ont jamais tourne en integration continue.
+      - name: Run backend unit tests
+        working-directory: backend
+        run: |
+          FICHIERS=$(grep -L REACT_APP_BACKEND_URL tests/test_*.py | tr '\n' ' ')
+          echo "Fichiers unitaires : $FICHIERS"
+          test -n "$FICHIERS" || { echo "Aucun fichier unitaire detecte"; exit 1; }
+          python -m pytest -q $FICHIERS
+
       - name: Start backend
         working-directory: backend
         run: |
@@ -92,15 +113,11 @@ jobs:
           cat /tmp/fironova-uvicorn.log
           exit 1
 
-      - name: Run backend security and regression tests
-        working-directory: backend
-        run: >-
-          python -m pytest -q
-          tests/test_account_security_medium.py
-          tests/test_headers_cors_data_leakage.py
-          tests/test_payment_webhook_security.py
-          tests/test_performance_regressions.py
-          tests/test_pagination_scale.py
+      # Les cinq fichiers listes ici sont desormais couverts par l'etape
+      # « Run backend unit tests » ci-dessus, avec les douze autres. Le serveur
+      # reste demarre : le curl sur /api/meta est un test de fumee a lui seul,
+      # et c'est la place des tests d'integration le jour ou ils seront
+      # amorcables (ils exigent un jeu de donnees, admin compris).
 
       - name: Show backend log on failure
         if: failure()
