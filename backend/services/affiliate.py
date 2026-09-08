@@ -563,9 +563,15 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
             "base": {"$ifNull": ["$base_amount", 0.0]},
             "comm": {"$ifNull": ["$commission_amount", 0.0]},
             # Date effective = approved_at sinon created_at (replie sur null).
+            # `case`, SANS dollar. MongoDB attend {case, then} dans les branches
+            # d'un $switch ; `$case` en fait un nom de champ inconnu et
+            # l'agregation entiere est rejetee. Toute cette fonction levait donc
+            # une exception — et elle est appelee par affiliate_on_order_paid
+            # pour fixer le taux de chaque commission, par le tableau de bord de
+            # l'affilie et par la fiche admin.
             "eff": {"$switch": {
                 "branches": [
-                    {"$case": {"$in": [
+                    {"case": {"$in": [
                         {"$type": {"$ifNull": ["$approved_at", "$created_at", None]}},
                         ["date", "timestamp"],
                     ]}, "then": {"$ifNull": ["$approved_at", "$created_at", None]}},

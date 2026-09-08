@@ -10414,9 +10414,10 @@ async def affiliate_insights(request: Request):
             # Mois = YYYY-MM extrait de created_at, quel que soit son type
             # (chaîne ISO posée à la création, ou datetime hérité) — même
             # résultat que le `[:7]` de l'ancienne boucle.
+            # `case`, SANS dollar — meme faute que dans _affiliate_compute_metrics.
             "month": {"$switch": {
                 "branches": [
-                    {"$case": {"$in": [
+                    {"case": {"$in": [
                         {"$type": {"$ifNull": ["$created_at", None]}},
                         ["date", "timestamp"],
                     ]}, "then": {
