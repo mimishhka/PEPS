@@ -37,15 +37,24 @@ MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 DB_NAME = os.environ.get("DB_NAME", "nordpep_db")
 
 # Read IPN secret from backend .env (never printed)
-IPN_SECRET = None
-try:
-    with open("/app/backend/.env", "r") as f:
-        for ln in f:
-            if ln.strip().startswith("NOWPAYMENTS_IPN_SECRET="):
-                IPN_SECRET = ln.strip().split("=", 1)[1].strip().strip('"').strip("'")
-                break
-except Exception:
-    pass
+# L'ENVIRONNEMENT D'ABORD. Ce fichier ne lisait que « /app/backend/.env », un
+# chemin absolu qui n'existe que sur le serveur de production : en integration
+# continue, ou le secret est fourni par variable d'environnement et ou aucun
+# .env n'est depose, la suite echouait des la COLLECTE. Le repli sur le fichier
+# reste, pour l'execution sur le serveur.
+IPN_SECRET = os.environ.get("NOWPAYMENTS_IPN_SECRET", "").strip() or None
+if not IPN_SECRET:
+    for chemin in ("/app/backend/.env", "backend/.env", ".env"):
+        try:
+            with open(chemin, "r") as f:
+                for ln in f:
+                    if ln.strip().startswith("NOWPAYMENTS_IPN_SECRET="):
+                        IPN_SECRET = ln.strip().split("=", 1)[1].strip().strip('"').strip("'")
+                        break
+        except OSError:
+            continue
+        if IPN_SECRET:
+            break
 assert IPN_SECRET, "NOWPAYMENTS_IPN_SECRET missing"
 
 CREATED_ORDERS = []  # (order_id, [(variant_id, qty)])

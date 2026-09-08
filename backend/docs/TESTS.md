@@ -81,10 +81,25 @@ puisque `addopts` passe toujours `-n`.
 ## Intégration continue
 
 `.github/workflows/precheck.yml`, tâche `backend-tests` : MongoDB 7 en service,
-dépendances complètes, puis les 17 fichiers unitaires avant même de démarrer
-uvicorn. Le serveur est ensuite lancé et sondé sur `/api/meta` — c'est la place
-des tests d'intégration le jour où ils seront amorçables (il leur faut un jeu de
-données, compte admin compris).
+dépendances complètes, puis les 17 fichiers unitaires **avant même** de démarrer
+uvicorn. Le serveur est ensuite lancé, sondé sur `/api/meta`, et les 19 fichiers
+d'intégration tournent contre lui.
+
+**Aucun script d'amorçage n'a été nécessaire** : `seed_admin_and_products()` est
+appelée au démarrage du serveur, ce qui crée le compte administrateur à partir
+de `ADMIN_EMAIL` / `ADMIN_PASSWORD` ; les tests créent ensuite leurs propres
+affiliés via l'API d'administration.
+
+Les tests d'intégration portent `continue-on-error: true` **le temps de la mise
+en route** — ils n'avaient jamais tourné, et un échec non diagnostiqué rendrait
+l'écusson illisible juste après l'avoir remis au vert. À retirer dès la première
+exécution complète verte.
+
+Piège rencontré en les branchant : `test_iter8_invoice_ipn.py` lisait son secret
+uniquement dans `/app/backend/.env`, un chemin absolu qui n'existe que sur le
+serveur de production. Il lit l'environnement d'abord désormais. **Tout test qui
+lit un chemin absolu échouera en intégration continue** — la variable
+d'environnement passe en premier, le fichier reste un repli.
 
 ## Ce que les tests unitaires ne voient pas
 

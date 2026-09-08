@@ -14,22 +14,35 @@ défauts réels — une fuite de données personnelles dans les journaux, un wor
 qui rejouait quatre fois une erreur de programmation — attendaient dans les
 échecs que quelqu'un les lise.
 
-Pour être prévenue sans passer par le dépôt : GitHub envoie un courriel quand
-une tâche échoue sur un `push` que vous avez fait vous-même. Le réglage est dans
-**Settings → Notifications → Actions** de votre compte (et non du dépôt). Pour
-que l'alerte parte aussi quand quelqu'un d'autre pousse, il faut brancher un
-service externe et un secret — dites-le si vous en voulez un.
+### Être prévenue
+
+**Quand c'est vous qui poussez** : GitHub envoie un courriel. Le réglage est dans
+**Settings → Notifications → Actions** de votre *compte* — pas du dépôt.
+
+**Quand c'est quelqu'un d'autre** : GitHub ne prévient personne, et c'est par ce
+trou que les dix-sept jours sont passés. La tâche `alerte-echec` du workflow
+comble ça, mais elle attend une adresse :
+
+> Créez un secret de dépôt nommé **`CI_WEBHOOK_URL`** contenant l'URL d'un
+> crochet entrant Slack ou Discord — *Settings → Secrets and variables → Actions
+> → New repository secret*. Tant qu'il n'existe pas, la tâche s'exécute, ne
+> trouve rien à envoyer, et se termine en succès : elle ne peut pas faire passer
+> l'écusson au rouge.
+
+Le secret n'apparaît jamais dans les journaux.
 
 ## Ce que l'intégration continue vérifie
 
 | Tâche | Contenu |
 | --- | --- |
-| `precheck` | compilation Python, sondes JSX, installation et **build** du frontend, **tests Jest** du frontend |
-| `backend-tests` | MongoDB 7, les **17 fichiers de tests unitaires** backend, puis démarrage du serveur et sonde sur `/api/meta` |
+| `precheck` | compilation Python, sondes JSX, **lint bloquant** (0 avertissement), build et **tests Jest** du frontend |
+| `backend-tests` | MongoDB 7, les **107 tests unitaires**, puis démarrage du serveur et les **170 tests d'intégration** |
+| `alerte-echec` | prévient sur `CI_WEBHOOK_URL` si la chaîne casse — inerte sans ce secret |
 
-Les tests d'intégration backend (19 fichiers) ne tournent pas encore : ils
-exigent un jeu de données amorcé, compte admin compris.
-Voir [`backend/docs/TESTS.md`](backend/docs/TESTS.md).
+Les tests d'intégration démarrent en **non bloquant** : ils n'ont jamais tourné
+en intégration continue, et un échec afficherait le détail sans faire passer
+l'écusson au rouge. Le drapeau `continue-on-error` est à retirer dès la première
+exécution verte. Voir [`backend/docs/TESTS.md`](backend/docs/TESTS.md).
 
 ## Backend layout
 

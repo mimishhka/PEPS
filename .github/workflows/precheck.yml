@@ -113,12 +113,83 @@ jobs:
           cat /tmp/fironova-uvicorn.log
           exit 1
 
-      # Les cinq fichiers listes ici sont desormais couverts par l'etape
-      # « Run backend unit tests » ci-dessus, avec les douze autres. Le serveur
-      # reste demarre : le curl sur /api/meta est un test de fumee a lui seul,
-      # et c'est la place des tests d'integration le jour ou ils seront
-      # amorcables (ils exigent un jeu de donnees, admin compris).
+      # Les 19 fichiers d'integration, contre le backend et la base demarres
+      # ci-dessus. Aucun script d'amorcage n'a ete necessaire : le serveur
+      # appelle seed_admin_and_products() a son demarrage, et les tests creent
+      # ensuite leurs propres affilies via l'API d'administration.
+      #
+      # continue-on-error PENDANT LA MISE EN ROUTE. Ces 170 tests n'ont jamais
+      # tourne en integration continue et je n'ai pas pu les EXECUTER en local :
+      # il y faut MongoDB, soit 592 Mo a telecharger sur la machine de
+      # developpement. Ce que j'ai verifie, c'est qu'ils se COLLECTENT tous
+      # proprement avec cet environnement — 170 collectes, zero erreur — ce qui
+      # elimine les pannes d'import et de niveau module.
+      #
+      # Le reste doit se constater ici. Tant que ce drapeau est la, un echec
+      # s'affiche sans faire passer l'ecusson au rouge : la tache vient d'etre
+      # remise au vert apres dix-sept jours, et une nouvelle source de rouge
+      # non diagnostiquee la rendrait a nouveau illisible.
+      #
+      # A RETIRER des que la premiere execution complete est verte.
+      - name: Run backend integration tests (mise en route, non bloquant)
+        continue-on-error: true
+        working-directory: backend
+        run: |
+          FICHIERS=$(grep -l REACT_APP_BACKEND_URL tests/test_*.py | tr '\n' ' ')
+          echo "Fichiers d'integration : $FICHIERS"
+          python -m pytest -q $FICHIERS
 
       - name: Show backend log on failure
         if: failure()
         run: cat /tmp/fironova-uvicorn.log
+
+  # ---------------------------------------------------------------------------
+  # Alerte en cas d'echec — INERTE tant qu'aucun secret n'est defini.
+  #
+  # GitHub envoie deja un courriel a l'AUTEUR d'un push qui casse la chaine
+  # (reglage du compte : Settings -> Notifications -> Actions). Ce qu'il ne fait
+  # pas, c'est prevenir quand quelqu'un D'AUTRE casse `main`. C'est le trou par
+  # lequel la tache est restee rouge dix-sept jours.
+  #
+  # POUR L'ACTIVER : creer un secret de depot nomme CI_WEBHOOK_URL contenant
+  # l'URL d'un crochet entrant Slack ou Discord (Settings -> Secrets and
+  # variables -> Actions -> New repository secret). Tant qu'il n'existe pas,
+  # cette tache s'execute, ne trouve rien a envoyer, et se termine en succes :
+  # elle ne peut donc pas faire passer l'ecusson au rouge.
+  #
+  # Le secret n'apparait jamais dans les journaux : il est lu dans une variable
+  # d'environnement et passe a curl, jamais affiche.
+  # ---------------------------------------------------------------------------
+  alerte-echec:
+    if: failure()
+    needs: [precheck, backend-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Prevenir sur le crochet configure
+        env:
+          CROCHET: ${{ secrets.CI_WEBHOOK_URL }}
+          DEPOT: ${{ github.repository }}
+          BRANCHE: ${{ github.ref_name }}
+          AUTEUR: ${{ github.actor }}
+          EXECUTION: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RESUME: ${{ github.event.head_commit.message }}
+        run: |
+          if [ -z "$CROCHET" ]; then
+            echo "Aucun secret CI_WEBHOOK_URL n'est defini — aucune alerte a envoyer."
+            echo "Voir le commentaire au-dessus de cette tache pour l'activer."
+            exit 0
+          fi
+          SUJET=$(printf '%s' "$RESUME" | head -1)
+          TEXTE=$(printf '%s\n%s\n%s\n%s' \
+            "🔴 ${DEPOT} — la chaine est cassee sur ${BRANCHE}" \
+            "Pousse par ${AUTEUR}" \
+            "${SUJET}" \
+            "${EXECUTION}")
+          # jq construit le JSON : un message de commit peut contenir des
+          # guillemets, des sauts de ligne ou une apostrophe, qui casseraient
+          # une chaine assemblee a la main. `text` sert a Slack, `content` a
+          # Discord : envoyer les deux evite de dependre du service choisi.
+          jq -n --arg t "$TEXTE" '{text: $t, content: $t}' \
+            | curl -sS -X POST -H 'Content-Type: application/json' -d @- "$CROCHET" \
+            || echo "L'envoi de l'alerte a echoue — sans consequence sur la chaine."
