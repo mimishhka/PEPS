@@ -934,7 +934,7 @@ function BulkRestockCSVModal({ onClose, onDone }) {
       const parsed = parseCsv(text);
       setRows(parsed);
       if (!parsed.length) toast.error("No valid rows found in CSV");
-    } catch (e) {
+    } catch {
       toast.error("Failed to read CSV file");
     } finally {
       setParsing(false);

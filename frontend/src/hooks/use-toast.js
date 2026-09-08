@@ -5,7 +5,10 @@ import * as React from "react"
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000
 
-const actionTypes = {
+// Prefixe _ : conserve comme DOCUMENTATION des noms d'actions, qui sont
+// ecrits en chaines litterales dans le reducteur plus bas. Le prefixe dit
+// « inutilise et c'est voulu » a no-unused-vars.
+const _actionTypes = {
   ADD_TOAST: "ADD_TOAST",
   UPDATE_TOAST: "UPDATE_TOAST",
   DISMISS_TOAST: "DISMISS_TOAST",

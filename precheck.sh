@@ -36,7 +36,7 @@ done
 
 cd "$ROOT_DIR"
 
-echo "==> [1/6] Python compile check"
+echo "==> [1/7] Python compile check"
 python -m compileall -q backend tests
 python -m py_compile backend/server.py
 echo "OK: backend Python syntax"
@@ -50,18 +50,29 @@ echo "OK: backend Python syntax"
 # message generique.
 #
 # Elles tournent meme avec --skip-frontend : elles n'ont besoin de rien.
-echo "==> [2/6] Frontend static checks"
+echo "==> [2/7] Frontend static checks"
 python scripts/verifs/verifier.py
 echo "OK: frontend static checks"
 
 if [[ "$SKIP_FRONTEND" -eq 0 ]]; then
-  echo "==> [3/6] Frontend dependencies"
+  echo "==> [3/7] Frontend dependencies"
   cd frontend
 
   echo "Installing the exact locked frontend dependency tree"
   COREPACK_ENABLE_DOWNLOAD_PROMPT=0 yarn install --frozen-lockfile --ignore-scripts --non-interactive
 
-  echo "==> [4/6] Frontend build"
+  # ESLint devient BLOQUANT ici, ce qu'il ne pouvait pas etre tant que le
+  # compteur affichait 574 avertissements. 544 d'entre eux etaient faux —
+  # no-unused-vars ne comprenait pas le JSX — et les 30 restants ont ete traites.
+  # A zero, `--max-warnings=0` a enfin un sens : le compteur ne peut plus remonter
+  # en silence.
+  #
+  # Avant la construction : ESLint dit « 'Cog' n'est pas defini, ligne 4 », la ou
+  # webpack donne une trace de plusieurs ecrans.
+  echo "==> [4/7] Frontend lint"
+  yarn lint
+
+  echo "==> [5/7] Frontend build"
   yarn build
 
   # Les tests de comportement viennent APRES la construction : un fichier qui
@@ -69,18 +80,19 @@ if [[ "$SKIP_FRONTEND" -eq 0 ]]; then
   # cascade d'echecs de suites.
   #
   # CI=true met Jest en mode non interactif ; sans lui, il attend une touche.
-  echo "==> [5/6] Frontend tests"
+  echo "==> [6/7] Frontend tests"
   CI=true yarn test --watchAll=false
   cd "$ROOT_DIR"
   echo "OK: frontend build + tests"
 else
-  echo "==> [3/6] Frontend install skipped"
-  echo "==> [4/6] Frontend build skipped"
-  echo "==> [5/6] Frontend tests skipped"
+  echo "==> [3/7] Frontend install skipped"
+  echo "==> [4/7] Frontend lint skipped"
+  echo "==> [5/7] Frontend build skipped"
+  echo "==> [6/7] Frontend tests skipped"
 fi
 
 if [[ "$WITH_PYTEST" -eq 1 ]]; then
-  echo "==> [6/6] Backend tests (pytest)"
+  echo "==> [7/7] Backend tests (pytest)"
   cd backend
   # Les fichiers UNITAIRES seulement. `pytest -q` lancait tout, y compris les
   # tests d'integration, qui exigent un backend vivant et echouent des la
@@ -90,7 +102,7 @@ if [[ "$WITH_PYTEST" -eq 1 ]]; then
   cd "$ROOT_DIR"
   echo "OK: backend tests"
 else
-  echo "==> [6/6] Backend tests skipped (use --with-pytest)"
+  echo "==> [7/7] Backend tests skipped (use --with-pytest)"
 fi
 
 echo "==> Precheck complete"

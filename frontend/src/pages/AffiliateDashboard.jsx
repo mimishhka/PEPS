@@ -3,15 +3,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import {
-  ComposedChart, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid, Legend,
-} from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { QRCodeSVG } from "qrcode.react";
 import {
   MousePointerClick, ShoppingBag, Wallet, Download,
-  MessageCircle, Send, Mail, Activity,
-} from "lucide-react";
+  MessageCircle, Send, Mail } from "lucide-react";
 import api, { formatApiError } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";

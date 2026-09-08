@@ -3,7 +3,7 @@
 // (sujet + corps, FR + EN), avec aide-mémoire des variables et aperçu en direct.
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { Mail, Save, RotateCcw, Eye, Check, X } from "lucide-react";
+import { Mail, Save, RotateCcw, Eye } from "lucide-react";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
 import { useConfirm } from "../../../components/ConfirmDialog";

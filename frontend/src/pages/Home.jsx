@@ -4,7 +4,6 @@ import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
-import { useSiteConfig } from "../contexts/SiteConfigContext";
 import ProductCard from "../components/ProductCard.jsx";
 import { MolecularMesh, Seal, NovaSpark, Reveal, FnMark } from "../components/brand";
 
@@ -28,7 +27,8 @@ function PurityTrace() {
 
 export default function Home() {
   const { t, lang } = useLang();
-  const { coaPageEnabled } = useSiteConfig();
+  // `coaPageEnabled` n'est PAS lu ici : la page d'accueil ne renvoie jamais
+  // vers /lab. Seul Header.jsx en a besoin, pour masquer l'entree de menu.
   const [products, setProducts] = useState([]);
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);

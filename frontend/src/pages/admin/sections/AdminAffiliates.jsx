@@ -6,12 +6,10 @@ import { toast } from "sonner";
 import {
   Plus, RefreshCw, Copy, X, Users, TrendingUp, Clock,
   AlertTriangle, MousePointerClick, Award, Wallet, ShieldAlert, Eye,
-  Search, Download, BarChart3, Smartphone, Globe, MousePointerClick as CursorClick,
-  Upload, FileText, CheckCircle2, XCircle,
-} from "lucide-react";
+  Search, Download, Smartphone, Globe, MousePointerClick as CursorClick,
+  Upload, FileText, CheckCircle2, XCircle } from "lucide-react";
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
-} from "recharts";
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import api, { formatApiError } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
 import { useLang } from "../../../contexts/LanguageContext";

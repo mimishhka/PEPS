@@ -128,7 +128,7 @@ export default function OrderConfirmation() {
       await api.post(`/orders/${order.id}/messages`, fd, guestRequestConfig(guestToken));
       setMsgText(""); setMsgFile(null);
       reloadMsgs();
-    } catch (e) { /* non bloquant */ } finally {
+    } catch { /* non bloquant */ } finally {
       setMsgBusy(false);
     }
   };

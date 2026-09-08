@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
-import { resolveAssetUrl } from "../lib/api";
+import {  } from "../lib/api";
 import ProductImage from "../components/ProductImage";
 
 const CartContext = createContext(null);

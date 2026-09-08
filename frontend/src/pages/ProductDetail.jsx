@@ -7,7 +7,7 @@ import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import useAffiliate from "../hooks/useAffiliate";
 import { useCart } from "../contexts/CartContext";
-import { VialArt, Seal } from "../components/brand";
+import { Seal } from "../components/brand";
 import ProductImage from "../components/ProductImage";
 import { ProductDetailSkeleton } from "../components/LoadingSkeletons";
 
@@ -160,7 +160,8 @@ export default function ProductDetail() {
   const coaUrl = selectedVariant?.coa_url ? resolveAssetUrl(selectedVariant.coa_url) : "";
   const coaAvailable = coaStatus === "available" && !!coaUrl;
   const coaPending = coaStatus === "pending";
-  const imageSrc = resolveAssetUrl(product.image_url);
+  // Pas de resolveAssetUrl pour l'image : ProductImage s'en charge lui-meme,
+  // et gere en plus le repli sur le visuel de marque si le fichier manque.
 
   const specs = [
     { k: lang === "fr" ? "PURETÉ (HPLC)" : "PURITY (HPLC)", v: product.purity },

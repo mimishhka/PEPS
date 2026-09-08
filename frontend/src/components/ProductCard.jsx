@@ -4,7 +4,7 @@ import { useCart } from "../contexts/CartContext";
 import ProductImage from "./ProductImage";
 
 export default function ProductCard({ product, index = 0 }) {
-  const { lang, t } = useLang();
+  const { lang } = useLang();
   const { add } = useCart();
   const name = lang === "fr" ? product.name_fr : product.name_en;
 
