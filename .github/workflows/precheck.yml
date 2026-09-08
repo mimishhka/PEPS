@@ -154,7 +154,19 @@ jobs:
       # D'ou « 40 errors in 8.64s » : les fixtures admin de portee module
       # echouaient en cascade, sans que rien ne pointe la limite de debit.
       TRUSTED_PROXIES: 127.0.0.1
-      RESEND_API_KEY: ""
+      # UNE CLE FICTIVE, ET C'EST VOLONTAIRE.
+      #
+      # Vide, _send_email SORT AVANT LA MISE EN FILE : rien n'atteint
+      # email_outbox. Or plusieurs tests lisent cette collection — c'est ainsi
+      # qu'ils verifient qu'un avis de report de versement a bien ete emis.
+      # Avec la cle vide, ils cherchaient un courriel qui n'avait jamais ete
+      # ecrit nulle part.
+      #
+      # Une valeur fictive suffit : la mise en file n'appelle pas Resend. Le
+      # worker d'envoi, lui, echouera a joindre le fournisseur et marquera la
+      # tache en echec apres cinq tentatives — sans consequence, le message
+      # reste en base, ou les tests le lisent.
+      RESEND_API_KEY: ci-fictif-aucun-envoi-reel
       # Interac : un expediteur de confiance FICTIF, uniquement pour que le
       # module s'initialise. Sans lui, _process_interac_deposit_emails sort
       # immediatement en journalisant « auto-confirm disabled », et les tests
@@ -355,6 +367,27 @@ jobs:
         with:
           name: ${{ env.MOTIF3 }}
           path: ${{ runner.temp }}/motifs/motif3.txt
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # L'extraction en trouve cinq ; il n'y en avait que trois a publier, donc
+      # les deux derniers motifs restaient invisibles. A mesure que les causes
+      # dominantes tombent, ce sont eux qui deviennent interessants.
+      - name: Motif 4
+        if: steps.integration.outcome == 'failure' && env.MOTIF4 != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MOTIF4 }}
+          path: ${{ runner.temp }}/motifs/motif4.txt
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Motif 5
+        if: steps.integration.outcome == 'failure' && env.MOTIF5 != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.MOTIF5 }}
+          path: ${{ runner.temp }}/motifs/motif5.txt
           retention-days: 7
           if-no-files-found: ignore
 
