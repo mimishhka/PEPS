@@ -146,4 +146,24 @@ describe("AdminAffiliates — classement des top affiliés", () => {
       expect(screen.getByText(/Sommes . r.cup.rer/)).toBeInTheDocument());
     expect(screen.getByText(/2 . \$340\.50/)).toBeInTheDocument();
   });
+  it("replie les postes a zero au lieu de leur donner une carte", async () => {
+    // La bande affichait cinq cartes de meme poids, dont quatre disaient
+    // « rien a faire ». Seuls les postes qui demandent une action gardent une
+    // carte ; les autres restent NOMMES sur une ligne — ce qui distingue
+    // « rien a faire » d'un chargement rate.
+    render(<AdminAffiliates />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("affiliate-alerts")).toBeInTheDocument());
+
+    // Seule la carte des sommes a recuperer est active (clawback_count: 2).
+    expect(screen.getByText(/Sommes . r.cup.rer/)).toBeInTheDocument();
+    expect(screen.queryByText(/Paiements . envoyer/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Commissions . approuver/)).not.toBeInTheDocument();
+
+    // Mais les postes calmes sont cites, pas escamotes.
+    const calme = screen.getByTestId("affiliate-alerts-calm");
+    expect(calme).toHaveTextContent(/paiements/);
+    expect(calme).toHaveTextContent(/conformit/);
+  });
 });

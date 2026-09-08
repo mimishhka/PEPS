@@ -238,47 +238,71 @@ export default function AdminAffiliates() {
               savait alors pas si rien n'attendait, ou si le chargement avait
               echoue. Une carte calme dit « rien a faire », un vide ne dit rien. */}
           <SectionRule>{L("À TRAITER", "NEEDS ACTION")}</SectionRule>
-          {/* Trois colonnes, et non quatre : la cinquieme carte se serait
-              retrouvee seule sur sa ligne. 3 + 2 se lit mieux que 4 + 1. */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6" data-testid="affiliate-alerts">
-            <AlertCard icon={Wallet} tone={al.payouts_ready > 0 ? "cyan" : "slate"}
-              title={L("Paiements à envoyer", "Payouts to send")}
-              value={al.payouts_ready > 0 ? `${al.payouts_ready} · ${money(al.payouts_ready_amount)}` : "0"}
-              action={al.payouts_ready > 0
-                ? L("exécution + 2FA", "execute + 2FA")
-                : L("rien à verser", "nothing to pay")} />
-            <AlertCard icon={Clock} tone={al.commissions_maturing > 0 ? "amber" : "slate"}
-              title={L("Commissions à approuver", "Commissions maturing")}
-              value={int(al.commissions_maturing)}
-              action={al.commissions_maturing > 0
-                ? L("prêtes sous peu", "maturing soon")
-                : L("aucune en attente", "none pending")} />
-            <AlertCard icon={ShieldAlert} tone={al.compliance_review > 0 ? "red" : "slate"}
-              title={L("En révision conformité", "In compliance review")}
-              value={int(al.compliance_review)}
-              action={al.compliance_review > 0
-                ? L("dossier à examiner", "file to review")
-                : L("tout est conforme", "all clear")} />
-            <AlertCard icon={AlertTriangle} tone={al.invites_expired > 0 ? "amber" : "slate"}
-              title={L("Invitations expirées", "Expired invites")}
-              value={int(al.invites_expired)}
-              action={al.invites_expired > 0
-                ? L("à renvoyer ou fermer", "resend or close")
-                : L("aucune en souffrance", "none outstanding")} />
-            {/* SOMMES A RECUPERER — cette carte n'existait pas.
-                Quand une commande deja versee est annulee, le versement est
-                irreversible : le systeme enregistre une creance sur l'affilie.
-                Le champ etait ecrit correctement et n'apparaissait NULLE PART,
-                donc ces montants n'etaient jamais recouvres. */}
-            <AlertCard icon={Wallet} tone={al.clawback_count > 0 ? "red" : "slate"}
-              title={L("Sommes à récupérer", "Amounts to recover")}
-              value={al.clawback_count > 0
-                ? `${int(al.clawback_count)} · ${money(al.clawback_amount)}`
-                : "0"}
-              action={al.clawback_count > 0
-                ? L("commande annulée après versement", "order reversed after payout")
-                : L("rien à récupérer", "nothing to recover")} />
-          </div>
+          {/* CE QUI EST A ZERO NE PREND PLUS UNE CARTE ENTIERE.
+              La bande affichait cinq cartes de meme poids, dont quatre disaient
+              « rien a faire ». Un ecran qui s'appelle « a traiter » doit montrer
+              ce qu'il y a a traiter : les postes calmes tiennent sur une ligne,
+              et le seul qui compte se voit du premier coup d'oeil.
+              Ils restent NOMMES — c'est ce qui distingue « rien a faire » d'un
+              chargement rate. */}
+          {(() => {
+            const postes = [
+              { cle: "payouts", icon: Wallet, ton: "cyan", n: al.payouts_ready,
+                titre: L("Paiements à envoyer", "Payouts to send"),
+                valeur: `${int(al.payouts_ready)} · ${money(al.payouts_ready_amount)}`,
+                action: L("exécution + 2FA", "execute + 2FA"),
+                calme: L("paiements", "payouts") },
+              { cle: "maturing", icon: Clock, ton: "amber", n: al.commissions_maturing,
+                titre: L("Commissions à approuver", "Commissions maturing"),
+                valeur: int(al.commissions_maturing),
+                action: L("prêtes sous peu", "maturing soon"),
+                calme: L("commissions", "commissions") },
+              { cle: "compliance", icon: ShieldAlert, ton: "red", n: al.compliance_review,
+                titre: L("En révision conformité", "In compliance review"),
+                valeur: int(al.compliance_review),
+                action: L("dossier à examiner", "file to review"),
+                calme: L("conformité", "compliance") },
+              { cle: "invites", icon: AlertTriangle, ton: "amber", n: al.invites_expired,
+                titre: L("Invitations expirées", "Expired invites"),
+                valeur: int(al.invites_expired),
+                action: L("à renvoyer ou fermer", "resend or close"),
+                calme: L("invitations", "invites") },
+              // Creances nees d'une commande annulee APRES versement : le
+              // versement est irreversible, la somme reste due par l'affilie.
+              { cle: "clawback", icon: Wallet, ton: "red", n: al.clawback_count,
+                titre: L("Sommes à récupérer", "Amounts to recover"),
+                valeur: `${int(al.clawback_count)} · ${money(al.clawback_amount)}`,
+                action: L("commande annulée après versement", "order reversed after payout"),
+                calme: L("récupérations", "recoveries") },
+            ];
+            const actifs = postes.filter((p) => Number(p.n) > 0);
+            const calmes = postes.filter((p) => !(Number(p.n) > 0));
+            // Colonnes = nombre d'actifs, pour qu'aucune carte ne s'etire sur du
+            // vide et qu'aucune ne reste seule sur sa ligne.
+            const colonnes = ["", "sm:grid-cols-1", "sm:grid-cols-2",
+                              "sm:grid-cols-2 lg:grid-cols-3"][Math.min(actifs.length, 3)];
+            return (
+              <div className="mb-6" data-testid="affiliate-alerts">
+                {actifs.length > 0 && (
+                  <div className={`grid grid-cols-1 ${colonnes} gap-3`}>
+                    {actifs.map((p) => (
+                      <AlertCard key={p.cle} icon={p.icon} tone={p.ton}
+                        title={p.titre} value={p.valeur} action={p.action} />
+                    ))}
+                  </div>
+                )}
+                {calmes.length > 0 && (
+                  <p className={`text-[12px] text-glacier ${actifs.length ? "mt-3" : ""}`}
+                     data-testid="affiliate-alerts-calm">
+                    {actifs.length
+                      ? L("Rien à traiter du côté de : ", "Nothing pending on: ")
+                      : L("Rien à traiter : ", "Nothing to handle: ")}
+                    <span className="text-nordfjord">{calmes.map((p) => p.calme).join(", ")}</span>.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* PERFORMANCE — trois indicateurs qui pilotent, pas quatre dont un
               historique. « Versé à vie » descend en ligne de référence. */}
@@ -356,8 +380,12 @@ export default function AdminAffiliates() {
                     <YAxis tick={{ fontSize: 10, fill: couleursGraphique.axe }} />
                     <Tooltip formatter={(v) => money(v)} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Line type="monotone" dataKey="revenue" name={L("CA validé", "Revenue")} stroke="#0B2E4F" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="commission" name={L("Commissions", "Commissions")} stroke="#00B8D4" strokeWidth={2} dot={false} />
+                    {/* dot : VISIBLE quand il n'y a qu'un mois de donnees.
+                        Une courbe a un seul point ne trace aucun segment ;
+                        avec dot={false} le graphique s'affichait avec ses axes
+                        et rien dedans, ce qui se lit comme une panne. */}
+                    <Line type="monotone" dataKey="revenue" name={L("CA validé", "Revenue")} stroke="#0B2E4F" strokeWidth={2} dot={(ov?.monthly_series || []).length < 2} />
+                    <Line type="monotone" dataKey="commission" name={L("Commissions", "Commissions")} stroke="#00B8D4" strokeWidth={2} dot={(ov?.monthly_series || []).length < 2} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -376,7 +404,12 @@ export default function AdminAffiliates() {
                       <span className="w-6 h-6 rounded-full bg-nordfjord text-white text-xs font-bold grid place-items-center shrink-0">{i + 1}</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-nordfjord truncate">{t.name}</p>
-                        <p className="text-[11px] text-glacier">{int(t.orders)} {L("commandes", "orders")}</p>
+                        {/* Singulier : l'ecran affichait « 1 orders ». */}
+                        <p className="text-[11px] text-glacier">
+                          {int(t.orders)} {Number(t.orders) === 1
+                            ? L("commande", "order")
+                            : L("commandes", "orders")}
+                        </p>
                       </div>
                       <span className="text-sm font-bold text-nordfjord tabular-nums">{money(t.revenue)}</span>
                     </button>
