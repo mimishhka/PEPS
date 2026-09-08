@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import api, { formatApiError } from "../lib/api";
 
 const AuthContext = createContext(null);
@@ -31,13 +31,36 @@ export function AuthProvider({ children }) {
     }
   }, [user?.email]);
 
+  /* Miroir de `user`, lu SANS creer de dependance.
+   *
+   * `refresh` avait besoin de savoir si une session existe deja, et le lisait
+   * directement dans `user`. Cette dependance fabriquait une boucle infinie :
+   *
+   *   refresh() -> setUser(objet NEUF a chaque reponse)
+   *             -> l'identite de `user` change
+   *             -> useCallback recree `refresh`
+   *             -> useEffect([refresh]) se redeclenche
+   *             -> refresh() ...
+   *
+   * Mesure faite dans le navigateur : SIX requetes par seconde vers
+   * /api/auth/me, par onglet ouvert, sans fin. Invisible du lint, du build et
+   * des tests — le code est parfaitement valide, c'est son comportement qui
+   * s'emballe. Cote serveur, cela n'apparaissait que comme un flot de
+   * « GET /api/auth/me 200 » dans les journaux, facile a prendre pour du
+   * trafic normal.
+   *
+   * Une reference ne change pas d'identite : la lire ne recree rien.
+   */
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
+
   const refresh = useCallback(async () => {
     try {
       const { data } = await api.get("/auth/me");
       if (data?.email) {
         setUser(data);
         emitSessionRestored(data.email);
-      } else if (!user) {
+      } else if (!userRef.current) {
         // Guest session at startup: keep explicit null.
         setUser(null);
       }
@@ -46,11 +69,11 @@ export function AuthProvider({ children }) {
     } catch {
       // Never auto-logout on transient API/CORS/network issues.
       // Keep current in-memory session unless we're already a guest.
-      if (!user) setUser(null);
+      if (!userRef.current) setUser(null);
     } finally {
       setChecking(false);
     }
-  }, [emitSessionRestored, user]);
+  }, [emitSessionRestored]);
 
   useEffect(() => {
     refresh();
