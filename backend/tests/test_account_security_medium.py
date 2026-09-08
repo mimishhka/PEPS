@@ -189,9 +189,14 @@ def test_register_requires_email_verification_before_session(server_module, monk
     monkeypatch.setattr(server_module, "_send_magic_email", send_magic)
     response = Response()
 
+    # `name` n'existe plus comme champ d'entree : RegisterIn exige first_name et
+    # last_name separement, et recompose `name` en propriete. Le test passait
+    # encore l'ancien champ unique, que pydantic ignorait avant de refuser les
+    # deux nouveaux comme manquants.
     result = asyncio.run(server_module.register(
         server_module.RegisterIn(
-            email="new@example.com", password="StrongPass1!", name="New User",
+            email="new@example.com", password="StrongPass1!",
+            first_name="New", last_name="User",
         ),
         response,
         _request("/api/auth/register"),
