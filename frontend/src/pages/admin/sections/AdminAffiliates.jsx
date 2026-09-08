@@ -277,14 +277,17 @@ export default function AdminAffiliates() {
             ];
             const actifs = postes.filter((p) => Number(p.n) > 0);
             const calmes = postes.filter((p) => !(Number(p.n) > 0));
-            // Colonnes = nombre d'actifs, pour qu'aucune carte ne s'etire sur du
-            // vide et qu'aucune ne reste seule sur sa ligne.
-            const colonnes = ["", "sm:grid-cols-1", "sm:grid-cols-2",
-                              "sm:grid-cols-2 lg:grid-cols-3"][Math.min(actifs.length, 3)];
+            // GRILLE FIXE A TROIS COLONNES, meme avec une seule carte.
+            //
+            // Adapter le nombre de colonnes au nombre de cartes semblait plus
+            // propre ; a l'ecran, une carte unique s'etirait sur toute la
+            // largeur et donnait un poids enorme a « 3 invitations expirees ».
+            // Une largeur de carte CONSTANTE vaut mieux qu'une ligne remplie :
+            // le blanc a droite dit lui-meme qu'il n'y a qu'une chose a faire.
             return (
               <div className="mb-6" data-testid="affiliate-alerts">
                 {actifs.length > 0 && (
-                  <div className={`grid grid-cols-1 ${colonnes} gap-3`}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {actifs.map((p) => (
                       <AlertCard key={p.cle} icon={p.icon} tone={p.ton}
                         title={p.titre} value={p.valeur} action={p.action} />
