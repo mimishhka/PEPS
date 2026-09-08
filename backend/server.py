@@ -11454,6 +11454,21 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
     compliance_review = await db.affiliates.count_documents({"compliance_status": "review"})
     commissions_maturing = await db.affiliate_referrals.count_documents({"status": "pending"})
 
+    # SOMMES A RECUPERER. Quand une commande deja versee est annulee, le
+    # versement lui-meme est irreversible : on enregistre donc une creance sur
+    # l'affilie (`clawback_pending`, `clawback_amount`). Ce champ etait ecrit
+    # correctement depuis le debut et n'apparaissait sur AUCUN ecran — ces
+    # montants n'ont donc jamais ete recouvres.
+    clawback = await _cursor_all(db.affiliate_referrals.aggregate([
+        {"$match": {"clawback_pending": True}},
+        {"$group": {"_id": None,
+                    "n": {"$sum": 1},
+                    "montant": {"$sum": {"$ifNull": ["$clawback_amount", 0]}}}},
+    ]))
+    clawback_row = clawback[0] if clawback else {}
+    clawback_count = int(clawback_row.get("n", 0))
+    clawback_amount = round(float(clawback_row.get("montant", 0.0)), 2)
+
     return {
         "financial": {
             "commission_pending": round(commission_pending, 2),
@@ -11471,6 +11486,8 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
             "invites_expired": invites_expired,
             "compliance_review": compliance_review,
             "commissions_maturing": commissions_maturing,
+            "clawback_count": clawback_count,
+            "clawback_amount": clawback_amount,
         },
         "attribution": {
             "total_clicks": total_clicks,

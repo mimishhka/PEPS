@@ -238,7 +238,9 @@ export default function AdminAffiliates() {
               savait alors pas si rien n'attendait, ou si le chargement avait
               echoue. Une carte calme dit « rien a faire », un vide ne dit rien. */}
           <SectionRule>{L("À TRAITER", "NEEDS ACTION")}</SectionRule>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6" data-testid="affiliate-alerts">
+          {/* Trois colonnes, et non quatre : la cinquieme carte se serait
+              retrouvee seule sur sa ligne. 3 + 2 se lit mieux que 4 + 1. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6" data-testid="affiliate-alerts">
             <AlertCard icon={Wallet} tone={al.payouts_ready > 0 ? "cyan" : "slate"}
               title={L("Paiements à envoyer", "Payouts to send")}
               value={al.payouts_ready > 0 ? `${al.payouts_ready} · ${money(al.payouts_ready_amount)}` : "0"}
@@ -263,6 +265,19 @@ export default function AdminAffiliates() {
               action={al.invites_expired > 0
                 ? L("à renvoyer ou fermer", "resend or close")
                 : L("aucune en souffrance", "none outstanding")} />
+            {/* SOMMES A RECUPERER — cette carte n'existait pas.
+                Quand une commande deja versee est annulee, le versement est
+                irreversible : le systeme enregistre une creance sur l'affilie.
+                Le champ etait ecrit correctement et n'apparaissait NULLE PART,
+                donc ces montants n'etaient jamais recouvres. */}
+            <AlertCard icon={Wallet} tone={al.clawback_count > 0 ? "red" : "slate"}
+              title={L("Sommes à récupérer", "Amounts to recover")}
+              value={al.clawback_count > 0
+                ? `${int(al.clawback_count)} · ${money(al.clawback_amount)}`
+                : "0"}
+              action={al.clawback_count > 0
+                ? L("commande annulée après versement", "order reversed after payout")
+                : L("rien à récupérer", "nothing to recover")} />
           </div>
 
           {/* PERFORMANCE — trois indicateurs qui pilotent, pas quatre dont un

@@ -151,6 +151,11 @@ def test_affiliate_overview_totals_more_than_one_thousand_rows(server_module):
 
     class Referrals:
         def aggregate(self, pipeline):
+            # DEUX agregations distinctes sur cette collection. La doublure doit
+            # les distinguer, sinon elle repond la facette financiere a une
+            # question qui portait sur les sommes a recuperer.
+            if pipeline[0].get("$match", {}).get("clawback_pending"):
+                return Cursor([{"n": 3, "montant": 87.5}])
             assert "$facet" in pipeline[-1]
             return Cursor([{
                 "financial": [{
@@ -195,6 +200,10 @@ def test_affiliate_overview_totals_more_than_one_thousand_rows(server_module):
     assert result["financial"]["validated_revenue"] == 10050.0
     assert result["alerts"]["payouts_ready"] == 1005
     assert result["alerts"]["payouts_ready_amount"] == 1005.0
+    # Les sommes a recuperer : le champ existait en base et n'etait expose nulle
+    # part, donc ces creances sur les affilies n'etaient jamais recouvrees.
+    assert result["alerts"]["clawback_count"] == 3
+    assert result["alerts"]["clawback_amount"] == 87.5
 
 
 def test_restock_notifications_claim_every_subscriber(server_module, monkeypatch):

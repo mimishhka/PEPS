@@ -67,7 +67,8 @@ const AFFILIE = {
 };
 
 const APERCU = {
-  financial: {}, affiliates: {}, alerts: {}, attribution: {},
+  financial: {}, affiliates: {}, attribution: {},
+  alerts: { clawback_count: 2, clawback_amount: 340.5 },
   monthly_series: [],
   tier_distribution: { diamond: 1 },
   top_affiliates: [{
@@ -133,5 +134,16 @@ describe("AdminAffiliates — classement des top affiliés", () => {
     }
 
     expect(erreurs.filter((m) => m.includes("unique \"key\" prop"))).toEqual([]);
+  });
+
+  it("affiche les sommes a recuperer venues de l'API", async () => {
+    // Cette carte n'existait pas : le champ clawback_pending etait ecrit
+    // correctement cote serveur et n'apparaissait sur aucun ecran, donc les
+    // creances sur les affilies n'etaient jamais recouvrees.
+    render(<AdminAffiliates />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/Sommes . r.cup.rer/)).toBeInTheDocument());
+    expect(screen.getByText(/2 . \$340\.50/)).toBeInTheDocument();
   });
 });
