@@ -251,7 +251,12 @@ def test_affiliate_email_worker_marks_sent_and_removes_link(server_module, monke
         async def update_one(self, query, update):
             self.update = update
 
-    async def send_invite(email, name, link, lang):
+    # La doublure doit accepter EXACTEMENT ce que le worker passe. Elle s'en
+    # tenait aux quatre premiers parametres alors que _affiliate_send_invite a
+    # gagne taux_convenu et lien_programme : le worker levait un TypeError, le
+    # job partait en « retry », et le test echouait sur un chemin qui n'avait
+    # rien a voir avec ce qu'il pretendait verifier.
+    async def send_invite(email, name, link, lang, taux_convenu=None, lien_programme=""):
         assert email == "affiliate@example.com"
         assert link.endswith("token=secret")
 
@@ -264,6 +269,44 @@ def test_affiliate_email_worker_marks_sent_and_removes_link(server_module, monke
     assert processed is True
     assert jobs.update["$set"]["status"] == "sent"
     assert "link" in jobs.update["$unset"]
+
+
+def test_affiliate_email_worker_abandonne_sur_defaut_de_code(server_module, monkeypatch):
+    """Une faute de programmation ne se reessaie pas : elle echoue tout de suite.
+
+    Ce test existe parce que le precedent a masque un vrai defaut : le worker
+    traitait un TypeError comme une panne de fournisseur et le rejouait quatre
+    fois. La distinction est desormais explicite, donc elle doit etre gardee.
+    """
+    class EmailJobs:
+        def __init__(self):
+            self.update = None
+
+        async def find_one_and_update(self, query, update, **kwargs):
+            return {
+                "id": "job-3", "email": "affiliate@example.com", "name": "Affiliate",
+                "link": "https://example.com/invite?token=secret", "lang": "fr",
+                "attempts": 1,
+            }
+
+        async def update_one(self, query, update):
+            self.update = update
+
+    async def signature_incompatible(email, name, link, lang):
+        raise AssertionError("le worker ne devrait jamais arriver ici")
+
+    jobs = EmailJobs()
+    server_module.db = SimpleNamespace(affiliate_email_jobs=jobs)
+    monkeypatch.setattr(server_module, "_affiliate_send_invite", signature_incompatible)
+
+    processed = asyncio.run(server_module._process_affiliate_email_job())
+
+    assert processed is True
+    assert jobs.update["$set"]["status"] == "failed"
+    assert jobs.update["$set"]["error_type"] == "TypeError"
+    # Echec definitif : le jeton d'invitation ne doit pas rester en base.
+    assert "link" in jobs.update["$unset"]
+    assert "programme_link" in jobs.update["$unset"]
 
 
 def test_affiliate_email_worker_retries_failed_send(server_module, monkeypatch):

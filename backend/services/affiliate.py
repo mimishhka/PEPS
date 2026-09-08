@@ -1525,7 +1525,19 @@ async def _process_affiliate_email_job() -> bool:
         )
     except Exception as exc:
         attempts = int(job.get("attempts", 1))
-        terminal = attempts >= 5
+        # Une faute de programmation ne guerit pas en attendant. Un TypeError
+        # (signature qui a change), un KeyError (champ absent du document) ou un
+        # AttributeError donneront exactement le meme resultat au cinquieme
+        # essai qu'au premier : quatre reessais pour rien, huit minutes de
+        # latence avant que l'echec devienne visible, et un journal qui laisse
+        # croire a une panne passagere du fournisseur.
+        #
+        # Les pannes REELLEMENT passageres — reseau, delai depasse, 5xx du
+        # fournisseur — ne sont pas dans cette liste et gardent leurs cinq
+        # tentatives avec recul exponentiel.
+        defaut_de_code = isinstance(exc, (TypeError, AttributeError, KeyError,
+                                          NameError, ImportError, IndexError))
+        terminal = defaut_de_code or attempts >= 5
         delay_seconds = min(3600, 30 * (2 ** max(0, attempts - 1)))
         unset_fields = {"lease_expires_at": ""}
         if terminal:
@@ -1545,8 +1557,9 @@ async def _process_affiliate_email_job() -> bool:
             }, "$unset": unset_fields},
         )
         logging.warning(
-            "[affiliate] queued email failed job=%s attempt=%d error_type=%s",
+            "[affiliate] queued email failed job=%s attempt=%d error_type=%s%s",
             job["id"], attempts, type(exc).__name__,
+            " DEFAUT DE CODE — abandon immediat, aucun reessai" if defaut_de_code else "",
         )
     return True
 
