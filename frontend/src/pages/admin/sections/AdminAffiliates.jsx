@@ -93,13 +93,9 @@ export default function AdminAffiliates() {
   const couleursGraphique = useChartColors();
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
-  // INDISPENSABLE, et pas seulement pratique : sans ce crochet, `confirm`
-  // dans ce composant designerait le `window.confirm` du navigateur. Il
-  // recevrait notre objet d'options, l'afficherait « [object Object] », et
-  // aucun controle statique ne le signalerait — `confirm` est une variable
-  // globale, donc `no-undef` la juge valide. Ce projet a deja perdu du temps
-  // sur exactement ce piege.
-  const confirm = useConfirm();
+  // Pas de `useConfirm()` ICI : ce composant ne demande aucune confirmation.
+  // Les seules qui existent vivent dans DetailModal, qui declare son propre
+  // crochet. Un appel inutilise a cet endroit laissait croire le contraire.
 
   const [ov, setOv] = useState(null);
   const [rows, setRows] = useState([]);
@@ -1421,6 +1417,11 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const [aliasBusy, setAliasBusy] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [customersLoading, setCustomersLoading] = useState(false);
+  // INDISPENSABLE, et pas seulement pratique : sans ce crochet, `confirm` dans
+  // ce composant designerait le `window.confirm` du navigateur. Il recevrait
+  // notre objet d'options, l'afficherait « [object Object] », et aucun controle
+  // statique ne le signalerait — `confirm` est une variable globale, donc
+  // `no-undef` la juge valide. Ce projet a deja perdu du temps sur ce piege.
   const confirm = useConfirm();
 
   const toggleAlias = async (aliasCode, nextActive) => {

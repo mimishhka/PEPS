@@ -3,6 +3,11 @@
 // Registers react-hooks plugin so inline `eslint-disable react-hooks/*`
 // directives sprinkled through the code do not trigger "rule not found".
 const reactHooks = require("eslint-plugin-react-hooks");
+// Fourni par react-scripts. Une SEULE de ses regles est activee plus bas :
+// jsx-uses-vars, qui apprend a no-unused-vars qu'un composant utilise dans du
+// JSX est utilise. Sans elle, tout composant importe puis rendu — c'est-a-dire
+// la quasi-totalite du repertoire — passait pour du poids mort.
+const react = require("eslint-plugin-react");
 
 module.exports = [
   {
@@ -19,6 +24,7 @@ module.exports = [
     files: ["src/**/*.{js,jsx,ts,tsx}"],
     plugins: {
       "react-hooks": reactHooks,
+      react,
     },
     linterOptions: {
       reportUnusedDisableDirectives: false,
@@ -126,6 +132,17 @@ module.exports = [
         varsIgnorePattern: "^_",
         ignoreRestSiblings: true,
       }],
+
+      /* INDISPENSABLE au bon fonctionnement de la regle ci-dessus, et pas un
+       * ajout cosmetique. no-unused-vars ne comprend pas le JSX : `<Header />`
+       * ne ressemble pas a un usage de la variable `Header`. Sans cette regle,
+       * chaque composant importe puis rendu — donc presque tous — etait compte
+       * comme inutilise.
+       *
+       * Elle ne peut RIEN signaler de neuf : elle marque des variables comme
+       * utilisees, jamais l'inverse. Le nombre d'avertissements ne peut donc
+       * que baisser. */
+      "react/jsx-uses-vars": "error",
     },
   },
   {
