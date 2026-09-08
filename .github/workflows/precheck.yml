@@ -32,10 +32,40 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Run unified precheck
+      # UNE ETAPE PAR PHASE, et non un seul « ./precheck.sh ».
+      #
+      # Les journaux d'execution demandent une session GitHub pour etre lus.
+      # Les NOMS et les RESULTATS des etapes, eux, sont publics. Tant que tout
+      # tenait dans une seule etape, « Run unified precheck : failure » ne
+      # disait rien de plus que « quelque chose a casse » — et cette tache est
+      # rouge depuis le 15 aout sans que personne ait pu dire quoi.
+      #
+      # Decoupee, la liste des etapes designe la phase fautive a elle seule.
+      # precheck.sh reste le raccourci local : il enchaine exactement ces
+      # memes commandes, dans le meme ordre.
+      - name: Compilation Python
         run: |
-          chmod +x precheck.sh
-          ./precheck.sh
+          python -m compileall -q backend tests
+          python -m py_compile backend/server.py
+
+      - name: Sondes JSX
+        run: python scripts/verifs/verifier.py
+
+      - name: Dependances frontend
+        working-directory: frontend
+        run: COREPACK_ENABLE_DOWNLOAD_PROMPT=0 yarn install --frozen-lockfile --ignore-scripts --non-interactive
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: yarn lint
+
+      - name: Build frontend
+        working-directory: frontend
+        run: yarn build
+
+      - name: Tests frontend
+        working-directory: frontend
+        run: yarn test --watchAll=false
 
   backend-tests:
     runs-on: ubuntu-latest
@@ -75,8 +105,31 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
+      # requirements-ci.txt, PAS requirements.txt.
+      #
+      # `pip install -r requirements.txt` echoue sur les runners depuis le
+      # 15 aout : l'etape tombait, donc AUCUN test backend ne s'est jamais
+      # execute — pas meme les cinq fichiers qui etaient listes. Ce n'etait pas
+      # « des tests echouent », c'etait « rien ne tourne ».
+      #
+      # requirements.txt decrit l'environnement complet de production : une
+      # centaine de paquets dont google-genai, litellm servi depuis un hote
+      # prive, jq qui compile libjq, fastuuid qui compile du Rust. Le backend
+      # n'en importe AUCUN — verifie par analyse de l'arbre syntaxique de tout
+      # backend/. requirements-ci.txt tient les dix-huit modules reellement
+      # importes, et son installation a ete verifiee dans un environnement
+      # neuf.
       - name: Install backend dependencies
-        run: python -m pip install -r backend/requirements.txt --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/
+        run: python -m pip install -r backend/requirements-ci.txt
+
+      # weasyprint a part, et TOLERANTE A L'ECHEC : import paresseux (une seule
+      # fonction de generation de PDF) et bibliotheques Pango du systeme
+      # requises. C'est le paquet qui fait le plus souvent tomber une
+      # installation ; le mettre avec les autres ferait tomber tous les tests
+      # pour un seul chemin de code.
+      - name: Install weasyprint (optionnel)
+        continue-on-error: true
+        run: python -m pip install "weasyprint>=62.0"
 
       # Avant de demarrer quoi que ce soit : ces tests n'ont besoin ni de la
       # base ni du serveur. Ils echouent en quelques secondes plutot qu'apres

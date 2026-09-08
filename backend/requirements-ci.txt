@@ -1,0 +1,72 @@
+# Dépendances pour l'INTÉGRATION CONTINUE et le développement local.
+#
+# POURQUOI CE FICHIER EXISTE
+#
+# `pip install -r requirements.txt` ÉCHOUAIT sur les runners GitHub, et c'est la
+# vraie raison des dix-sept jours de rouge : l'étape « Install backend
+# dependencies » tombait, donc les tests ne s'exécutaient jamais — pas même les
+# cinq fichiers qui étaient listés. Ce n'est pas que des tests échouaient : rien
+# ne tournait.
+#
+# `requirements.txt` décrit l'environnement COMPLET du serveur de production :
+# google-genai, litellm servi depuis un hôte privé, boto3, jq (qui compile
+# libjq depuis les sources), fastuuid (qui compile du Rust)… Une centaine de
+# paquets dont le backend n'importe AUCUN.
+#
+# Vérifié par analyse de l'arbre syntaxique de tout `backend/` : les seuls
+# modules tiers réellement importés sont les dix-huit ci-dessous. Le reste est
+# du poids que l'intégration continue n'a aucune raison de porter — et chaque
+# paquet superflu est une façon de plus d'échouer.
+#
+# CE FICHIER NE REMPLACE PAS requirements.txt EN PRODUCTION. Il sert aux tests
+# et au développement.
+#
+# Versions identiques à celles de requirements.txt partout où elles y figurent.
+
+# --- Serveur web -----------------------------------------------------------
+fastapi==0.110.1
+starlette==0.37.2
+uvicorn==0.25.0
+pydantic==2.13.4
+python-multipart==0.0.32
+email-validator==2.3.0
+
+# --- Base de données -------------------------------------------------------
+motor==3.3.1
+pymongo==4.6.3
+
+# --- Authentification ------------------------------------------------------
+PyJWT==2.13.0
+bcrypt==4.1.3
+passlib==1.7.4
+python-jose==3.5.0
+
+# --- Intégrations ----------------------------------------------------------
+httpx==0.28.1
+requests==2.34.2
+resend==2.32.2
+python-dotenv==1.2.2
+
+# --- Documents et images ---------------------------------------------------
+pillow==12.2.0
+reportlab==5.0.0
+pypdf==4.3.1
+openpyxl==3.1.5
+# weasyprint N'EST PAS ICI, volontairement. Elle est importée PARESSEUSEMENT
+# (dans la seule fonction de génération de PDF) et réclame les bibliothèques
+# Pango du système. C'est le paquet qui fait le plus souvent tomber une
+# installation, et le faire tomber ici ferait tomber TOUS les tests — pour un
+# seul chemin de code. Le workflow l'installe séparément, en tolérant l'échec.
+
+# --- Dates -----------------------------------------------------------------
+holidays>=0.50
+# INDISPENSABLE sous Windows, facultative sous Linux : le système n'y a pas de
+# base de fuseaux horaires, et ZoneInfo("America/Toronto") — l'heure de coupure
+# des commandes — lève ModuleNotFoundError sans elle.
+tzdata==2026.2
+
+# --- Tests -----------------------------------------------------------------
+# pytest.ini impose `-n 2 --dist loadscope` : sans xdist, toute invocation
+# échoue avant d'avoir collecté quoi que ce soit.
+pytest==9.1.1
+pytest-xdist==3.8.0
