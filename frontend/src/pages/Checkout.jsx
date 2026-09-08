@@ -219,10 +219,22 @@ export default function Checkout() {
     return Math.min(subtotal, coupon.value);
   }, [coupon, subtotal]);
 
+  // `livraison` et `seuilGratuit` DOIVENT figurer ici. Ce ne sont pas des
+  // constantes : elles viennent de la configuration du site, chargee de facon
+  // asynchrone (shippingFlatCad / freeShippingThresholdCad, avec repli). Sans
+  // elles dans les dependances, un premier rendu fige les valeurs de repli, et
+  // l'estimation affichee ne bouge plus quand la vraie configuration arrive.
+  //
+  // La consequence n'est pas cosmetique, comme le dit deja l'en-tete de ce
+  // fichier : le SERVEUR recalcule la livraison a la commande. Un client peut
+  // donc voir « livraison gratuite » et payer des frais, ou l'inverse.
+  //
+  // Aucun risque de boucle : ce sont deux nombres, dont l'identite ne change
+  // pas d'un rendu a l'autre a valeur egale.
   const shippingEst = useMemo(() => {
     if (coupon?.free_shipping) return 0;
     return Math.max(0, subtotal - discount) >= seuilGratuit ? 0 : livraison;
-  }, [subtotal, discount, coupon]);
+  }, [subtotal, discount, coupon, livraison, seuilGratuit]);
   const total = useMemo(
     () => +(Math.max(0, subtotal - discount) + shippingEst).toFixed(2),
     [subtotal, discount, shippingEst]
