@@ -113,7 +113,11 @@ def test_batch_payout_claim_prevents_double_provider_call(server_module, monkeyp
     payout = {
         "id": "payout-1",
         "status": "ready",
-        "payout_address": "0xabc",
+        # Adresse ERC-20 BIEN FORMEE, et non un « 0xabc » de facade : depuis que
+        # le reseau se deduit de l'adresse, une adresse invalide fait ecarter le
+        # versement avant tout appel au fournisseur — et ce test, qui verifie la
+        # course entre deux envois simultanes, ne testait plus rien.
+        "payout_address": "0x000000000000000000000000000000000000dead",
         "currency": "usdt",
         "amount": 25,
     }
