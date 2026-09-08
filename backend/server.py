@@ -9790,8 +9790,11 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request,
                     {"email": invite_email}, {"$set": {"converted": True}}
                 )
             except Exception as _e:  # pragma: no cover
-                logging.warning("subscriber conversion flag failed for %s: %s",
-                                invite_email, _e)
+                # Meme operation qu'aux lignes 1033 et 1619, qui hachent toutes
+                # deux l'adresse. Celle-ci l'ecrivait en clair, et joignait le
+                # texte de l'exception plutot que son type.
+                logging.warning("subscriber conversion flag failed ref=%s error_type=%s",
+                                _private_ref(invite_email), type(_e).__name__)
             try:
                 asyncio.create_task(welcome_new_user(invite_email, display_name, "fr"))
             except Exception:

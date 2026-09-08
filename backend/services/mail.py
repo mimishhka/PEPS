@@ -98,6 +98,30 @@ def _order_email_html(order: dict, body_intro: str) -> str:
 </body></html>"""
 
 
+_ADRESSE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+
+
+def _references_destinataires(to) -> list:
+    """Meme forme que dans _send_email : une liste de references privees.
+
+    Accepte aussi bien une chaine qu'une liste, parce que le document de la file
+    peut porter l'une ou l'autre selon l'appelant d'origine.
+    """
+    valeurs = to if isinstance(to, list) else [to]
+    return [s._private_ref(v) for v in valeurs if v]
+
+
+def _sans_adresses(texte: str) -> str:
+    """Remplace toute adresse de courriel par sa reference privee.
+
+    Le message d'erreur d'un fournisseur reprend souvent l'adresse refusee
+    (« Invalid `to` field: … »). C'est la seule raison pour laquelle il fallait
+    encore le tronquer a l'aveugle : neutralisee, l'erreur peut etre journalisee
+    en entier, ce qui vaut mieux pour diagnostiquer.
+    """
+    return _ADRESSE.sub(lambda m: f"<{s._private_ref(m.group(0))}>", str(texte or ""))
+
+
 def _reference_de_sujet(subject: str) -> str:
     """Reference stable d'un TYPE de courriel, sans en reveler le contenu.
 
@@ -364,8 +388,12 @@ async def _process_email_outbox_job() -> bool:
             terminal = True
             delay_seconds = 0
             changes["status"] = "invalid"
-            logging.warning("[email] destinataire refuse job=%s to=%s — abandon definitif",
-                            job.get("id"), job.get("to"))
+            # `to` etait ecrit EN CLAIR ici. _send_email prend soin de hacher
+            # les destinataires a la mise en file ; la protection tombait donc
+            # exactement au moment ou un journal se lit et se transmet — quand
+            # quelque chose echoue.
+            logging.warning("[email] destinataire refuse job=%s recipients=%s — abandon definitif",
+                            job.get("id"), _references_destinataires(job.get("to")))
         else:
             terminal = attempts >= 5
             delay_seconds = min(3600, 30 * (2 ** max(0, attempts - 1)))
@@ -386,10 +414,10 @@ async def _process_email_outbox_job() -> bool:
             )
         else:
             logging.error(
-                "[email] delivery failed job=%s to=%s attempt=%d terminal=%s "
+                "[email] delivery failed job=%s recipients=%s attempt=%d terminal=%s "
                 "error_type=%s error=%s",
-                job["id"], job.get("to"), attempts, terminal,
-                type(exc).__name__, str(exc)[:300],
+                job["id"], _references_destinataires(job.get("to")), attempts, terminal,
+                type(exc).__name__, _sans_adresses(str(exc))[:300],
             )
     return True
 

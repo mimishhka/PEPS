@@ -92,6 +92,48 @@ def test_email_logs_use_non_pii_recipient_reference(server_module, caplog):
     assert "recipients=" in caplog.text
 
 
+def test_email_delivery_failure_logs_no_recipient_address(server_module, caplog):
+    """L'anonymisation ne doit pas tomber au moment ou elle sert le plus.
+
+    _send_email hache soigneusement les destinataires a la mise en file. Le
+    worker de livraison, lui, ecrivait `to=` en clair sur echec — c'est-a-dire
+    exactement quand un journal se lit, se copie et se transmet.
+
+    Le message d'exception du fournisseur est neutralise lui aussi : Resend
+    reprend l'adresse refusee dans son texte d'erreur.
+    """
+    import services.mail as mail
+
+    job = {
+        "id": "job-1", "status": "sending", "attempts": 1,
+        "to": ["customer@example.com"], "from": "no-reply@example.com",
+        "subject": "Sujet quelconque", "html": "<p>corps</p>",
+    }
+
+    class Outbox:
+        async def find_one_and_update(self, query, update, **kwargs):
+            return dict(job)
+
+        async def update_one(self, query, update):
+            return None
+
+    def refus(params):
+        raise RuntimeError("Invalid `to` field: customer@example.com is not allowed")
+
+    server_module.RESEND_API_KEY = "configured"
+    server_module.db = SimpleNamespace(email_outbox=Outbox())
+    mail.resend.Emails.send = refus
+
+    with caplog.at_level(logging.INFO):
+        assert asyncio.run(mail._process_email_outbox_job()) is True
+
+    assert "customer@example.com" not in caplog.text
+    assert "recipients=" in caplog.text
+    # Le TYPE d'erreur reste lisible : neutraliser n'est pas effacer.
+    assert "RuntimeError" in caplog.text
+    assert "Invalid `to` field" in caplog.text
+
+
 def test_email_boundary_strips_crlf_from_headers(server_module, monkeypatch):
     captured = {}
 
