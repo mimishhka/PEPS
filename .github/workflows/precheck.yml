@@ -139,6 +139,21 @@ jobs:
       REACT_APP_BACKEND_URL: http://127.0.0.1:8001
       COOKIE_SECURE: "false"
       CORS_ORIGINS: http://127.0.0.1:3000
+      # SANS CETTE LIGNE, LES TESTS D'INTEGRATION SE BLOQUENT EUX-MEMES.
+      #
+      # conftest.py pose un X-Forwarded-For aleatoire sur /auth/login,
+      # /auth/register et /checkout, precisement pour que chaque module ait sa
+      # propre adresse et n'epuise pas la limite de debit des autres.
+      #
+      # Mais _client_ip N'ACCEPTE ce header que si le pair immediat figure dans
+      # TRUSTED_PROXIES — c'est la regle qui empeche un client direct de forger
+      # son IP. Ici la liste etait vide : le header etait ignore, les 19 modules
+      # arrivaient tous depuis 127.0.0.1, et la limite de connexion (5 tentatives
+      # par 15 minutes et par IP) tombait des le sixieme module.
+      #
+      # D'ou « 40 errors in 8.64s » : les fixtures admin de portee module
+      # echouaient en cascade, sans que rien ne pointe la limite de debit.
+      TRUSTED_PROXIES: 127.0.0.1
       RESEND_API_KEY: ""
       NOWPAYMENTS_API_KEY: ""
       NOWPAYMENTS_IPN_SECRET: ci-nowpayments-secret
