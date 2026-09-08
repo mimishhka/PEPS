@@ -1,5 +1,36 @@
 # Here are your Instructions
 
+[![Precheck](https://github.com/mimishhka/PEPS/actions/workflows/precheck.yml/badge.svg?branch=main)](https://github.com/mimishhka/PEPS/actions/workflows/precheck.yml)
+
+## État de l'intégration continue
+
+**Si l'écusson ci-dessus est rouge, `main` est cassée.** Il se met à jour tout
+seul et se voit depuis la page d'accueil du dépôt.
+
+Ce n'est pas une précaution théorique : la tâche `backend-tests` a été **rouge
+pendant dix-sept jours** sans que personne le remarque, du 21 août au 7 septembre
+2026. Trois tests décrivaient un comportement que le code n'avait plus, et deux
+défauts réels — une fuite de données personnelles dans les journaux, un worker
+qui rejouait quatre fois une erreur de programmation — attendaient dans les
+échecs que quelqu'un les lise.
+
+Pour être prévenue sans passer par le dépôt : GitHub envoie un courriel quand
+une tâche échoue sur un `push` que vous avez fait vous-même. Le réglage est dans
+**Settings → Notifications → Actions** de votre compte (et non du dépôt). Pour
+que l'alerte parte aussi quand quelqu'un d'autre pousse, il faut brancher un
+service externe et un secret — dites-le si vous en voulez un.
+
+## Ce que l'intégration continue vérifie
+
+| Tâche | Contenu |
+| --- | --- |
+| `precheck` | compilation Python, sondes JSX, installation et **build** du frontend, **tests Jest** du frontend |
+| `backend-tests` | MongoDB 7, les **17 fichiers de tests unitaires** backend, puis démarrage du serveur et sonde sur `/api/meta` |
+
+Les tests d'intégration backend (19 fichiers) ne tournent pas encore : ils
+exigent un jeu de données amorcé, compte admin compris.
+Voir [`backend/docs/TESTS.md`](backend/docs/TESTS.md).
+
 ## Backend layout
 
 `backend/server.py` holds the FastAPI app, configuration, Pydantic models, and the

@@ -36,7 +36,7 @@ done
 
 cd "$ROOT_DIR"
 
-echo "==> [1/5] Python compile check"
+echo "==> [1/6] Python compile check"
 python -m compileall -q backend tests
 python -m py_compile backend/server.py
 echo "OK: backend Python syntax"
@@ -50,34 +50,47 @@ echo "OK: backend Python syntax"
 # message generique.
 #
 # Elles tournent meme avec --skip-frontend : elles n'ont besoin de rien.
-echo "==> [2/5] Frontend static checks"
+echo "==> [2/6] Frontend static checks"
 python scripts/verifs/verifier.py
 echo "OK: frontend static checks"
 
 if [[ "$SKIP_FRONTEND" -eq 0 ]]; then
-  echo "==> [3/5] Frontend dependencies"
+  echo "==> [3/6] Frontend dependencies"
   cd frontend
 
   echo "Installing the exact locked frontend dependency tree"
   COREPACK_ENABLE_DOWNLOAD_PROMPT=0 yarn install --frozen-lockfile --ignore-scripts --non-interactive
 
-  echo "==> [4/5] Frontend build"
+  echo "==> [4/6] Frontend build"
   yarn build
+
+  # Les tests de comportement viennent APRES la construction : un fichier qui
+  # ne compile pas doit le dire par le message du compilateur, pas par une
+  # cascade d'echecs de suites.
+  #
+  # CI=true met Jest en mode non interactif ; sans lui, il attend une touche.
+  echo "==> [5/6] Frontend tests"
+  CI=true yarn test --watchAll=false
   cd "$ROOT_DIR"
-  echo "OK: frontend build"
+  echo "OK: frontend build + tests"
 else
-  echo "==> [3/5] Frontend install skipped"
-  echo "==> [4/5] Frontend build skipped"
+  echo "==> [3/6] Frontend install skipped"
+  echo "==> [4/6] Frontend build skipped"
+  echo "==> [5/6] Frontend tests skipped"
 fi
 
 if [[ "$WITH_PYTEST" -eq 1 ]]; then
-  echo "==> [5/5] Backend tests (pytest)"
+  echo "==> [6/6] Backend tests (pytest)"
   cd backend
-  pytest -q
+  # Les fichiers UNITAIRES seulement. `pytest -q` lancait tout, y compris les
+  # tests d'integration, qui exigent un backend vivant et echouent des la
+  # collecte (`assert BASE_URL` au niveau module) — ce drapeau ne pouvait donc
+  # pas fonctionner. Voir backend/docs/TESTS.md.
+  pytest -q $(grep -L REACT_APP_BACKEND_URL tests/test_*.py | tr '\n' ' ')
   cd "$ROOT_DIR"
   echo "OK: backend tests"
 else
-  echo "==> [5/5] Backend tests skipped (use --with-pytest)"
+  echo "==> [6/6] Backend tests skipped (use --with-pytest)"
 fi
 
 echo "==> Precheck complete"
