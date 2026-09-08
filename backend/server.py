@@ -9962,7 +9962,11 @@ async def affiliate_ticket_create(payload: AffiliateTicketIn, request: Request):
         "last_from": "affiliate",
     }
     await db.affiliate_tickets.insert_one(doc)
-    logging.info("[ticket] ouvert code=%s sujet=%r", aff.get("code"), doc["subject"][:60])
+    # Le sujet d'un billet est du texte libre ecrit par l'affilie : il peut
+    # contenir un nom, une adresse, le detail d'un litige. Il n'a rien a faire
+    # dans un journal. L'identifiant suffit — il ouvre le billet dans l'admin,
+    # ou le sujet est a sa place.
+    logging.info("[ticket] ouvert code=%s id=%s", aff.get("code"), doc["id"])
     doc.pop("_id", None)
     return doc
 

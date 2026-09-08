@@ -98,6 +98,20 @@ def _order_email_html(order: dict, body_intro: str) -> str:
 </body></html>"""
 
 
+def _reference_de_sujet(subject: str) -> str:
+    """Reference stable d'un TYPE de courriel, sans en reveler le contenu.
+
+    Tout ce qui varie d'un envoi a l'autre — numeros de commande, montants,
+    dates, jetons — est remplace par « # » avant le hachage. Deux courriels
+    « Votre commande FN-2026-0417 est reservee » et « … FN-2026-0418 … »
+    donnent donc la MEME reference, ce qui permet de compter les pertes par
+    type. Le hachage est celui de _private_ref : HMAC clé par JWT_SECRET, donc
+    non inversible meme en connaissant la liste des sujets possibles.
+    """
+    gabarit = re.sub(r"[0-9]+", "#", str(subject or ""))
+    return s._private_ref(gabarit.strip().lower())
+
+
 async def _send_email(to: str | list, subject: str, html: str, from_email: str | None = None) -> None:
     """Persist an email for delivery by the outbox worker."""
     def sanitize_header(value: Any) -> str:
@@ -112,9 +126,16 @@ async def _send_email(to: str | list, subject: str, html: str, from_email: str |
         # fonctionnement. En info, la ligne se noyait et l'appelant recevait
         # « ok » — on cherchait la panne du cote du fournisseur alors que rien
         # n'avait jamais quitte le serveur.
+        #
+        # Le SUJET ne s'ecrit plus en clair. Hacher le destinataire ne servait a
+        # rien tant que la ligne d'a cote portait « Votre commande FN-… est
+        # reservee » : le numero de commande designe le client dans la base.
+        # A la place, une reference de REGROUPEMENT : les numeros et les jetons
+        # sont neutralises AVANT le hachage, si bien que vingt exemplaires du
+        # meme courriel partagent une reference et se comptent d'un coup d'oeil.
         logging.error(
-            "[email] PERDU recipients=%s sujet=%r — RESEND_API_KEY absente, "
-            "aucun envoi possible", recipient_refs, safe_subject[:80],
+            "[email] PERDU recipients=%s sujet_ref=%s — RESEND_API_KEY absente, "
+            "aucun envoi possible", recipient_refs, _reference_de_sujet(safe_subject),
         )
         return
     try:
