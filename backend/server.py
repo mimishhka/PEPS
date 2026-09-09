@@ -10878,6 +10878,15 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
             "This affiliate is suspended — restore the account from their "
             "profile before inviting again",
         )
+    # Meme raisonnement pour un dossier FERME : le formulaire d'invitation le
+    # remettrait en « invited » sans passer par la reouverture, donc sans trace
+    # de la decision et sans restaurer le statut d'origine.
+    if existing and existing.get("status") == "closed":
+        raise HTTPException(
+            409,
+            "Ce dossier est fermé — rouvrez-le depuis sa fiche avant de "
+            "réinviter cette adresse.",
+        )
 
     if existing:
         await db.affiliates.update_one(
@@ -10961,10 +10970,14 @@ async def admin_affiliate_resend(affiliate_id: str,
     # lien pour se réactiver lui-même. Une mesure disciplinaire s'annulait par
     # un bouton présenté comme un simple renvoi de courriel.
     if aff.get("status") != "invited":
+        _statut = aff.get("status")
         raise HTTPException(
             400,
-            "Affiliate already active — no invite to resend"
-            if aff.get("status") == "active"
+            "Affiliate already active — no invite to resend" if _statut == "active"
+            # Un dossier fermé n'est pas un dossier suspendu : le message le
+            # disait quand même, et envoyait vers la mauvaise action.
+            else "Dossier fermé — rouvrez-le d'abord si vous voulez réinviter"
+            if _statut == "closed"
             else "Suspended affiliate — restore the account before inviting again",
         )
     await _rate_limit("affiliate_invite", affiliate_id, AFFILIATE_INVITE_MAX,  # noqa: F821
@@ -11212,9 +11225,14 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
     }
 
 
-async def admin_affiliates_list(admin: dict = Depends(get_admin_user)):  # noqa: F821
+async def admin_affiliates_list(admin: dict = Depends(get_admin_user),  # noqa: F821
+                                include_closed: bool = False):
+    # SEULE requete de la liste sans filtre de statut, donc seule a devoir
+    # connaitre `closed`. Les comptages de l'apercu filtrent tous explicitement
+    # sur active / invited / suspended : un statut inedit leur est invisible.
+    filtre = {} if include_closed else {"status": {"$ne": "closed"}}
     rows = await _cursor_all(db.affiliates.find(
-        {}, {"_id": 0, "invite_token_hash": 0}
+        filtre, {"_id": 0, "invite_token_hash": 0}
     ).sort("created_at", -1))
     metrics_by_affiliate = await _affiliate_compute_list_metrics(rows)
     out = []
@@ -11825,6 +11843,12 @@ class AffiliateAliasToggleIn(BaseModel):
     active: bool
 
 
+class AffiliateCloseIn(BaseModel):
+    # Facultatif, mais conservé : dans six mois, « pourquoi ce dossier est-il
+    # fermé » est la seule question qu'on se posera devant la liste des clos.
+    reason: str = ""
+
+
 async def admin_affiliate_alias_toggle(affiliate_id: str, alias_code: str,
                                         payload: AffiliateAliasToggleIn,
                                         admin: dict = Depends(get_admin_user)):  # noqa: F821
@@ -11842,12 +11866,126 @@ async def admin_affiliate_alias_toggle(affiliate_id: str, alias_code: str,
     if not res.matched_count:
         raise HTTPException(404, "Alias not found")
     # Un alias actif permet l'attribution et le rabais : sa bascule est un
-    # acte sur l'argent, il est tracé.
-    asyncio.create_task(_log_action(
+    # acte sur l'argent, il est tracé. `await` et non create_task : une tâche
+    # non référencée peut être ramassée avant de s'exécuter.
+    await _log_action(
         admin, "affiliate_alias_toggle",
         f"affiliate={affiliate_id} alias={alias_code.upper()} active={bool(payload.active)}",
-        "affiliates",
-    ))
+        "affiliates", strict=True,
+    )
+    return await db.affiliates.find_one(
+        {"id": affiliate_id}, {"_id": 0, "invite_token_hash": 0}
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fermeture définitive d'un dossier — SANS AUCUN COURRIEL
+# ---------------------------------------------------------------------------
+# Une invitation qui ne sera jamais acceptée restait « invited » pour toujours :
+# elle comptait dans les effectifs, gonflait « invitations expirées » et
+# encombrait la liste. La seule action offerte était de la renvoyer.
+#
+# `closed` est un QUATRIÈME statut, et c'est délibéré : les trois autres
+# (`active`, `invited`, `suspended`) sont filtrés explicitement par chacune des
+# requêtes de comptage et de liste. Une valeur inédite est donc invisible pour
+# toutes, sans qu'il faille les modifier une à une — et sans risque d'en oublier.
+# Seule la liste d'administration interroge sans filtre de statut ; elle est
+# adaptée, et elle seule.
+
+async def admin_affiliate_close(affiliate_id: str, payload: "AffiliateCloseIn",
+                                admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Ferme un dossier d'affilié. Aucun courriel n'est envoyé, jamais.
+
+    Refuse dans deux cas, tous deux pour protéger de l'irréversible :
+
+    - compte ACTIF : il a un code en circulation et un coupon vivant. Le
+      suspendre d'abord coupe l'attribution et le rabais ; fermer sans cette
+      étape laisserait un code actif rattaché à un dossier clos.
+    - commissions NON VERSÉES : on ne ferme pas un dossier à qui l'on doit de
+      l'argent. Le montant dû est nommé dans le refus.
+    """
+    aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
+    if not aff:
+        raise HTTPException(404, "Affiliate not found")
+
+    statut = (aff.get("status") or "").strip().lower()
+    if statut == "closed":
+        raise HTTPException(400, "Ce dossier est déjà fermé.")
+    if statut == "active":
+        raise HTTPException(
+            400,
+            "Un affilié actif ne se ferme pas directement : son code et son "
+            "coupon sont en circulation. Suspendez-le d'abord, puis fermez.",
+        )
+
+    # Argent dû : `pending` mûrit encore, `approved` attend le prochain
+    # versement. Dans les deux cas la somme est due.
+    du = await _cursor_all(db.affiliate_referrals.aggregate([
+        {"$match": {"affiliate_id": affiliate_id,
+                    "status": {"$in": ["pending", "approved"]}}},
+        {"$group": {"_id": None, "n": {"$sum": 1},
+                    "montant": {"$sum": {"$ifNull": ["$commission_amount", 0]}}}},
+    ]))
+    if du and int(du[0].get("n", 0)) > 0:
+        montant = round(float(du[0].get("montant", 0.0)), 2)
+        raise HTTPException(
+            400,
+            f"Fermeture refusée : {du[0]['n']} commission(s) non versée(s), "
+            f"{montant} $ CAD. Réglez ou annulez avant de fermer.",
+        )
+
+    maintenant = datetime.now(timezone.utc).isoformat()
+    await db.affiliates.update_one(
+        {"id": affiliate_id},
+        {"$set": {
+            "status": "closed",
+            "closed_at": maintenant,
+            "closed_by": admin.get("id"),
+            "closed_reason": (payload.reason or "").strip()[:300],
+            # Le statut d'avant est conservé : sans lui, rouvrir reviendrait à
+            # deviner si le dossier était « invited » ou « suspended ».
+            "status_before_close": statut,
+        },
+         # Le jeton d'invitation ne doit plus valoir : un lien encore valable
+         # dans une boîte aux lettres rouvrirait le dossier tout seul.
+         "$unset": {"invite_token_hash": "", "invite_expires_at": ""}},
+    )
+    await _log_action(admin, "affiliate.close",
+                      f"affiliate={affiliate_id} code={aff.get('code') or '—'} "
+                      f"depuis={statut}", "affiliates", strict=True)
+    logging.info("[affiliate] dossier ferme id=%s depuis=%s", affiliate_id, statut)
+    return await db.affiliates.find_one(
+        {"id": affiliate_id}, {"_id": 0, "invite_token_hash": 0}
+    )
+
+
+async def admin_affiliate_reopen(affiliate_id: str,
+                                 admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Rouvre un dossier fermé, dans l'état où il était. Aucun courriel non plus.
+
+    Fermer est une décision d'administration, pas une suppression : elle doit
+    pouvoir se défaire. Le dossier retrouve son statut d'avant — mais PAS son
+    jeton d'invitation, qui a été détruit : il faut renvoyer une invitation
+    neuve, ce qui est le geste explicite qu'on veut à cet endroit.
+    """
+    aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
+    if not aff:
+        raise HTTPException(404, "Affiliate not found")
+    if (aff.get("status") or "").strip().lower() != "closed":
+        raise HTTPException(400, "Ce dossier n'est pas fermé.")
+
+    precedent = (aff.get("status_before_close") or "invited").strip().lower()
+    if precedent not in {"invited", "suspended"}:
+        precedent = "invited"
+    await db.affiliates.update_one(
+        {"id": affiliate_id},
+        {"$set": {"status": precedent},
+         "$unset": {"closed_at": "", "closed_by": "", "closed_reason": "",
+                    "status_before_close": ""}},
+    )
+    await _log_action(admin, "affiliate.reopen",
+                      f"affiliate={affiliate_id} vers={precedent}",
+                      "affiliates", strict=True)
     return await db.affiliates.find_one(
         {"id": affiliate_id}, {"_id": 0, "invite_token_hash": 0}
     )
@@ -12118,7 +12256,8 @@ async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
     codes = {p.get("affiliate_code") for p in payouts if p.get("affiliate_code")}
     if codes:
         async for aff in db.affiliates.find(
-                {"code": {"$in": list(codes)}, "status": "suspended"},
+                {"code": {"$in": list(codes)},
+                 "status": {"$in": ["suspended", "closed"]}},
                 {"_id": 0, "code": 1}):
             codes_suspendus.add(aff["code"])
 
@@ -12286,7 +12425,8 @@ async def admin_affiliate_payouts_csv(admin: dict = Depends(get_admin_user)) -> 
     codes_suspendus = set()
     if codes_pay:
         async for aff in db.affiliates.find(
-                {"code": {"$in": list(codes_pay)}, "status": "suspended"},
+                {"code": {"$in": list(codes_pay)},
+                 "status": {"$in": ["suspended", "closed"]}},
                 {"_id": 0, "code": 1}):
             codes_suspendus.add(aff["code"])
     rows = [["Address", "Currency", "Amount", "ExternalId", "AffiliateCode", "Period"]]

@@ -164,4 +164,45 @@ describe("AdminAffiliates — classement des top affiliés", () => {
     }
     expect(bande.children).toHaveLength(5);
   });
+  it("propose de fermer un dossier invité, et n'envoie aucun courriel", async () => {
+    // Une invitation qui ne sera jamais acceptee restait « invited » pour
+    // toujours : elle comptait dans les effectifs et la seule action offerte
+    // etait de la renvoyer, c'est-a-dire d'insister.
+    const INVITE = { ...AFFILIE, status: "invited", code: null };
+    api.get.mockImplementation(async (url) => {
+      if (url === "/admin/affiliates/overview") return { data: APERCU };
+      if (url === "/admin/affiliates") return { data: [INVITE] };
+      if (url === "/admin/affiliates/risk") return { data: null };
+      if (url.startsWith("/admin/affiliates/aff-1")) {
+        return { data: { affiliate: INVITE, referrals: [], payouts: [] } };
+      }
+      return { data: {} };
+    });
+    api.post.mockResolvedValue({ data: { ...INVITE, status: "closed" } });
+
+    render(<AdminAffiliates />);
+    await screen.findByText(/4 commandes/);
+    await userEvent.click(screen.getByText("Demo Affiliate", { selector: "p" }));
+
+    const bouton = await screen.findByTestId("affiliate-close");
+    await userEvent.click(bouton);
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/admin/affiliates/aff-1/close",
+                                            { reason: "" }));
+    // Le point essentiel : rien qui ressemble a un envoi de courriel.
+    const appels = api.post.mock.calls.map(([u]) => u).join(" ");
+    expect(appels).not.toMatch(/invite|resend|email/i);
+  });
+
+  it("ne propose pas la fermeture d'un affilié actif", async () => {
+    // Son code est en circulation : il faut le suspendre d'abord, et le
+    // serveur refuse de toute facon.
+    render(<AdminAffiliates />);
+    await screen.findByText(/4 commandes/);
+    await userEvent.click(screen.getByText("Demo Affiliate", { selector: "p" }));
+
+    await screen.findByTestId("affiliate-detail-modal");
+    expect(screen.queryByTestId("affiliate-close")).not.toBeInTheDocument();
+  });
 });

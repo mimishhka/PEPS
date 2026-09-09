@@ -117,7 +117,11 @@ export default function AdminAffiliates() {
     try {
       const [o, list, rk] = await Promise.all([
         api.get("/admin/affiliates/overview"),
-        api.get("/admin/affiliates"),
+        // Les dossiers fermes sont exclus par le serveur. On ne les redemande
+        // que si le filtre les designe explicitement — sinon ils reviendraient
+        // dans « Statut : tous », ce qui est exactement ce qu'on voulait eviter.
+        api.get("/admin/affiliates",
+                fStatus === "closed" ? { params: { include_closed: true } } : undefined),
         api.get("/admin/affiliates/risk"),
       ]);
       setOv(o.data);
@@ -128,7 +132,10 @@ export default function AdminAffiliates() {
     } finally {
       setLoading(false);
     }
-  }, []);
+    // fStatus, et RIEN d'autre : `load` ne doit se recreer que quand le filtre
+    // change de camp. Une dependance de trop ici, et l'ecran se recharge en
+    // boucle — c'est deja arrive dans AuthContext.
+  }, [fStatus]);
 
   const loadClicks = useCallback(async () => {
     setClicksLoading(true);
@@ -468,6 +475,11 @@ export default function AdminAffiliates() {
                 <option value="active">{L("Actifs", "Active")}</option>
                 <option value="invited">{L("Invités", "Invited")}</option>
                 <option value="suspended">{L("Suspendus", "Suspended")}</option>
+                {/* Les dossiers fermes ne sont PAS dans « tous » : ils sont
+                    exclus par le serveur. Ce choix les demande explicitement,
+                    ce qui est le comportement voulu — on les consulte, on ne
+                    les croise pas. */}
+                <option value="closed">{L("Fermés", "Closed")}</option>
               </select>
               <select value={fTier} onChange={(e) => { setFTier(e.target.value); setAffPage(1); }}
                 data-testid="affiliate-filter-tier"
@@ -906,6 +918,9 @@ function StatusPill({ status, L }) {
     invited: { fr: "Invité", en: "Invited", cls: "bg-warning/15 text-warning" },
     active: { fr: "Actif", en: "Active", cls: "bg-success/15 text-success" },
     suspended: { fr: "Suspendu", en: "Suspended", cls: "bg-error/15 text-error" },
+    // Sans cette entree, le repli sur `invited` affichait « Invité » sur un
+    // dossier ferme — le contraire de ce qu'il faut lire.
+    closed: { fr: "Fermé", en: "Closed", cls: "bg-glacier/15 text-glacier" },
   };
   const m = map[status] || map.invited;
   return <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${m.cls}`}>{L(m.fr, m.en)}</span>;
@@ -1502,6 +1517,45 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
     }
   };
 
+  // FERMER UN DOSSIER — sans aucun courriel.
+  //
+  // Une invitation qui ne sera jamais acceptee restait « invited » pour
+  // toujours : elle comptait dans les effectifs, gonflait « invitations
+  // expirees » et encombrait la liste. La seule action offerte etait de la
+  // renvoyer, c'est-a-dire d'insister.
+  const fermerDossier = async () => {
+    const ok = await confirm({
+      title: L("Fermer ce dossier ?", "Close this file?"),
+      description: L(
+        `${a?.name || "Cet affilié"} disparaît de la liste et des compteurs. AUCUN courriel ne lui est envoyé, et son lien d'invitation cesse de fonctionner. La fermeture se défait : le dossier reste consultable en filtrant sur « Fermés ».`,
+        `${a?.name || "This affiliate"} disappears from the list and the counters. NO email is sent to them, and their invite link stops working. This can be undone: the file stays visible under the “Closed” filter.`),
+      confirmLabel: L("Fermer le dossier", "Close the file"),
+      cancelLabel: L("Annuler", "Cancel"),
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await api.post(`/admin/affiliates/${affiliateId}/close`, { reason: "" });
+      toast.success(L("Dossier fermé — aucun courriel envoyé",
+                      "File closed — no email sent"));
+      load();
+      onChange();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
+  };
+
+  const rouvrirDossier = async () => {
+    try {
+      await api.post(`/admin/affiliates/${affiliateId}/reopen`);
+      toast.success(L("Dossier rouvert", "File reopened"));
+      load();
+      onChange();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
+  };
+
   const load = useCallback(async () => {
     try {
       const { data } = await api.get(`/admin/affiliates/${affiliateId}`);
@@ -1637,45 +1691,89 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl border border-ash w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()} data-testid="affiliate-detail-modal">
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h3 className="font-display text-lg font-bold text-nordfjord">{a?.name || "—"}</h3>
-            {a?.email && <p className="text-xs text-glacier">{a.email}</p>}
+        {/* EN-TETE : qui, dans quel etat, a quel taux — en une ligne.
+            Le nom et le courriel etaient seuls ; statut, code et palier se
+            trouvaient plus bas, noyes parmi douze champs de meme apparence. */}
+        <div className="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-ash">
+          <div className="min-w-0">
+            <h3 className="font-display text-xl font-bold text-nordfjord leading-tight truncate">
+              {a?.name || "—"}
+            </h3>
+            {a?.email && <p className="text-[12px] text-glacier mt-0.5 truncate">{a.email}</p>}
+            {a && (
+              <div className="flex items-center flex-wrap gap-2 mt-2.5">
+                <StatusPill status={a.status} L={L} />
+                {m && <TierBadge tier={m.tier} rate={m.commission_rate}
+                        label={TIER_LABEL[m.tier]?.[lang] || m.tier} />}
+                {a.code && (
+                  <button onClick={copyCode} data-testid="affiliate-copy-code"
+                    title={L("Copier le code", "Copy code")}
+                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-ash bg-clinical hover:border-nova transition">
+                    <code className="font-data text-[12px] font-bold text-nordfjord">{a.code}</code>
+                    <Copy size={11} className="text-nova" />
+                  </button>
+                )}
+                {a.compliance_status === "review" && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-warning/15 text-warning">
+                    {L("à vérifier", "to review")}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
-          <button onClick={onClose}><X size={18} className="text-glacier" /></button>
+          <button onClick={onClose} className="p-1 -m-1 rounded hover:bg-clinical shrink-0">
+            <X size={18} className="text-glacier" />
+          </button>
         </div>
         {!data ? (
           <p className="text-sm text-glacier">{L("Chargement…", "Loading…")}</p>
         ) : (
           <div className="space-y-6">
-            {/* Identity + code */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-              <Info label={L("Courriel", "Email")} value={a.email} />
-              <div>
-                <p className="text-[11px] uppercase tracking-wider text-glacier">{L("Code", "Code")}</p>
-                <div className="flex items-center gap-2">
-                  <p className="text-nordfjord font-mono text-xs">{a.code || "—"}</p>
-                  {a.code && (
-                    <button onClick={copyCode} data-testid="affiliate-copy-code"
-                      className="p-1 rounded hover:bg-clinical" title={L("Copier", "Copy")}>
-                      <Copy size={12} className="text-nova" />
-                    </button>
-                  )}
-                </div>
+            {/* DEUX POIDS AU LIEU D'UN.
+                Douze champs se partageaient la meme apparence : « Cree le » et
+                « CA valide » avaient exactement le meme poids typographique. On
+                lisait la fiche ligne a ligne, faute de pouvoir la survoler.
+                Les chiffres d'argent passent devant ; l'etat civil du dossier
+                reste consultable, en retrait. */}
+            {m && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-ash border border-ash rounded-xl overflow-hidden"
+                   data-testid="affiliate-figures">
+                {[
+                  [L("CA validé", "Validated revenue"), money(m.cumulative_revenue), true],
+                  [L("Commissions en attente", "Pending commissions"), money(m.pending_commission), false],
+                  [L("CA du trimestre", "Quarter revenue"), money(m.quarter_revenue), false],
+                  [L("Taux effectif", "Effective rate"), `${Math.round(m.commission_rate * 100)} %`, false],
+                ].map(([libelle, valeur, fort]) => (
+                  <div key={libelle} className="bg-white px-3 py-2.5">
+                    <p className="text-[9.5px] uppercase tracking-[0.12em] text-glacier leading-tight">{libelle}</p>
+                    <p className={`tabular-nums mt-1 leading-none ${
+                      fort ? "text-[19px] font-bold text-nordfjord" : "text-[16px] font-semibold text-nordfjord/80"}`}>
+                      {valeur}
+                    </p>
+                  </div>
+                ))}
               </div>
-              <Info label={L("Statut", "Status")} value={a.status} />
-              <Info label={L("Conformité", "Compliance")} value={a.compliance_status} />
-              <Info label={L("Créé le", "Created")} value={fmtDate(a.created_at)} />
-              <Info label={L("Activé le", "Activated")} value={fmtDate(a.activated_at)} />
-              {m && <>
-                <Info label={L("CA validé", "Validated rev.")} value={money(m.cumulative_revenue)} />
-                <Info label={L("CA trimestre", "Quarter rev.")} value={money(m.quarter_revenue)} />
-                <Info label={L("Palier", "Tier")} value={`${TIER_LABEL[m.tier]?.[lang] || m.tier} · ${Math.round(m.commission_rate * 100)}%`} />
-                <Info label={L("En attente", "Pending")} value={money(m.pending_commission)} />
-              </>}
-              <Info label={L("Invitations envoyées", "Invites sent")} value={a.invite_sent_count || 0} />
-              {a.coupon_percent != null && <Info label={L("% promo public", "Public promo %")} value={`${a.coupon_percent}%`} />}
-            </div>
+            )}
+
+            {/* Etat civil du dossier : consultable, jamais decisif. */}
+            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-2.5 text-[12px]">
+              {[
+                [L("Créé le", "Created"), fmtDate(a.created_at)],
+                [L("Activé le", "Activated"), fmtDate(a.activated_at)],
+                [L("Conformité", "Compliance"), a.compliance_status || "—"],
+                [L("Invitations envoyées", "Invites sent"), a.invite_sent_count || 0],
+                ...(a.coupon_percent != null
+                  ? [[L("Rabais public", "Public discount"), `${a.coupon_percent} %`]] : []),
+                ...(a.closed_at
+                  ? [[L("Fermé le", "Closed"), fmtDate(a.closed_at)],
+                     [L("Motif", "Reason"), a.closed_reason || "—"]] : []),
+              ].map(([libelle, valeur]) => (
+                <div key={libelle}>
+                  <dt className="text-[9.5px] uppercase tracking-[0.12em] text-glacier/70">{libelle}</dt>
+                  <dd className="text-nordfjord mt-0.5 truncate" title={String(valeur)}>{valeur}</dd>
+                </div>
+              ))}
+            </dl>
 
             {/* Status actions */}
             <div className="flex flex-wrap gap-2">
@@ -1712,6 +1810,20 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 </ActBtn>
               )}
               {a.status === "suspended" && <ActBtn onClick={() => setPatch({ status: "active" })}>{L("Réactiver", "Reactivate")}</ActBtn>}
+              {/* Fermeture : proposee pour un invite qui ne repondra jamais, et
+                  pour un suspendu dont on solde le dossier. Jamais pour un
+                  actif — son code est en circulation, il faut le suspendre
+                  d'abord, et le serveur le refuse de toute facon. */}
+              {(a.status === "invited" || a.status === "suspended") && (
+                <ActBtn onClick={fermerDossier} data-testid="affiliate-close">
+                  {L("Fermer le dossier", "Close file")}
+                </ActBtn>
+              )}
+              {a.status === "closed" && (
+                <ActBtn onClick={rouvrirDossier} data-testid="affiliate-reopen">
+                  {L("Rouvrir le dossier", "Reopen file")}
+                </ActBtn>
+              )}
               {a.compliance_status !== "review" && <ActBtn onClick={() => setPatch({ compliance_status: "review" })}>{L("Marquer en révision", "Flag review")}</ActBtn>}
               {a.compliance_status !== "compliant" && <ActBtn onClick={() => setPatch({ compliance_status: "compliant" })}>{L("Marquer conforme", "Mark compliant")}</ActBtn>}
               <ActBtn onClick={() => setEditing((v) => !v)} data-testid="affiliate-edit-toggle">

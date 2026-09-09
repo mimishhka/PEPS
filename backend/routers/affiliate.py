@@ -139,8 +139,9 @@ async def admin_affiliate_bulk_invite(payload: s.AffiliateBulkInviteIn, admin: d
 
 
 @router.get("/admin/affiliates")
-async def admin_affiliates_list(admin: dict = Depends(s.get_admin_user)):
-    return await s.admin_affiliates_list(admin)
+async def admin_affiliates_list(admin: dict = Depends(s.get_admin_user),
+                                include_closed: bool = False):
+    return await s.admin_affiliates_list(admin, include_closed)
 
 
 @router.get("/admin/affiliates/overview")
@@ -203,6 +204,20 @@ async def admin_affiliate_alias_toggle(
     admin: dict = Depends(s.get_admin_user),
 ):
     return await s.admin_affiliate_alias_toggle(affiliate_id, alias_code, payload, admin)
+
+
+@router.post("/admin/affiliates/{affiliate_id}/close")
+async def admin_affiliate_close(affiliate_id: str, payload: s.AffiliateCloseIn,
+                                admin: dict = Depends(s.get_admin_user)):
+    """Ferme definitivement un dossier. N'envoie AUCUN courriel."""
+    return await s.admin_affiliate_close(affiliate_id, payload, admin)
+
+
+@router.post("/admin/affiliates/{affiliate_id}/reopen")
+async def admin_affiliate_reopen(affiliate_id: str,
+                                 admin: dict = Depends(s.get_admin_user)):
+    """Rouvre un dossier ferme, dans son statut d'avant. Aucun courriel."""
+    return await s.admin_affiliate_reopen(affiliate_id, admin)
 
 
 @router.post("/admin/affiliates/payouts/run")

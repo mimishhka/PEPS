@@ -780,3 +780,141 @@ def test_lecture_admin_reste_possible_si_le_journal_echoue(server_module, monkey
 
     user = {"id": "a-1", "email": "admin@example.com"}
     assert asyncio.run(dependance(requete, user)) == user
+
+
+# ---------------------------------------------------------------------------
+# 16. Fermeture definitive d'un dossier — sans courriel, et sans regression
+# ---------------------------------------------------------------------------
+
+class _CurseurAgg:
+    def __init__(self, docs):
+        self.docs = docs
+
+    def __aiter__(self):
+        self._it = iter(self.docs)
+        return self
+
+    async def __anext__(self):
+        try:
+            return next(self._it)
+        except StopIteration:
+            raise StopAsyncIteration
+
+
+class _Affiliates:
+    def __init__(self, doc):
+        self.doc = doc
+        self.ecritures = []
+
+    async def find_one(self, query, projection=None):
+        return dict(self.doc) if self.doc else None
+
+    async def update_one(self, query, update):
+        self.ecritures.append(update)
+        self.doc.update(update.get("$set", {}))
+        for champ in (update.get("$unset") or {}):
+            self.doc.pop(champ, None)
+        return types.SimpleNamespace(modified_count=1)
+
+
+class _Referrals:
+    def __init__(self, resultat):
+        self.resultat = resultat
+
+    def aggregate(self, pipeline):
+        return _CurseurAgg(self.resultat)
+
+
+def _fermer(server_module, aff, referrals=()):
+    affiliates = _Affiliates(aff)
+    server_module.db = types.SimpleNamespace(
+        affiliates=affiliates, affiliate_referrals=_Referrals(list(referrals)),
+        admin_audit_log=types.SimpleNamespace(insert_one=_ok),
+    )
+    charge = server_module.AffiliateCloseIn(reason="ne répondra jamais")
+    return affiliates, asyncio.run(
+        server_module.admin_affiliate_close("aff-1", charge, {"id": "adm-1"}))
+
+
+async def _ok(doc):
+    return None
+
+
+def test_fermeture_refusee_pour_un_compte_actif(server_module):
+    """Un actif a un code et un coupon en circulation : on suspend d'abord."""
+    with pytest.raises(HTTPException) as exc:
+        _fermer(server_module, {"id": "aff-1", "status": "active", "code": "ABC10"})
+    assert exc.value.status_code == 400
+    assert "actif" in str(exc.value.detail).lower()
+
+
+def test_fermeture_refusee_si_des_commissions_sont_dues(server_module):
+    """On ne ferme pas un dossier a qui l'on doit de l'argent."""
+    with pytest.raises(HTTPException) as exc:
+        _fermer(server_module, {"id": "aff-1", "status": "suspended"},
+                referrals=[{"_id": None, "n": 2, "montant": 41.25}])
+    assert exc.value.status_code == 400
+    assert "41.25" in str(exc.value.detail)
+
+
+def test_fermeture_note_le_statut_precedent_et_detruit_le_jeton(server_module):
+    """Aucun courriel n'est envoye — le module de courriel n'est meme pas cable.
+
+    Et le jeton d'invitation est detruit : un lien encore valable dans une
+    boite aux lettres rouvrirait le dossier tout seul.
+    """
+    affiliates, sortie = _fermer(server_module, {
+        "id": "aff-1", "status": "invited", "code": None,
+        "invite_token_hash": "abcdef", "invite_expires_at": "2026-09-01T00:00:00+00:00",
+    })
+    assert affiliates.doc["status"] == "closed"
+    assert affiliates.doc["status_before_close"] == "invited"
+    assert affiliates.doc["closed_reason"] == "ne répondra jamais"
+    assert "invite_token_hash" not in affiliates.doc
+    assert "invite_expires_at" not in affiliates.doc
+
+
+def test_reouverture_rend_le_statut_dorigine(server_module):
+    affiliates = _Affiliates({"id": "aff-1", "status": "closed",
+                              "status_before_close": "suspended",
+                              "closed_at": "2026-09-08T00:00:00+00:00"})
+    server_module.db = types.SimpleNamespace(
+        affiliates=affiliates,
+        admin_audit_log=types.SimpleNamespace(insert_one=_ok),
+    )
+    asyncio.run(server_module.admin_affiliate_reopen("aff-1", {"id": "adm-1"}))
+    assert affiliates.doc["status"] == "suspended"
+    assert "closed_at" not in affiliates.doc
+
+
+def test_la_liste_masque_les_dossiers_fermes_par_defaut(server_module):
+    """Le filtre transmis a Mongo, pas la sortie : c'est lui qui doit exclure."""
+    captures = {}
+
+    class Liste:
+        def find(self, filtre, projection=None):
+            captures["filtre"] = filtre
+
+            class C:
+                def sort(self, *a):
+                    return self
+
+                def __aiter__(self):
+                    return self
+
+                async def __anext__(self):
+                    raise StopAsyncIteration
+            return C()
+
+    server_module.db = types.SimpleNamespace(affiliates=Liste())
+    try:
+        asyncio.run(server_module.admin_affiliates_list({"id": "adm-1"}))
+    except Exception:
+        pass
+    assert captures["filtre"] == {"status": {"$ne": "closed"}}
+
+    try:
+        asyncio.run(server_module.admin_affiliates_list({"id": "adm-1"}, include_closed=True))
+    except Exception:
+        pass
+    assert captures["filtre"] == {}
