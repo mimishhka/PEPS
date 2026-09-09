@@ -9,6 +9,24 @@ import { useLang } from "../../../contexts/LanguageContext";
 
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
 
+// Les deux tableaux de runs affichaient l'horodatage BRUT :
+//
+//   2026-08-14T21:20:48.474350+00:00
+//
+// Illisible, et surtout inutilisable : deux generations du meme mois a une
+// minute d'intervalle ne se distinguent qu'a la seconde pres, qu'il faut donc
+// aller chercher au milieu de la chaine. La date ET l'heure sont necessaires
+// ici — la date seule ne separerait pas ces deux lignes.
+const dateHeure = (iso) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d)) return "—";
+  return d.toLocaleString(undefined, {
+    year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+};
+
 /* Les NEUF statuts que le serveur produit, pas cinq.
  *
  * Il en manquait quatre, et le repli etait `STATUS.ready` — donc un versement
@@ -324,26 +342,46 @@ export default function AdminPayouts() {
               {selection.size} {L("sélectionné(s)", "selected")}
             </span>
           )}
+          {/* LES BOUTONS SUIVENT LE PROCESSUS, ET LE PROCESSUS SEUL.
+              Ils se lisaient « Envoyer · Exporter · Générer », soit l'inverse
+              de l'ordre dans lequel on s'en sert. Et « Générer » portait la
+              couleur d'action principale en permanence, y compris quand des
+              relevés attendaient déjà d'être envoyés — l'écran poussait donc à
+              regénérer plutôt qu'à payer.
+              L'action principale est maintenant CELLE DE L'ÉTAPE EN COURS. */}
+          <button onClick={runPayouts} disabled={busy === "run"} data-testid="run-payouts"
+            className={`btn-pill disabled:opacity-40 flex items-center gap-2 ${
+              totals.ready ? "btn-outline" : "btn-nova"}`}>
+            <DollarSign size={16} /> {L("Générer les relevés", "Generate payouts")}
+          </button>
           <button onClick={envoyerEnLot} disabled={!selection.size || batchBusy}
             data-testid="batch-send"
-            className="btn-pill btn-outline disabled:opacity-40 flex items-center gap-2">
+            title={!selection.size && totals.ready
+              ? L("Cochez d'abord les relevés à envoyer", "Tick the payouts to send first")
+              : undefined}
+            className={`btn-pill disabled:opacity-40 flex items-center gap-2 ${
+              totals.ready ? "btn-nova" : "btn-outline"}`}>
             <Send size={15} /> {batchBusy ? L("Envoi…", "Sending…") : L("Envoyer en lot", "Send batch")}
           </button>
           <button onClick={exporterCsv} data-testid="export-csv"
             className="btn-pill btn-outline flex items-center gap-2">
             <Download size={15} /> {L("Export CSV", "Export CSV")}
           </button>
-          <button onClick={runPayouts} disabled={busy === "run"} data-testid="run-payouts"
-            className="btn-pill btn-nova disabled:opacity-40 flex items-center gap-2">
-            <DollarSign size={16} /> {L("Generer les releves", "Generate payouts")}
-          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Stat label={L("Prets a payer", "Ready to pay")} value={`${totals.ready} · ${money(totals.readyCad)} CAD`} />
-        <Stat label={L("En cours", "In progress")} value={totals.pending} />
-        <Stat label={L("Total releves", "Total payouts")} value={payouts.length} />
+        <Stat label={L("Prêts à payer", "Ready to pay")}
+          value={totals.ready ? `${money(totals.readyCad)} CAD` : "—"}
+          sub={totals.ready
+            ? `${totals.ready} ${L("relevé(s)", "payout(s)")}`
+            : L("rien à verser", "nothing to pay")}
+          calme={!totals.ready} />
+        <Stat label={L("En cours", "In progress")} value={totals.pending}
+          sub={totals.pending ? L("envoi commencé", "sending started") : L("aucun envoi en vol", "nothing in flight")}
+          calme={!totals.pending} />
+        <Stat label={L("Total relevés", "Total payouts")} value={payouts.length}
+          sub={L("toutes périodes", "all periods")} />
       </div>
 
       {/* Barre de recherche / filtres (Pilier A) — recherche SERVEUR (code
@@ -508,7 +546,8 @@ export default function AdminPayouts() {
                       </span>
                     </td>
                     <td className="px-5 py-2.5 text-glacier text-xs text-right">
-                      {r.error ? <span className="text-error">{r.error}</span> : (r.ended_at || r.started_at || "")}
+                      {r.error ? <span className="text-error">{r.error}</span>
+                               : dateHeure(r.ended_at || r.started_at)}
                     </td>
                   </tr>
                 ))}
@@ -538,7 +577,7 @@ export default function AdminPayouts() {
                       <td className="px-3 py-2.5 text-glacier text-xs">{L(rt.fr, rt.en)}</td>
                       <td className="px-3 py-2.5 text-glacier text-xs">{r.count} {L("versements", "payouts")}</td>
                       <td className="px-3 py-2.5 font-data text-nordfjord tabular-nums text-right">{money(r.total_cad)} CAD</td>
-                      <td className="px-5 py-2.5 text-glacier text-xs text-right">{r.created_at || ""}</td>
+                      <td className="px-5 py-2.5 text-glacier text-xs text-right whitespace-nowrap">{dateHeure(r.created_at)}</td>
                     </tr>
                   );
                 })}
@@ -675,11 +714,17 @@ export default function AdminPayouts() {
   );
 }
 
-function Stat({ label, value }) {
+function Stat({ label, value, sub, calme = false }) {
+  // « 0 · $0.00 CAD » melangeait un compte et un montant dans une seule valeur,
+  // et repetait un zero deja evident. Le montant devient la valeur, le compte
+  // passe en complement — et quand il n'y a rien a payer, la tuile s'efface au
+  // lieu d'annoncer deux zeros en gras.
   return (
     <div className="rounded-xl border border-ash bg-white px-4 py-3">
       <div className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{label}</div>
-      <div className="font-display font-bold text-nordfjord text-xl mt-1 tabular-nums">{value}</div>
+      <div className={`font-display font-bold text-xl mt-1 tabular-nums ${
+        calme ? "text-glacier/50" : "text-nordfjord"}`}>{value}</div>
+      {sub && <div className="text-[11px] text-glacier mt-0.5">{sub}</div>}
     </div>
   );
 }
