@@ -87,6 +87,9 @@ export default function AdminPayouts() {
   const [selection, setSelection] = useState(new Set());
   const [batchBusy, setBatchBusy] = useState(false);
   const [runs, setRuns] = useState([]);
+  // Sortie du mode simple : sans elle, on ne pourrait jamais amorcer le premier
+  // versement automatique, puisque son bouton serait masque.
+  const [modeComplet, setModeComplet] = useState(false);
   // Historique des runs de paiement (batch / single / manual / queued).
   const [paymentRuns, setPaymentRuns] = useState([]);
   const confirm = useConfirm();
@@ -324,6 +327,30 @@ export default function AdminPayouts() {
     };
   }, [payouts]);
 
+  // MODE SIMPLE — l'ecran ne montre que ce que vous utilisez vraiment.
+  //
+  // Neuf statuts, trois boutons, deux tableaux d'historique : tout cela existe
+  // pour le versement automatique par NOWPayments. Vos donnees disent qu'il n'a
+  // jamais servi — aucun run d'envoi, aucun versement passe par `processing`
+  // ou `paid`. Quatre des neuf statuts ne PEUVENT donc pas apparaitre, et
+  // l'envoi en lot regroupe des versements qu'on n'envoie pas.
+  //
+  // La detection porte sur les FAITS, pas sur un reglage : des qu'un versement
+  // emprunte le chemin automatique, l'ecran complet revient de lui-meme.
+  const automatiqueDejaUtilise = useMemo(() => (
+    (paymentRuns || []).length > 0
+    || (payouts || []).some((p) => ["creating", "dispatching", "processing",
+                                    "paid", "failed"].includes(p.status))
+  ), [paymentRuns, payouts]);
+  const avance = automatiqueDejaUtilise || modeComplet;
+
+  // Les statuts qui peuvent reellement se produire dans chaque mode. Proposer
+  // de filtrer sur « 2FA requis » quand rien ne peut y arriver, c'est proposer
+  // un filtre qui ne rendra jamais rien.
+  const statutsVisibles = avance
+    ? Object.keys(STATUS)
+    : ["ready", "paid_manual", "queued_manual", "review"];
+
   if (payouts === null) {
     return <div className="p-8 text-glacier">{L("Chargement...", "Loading...")}</div>;
   }
@@ -336,7 +363,7 @@ export default function AdminPayouts() {
           <p className="text-glacier text-sm mt-1">{L("Generez, executez et suivez les versements de commissions.", "Generate, execute and track commission payouts.")}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {selection.size > 0 && (
+          {avance && selection.size > 0 && (
             <span className="font-data text-[11px] uppercase tracking-wider text-nordfjord
                              bg-nova/15 border border-nova/30 rounded-full px-3 py-1.5">
               {selection.size} {L("sélectionné(s)", "selected")}
@@ -351,9 +378,10 @@ export default function AdminPayouts() {
               L'action principale est maintenant CELLE DE L'ÉTAPE EN COURS. */}
           <button onClick={runPayouts} disabled={busy === "run"} data-testid="run-payouts"
             className={`btn-pill disabled:opacity-40 flex items-center gap-2 ${
-              totals.ready ? "btn-outline" : "btn-nova"}`}>
+              avance && totals.ready ? "btn-outline" : "btn-nova"}`}>
             <DollarSign size={16} /> {L("Générer les relevés", "Generate payouts")}
           </button>
+          {avance && (
           <button onClick={envoyerEnLot} disabled={!selection.size || batchBusy}
             data-testid="batch-send"
             title={!selection.size && totals.ready
@@ -363,6 +391,7 @@ export default function AdminPayouts() {
               totals.ready ? "btn-nova" : "btn-outline"}`}>
             <Send size={15} /> {batchBusy ? L("Envoi…", "Sending…") : L("Envoyer en lot", "Send batch")}
           </button>
+          )}
           <button onClick={exporterCsv} data-testid="export-csv"
             className="btn-pill btn-outline flex items-center gap-2">
             <Download size={15} /> {L("Export CSV", "Export CSV")}
@@ -384,6 +413,26 @@ export default function AdminPayouts() {
           sub={L("toutes périodes", "all periods")} />
       </div>
 
+      {/* Dire dans quel mode on est, et comment en sortir. Un ecran qui cache
+          des fonctions sans le dire est pire que l'ecran complet. */}
+      {!avance && (
+        <div className="rounded-xl border border-ash bg-clinical px-4 py-3 flex items-start justify-between gap-4 flex-wrap"
+             data-testid="payouts-mode-simple">
+          <p className="text-[12px] text-glacier max-w-[68ch]">
+            <span className="font-semibold text-nordfjord">
+              {L("Mode simple", "Simple mode")}
+            </span>
+            {" — "}
+            {L("vous générez les relevés, puis vous marquez chacun payé une fois le virement fait. Tout ce qui concerne le versement automatique par NOWPayments est masqué : envoi en lot, 2FA, statuts intermédiaires. Il réapparaîtra tout seul au premier versement automatique.",
+               "you generate the payouts, then mark each one paid once you have sent the transfer. Everything about automatic NOWPayments sending is hidden: batches, 2FA, intermediate statuses. It comes back on its own with the first automatic payout.")}
+          </p>
+          <button onClick={() => setModeComplet(true)} data-testid="payouts-mode-full"
+            className="btn-pill btn-outline text-xs px-3 py-1.5 shrink-0">
+            {L("Afficher tout", "Show everything")}
+          </button>
+        </div>
+      )}
+
       {/* Barre de recherche / filtres (Pilier A) — recherche SERVEUR (code
           affilié, adresse de versement, référence) + statut + période. */}
       <div className="flex items-center gap-2 flex-wrap bg-white rounded-xl border border-ash p-3">
@@ -399,8 +448,8 @@ export default function AdminPayouts() {
         <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} data-testid="payout-filter-status"
           className="rounded-lg border border-ash px-3 py-2 text-sm outline-none focus:border-nova bg-white">
           <option value="">{L("Tous statuts", "All statuses")}</option>
-          {Object.entries(STATUS).map(([k, v]) => (
-            <option key={k} value={k}>{L(v.fr, v.en)}</option>
+          {statutsVisibles.map((k) => (
+            <option key={k} value={k}>{L(STATUS[k].fr, STATUS[k].en)}</option>
           ))}
         </select>
         <input
@@ -423,7 +472,7 @@ export default function AdminPayouts() {
         </div>
       ) : (
         <div className="space-y-2">
-          {payouts.some((p) => p.status === "ready") && (
+          {avance && payouts.some((p) => p.status === "ready") && (
             <label className="flex items-center gap-3 px-4 py-2 text-xs text-glacier cursor-pointer">
               <input type="checkbox" className="h-4 w-4 accent-nordfjord"
                 checked={selection.size > 0
@@ -441,6 +490,7 @@ export default function AdminPayouts() {
                 {/* La case n'existe que sur « ready » : c'est le seul statut que
                     l'envoi en lot accepte. Proposer de cocher un versement que
                     le serveur refusera ensuite serait une fausse piste. */}
+                {avance && (
                 <input type="checkbox" className="h-4 w-4 accent-nordfjord shrink-0"
                   disabled={p.status !== "ready"}
                   checked={selection.has(p.id)}
@@ -448,6 +498,7 @@ export default function AdminPayouts() {
                   aria-label={L("Sélectionner ce versement", "Select this payout")}
                   data-testid={`select-${p.id}`}
                   style={p.status !== "ready" ? { visibility: "hidden" } : undefined} />
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-display font-bold text-nordfjord">{p.affiliate_code || "—"}</span>
@@ -498,7 +549,7 @@ export default function AdminPayouts() {
                     className="btn-pill btn-outline text-xs px-3 py-2 flex items-center gap-1.5 disabled:opacity-40">
                     <FileText size={13} /> {L("Detail", "Detail")}
                   </button>
-                  {p.status === "ready" && (
+                  {avance && p.status === "ready" && (
                     <button onClick={() => execute(p)} disabled={busy === p.id} data-testid={`execute-${p.id}`}
                       className="btn-pill btn-nova text-xs px-3 py-2 flex items-center gap-1.5 disabled:opacity-40">
                       <Zap size={13} /> {L("Executer", "Execute")}
@@ -518,7 +569,8 @@ export default function AdminPayouts() {
                   )}
                   {(p.status === "ready" || p.status === "failed") && (
                     <button onClick={() => setMarkFor(p)} data-testid={`markpaid-open-${p.id}`}
-                      className="btn-pill btn-outline text-xs px-3 py-2 flex items-center gap-1.5">
+                      className={`btn-pill text-xs px-3 py-2 flex items-center gap-1.5 ${
+                        !avance && p.status === "ready" ? "btn-nova" : "btn-outline"}`}>
                       <CheckCircle2 size={13} /> {L("Marquer paye", "Mark paid")}
                     </button>
                   )}

@@ -12,6 +12,7 @@
 //      compris quand des releves attendaient d'etre envoyes. L'ecran poussait
 //      a regenerer plutot qu'a payer.
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import AdminPayouts from "./AdminPayouts";
 import api from "../../../lib/api";
@@ -129,5 +130,61 @@ describe("AdminPayouts", () => {
 
     await waitFor(() =>
       expect(screen.getByTestId("payout-no-address-p-1")).toBeInTheDocument());
+  });
+  describe("mode simple", () => {
+    const PRET = {
+      id: "p-1", status: "ready", affiliate_code: "FITNES70", period: "2026-08",
+      amount_cad: 28.5, amount: 20.52, currency: "usdt", referral_count: 4,
+      payout_address: "0xabc",
+    };
+
+    it("masque tout ce qui depend de NOWPayments tant qu'il n'a jamais servi", async () => {
+      reponses({ payouts: [PRET], paymentRuns: [] });
+      render(<AdminPayouts />);
+      await screen.findByTestId("admin-payouts");
+
+      expect(await screen.findByTestId("payouts-mode-simple")).toBeInTheDocument();
+      // Envoi en lot, execution et selection : sans objet ici.
+      expect(screen.queryByTestId("batch-send")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("execute-p-1")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("select-all")).not.toBeInTheDocument();
+      // Ce qui sert reste, et « Marquer paye » devient l'action principale.
+      expect(screen.getByTestId("run-payouts")).toBeInTheDocument();
+      expect(screen.getByTestId("markpaid-open-p-1").className).toMatch(/btn-nova/);
+    });
+
+    it("ne propose pas de filtrer sur un statut qui ne peut pas survenir", async () => {
+      reponses({ payouts: [PRET], paymentRuns: [] });
+      render(<AdminPayouts />);
+      await screen.findByTestId("admin-payouts");
+
+      const filtre = screen.getByTestId("payout-filter-status");
+      const valeurs = [...filtre.querySelectorAll("option")].map((o) => o.value);
+      expect(valeurs).not.toContain("creating");
+      expect(valeurs).not.toContain("dispatching");
+      expect(valeurs).toContain("ready");
+      expect(valeurs).toContain("paid_manual");
+    });
+
+    it("revient de lui-meme des qu'un versement a emprunte le chemin automatique", async () => {
+      // La detection porte sur les FAITS, pas sur un reglage.
+      reponses({ payouts: [{ ...PRET, id: "p-2", status: "processing" }] });
+      render(<AdminPayouts />);
+      await screen.findByTestId("admin-payouts");
+
+      await waitFor(() =>
+        expect(screen.getByTestId("batch-send")).toBeInTheDocument());
+      expect(screen.queryByTestId("payouts-mode-simple")).not.toBeInTheDocument();
+    });
+
+    it("laisse une sortie pour amorcer le premier versement automatique", async () => {
+      reponses({ payouts: [PRET], paymentRuns: [] });
+      render(<AdminPayouts />);
+      await screen.findByTestId("admin-payouts");
+
+      await userEvent.click(await screen.findByTestId("payouts-mode-full"));
+      expect(await screen.findByTestId("execute-p-1")).toBeInTheDocument();
+      expect(screen.getByTestId("batch-send")).toBeInTheDocument();
+    });
   });
 });
