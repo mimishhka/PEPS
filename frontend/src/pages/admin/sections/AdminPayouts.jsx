@@ -465,6 +465,24 @@ export default function AdminPayouts() {
         </button>
       </div>
 
+      {/* Quand la liste ne montre plus qu'un lot, il faut le DIRE : sinon on
+          croit que les autres versements ont disparu. */}
+      {/^NP-/i.test(String(qDebounced || "")) && (
+        <div className="rounded-xl border border-nova/30 bg-nova/5 px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap"
+             data-testid="payouts-filtre-lot">
+          <p className="text-[12px] text-nordfjord">
+            {L("Contenu du lot ", "Contents of batch ")}
+            <span className="font-data font-bold">{qDebounced}</span>
+            {L(" — les autres versements sont masqués.", " — other payouts are hidden.")}
+          </p>
+          <button onClick={() => { setQ(""); setQDebounced(""); }}
+            data-testid="payouts-filtre-lot-effacer"
+            className="btn-pill btn-outline text-xs px-3 py-1.5 shrink-0">
+            {L("Revoir tous les versements", "Show all payouts")}
+          </button>
+        </div>
+      )}
+
       {payouts.length === 0 ? (
         <div className="rounded-xl border border-ash bg-white p-10 text-center text-glacier">
           {L("Aucun releve de paiement. Cliquez « Generer les releves » pour agreger les commissions approuvees.",
@@ -591,7 +609,11 @@ export default function AdminPayouts() {
       {runs.length > 0 && (
         <div className="rounded-xl border border-ash bg-white overflow-hidden" data-testid="payout-runs">
           <p className="px-5 py-3 font-data text-[11px] uppercase tracking-[0.2em] text-nova border-b border-ash">
-            {L("Générations récentes", "Recent runs")}
+            {/* « Générations récentes » et « Runs de paiement » : deux titres
+                qui ne disaient pas ce qu'ils contenaient. L'ecran employait
+                quatre mots — generation, releve, lot, run — pour deux idees :
+                ce qu'on CALCULE, et ce qu'on ENVOIE. */}
+            {L("Historique des calculs", "Calculation history")}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -634,7 +656,7 @@ export default function AdminPayouts() {
       {paymentRuns.length > 0 && (
         <div className="rounded-xl border border-ash bg-white overflow-hidden" data-testid="payment-runs">
           <p className="px-5 py-3 font-data text-[11px] uppercase tracking-[0.2em] text-nova border-b border-ash">
-            {L("Runs de paiement", "Payment runs")}
+            {L("Historique des envois", "Sending history")}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -642,12 +664,25 @@ export default function AdminPayouts() {
                 {paymentRuns.map((r) => {
                   const rt = RUN_TYPE[r.type] || { fr: r.type || "—", en: r.type || "—" };
                   return (
-                    <tr key={r.run_id} className="border-b border-ash/60 last:border-0">
+                    // UN LOT DOIT POUVOIR S'OUVRIR.
+                    // La ligne annoncait « 3 versements » sans aucun moyen de
+                    // savoir LESQUELS. Le numero de lot est ecrit sur chaque
+                    // versement ; il suffisait de pouvoir le chercher. Cliquer
+                    // filtre donc la liste ci-dessus sur ce seul lot.
+                    <tr key={r.run_id}
+                        onClick={() => { setQ(r.run_id); setQDebounced(r.run_id); }}
+                        data-testid={`run-open-${r.run_id}`}
+                        title={L("Voir les versements de ce lot", "Show this batch's payouts")}
+                        className={`border-b border-ash/60 last:border-0 cursor-pointer transition ${
+                          q === r.run_id ? "bg-nova/10" : "hover:bg-clinical"}`}>
                       <td className="px-5 py-2.5 font-data font-bold text-nordfjord whitespace-nowrap">{r.run_id}</td>
                       <td className="px-3 py-2.5 text-glacier text-xs">{L(rt.fr, rt.en)}</td>
                       <td className="px-3 py-2.5 text-glacier text-xs">{r.count} {L("versements", "payouts")}</td>
                       <td className="px-3 py-2.5 font-data text-nordfjord tabular-nums text-right">{money(r.total_cad)} CAD</td>
                       <td className="px-5 py-2.5 text-glacier text-xs text-right whitespace-nowrap">{dateHeure(r.created_at)}</td>
+                      <td className="px-3 py-2.5 text-nova text-[11px] whitespace-nowrap">
+                        {q === r.run_id ? L("affiché ci-dessus ↑", "shown above ↑") : L("voir le contenu", "show contents")}
+                      </td>
                     </tr>
                   );
                 })}

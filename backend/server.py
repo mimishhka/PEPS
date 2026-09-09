@@ -12746,6 +12746,13 @@ async def admin_affiliate_payouts_all(admin: dict = Depends(get_admin_user),  # 
                 {"affiliate_code": {"$regex": s, "$options": "i"}},
                 {"payout_address": {"$regex": s, "$options": "i"}},
                 {"reference": {"$regex": s, "$options": "i"}},
+                # NUMERO DE RUN (NP-…). Sans lui, l'historique des envois
+                # affichait « 3 versements » sans aucun moyen de savoir
+                # LESQUELS : le numero etait ecrit sur chaque versement, mais
+                # rien ne permettait de le chercher. C'est ce qui rend un lot
+                # verifiable — et un lot qu'on ne peut pas ouvrir n'est pas
+                # auditable.
+                {"run_id": {"$regex": s, "$options": "i"}},
             ]
     if page is not None:
         page = max(1, int(page))

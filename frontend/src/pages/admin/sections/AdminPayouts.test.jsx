@@ -187,4 +187,37 @@ describe("AdminPayouts", () => {
       expect(screen.getByTestId("batch-send")).toBeInTheDocument();
     });
   });
+  it("ouvre le contenu d'un lot quand on clique dessus", async () => {
+    // La ligne annoncait « 2 versements » sans aucun moyen de savoir LESQUELS.
+    // Le numero de lot est ecrit sur chaque versement ; il fallait pouvoir le
+    // chercher — c'est ce qui rend un lot verifiable.
+    reponses({ payouts: [{
+      id: "p-1", status: "paid", affiliate_code: "FITNES70", period: "2026-08",
+      amount_cad: 28.5, amount: 20.52, currency: "usdt", referral_count: 4,
+      payout_address: "0xabc", run_id: "NP-000001",
+    }] });
+    render(<AdminPayouts />);
+    await screen.findByTestId("admin-payouts");
+
+    await userEvent.click(await screen.findByTestId("run-open-NP-000001"));
+
+    // La liste se filtre sur ce lot, et l'ecran le DIT — sinon on croirait que
+    // les autres versements ont disparu.
+    expect(await screen.findByTestId("payouts-filtre-lot")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith("/admin/affiliates/payouts/all",
+                                           { params: { q: "NP-000001" } }));
+  });
+
+  it("nomme les deux historiques par ce qu'ils contiennent", async () => {
+    // « Generations recentes » et « Runs de paiement » : quatre mots pour deux
+    // idees — ce qu'on calcule, et ce qu'on envoie.
+    reponses({ runs: [{ period: "2026-07", is_auto: false, status: "done",
+                        started_at: "2026-08-14T21:19:43.670560+00:00" }] });
+    render(<AdminPayouts />);
+    await screen.findByTestId("admin-payouts");
+
+    expect(await screen.findByText(/Historique des calculs/)).toBeInTheDocument();
+    expect(screen.getByText(/Historique des envois/)).toBeInTheDocument();
+  });
 });
