@@ -12393,6 +12393,39 @@ async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
         {"$set": {"status": "processing", "np_batch_id": batch_id,
                   "np_dispatched_at": now_iso, "np_dispatched_by": admin.get("email")}},
     )
+
+    # L'IDENTIFIANT PROPRE A CHAQUE VERSEMENT, quand la reponse le donne.
+    #
+    # « Un lot contient plusieurs versements uniques, chacun avec son
+    # identifiant » — c'est la definition de NOWPayments. Nous ne gardions que
+    # celui du LOT, donc le rafraichissement de statut appliquait le sort du lot
+    # a chacune de ses lignes : dans un lot de cinq dont un est rejete, les cinq
+    # passaient « payes ».
+    #
+    # Defensif a dessein : la forme exacte de la reponse n'est pas documentee
+    # ici. On cherche une liste, on apparie sur `unique_external_id` — le champ
+    # que NOUS avons rempli — et on n'ecrit que ce qu'on a effectivement trouve.
+    # Absent, le comportement est celui d'avant.
+    lignes = None
+    for cle in ("withdrawals", "result", "data", "payouts"):
+        valeur = resp.get(cle) if isinstance(resp, dict) else None
+        if isinstance(valeur, list) and valeur:
+            lignes = valeur
+            break
+    apparies = 0
+    for ligne in (lignes or []):
+        if not isinstance(ligne, dict):
+            continue
+        externe = str(ligne.get("unique_external_id") or "").strip()
+        propre = str(ligne.get("id") or ligne.get("withdrawal_id") or "").strip()
+        if externe and propre and externe in ids_sent:
+            await db.affiliate_payouts.update_one(
+                {"id": externe}, {"$set": {"np_withdrawal_id": propre}})
+            apparies += 1
+    if lignes and apparies < len(ids_sent):
+        logging.warning(
+            "[nowpayments payout] %d/%d versements sans identifiant propre — "
+            "leur statut suivra celui du lot", len(ids_sent) - apparies, len(ids_sent))
     # Run de paiement du lot envoyé : identifiant traçable NP-… lié au
     # np_batch_id NOWPayments, pour relier chaque versement à son envoi.
     await _create_payout_run("batch", ids_sent, {
@@ -13464,8 +13497,17 @@ async def admin_payout_execute(payout_id: str, admin: dict = Depends(get_admin_u
         await db.affiliate_payouts.update_one({"id": payout_id},
             {"$set": {"status": "failed", "np_error": "NOWPayments n'a pas renvoyé d'identifiant de payout.", "updated_at": datetime.now(timezone.utc).isoformat()}})
         raise HTTPException(502, "NOWPayments n'a pas renvoyé d'identifiant de payout.")
+    # L'identifiant PROPRE du versement, en plus de celui du lot. La reponse
+    # documentee porte les deux :
+    #     { "id": "<lot>", "withdrawals": [ { "id": "<versement>", … } ] }
+    # et c'est le second que le webhook renverra.
+    premier = None
+    _lignes = resp.get("withdrawals") if isinstance(resp, dict) else None
+    if isinstance(_lignes, list) and _lignes and isinstance(_lignes[0], dict):
+        premier = str(_lignes[0].get("id") or "").strip() or None
     await db.affiliate_payouts.update_one({"id": payout_id}, {"$set": {
-        "status": "creating", "np_batch_id": batch_id, "np_error": None,
+        "status": "creating", "np_batch_id": batch_id,
+        "np_withdrawal_id": premier, "np_error": None,
         "executed_by": admin.get("email"), "executed_at": now,
     }})
     # Run de paiement unitaire (envoi isolé) : identifiant traçable NP-….
@@ -13507,11 +13549,15 @@ async def admin_payout_status(payout_id: str, admin: dict = Depends(get_admin_us
     payout = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
     if not payout:
         raise HTTPException(404, "Payout introuvable")
-    batch_id = payout.get("np_batch_id")
-    if not batch_id:
+    # L'identifiant PROPRE d'abord : interroger le lot renvoie le sort du lot,
+    # pas celui de cette ligne. Repli sur le lot quand il n'y en a pas — un
+    # envoi unitaire, ou un lot anterieur a ce correctif.
+    reference_np = payout.get("np_withdrawal_id") or payout.get("np_batch_id")
+    if not reference_np:
         return {"status": payout.get("status"), "np_status": None}
+    batch_id = reference_np
     try:
-        data = await _np_payout_status(batch_id)
+        data = await _np_payout_status(reference_np)
     except NowPaymentsPayoutError as e:
         raise HTTPException(502, "NOWPayments payout status unavailable") from e
     np_status = str(data.get("status", "")).lower()

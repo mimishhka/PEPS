@@ -456,10 +456,24 @@ async def nowpayments_payout_ipn(request: Request):
     if not await s._register_webhook_event("nowpayments_payout", sig, canonical_body):
         return {"ok": True, "duplicate": True}
 
-    batch_id = str(payload.get("id") or payload.get("batch_withdrawal_id") or "")
+    # LE WEBHOOK PORTE SUR UN VERSEMENT, PAS SUR LE LOT.
+    #
+    # Sa charge utile, documentee par NOWPayments :
+    #
+    #     { "id": "123456789",              <- identifiant DU VERSEMENT
+    #       "batch_withdrawal_id": "987…",  <- identifiant DU LOT
+    #       "status": "FINISHED", "hash": …, "fee": … }
+    #
+    # Nous lisions `id` et le cherchions dans `np_batch_id`, ou nous rangeons
+    # l'identifiant du LOT. Les deux ne coincident pas : la recherche ne
+    # trouvait rien, et le webhook repartait en silence sur `{"ok": True}`.
+    # Aucun versement n'a donc jamais ete confirme par cette voie.
+    id_versement = str(payload.get("id") or "").strip()
+    id_lot = str(payload.get("batch_withdrawal_id") or "").strip()
     np_status = str(payload.get("status", "")).lower()
-    if not batch_id:
+    if not id_versement and not id_lot:
         return {"ok": True}
+    batch_id = id_lot or id_versement
     # TOUS les versements du lot, pas un seul.
     #
     # `admin_affiliate_batch_payout` pose le MÊME `np_batch_id` sur chaque
@@ -468,9 +482,37 @@ async def nowpayments_payout_ipn(request: Request):
     # la cryptomonnaie etait partie. Leurs commissions gardaient un `payout_id`
     # non nul, donc le generateur suivant les ignorait — ni reversees, ni
     # re-payees : elles sortaient de tous les cycles, sans aucun signal.
-    payouts = await s.db.affiliate_payouts.find(
-        {"np_batch_id": batch_id}, {"_id": 0, "id": 1}
-    ).to_list(1000)
+    # UN LOT EST UN GROUPE DE VERSEMENTS DISTINCTS, chacun avec son propre
+    # identifiant — c'est la definition que donne NOWPayments lui-meme. Or ce
+    # webhook ne connaissait QUE l'identifiant du lot, et appliquait donc son
+    # statut a TOUS ses versements. Dans un lot de cinq dont un est rejete, les
+    # cinq seraient marques payes, et les commissions du refuse passeraient en
+    # « paid » : de l'argent declare verse qui ne l'a pas ete.
+    #
+    # `unique_external_id` est le champ que NOUS remplissons a l'envoi, avec
+    # notre propre identifiant de versement. Quand il revient, il designe
+    # exactement une ligne — et le doute disparait.
+    # Du plus precis au plus large :
+    #   1. l'identifiant propre du versement, releve a l'envoi ;
+    #   2. `unique_external_id`, s'il revenait un jour (il vaut `null` dans les
+    #      exemples officiels, mais c'est notre identifiant : on le lit si on
+    #      nous le rend) ;
+    #   3. le lot, en dernier recours — c'est le comportement d'avant, et le
+    #      seul possible pour les envois anterieurs a ce correctif.
+    externe = str(payload.get("unique_external_id") or "").strip()
+    payouts = []
+    if id_versement:
+        payouts = await s.db.affiliate_payouts.find(
+            {"np_withdrawal_id": id_versement}, {"_id": 0, "id": 1}
+        ).to_list(1)
+    if not payouts and externe:
+        payouts = await s.db.affiliate_payouts.find(
+            {"id": externe}, {"_id": 0, "id": 1}
+        ).to_list(1)
+    if not payouts and batch_id:
+        payouts = await s.db.affiliate_payouts.find(
+            {"np_batch_id": batch_id}, {"_id": 0, "id": 1}
+        ).to_list(1000)
     if not payouts:
         return {"ok": True}
     ids = [p["id"] for p in payouts]
@@ -479,7 +521,13 @@ async def nowpayments_payout_ipn(request: Request):
         await s.db.affiliate_payouts.update_many(
             {"id": {"$in": ids}},
             {"$set": {"status": "paid", "np_status": np_status,
-                      "paid_at": now, "reference": batch_id}},
+                      "paid_at": now,
+                      # Le HASH est la preuve de paiement : c'est lui qui se
+                      # verifie sur la chaine, pas un numero de lot interne.
+                      # Repli sur l'identifiant quand il n'est pas fourni.
+                      "reference": str(payload.get("hash") or id_versement or batch_id),
+                      "np_tx_hash": payload.get("hash"),
+                      "np_fee": payload.get("fee")}},
         )
         await s.db.affiliate_referrals.update_many(
             {"payout_id": {"$in": ids}, "status": {"$in": ["pending", "approved"]}},

@@ -918,3 +918,99 @@ def test_la_liste_masque_les_dossiers_fermes_par_defaut(server_module):
     except Exception:
         pass
     assert captures["filtre"] == {}
+
+
+# ---------------------------------------------------------------------------
+# 17. Un lot est un groupe de versements DISTINCTS
+# ---------------------------------------------------------------------------
+# « Un lot contient plusieurs versements uniques, chacun avec son identifiant.
+#   S'y ajoute un identifiant commun a tout le lot. »  — guide NOWPayments.
+#
+# Nous ne gardions que celui du LOT. Le webhook appliquait donc son statut a
+# TOUS ses versements : dans un lot de cinq dont un est rejete, les cinq
+# passaient « payes », et les commissions du refuse avec eux. De l'argent
+# declare verse qui ne l'a pas ete.
+
+class _Collection:
+    def __init__(self, docs):
+        self.docs = docs
+        self.maj = []
+
+    def find(self, query, projection=None):
+        # La doublure doit honorer CHAQUE cle interrogee, sinon elle repond la
+        # collection entiere a une question qui en designait une seule — et le
+        # test passerait sur un code casse.
+        trouves = list(self.docs)
+        for cle in ("id", "np_withdrawal_id", "np_batch_id"):
+            valeur = query.get(cle)
+            if isinstance(valeur, str):
+                trouves = [d for d in trouves if d.get(cle) == valeur]
+
+        class C:
+            async def to_list(self, _n):
+                return [dict(d) for d in trouves]
+        return C()
+
+    async def update_many(self, query, update):
+        ids = (query.get("id") or {}).get("$in", [])
+        self.maj.append({"ids": list(ids), "set": update.get("$set", {})})
+        for d in self.docs:
+            if d.get("id") in ids:
+                d.update(update.get("$set", {}))
+        return types.SimpleNamespace(modified_count=len(ids))
+
+
+def test_ipn_ne_marque_que_le_versement_designe(server_module, monkeypatch):
+    """La charge utile du webhook porte sur UN versement, pas sur le lot.
+
+    NOWPayments documente :
+
+        { "id": "<versement>", "batch_withdrawal_id": "<lot>",
+          "status": "FINISHED", "hash": "0x…" }
+
+    Nous lisions `id` et le cherchions dans `np_batch_id`, ou nous rangeons
+    l'identifiant du LOT. Les deux ne coincident pas : la recherche ne trouvait
+    rien et le webhook repartait en silence. Aucun versement n'a jamais ete
+    confirme par cette voie.
+    """
+    import services.nowpayments as np_mod
+
+    lot = [
+        {"id": "pay-1", "np_batch_id": "B-1", "np_withdrawal_id": "W-1"},
+        {"id": "pay-2", "np_batch_id": "B-1", "np_withdrawal_id": "W-2"},
+        {"id": "pay-3", "np_batch_id": "B-1", "np_withdrawal_id": "W-3"},
+    ]
+    versements = _Collection(lot)
+    server_module.db = types.SimpleNamespace(
+        affiliate_payouts=versements, affiliate_referrals=_Collection([]))
+
+    charge = {"id": "W-2", "batch_withdrawal_id": "B-1",
+              "status": "FINISHED", "hash": "0xabc123"}
+
+    async def sans_limite(*a, **k):
+        return None
+
+    async def evenement_neuf(*a, **k):
+        return True
+
+    monkeypatch.setattr(np_mod, "_verify_nowpayments_signature",
+                        lambda raw, sig: (charge, raw))
+    monkeypatch.setattr(server_module, "_rate_limit", sans_limite, raising=False)
+    monkeypatch.setattr(server_module, "_client_ip", lambda r: "127.0.0.1", raising=False)
+    monkeypatch.setattr(server_module, "_register_webhook_event", evenement_neuf, raising=False)
+    server_module.NOWPAYMENTS_IPN_SECRET = "secret"
+
+    class Requete:
+        headers = {"x-nowpayments-sig": "abc"}
+        client = types.SimpleNamespace(host="127.0.0.1")
+
+        async def body(self):
+            return b"{}"
+
+    asyncio.run(np_mod.nowpayments_payout_ipn(Requete()))
+
+    payes = sorted(d["id"] for d in lot if d.get("status") == "paid")
+    assert payes == ["pay-2"], f"le lot entier a ete marque paye : {payes}"
+    # Le hash est la PREUVE de paiement : c'est lui qui se verifie sur la
+    # chaine, pas un numero de lot interne.
+    assert lot[1]["reference"] == "0xabc123"
