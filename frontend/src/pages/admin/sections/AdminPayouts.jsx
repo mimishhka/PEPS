@@ -458,6 +458,19 @@ export default function AdminPayouts() {
                     {p.run_id ? <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-glacier/10 text-nordfjord px-1.5 py-px uppercase tracking-wide">#{p.run_id}</span> : null}
                     {p.np_error ? <span className="text-error"> · {p.np_error}</span> : null}
                   </div>
+                  {/* SANS ADRESSE, RIEN NE PARTIRA.
+                      Un relevé est créé même quand l'affilié n'a jamais renseigné
+                      d'adresse de versement : il s'affiche « prêt », l'envoi
+                      échoue, et la seule issue est de le marquer payé à la main —
+                      sans que l'écran ait jamais dit pourquoi. C'est exactement
+                      ce qui s'est passé sur FITNES70. */}
+                  {!String(p.payout_address || "").trim() && (
+                    <p className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-warning/10 border border-warning/30 px-2 py-0.5 text-[10.5px] text-warning"
+                       data-testid={`payout-no-address-${p.id}`}>
+                      {L("Aucune adresse de versement — envoi automatique impossible",
+                         "No payout address — automatic sending impossible")}
+                    </p>
+                  )}
                 </div>
                 {/* Les DEUX montants. `amount` est deja converti en USD pour un
                     versement crypto : l'afficher via money() donnait « $180.00 »
@@ -535,7 +548,12 @@ export default function AdminPayouts() {
                   <tr key={`${r.period}-${r.started_at}`} className="border-b border-ash/60 last:border-0">
                     <td className="px-5 py-2.5 font-data text-nordfjord whitespace-nowrap">{r.period}</td>
                     <td className="px-3 py-2.5 text-glacier text-xs">
-                      {r.auto ? L("automatique", "automatic") : L("manuelle", "manual")}
+                      {/* `r.auto` porte parfois une CHAINE (« manual_c003a85f »),
+                          qui est vraie en JavaScript : une generation declenchee
+                          a la main s'annoncait donc « automatique ». Le serveur
+                          expose `is_auto`, un booleen, qui dit ce qu'il faut. */}
+                      {(r.is_auto ?? r.auto === true)
+                        ? L("automatique", "automatic") : L("manuelle", "manual")}
                     </td>
                     <td className="px-3 py-2.5">
                       <span className={`font-data text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full ${

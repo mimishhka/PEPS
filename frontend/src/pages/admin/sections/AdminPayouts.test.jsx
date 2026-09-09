@@ -97,4 +97,37 @@ describe("AdminPayouts", () => {
       expect(screen.getByTestId("batch-send").className).toMatch(/btn-nova/));
     expect(screen.getByTestId("run-payouts").className).not.toMatch(/btn-nova/);
   });
+  it("n'annonce pas « automatique » une generation lancee a la main", async () => {
+    // `auto` porte parfois une CHAINE — « manual_c003a85f » — qui est vraie en
+    // JavaScript. Vos deux generations de 2026-07, toutes deux manuelles,
+    // s'affichaient l'une « automatique » et l'autre « manuelle ».
+    reponses({ runs: [
+      { period: "2026-07", auto: "manual_c003a85f", is_auto: false,
+        status: "done", started_at: "2026-08-14T21:20:48.474350+00:00" },
+      { period: "2026-07", auto: false, is_auto: false,
+        status: "done", started_at: "2026-08-14T21:19:43.670560+00:00" },
+    ] });
+    render(<AdminPayouts />);
+    await screen.findByTestId("admin-payouts");
+
+    await waitFor(() =>
+      expect(screen.getAllByText("manuelle")).toHaveLength(2));
+    expect(screen.queryByText("automatique")).not.toBeInTheDocument();
+  });
+
+  it("dit pourquoi un versement ne partira jamais tout seul", async () => {
+    // Un releve est cree meme sans adresse de versement : il s'affiche
+    // « pret », l'envoi echoue, et la seule issue est de le marquer paye a la
+    // main — sans que l'ecran ait jamais dit pourquoi.
+    reponses({ payouts: [{
+      id: "p-1", status: "ready", affiliate_code: "FITNES70", period: "2026-08",
+      amount_cad: 28.5, amount: 20.52, currency: "usdt", referral_count: 4,
+      payout_address: "",
+    }] });
+    render(<AdminPayouts />);
+    await screen.findByTestId("admin-payouts");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("payout-no-address-p-1")).toBeInTheDocument());
+  });
 });
