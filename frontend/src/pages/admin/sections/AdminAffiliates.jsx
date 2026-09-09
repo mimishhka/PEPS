@@ -246,63 +246,63 @@ export default function AdminAffiliates() {
               Ils restent NOMMES — c'est ce qui distingue « rien a faire » d'un
               chargement rate. */}
           {(() => {
+            // LES CINQ COMPTEURS RESTENT AFFICHES.
+            //
+            // Je les avais replies sur une ligne — « rien a traiter du cote de :
+            // paiements, commissions… ». A l'usage, c'est moins bon : on lit
+            // « tout est a zero » plus vite sur cinq chiffres que dans une
+            // phrase, et il faut relire pour verifier qu'aucun poste ne manque.
+            //
+            // Ce qui change, c'est le POIDS, pas la presence : les postes a zero
+            // passent en retrait (fond neutre, chiffre gris), celui qui demande
+            // une action garde sa couleur. Et les tuiles sont nettement plus
+            // basses qu'avant — cinq tiennent sur une ligne au lieu de deux.
             const postes = [
               { cle: "payouts", icon: Wallet, ton: "cyan", n: al.payouts_ready,
                 titre: L("Paiements à envoyer", "Payouts to send"),
-                valeur: `${int(al.payouts_ready)} · ${money(al.payouts_ready_amount)}`,
-                action: L("exécution + 2FA", "execute + 2FA"),
-                calme: L("paiements", "payouts") },
+                valeur: Number(al.payouts_ready) > 0
+                  ? `${int(al.payouts_ready)} · ${money(al.payouts_ready_amount)}` : "0",
+                action: Number(al.payouts_ready) > 0
+                  ? L("exécution + 2FA", "execute + 2FA")
+                  : L("rien à verser", "nothing to pay") },
               { cle: "maturing", icon: Clock, ton: "amber", n: al.commissions_maturing,
                 titre: L("Commissions à approuver", "Commissions maturing"),
                 valeur: int(al.commissions_maturing),
-                action: L("prêtes sous peu", "maturing soon"),
-                calme: L("commissions", "commissions") },
+                action: Number(al.commissions_maturing) > 0
+                  ? L("prêtes sous peu", "maturing soon")
+                  : L("aucune en attente", "none pending") },
               { cle: "compliance", icon: ShieldAlert, ton: "red", n: al.compliance_review,
                 titre: L("En révision conformité", "In compliance review"),
                 valeur: int(al.compliance_review),
-                action: L("dossier à examiner", "file to review"),
-                calme: L("conformité", "compliance") },
+                action: Number(al.compliance_review) > 0
+                  ? L("dossier à examiner", "file to review")
+                  : L("tout est conforme", "all clear") },
               { cle: "invites", icon: AlertTriangle, ton: "amber", n: al.invites_expired,
                 titre: L("Invitations expirées", "Expired invites"),
                 valeur: int(al.invites_expired),
-                action: L("à renvoyer ou fermer", "resend or close"),
-                calme: L("invitations", "invites") },
+                action: Number(al.invites_expired) > 0
+                  ? L("à renvoyer ou fermer", "resend or close")
+                  : L("aucune en souffrance", "none outstanding") },
               // Creances nees d'une commande annulee APRES versement : le
               // versement est irreversible, la somme reste due par l'affilie.
               { cle: "clawback", icon: Wallet, ton: "red", n: al.clawback_count,
                 titre: L("Sommes à récupérer", "Amounts to recover"),
-                valeur: `${int(al.clawback_count)} · ${money(al.clawback_amount)}`,
-                action: L("commande annulée après versement", "order reversed after payout"),
-                calme: L("récupérations", "recoveries") },
+                valeur: Number(al.clawback_count) > 0
+                  ? `${int(al.clawback_count)} · ${money(al.clawback_amount)}` : "0",
+                action: Number(al.clawback_count) > 0
+                  ? L("commande annulée après versement", "order reversed after payout")
+                  : L("rien à récupérer", "nothing to recover") },
             ];
-            const actifs = postes.filter((p) => Number(p.n) > 0);
-            const calmes = postes.filter((p) => !(Number(p.n) > 0));
-            // GRILLE FIXE A TROIS COLONNES, meme avec une seule carte.
-            //
-            // Adapter le nombre de colonnes au nombre de cartes semblait plus
-            // propre ; a l'ecran, une carte unique s'etirait sur toute la
-            // largeur et donnait un poids enorme a « 3 invitations expirees ».
-            // Une largeur de carte CONSTANTE vaut mieux qu'une ligne remplie :
-            // le blanc a droite dit lui-meme qu'il n'y a qu'une chose a faire.
             return (
-              <div className="mb-6" data-testid="affiliate-alerts">
-                {actifs.length > 0 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {actifs.map((p) => (
-                      <AlertCard key={p.cle} icon={p.icon} tone={p.ton}
-                        title={p.titre} value={p.valeur} action={p.action} />
-                    ))}
-                  </div>
-                )}
-                {calmes.length > 0 && (
-                  <p className={`text-[12px] text-glacier ${actifs.length ? "mt-3" : ""}`}
-                     data-testid="affiliate-alerts-calm">
-                    {actifs.length
-                      ? L("Rien à traiter du côté de : ", "Nothing pending on: ")
-                      : L("Rien à traiter : ", "Nothing to handle: ")}
-                    <span className="text-nordfjord">{calmes.map((p) => p.calme).join(", ")}</span>.
-                  </p>
-                )}
+              // Cinq colonnes des que l'ecran le permet : la bande tient alors
+              // sur UNE ligne, ce qui est tout l'interet de garder cinq tuiles.
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2.5 mb-6"
+                   data-testid="affiliate-alerts">
+                {postes.map((p) => (
+                  <AlertCard key={p.cle} icon={p.icon} tone={p.ton}
+                    calme={!(Number(p.n) > 0)}
+                    title={p.titre} value={p.valeur} action={p.action} />
+                ))}
               </div>
             );
           })()}
@@ -869,7 +869,16 @@ function SectionRule({ children }) {
   );
 }
 
-function AlertCard({ icon: Icon, tone, title, value, action }) {
+function AlertCard({ icon: Icon, tone, title, value, action, calme = false }) {
+  // Deux poids, une seule taille.
+  //
+  // Les cinq compteurs restent visibles — on lit « tout est a zero » plus vite
+  // sur cinq chiffres que dans une phrase. Mais ceux a zero passent au second
+  // plan : fond neutre, chiffre gris et leger, icone eteinte. Seul ce qui
+  // demande une action garde sa couleur et son chiffre en gras.
+  //
+  // La HAUTEUR ne change pas d'une variante a l'autre : des tuiles de tailles
+  // differentes sur une meme ligne se lisent comme un defaut d'affichage.
   const tones = {
     cyan: "border-nova/40 bg-nova/5",
     amber: "border-warning/40 bg-warning/5",
@@ -878,13 +887,16 @@ function AlertCard({ icon: Icon, tone, title, value, action }) {
   };
   const iconColor = { cyan: "#00B8D4", amber: "#E8A33D", red: "#D64545", slate: "#64748B" }[tone];
   return (
-    <div className={`rounded-xl border p-4 ${tones[tone]}`}>
-      <div className="flex items-center gap-2 mb-1.5">
-        <Icon size={15} style={{ color: iconColor }} />
-        <p className="text-[11px] uppercase tracking-wider text-glacier">{title}</p>
+    <div className={`rounded-lg border px-3 py-2.5 ${calme ? "border-ash/70 bg-transparent" : tones[tone]}`}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <Icon size={13} style={{ color: calme ? "#A3B4C2" : iconColor }} />
+        <p className={`text-[9.5px] uppercase tracking-[0.12em] leading-tight ${calme ? "text-glacier/60" : "text-glacier"}`}>{title}</p>
       </div>
-      <p className="text-xl font-bold text-nordfjord tabular-nums whitespace-nowrap">{value}</p>
-      {action && <p className="text-[11px] text-glacier mt-0.5">{action}</p>}
+      <p className={`tabular-nums whitespace-nowrap leading-none ${
+        calme ? "text-[15px] font-medium text-glacier/50" : "text-[19px] font-bold text-nordfjord"}`}>{value}</p>
+      {action && (
+        <p className={`text-[10px] mt-1 leading-tight ${calme ? "text-glacier/45" : "text-glacier"}`}>{action}</p>
+      )}
     </div>
   );
 }

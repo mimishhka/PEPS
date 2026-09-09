@@ -146,24 +146,22 @@ describe("AdminAffiliates — classement des top affiliés", () => {
       expect(screen.getByText(/Sommes . r.cup.rer/)).toBeInTheDocument());
     expect(screen.getByText(/2 . \$340\.50/)).toBeInTheDocument();
   });
-  it("replie les postes a zero au lieu de leur donner une carte", async () => {
-    // La bande affichait cinq cartes de meme poids, dont quatre disaient
-    // « rien a faire ». Seuls les postes qui demandent une action gardent une
-    // carte ; les autres restent NOMMES sur une ligne — ce qui distingue
-    // « rien a faire » d'un chargement rate.
+
+  it("garde les cinq compteurs, et met en retrait ceux a zero", async () => {
+    // Le repli sur une ligne a ete essaye puis abandonne : on lit « tout est a
+    // zero » plus vite sur cinq chiffres que dans une phrase, et il faut relire
+    // pour verifier qu'aucun poste ne manque. C'est le POIDS qui change
+    // desormais, pas la presence.
     render(<AdminAffiliates />);
 
-    await waitFor(() =>
-      expect(screen.getByTestId("affiliate-alerts")).toBeInTheDocument());
+    const bande = await screen.findByTestId("affiliate-alerts");
 
-    // Seule la carte des sommes a recuperer est active (clawback_count: 2).
-    expect(screen.getByText(/Sommes . r.cup.rer/)).toBeInTheDocument();
-    expect(screen.queryByText(/Paiements . envoyer/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Commissions . approuver/)).not.toBeInTheDocument();
-
-    // Mais les postes calmes sont cites, pas escamotes.
-    const calme = screen.getByTestId("affiliate-alerts-calm");
-    expect(calme).toHaveTextContent(/paiements/);
-    expect(calme).toHaveTextContent(/conformit/);
+    // Les cinq postes sont la, quel que soit leur compteur.
+    for (const titre of [/Paiements . envoyer/, /Commissions . approuver/,
+                         /r.vision conformit/, /Invitations expir/,
+                         /Sommes . r.cup.rer/]) {
+      expect(screen.getByText(titre)).toBeInTheDocument();
+    }
+    expect(bande.children).toHaveLength(5);
   });
 });
