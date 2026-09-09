@@ -439,6 +439,57 @@ async def _np_payout_status(batch_id: str) -> dict:
         raise NowPaymentsPayoutError(f"Statut payout ({r.status_code}).")
     return r.json() or {}
 
+async def _np_balance() -> dict:
+    """Solde de la custody, par devise.
+
+        GET /v1/balance
+        { "eth": {"amount": 0.00018, "pendingAmount": 0}, "trx": {…} }
+
+    Une simple lecture : la cle d'API suffit, ni jeton porteur ni 2FA. C'est ce
+    qui rend le controle prealable bon marche — et un versement refuse AVANT
+    l'envoi ne consomme pas de code 2FA et ne laisse pas de ligne « failed » a
+    nettoyer.
+
+    `amount` est le disponible ; `pendingAmount` est deja engage ailleurs et ne
+    doit donc pas etre compte.
+    """
+    if not s.NOWPAYMENTS_API_KEY:
+        raise NowPaymentsPayoutError("NOWPAYMENTS_API_KEY manquante.")
+    try:
+        async with httpx.AsyncClient(timeout=20) as cx:
+            r = await cx.get(
+                f"{s.NOWPAYMENTS_BASE_URL}/balance",
+                headers={"x-api-key": s.NOWPAYMENTS_API_KEY},
+            )
+    except httpx.HTTPError as e:
+        raise NowPaymentsPayoutError(f"Solde indisponible: {e}")
+    if r.status_code != 200:
+        raise NowPaymentsPayoutError(f"Solde indisponible ({r.status_code}).")
+    return r.json() or {}
+
+
+async def _np_solde_suffisant(devise: str, montant: float) -> tuple:
+    """(suffisant, disponible) — et (True, None) si le solde est illisible.
+
+    ON NE BLOQUE PAS SUR UNE PANNE DE LECTURE. Le controle est un confort : il
+    evite une erreur previsible. Si l'appel echoue, le versement part quand
+    meme — NOWPayments le refusera et remettra les fonds au solde, ce qui est
+    le comportement documente. Transformer une panne de lecture en blocage de
+    tous les versements serait un remede pire que le mal.
+    """
+    try:
+        soldes = await _np_balance()
+    except NowPaymentsPayoutError as e:
+        logging.warning("[nowpayments] solde illisible, envoi tente quand meme: %s", e)
+        return True, None
+    entree = soldes.get((devise or "").lower()) or {}
+    try:
+        disponible = float(entree.get("amount") or 0)
+    except (TypeError, ValueError):
+        return True, None
+    return disponible >= float(montant), disponible
+
+
 async def nowpayments_payout_ipn(request: Request):
     """IPN payout : NOWPayments notifie les changements de statut.
     Signature HMAC-SHA512 vérifiée (même schéma que l'IPN paiement)."""

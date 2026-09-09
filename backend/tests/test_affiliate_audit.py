@@ -1014,3 +1014,60 @@ def test_ipn_ne_marque_que_le_versement_designe(server_module, monkeypatch):
     # Le hash est la PREUVE de paiement : c'est lui qui se verifie sur la
     # chaine, pas un numero de lot interne.
     assert lot[1]["reference"] == "0xabc123"
+
+
+# ---------------------------------------------------------------------------
+# 18. Le solde est verifie AVANT l'envoi
+# ---------------------------------------------------------------------------
+
+def test_solde_illisible_ne_bloque_pas_les_versements(server_module, monkeypatch):
+    """Une panne de lecture ne doit pas suspendre tous les paiements.
+
+    Le controle est un confort : il evite une erreur previsible. NOWPayments
+    refuse de toute facon un versement sans provision et remet les fonds au
+    solde. Transformer une panne de lecture en blocage general serait un remede
+    pire que le mal.
+    """
+    import services.nowpayments as np_mod
+
+    async def solde_en_panne():
+        raise np_mod.NowPaymentsPayoutError("503")
+
+    monkeypatch.setattr(np_mod, "_np_balance", solde_en_panne)
+    suffisant, disponible = asyncio.run(np_mod._np_solde_suffisant("usdttrc20", 1000))
+    assert suffisant is True
+    assert disponible is None
+
+
+def test_solde_insuffisant_est_detecte_avec_le_montant_disponible(server_module, monkeypatch):
+    """Le refus doit NOMMER ce qui manque, pas seulement refuser."""
+    import services.nowpayments as np_mod
+
+    async def solde():
+        return {"usdttrc20": {"amount": 12.5, "pendingAmount": 40}}
+
+    monkeypatch.setattr(np_mod, "_np_balance", solde)
+
+    suffisant, disponible = asyncio.run(np_mod._np_solde_suffisant("usdttrc20", 20))
+    assert suffisant is False
+    assert disponible == 12.5
+
+    # `pendingAmount` est deja engage ailleurs : il ne compte pas comme
+    # disponible, sinon on croirait pouvoir verser 52,5.
+    suffisant, _ = asyncio.run(np_mod._np_solde_suffisant("usdttrc20", 50))
+    assert suffisant is False
+
+    suffisant, _ = asyncio.run(np_mod._np_solde_suffisant("usdttrc20", 12.5))
+    assert suffisant is True
+
+
+def test_devise_absente_du_solde_est_traitee_comme_zero(server_module, monkeypatch):
+    import services.nowpayments as np_mod
+
+    async def solde():
+        return {"eth": {"amount": 3, "pendingAmount": 0}}
+
+    monkeypatch.setattr(np_mod, "_np_balance", solde)
+    suffisant, disponible = asyncio.run(np_mod._np_solde_suffisant("usdcerc20", 1))
+    assert suffisant is False
+    assert disponible == 0.0

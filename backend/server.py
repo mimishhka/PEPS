@@ -1192,12 +1192,14 @@ try:
         _verify_nowpayments_signature, _nowpayments_create, nowpayments_ipn, crypto_status,
         _refresh_np_jwt, NowPaymentsPayoutError, _np_auth_token, _np_create_payout,
         _np_verify_payout, _np_payout_status, nowpayments_payout_ipn,
+        _np_balance, _np_solde_suffisant,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
     from backend.services.nowpayments import (  # noqa: F401
         _verify_nowpayments_signature, _nowpayments_create, nowpayments_ipn, crypto_status,
         _refresh_np_jwt, NowPaymentsPayoutError, _np_auth_token, _np_create_payout,
         _np_verify_payout, _np_payout_status, nowpayments_payout_ipn,
+        _np_balance, _np_solde_suffisant,
     )
 
 
@@ -12316,6 +12318,32 @@ async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
     if not withdrawals:
         raise HTTPException(409, "All eligible payouts are already being processed")
 
+    # SOLDE D'ABORD, ET CUMULE PAR DEVISE. Un lot peut melanger USDT et USDC :
+    # chaque devise a son propre solde, et c'est le TOTAL par devise qui doit
+    # tenir. Refuser ici evite un lot a moitie parti, dont la moitie echouee
+    # laisse des lignes a reprendre une par une.
+    totaux_par_devise: dict = {}
+    for w in withdrawals:
+        d = str(w.get("currency") or "").lower()
+        totaux_par_devise[d] = totaux_par_devise.get(d, 0.0) + float(w.get("amount") or 0)
+    for devise, total in totaux_par_devise.items():
+        suffisant, disponible = await _np_solde_suffisant(devise, total)
+        if not suffisant:
+            # Les versements ont deja ete revendiques en « dispatching » :
+            # sans cette remise a « ready », ils resteraient bloques dans un
+            # statut intermediaire pour une raison qui n'est pas la leur.
+            await db.affiliate_payouts.update_many(
+                {"id": {"$in": [w["unique_external_id"] for w in withdrawals]},
+                 "status": "dispatching"},
+                {"$set": {"status": "ready"}},
+            )
+            raise HTTPException(
+                409,
+                f"Solde NOWPayments insuffisant en {devise.upper()} : "
+                f"{disponible} disponible, {round(total, 8)} requis pour ce lot. "
+                f"Approvisionnez la custody, puis relancez l'envoi.",
+            )
+
     if not NOWPAYMENTS_PAYOUT_ENABLED:
         # Mode démo/manuel : on marque les payouts comme "queued_manual" pour que
         # l'admin sache qu'ils sont prêts à être envoyés via l'export CSV.
@@ -13485,6 +13513,19 @@ async def admin_payout_execute(payout_id: str, admin: dict = Depends(get_admin_u
     # fournisseur choisir, sur une opération irréversible.
     withdrawals = [{"address": address, "currency": np_currency, "amount": amount}]
     desc = f"Fironova affiliate {payout.get('affiliate_code')} — {payout.get('period')}"
+
+    # SOLDE D'ABORD. Un versement sans provision echoue cote NOWPayments : les
+    # fonds reviennent au solde, mais le code 2FA est consomme et une ligne
+    # « failed » reste a nettoyer. Une lecture — la cle d'API suffit — evite
+    # tout cela et permet de NOMMER ce qui manque.
+    suffisant, disponible = await _np_solde_suffisant(np_currency, amount)
+    if not suffisant:
+        raise HTTPException(
+            409,
+            f"Solde NOWPayments insuffisant en {np_currency.upper()} : "
+            f"{disponible} disponible, {amount} requis. Approvisionnez la "
+            f"custody avant d'envoyer.",
+        )
     try:
         resp = await _np_create_payout(withdrawals, description=desc)
     except NowPaymentsPayoutError as e:
