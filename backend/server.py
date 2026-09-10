@@ -1192,14 +1192,14 @@ try:
         _verify_nowpayments_signature, _nowpayments_create, nowpayments_ipn, crypto_status,
         _refresh_np_jwt, NowPaymentsPayoutError, _np_auth_token, _np_create_payout,
         _np_verify_payout, _np_payout_status, nowpayments_payout_ipn,
-        _np_balance, _np_solde_suffisant,
+        _np_balance, _np_solde_suffisant, _np_valider_adresse,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
     from backend.services.nowpayments import (  # noqa: F401
         _verify_nowpayments_signature, _nowpayments_create, nowpayments_ipn, crypto_status,
         _refresh_np_jwt, NowPaymentsPayoutError, _np_auth_token, _np_create_payout,
         _np_verify_payout, _np_payout_status, nowpayments_payout_ipn,
-        _np_balance, _np_solde_suffisant,
+        _np_balance, _np_solde_suffisant, _np_valider_adresse,
     )
 
 
@@ -12318,7 +12318,28 @@ async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
     if not withdrawals:
         raise HTTPException(409, "All eligible payouts are already being processed")
 
-    # SOLDE D'ABORD, ET CUMULE PAR DEVISE. Un lot peut melanger USDT et USDC :
+    # TOUTES LES ADRESSES D'ABORD. Un lot part en une fois : une seule adresse
+    # invalide fait echouer ses voisines, qu'il faut ensuite reprendre une par
+    # une. Mieux vaut refuser le lot entier en NOMMANT les fautives.
+    invalides = []
+    for w in withdrawals:
+        ok, motif = await _np_valider_adresse(w.get("address"), w.get("currency"))
+        if not ok:
+            invalides.append(f"{w.get('unique_external_id')} ({motif})")
+    if invalides:
+        await db.affiliate_payouts.update_many(
+            {"id": {"$in": [w["unique_external_id"] for w in withdrawals]},
+             "status": "dispatching"},
+            {"$set": {"status": "ready"}},
+        )
+        raise HTTPException(
+            409,
+            "Adresse(s) refusee(s) par NOWPayments — lot NON envoye : "
+            + "; ".join(invalides[:5])
+            + ("…" if len(invalides) > 5 else ""),
+        )
+
+    # SOLDE ENSUITE, ET CUMULE PAR DEVISE. Un lot peut melanger USDT et USDC :
     # chaque devise a son propre solde, et c'est le TOTAL par devise qui doit
     # tenir. Refuser ici evite un lot a moitie parti, dont la moitie echouee
     # laisse des lignes a reprendre une par une.
@@ -13514,7 +13535,18 @@ async def admin_payout_execute(payout_id: str, admin: dict = Depends(get_admin_u
     withdrawals = [{"address": address, "currency": np_currency, "amount": amount}]
     desc = f"Fironova affiliate {payout.get('affiliate_code')} — {payout.get('period')}"
 
-    # SOLDE D'ABORD. Un versement sans provision echoue cote NOWPayments : les
+    # L'ADRESSE D'ABORD — etape 1 du flux recommande par NOWPayments, que nous
+    # sautions. Une adresse mal saisie n'etait decouverte qu'APRES avoir
+    # consomme un code 2FA.
+    adresse_ok, motif = await _np_valider_adresse(address, np_currency)
+    if not adresse_ok:
+        raise HTTPException(
+            409,
+            f"Adresse de versement refusee par NOWPayments ({motif}). "
+            f"Corrigez-la sur la fiche de l'affilie avant d'envoyer.",
+        )
+
+    # SOLDE ENSUITE. Un versement sans provision echoue cote NOWPayments : les
     # fonds reviennent au solde, mais le code 2FA est consomme et une ligne
     # « failed » reste a nettoyer. Une lecture — la cle d'API suffit — evite
     # tout cela et permet de NOMMER ce qui manque.

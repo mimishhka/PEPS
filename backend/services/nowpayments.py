@@ -490,6 +490,54 @@ async def _np_solde_suffisant(devise: str, montant: float) -> tuple:
     return disponible >= float(montant), disponible
 
 
+async def _np_valider_adresse(adresse: str, devise: str, extra_id=None) -> tuple:
+    """(valide, motif) — premiere etape du flux recommande par NOWPayments.
+
+        POST /v1/payout/validate-address
+        { "address": "...", "currency": "eth", "extra_id": null }
+
+        400 -> { "code": "BAD_CREATE_WITHDRAWAL_REQUEST",
+                 "message": "Invalid payout_address: [currency] [address]" }
+
+    Comme pour le solde : la cle d'API suffit, ni jeton porteur ni 2FA. Nous
+    sautions cette etape et allions droit a la creation du versement — une
+    adresse mal saisie n'etait donc decouverte QU'APRES avoir consomme un code
+    2FA, et sur un lot elle faisait echouer les lignes voisines.
+
+    MEME REGLE QUE LE SOLDE : on ne bloque pas sur une panne. Un refus net du
+    fournisseur (400) invalide l'adresse ; une erreur reseau laisse passer, et
+    la creation du versement dira ce qu'elle a a dire.
+    """
+    if not s.NOWPAYMENTS_API_KEY:
+        return True, None
+    corps = {"address": adresse, "currency": (devise or "").lower(),
+             "extra_id": extra_id}
+    try:
+        async with httpx.AsyncClient(timeout=20) as cx:
+            r = await cx.post(
+                f"{s.NOWPAYMENTS_BASE_URL}/payout/validate-address",
+                headers={"x-api-key": s.NOWPAYMENTS_API_KEY,
+                         "Content-Type": "application/json"},
+                json=corps,
+            )
+    except httpx.HTTPError as e:
+        logging.warning("[nowpayments] validation d'adresse indisponible, on continue: %s", e)
+        return True, None
+    if r.status_code == 200:
+        return True, None
+    if r.status_code == 400:
+        try:
+            motif = (r.json() or {}).get("message") or "adresse refusee"
+        except Exception:
+            motif = "adresse refusee"
+        # Le message du fournisseur reprend l'adresse : on n'en garde que le
+        # motif, l'adresse est deja connue de l'appelant.
+        return False, str(motif)[:200]
+    logging.warning("[nowpayments] validation d'adresse : reponse %s, on continue",
+                    r.status_code)
+    return True, None
+
+
 async def nowpayments_payout_ipn(request: Request):
     """IPN payout : NOWPayments notifie les changements de statut.
     Signature HMAC-SHA512 vérifiée (même schéma que l'IPN paiement)."""

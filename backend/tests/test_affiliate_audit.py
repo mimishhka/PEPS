@@ -1071,3 +1071,83 @@ def test_devise_absente_du_solde_est_traitee_comme_zero(server_module, monkeypat
     suffisant, disponible = asyncio.run(np_mod._np_solde_suffisant("usdcerc20", 1))
     assert suffisant is False
     assert disponible == 0.0
+
+
+# ---------------------------------------------------------------------------
+# 19. L'adresse est validee AVANT de consommer un code 2FA
+# ---------------------------------------------------------------------------
+
+class _Reponse:
+    def __init__(self, code, corps=None):
+        self.status_code = code
+        self._corps = corps or {}
+
+    def json(self):
+        return self._corps
+
+
+def _client_factice(reponse=None, erreur=None):
+    class Client:
+        def __init__(self, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def post(self, url, **kw):
+            if erreur:
+                raise erreur
+            return reponse
+
+    return Client
+
+
+def test_adresse_refusee_est_detectee_avec_son_motif(server_module, monkeypatch):
+    """400 du fournisseur = adresse invalide, et le motif remonte."""
+    import services.nowpayments as np_mod
+
+    monkeypatch.setattr(server_module, "NOWPAYMENTS_API_KEY", "cle-de-test")
+    monkeypatch.setattr(np_mod.httpx, "AsyncClient", _client_factice(
+        _Reponse(400, {"code": "BAD_CREATE_WITHDRAWAL_REQUEST",
+                       "message": "Invalid payout_address: [usdttrc20] [Txxx]"})))
+    valide, motif = asyncio.run(
+        np_mod._np_valider_adresse("Txxx", "usdttrc20"))
+    assert valide is False
+    assert "Invalid payout_address" in motif
+
+
+def test_adresse_valide_passe(server_module, monkeypatch):
+    import services.nowpayments as np_mod
+
+    monkeypatch.setattr(server_module, "NOWPAYMENTS_API_KEY", "cle-de-test")
+    monkeypatch.setattr(np_mod.httpx, "AsyncClient",
+                        _client_factice(_Reponse(200, {"status": True})))
+    valide, motif = asyncio.run(
+        np_mod._np_valider_adresse("TValide", "usdttrc20"))
+    assert valide is True
+    assert motif is None
+
+
+def test_panne_de_validation_ne_bloque_pas_les_versements(server_module, monkeypatch):
+    """Meme regle que pour le solde : un controle ne devient pas un point de panne.
+
+    Un refus NET du fournisseur invalide l'adresse ; une panne reseau laisse
+    passer, et la creation du versement dira ce qu'elle a a dire.
+    """
+    import services.nowpayments as np_mod
+
+    monkeypatch.setattr(server_module, "NOWPAYMENTS_API_KEY", "cle-de-test")
+    monkeypatch.setattr(np_mod.httpx, "AsyncClient",
+                        _client_factice(erreur=np_mod.httpx.ConnectError("réseau")))
+    valide, motif = asyncio.run(np_mod._np_valider_adresse("T", "usdttrc20"))
+    assert valide is True
+    assert motif is None
+
+    # Une reponse inattendue (500) ne bloque pas non plus.
+    monkeypatch.setattr(np_mod.httpx, "AsyncClient",
+                        _client_factice(_Reponse(500, {})))
+    valide, _ = asyncio.run(np_mod._np_valider_adresse("T", "usdttrc20"))
+    assert valide is True
