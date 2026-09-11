@@ -105,6 +105,32 @@ description, à titre d'information.
 
 Fichier sans BOM, fins de ligne LF — comme le gabarit.
 
+## Liste blanche NOWPayments — avant chaque versement
+
+NOWPayments refuse tout versement vers une adresse absente de la liste blanche
+du compte. L'écran **Versements** affiche un bandeau dès qu'une adresse
+d'affilié actif n'a pas encore été confirmée.
+
+1. **Fichier liste blanche** — télécharge
+   `GET /api/admin/affiliates/whitelist/export.csv`, au gabarit
+   `WhitelistTemplate.csv` :
+
+   ```
+   Currency,Address,"ExtraId(memo, destination tag, etc.)",Label
+   USDTTRC20,TR7NHq…,,Affiliate FITNES70 - Kyro1 Stlouis1
+   ```
+
+   Le libellé commence par `Affiliate`, pour distinguer ces adresses de vos
+   propres portefeuilles, puis porte le code (unique) et le nom de l'affilié.
+2. Importer ce fichier dans la liste blanche du compte NOWPayments.
+3. **J'ai importé ces adresses** — `POST /api/admin/affiliates/whitelist/confirm`
+   enregistre le couple (ticker, adresse) sur la fiche de l'affilié.
+
+L'export ne marque rien : seul le geste de confirmation fait foi, parce que la
+liste blanche ne se lit pas côté NOWPayments. Un affilié qui change d'adresse
+redevient en attente pour la nouvelle ; une adresse modifiée entre l'export et
+la confirmation est ignorée.
+
 ## Documentation officielle
 - Auth : https://documenter.getpostman.com/view/7907941/S1a32n38#dbc9c2a6-f5c2-4c1e-a7b6-bff5f2ce2c3a
 - Mass Payouts : https://documenter.getpostman.com/view/7907941/S1a32n38#0eb5f52b-c58c-45f6-a72a-9f3c22ff5527

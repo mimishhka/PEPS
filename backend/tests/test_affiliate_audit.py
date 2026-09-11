@@ -1262,3 +1262,99 @@ def test_csv_ecarte_les_lignes_inenvoyables(server_module):
     lignes = list(csv.reader(io.StringIO(corps)))[1:]
     assert len(lignes) == 1
     assert lignes[0][0] == "USDCERC20"
+
+
+# ---------------------------------------------------------------------------
+# 21. Liste blanche NOWPayments : quelles adresses ajouter avant de verser
+# ---------------------------------------------------------------------------
+
+_GABARIT_LISTE_BLANCHE = b'Currency,Address,"ExtraId(memo, destination tag, etc.)",Label\n'
+
+
+def _db_liste_blanche(server_module, affilies):
+    class Curseur:
+        def __init__(self, docs):
+            self.docs = docs
+
+        def __aiter__(self):
+            self._i = iter(self.docs)
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self._i)
+            except StopIteration:
+                raise StopAsyncIteration
+
+    class Affiliates:
+        def __init__(self):
+            self.ecritures = []
+
+        def find(self, filtre, projection=None):
+            return Curseur([dict(a) for a in affilies])
+
+        async def find_one(self, filtre, projection=None):
+            for a in affilies:
+                if a["id"] == filtre.get("id"):
+                    return dict(a)
+            return None
+
+        async def update_one(self, filtre, update):
+            self.ecritures.append((filtre, update))
+            return types.SimpleNamespace(modified_count=1)
+
+    aff = Affiliates()
+    server_module.db = types.SimpleNamespace(
+        affiliates=aff, admin_audit_log=types.SimpleNamespace(insert_one=_ok))
+    return aff
+
+
+_KYRO = {"id": "aff-1", "status": "active", "code": "FITNES70",
+         "first_name": "Kyro1", "last_name": "Stlouis1",
+         "payout_address": _TRC20, "payout_currency": "usdt"}
+
+
+def test_liste_blanche_libelle_dit_a_qui_appartient_l_adresse(server_module):
+    _db_liste_blanche(server_module, [_KYRO])
+    items = asyncio.run(server_module._whitelist_en_attente())
+    assert len(items) == 1
+    e = items[0]
+    assert e["ticker"] == "usdttrc20"
+    assert e["label"] == "Affiliate FITNES70 - Kyro1 Stlouis1"
+
+
+def test_liste_blanche_ignore_une_adresse_deja_confirmee(server_module):
+    deja = dict(_KYRO, whitelisted=[f"usdttrc20:{_TRC20}"])
+    _db_liste_blanche(server_module, [deja])
+    assert asyncio.run(server_module._whitelist_en_attente()) == []
+
+
+def test_liste_blanche_redemande_une_adresse_modifiee(server_module):
+    """Un affilie qui change d'adresse redevient en attente pour la NOUVELLE."""
+    change = dict(_KYRO, payout_address=_ERC20,
+                  whitelisted=[f"usdttrc20:{_TRC20}"])
+    _db_liste_blanche(server_module, [change])
+    items = asyncio.run(server_module._whitelist_en_attente())
+    assert [(e["ticker"], e["address"]) for e in items] == [("usdterc20", _ERC20)]
+
+
+def test_liste_blanche_csv_au_gabarit(server_module):
+    _db_liste_blanche(server_module, [_KYRO])
+    rep = asyncio.run(server_module.admin_whitelist_csv({"id": "adm-1"}))
+    corps = rep.body if isinstance(rep.body, bytes) else rep.body.encode()
+    assert corps.startswith(_GABARIT_LISTE_BLANCHE)      # en-tete octet pour octet
+    assert not corps.startswith(b"\xef\xbb\xbf") and b"\r\n" not in corps
+    assert corps.decode().splitlines()[1] == (
+        f"USDTTRC20,{_TRC20},,Affiliate FITNES70 - Kyro1 Stlouis1")
+
+
+def test_confirmation_ignore_une_adresse_changee_depuis_l_export(server_module):
+    aff = _db_liste_blanche(server_module, [_KYRO])
+    charge = server_module.WhitelistConfirmIn(entrees=[
+        {"affiliate_id": "aff-1", "ticker": "usdttrc20", "address": _TRC20},
+        {"affiliate_id": "aff-1", "ticker": "usdttrc20", "address": "TAncienneAdresse"},
+    ])
+    res = asyncio.run(server_module.admin_whitelist_confirm(charge, {"id": "adm-1"}))
+    assert res["confirmed"] == 1
+    assert res["skipped"] == ["FITNES70"]
+    assert aff.ecritures[0][1]["$addToSet"] == {"whitelisted": f"usdttrc20:{_TRC20}"}

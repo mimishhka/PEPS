@@ -90,6 +90,11 @@ export default function AdminPayouts() {
   // Sortie du mode simple : sans elle, on ne pourrait jamais amorcer le premier
   // versement automatique, puisque son bouton serait masque.
   const [modeComplet, setModeComplet] = useState(false);
+  // Adresses d'affilies actifs pas encore confirmees dans la liste blanche
+  // NOWPayments. NOWPayments refuse tout versement vers une adresse absente de
+  // cette liste : on le decouvrait au refus, apres le code 2FA.
+  const [listeBlanche, setListeBlanche] = useState([]);
+  const demanderConfirmation = useConfirm();
   // Historique des runs de paiement (batch / single / manual / queued).
   const [paymentRuns, setPaymentRuns] = useState([]);
   const confirm = useConfirm();
@@ -133,7 +138,15 @@ export default function AdminPayouts() {
     } catch { /* idem : l'historique est un confort */ }
   }, []);
 
-  useEffect(() => { load(); loadRuns(); loadPaymentRuns(); }, [load, loadRuns, loadPaymentRuns]);
+  const loadListeBlanche = useCallback(async () => {
+    try {
+      const { data } = await api.get("/admin/affiliates/whitelist/pending");
+      setListeBlanche(Array.isArray(data) ? data : (data?.items || []));
+    } catch { setListeBlanche([]); }
+  }, []);
+
+  useEffect(() => { load(); loadRuns(); loadPaymentRuns(); loadListeBlanche(); },
+    [load, loadRuns, loadPaymentRuns, loadListeBlanche]);
 
   // Debounce de la recherche : on n'appelle le serveur qu'après 350ms
   // d'accalmie, pas à chaque frappe.
@@ -250,6 +263,51 @@ export default function AdminPayouts() {
       a.href = url; a.download = "fironova-payouts-nowpayments.csv";
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
+  };
+
+  const telechargerListeBlanche = async () => {
+    try {
+      const r = await api.get("/admin/affiliates/whitelist/export.csv", { responseType: "blob" });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url; a.download = "fironova-whitelist-nowpayments.csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
+  };
+
+  // La confirmation est un geste SEPARE de l'export, et vient APRES l'import :
+  // la liste blanche ne se lit pas chez NOWPayments, donc c'est votre
+  // declaration qui fait foi. Chaque entree porte l'adresse affichee ; si
+  // l'affilie l'a changee depuis, le serveur l'ignore.
+  const confirmerListeBlanche = async () => {
+    const n = listeBlanche.length;
+    const ok = await demanderConfirmation({
+      title: L("Ces adresses sont-elles dans NOWPayments ?", "Are these addresses in NOWPayments?"),
+      description: L(
+        `Confirmez seulement après avoir importé le fichier dans la liste blanche de votre compte NOWPayments. ${n} adresse(s) seront notées comme ajoutées.`,
+        `Only confirm after importing the file into your NOWPayments whitelist. ${n} address(es) will be recorded as added.`),
+      confirmLabel: L("Oui, c'est importé", "Yes, imported"),
+      cancelLabel: L("Pas encore", "Not yet"),
+    });
+    if (!ok) return;
+    try {
+      const { data } = await api.post("/admin/affiliates/whitelist/confirm", {
+        entrees: listeBlanche.map((e) => ({
+          affiliate_id: e.affiliate_id, ticker: e.ticker, address: e.address,
+        })),
+      });
+      const ignorees = (data?.skipped || []).length;
+      toast.success(ignorees
+        ? L(`${data.confirmed} confirmée(s) — ${ignorees} ignorée(s) : l'adresse a changé depuis l'export`,
+            `${data.confirmed} confirmed — ${ignorees} skipped: address changed since export`)
+        : L(`${data?.confirmed ?? 0} adresse(s) confirmée(s)`, `${data?.confirmed ?? 0} address(es) confirmed`));
+      loadListeBlanche();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     }
@@ -413,6 +471,44 @@ export default function AdminPayouts() {
           sub={L("toutes périodes", "all periods")} />
       </div>
 
+      {/* LISTE BLANCHE D'ABORD. Visible dans les deux modes : un import CSV de
+          versements vers une adresse absente de la liste blanche echoue aussi. */}
+      {listeBlanche.length > 0 && (
+        <div className="rounded-xl border border-warning/40 bg-warning/5 px-4 py-3"
+             data-testid="whitelist-pending">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <p className="text-[12.5px] text-nordfjord max-w-[68ch]">
+              <span className="font-semibold">
+                {L(`${listeBlanche.length} adresse(s) à ajouter à la liste blanche NOWPayments`,
+                   `${listeBlanche.length} address(es) to add to the NOWPayments whitelist`)}
+              </span>
+              {" — "}
+              {L("NOWPayments refuse tout versement vers une adresse absente de sa liste blanche. Importez ce fichier dans votre compte, puis confirmez ici.",
+                 "NOWPayments refuses any payout to an address missing from its whitelist. Import this file into your account, then confirm here.")}
+            </p>
+            <div className="flex gap-2 shrink-0">
+              <button onClick={telechargerListeBlanche} data-testid="whitelist-download"
+                className="btn-pill btn-outline text-xs px-3 py-1.5 flex items-center gap-1.5">
+                <Download size={13} /> {L("Fichier liste blanche", "Whitelist file")}
+              </button>
+              <button onClick={confirmerListeBlanche} data-testid="whitelist-confirm"
+                className="btn-pill btn-nova text-xs px-3 py-1.5">
+                {L("J'ai importé ces adresses", "I imported these addresses")}
+              </button>
+            </div>
+          </div>
+          <ul className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
+            {listeBlanche.map((e) => (
+              <li key={`${e.affiliate_id}-${e.ticker}`} className="font-data text-[11px] text-glacier">
+                <span className="text-nordfjord">{e.label}</span>
+                {" · "}{String(e.ticker || "").toUpperCase()}
+                {" · "}{String(e.address).slice(0, 6)}…{String(e.address).slice(-4)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Dire dans quel mode on est, et comment en sortir. Un ecran qui cache
           des fonctions sans le dire est pire que l'ecran complet. */}
       {!avance && (
@@ -538,6 +634,18 @@ export default function AdminPayouts() {
                        data-testid={`payout-no-address-${p.id}`}>
                       {L("Aucune adresse de versement — envoi automatique impossible",
                          "No payout address — automatic sending impossible")}
+                    </p>
+                  )}
+                  {/* Adresse presente mais pas encore confirmee en liste blanche :
+                      NOWPayments refusera le versement. Un avertissement, pas un
+                      blocage — l'adresse a pu etre ajoutee a la main avant que
+                      cet ecran ne sache le suivre. */}
+                  {String(p.payout_address || "").trim()
+                    && listeBlanche.some((e) => e.address === String(p.payout_address).trim()) && (
+                    <p className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-warning/10 border border-warning/30 px-2 py-0.5 text-[10.5px] text-warning"
+                       data-testid={`payout-not-whitelisted-${p.id}`}>
+                      {L("Adresse pas encore confirmée dans la liste blanche NOWPayments",
+                         "Address not yet confirmed in the NOWPayments whitelist")}
                     </p>
                   )}
                 </div>

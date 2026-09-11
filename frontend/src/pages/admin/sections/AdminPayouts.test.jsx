@@ -42,7 +42,7 @@ const RUN = {
   created_at: "2026-08-14T21:20:48.474350+00:00",
 };
 
-function reponses({ payouts = [], runs = [], paymentRuns = [RUN] } = {}) {
+function reponses({ payouts = [], runs = [], paymentRuns = [RUN], listeBlanche = [] } = {}) {
   // Les URL exactes du composant : « payouts/all » pour la liste,
   // « payouts/runs » pour les generations, « payments/runs » pour les envois.
   api.get.mockImplementation(async (url) => {
@@ -50,6 +50,8 @@ function reponses({ payouts = [], runs = [], paymentRuns = [RUN] } = {}) {
     // Les deux historiques repondent { runs: [...] }, pas un tableau nu.
     if (url.startsWith("/admin/affiliates/payouts/runs")) return { data: { runs } };
     if (url.startsWith("/admin/affiliates/payments/runs")) return { data: { runs: paymentRuns } };
+    if (url.startsWith("/admin/affiliates/whitelist/pending"))
+      return { data: { items: listeBlanche, count: listeBlanche.length } };
     return { data: [] };
   });
 }
@@ -219,5 +221,50 @@ describe("AdminPayouts", () => {
 
     expect(await screen.findByText(/Historique des calculs/)).toBeInTheDocument();
     expect(screen.getByText(/Historique des envois/)).toBeInTheDocument();
+  });
+  describe("liste blanche NOWPayments", () => {
+    const ENTREE = {
+      affiliate_id: "aff-1", code: "FITNES70", ticker: "usdttrc20",
+      address: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+      label: "Affiliate FITNES70 - Kyro1 Stlouis1",
+    };
+
+    it("annonce les adresses a ajouter, en disant a qui elles appartiennent", async () => {
+      reponses({ listeBlanche: [ENTREE] });
+      render(<AdminPayouts />);
+      const bandeau = await screen.findByTestId("whitelist-pending");
+      expect(bandeau).toHaveTextContent(/1 adresse\(s\) à ajouter/);
+      expect(bandeau).toHaveTextContent("Affiliate FITNES70 - Kyro1 Stlouis1");
+    });
+
+    it("ne dit rien quand tout est deja en liste blanche", async () => {
+      reponses({ listeBlanche: [] });
+      render(<AdminPayouts />);
+      await screen.findByTestId("admin-payouts");
+      expect(screen.queryByTestId("whitelist-pending")).not.toBeInTheDocument();
+    });
+
+    it("confirme exactement les adresses affichees", async () => {
+      reponses({ listeBlanche: [ENTREE] });
+      api.post.mockResolvedValue({ data: { confirmed: 1, skipped: [] } });
+      render(<AdminPayouts />);
+      await userEvent.click(await screen.findByTestId("whitelist-confirm"));
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+        "/admin/affiliates/whitelist/confirm",
+        { entrees: [{ affiliate_id: "aff-1", ticker: "usdttrc20",
+                      address: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t" }] }));
+    });
+
+    it("signale sur la ligne un versement vers une adresse non confirmee", async () => {
+      reponses({
+        listeBlanche: [ENTREE],
+        payouts: [{ id: "p-1", status: "ready", affiliate_code: "FITNES70",
+                    period: "2026-08", amount_cad: 28.5, amount: 20.52,
+                    currency: "usdt", referral_count: 4,
+                    payout_address: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t" }],
+      });
+      render(<AdminPayouts />);
+      expect(await screen.findByTestId("payout-not-whitelisted-p-1")).toBeInTheDocument();
+    });
   });
 });

@@ -277,6 +277,25 @@ async def admin_affiliate_payouts_csv(admin: dict = Depends(s.get_admin_user)):
     return await s.admin_affiliate_payouts_csv(admin)
 
 
+@router.get("/admin/affiliates/whitelist/pending")
+async def admin_whitelist_pending(admin: dict = Depends(s.get_admin_user)):
+    """Adresses d'affilies actifs pas encore confirmees en liste blanche."""
+    return await s.admin_whitelist_pending(admin)
+
+
+@router.get("/admin/affiliates/whitelist/export.csv")
+async def admin_whitelist_csv(admin: dict = Depends(s.get_admin_user)):
+    """Fichier d'import de liste blanche NOWPayments (gabarit officiel)."""
+    return await s.admin_whitelist_csv(admin)
+
+
+@router.post("/admin/affiliates/whitelist/confirm")
+async def admin_whitelist_confirm(payload: s.WhitelistConfirmIn,
+                                  admin: dict = Depends(s.get_admin_user)):
+    """Enregistre les adresses importees dans NOWPayments."""
+    return await s.admin_whitelist_confirm(payload, admin)
+
+
 @router.post("/admin/affiliates/payouts/force-run")
 async def admin_affiliate_force_monthly_run(payload: s.AffiliatePayoutRunForceIn,
                                              admin: dict = Depends(s.get_admin_user)):

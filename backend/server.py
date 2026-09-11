@@ -12614,6 +12614,161 @@ async def admin_affiliate_payouts_csv(admin: dict = Depends(get_admin_user)) -> 
     )
 
 
+# ---------------------------------------------------------------------------
+# Liste blanche NOWPayments — les adresses à y ajouter AVANT de verser
+# ---------------------------------------------------------------------------
+# NOWPayments refuse tout versement vers une adresse absente de la liste
+# blanche du compte (« payouts can be requested only … to whitelisted wallet
+# addresses »). Rien ne disait jusqu'ici quelles adresses d'affiliés y
+# manquaient : on le découvrait au refus, après le code 2FA.
+#
+# Une adresse est « en attente » tant que le couple (ticker, adresse) n'a pas
+# été CONFIRMÉ par l'administratrice après import. On garde la clé du couple,
+# pas un simple drapeau : un affilié qui change d'adresse — ou de devise —
+# redevient en attente pour la nouvelle, et revenir à une ancienne adresse déjà
+# importée ne redemande rien.
+#
+# L'export ne marque rien : le télécharger deux fois est sans effet. Seule la
+# confirmation, donnée APRÈS l'import, enregistre l'état — parce que nous
+# n'avons aucun moyen de lire la liste blanche côté NOWPayments.
+
+# Intitulés du gabarit officiel (WhitelistTemplate.csv), recopiés tels quels.
+NOWPAYMENTS_WHITELIST_ENTETES = (
+    "Currency", "Address", "ExtraId(memo, destination tag, etc.)", "Label",
+)
+
+
+def _whitelist_cle(ticker: str, adresse: str) -> str:
+    return f"{(ticker or '').lower()}:{(adresse or '').strip()}"
+
+
+def _whitelist_libelle(aff: dict) -> str:
+    """Libellé qui dit À QUI appartient l'adresse, dans votre compte NOWPayments.
+
+      Affiliate FITNES70 - Kyro1 Stlouis1
+
+    « Affiliate » d'abord, pour distinguer d'un coup d'œil ces adresses de vos
+    propres portefeuilles dans la même liste. Puis le code, unique, qui relie
+    à la fiche ; puis le nom, lisible. Pas de courriel : la liste blanche vit
+    chez un tiers.
+    """
+    nom = " ".join(x for x in [aff.get("first_name"), aff.get("last_name")] if x) \
+        or (aff.get("name") or "").strip()
+    libelle = f"Affiliate {aff.get('code') or 'sans-code'}"
+    if nom:
+        libelle += f" - {nom}"
+    return libelle[:80]
+
+
+async def _whitelist_en_attente() -> list:
+    affilies = await _cursor_all(db.affiliates.find(
+        {"status": "active", "payout_address": {"$nin": [None, ""]}},
+        {"_id": 0, "id": 1, "code": 1, "name": 1, "first_name": 1,
+         "last_name": 1, "payout_address": 1, "payout_currency": 1,
+         "whitelisted": 1},
+    ))
+    en_attente = []
+    for a in affilies:
+        adresse = (a.get("payout_address") or "").strip()
+        devise = (a.get("payout_currency") or "usdt").strip().lower()
+        ticker = NOWPAYMENTS_PAYOUT_CURRENCY.get(
+            (devise, _detect_payout_network(adresse) or ""))
+        if not ticker:
+            # Réseau non reconnu : aucun versement ne partira vers cette
+            # adresse, la mettre en liste blanche ne servirait à rien.
+            continue
+        if _whitelist_cle(ticker, adresse) in (a.get("whitelisted") or []):
+            continue
+        en_attente.append({
+            "affiliate_id": a["id"], "code": a.get("code"),
+            "ticker": ticker, "address": adresse,
+            "label": _whitelist_libelle(a),
+        })
+    en_attente.sort(key=lambda e: e["code"] or "")
+    return en_attente
+
+
+async def admin_whitelist_pending(admin: dict = Depends(get_admin_user)):  # noqa: F821
+    items = await _whitelist_en_attente()
+    return {"items": items, "count": len(items)}
+
+
+async def admin_whitelist_csv(admin: dict = Depends(get_admin_user)) -> Response:  # noqa: F821
+    """Fichier d'import de liste blanche NOWPayments, au gabarit officiel :
+
+        Currency,Address,"ExtraId(memo, destination tag, etc.)",Label
+
+    Seulement les adresses pas encore confirmées. Sans BOM, fins de ligne LF.
+    """
+    items = await _whitelist_en_attente()
+    rows = [list(NOWPAYMENTS_WHITELIST_ENTETES)]
+    for e in items:
+        # ExtraId vide : sans objet pour USDT/USDC sur ERC20/TRC20.
+        rows.append([e["ticker"].upper(), e["address"], "", e["label"]])
+    await _log_action(
+        admin, "affiliate_whitelist_csv_export",
+        f"count={len(items)} affiliates={','.join(e['affiliate_id'] for e in items)}",
+        "affiliates", strict=True,
+    )
+    import io, csv
+    buf = io.StringIO()
+    csv.writer(buf, lineterminator="\n").writerows(rows)
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=fironova-whitelist-nowpayments.csv"},
+    )
+
+
+class WhitelistEntreeIn(BaseModel):
+    affiliate_id: str
+    ticker: str
+    address: str
+
+
+class WhitelistConfirmIn(BaseModel):
+    entrees: List[WhitelistEntreeIn] = Field(min_length=1, max_length=500)
+
+
+async def admin_whitelist_confirm(payload: WhitelistConfirmIn,
+                                  admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Enregistre que ces adresses ont été importées dans NOWPayments.
+
+    Chaque entrée porte l'adresse AFFICHÉE au moment de l'export. Si l'affilié
+    l'a changée entre-temps, l'entrée est ignorée : on ne confirme pas une
+    adresse que personne n'a vue passer.
+    """
+    confirmees, ignorees = 0, []
+    maintenant = datetime.now(timezone.utc).isoformat()
+    for e in payload.entrees:
+        aff = await db.affiliates.find_one(
+            {"id": e.affiliate_id},
+            {"_id": 0, "code": 1, "payout_address": 1, "payout_currency": 1},
+        )
+        if not aff:
+            ignorees.append(e.affiliate_id)
+            continue
+        adresse = (aff.get("payout_address") or "").strip()
+        devise = (aff.get("payout_currency") or "usdt").strip().lower()
+        ticker = NOWPAYMENTS_PAYOUT_CURRENCY.get(
+            (devise, _detect_payout_network(adresse) or "")) or ""
+        if adresse != e.address.strip() or ticker.lower() != e.ticker.strip().lower():
+            ignorees.append(aff.get("code") or e.affiliate_id)
+            continue
+        await db.affiliates.update_one(
+            {"id": e.affiliate_id},
+            {"$addToSet": {"whitelisted": _whitelist_cle(ticker, adresse)},
+             "$set": {"whitelist_confirmed_at": maintenant}},
+        )
+        confirmees += 1
+    await _log_action(
+        admin, "affiliate_whitelist_confirm",
+        f"confirmees={confirmees} ignorees={','.join(ignorees) or '-'}",
+        "affiliates", strict=True,
+    )
+    return {"confirmed": confirmees, "skipped": ignorees}
+
+
 class AffiliatePayoutRunForceIn(BaseModel):
     period: str = Field(pattern=r"^\d{4}-\d{2}$", description="YYYY-MM")
 
