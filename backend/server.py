@@ -3991,10 +3991,19 @@ def _refund_eligibility_reason(order: dict) -> Optional[str]:
     """
     if not order:
         return "Commande introuvable"
+    # L'ETAT DU REMBOURSEMENT PASSE EN PREMIER, et ce n'est pas cosmetique :
+    # une commande remboursee porte payment_status = « refunded ». Testee dans
+    # l'autre ordre, elle etait refusee au motif qu'elle « n'est pas payee » —
+    # d'une commande qui a bel et bien ete payee, puis remboursee. Le blocage
+    # etait juste, la raison trompeuse. Les memes commandes sont bloquees
+    # qu'avant ; seul ce qu'on en lit change.
+    statut = order.get("refund_status")
+    if statut == "processed":
+        return "Commande déjà remboursée"
+    if statut in ("requested", "approved"):
+        return f"Une demande est déjà en cours (statut : {statut})"
     if order.get("payment_status") != "paid":
         return "La commande n'est pas payée"
-    if order.get("refund_status") in ("requested", "approved", "processed"):
-        return f"Une demande est déjà en cours (statut : {order.get('refund_status')})"
     return None
 
 

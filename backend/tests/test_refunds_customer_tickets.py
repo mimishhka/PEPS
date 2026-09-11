@@ -80,6 +80,24 @@ def test_ce_qui_bloque_encore(server_module):
         {"payment_status": "paid", "refund_status": "approved"})
 
 
+def test_une_commande_deja_remboursee_le_dit(server_module):
+    """Cas réel : FN-260901-E8C78986, payée puis remboursée. Le blocage était
+    juste, la raison non — « la commande n'est pas payée » à propos d'une
+    commande qui a bel et bien été payée. C'est le remboursement qui bloque,
+    et c'est ce qu'il faut lire."""
+    commande = {"payment_status": "refunded", "fulfillment_status": "refunded",
+                "refund_status": "processed"}
+    motif = server_module._refund_eligibility_reason(commande)
+    assert motif and "remboursée" in motif
+    assert "pas payée" not in motif
+
+
+def test_une_demande_en_cours_reste_distincte_d_un_remboursement_fait(server_module):
+    en_cours = server_module._refund_eligibility_reason(
+        {"payment_status": "paid", "refund_status": "requested"})
+    assert "en cours" in en_cours and "requested" in en_cours
+
+
 def test_le_credit_boutique_n_est_plus_proposable(server_module):
     """Aucun systeme de credit n'existe : l'approuver enregistrait un
     remboursement en argent avec une reference inventee."""
