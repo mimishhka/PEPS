@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useLocation, Link } from "react-router-dom";
 import { Copy, Check } from "lucide-react";
-import api from "../lib/api";
+import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 
@@ -22,6 +22,10 @@ export default function OrderConfirmation() {
   const [msgFile, setMsgFile] = useState(null);
   const [msgBusy, setMsgBusy] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  // Demande d'annulation ou de remboursement : portée par la COMMANDE.
+  const [refundReason, setRefundReason] = useState("");
+  const [refundBusy, setRefundBusy] = useState(false);
+  const [refundError, setRefundError] = useState("");
   const fragmentToken = typeof window !== "undefined"
     ? new URLSearchParams(window.location.hash.replace(/^#/, "")).get("access_token") || ""
     : "";
@@ -130,6 +134,28 @@ export default function OrderConfirmation() {
       reloadMsgs();
     } catch { /* non bloquant */ } finally {
       setMsgBusy(false);
+    }
+  };
+
+  const demanderRemboursement = async () => {
+    if (refundReason.trim().length < 10) {
+      setRefundError(lang === "fr"
+        ? "Décrivez la situation en quelques mots (10 caractères au moins)."
+        : "Describe the situation in a few words (at least 10 characters).");
+      return;
+    }
+    setRefundBusy(true);
+    setRefundError("");
+    try {
+      await api.post(`/orders/${order.id}/refund-request`,
+        { reason: refundReason.trim(), refund_type: "full" }, guestRequestConfig(guestToken));
+      const fresh = await api.get(`/orders/${order.id}`, guestRequestConfig(guestToken));
+      setOrder(fresh.data);
+      setRefundReason("");
+    } catch (e) {
+      setRefundError(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setRefundBusy(false);
     }
   };
 
@@ -332,6 +358,72 @@ export default function OrderConfirmation() {
           <span>TOTAL</span><span data-testid="confirm-total">${order.total.toFixed(2)} CAD</span>
         </div>
       </div>
+
+      {/* ANNULER OU SIGNALER UN PROBLÈME — sur la commande, là où la question
+          se pose. Le serveur savait recevoir cette demande depuis longtemps ;
+          aucune page ne la proposait. Avant expédition, c'est une annulation ;
+          après, un signalement (produit endommagé, erreur de commande). Le
+          délai de 48 h est RAPPELÉ, pas imposé : une demande tardive est reçue,
+          signalée à l'équipe, et examinée. */}
+      {order.payment_status === "paid" && (() => {
+        const fr = lang === "fr";
+        const expediee = ["shipped", "delivered"].includes(order.fulfillment_status);
+        const ETAT = {
+          requested: ["Demande reçue — nous l'examinons sous 2 jours ouvrables.", "Request received — we review it within 2 business days."],
+          approved: ["Demande approuvée — le remboursement est en préparation.", "Request approved — your refund is being prepared."],
+          processed: ["Remboursement effectué.", "Refund completed."],
+          denied: ["Demande non retenue.", "Request declined."],
+        };
+        const etat = ETAT[order.refund_status];
+        return (
+          <div className="mt-10 border border-nordfjord/20 rounded-xl p-6 space-y-3" data-testid="refund-card">
+            <div className="font-mono text-xs uppercase tracking-[0.25em] text-foreground/70">
+              {expediee
+                ? (fr ? "Produit endommagé ou erreur de commande" : "Damaged product or order error")
+                : (fr ? "Annuler cette commande" : "Cancel this order")}
+            </div>
+            {etat ? (
+              <p className="text-sm" data-testid="refund-status">
+                {fr ? etat[0] : etat[1]}
+                {order.refund_status === "denied" && order.refund_admin_note ? ` — ${order.refund_admin_note}` : ""}
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-foreground/70 leading-relaxed">
+                  {expediee
+                    ? (fr
+                      ? "Toutes les ventes sont finales, sauf produit endommagé ou erreur de commande. Signalez-le idéalement dans les 48 heures suivant la livraison, et joignez des photos dans la section ci-dessous."
+                      : "All sales are final, except for a damaged product or an order error. Ideally report it within 48 hours of delivery, and attach photos in the section below.")
+                    : (fr
+                      ? "Votre commande n'est pas encore expédiée : vous pouvez en demander l'annulation. Le remboursement suit la confirmation."
+                      : "Your order hasn't shipped yet: you can ask to cancel it. The refund follows confirmation.")}
+                </p>
+                <textarea value={refundReason} onChange={(e) => setRefundReason(e.target.value)}
+                  rows={3} maxLength={1000} data-testid="refund-reason"
+                  placeholder={expediee
+                    ? (fr ? "Décrivez le problème : produit endommagé, article manquant ou erroné…" : "Describe the issue: damaged, missing or wrong item…")
+                    : (fr ? "Pourquoi souhaitez-vous annuler ?" : "Why would you like to cancel?")}
+                  className="w-full border border-nordfjord/30 rounded px-3 py-2 text-sm" />
+                {refundError && <p className="text-sm text-error" data-testid="refund-error">{refundError}</p>}
+                <button onClick={demanderRemboursement} disabled={refundBusy} data-testid="refund-submit"
+                  className="bg-nordfjord text-white rounded font-mono text-xs uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-50">
+                  {refundBusy
+                    ? (fr ? "Envoi…" : "Sending…")
+                    : expediee
+                      ? (fr ? "Envoyer ma demande" : "Send my request")
+                      : (fr ? "Demander l'annulation" : "Request cancellation")}
+                </button>
+              </>
+            )}
+            {order.user_id && (
+              <p className="text-xs text-foreground/60">
+                {fr ? "Une autre question ? Écrivez-nous depuis votre compte, onglet Aide. " : "Another question? Write to us from your account, Help tab. "}
+                <Link to="/account?tab=support" className="underline">{fr ? "Ouvrir l'aide" : "Open help"}</Link>
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="mt-10 border border-nordfjord/20 rounded-xl overflow-hidden">
         <button onClick={() => setShowChat((v) => !v)} className="w-full text-left px-6 py-4 font-mono text-xs uppercase tracking-[0.25em] text-foreground/70 hover:bg-clinical" data-testid="problem-toggle">

@@ -96,3 +96,23 @@ async def admin_refund_case(order_id: str, payload: s.RefundRequestIn,
 async def admin_refund_processed(order_id: str, payload: s.RefundProcessedIn,
                                  admin: dict = Depends(s.require_area("orders", "manage"))):
     return await s.admin_refund_processed(order_id, payload, admin)
+
+
+# --- Billets clients, cote administration (zone « commandes ») ---------------
+
+@router.get("/admin/customer-tickets")
+async def admin_customer_tickets(status: Optional[str] = None,
+                                 _admin: dict = Depends(s.require_area("orders", "view"))):
+    return await s.admin_customer_tickets(status)
+
+
+@router.post("/admin/customer-tickets/{ticket_id}/reply")
+async def admin_customer_ticket_reply(ticket_id: str, payload: s.AffiliateTicketReplyIn,
+                                      admin: dict = Depends(s.require_area("orders", "manage"))):
+    return await s.admin_customer_ticket_reply(ticket_id, payload, admin)
+
+
+@router.put("/admin/customer-tickets/{ticket_id}/status")
+async def admin_customer_ticket_status(ticket_id: str, payload: s.AffiliateTicketStatusIn,
+                                       _admin: dict = Depends(s.require_area("orders", "manage"))):
+    return await s.admin_customer_ticket_status(ticket_id, payload)

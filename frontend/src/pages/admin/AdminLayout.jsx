@@ -88,6 +88,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
           { to: `${basePath}/reconciliation`, label: L("Réconciliation", "Reconciliation"), icon: Link2, area: "orders" },
           { to: `${basePath}/reconciliation/checkout`, label: L("↳ Checkout failures", "↳ Checkout failures"), icon: Link2, area: "orders" },
           { to: `${basePath}/refunds`, label: L("Remboursements", "Refunds"), icon: Link2, area: "orders" },
+          { to: `${basePath}/customer-tickets`, label: L("Billets clients", "Customer tickets"), icon: MessageSquare, area: "orders" },
           { to: `${basePath}/customers`, label: L("Clients", "Customers"), icon: Users, area: "customers" },
           { to: `${basePath}/coupons`, label: L("Coupons", "Coupons"), icon: Ticket, area: "coupons" },
         ],
@@ -117,7 +118,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
         items: [
           { to: `${basePath}/affiliates`, label: L("Affiliés", "Affiliates"), icon: Handshake, area: "affiliates" },
           { to: `${basePath}/payouts`, label: L("Paiements", "Payouts"), icon: DollarSign, area: "affiliates" },
-    { to: `${basePath}/tickets`, label: L("Billets", "Tickets"), icon: MessageSquare, area: "affiliates" },
+          { to: `${basePath}/tickets`, label: L("Billets affiliés", "Affiliate tickets"), icon: MessageSquare, area: "affiliates" },
           { to: `${basePath}/subscribers`, label: L("Abonnés", "Subscribers"), icon: Mail, area: "subscribers" },
         ],
       },
@@ -255,6 +256,12 @@ export default function AdminLayout({ basePath = "/admin" }) {
             <Route path="affiliates" element={hasAccess(user, "affiliates") ? <AdminAffiliates /> : <Navigate to={landingPath} replace />} />
             <Route path="payouts" element={hasAccess(user, "affiliates") ? <AdminPayouts /> : <Navigate to={landingPath} replace />} />
             <Route path="tickets" element={hasAccess(user, "affiliates") ? <AdminTickets /> : <Navigate to={landingPath} replace />} />
+            <Route path="customer-tickets" element={hasAccess(user, "orders")
+              ? <AdminTickets base="/admin/customer-tickets"
+                  titre={{ fr: "Billets clients", en: "Customer tickets" }}
+                  identite={(t) => ({ name: t.customer_name, email: t.customer_email, code: "" })}
+                  testid="admin-customer-tickets" />
+              : <Navigate to={landingPath} replace />} />
             <Route path="staff" element={hasAccess(user, "staff") ? <AdminStaff /> : <Navigate to={landingPath} replace />} />
             <Route path="trash" element={hasAccess(user, "trash") ? <AdminTrash /> : <Navigate to={landingPath} replace />} />
             <Route path="audit-log" element={hasAccess(user, "audit") ? <AdminAuditLog /> : <Navigate to={landingPath} replace />} />

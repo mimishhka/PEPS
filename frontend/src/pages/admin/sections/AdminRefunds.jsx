@@ -101,8 +101,8 @@ export default function AdminRefunds() {
             <DollarSign size={22} />{L("Remboursements", "Refunds")}
           </h1>
           <p className="text-sm text-compliance mt-1">
-            {L("Réclamation dans les 48 h suivant la livraison. Engagement : traiter en 2 jours. Crypto envoyée manuellement, admin colle le tx hash.",
-               "Claims within 48 h of delivery. Commitment: handled within 2 days. Crypto sent manually, admin pastes the tx hash.")}
+            {L("Délai annoncé aux clients : 48 h après la livraison. Une demande tardive n'est plus refusée : elle est signalée, et vous décidez. Engagement : statuer en 2 jours. Crypto envoyée manuellement, collez la référence de transaction.",
+               "Window announced to customers: 48 h after delivery. A late request is no longer refused: it is flagged, and you decide. Commitment: decide within 2 days. Crypto sent manually, paste the transaction reference.")}
           </p>
           {/* Chaque demande gèle la commission de l'affilié jusqu'à la
               décision. Une demande oubliée immobilise donc l'argent de
@@ -156,6 +156,26 @@ export default function AdminRefunds() {
                     {L("Type demandé", "Requested type")} : <b>{r.refund_type_requested}</b>
                     {r.refund_amount_requested && ` — ${r.refund_amount_requested} CAD`}
                   </div>
+                  {/* Ce qu'il faut savoir pour décider, calculé par le serveur à
+                      l'ouverture : une annulation se traite en minutes, un
+                      signalement tardif demande un jugement — c'est vous qui
+                      tranchez, le code ne refuse plus à votre place. */}
+                  {(r.refund_before_shipping || r.refund_late) && (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {r.refund_before_shipping && (
+                        <span data-testid={`refund-cancel-${r.id}`}
+                          className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-nova/15 text-nova">
+                          {L("Annulation avant expédition", "Cancellation before shipping")}
+                        </span>
+                      )}
+                      {r.refund_late && (
+                        <span data-testid={`refund-late-${r.id}`}
+                          className="text-[10px] font-mono tracking-wide px-2 py-0.5 rounded bg-warning/15 text-warning">
+                          {r.refund_late_note || L("Signalé après le délai annoncé", "Reported after the announced window")}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div className="text-sm text-nordfjord mt-2 whitespace-pre-line">
                     <b>{L("Raison", "Reason")}: </b>{r.refund_reason}
                   </div>
@@ -182,7 +202,6 @@ export default function AdminRefunds() {
                         data-testid={`type-${r.id}`} className="border rounded px-2 py-1 text-xs w-full">
                         <option value="full">{L("Complet", "Full")}</option>
                         <option value="partial">{L("Partiel", "Partial")}</option>
-                        <option value="store_credit">{L("Crédit boutique", "Store credit")}</option>
                         <option value="replace">{L("Remplacer le produit", "Replace product")}</option>
                       </select>
                       <input type="text" placeholder={L("Note admin", "Admin note")}

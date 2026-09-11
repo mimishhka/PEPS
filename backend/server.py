@@ -3936,7 +3936,10 @@ async def order_tracking(order_id: str, request: Request):
 class RefundRequestIn(BaseModel):
     reason: str = Field(min_length=10, max_length=1000)
     amount_requested: Optional[float] = None
-    refund_type: str = Field(default="full", pattern="^(full|partial|store_credit|replace)$")
+    # « store_credit » retire : aucun systeme de credit n'existe. L'approuver
+    # puis « marquer envoye » enregistrait un remboursement en ARGENT avec une
+    # reference inventee — le client ne recevait rien.
+    refund_type: str = Field(default="full", pattern="^(full|partial|replace)$")
 
 
 class AdminRefundCaseIn(BaseModel):
@@ -3946,7 +3949,7 @@ class AdminRefundCaseIn(BaseModel):
 class RefundDecisionIn(BaseModel):
     action: str = Field(pattern="^(approve|deny)$")
     approved_amount: Optional[float] = None
-    approved_type: Optional[str] = Field(default=None, pattern="^(full|partial|store_credit|replace)$")
+    approved_type: Optional[str] = Field(default=None, pattern="^(full|partial|replace)$")
     admin_note: str = ""
 
 
@@ -3957,54 +3960,86 @@ class RefundProcessedIn(BaseModel):
 
 
 def _refund_eligibility_reason(order: dict) -> Optional[str]:
+    """Ce qui EMPECHE d'ouvrir un dossier — et seulement cela.
+
+    Deux conditions de fond : la commande est payee, et aucun dossier n'est
+    deja en cours. Tout le reste est une information pour la decision.
+
+    Deux autres regles bloquaient, et elles ne bloquent plus :
+
+    - « apres expedition uniquement » : une demande d'ANNULATION avant
+      l'envoi — le cas le plus simple, que la FAQ promet d'honorer — ne
+      pouvait pas devenir un dossier ;
+    - la fenetre de 48 h apres livraison, opposee au client ET a
+      l'administration. Un client qui ecrivait le troisieme jour ne pouvait
+      pas etre entendu, et l'administratrice ne pouvait meme pas lui ouvrir de
+      dossier a la main.
+
+    Le delai reste la regle annoncee aux clients. Il est desormais SIGNALE sur
+    le dossier (_refund_late_note), et la decision revient a l'humain.
+    """
     if not order:
         return "Commande introuvable"
     if order.get("payment_status") != "paid":
         return "La commande n'est pas payée"
-    if (order.get("fulfillment_status") or "") not in ("shipped", "delivered"):
-        return "Le remboursement est possible après expédition uniquement"
     if order.get("refund_status") in ("requested", "approved", "processed"):
         return f"Une demande est déjà en cours (statut : {order.get('refund_status')})"
-    now = datetime.now(timezone.utc)
-    delivered_at = (order.get("shipping_info") or {}).get("delivered_at")
-    if delivered_at:
-        try:
-            d = datetime.fromisoformat(delivered_at.replace("Z", "+00:00"))
-            if d.tzinfo is None:
-                d = d.replace(tzinfo=timezone.utc)
-            if (now - d) > timedelta(hours=REFUND_CLAIM_HOURS_AFTER_DELIVERY):
-                return (f"Fenêtre de {int(REFUND_CLAIM_HOURS_AFTER_DELIVERY)} h "
-                        f"après livraison dépassée")
-        except ValueError:
-            pass
-    else:
-        # Sans date de livraison, la fenêtre n'a pas de point de départ connu :
-        # on ne peut pas opposer un délai à quelqu'un dont on ignore quand — et
-        # même si — il a reçu son colis. Le repli reste donc volontairement
-        # long, et il est INCHANGÉ : le resserrer ici aurait durci, sans qu'on
-        # le demande, le cas où l'on sait le moins de choses.
-        paid_at = order.get("paid_at")
-        if paid_at:
-            try:
-                p = datetime.fromisoformat(paid_at.replace("Z", "+00:00"))
-                if p.tzinfo is None:
-                    p = p.replace(tzinfo=timezone.utc)
-                if (now - p).days > REFUND_CLAIM_FALLBACK_DAYS:
-                    return f"Fenêtre de {int(REFUND_CLAIM_FALLBACK_DAYS)} jours après paiement dépassée"
-            except ValueError:
-                pass
     return None
 
 
-async def _set_refund_requested(order_id: str, reason: str, amount_requested, refund_type: str) -> str:
+def _refund_date(valeur):
+    try:
+        d = datetime.fromisoformat(str(valeur).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def _refund_late_note(order: dict) -> Optional[str]:
+    """Le delai annonce est-il depasse ? Une INFORMATION, jamais un refus.
+
+    Rien a signaler pour une annulation avant expedition : le delai court a
+    partir de la livraison. Sans date de livraison connue sur une commande
+    expediee, le repere est le paiement — plus long, et presente comme tel.
+    """
+    livree = _refund_date((order.get("shipping_info") or {}).get("delivered_at"))
+    maintenant = datetime.now(timezone.utc)
+    if livree:
+        heures = (maintenant - livree).total_seconds() / 3600
+        if heures > REFUND_CLAIM_HOURS_AFTER_DELIVERY:
+            return (f"Signalé {int(heures)} h après la livraison ({heures / 24:.1f} j) — "
+                    f"délai annoncé : {int(REFUND_CLAIM_HOURS_AFTER_DELIVERY)} h")
+        return None
+    if (order.get("fulfillment_status") or "") in ("shipped", "delivered"):
+        payee = _refund_date(order.get("paid_at"))
+        if payee and (maintenant - payee).days > REFUND_CLAIM_FALLBACK_DAYS:
+            return (f"Signalé {(maintenant - payee).days} jours après le paiement, sans "
+                    f"date de livraison connue — repère : {int(REFUND_CLAIM_FALLBACK_DAYS)} jours")
+    return None
+
+
+async def _set_refund_requested(order_id: str, reason: str, amount_requested, refund_type: str,
+                                order: Optional[dict] = None, source: str = "client") -> str:
     """Pose un dossier de remboursement à « requested » (source unique pour le
     client ET l'admin). Le simple fait de demander gèle la commission affiliée
-    via _echeance_acquisition, tant que la décision n'est pas rendue."""
+    via _echeance_acquisition, tant que la décision n'est pas rendue.
+
+    Le dossier porte ce qu'il faut savoir pour DÉCIDER, calculé une fois ici
+    plutôt que deviné plus tard à l'écran : s'agit-il d'une annulation avant
+    expédition, la demande arrive-t-elle après le délai annoncé, et qui l'a
+    ouverte."""
+    order = order or {}
+    avant_expedition = (order.get("fulfillment_status") or "") not in ("shipped", "delivered")
+    tardif = _refund_late_note(order) if order else None
     now_iso = datetime.now(timezone.utc).isoformat()
     await db.orders.update_one({"id": order_id}, {"$set": {
         "refund_status": "requested", "refund_requested_at": now_iso,
         "refund_reason": reason, "refund_amount_requested": amount_requested,
         "refund_type_requested": refund_type,
+        "refund_before_shipping": avant_expedition,
+        "refund_late": bool(tardif),
+        "refund_late_note": tardif or "",
+        "refund_source": source,
     }})
     return now_iso
 
@@ -4019,7 +4054,8 @@ async def admin_refund_case(order_id: str, payload: RefundRequestIn,
     ineligible = _refund_eligibility_reason(order)
     if ineligible:
         raise HTTPException(400, ineligible)
-    await _set_refund_requested(order_id, payload.reason.strip(), payload.amount_requested, payload.refund_type)
+    await _set_refund_requested(order_id, payload.reason.strip(), payload.amount_requested,
+                                payload.refund_type, order=order, source="admin")
     return {"ok": True, "refund_status": "requested"}
 
 
@@ -4153,17 +4189,29 @@ async def order_request_refund(order_id: str, payload: RefundRequestIn, request:
     ineligible = _refund_eligibility_reason(order)
     if ineligible:
         raise HTTPException(400, ineligible)
-    await _set_refund_requested(order_id, payload.reason.strip(), payload.amount_requested, payload.refund_type)
+    await _set_refund_requested(order_id, payload.reason.strip(), payload.amount_requested,
+                                payload.refund_type, order=order, source="client")
+    # L'avis dit tout de suite de QUOI il s'agit — une annulation se traite en
+    # minutes, un produit endommagé demande de regarder des photos — et signale
+    # un délai dépassé. La raison est ÉCHAPPÉE : c'est du texte libre saisi par
+    # le client, injecté jusqu'ici tel quel dans le HTML du courriel.
+    import html as _html
+    avant = (order.get("fulfillment_status") or "") not in ("shipped", "delivered")
+    nature = "Annulation avant expédition" if avant else "Remboursement après expédition"
+    tardif = _refund_late_note(order)
     try:
         await _send_email(
             os.environ.get("ADMIN_NOTIFICATION_EMAIL", ADMIN_EMAIL),
-            f"[FIRONOVA] Demande de remboursement — {order.get('order_number')}",
-            f"<p>Commande <b>{order.get('order_number')}</b>. Raison : {payload.reason[:500]}</p>"
+            f"[FIRONOVA] {nature} — {order.get('order_number')}",
+            f"<p><b>{nature}</b> — commande <b>{order.get('order_number')}</b>.</p>"
+            + (f"<p style='color:#B4700E'><b>{_html.escape(tardif)}</b></p>" if tardif else "")
+            + f"<p>Raison : {_html.escape(payload.reason[:500])}</p>"
             f"<p>Voir /ops-portal-fn7k2q/refunds.</p>",
         )
     except Exception:
         pass
-    return {"ok": True, "refund_status": "requested"}
+    return {"ok": True, "refund_status": "requested",
+            "before_shipping": avant, "late": bool(tardif)}
 
 
 async def admin_refund_decision(order_id: str, payload: RefundDecisionIn, admin: dict):
@@ -4390,6 +4438,8 @@ async def admin_refunds_list(status: Optional[str] = None, limit: int = 50):
         "refund_approved_amount": 1, "refund_approved_type": 1,
         "refund_admin_note": 1, "refund_tx_reference": 1, "refund_processed_at": 1,
         "refund_method": 1,
+        "refund_before_shipping": 1, "refund_late": 1, "refund_late_note": 1,
+        "refund_source": 1,
     }).sort("refund_requested_at", -1).limit(limit)
     return {"items": [d async for d in cursor], "total": await db.orders.count_documents(q)}
 
@@ -8531,6 +8581,11 @@ async def seed_admin_and_products():
     # de demande, sans index chaque ouverture = COLLSCAN complet des commandes.
     await db.orders.create_index([("refund_status", 1), ("refund_requested_at", -1)])
     await db.order_messages.create_index([("order_id", 1), ("created_at", 1)])
+    # Billets clients : la liste d'un client (les plus recents d'abord) et la
+    # file de l'administration (par statut).
+    await db.customer_tickets.create_index("id", unique=True)
+    await db.customer_tickets.create_index([("user_id", 1), ("updated_at", -1)])
+    await db.customer_tickets.create_index([("status", 1), ("updated_at", -1)])
     # Filtrage admin par rôle (staff, affiliés, clients) — évite un scan complet users.
     await db.users.create_index("role")
     await db.coupons.create_index("code", unique=True)
@@ -10176,12 +10231,165 @@ async def admin_affiliate_ticket_status(ticket_id: str, payload: AffiliateTicket
         raise HTTPException(404, "Billet introuvable")
     # Un changement de statut de billet (ouvert → en cours → résolu) est un
     # acte d'administration : on trace qui l'a fait, de quoi, et de quel état.
-    asyncio.create_task(_log_action(
+    # `await` et non create_task (une tache non referencee peut etre ramassee
+    # avant de s'executer), et SANS le sujet : texte libre de l'affilie, qui
+    # n'a rien a faire dans un journal. L'identifiant ouvre le billet.
+    await _log_action(
         admin, "affiliate_ticket_status",
         f"ticket={ticket_id} affiliate={res.get('affiliate_code')} "
-        f"status={payload.status} subject={res.get('subject','')[:80]}",
+        f"status={payload.status}",
         "affiliates",
-    ))
+    )
+    return res
+
+
+# ---------------------------------------------------------------------------
+# Billets d'assistance CLIENTS
+# ---------------------------------------------------------------------------
+# Un canal d'aide GENERAL, rattache au compte et non a une commande : une
+# question sur un produit, une livraison ou le compte n'a pas toujours de
+# facture derriere elle. La demande de remboursement, elle, reste sur la page
+# de la commande, parce qu'elle porte sur une commande precise.
+#
+# Meme mecanique que les billets affilies — fil complet dans un seul document,
+# statuts open / pending / resolved, repondre rouvre — pour qu'il n'y ait
+# qu'une facon de travailler.
+
+class CustomerTicketIn(BaseModel):
+    subject: str = Field(min_length=3, max_length=140)
+    body: str = Field(min_length=10, max_length=4000)
+
+
+async def customer_ticket_create(payload: CustomerTicketIn, user: dict):
+    await _rate_limit("customer_ticket", str(user.get("id")), 5, 3600,
+                      "Trop de demandes en peu de temps. Réessayez dans une heure.")
+    maintenant = datetime.now(timezone.utc).isoformat()
+    nom = (user.get("name") or " ".join(
+        x for x in [user.get("first_name"), user.get("last_name")] if x)).strip()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "customer_email": user.get("email", ""),
+        "customer_name": nom,
+        "subject": payload.subject.strip(),
+        "status": "open",
+        "messages": [_ticket_message("customer", payload.body)],
+        "created_at": maintenant,
+        "updated_at": maintenant,
+        "last_from": "customer",
+    }
+    await db.customer_tickets.insert_one(doc)
+    doc.pop("_id", None)
+    logging.info("[ticket-client] ouvert id=%s", doc["id"])
+    # Avertir l'equipe : un billet que personne ne voit est pire qu'un courriel.
+    try:
+        import html as html_stdlib
+        await _send_email(
+            os.environ.get("ADMIN_NOTIFICATION_EMAIL", ADMIN_EMAIL),
+            f"[FIRONOVA] Nouveau billet client — {doc['subject'][:60]}",
+            f"<p>Un client a ouvert un billet : <b>{html_stdlib.escape(doc['subject'])}</b>.</p>"
+            f"<p>Voir /ops-portal-fn7k2q/customer-tickets.</p>",
+        )
+    except Exception as exc:  # pragma: no cover
+        logging.warning("[ticket-client] avis admin non envoye id=%s error_type=%s",
+                        doc["id"], type(exc).__name__)
+    return doc
+
+
+async def customer_tickets_list(user: dict):
+    return await db.customer_tickets.find(
+        {"user_id": user["id"]}, {"_id": 0}
+    ).sort("updated_at", -1).to_list(100)
+
+
+async def customer_ticket_reply(ticket_id: str, payload: AffiliateTicketReplyIn, user: dict):
+    # Le filtre porte AUSSI sur user_id : sans lui, connaitre un identifiant
+    # suffirait a ecrire dans le billet de quelqu'un d'autre.
+    res = await db.customer_tickets.find_one_and_update(
+        {"id": ticket_id, "user_id": user["id"]},
+        {"$push": {"messages": _ticket_message("customer", payload.body)},
+         "$set": {"updated_at": datetime.now(timezone.utc).isoformat(),
+                  "last_from": "customer",
+                  # Repondre a un billet resolu le rouvre : la personne n'a pas
+                  # eu satisfaction.
+                  "status": "open"}},
+        projection={"_id": 0},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not res:
+        raise HTTPException(404, "Billet introuvable")
+    return res
+
+
+async def admin_customer_tickets(status: Optional[str] = None):
+    filt = {"status": status} if status else {}
+    return await db.customer_tickets.find(filt, {"_id": 0}).sort("updated_at", -1).to_list(300)
+
+
+async def admin_customer_ticket_reply(ticket_id: str, payload: AffiliateTicketReplyIn, admin: dict):
+    res = await db.customer_tickets.find_one_and_update(
+        {"id": ticket_id},
+        {"$push": {"messages": _ticket_message("admin", payload.body)},
+         "$set": {"updated_at": datetime.now(timezone.utc).isoformat(),
+                  "last_from": "admin",
+                  "status": "pending"}},
+        projection={"_id": 0},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not res:
+        raise HTTPException(404, "Billet introuvable")
+    try:
+        await _notify_customer_ticket_reply(res)
+    except Exception as exc:  # pragma: no cover
+        # Un avis manque ne doit jamais faire echouer une reponse enregistree.
+        logging.warning("[ticket-client] avis non envoye id=%s error_type=%s",
+                        ticket_id, type(exc).__name__)
+    return res
+
+
+async def _notify_customer_ticket_reply(ticket: dict) -> None:
+    """Le courriel dit qu'une reponse EXISTE, sans la reproduire : le fil reste
+    dans l'espace authentifie, comme pour les affilies."""
+    import html as html_stdlib
+    email = (ticket.get("customer_email") or "").strip()
+    if not email:
+        return
+    lien = f"{_trusted_public_base_url()}/account?tab=support"
+    sujet = ticket.get("subject", "")
+    body_html = f"""<div style="font-family:Inter,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;background:#F7FAFC;padding:40px 24px;">
+  <div style="background:#0B2E4F;border-radius:20px 20px 0 0;padding:28px 32px;">
+    <span style="font-family:'Space Grotesk',sans-serif;color:#F7FAFC;font-size:20px;font-weight:700;letter-spacing:-0.02em;">FIRONOVA</span>
+    <span style="color:#00B8D4;font-size:20px;font-weight:700;"> ·</span>
+  </div>
+  <div style="background:#ffffff;border-radius:0 0 20px 20px;padding:36px 32px;border:1px solid #E2E8F0;border-top:none;">
+    <h1 style="margin:0 0 12px;font-size:20px;color:#0B2E4F;">Nous avons répondu à votre demande</h1>
+    <p style="margin:0 0 8px;color:#3E5C76;font-size:14px;line-height:1.6;">
+      Votre demande « {html_stdlib.escape(sujet)} » a reçu une réponse.
+    </p>
+    <p style="margin:0 0 24px;color:#3E5C76;font-size:14px;line-height:1.6;">
+      Elle vous attend dans l'onglet Aide de votre compte.
+    </p>
+    <a href="{lien}" style="display:inline-block;background:#00B8D4;color:#0B2E4F;text-decoration:none;padding:12px 24px;border-radius:999px;font-weight:700;font-size:14px;">
+      Voir la réponse
+    </a>
+    <p style="margin:24px 0 0;font-size:11px;color:#A0AEC0;">
+      Pour votre sécurité, le contenu de l'échange n'est pas reproduit dans ce courriel.
+    </p>
+  </div>
+</div>"""
+    await _send_email(email, f"Réponse à votre demande — {sujet[:60]}", body_html)
+
+
+async def admin_customer_ticket_status(ticket_id: str, payload: AffiliateTicketStatusIn):
+    res = await db.customer_tickets.find_one_and_update(
+        {"id": ticket_id},
+        {"$set": {"status": payload.status,
+                  "updated_at": datetime.now(timezone.utc).isoformat()}},
+        projection={"_id": 0},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not res:
+        raise HTTPException(404, "Billet introuvable")
     return res
 
 

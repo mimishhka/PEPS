@@ -123,3 +123,22 @@ async def account_delete_address(address_id: str, user: dict = Depends(get_curre
 @router.post("/account/delete")
 async def account_delete(payload: AccountDeleteIn, response: Response, user: dict = Depends(get_current_user)):
     return await s.account_delete(payload, response, user)
+
+
+# --- Billets d'assistance CLIENTS : canal general, rattache au compte ---------
+
+@router.get("/account/tickets")
+async def customer_tickets_list(user: dict = Depends(s.get_current_user)):
+    return await s.customer_tickets_list(user)
+
+
+@router.post("/account/tickets")
+async def customer_ticket_create(payload: s.CustomerTicketIn,
+                                 user: dict = Depends(s.get_current_user)):
+    return await s.customer_ticket_create(payload, user)
+
+
+@router.post("/account/tickets/{ticket_id}/reply")
+async def customer_ticket_reply(ticket_id: str, payload: s.AffiliateTicketReplyIn,
+                                user: dict = Depends(s.get_current_user)):
+    return await s.customer_ticket_reply(ticket_id, payload, user)

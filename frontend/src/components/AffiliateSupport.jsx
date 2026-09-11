@@ -1,6 +1,7 @@
-// frontend/src/components/AffiliateSupport.jsx — NOUVEAU fichier.
+// frontend/src/components/AffiliateSupport.jsx
 //
-// Billets d'assistance, côté affilié.
+// Billets d'assistance — côté affilié, et désormais côté client aussi
+// (voir CustomerSupport.jsx, qui ne fait que régler les props).
 //
 // Le parti pris est la transparence : quelqu'un qui écrit doit savoir sous
 // quel délai on répond, et où en est sa demande. Un billet dont on ignore
@@ -11,6 +12,9 @@
 // plutôt que « open » — et le délai annoncé est en jours OUVRABLES. Un billet
 // déposé vendredi soir échoirait dimanche en heures, ce que personne ne tient,
 // et une promesse écrite non tenue vaut moins que pas de promesse.
+//
+// Les props ont toutes des valeurs par défaut identiques au comportement
+// d'origine : l'espace affilié s'en sert sans rien passer, et ne change pas.
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
@@ -37,7 +41,16 @@ function quand(iso, lang) {
   });
 }
 
-export default function AffiliateSupport({ L, lang }) {
+export default function AffiliateSupport({
+  L, lang,
+  base = "/affiliate/tickets",
+  // L'affilié joint la page d'où il écrit ; un client, non — son billet n'est
+  // rattaché ni à une page ni à une commande.
+  withContext = true,
+  intro,
+  exemple,
+  testid = "affiliate-support",
+}) {
   const [tickets, setTickets] = useState(null);
   const [ouvert, setOuvert] = useState(null);     // id du fil déplié
   const [sujet, setSujet] = useState("");
@@ -47,13 +60,13 @@ export default function AffiliateSupport({ L, lang }) {
 
   const charger = useCallback(async () => {
     try {
-      const { data } = await api.get("/affiliate/tickets");
+      const { data } = await api.get(base);
       setTickets(data || []);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
       setTickets([]);
     }
-  }, []);
+  }, [base]);
 
   useEffect(() => { charger(); }, [charger]);
 
@@ -66,10 +79,10 @@ export default function AffiliateSupport({ L, lang }) {
     }
     setBusy(true);
     try {
-      await api.post("/affiliate/tickets", {
+      await api.post(base, {
         subject: sujet.trim(),
         body: corps.trim(),
-        context_path: window.location.pathname,
+        ...(withContext ? { context_path: window.location.pathname } : {}),
       });
       setSujet(""); setCorps("");
       await charger();
@@ -85,7 +98,7 @@ export default function AffiliateSupport({ L, lang }) {
     if (!reponse.trim()) return;
     setBusy(true);
     try {
-      await api.post(`/affiliate/tickets/${id}/reply`, { body: reponse.trim() });
+      await api.post(`${base}/${id}/reply`, { body: reponse.trim() });
       setReponse("");
       await charger();
     } catch (e) {
@@ -96,13 +109,13 @@ export default function AffiliateSupport({ L, lang }) {
   };
 
   return (
-    <div className="space-y-6" data-testid="affiliate-support">
+    <div className="space-y-6" data-testid={testid}>
       <div className="bg-white rounded-xl border border-ash p-6">
         <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
           {L("POSER UNE QUESTION", "ASK A QUESTION")}
         </p>
         <p className="text-sm text-glacier mb-4 leading-relaxed">
-          {L("Nous répondons sous 1 à 2 jours ouvrables. Votre code, votre palier et votre configuration de versement sont joints automatiquement — inutile de les recopier.",
+          {intro ?? L("Nous répondons sous 1 à 2 jours ouvrables. Votre code, votre palier et votre configuration de versement sont joints automatiquement — inutile de les recopier.",
              "We reply within 1 to 2 business days. Your code, tier and payout settings are attached automatically — no need to repeat them.")}
         </p>
         <form onSubmit={creer} className="space-y-3">
@@ -112,7 +125,7 @@ export default function AffiliateSupport({ L, lang }) {
             </label>
             <input value={sujet} onChange={(e) => setSujet(e.target.value)}
               data-testid="ticket-subject" maxLength={140}
-              placeholder={L("Ex. : ma commission du 12 août n'apparaît pas",
+              placeholder={exemple ?? L("Ex. : ma commission du 12 août n'apparaît pas",
                              "e.g. my August 12 commission is missing")}
               className="w-full rounded-lg border border-ash px-4 py-2.5 text-sm text-nordfjord bg-white outline-none focus:border-nova" />
           </div>

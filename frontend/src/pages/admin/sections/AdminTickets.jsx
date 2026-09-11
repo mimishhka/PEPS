@@ -1,6 +1,9 @@
-// frontend/src/pages/admin/sections/AdminTickets.jsx — NOUVEAU fichier.
+// frontend/src/pages/admin/sections/AdminTickets.jsx
 //
-// Billets d'assistance des affiliés, côté administration.
+// Billets d'assistance, côté administration — affiliés ET clients. Le même
+// écran sert les deux files ; seules changent l'adresse de l'API, le titre et
+// la façon de dire QUI écrit. Les valeurs par défaut sont celles des affiliés :
+// la route existante s'en sert sans rien passer, et ne change pas.
 //
 // L'écran est ordonné par ce qui ATTEND, pas par ce qui est récent : les
 // billets sans réponse d'abord, puis ceux déjà traités. Un système de billets
@@ -8,9 +11,9 @@
 // laisserait un billet ancien glisser sous les nouveaux.
 //
 // Chaque billet affiche depuis combien de temps il attend. Au-delà du délai
-// annoncé à l'affilié — 1 à 2 jours ouvrables — la mention passe en ambre. Ce
-// n'est pas décoratif : c'est le seul endroit où la promesse faite devient
-// visible pour celui qui doit la tenir.
+// annoncé — 1 à 2 jours ouvrables — la mention passe en ambre. Ce n'est pas
+// décoratif : c'est le seul endroit où la promesse faite devient visible pour
+// celui qui doit la tenir.
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { MessageSquare, Clock, CheckCircle2 } from "lucide-react";
@@ -25,6 +28,10 @@ const ETATS = {
   pending:  { fr: "Répondu", en: "Replied", cls: "bg-green-100 text-green-800" },
   resolved: { fr: "Résolu", en: "Resolved", cls: "bg-ash/40 text-glacier" },
 };
+
+const IDENTITE_AFFILIE = (t) => ({
+  name: t.affiliate_name, email: t.affiliate_email, code: t.affiliate_code || "—",
+});
 
 /** Ancienneté en heures depuis le dernier message. On mesure depuis
  *  updated_at et non created_at : un billet répondu il y a une heure n'attend
@@ -41,7 +48,12 @@ function attente(h, lang) {
   return lang === "fr" ? `${j} j` : `${j}d`;
 }
 
-export default function AdminTickets() {
+export default function AdminTickets({
+  base = "/admin/affiliate-tickets",
+  titre = { fr: "Billets affiliés", en: "Affiliate tickets" },
+  identite = IDENTITE_AFFILIE,
+  testid = "admin-tickets",
+}) {
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
   const [tickets, setTickets] = useState(null);
@@ -52,14 +64,14 @@ export default function AdminTickets() {
 
   const charger = useCallback(async () => {
     try {
-      const { data } = await api.get("/admin/affiliate-tickets",
+      const { data } = await api.get(base,
         { params: filtre ? { status: filtre } : undefined });
       setTickets(data || []);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
       setTickets([]);
     }
-  }, [filtre]);
+  }, [filtre, base]);
 
   useEffect(() => { charger(); }, [charger]);
 
@@ -67,7 +79,7 @@ export default function AdminTickets() {
     if (!reponse.trim()) return;
     setBusy(true);
     try {
-      await api.post(`/admin/affiliate-tickets/${id}/reply`, { body: reponse.trim() });
+      await api.post(`${base}/${id}/reply`, { body: reponse.trim() });
       setReponse("");
       await charger();
       toast.success(L("Réponse envoyée", "Reply sent"));
@@ -80,7 +92,7 @@ export default function AdminTickets() {
 
   const changerStatut = async (id, status) => {
     try {
-      await api.put(`/admin/affiliate-tickets/${id}/status`, { status });
+      await api.put(`${base}/${id}/status`, { status });
       await charger();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
@@ -103,11 +115,11 @@ export default function AdminTickets() {
   ).length;
 
   return (
-    <div className="space-y-6" data-testid="admin-tickets">
+    <div className="space-y-6" data-testid={testid}>
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-3xl font-bold text-nordfjord">
-            {L("Billets affiliés", "Affiliate tickets")}
+            {L(titre.fr, titre.en)}
           </h1>
           <p className="text-glacier text-sm mt-1">
             {enAttente === 0
@@ -149,6 +161,7 @@ export default function AdminTickets() {
           const h = heuresDepuis(t.updated_at);
           const retard = t.status === "open" && h > DELAI_HEURES;
           const deplie = ouvert === t.id;
+          const qui = identite(t);
           return (
             <div key={t.id} className="bg-white rounded-xl border border-ash overflow-hidden"
                  data-testid={`admin-ticket-${t.id}`}>
@@ -169,12 +182,12 @@ export default function AdminTickets() {
                   </div>
                   <p className="text-sm font-semibold text-nordfjord mt-1.5 truncate">{t.subject}</p>
                   <div className="mt-1.5">
-                    <Identity name={t.affiliate_name} email={t.affiliate_email} />
+                    <Identity name={qui.name} email={qui.email} />
                   </div>
                 </div>
-                <span className="font-data text-[11px] text-glacier shrink-0">
-                  {t.affiliate_code || "—"}
-                </span>
+                {qui.code && (
+                  <span className="font-data text-[11px] text-glacier shrink-0">{qui.code}</span>
+                )}
               </button>
 
               {deplie && (
@@ -187,7 +200,7 @@ export default function AdminTickets() {
                           : "bg-white border border-ash text-nordfjord mr-8"}`}>
                       <p className={`font-data text-[10px] uppercase tracking-wider mb-1 ${
                         m.from === "admin" ? "text-clinical/60" : "text-glacier"}`}>
-                        {m.from === "admin" ? L("Vous", "You") : (t.affiliate_name || t.affiliate_code)}
+                        {m.from === "admin" ? L("Vous", "You") : (qui.name || qui.code)}
                         {" · "}
                         {new Date(m.at).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA",
                           { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
@@ -196,9 +209,9 @@ export default function AdminTickets() {
                     </div>
                   ))}
 
-                  {/* Le contexte figé à l'ouverture. Affiché replié sous le fil
-                      plutôt qu'en tête : il sert à vérifier une réponse, pas à
-                      être lu avant la question. */}
+                  {/* Le contexte figé à l'ouverture (affiliés seulement). Affiché
+                      replié sous le fil plutôt qu'en tête : il sert à vérifier
+                      une réponse, pas à être lu avant la question. */}
                   {(t.snapshot?.payout_address || t.snapshot?.tier) && (
                     <p className="font-data text-[11px] text-glacier">
                       {L("À l'ouverture", "At opening")} :

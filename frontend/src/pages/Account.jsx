@@ -9,6 +9,7 @@ import useDocumentHead from "../hooks/useDocumentHead";
 import useAffiliate from "../hooks/useAffiliate";
 import { useConfirm } from "../components/ConfirmDialog";
 import ThemeToggle from "../components/ThemeToggle";
+import CustomerSupport from "../components/CustomerSupport";
 
 // Statuts de paiement : couleur + libellé lisible bilingue.
 const PAYMENT_STATUS = {
@@ -46,7 +47,15 @@ export default function Account() {
   const { user, logout, refresh } = useAuth();
   const { t, lang } = useLang();
   const navigate = useNavigate();
-  const [tab, setTab] = useState("orders");
+  // L'onglet peut s'ouvrir par l'adresse — ?tab=support — pour que le lien
+  // du courriel « nous avons répondu à votre demande » mène droit au fil.
+  const [tab, setTab] = useState(() => {
+    try {
+      const demande = new URLSearchParams(window.location.search).get("tab");
+      return ["orders", "profile", "addresses", "security", "support"].includes(demande)
+        ? demande : "orders";
+    } catch { return "orders"; }
+  });
 
   const { affiliate } = useAffiliate(lang);
   const isActiveAffiliate = affiliate?.status === "active";
@@ -112,6 +121,7 @@ export default function Account() {
             ["profile", t("account.profile")],
             ["addresses", t("account.addresses")],
             ["security", t("account.security")],
+            ["support", lang === "fr" ? "Aide" : "Help"],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -130,6 +140,7 @@ export default function Account() {
         {tab === "profile" && <ProfileTab t={t} user={user} refresh={refresh} />}
         {tab === "addresses" && <AddressesTab t={t} />}
         {tab === "security" && <SecurityTab t={t} user={user} logout={logout} navigate={navigate} />}
+        {tab === "support" && <CustomerSupport L={(fr, en) => (lang === "fr" ? fr : en)} lang={lang} />}
       </div>
     </div>
   );
