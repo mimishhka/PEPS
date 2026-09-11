@@ -81,9 +81,29 @@ avec un message explicatif. L'admin peut alors utiliser :
 GET /api/admin/affiliates/payouts/export.csv
 ```
 
-pour télécharger un CSV au format NOWPayments Mass Payouts (Address,
-Currency, Amount, ExternalId, AffiliateCode, Period) et l'importer
-manuellement dans le dashboard NOWPayments (**Mass payouts → Import CSV**).
+pour télécharger un CSV **au gabarit officiel** NOWPayments Mass Payouts et
+l'importer manuellement dans le dashboard NOWPayments (**Mass payouts →
+Import CSV**).
+
+Colonnes, dans cet ordre, intitulés recopiés du gabarit `PayoutsTemplate.csv` :
+
+| Colonne | Contenu |
+| --- | --- |
+| Ticker | code NOWPayments en capitales : `USDTTRC20`, `USDTERC20`, `USDCERC20` |
+| Wallet Address | adresse de versement de l'affilié |
+| ExtraId | vide — sans objet pour USDT/USDC sur ERC20/TRC20 |
+| Amount in crypto | montant en jetons, **6 décimales, arrondi vers le bas** |
+| Fiat amount / Fiat currency | **vides, volontairement** — voir ci-dessous |
+| Payout description | `FIRONOVA <code> <période> <montant> CAD ref <id du versement>` |
+
+**Pourquoi le montant fiat reste vide.** Le montant en jetons est le chiffre
+audité : taux Banque du Canada et cours du jeton sont conservés sur chaque
+versement. Fournir aussi un montant en CAD laisserait NOWPayments libre de le
+reconvertir à son propre taux, et le montant parti différerait du montant
+enregistré. Le gabarit admet ces cases vides ; le CAD figure dans la
+description, à titre d'information.
+
+Fichier sans BOM, fins de ligne LF — comme le gabarit.
 
 ## Documentation officielle
 - Auth : https://documenter.getpostman.com/view/7907941/S1a32n38#dbc9c2a6-f5c2-4c1e-a7b6-bff5f2ce2c3a

@@ -12220,6 +12220,20 @@ class AffiliatePayoutBatchIn(BaseModel):
 # Toute combinaison absente de cette table est IGNORÉE et signalée, jamais
 # envoyée sur un réseau approchant : un versement crypto est irréversible, et
 # une adresse invalide sur le mauvais réseau ne revient pas.
+# Intitulés du gabarit officiel d'import « Mass Payouts » (PayoutsTemplate.csv),
+# recopiés tels quels — retours à la ligne internes compris. L'import compare
+# ces textes : un intitulé « amélioré » est un intitulé inconnu.
+NOWPAYMENTS_CSV_ENTETES = (
+    "Ticker\ncheck Tickers template for the right one",
+    "Wallet Address",
+    "ExtraId (memo, destination tag, etc.)\n"
+    "only for some cryptos like: XRP, XLM, EOS, XMR, HBAR and more",
+    "Amount in crypto (6 decimals only!)",
+    "Fiat amount",
+    "Fiat currency",
+    "Payout description",
+)
+
 NOWPAYMENTS_PAYOUT_CURRENCY = {
     ("usdt", "erc20"): "usdterc20",
     ("usdt", "trc20"): "usdttrc20",
@@ -12492,13 +12506,30 @@ async def admin_affiliate_batch_payout(payload: AffiliatePayoutBatchIn,
 
 
 async def admin_affiliate_payouts_csv(admin: dict = Depends(get_admin_user)) -> Response:  # noqa: F821
-    """Export CSV format NOWPayments (Mass Payouts import) pour envoi manuel.
-    Colonnes : Address, Currency, Amount, ExternalId
-    Ne prend que les payouts status 'ready' ou 'queued_manual' avec adresse valide."""
+    """Fichier d'import NOWPayments « Mass Payouts », au gabarit officiel.
+
+    Colonnes, dans cet ordre et avec ces intitulés exacts — y compris les
+    retours à la ligne que NOWPayments place DANS deux d'entre eux :
+
+      Ticker ↵ check Tickers template for the right one
+      Wallet Address
+      ExtraId (memo, destination tag, etc.) ↵ only for some cryptos like: …
+      Amount in crypto (6 decimals only!)
+      Fiat amount
+      Fiat currency
+      Payout description
+
+    L'ancien fichier (Address, Currency, Amount, ExternalId, AffiliateCode,
+    Period) portait le bon contenu sous des intitulés que l'import ne connaît
+    pas, dans un autre ordre, précédé d'un BOM et terminé en CRLF — alors que le
+    gabarit n'a ni l'un ni l'autre.
+
+    Ne prend que les versements 'ready' ou 'queued_manual' avec une adresse
+    dont le réseau est reconnu, hors affiliés suspendus ou fermés."""
     cursor = db.affiliate_payouts.find(
         {"status": {"$in": ["ready", "queued_manual"]}},
         {"_id": 0, "id": 1, "payout_address": 1, "currency": 1, "amount": 1,
-         "affiliate_code": 1, "period": 1},
+         "amount_cad": 1, "affiliate_code": 1, "period": 1},
     )
     # T1 : un export ne doit pas embarquer les versements d'un affilié
     # suspendu. On charge les codes suspendus en une passe et on les écarte.
@@ -12511,7 +12542,9 @@ async def admin_affiliate_payouts_csv(admin: dict = Depends(get_admin_user)) -> 
                  "status": {"$in": ["suspended", "closed"]}},
                 {"_id": 0, "code": 1}):
             codes_suspendus.add(aff["code"])
-    rows = [["Address", "Currency", "Amount", "ExternalId", "AffiliateCode", "Period"]]
+    from decimal import Decimal, ROUND_DOWN
+    rows = [list(NOWPAYMENTS_CSV_ENTETES)]
+    exported_ids = []
     for p in bruts:
         addr = (p.get("payout_address") or "").strip()
         cur = (p.get("currency") or "").lower()
@@ -12528,24 +12561,54 @@ async def admin_affiliate_payouts_csv(admin: dict = Depends(get_admin_user)) -> 
         np_currency = NOWPAYMENTS_PAYOUT_CURRENCY.get((cur, net or ""))
         if not np_currency:
             continue
-        rows.append([addr, np_currency, f"{float(amt):.6f}", p["id"],
-                     p.get("affiliate_code", ""), p.get("period", "")])
-    # Télécharger un CSV de versements, c'est emporter hors du système la
-    # liste des paiements prêts à partir (avec adresses et montants) : un
-    # acte sensible vis-à-vis de l'argent, tracé ici. Les ids
-    # (ExternalId) identifient précisément ce qui a été exporté.
-    exported_ids = [r[3] for r in rows[1:]]
-    asyncio.create_task(_log_action(
+        # SIX DÉCIMALES AU PLUS, ARRONDIES VERS LE BAS. Le gabarit l'exige
+        # (« 6 decimals only! »). Vers le bas plutôt qu'au plus proche : on
+        # n'envoie jamais plus que le montant calculé, et l'arrondi ne peut
+        # pas faire dépasser le solde d'un millionième.
+        montant = Decimal(str(amt)).quantize(Decimal("0.000001"), rounding=ROUND_DOWN)
+        if montant <= 0:
+            continue
+        cad = p.get("amount_cad")
+        description = " ".join(x for x in [
+            "FIRONOVA", p.get("affiliate_code") or "", p.get("period") or "",
+            f"{float(cad):.2f} CAD" if cad is not None else "",
+            f"ref {p['id']}",
+        ] if x)
+        rows.append([
+            np_currency.upper(),   # Ticker — le gabarit les écrit en capitales
+            addr,                  # Wallet Address
+            "",                    # ExtraId — sans objet pour USDT/USDC ERC20/TRC20
+            f"{montant:f}",        # Amount in crypto
+            # Fiat amount / Fiat currency LAISSÉS VIDES, délibérément. Le montant
+            # en jetons est le chiffre audité (taux Banque du Canada + cours du
+            # jeton, tous deux conservés sur le versement). Fournir aussi un
+            # montant en CAD laisserait NOWPayments libre de le reconvertir à
+            # son propre taux : le montant parti différerait du montant
+            # enregistré. Le gabarit admet ces cases vides ; le CAD figure dans
+            # la description, à titre d'information.
+            "", "",
+            description,           # Payout description — porte l'id pour rapprocher
+        ])
+        exported_ids.append(p["id"])
+    # Télécharger ce fichier, c'est emporter hors du système la liste des
+    # paiements prêts à partir, avec adresses et montants : un acte sensible,
+    # tracé AVANT la réponse. `await` et strict : une tâche non référencée peut
+    # être ramassée avant de s'exécuter, et un export qu'on ne peut pas tracer
+    # n'a pas lieu.
+    await _log_action(
         admin, "affiliate_payouts_csv_export",
         f"count={len(exported_ids)} payout_ids={','.join(exported_ids)}",
-        "affiliates",
-    ))
+        "affiliates", strict=True,
+    )
     import io, csv
     buf = io.StringIO()
-    writer = csv.writer(buf)
+    # Fins de ligne LF, sans BOM : exactement comme le gabarit. Le BOM
+    # s'accrochait au premier intitulé — la cellule qu'un import lit en
+    # premier — et empêchait même de reconnaître ses guillemets.
+    writer = csv.writer(buf, lineterminator="\n")
     writer.writerows(rows)
     return Response(
-        content="\ufeff" + buf.getvalue(),   # BOM UTF-8 pour Excel
+        content=buf.getvalue(),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=fironova-payouts-nowpayments.csv"},
     )

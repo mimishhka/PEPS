@@ -1151,3 +1151,114 @@ def test_panne_de_validation_ne_bloque_pas_les_versements(server_module, monkeyp
                         _client_factice(_Reponse(500, {})))
     valide, _ = asyncio.run(np_mod._np_valider_adresse("T", "usdttrc20"))
     assert valide is True
+
+
+# ---------------------------------------------------------------------------
+# 20. Le CSV d'import NOWPayments suit le gabarit officiel, octet pour octet
+# ---------------------------------------------------------------------------
+
+# Recopie du gabarit fourni par NOWPayments (PayoutsTemplate.csv) : intitules,
+# ordre, retours a la ligne internes. Le test ne lit pas le fichier du disque —
+# il fige le contrat, pour qu'une « amelioration » des intitules echoue ici.
+_GABARIT_ENTETES = [
+    "Ticker\ncheck Tickers template for the right one",
+    "Wallet Address",
+    "ExtraId (memo, destination tag, etc.)\n"
+    "only for some cryptos like: XRP, XLM, EOS, XMR, HBAR and more",
+    "Amount in crypto (6 decimals only!)",
+    "Fiat amount",
+    "Fiat currency",
+    "Payout description",
+]
+
+
+def _exporter_csv(server_module, versements, codes_exclus=()):
+    class Curseur:
+        async def to_list(self, n):
+            return [dict(v) for v in versements]
+
+    class Payouts:
+        def find(self, filtre, projection=None):
+            return Curseur()
+
+    class Affiliates:
+        def find(self, filtre, projection=None):
+            docs = [{"code": c} for c in codes_exclus]
+
+            class It:
+                def __aiter__(self):
+                    self._i = iter(docs)
+                    return self
+
+                async def __anext__(self):
+                    try:
+                        return next(self._i)
+                    except StopIteration:
+                        raise StopAsyncIteration
+            return It()
+
+    server_module.db = types.SimpleNamespace(
+        affiliate_payouts=Payouts(), affiliates=Affiliates(),
+        admin_audit_log=types.SimpleNamespace(insert_one=_ok),
+    )
+    rep = asyncio.run(server_module.admin_affiliate_payouts_csv({"id": "adm-1"}))
+    corps = rep.body.decode("utf-8") if isinstance(rep.body, bytes) else rep.body
+    return corps
+
+
+_ERC20 = "0x" + "ab" * 20                       # 40 hex en minuscules : accepte
+_TRC20 = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"   # format Tron, 34 caracteres
+
+
+def test_csv_reprend_exactement_les_entetes_du_gabarit(server_module):
+    import csv, io
+    corps = _exporter_csv(server_module, [])
+    lignes = list(csv.reader(io.StringIO(corps)))
+    assert lignes[0] == _GABARIT_ENTETES
+
+
+def test_csv_sans_bom_et_en_fins_de_ligne_lf(server_module):
+    """Le gabarit n'a ni BOM ni CRLF. Le BOM s'accrochait au premier intitule,
+    la cellule qu'un import lit en premier."""
+    corps = _exporter_csv(server_module, [{
+        "id": "p-1", "payout_address": _ERC20, "currency": "usdt",
+        "amount": 20.5, "amount_cad": 28.5, "affiliate_code": "FITNES70",
+        "period": "2026-08"}])
+    assert not corps.startswith("\ufeff")
+    assert "\r\n" not in corps
+    assert corps.endswith("\n")
+
+
+def test_csv_ligne_de_versement_au_format_du_gabarit(server_module):
+    import csv, io
+    corps = _exporter_csv(server_module, [{
+        "id": "p-1", "payout_address": _TRC20, "currency": "usdt",
+        "amount": 20.5212489, "amount_cad": 28.5, "affiliate_code": "FITNES70",
+        "period": "2026-08"}])
+    ligne = list(csv.reader(io.StringIO(corps)))[1]
+    ticker, adresse, extra, montant, fiat, devise_fiat, description = ligne
+    assert ticker == "USDTTRC20"              # capitales, comme le gabarit
+    assert adresse == _TRC20
+    assert extra == ""                        # sans objet pour USDT
+    assert montant == "20.521248"             # 6 decimales, arrondi VERS LE BAS
+    assert fiat == "" and devise_fiat == ""   # le montant en jetons fait foi
+    assert "FITNES70" in description and "28.50 CAD" in description
+    assert "p-1" in description               # l'id permet de rapprocher
+
+
+def test_csv_ecarte_les_lignes_inenvoyables(server_module):
+    """Sans adresse, reseau inconnu ou affilie suspendu/ferme : pas de ligne."""
+    import csv, io
+    corps = _exporter_csv(server_module, [
+        {"id": "sans-adresse", "payout_address": "", "currency": "usdt",
+         "amount": 5, "affiliate_code": "A"},
+        {"id": "reseau-inconnu", "payout_address": "bc1qxyz", "currency": "usdt",
+         "amount": 5, "affiliate_code": "B"},
+        {"id": "suspendu", "payout_address": _ERC20, "currency": "usdt",
+         "amount": 5, "affiliate_code": "SUSP"},
+        {"id": "ok", "payout_address": _ERC20, "currency": "usdc",
+         "amount": 5, "affiliate_code": "C"},
+    ], codes_exclus=["SUSP"])
+    lignes = list(csv.reader(io.StringIO(corps)))[1:]
+    assert len(lignes) == 1
+    assert lignes[0][0] == "USDCERC20"
