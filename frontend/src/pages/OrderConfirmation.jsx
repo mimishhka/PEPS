@@ -26,6 +26,7 @@ export default function OrderConfirmation() {
   const [refundReason, setRefundReason] = useState("");
   const [refundBusy, setRefundBusy] = useState(false);
   const [refundError, setRefundError] = useState("");
+  const [refundDest, setRefundDest] = useState("");
   const fragmentToken = typeof window !== "undefined"
     ? new URLSearchParams(window.location.hash.replace(/^#/, "")).get("access_token") || ""
     : "";
@@ -144,11 +145,21 @@ export default function OrderConfirmation() {
         : "Describe the situation in a few words (at least 10 characters).");
       return;
     }
+    // Paiement en crypto : nous ne savons PAS d'où vient le dépôt. NOWPayments
+    // nous dit qu'il est arrivé, jamais de quel portefeuille. Sans adresse,
+    // le remboursement n'aurait nulle part où aller.
+    if (order.payment_method === "nowpayments" && !refundDest.trim()) {
+      setRefundError(lang === "fr"
+        ? "Indiquez l'adresse du portefeuille où renvoyer les fonds."
+        : "Enter the wallet address where the funds should be sent back.");
+      return;
+    }
     setRefundBusy(true);
     setRefundError("");
     try {
       await api.post(`/orders/${order.id}/refund-request`,
-        { reason: refundReason.trim(), refund_type: "full" }, guestRequestConfig(guestToken));
+        { reason: refundReason.trim(), refund_type: "full",
+          refund_destination: refundDest.trim() }, guestRequestConfig(guestToken));
       const fresh = await api.get(`/orders/${order.id}`, guestRequestConfig(guestToken));
       setOrder(fresh.data);
       setRefundReason("");
@@ -387,31 +398,55 @@ export default function OrderConfirmation() {
                 {fr ? etat[0] : etat[1]}
                 {order.refund_status === "denied" && order.refund_admin_note ? ` — ${order.refund_admin_note}` : ""}
               </p>
+            ) : expediee ? (
+              /* APRES EXPEDITION : PAS DE SECOND FORMULAIRE.
+                 Un produit endommage se montre — la conversation ci-dessous
+                 accepte les photos, un champ de texte non. Deux entrees qui
+                 font la meme chose obligeaient a choisir sans savoir laquelle
+                 mene quelque part. */
+              <>
+                <p className="text-sm text-foreground/70 leading-relaxed">
+                  {fr
+                    ? "Toutes les ventes sont finales, sauf produit endommagé ou erreur de commande. Signalez-le idéalement dans les 48 heures suivant la livraison, avec une photo — nous ouvrons le dossier depuis votre message."
+                    : "All sales are final, except for a damaged product or an order error. Ideally report it within 48 hours of delivery, with a photo — we open the case from your message."}
+                </p>
+                <button onClick={() => setShowChat(true)} data-testid="refund-open-chat"
+                  className="bg-nordfjord text-white rounded font-mono text-xs uppercase tracking-[0.2em] px-4 py-2">
+                  {fr ? "Signaler un problème avec photo" : "Report an issue with a photo"}
+                </button>
+              </>
             ) : (
               <>
                 <p className="text-sm text-foreground/70 leading-relaxed">
-                  {expediee
-                    ? (fr
-                      ? "Toutes les ventes sont finales, sauf produit endommagé ou erreur de commande. Signalez-le idéalement dans les 48 heures suivant la livraison, et joignez des photos dans la section ci-dessous."
-                      : "All sales are final, except for a damaged product or an order error. Ideally report it within 48 hours of delivery, and attach photos in the section below.")
-                    : (fr
-                      ? "Votre commande n'est pas encore expédiée : vous pouvez en demander l'annulation. Le remboursement suit la confirmation."
-                      : "Your order hasn't shipped yet: you can ask to cancel it. The refund follows confirmation.")}
+                  {fr
+                    ? "Votre commande n'est pas encore expédiée : vous pouvez en demander l'annulation. Le remboursement suit la confirmation."
+                    : "Your order hasn't shipped yet: you can ask to cancel it. The refund follows confirmation."}
                 </p>
                 <textarea value={refundReason} onChange={(e) => setRefundReason(e.target.value)}
                   rows={3} maxLength={1000} data-testid="refund-reason"
-                  placeholder={expediee
-                    ? (fr ? "Décrivez le problème : produit endommagé, article manquant ou erroné…" : "Describe the issue: damaged, missing or wrong item…")
-                    : (fr ? "Pourquoi souhaitez-vous annuler ?" : "Why would you like to cancel?")}
+                  placeholder={fr ? "Pourquoi souhaitez-vous annuler ?" : "Why would you like to cancel?"}
                   className="w-full border border-nordfjord/30 rounded px-3 py-2 text-sm" />
+                {/* OU RENVOYER L'ARGENT. Interac : l'adresse qui a servi a
+                    payer, que nous connaissons. Crypto : nous ne savons pas
+                    d'ou vient le depot — seule la personne qui a paye le
+                    sait. */}
+                {order.payment_method === "nowpayments" ? (
+                  <input value={refundDest} onChange={(e) => setRefundDest(e.target.value)}
+                    maxLength={200} data-testid="refund-destination"
+                    placeholder={fr ? "Adresse du portefeuille où renvoyer les fonds" : "Wallet address to send the funds back to"}
+                    className="w-full border border-nordfjord/30 rounded px-3 py-2 text-sm font-mono" />
+                ) : (
+                  <p className="text-xs text-foreground/60" data-testid="refund-destination-interac">
+                    {fr ? "Remboursement par Interac à " : "Refund by Interac to "}
+                    <b>{order.email}</b>
+                  </p>
+                )}
                 {refundError && <p className="text-sm text-error" data-testid="refund-error">{refundError}</p>}
                 <button onClick={demanderRemboursement} disabled={refundBusy} data-testid="refund-submit"
                   className="bg-nordfjord text-white rounded font-mono text-xs uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-50">
                   {refundBusy
                     ? (fr ? "Envoi…" : "Sending…")
-                    : expediee
-                      ? (fr ? "Envoyer ma demande" : "Send my request")
-                      : (fr ? "Demander l'annulation" : "Request cancellation")}
+                    : (fr ? "Demander l'annulation" : "Request cancellation")}
                 </button>
               </>
             )}
@@ -427,7 +462,7 @@ export default function OrderConfirmation() {
 
       <div className="mt-10 border border-nordfjord/20 rounded-xl overflow-hidden">
         <button onClick={() => setShowChat((v) => !v)} className="w-full text-left px-6 py-4 font-mono text-xs uppercase tracking-[0.25em] text-foreground/70 hover:bg-clinical" data-testid="problem-toggle">
-          {lang === "fr" ? "Un problème avec votre commande ?" : "An issue with your order?"} <span className="float-right">{showChat ? "−" : "+"}</span>
+          {lang === "fr" ? "Messages sur cette commande" : "Messages about this order"} <span className="float-right">{showChat ? "−" : "+"}</span>
         </button>
         {showChat && (
           <div className="px-6 pb-6 space-y-3">

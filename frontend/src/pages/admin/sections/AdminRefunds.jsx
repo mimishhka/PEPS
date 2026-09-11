@@ -42,6 +42,10 @@ export default function AdminRefunds() {
   const [txRefs, setTxRefs] = useState({});
   const [types, setTypes] = useState({});
   const [methods, setMethods] = useState({});
+  // Où renvoyer l'argent. Pré-rempli avec ce que porte le dossier ; modifiable
+  // ici parce que pour un paiement crypto, l'adresse arrive souvent APRÈS —
+  // dans la conversation avec le client, faute de la connaître au départ.
+  const [dests, setDests] = useState({});
 
   const enRetard = compterEnRetard(items);
 
@@ -77,12 +81,21 @@ export default function AdminRefunds() {
     const isReplace = item?.refund_approved_type === "replace";
     const tx = isReplace ? "REPLACE" : (txRefs[id] || "").trim();
     if (!tx) { toast.error(L("Référence tx requise", "TX reference required")); return; }
+    // Un remboursement en argent doit avoir une destination. Sans elle, on
+    // enregistrerait un envoi sans pouvoir dire où il est parti.
+    const dest = (dests[id] ?? item?.refund_destination ?? "").trim();
+    if (!isReplace && !dest) {
+      toast.error(L("Indiquez où les fonds ont été renvoyés",
+                    "State where the funds were sent back"));
+      return;
+    }
     setBusy(id);
     try {
       await api.post(`/admin/orders/${id}/refund-processed`, {
         tx_reference: tx,
         admin_note: notes[id] || "",
         refund_method: methods[id] || undefined,
+        refund_destination: dest,
       });
       toast.success(isReplace
         ? L("Remplacement enregistré", "Replacement recorded")
@@ -179,6 +192,18 @@ export default function AdminRefunds() {
                   <div className="text-sm text-nordfjord mt-2 whitespace-pre-line">
                     <b>{L("Raison", "Reason")}: </b>{r.refund_reason}
                   </div>
+                  {/* OU renvoyer l'argent. Pour un paiement crypto sans
+                      adresse fournie, la case est vide et le dit : il faut la
+                      demander au client avant d'envoyer quoi que ce soit. */}
+                  <div className="text-xs text-compliance mt-1" data-testid={`refund-dest-${r.id}`}>
+                    {L("Renvoyer à", "Send back to")} :{" "}
+                    {r.refund_destination
+                      ? <b className="font-mono">{r.refund_destination}</b>
+                      : <b className="text-amber-700">{L("adresse à demander au client", "address to ask the customer for")}</b>}
+                    {r.refund_destination_type === "crypto_address"
+                      ? L(" · portefeuille crypto", " · crypto wallet")
+                      : L(" · courriel Interac", " · Interac email")}
+                  </div>
                   {r.refund_admin_note && (
                     <div className="text-xs text-compliance mt-1"><b>Note admin :</b> {r.refund_admin_note}</div>
                   )}
@@ -235,6 +260,11 @@ export default function AdminRefunds() {
                             <option value="crypto">{L("Crypto", "Crypto")}</option>
                             <option value="interac">{L("Interac", "Interac")}</option>
                           </select>
+                          <input type="text"
+                            placeholder={L("Où les fonds ont été renvoyés", "Where the funds were sent back")}
+                            value={dests[r.id] ?? r.refund_destination ?? ""}
+                            onChange={(e) => setDests({...dests, [r.id]: e.target.value})}
+                            data-testid={`dest-${r.id}`} className="border rounded px-2 py-1 text-xs w-full font-mono"/>
                         </>
                       )}
                       <button onClick={() => markProcessed(r.id, r)} disabled={busy===r.id}

@@ -209,3 +209,94 @@ def test_repondre_rouvre_et_l_equipe_previent_le_client(server_module, monkeypat
         doc["id"], server_module.AffiliateTicketReplyIn(body="Et pour les Îles ?"), _MARIE))
     assert suite["status"] == "open"
     assert len(suite["messages"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# Ou renvoyer l'argent
+# ---------------------------------------------------------------------------
+
+def _capturer_dossier(server_module):
+    ecrit = {}
+
+    class Orders:
+        async def update_one(self, filtre, update):
+            ecrit.update(update["$set"])
+
+    server_module.db = types.SimpleNamespace(orders=Orders())
+    return ecrit
+
+
+def test_interac_revient_a_l_adresse_de_la_commande(server_module):
+    """Nous connaissons cette adresse : c'est celle a qui la confirmation est
+    partie. Elle sert de defaut, et reste modifiable."""
+    ecrit = _capturer_dossier(server_module)
+    asyncio.run(server_module._set_refund_requested(
+        "o-1", "je souhaite annuler", None, "full",
+        order={"id": "o-1", "payment_status": "paid", "fulfillment_status": "processing",
+               "payment_method": "interac", "email": "marie@example.com"}))
+    assert ecrit["refund_destination"] == "marie@example.com"
+    assert ecrit["refund_destination_type"] == "interac_email"
+
+
+def test_crypto_sans_adresse_reste_vide_et_le_dit(server_module):
+    """NOWPayments nous dit qu'un depot est arrive, jamais de quel
+    portefeuille : il n'y a pas de defaut honnete a inventer."""
+    ecrit = _capturer_dossier(server_module)
+    asyncio.run(server_module._set_refund_requested(
+        "o-2", "je souhaite annuler", None, "full",
+        order={"id": "o-2", "payment_status": "paid", "fulfillment_status": "processing",
+               "payment_method": "nowpayments", "email": "marie@example.com"}))
+    assert ecrit["refund_destination"] == ""
+    assert ecrit["refund_destination_type"] == "crypto_address"
+
+
+def test_l_adresse_donnee_par_le_client_est_conservee(server_module):
+    ecrit = _capturer_dossier(server_module)
+    asyncio.run(server_module._set_refund_requested(
+        "o-3", "je souhaite annuler", None, "full",
+        order={"id": "o-3", "payment_status": "paid", "fulfillment_status": "processing",
+               "payment_method": "nowpayments", "email": "marie@example.com"},
+        destination="TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"))
+    assert ecrit["refund_destination"] == "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+
+
+# ---------------------------------------------------------------------------
+# Les commandes d'un billet
+# ---------------------------------------------------------------------------
+
+def test_les_commandes_du_billet_portent_ce_qui_bloque(server_module):
+    """Une commande non eligible reste proposee, avec sa raison : l'ecran la
+    desactive au lieu d'echouer apres le clic."""
+    class Tickets:
+        async def find_one(self, filtre, projection=None):
+            return {"user_id": "u-1", "customer_email": "Marie@Example.com"}
+
+    class Curseur:
+        def __init__(self, docs):
+            self.docs = docs
+
+        def sort(self, *a):
+            return self
+
+        async def to_list(self, n):
+            return [dict(d) for d in self.docs]
+
+    capture = {}
+
+    class Orders:
+        def find(self, filtre, projection=None):
+            capture["filtre"] = filtre
+            return Curseur([
+                {"id": "o-1", "order_number": "FN-1", "payment_status": "paid",
+                 "fulfillment_status": "processing"},
+                {"id": "o-2", "order_number": "FN-2", "payment_status": "cancelled",
+                 "fulfillment_status": "cancelled"},
+            ])
+
+    server_module.db = types.SimpleNamespace(customer_tickets=Tickets(), orders=Orders())
+    res = asyncio.run(server_module.admin_customer_ticket_orders("t-1"))
+    assert res["items"][0]["refund_blocked_reason"] is None
+    assert "pas payée" in res["items"][1]["refund_blocked_reason"]
+    # Le client est retrouve par son compte OU par son courriel, en minuscules.
+    assert {"user_id": "u-1"} in capture["filtre"]["$or"]
+    assert {"email": "marie@example.com"} in capture["filtre"]["$or"]

@@ -3940,6 +3940,14 @@ class RefundRequestIn(BaseModel):
     # puis « marquer envoye » enregistrait un remboursement en ARGENT avec une
     # reference inventee — le client ne recevait rien.
     refund_type: str = Field(default="full", pattern="^(full|partial|replace)$")
+    # OU RENVOYER L'ARGENT.
+    #
+    # Interac : l'adresse courriel qui a servi a payer — nous la connaissons,
+    # c'est celle de la commande. Crypto : l'adresse du portefeuille, que nous
+    # ne connaissons PAS. NOWPayments nous dit qu'un depot est arrive, jamais
+    # d'ou il vient : seule la personne qui a paye peut donner ou renvoyer.
+    # D'ou ce champ, rempli par le client au moment de sa demande.
+    refund_destination: str = Field(default="", max_length=200)
 
 
 class AdminRefundCaseIn(BaseModel):
@@ -3955,6 +3963,9 @@ class RefundDecisionIn(BaseModel):
 
 class RefundProcessedIn(BaseModel):
     tx_reference: str = Field(min_length=3)
+    # Corrige la destination au moment du reglement si elle a change entre-temps
+    # (le client a donne une autre adresse dans la conversation, par exemple).
+    refund_destination: str = Field(default="", max_length=200)
     admin_note: str = ""
     refund_method: Optional[str] = Field(default=None, pattern="^(interac|crypto)$")
 
@@ -4019,7 +4030,8 @@ def _refund_late_note(order: dict) -> Optional[str]:
 
 
 async def _set_refund_requested(order_id: str, reason: str, amount_requested, refund_type: str,
-                                order: Optional[dict] = None, source: str = "client") -> str:
+                                order: Optional[dict] = None, source: str = "client",
+                                destination: str = "") -> str:
     """Pose un dossier de remboursement à « requested » (source unique pour le
     client ET l'admin). Le simple fait de demander gèle la commission affiliée
     via _echeance_acquisition, tant que la décision n'est pas rendue.
@@ -4031,6 +4043,15 @@ async def _set_refund_requested(order_id: str, reason: str, amount_requested, re
     order = order or {}
     avant_expedition = (order.get("fulfillment_status") or "") not in ("shipped", "delivered")
     tardif = _refund_late_note(order) if order else None
+    # La destination suit le MOYEN DE PAIEMENT. Pour Interac, l'adresse de la
+    # commande est un defaut sur : c'est celle a qui la confirmation a ete
+    # envoyee. Pour la crypto, il n'y a pas de defaut possible — le champ reste
+    # vide tant que le client n'a pas donne son adresse, et l'ecran le dit.
+    methode = (order.get("payment_method") or "").strip().lower()
+    type_destination = "crypto_address" if methode == "nowpayments" else "interac_email"
+    destination = (destination or "").strip()
+    if not destination and type_destination == "interac_email":
+        destination = (order.get("email") or "").strip()
     now_iso = datetime.now(timezone.utc).isoformat()
     await db.orders.update_one({"id": order_id}, {"$set": {
         "refund_status": "requested", "refund_requested_at": now_iso,
@@ -4040,6 +4061,8 @@ async def _set_refund_requested(order_id: str, reason: str, amount_requested, re
         "refund_late": bool(tardif),
         "refund_late_note": tardif or "",
         "refund_source": source,
+        "refund_destination": destination,
+        "refund_destination_type": type_destination,
     }})
     return now_iso
 
@@ -4055,7 +4078,8 @@ async def admin_refund_case(order_id: str, payload: RefundRequestIn,
     if ineligible:
         raise HTTPException(400, ineligible)
     await _set_refund_requested(order_id, payload.reason.strip(), payload.amount_requested,
-                                payload.refund_type, order=order, source="admin")
+                                payload.refund_type, order=order, source="admin",
+                                destination=payload.refund_destination)
     return {"ok": True, "refund_status": "requested"}
 
 
@@ -4190,7 +4214,8 @@ async def order_request_refund(order_id: str, payload: RefundRequestIn, request:
     if ineligible:
         raise HTTPException(400, ineligible)
     await _set_refund_requested(order_id, payload.reason.strip(), payload.amount_requested,
-                                payload.refund_type, order=order, source="client")
+                                payload.refund_type, order=order, source="client",
+                                destination=payload.refund_destination)
     # L'avis dit tout de suite de QUOI il s'agit — une annulation se traite en
     # minutes, un produit endommagé demande de regarder des photos — et signale
     # un délai dépassé. La raison est ÉCHAPPÉE : c'est du texte libre saisi par
@@ -4414,6 +4439,10 @@ async def admin_refund_processed(order_id: str, payload: RefundProcessedIn, admi
         "refund_processed_by": admin.get("email"),
         "refund_admin_note_processed": payload.admin_note or "",
         "refund_method": payload.refund_method,
+        # Ou l'argent est reellement parti — la trace qui compte si le client
+        # dit ne rien avoir recu.
+        "refund_destination": (payload.refund_destination or "").strip()
+                              or order.get("refund_destination", ""),
     }})
     try:
         await _send_email(order.get("email", ""),
@@ -4439,7 +4468,8 @@ async def admin_refunds_list(status: Optional[str] = None, limit: int = 50):
         "refund_admin_note": 1, "refund_tx_reference": 1, "refund_processed_at": 1,
         "refund_method": 1,
         "refund_before_shipping": 1, "refund_late": 1, "refund_late_note": 1,
-        "refund_source": 1,
+        "refund_source": 1, "refund_destination": 1, "refund_destination_type": 1,
+        "payment_method": 1,
     }).sort("refund_requested_at", -1).limit(limit)
     return {"items": [d async for d in cursor], "total": await db.orders.count_documents(q)}
 
@@ -10378,6 +10408,35 @@ async def _notify_customer_ticket_reply(ticket: dict) -> None:
   </div>
 </div>"""
     await _send_email(email, f"Réponse à votre demande — {sujet[:60]}", body_html)
+
+
+async def admin_customer_ticket_orders(ticket_id: str):
+    """Les commandes du client qui a ouvert ce billet.
+
+    Pour ouvrir un dossier de remboursement depuis le billet, il faut savoir
+    DE QUELLE commande on parle. Chercher le numero a la main dans un autre
+    ecran, puis revenir, c'est l'occasion de se tromper de commande.
+
+    Chaque ligne porte la raison qui empecherait d'ouvrir un dossier — la
+    meme regle que partout ailleurs, calculee ici pour que l'ecran puisse
+    desactiver le choix au lieu d'echouer apres coup.
+    """
+    billet = await db.customer_tickets.find_one(
+        {"id": ticket_id}, {"_id": 0, "user_id": 1, "customer_email": 1})
+    if not billet:
+        raise HTTPException(404, "Billet introuvable")
+    courriel = (billet.get("customer_email") or "").strip().lower()
+    filtre = {"$or": [{"user_id": billet.get("user_id")}]}
+    if courriel:
+        filtre["$or"].append({"email": courriel})
+    commandes = await db.orders.find(filtre, {
+        "_id": 0, "id": 1, "order_number": 1, "total": 1, "created_at": 1,
+        "payment_status": 1, "fulfillment_status": 1, "refund_status": 1,
+        "payment_method": 1, "email": 1,
+    }).sort("created_at", -1).to_list(100)
+    for commande in commandes:
+        commande["refund_blocked_reason"] = _refund_eligibility_reason(commande)
+    return {"items": commandes}
 
 
 async def admin_customer_ticket_status(ticket_id: str, payload: AffiliateTicketStatusIn):

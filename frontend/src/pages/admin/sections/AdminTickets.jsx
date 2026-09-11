@@ -20,6 +20,7 @@ import { MessageSquare, Clock, CheckCircle2 } from "lucide-react";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
 import { Identity } from "../ui";
+import TicketRefund from "./TicketRefund";
 
 const DELAI_HEURES = 48;   // au-delà, le billet est signalé comme en retard
 
@@ -53,6 +54,9 @@ export default function AdminTickets({
   titre = { fr: "Billets affiliés", en: "Affiliate tickets" },
   identite = IDENTITE_AFFILIE,
   testid = "admin-tickets",
+  // Ouvrir un dossier de remboursement depuis le billet. Réservé aux billets
+  // CLIENTS : un affilié n'a pas de commande à rembourser.
+  remboursement = false,
 }) {
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
@@ -219,6 +223,18 @@ export default function AdminTickets({
                       {t.snapshot.payout_currency && ` · ${t.snapshot.payout_currency.toUpperCase()}`}
                       {t.snapshot.payout_address && ` · ${t.snapshot.payout_address.slice(0, 10)}…`}
                     </p>
+                  )}
+
+                  {/* Le remboursement se demande presque toujours par un
+                      message. Ouvrir le dossier ICI évite d'aller chercher le
+                      numéro de commande dans un autre écran — et d'en prendre
+                      un autre par mégarde. Le dossier reste le MÊME objet,
+                      décidé dans Remboursements comme tous les autres. */}
+                  {remboursement && (
+                    <div className="pt-1">
+                      <TicketRefund ticketId={t.id} base={base} sujet={t.subject}
+                        L={L} onDone={charger} />
+                    </div>
                   )}
 
                   <div className="flex gap-2 pt-1">

@@ -116,3 +116,11 @@ async def admin_customer_ticket_reply(ticket_id: str, payload: s.AffiliateTicket
 async def admin_customer_ticket_status(ticket_id: str, payload: s.AffiliateTicketStatusIn,
                                        _admin: dict = Depends(s.require_area("orders", "manage"))):
     return await s.admin_customer_ticket_status(ticket_id, payload)
+
+
+@router.get("/admin/customer-tickets/{ticket_id}/orders")
+async def admin_customer_ticket_orders(ticket_id: str,
+                                       _admin: dict = Depends(s.require_area("orders", "view"))):
+    """Les commandes du client qui a ouvert ce billet, pour ouvrir un dossier
+    de remboursement sans chercher le numero dans un autre ecran."""
+    return await s.admin_customer_ticket_orders(ticket_id)

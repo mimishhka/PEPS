@@ -260,6 +260,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
               ? <AdminTickets base="/admin/customer-tickets"
                   titre={{ fr: "Billets clients", en: "Customer tickets" }}
                   identite={(t) => ({ name: t.customer_name, email: t.customer_email, code: "" })}
+                  remboursement
                   testid="admin-customer-tickets" />
               : <Navigate to={landingPath} replace />} />
             <Route path="staff" element={hasAccess(user, "staff") ? <AdminStaff /> : <Navigate to={landingPath} replace />} />

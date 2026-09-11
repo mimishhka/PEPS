@@ -59,17 +59,41 @@ it("propose l'annulation d'une commande pas encore expediee", async () => {
 
   await waitFor(() => expect(api.post).toHaveBeenCalledWith(
     "/orders/o-1/refund-request",
-    { reason: "Je me suis trompé de dosage", refund_type: "full" },
+    { reason: "Je me suis trompé de dosage", refund_type: "full", refund_destination: "" },
     expect.anything()));
   expect(await screen.findByTestId("refund-status")).toHaveTextContent(/Demande reçue/);
 });
 
-it("parle de produit endommage une fois la commande livree", () => {
+it("apres expedition, renvoie vers la conversation au lieu d'un second formulaire", () => {
+  // Deux entrees qui faisaient la meme chose : un formulaire de texte et une
+  // conversation. Seule la conversation accepte les photos — c'est elle qui
+  // reste, et le formulaire disparait.
   mockEtat = { order: { ...COMMANDE, fulfillment_status: "delivered" } };
   render(<OrderConfirmation />);
   expect(screen.getByTestId("refund-card"))
     .toHaveTextContent(/Produit endommagé ou erreur de commande/);
-  expect(screen.getByTestId("refund-submit")).toHaveTextContent(/Envoyer ma demande/);
+  expect(screen.queryByTestId("refund-submit")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("refund-reason")).not.toBeInTheDocument();
+  expect(screen.getByTestId("refund-open-chat")).toBeInTheDocument();
+});
+
+it("demande ou renvoyer les fonds quand la commande a ete payee en crypto", async () => {
+  // NOWPayments nous dit qu'un depot est arrive, jamais de quel portefeuille.
+  mockEtat = { order: { ...COMMANDE, payment_method: "nowpayments" } };
+  render(<OrderConfirmation />);
+  expect(screen.getByTestId("refund-destination")).toBeInTheDocument();
+
+  await userEvent.type(screen.getByTestId("refund-reason"), "Je me suis trompé de dosage");
+  await userEvent.click(screen.getByTestId("refund-submit"));
+  expect(screen.getByTestId("refund-error")).toBeInTheDocument();
+  expect(api.post).not.toHaveBeenCalled();
+});
+
+it("annonce le remboursement Interac a l'adresse de la commande", () => {
+  mockEtat = { order: { ...COMMANDE, payment_method: "interac", email: "marie@example.com" } };
+  render(<OrderConfirmation />);
+  expect(screen.getByTestId("refund-destination-interac"))
+    .toHaveTextContent("marie@example.com");
 });
 
 it("refuse une demande vide sans appeler le serveur", async () => {
