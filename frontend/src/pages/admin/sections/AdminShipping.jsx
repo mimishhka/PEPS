@@ -48,53 +48,53 @@ export default function AdminShipping() {
     <div className="p-8" data-testid="admin-shipping">
       <div className="flex items-end justify-between mb-6">
         <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// LOGISTICS</div>
-          <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">Shipping</h1>
-          <p className="font-mono text-xs text-foreground/60 mt-1">{zones.length} zones</p>
+          <div className="font-data text-[11px] tracking-[0.18em] text-nova">Logistique</div>
+          <h1 className="font-display text-3xl font-bold tracking-tight mt-1 text-nordfjord">Shipping</h1>
+          <p className="font-data text-xs text-glacier mt-1">{zones.length} zones</p>
         </div>
-        <button onClick={() => setEditingZone({ ...blankZone })} data-testid="new-zone-btn" className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-foreground/80">
-          <Plus size={14} /> New Zone
+        <button onClick={() => setEditingZone({ ...blankZone })} data-testid="new-zone-btn" className="bg-nordfjord text-white font-data text-xs rounded-lg px-4 py-2.5 flex items-center gap-2 hover:opacity-90">
+          <Plus size={14} /> Nouvelle zone
         </button>
       </div>
 
       <div className="space-y-4">
         {zones.map((z) => (
-          <div key={z.id} className="bg-white border border-ink/10" data-testid={`zone-${z.id}`}>
-            <div className="px-6 py-4 border-b border-ink/10 flex items-center justify-between">
+          <div key={z.id} className="bg-card border border-ash/60 rounded-xl" data-testid={`zone-${z.id}`}>
+            <div className="px-6 py-4 border-b border-ash/60 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <MapPin size={16} />
+                <MapPin size={16} className="text-nova" />
                 <div>
-                  <div className="font-display text-lg font-bold uppercase tracking-tight">{z.name}</div>
-                  <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/60">
+                  <div className="font-display text-lg font-bold tracking-tight text-nordfjord">{z.name}</div>
+                  <div className="font-data text-[10px] text-glacier">
                     {z.countries.join(", ")} {z.provinces.length ? `· ${z.provinces.length} provinces` : ""}
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => setEditingZone({ ...z })} data-testid={`edit-zone-${z.id}`} className="border border-ink/30 px-2 py-2 hover:bg-ink hover:text-white"><Edit size={12} /></button>
-                <button onClick={() => delZone(z.id)} data-testid={`delete-zone-${z.id}`} className="border border-ink/30 px-2 py-2 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={12} /></button>
-                <button onClick={() => setEditingMethod(blankMethod(z.id))} data-testid={`add-method-${z.id}`} className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-3 py-2 flex items-center gap-1.5"><Plus size={12} /> Method</button>
+                <button onClick={() => setEditingZone({ ...z })} data-testid={`edit-zone-${z.id}`} className="border border-ash text-glacier rounded-md px-2 py-2 hover:bg-clinical hover:text-nordfjord"><Edit size={12} /></button>
+                <button onClick={() => delZone(z.id)} data-testid={`delete-zone-${z.id}`} className="border border-ash text-glacier rounded-md px-2 py-2 hover:bg-error hover:text-white hover:border-error"><Trash2 size={12} /></button>
+                <button onClick={() => setEditingMethod(blankMethod(z.id))} data-testid={`add-method-${z.id}`} className="bg-nordfjord text-white text-xs font-data rounded-lg px-3 py-2 flex items-center gap-1.5"><Plus size={12} /> Méthode</button>
               </div>
             </div>
-            <div className="divide-y divide-ink/5">
+            <div className="divide-y divide-ash/50">
               {(z.methods || []).map((m) => (
                 <div key={m.id} className="px-6 py-3 flex items-center justify-between" data-testid={`method-${m.id}`}>
                   <div>
-                    <div className="font-bold text-sm">{m.name}</div>
-                    <div className="font-mono text-[10px] text-foreground/50">{m.eta_days} {m.active ? "" : "· INACTIVE"}</div>
+                    <div className="font-semibold text-sm text-nordfjord">{m.name}</div>
+                    <div className="font-data text-[10px] text-glacier">{m.eta_days} {m.active ? "" : "· INACTIVE"}</div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="font-bold tabular-nums">${m.cost_cad.toFixed(2)}</div>
-                    <button onClick={() => setEditingMethod({ ...m })} className="border border-ink/30 px-2 py-2 hover:bg-ink hover:text-white"><Edit size={11} /></button>
-                    <button onClick={() => delMethod(m.id)} className="border border-ink/30 px-2 py-2 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={11} /></button>
+                    <div className="font-semibold tabular-nums text-nordfjord">${m.cost_cad.toFixed(2)}</div>
+                    <button onClick={() => setEditingMethod({ ...m })} className="border border-ash text-glacier rounded-md px-2 py-2 hover:bg-clinical hover:text-nordfjord"><Edit size={11} /></button>
+                    <button onClick={() => delMethod(m.id)} className="border border-ash text-glacier rounded-md px-2 py-2 hover:bg-error hover:text-white hover:border-error"><Trash2 size={11} /></button>
                   </div>
                 </div>
               ))}
-              {!z.methods?.length && <div className="px-6 py-4 font-mono text-xs text-foreground/50">No methods configured.</div>}
+              {!z.methods?.length && <div className="px-6 py-4 font-data text-xs text-glacier">Aucune méthode configurée.</div>}
             </div>
           </div>
         ))}
-        {!zones.length && <div className="bg-white border border-ink/10 p-12 text-center font-mono text-sm text-foreground/50">No zones configured yet.</div>}
+        {!zones.length && <div className="bg-card border border-ash/60 rounded-xl p-12 text-center font-data text-sm text-glacier">Aucune zone configurée.</div>}
       </div>
 
       {editingZone && (
@@ -125,10 +125,10 @@ export default function AdminShipping() {
 function Modal({ children, onClose, title, test }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white border border-ink w-full max-w-md p-6 space-y-3" onClick={(e) => e.stopPropagation()} data-testid={test}>
+      <div className="bg-card border border-ash/60 rounded-xl w-full max-w-md p-6 space-y-3" onClick={(e) => e.stopPropagation()} data-testid={test}>
         <div className="flex items-center justify-between mb-2">
-          <div className="font-display text-xl font-bold uppercase tracking-tight">{title}</div>
-          <button onClick={onClose}><X size={18} /></button>
+          <div className="font-display text-xl font-bold tracking-tight text-nordfjord">{title}</div>
+          <button onClick={onClose} className="text-glacier hover:text-nordfjord"><X size={18} /></button>
         </div>
         {children}
       </div>
@@ -138,16 +138,16 @@ function Modal({ children, onClose, title, test }) {
 function F({ label, value, onChange, type = "text", test }) {
   return (
     <div>
-      <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">{label}</label>
-      <input type={type} value={value ?? ""} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm" />
+      <label className="block font-data text-[11px] mb-1 text-glacier">{label}</label>
+      <input type={type} value={value ?? ""} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ash rounded-lg px-3 py-2 text-sm text-nordfjord outline-none focus:border-nova" />
     </div>
   );
 }
 function Actions({ onSave, onCancel, saveTest }) {
   return (
     <div className="flex gap-2 pt-2">
-      <button onClick={onSave} data-testid={saveTest} className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-5 py-3 flex items-center gap-2"><Save size={14} /> Save</button>
-      <button onClick={onCancel} className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-5 py-3">Cancel</button>
+      <button onClick={onSave} data-testid={saveTest} className="bg-nordfjord text-white font-data text-xs rounded-lg px-5 py-3 flex items-center gap-2 hover:opacity-90"><Save size={14} /> Enregistrer</button>
+      <button onClick={onCancel} className="border border-ash font-data text-xs rounded-lg px-5 py-3 text-nordfjord hover:bg-clinical">Annuler</button>
     </div>
   );
 }

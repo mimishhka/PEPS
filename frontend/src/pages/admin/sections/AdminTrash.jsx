@@ -84,19 +84,19 @@ export default function AdminTrash() {
   return (
     <div className="p-8" data-testid="admin-trash">
       <div className="mb-6">
-        <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// TRASH</div>
-        <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">Trash</h1>
-        <p className="font-mono text-xs text-foreground/60 mt-1">
+        <div className="font-data text-[11px] tracking-[0.18em] text-nova">Corbeille</div>
+        <h1 className="font-display text-3xl font-bold tracking-tight mt-1 text-nordfjord">Trash</h1>
+        <p className="font-data text-xs text-glacier mt-1">
           Deleted items are recoverable here for 30 days, then permanently purged automatically
           {" "}— except orders, which are kept until you purge them manually.
         </p>
       </div>
 
-      <div className="flex gap-1 border-b border-ink/20 mb-6">
+      <div className="flex gap-1 border-b border-ash/60 mb-6">
         {RESOURCES.map((r) => (
           <button key={r.key} onClick={() => setResource(r.key)} data-testid={`trash-tab-${r.key}`}
-            className={`font-mono text-xs uppercase tracking-[0.15em] px-4 py-3 -mb-px border-b-2 ${
-              resource === r.key ? "border-ink font-bold" : "border-transparent text-foreground/60 hover:text-ink"
+            className={`font-data text-xs px-4 py-3 -mb-px border-b-2 ${
+              resource === r.key ? "border-nova font-semibold text-nordfjord" : "border-transparent text-glacier hover:text-nordfjord"
             }`}>
             {r.label}
           </button>
@@ -104,7 +104,7 @@ export default function AdminTrash() {
       </div>
 
       {activeResource?.noAutoPurge && (
-        <div className="flex items-start gap-2 border border-ash/40 bg-glacier/5 px-4 py-3 mb-5 text-xs text-foreground/70">
+        <div className="flex items-start gap-2 border border-ash/40 bg-clinical px-4 py-3 rounded-xl mb-5 text-xs text-glacier">
           <AlertTriangle size={14} className="text-glacier mt-0.5 shrink-0" />
           Orders are never purged automatically — they stay in trash until you purge them yourself.
           A paid order is an accounting record; restore it if it was deleted by mistake.
@@ -112,25 +112,25 @@ export default function AdminTrash() {
       )}
 
       <div className="flex items-center justify-between mb-3">
-        <label className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em]">
-          <input type="checkbox" checked={items.length > 0 && selected.size === items.length} onChange={toggleAll} />
+        <label className="flex items-center gap-2 font-data text-[11px] text-glacier">
+          <input type="checkbox" checked={items.length > 0 && selected.size === items.length} onChange={toggleAll} className="accent-nova" />
           {selected.size} selected
         </label>
         <div className="flex gap-3">
           <button onClick={restore} disabled={busy || selected.size === 0} data-testid="trash-restore-btn"
-            className="flex items-center gap-2 bg-ink text-white font-mono text-xs uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-40">
+            className="flex items-center gap-2 bg-nordfjord text-white font-data text-xs rounded-lg px-4 py-2 disabled:opacity-40 hover:opacity-90">
             <RotateCcw size={13} /> Restore
           </button>
           <button onClick={purge} disabled={busy || selected.size === 0} data-testid="trash-purge-btn"
-            className="flex items-center gap-2 border border-error text-error font-mono text-xs uppercase tracking-[0.2em] px-4 py-2 disabled:opacity-40 hover:bg-error hover:text-white">
+            className="flex items-center gap-2 border border-error text-error font-data text-xs rounded-lg px-4 py-2 disabled:opacity-40 hover:bg-error hover:text-white">
             <Trash2 size={13} /> Delete forever
           </button>
         </div>
       </div>
 
-      <div className="bg-white border border-ink/10">
+      <div className="bg-card border border-ash/60 rounded-xl">
         {items.length === 0 ? (
-          <div className="p-8 text-center text-foreground/50 font-mono text-xs uppercase tracking-[0.15em]" data-testid="trash-empty">
+          <div className="p-8 text-center text-glacier font-data text-xs" data-testid="trash-empty">
             Trash is empty
           </div>
         ) : (
@@ -138,7 +138,7 @@ export default function AdminTrash() {
           <table className="w-full text-sm">
             <tbody>
               {items.map((item) => (
-                <tr key={item.id} className="border-t border-ink/5" data-testid={`trash-row-${item.id}`}>
+                <tr key={item.id} className="border-t border-ash/40" data-testid={`trash-row-${item.id}`}>
                   <td className="px-4 py-3 w-8">
                     <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggle(item.id)} />
                   </td>

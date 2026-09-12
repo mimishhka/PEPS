@@ -185,10 +185,10 @@ export default function AdminDispatch() {
     <div data-testid="admin-dispatch">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="font-display text-3xl font-bold uppercase tracking-tight flex items-center gap-2">
+          <h1 className="font-display text-3xl font-bold tracking-tight flex items-center gap-2 text-nordfjord">
             <Package size={26} /> Dispatch
           </h1>
-          <p className="font-mono text-xs text-foreground/60 mt-1">
+          <p className="font-data text-xs text-glacier mt-1">
             Lot d'expédition — cutoff 13 h (HE). Payé avant 13 h un jour ouvrable = expédié le jour même.
           </p>
         </div>
@@ -198,55 +198,55 @@ export default function AdminDispatch() {
             value={date}
             onChange={(e) => setDate(e.target.value)}
             data-testid="dispatch-date"
-            className="border border-ink/20 px-3 py-2 font-mono text-sm"
+            className="border border-ash px-3 py-2 font-data text-sm"
           />
-          <button onClick={load} data-testid="dispatch-refresh" className="border border-ink/20 p-2 hover:bg-ink/5" title="Rafraîchir">
+          <button onClick={load} data-testid="dispatch-refresh" className="border border-ash p-2 hover:bg-clinical rounded-lg" title="Rafraîchir">
             <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
       </div>
 
       {!configured && (
-        <div className="mt-6 flex items-center gap-2 bg-yellow-50 border border-yellow-300 text-yellow-900 px-4 py-3 font-mono text-xs" data-testid="dispatch-not-configured">
-          <AlertTriangle size={15} /> Postes Canada n'est pas configuré (clés API manquantes). La génération d'étiquettes est désactivée.
+        <div className="mt-6 flex items-center gap-2 bg-warning/10 border border-warning/30 text-nordfjord px-4 py-3 font-data text-xs rounded-xl" data-testid="dispatch-not-configured">
+          <AlertTriangle size={15} className="text-warning" /> Postes Canada n'est pas configuré (clés API manquantes). La génération d'étiquettes est désactivée.
         </div>
       )}
 
       {cpConfig && (
-        <div className="mt-3 bg-white border border-ink/10 px-4 py-3 font-mono text-[11px] text-foreground/70" data-testid="dispatch-cp-config">
+        <div className="mt-3 bg-card border border-ash/60 px-4 py-3 font-data text-[11px] text-glacier rounded-xl" data-testid="dispatch-cp-config">
           <div>
-            Mode: <span className="font-bold">{cpConfig.using_openapi ? "openapi" : "legacy"}</span> ·
-            Env: <span className="font-bold">{cpConfig.environment || "n/a"}</span> ·
-            Config: <span className={cpConfig.configured ? "text-green-700 font-bold" : "text-red-700 font-bold"}>{cpConfig.configured ? "ok" : "incomplète"}</span>
+            Mode: <span className="font-semibold text-nordfjord">{cpConfig.using_openapi ? "openapi" : "legacy"}</span> ·
+            Env: <span className="font-semibold text-nordfjord">{cpConfig.environment || "n/a"}</span> ·
+            Config: <span className={cpConfig.configured ? "text-success font-semibold" : "text-error font-semibold"}>{cpConfig.configured ? "ok" : "incomplète"}</span>
           </div>
           {isCpDevportal && (
-            <div className="mt-2 text-amber-700">
+            <div className="mt-2 text-warning">
               Devportal CP actif: les prix et identifiants retournés peuvent rester non représentatifs et ne correspondent pas a un vrai rating live contractuel.
             </div>
           )}
           {!cpConfig.configured && cpConfig.missing_required?.length > 0 && (
-            <div className="mt-1 text-red-700">Manquants: {cpConfig.missing_required.join(", ")}</div>
+            <div className="mt-1 text-error">Manquants: {cpConfig.missing_required.join(", ")}</div>
           )}
         </div>
       )}
 
       {manifest && manifest.pending_count > 0 && (
-        <div className="mt-6 flex items-center justify-between bg-red-50 border border-red-300 text-red-900 px-4 py-3" data-testid="dispatch-manifest-banner">
-          <div className="font-mono text-xs flex items-center gap-2">
-            <AlertTriangle size={15} />
+        <div className="mt-6 flex items-center justify-between bg-warning/10 border border-warning/30 text-nordfjord px-4 py-3 rounded-xl" data-testid="dispatch-manifest-banner">
+          <div className="font-data text-xs flex items-center gap-2">
+            <AlertTriangle size={15} className="text-warning" />
             {manifest.pending_count} étiquette(s) non transmise(s) — surcharge de 2 $/article tant que le manifeste n'est pas envoyé.
           </div>
           <button onClick={transmit} disabled={txBusy} data-testid="dispatch-transmit"
-            className="bg-red-600 text-white font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-red-700 disabled:opacity-50 flex items-center gap-2">
+            className="bg-error text-white font-data text-xs px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-50 flex items-center gap-2">
             <Send size={14} /> {txBusy ? "…" : "Transmettre le manifeste"}
           </button>
         </div>
       )}
 
       {manifestStatus?.transmitted && manifestUrl && (
-        <div className="mt-3 flex flex-wrap items-center gap-3 bg-white border border-ink/10 px-4 py-3 font-mono text-[11px] text-foreground/70" data-testid="dispatch-manifest-link">
+        <div className="mt-3 flex flex-wrap items-center gap-3 bg-card border border-ash/60 px-4 py-3 font-data text-[11px] text-glacier rounded-xl" data-testid="dispatch-manifest-link">
           <span>Manifeste transmis pour ce lot.</span>
-          <a href={manifestUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-ink">
+          <a href={manifestUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-nordfjord">
             Télécharger le PDF du manifeste
           </a>
         </div>
@@ -271,10 +271,10 @@ export default function AdminDispatch() {
         </div>
       )}
 
-      <div className="mt-6 flex flex-wrap items-center gap-3 bg-white border border-ink/10 p-4">
-        <label className="font-mono text-xs text-foreground/60">Service</label>
+      <div className="mt-6 flex flex-wrap items-center gap-3 bg-card border border-ash/60 rounded-xl p-4">
+        <label className="font-data text-xs text-glacier">Service</label>
         <select value={serviceCode} onChange={(e) => setServiceCode(e.target.value)} data-testid="dispatch-service"
-          className="border border-ink/20 px-3 py-2 font-mono text-sm">
+          className="border border-ash px-3 py-2 font-data text-sm rounded-lg">
           <option value="DOM.XP">DOM.XP — Xpresspost</option>
           <option value="DOM.EP">DOM.EP — Expedited Parcel</option>
           <option value="DOM.RP">DOM.RP — Regular Parcel</option>
@@ -282,22 +282,22 @@ export default function AdminDispatch() {
         </select>
         <button onClick={generateLabels} disabled={labelBusy || !configured || counts.to_label === 0}
           data-testid="dispatch-generate"
-          className="bg-ink text-white font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/80 disabled:opacity-40 flex items-center gap-2">
+          className="bg-nordfjord text-white font-data text-xs px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-40 flex items-center gap-2">
           <Package size={14} /> {labelBusy ? "Génération…" : `Générer les étiquettes (${counts.to_label})`}
         </button>
         <button onClick={() => openMerged("labels")} disabled={counts.labeled === 0} data-testid="dispatch-print-labels"
-          className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/5 disabled:opacity-40 flex items-center gap-2">
+          className="border border-ash font-data text-xs px-4 py-2 rounded-lg hover:bg-clinical disabled:opacity-40 flex items-center gap-2 text-nordfjord">
           <Printer size={14} /> Imprimer étiquettes ({counts.labeled})
         </button>
         <button onClick={() => openMerged("slips")} disabled={counts.labeled === 0} data-testid="dispatch-print-slips"
-          className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/5 disabled:opacity-40 flex items-center gap-2">
+          className="border border-ash font-data text-xs px-4 py-2 rounded-lg hover:bg-clinical disabled:opacity-40 flex items-center gap-2 text-nordfjord">
           <Printer size={14} /> Imprimer bons ({counts.labeled})
         </button>
         <button
           onClick={retryManifest}
           disabled={retryBusy || !manifestStatus?.transmitted}
           data-testid="dispatch-fetch-manifest"
-          className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/5 disabled:opacity-40 flex items-center gap-2"
+          className="border border-ash font-data text-xs px-4 py-2 rounded-lg hover:bg-clinical disabled:opacity-40 flex items-center gap-2 text-nordfjord"
           title="Récupérer le manifeste officiel auprès de Postes Canada"
         >
           <Download size={14} /> {retryBusy ? "Récupération…" : "Manifeste CP"}
@@ -306,7 +306,7 @@ export default function AdminDispatch() {
           onClick={openManifest}
           disabled={!manifestStatus?.transmitted}
           data-testid="dispatch-view-manifest"
-          className="border border-ink/20 font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-ink/5 disabled:opacity-40 flex items-center gap-2"
+          className="border border-ash font-data text-xs px-4 py-2 rounded-lg hover:bg-clinical disabled:opacity-40 flex items-center gap-2 text-nordfjord"
           title={manifestStatus?.transmitted ? "Voir et imprimer le manifeste" : "Aucun manifeste transmis pour cette date"}
         >
           <Printer size={14} /> Imprimer manifeste
@@ -403,9 +403,9 @@ export default function AdminDispatch() {
 function Money({ label, value, accent, muted }) {
   const v = value == null ? null : Number(value);
   return (
-    <div className={`bg-white border p-4 ${accent ? "border-red-300" : "border-ink/10"}`}>
-      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">{label}</div>
-      <div className={`font-display text-2xl font-bold mt-1 ${accent ? "text-red-600" : muted ? "text-foreground/50" : ""}`}>
+    <div className={`bg-card border p-4 rounded-xl ${accent ? "border-warning/50" : "border-ash/60"}`}>
+      <div className="font-data text-[10px] text-glacier">{label}</div>
+      <div className={`font-display text-2xl font-bold mt-1 ${accent ? "text-warning" : muted ? "text-glacier" : "text-nordfjord"}`}>
         {v == null ? "—" : `$${v.toFixed(2)}`}
       </div>
     </div>
@@ -414,9 +414,9 @@ function Money({ label, value, accent, muted }) {
 
 function Stat({ label, value, accent, testid }) {
   return (
-    <div className={`bg-white border p-5 ${accent ? "border-red-300" : "border-ink/10"}`} data-testid={testid}>
-      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">{label}</div>
-      <div className={`font-display text-4xl font-bold mt-1 ${accent ? "text-red-600" : ""}`}>{value}</div>
+    <div className={`bg-card border p-5 rounded-xl ${accent ? "border-warning/50" : "border-ash/60"}`} data-testid={testid}>
+      <div className="font-data text-[10px] text-glacier">{label}</div>
+      <div className={`font-display text-4xl font-bold mt-1 ${accent ? "text-warning" : "text-nordfjord"}`}>{value}</div>
     </div>
   );
 }
@@ -432,13 +432,13 @@ function Section({ title, rows, render, empty, testid, headers }) {
 
   return (
     <div className="mt-8">
-      <h2 className="font-mono text-xs uppercase tracking-[0.2em] text-foreground/60 mb-3">{title}</h2>
-      <div className="bg-white border border-ink/10 overflow-x-auto" data-testid={testid}>
+      <h2 className="font-data text-xs text-glacier mb-3 font-medium">{title}</h2>
+      <div className="bg-card border border-ash/60 rounded-xl overflow-x-auto" data-testid={testid}>
         {rows && rows.length ? (
           <table className="w-full">
             {headers && (
               <thead>
-                <tr className="border-b border-ink/10 bg-ink/[0.02]">
+                <tr className="border-b border-ash/60 bg-clinical/50">
                   {headers.map((h) => (
                     <Th key={h}>{h}</Th>
                   ))}
@@ -448,16 +448,16 @@ function Section({ title, rows, render, empty, testid, headers }) {
             <tbody>{pageRows.map(render)}</tbody>
           </table>
         ) : (
-          <div className="px-6 py-10 text-center font-mono text-xs text-foreground/50">{empty}</div>
+          <div className="px-6 py-10 text-center font-data text-xs text-glacier">{empty}</div>
         )}
       </div>
       {pageCount > 1 && (
-        <div className="mt-3 flex items-center justify-end gap-3 font-mono text-xs">
+        <div className="mt-3 flex items-center justify-end gap-3 font-data text-xs">
           <button
             type="button"
             onClick={() => setPage((current) => Math.max(1, current - 1))}
             disabled={page === 1}
-            className="border border-ink/15 px-3 py-2 disabled:opacity-40"
+            className="border border-ash px-3 py-2 rounded-lg disabled:opacity-40"
             aria-label="Page précédente"
           >
             ←
@@ -467,7 +467,7 @@ function Section({ title, rows, render, empty, testid, headers }) {
             type="button"
             onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
             disabled={page === pageCount}
-            className="border border-ink/15 px-3 py-2 disabled:opacity-40"
+            className="border border-ash px-3 py-2 rounded-lg disabled:opacity-40"
             aria-label="Page suivante"
           >
             →

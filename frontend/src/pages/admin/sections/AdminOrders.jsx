@@ -156,22 +156,22 @@ export default function AdminOrders() {
     <div className="p-8" data-testid="admin-orders">
       {manifest?.configured && manifest.pending_count > 0 && (
         <div
-          className="mb-6 border-2 border-red-600 bg-red-50 px-5 py-4 flex flex-wrap items-center justify-between gap-4"
+          className="mb-6 border border-warning/40 bg-warning/10 px-5 py-4 rounded-xl flex flex-wrap items-center justify-between gap-4"
           data-testid="manifest-warning"
         >
           <div className="flex items-start gap-3">
-            <AlertTriangle size={20} className="text-red-600 shrink-0 mt-0.5" />
+            <AlertTriangle size={20} className="text-warning shrink-0 mt-0.5" />
             <div>
-              <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-red-700 font-bold">
+              <div className="font-data text-[11px] font-semibold text-nordfjord">
                 {manifest.pending_count} label(s) created but not transmitted
               </div>
-              <div className="text-sm text-red-800 mt-1">
+              <div className="text-sm text-glacier mt-1">
                 Transmit the manifest before end of day. Canada Post bills untransmitted shipments
                 with a <strong>$2 surcharge per item</strong> and removes the automation discount.
                 {" "}The manifest does not exist until you transmit — transmitting is what creates it.
               </div>
               {manifest.orphan_count > 0 && (
-                <div className="text-sm text-red-800 mt-2" data-testid="manifest-orphans">
+                <div className="text-sm text-glacier mt-2" data-testid="manifest-orphans">
                   <strong>{manifest.orphan_count} of these cannot be transmitted</strong> — they have
                   a label but no Canada Post group, so "Transmit manifest" will not clear them. Void
                   and recreate those labels: {manifest.orphans?.join(", ")}
@@ -185,7 +185,7 @@ export default function AdminOrders() {
               disabled={txBusy}
               data-testid="void-untransmitted-btn"
               title="Cancel these labels with Canada Post instead of shipping them"
-              className="border border-red-600 text-red-700 font-mono text-xs uppercase tracking-[0.2em] px-4 py-2.5 flex items-center gap-2 disabled:opacity-50"
+              className="border border-error/50 text-error font-data text-xs rounded-lg px-4 py-2.5 flex items-center gap-2 hover:bg-error/5 disabled:opacity-50"
             >
               <Undo2 size={14} /> Void all
             </button>
@@ -193,7 +193,7 @@ export default function AdminOrders() {
               onClick={transmitManifest}
               disabled={txBusy || !manifest.transmittable_count}
               data-testid="transmit-manifest-btn"
-              className="bg-red-600 text-white font-mono text-xs uppercase tracking-[0.2em] px-5 py-2.5 flex items-center gap-2 disabled:opacity-50"
+              className="bg-error text-white font-data text-xs rounded-lg px-5 py-2.5 flex items-center gap-2 disabled:opacity-50 hover:opacity-90"
             >
               <Send size={14} /> {txBusy ? "Transmitting…" : "Transmit manifest"}
             </button>
@@ -202,16 +202,16 @@ export default function AdminOrders() {
       )}
       <div className="flex items-end justify-between mb-6">
         <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// ORDERS</div>
-          <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">Orders</h1>
-          <p className="font-mono text-xs text-foreground/60 mt-1">{total}</p>
+          <div className="font-data text-[11px] tracking-[0.18em] text-nova">Aperçu</div>
+          <h1 className="font-display text-3xl font-bold tracking-tight mt-1 text-nordfjord">Orders</h1>
+          <p className="font-data text-xs text-glacier mt-1">{total} commande(s)</p>
         </div>
         <div className="flex items-center gap-2">
           <a
             href={`${API_BASE}/admin/orders.csv${tab === "all" ? "" : `?status_group=${tab}`}`}
             target="_blank" rel="noopener noreferrer"
             data-testid="export-orders-csv"
-            className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-foreground/80"
+            className="bg-nordfjord text-white font-data text-xs px-4 py-2.5 rounded-lg flex items-center gap-2 hover:opacity-90"
           >
             <Download size={14} /> CSV
           </a>
@@ -219,7 +219,7 @@ export default function AdminOrders() {
             href={`${API_BASE}/admin/orders.xlsx${tab === "all" ? "" : `?status_group=${tab}`}`}
             target="_blank" rel="noopener noreferrer"
             data-testid="export-orders-xlsx"
-            className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-ink hover:text-white"
+            className="border border-ash font-data text-xs px-4 py-2.5 rounded-lg flex items-center gap-2 text-nordfjord hover:bg-clinical"
           >
             <Download size={14} /> Excel
           </a>
@@ -227,16 +227,16 @@ export default function AdminOrders() {
       </div>
 
       {/* Status group tabs */}
-      <div className="flex gap-0 mb-4 border border-ink/15 bg-white w-fit" data-testid="orders-tabs">
+      <div className="flex gap-1 mb-4 bg-card border border-ash/60 rounded-lg w-fit p-1" data-testid="orders-tabs">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             data-testid={`orders-tab-${t.key}`}
-            className={`font-mono text-xs uppercase tracking-[0.2em] px-5 py-2.5 flex items-center gap-2 ${tab === t.key ? "bg-ink text-white" : "hover:bg-secondary"}`}
+            className={`font-data text-xs px-4 py-2 rounded-md flex items-center gap-2 transition-colors ${tab === t.key ? "bg-nordfjord text-white" : "text-glacier hover:bg-clinical hover:text-nordfjord"}`}
           >
             {t.label}
-            <span className={`text-[10px] px-1.5 py-0.5 ${tab === t.key ? "bg-white/20" : "bg-secondary"}`} data-testid={`orders-count-${t.key}`}>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${tab === t.key ? "bg-white/20" : "bg-ash/50"}`} data-testid={`orders-count-${t.key}`}>
               {counts[t.key] ?? "…"}
             </span>
           </button>
@@ -244,32 +244,32 @@ export default function AdminOrders() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white border border-ink/10 p-4 mb-4 flex flex-wrap items-center gap-3" data-testid="orders-filters">
-        <div className="flex items-center gap-2 border border-ink/15 px-3 py-2 flex-1 min-w-[200px]">
-          <Search size={14} className="text-foreground/50" />
+      <div className="bg-card border border-ash/60 rounded-xl p-4 mb-4 flex flex-wrap items-center gap-3" data-testid="orders-filters">
+        <div className="flex items-center gap-2 border border-ash px-3 py-2 rounded-lg flex-1 min-w-[200px]">
+          <Search size={14} className="text-glacier" />
           <input
             value={query} onChange={(e) => setQuery(e.target.value)}
             placeholder="Search order #, email, name…"
             data-testid="orders-search"
-            className="bg-transparent text-sm outline-none w-full"
+            className="bg-transparent text-sm text-nordfjord outline-none w-full"
           />
         </div>
-        <select value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)} className="border border-ink/15 px-3 py-2 text-sm bg-white" data-testid="filter-payment">
+        <select value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)} className="border border-ash px-3 py-2 text-sm bg-card text-nordfjord rounded-lg" data-testid="filter-payment">
           <option value="all">All payments</option>
           {PAYMENT_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select value={filterFulfill} onChange={(e) => setFilterFulfill(e.target.value)} className="border border-ink/15 px-3 py-2 text-sm bg-white" data-testid="filter-fulfill">
+        <select value={filterFulfill} onChange={(e) => setFilterFulfill(e.target.value)} className="border border-ash px-3 py-2 text-sm bg-card text-nordfjord rounded-lg" data-testid="filter-fulfill">
           <option value="all">All fulfillments</option>
           {FULFILLMENT_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select value={filterLate} onChange={(e) => setFilterLate(e.target.value)} className="border border-ink/15 px-3 py-2 text-sm bg-white" data-testid="filter-late-payment">
+        <select value={filterLate} onChange={(e) => setFilterLate(e.target.value)} className="border border-ash px-3 py-2 text-sm bg-card text-nordfjord rounded-lg" data-testid="filter-late-payment">
           <option value="all">All payments</option>
           <option value="late_only">Late payments only</option>
         </select>
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-ink/10 overflow-x-auto">
+      <div className="bg-card border border-ash/60 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr>
@@ -287,12 +287,12 @@ export default function AdminOrders() {
           </thead>
           <tbody>
             {pageRows.map((o) => (
-              <tr key={o.id} className="border-t border-ink/5 hover:bg-secondary/40" data-testid={`order-row-${o.order_number}`}>
+              <tr key={o.id} className="border-t border-ash/40 hover:bg-clinical/50" data-testid={`order-row-${o.order_number}`}>
                 <td className="px-6 py-3">
-                  <div className="font-mono font-bold text-xs">{o.order_number}</div>
+                  <div className="font-data font-semibold text-xs text-nordfjord">{o.order_number}</div>
                   {o.late_payment_flagged && (
                     <span
-                      className="inline-flex mt-1 items-center rounded-full border border-red-300 bg-red-50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-red-700"
+                      className="inline-flex mt-1 items-center rounded-full border border-error/30 bg-error/10 px-2 py-0.5 font-data text-[10px] text-error"
                       data-testid={`late-payment-badge-${o.order_number}`}
                     >
                       Late payment
@@ -300,7 +300,7 @@ export default function AdminOrders() {
                   )}
                   {o.has_unread_customer_message && (
                     <span
-                      className="inline-flex mt-1 items-center rounded-full border border-nova bg-nova/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-nova"
+                      className="inline-flex mt-1 items-center rounded-full border border-nova/50 bg-nova/10 px-2 py-0.5 font-data text-[10px] text-nordfjord"
                       data-testid={`unread-message-badge-${o.order_number}`}
                     >
                       Message
@@ -308,32 +308,32 @@ export default function AdminOrders() {
                   )}
                   {o.replaces_order_id && (
                     <span
-                      className="inline-flex mt-1 items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-amber-700"
+                      className="inline-flex mt-1 items-center rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 font-data text-[10px] text-warning"
                       data-testid={`replacement-badge-${o.order_number}`}
                     >
                       Remplacement
                     </span>
                   )}
-                  <div className="font-mono text-[10px] text-foreground/50">{(o.created_at || "").slice(0, 10)}</div>
+                  <div className="font-data text-[10px] text-glacier">{(o.created_at || "").slice(0, 10)}</div>
                   {o.dispatch_batch && (
-                    <div className="font-mono text-[10px] text-glacier" data-testid={`dispatch-batch-${o.order_number}`}>
+                    <div className="font-data text-[10px] text-glacier" data-testid={`dispatch-batch-${o.order_number}`}>
                       LOT {o.dispatch_batch}
                     </div>
                   )}
                 </td>
                 <td className="px-6 py-3">
-                  <div className="text-sm">{o.shipping_address?.full_name || "—"}</div>
-                  <div className="font-mono text-[10px] text-foreground/50">{o.email || "guest"}</div>
+                  <div className="text-sm text-nordfjord">{o.shipping_address?.full_name || "—"}</div>
+                  <div className="font-data text-[10px] text-glacier">{o.email || "guest"}</div>
                 </td>
-                <td className="px-6 py-3 font-mono text-xs uppercase">{o.payment_method}</td>
+                <td className="px-6 py-3 font-data text-xs text-glacier">{o.payment_method}</td>
                 <td className="px-6 py-3"><StatusBadge status={o.payment_status} /></td>
                 <td className="px-6 py-3"><StatusBadge status={o.fulfillment_status} /></td>
-                <td className="px-6 py-3 text-right font-bold tabular-nums">${o.total?.toFixed(2)}</td>
+                <td className="px-6 py-3 text-right font-semibold tabular-nums text-nordfjord">${o.total?.toFixed(2)}</td>
                 <td className="px-6 py-3 text-right">
                   <button
                     onClick={() => setSelected(o)}
                     data-testid={`open-order-${o.order_number}`}
-                    className="font-mono text-xs uppercase tracking-[0.2em] border border-ink px-3 py-1.5 hover:bg-ink hover:text-white"
+                    className="font-data text-xs rounded-lg border border-ash px-3 py-1.5 text-nordfjord hover:bg-clinical"
                   >
                     Open →
                   </button>
@@ -341,7 +341,7 @@ export default function AdminOrders() {
               </tr>
             ))}
             {!pageRows.length && (
-              <tr><td colSpan={7} className="px-6 py-12 text-center font-mono text-xs text-foreground/50">No orders match the filters</td></tr>
+              <tr><td colSpan={7} className="px-6 py-12 text-center font-data text-xs text-glacier">No orders match the filters</td></tr>
             )}
           </tbody>
         </table>
@@ -608,7 +608,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 onClick={reopenLatePaidOrder}
                 disabled={reopenBusy}
                 data-testid="reopen-late-paid-btn"
-                className="bg-amber-600 text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-amber-700 disabled:opacity-50"
+                className="bg-warning text-white text-xs font-data rounded-lg px-4 py-2 flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
                 title="Réouvrir la commande annulée automatiquement après paiement tardif détecté"
               >
                 <Undo2 size={14} /> {reopenBusy ? "Réouverture…" : "Réouvrir + marquer payé"}
@@ -619,7 +619,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 onClick={reopenOrder}
                 disabled={reopenBusy}
                 data-testid="reopen-order-btn"
-                className="bg-nordfjord text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
+                className="bg-nordfjord text-white text-xs font-data rounded-lg px-4 py-2 flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
                 title="Réouvrir cette commande annulée (repasse en attente de paiement)"
               >
                 <Undo2 size={14} /> {reopenBusy ? "Réouverture…" : "Réouvrir"}
@@ -633,7 +633,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
               <button
                 onClick={confirmPayment}
                 data-testid="confirm-payment-btn"
-                className="bg-emerald-600 text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-emerald-700"
+                className="bg-success text-white text-xs font-data rounded-lg px-4 py-2 flex items-center gap-2 hover:opacity-90"
               >
                 <CheckCircle2 size={14} /> Confirm Payment
               </button>
@@ -642,7 +642,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
               href={`${API_BASE}/orders/${order.id}/invoice.pdf`}
               target="_blank" rel="noopener noreferrer"
               data-testid="download-invoice-pdf"
-              className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
+              className="border border-ash text-xs font-data rounded-lg px-4 py-2 flex items-center gap-2 text-nordfjord hover:bg-clinical"
             >
               <FileText size={14} /> Invoice PDF
             </a>
@@ -650,7 +650,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
               <button
                 onClick={resendEmail}
                 data-testid="resend-email-btn"
-                className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
+                className="border border-ash text-xs font-data rounded-lg px-4 py-2 flex items-center gap-2 text-nordfjord hover:bg-clinical"
               >
                 <Mail size={14} /> Resend Email
               </button>
@@ -659,14 +659,14 @@ function OrderDetail({ order, onClose, onUpdate }) {
 
           {/* Customer + Address */}
           <div className="grid sm:grid-cols-2 gap-4">
-            <div className="bg-white border border-ink/10 p-4">
-              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50">Customer</div>
-              <div className="font-bold mt-1">{addr.full_name || "—"}</div>
-              <div className="text-sm text-foreground/70">{order.email || "Guest"}</div>
-              {addr.phone && <div className="text-sm text-foreground/70">{addr.phone}</div>}
+            <div className="bg-card border border-ash/60 rounded-xl p-4">
+              <div className="font-data text-[11px] font-medium text-glacier">Customer</div>
+              <div className="font-semibold mt-1 text-nordfjord">{addr.full_name || "—"}</div>
+              <div className="text-sm text-glacier">{order.email || "Guest"}</div>
+              {addr.phone && <div className="text-sm text-glacier">{addr.phone}</div>}
             </div>
-            <div className="bg-white border border-ink/10 p-4">
-              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50">Ship to</div>
+            <div className="bg-card border border-ash/60 rounded-xl p-4">
+              <div className="font-data text-[11px] font-medium text-glacier">Ship to</div>
               <div className="text-sm mt-1">{addr.address1}{addr.address2 ? `, ${addr.address2}` : ""}</div>
               <div className="text-sm">{addr.city}, {addr.province} {addr.postal_code}</div>
               <div className="text-sm">{addr.country}</div>
@@ -680,43 +680,43 @@ function OrderDetail({ order, onClose, onUpdate }) {
             <table className="w-full text-sm">
               <tbody>
                 {order.items.map((it) => (
-                  <tr key={it.product_id} className="border-t border-ink/5">
+                  <tr key={it.product_id} className="border-t border-ash/40">
                     <td className="px-4 py-3">
-                      <div className="font-bold">{it.name_en}</div>
-                      <div className="font-mono text-[10px] text-foreground/50">{it.slug} · {it.qty}× @ ${it.price_cad?.toFixed(2)}</div>
-                      {it.preorder && <span className="inline-block mt-1 text-[10px] font-mono uppercase tracking-[0.15em] bg-orange-500 text-white px-2 py-0.5">PRE-ORDER</span>}
+                      <div className="font-semibold text-nordfjord">{it.name_en}</div>
+                      <div className="font-data text-[10px] text-glacier">{it.slug} · {it.qty}× @ ${it.price_cad?.toFixed(2)}</div>
+                      {it.preorder && <span className="inline-block mt-1 text-[10px] font-data rounded-md bg-warning/20 text-warning px-2 py-0.5">PRE-ORDER</span>}
                     </td>
-                    <td className="px-4 py-3 text-right font-bold tabular-nums">${it.line_total?.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right font-semibold tabular-nums text-nordfjord">${it.line_total?.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-secondary/50">
-                <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Subtotal</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.subtotal?.toFixed(2)}</td></tr>
+              <tfoot className="bg-clinical/50">
+                <tr><td className="px-4 py-1 text-right text-xs text-glacier">Subtotal</td><td className="px-4 py-1 text-right text-sm tabular-nums text-nordfjord">${order.subtotal?.toFixed(2)}</td></tr>
                 {order.discount > 0 && (
-                  <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Discount {order.coupon?.code && `(${order.coupon.code})`}</td><td className="px-4 py-1 text-right text-sm tabular-nums text-emerald-700">-${order.discount?.toFixed(2)}</td></tr>
+                  <tr><td className="px-4 py-1 text-right text-xs text-glacier">Discount {order.coupon?.code && `(${order.coupon.code})`}</td><td className="px-4 py-1 text-right text-sm tabular-nums text-success">-${order.discount?.toFixed(2)}</td></tr>
                 )}
-                <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Shipping</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.shipping?.toFixed(2)}</td></tr>
-                <tr><td className="px-4 py-2 text-right font-bold uppercase">Total CAD</td><td className="px-4 py-2 text-right font-display font-bold text-lg tabular-nums" data-testid="order-total">${order.total?.toFixed(2)}</td></tr>
+                <tr><td className="px-4 py-1 text-right text-xs text-glacier">Shipping</td><td className="px-4 py-1 text-right text-sm tabular-nums text-nordfjord">${order.shipping?.toFixed(2)}</td></tr>
+                <tr><td className="px-4 py-2 text-right font-medium text-glacier">Total CAD</td><td className="px-4 py-2 text-right font-display font-bold text-lg tabular-nums text-nordfjord" data-testid="order-total">${order.total?.toFixed(2)}</td></tr>
               </tfoot>
             </table>
             </div>
           </div>
 
           {/* Shipping */}
-          <div className="bg-white border border-ink/10 p-4">
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3 flex items-center gap-2"><Truck size={12} /> Shipping & Tracking</div>
+          <div className="bg-card border border-ash/60 rounded-xl p-4">
+            <div className="font-data text-[11px] font-medium text-glacier mb-3 flex items-center gap-2"><Truck size={12} /> Shipping & Tracking</div>
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
-                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Carrier</label>
-                <input value={carrier} onChange={(e) => setCarrier(e.target.value)} data-testid="shipping-carrier" className="w-full border border-ink/20 px-3 py-2 text-sm" />
+                <label className="block font-data text-[11px] text-glacier mb-1">Carrier</label>
+                <input value={carrier} onChange={(e) => setCarrier(e.target.value)} data-testid="shipping-carrier" className="w-full border border-ash rounded-lg px-3 py-2 text-sm text-nordfjord outline-none focus:border-nova" />
               </div>
               <div>
-                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Tracking Number</label>
-                <input value={tracking} onChange={(e) => setTracking(e.target.value)} data-testid="shipping-tracking" className="w-full border border-ink/20 px-3 py-2 text-sm" />
+                <label className="block font-data text-[11px] text-glacier mb-1">Tracking Number</label>
+                <input value={tracking} onChange={(e) => setTracking(e.target.value)} data-testid="shipping-tracking" className="w-full border border-ash rounded-lg px-3 py-2 text-sm text-nordfjord outline-none focus:border-nova" />
               </div>
             </div>
             <div className="flex items-center gap-3 mt-3">
-              <button onClick={saveShipping} data-testid="save-shipping-btn" className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-foreground/80">
+              <button onClick={saveShipping} data-testid="save-shipping-btn" className="bg-nordfjord text-white text-xs font-data rounded-lg px-4 py-2 flex items-center gap-2 hover:opacity-90">
                 <Save size={14} /> Save & Mark Shipped
               </button>
               {tracking && order.fulfillment_status !== "delivered" && (
@@ -743,12 +743,12 @@ function OrderDetail({ order, onClose, onUpdate }) {
                   href={`${API_BASE.replace(/\/api$/, "")}${shipInfo.label_url}`}
                   target="_blank" rel="noopener noreferrer"
                   data-testid="download-label-btn"
-                  className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 inline-flex items-center gap-2"
+                  className="bg-nordfjord text-white text-xs font-data rounded-lg px-4 py-2 inline-flex items-center gap-2 hover:opacity-90"
                 >
                   <Download size={14} /> Download label PDF
                 </a>
-                <span className={`font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 border ${
-                  shipInfo.cp_transmitted ? "border-green-600 text-green-700" : "border-red-600 text-red-700"}`}>
+                <span className={`font-data text-[10px] rounded-md px-2 py-1 border ${
+                  shipInfo.cp_transmitted ? "border-success/40 text-success" : "border-error/40 text-error"}`}>
                   {shipInfo.cp_transmitted ? "Manifest transmitted" : "Not transmitted"}
                 </span>
                 {manifestUrl && (
@@ -757,7 +757,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     data-testid="download-manifest-btn"
-                    className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
+                    className="border border-ash text-xs font-data rounded-lg px-4 py-2 flex items-center gap-2 text-nordfjord hover:bg-clinical"
                   >
                     <Download size={14} /> Download manifest PDF
                   </a>
@@ -771,18 +771,18 @@ function OrderDetail({ order, onClose, onUpdate }) {
               La préparation (packing/packed) avance depuis l'écran Fulfillment,
               l'expédition via le suivi, l'étiquetage via Dispatch, le
               remboursement via l'écran Refunds. */}
-          <div className="bg-white border border-ink/10 p-4">
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3">Actions de statut</div>
+          <div className="bg-card border border-ash/60 rounded-xl p-4">
+            <div className="font-data text-[11px] font-medium text-glacier mb-3">Actions de statut</div>
             <div className="flex flex-wrap gap-2">
               {["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status) && (
                 <button onClick={() => updateStatus("payment_status", "cancelled")} data-testid="cancel-order-btn"
-                  className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:border-red-500 hover:text-red-500">
+                  className="border border-error/50 text-error text-xs font-data rounded-lg px-4 py-2 hover:bg-error/5">
                   Annuler
                 </button>
               )}
               {["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status) && (
                 <button onClick={() => updateStatus("payment_status", "failed")} data-testid="mark-failed-btn"
-                  className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:border-amber-500 hover:text-amber-500">
+                  className="border border-warning/50 text-warning text-xs font-data rounded-lg px-4 py-2 hover:bg-warning/10">
                   Marquer échoué
                 </button>
               )}

@@ -322,11 +322,11 @@ function PermissionGrid({ permissions, onChange, testPrefix, canGrantSensitive =
           return (
           <div key={a.key}
             className={`flex items-center justify-between border px-4 py-2.5 rounded-lg ${
-              a.sensitive ? "border-amber-300 bg-amber-50/50" : "border-ash"} ${locked ? "opacity-50" : ""}`}>
-            <span className="text-sm flex items-center gap-1.5">
+              a.sensitive ? "border-warning/40 bg-warning/5" : "border-ash"} ${locked ? "opacity-50" : ""}`}>
+            <span className="text-sm flex items-center gap-1.5 text-nordfjord">
               {L(a.fr, a.en)}
               {a.sensitive && (
-                <span className="text-[10px] font-medium uppercase tracking-wider text-amber-600 border border-amber-300 rounded px-1 py-0.5">
+                <span className="text-[10px] font-medium text-warning border border-warning/40 rounded px-1 py-0.5">
                   {L("sensible", "sensitive")}
                 </span>
               )}
