@@ -203,9 +203,8 @@ _MARIE = {"id": "u-1", "email": "marie@example.com", "name": "Marie Tremblay"}
 
 def test_un_client_ouvre_un_billet_sans_commande(server_module, monkeypatch):
     tickets, envois = _preparer(server_module, monkeypatch)
-    charge = server_module.CustomerTicketIn(
-        subject="Délai de livraison", body="Combien de temps pour Gaspé ?")
-    doc = asyncio.run(server_module.customer_ticket_create(charge, _MARIE))
+    doc = asyncio.run(server_module.customer_ticket_create(
+        "Délai de livraison", "Combien de temps pour Gaspé ?", None, _MARIE))
     assert doc["user_id"] == "u-1"
     assert doc["status"] == "open"
     assert doc["messages"][0]["from"] == "customer"
@@ -215,21 +214,19 @@ def test_un_client_ouvre_un_billet_sans_commande(server_module, monkeypatch):
 
 def test_personne_d_autre_ne_peut_ecrire_dans_le_billet(server_module, monkeypatch):
     tickets, _ = _preparer(server_module, monkeypatch)
-    charge = server_module.CustomerTicketIn(
-        subject="Délai de livraison", body="Combien de temps pour Gaspé ?")
-    doc = asyncio.run(server_module.customer_ticket_create(charge, _MARIE))
+    doc = asyncio.run(server_module.customer_ticket_create(
+        "Délai de livraison", "Combien de temps pour Gaspé ?", None, _MARIE))
     intrus = {"id": "u-2", "email": "autre@example.com"}
     with pytest.raises(HTTPException) as exc:
         asyncio.run(server_module.customer_ticket_reply(
-            doc["id"], server_module.AffiliateTicketReplyIn(body="je lis ton billet"), intrus))
+            doc["id"], "je lis ton billet", None, intrus))
     assert exc.value.status_code == 404
 
 
 def test_repondre_rouvre_et_l_equipe_previent_le_client(server_module, monkeypatch):
     tickets, envois = _preparer(server_module, monkeypatch)
-    charge = server_module.CustomerTicketIn(
-        subject="Délai de livraison", body="Combien de temps pour Gaspé ?")
-    doc = asyncio.run(server_module.customer_ticket_create(charge, _MARIE))
+    doc = asyncio.run(server_module.customer_ticket_create(
+        "Délai de livraison", "Combien de temps pour Gaspé ?", None, _MARIE))
 
     rep = asyncio.run(server_module.admin_customer_ticket_reply(
         doc["id"], server_module.AffiliateTicketReplyIn(body="Trois jours ouvrables."),
@@ -240,9 +237,85 @@ def test_repondre_rouvre_et_l_equipe_previent_le_client(server_module, monkeypat
     asyncio.run(server_module.admin_customer_ticket_status(
         doc["id"], server_module.AffiliateTicketStatusIn(status="resolved")))
     suite = asyncio.run(server_module.customer_ticket_reply(
-        doc["id"], server_module.AffiliateTicketReplyIn(body="Et pour les Îles ?"), _MARIE))
+        doc["id"], "Et pour les Îles ?", None, _MARIE))
     assert suite["status"] == "open"
     assert len(suite["messages"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# La photo sur un billet
+# ---------------------------------------------------------------------------
+
+class _FauxFichier:
+    def __init__(self, nom="casse.jpg", contenu=b"x" * 32):
+        self.filename = nom
+        self._contenu = contenu
+
+    async def read(self):
+        return self._contenu
+
+
+def test_une_photo_jointe_est_conservee_sur_le_billet(server_module, monkeypatch):
+    """Le fil de la commande savait recevoir une photo, pas les billets. C'est
+    ce qui obligeait a garder deux canaux pour la meme demande."""
+    tickets, _ = _preparer(server_module, monkeypatch)
+    monkeypatch.setattr(server_module, "_validate_and_save_image",
+                        lambda contenu, dossier: "abc123.jpg")
+    doc = asyncio.run(server_module.customer_ticket_create(
+        "Flacon cassé", "Le flacon est arrivé fissuré.", _FauxFichier(), _MARIE))
+    assert doc["messages"][0]["image_url"] == "/api/uploads/messages/abc123.jpg"
+
+
+def test_un_billet_sans_photo_reste_valide(server_module, monkeypatch):
+    tickets, _ = _preparer(server_module, monkeypatch)
+    doc = asyncio.run(server_module.customer_ticket_create(
+        "Délai de livraison", "Combien de temps pour Gaspé ?", None, _MARIE))
+    assert doc["messages"][0]["image_url"] is None
+
+
+def test_le_ramasse_miettes_epargne_les_photos_des_billets(server_module, monkeypatch, tmp_path):
+    """La purge quotidienne supprime TOUT fichier non reference. Elle ne
+    regardait que les messages de commande : les photos des billets, rangees
+    dans le meme dossier, auraient ete effacees dans les 24 h."""
+    garder = tmp_path / "billet.jpg"
+    garder.write_bytes(b"photo du client")
+    orphelin = tmp_path / "personne.jpg"
+    orphelin.write_bytes(b"plus reference")
+
+    class Vide:
+        def find(self, *a, **k):
+            class C:
+                def __aiter__(self):
+                    return self
+
+                async def __anext__(self):
+                    raise StopAsyncIteration
+            return C()
+
+    class Billets:
+        def find(self, *a, **k):
+            docs = [{"messages": [{"image_url": "/api/uploads/messages/billet.jpg"}]}]
+
+            class C:
+                def __init__(self):
+                    self.reste = list(docs)
+
+                def __aiter__(self):
+                    return self
+
+                async def __anext__(self):
+                    if not self.reste:
+                        raise StopAsyncIteration
+                    return self.reste.pop(0)
+            return C()
+
+    server_module.db = types.SimpleNamespace(order_messages=Vide(), customer_tickets=Billets())
+    monkeypatch.setattr(server_module, "MESSAGE_UPLOAD_DIR", tmp_path)
+    supprimes = asyncio.run(server_module._cleanup_orphan_message_images_once())
+
+    assert garder.exists(), "la photo d'un billet a ete effacee par la purge"
+    assert not orphelin.exists()
+    assert supprimes == 1
 
 
 # ---------------------------------------------------------------------------

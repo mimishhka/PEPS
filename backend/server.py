@@ -9390,10 +9390,21 @@ async def startup_event():
 async def _cleanup_orphan_message_images_once() -> int:
     """Supprime les photos de messages non référencées (échec d'insertion, etc.)."""
     referenced = set()
+
+    def _retenir(url) -> None:
+        nom = (url or "").rstrip("/").split("/")[-1]
+        if nom:
+            referenced.add(nom)
+
     async for m in db.order_messages.find({"image_url": {"$ne": None}}, {"_id": 0, "image_url": 1}):
-        fn = (m.get("image_url") or "").rstrip("/").split("/")[-1]
-        if fn:
-            referenced.add(fn)
+        _retenir(m.get("image_url"))
+    # LES BILLETS AUSSI. Leurs photos vivent dans le meme repertoire, et cette
+    # purge supprime TOUT fichier non reference : les oublier ici revenait a
+    # effacer chaque nuit les photos que les clients viennent d'envoyer.
+    async for t in db.customer_tickets.find(
+            {"messages.image_url": {"$ne": None}}, {"_id": 0, "messages": 1}):
+        for m in (t.get("messages") or []):
+            _retenir(m.get("image_url"))
     deleted = 0
     if MESSAGE_UPLOAD_DIR.exists():
         for f in MESSAGE_UPLOAD_DIR.iterdir():
@@ -10086,13 +10097,29 @@ async def affiliate_terms_accept(payload: AffiliateTermsAcceptIn, request: Reque
     return {"ok": True, "terms_version": AFFILIATE_TERMS_VERSION}
 
 
-def _ticket_message(auteur: str, body: str) -> dict:
+def _ticket_message(auteur: str, body: str, image_url: Optional[str] = None) -> dict:
     return {
         "id": str(uuid.uuid4()),
-        "from": auteur,                       # "affiliate" | "admin"
+        "from": auteur,                       # "affiliate" | "customer" | "admin"
         "body": body.strip()[:4000],
+        "image_url": image_url,
         "at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+async def _photo_de_billet(file) -> Optional[str]:
+    """Enregistre la photo jointe a un billet, s'il y en a une.
+
+    Meme repertoire et memes regles que les photos de commande : un produit
+    endommage se montre, et il n'y a aucune raison d'avoir deux mecanismes
+    d'envoi d'image, deux limites de taille et deux endroits a surveiller.
+    """
+    if file is None or not (getattr(file, "filename", "") or "").strip():
+        return None
+    contenu = await file.read()
+    if len(contenu) / (1024 * 1024) > MAX_IMAGE_UPLOAD_MB:
+        raise HTTPException(400, f"Image trop lourde — maximum {MAX_IMAGE_UPLOAD_MB:.0f} Mo")
+    return f"/api/uploads/messages/{_validate_and_save_image(contenu, MESSAGE_UPLOAD_DIR)}"
 
 
 async def affiliate_ticket_create(payload: AffiliateTicketIn, request: Request):
@@ -10309,9 +10336,19 @@ class CustomerTicketIn(BaseModel):
     body: str = Field(min_length=10, max_length=4000)
 
 
-async def customer_ticket_create(payload: CustomerTicketIn, user: dict):
+async def customer_ticket_create(subject: str, body: str, file, user: dict):
+    # La validation etait portee par CustomerTicketIn ; en multipart il n'y a
+    # plus de corps JSON a valider, donc elle est refaite ici — mêmes bornes,
+    # et des messages que la personne peut comprendre.
+    subject = (subject or "").strip()
+    body = (body or "").strip()
+    if not 3 <= len(subject) <= 140:
+        raise HTTPException(422, "Le sujet doit faire entre 3 et 140 caractères.")
+    if not 10 <= len(body) <= 4000:
+        raise HTTPException(422, "Décrivez votre demande en 10 caractères au moins.")
     await _rate_limit("customer_ticket", str(user.get("id")), 5, 3600,
                       "Trop de demandes en peu de temps. Réessayez dans une heure.")
+    image_url = await _photo_de_billet(file)
     maintenant = datetime.now(timezone.utc).isoformat()
     nom = (user.get("name") or " ".join(
         x for x in [user.get("first_name"), user.get("last_name")] if x)).strip()
@@ -10320,9 +10357,9 @@ async def customer_ticket_create(payload: CustomerTicketIn, user: dict):
         "user_id": user["id"],
         "customer_email": user.get("email", ""),
         "customer_name": nom,
-        "subject": payload.subject.strip(),
+        "subject": subject,
         "status": "open",
-        "messages": [_ticket_message("customer", payload.body)],
+        "messages": [_ticket_message("customer", body, image_url)],
         "created_at": maintenant,
         "updated_at": maintenant,
         "last_from": "customer",
@@ -10351,12 +10388,16 @@ async def customer_tickets_list(user: dict):
     ).sort("updated_at", -1).to_list(100)
 
 
-async def customer_ticket_reply(ticket_id: str, payload: AffiliateTicketReplyIn, user: dict):
+async def customer_ticket_reply(ticket_id: str, body: str, file, user: dict):
+    body = (body or "").strip()
+    if not body:
+        raise HTTPException(422, "Message vide.")
+    image_url = await _photo_de_billet(file)
     # Le filtre porte AUSSI sur user_id : sans lui, connaitre un identifiant
     # suffirait a ecrire dans le billet de quelqu'un d'autre.
     res = await db.customer_tickets.find_one_and_update(
         {"id": ticket_id, "user_id": user["id"]},
-        {"$push": {"messages": _ticket_message("customer", payload.body)},
+        {"$push": {"messages": _ticket_message("customer", body, image_url)},
          "$set": {"updated_at": datetime.now(timezone.utc).isoformat(),
                   "last_from": "customer",
                   # Repondre a un billet resolu le rouvre : la personne n'a pas

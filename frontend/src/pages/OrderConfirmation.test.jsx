@@ -130,7 +130,10 @@ it("apres expedition, renvoie vers la conversation au lieu d'un second formulair
     .toHaveTextContent(/Produit endommagé ou erreur de commande/);
   expect(screen.queryByTestId("refund-submit")).not.toBeInTheDocument();
   expect(screen.queryByTestId("refund-reason")).not.toBeInTheDocument();
-  expect(screen.getByTestId("refund-open-chat")).toBeInTheDocument();
+  // Le fil de messages de la commande a ete retire : le signalement avec photo
+  // passe desormais par un billet, seul canal restant.
+  expect(screen.getByTestId("refund-open-help")).toHaveAttribute("href", "/account?tab=support");
+  expect(screen.queryByTestId("problem-toggle")).not.toBeInTheDocument();
 });
 
 it("demande ou renvoyer les fonds quand la commande a ete payee en crypto", async () => {

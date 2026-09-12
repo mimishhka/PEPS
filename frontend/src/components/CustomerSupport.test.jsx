@@ -27,8 +27,18 @@ it("ouvre un billet sur le compte, sans page ni commande jointe", async () => {
   await userEvent.type(screen.getByTestId("ticket-body"), "Combien de temps pour Gaspé ?");
   await userEvent.click(screen.getByTestId("ticket-submit"));
 
-  await waitFor(() => expect(api.post).toHaveBeenCalledWith(
-    "/account/tickets",
-    { subject: "Délai de livraison", body: "Combien de temps pour Gaspé ?" }));
+  // Multipart et non JSON : le billet accepte desormais une photo, ce qui
+  // etait la seule chose que le fil de la commande savait faire et pas lui.
+  await waitFor(() => expect(api.post).toHaveBeenCalled());
+  const [url, corps] = api.post.mock.calls[0];
+  expect(url).toBe("/account/tickets");
+  expect(corps).toBeInstanceOf(FormData);
+  expect(corps.get("subject")).toBe("Délai de livraison");
+  expect(corps.get("body")).toBe("Combien de temps pour Gaspé ?");
   expect(api.get).toHaveBeenCalledWith("/account/tickets");
+});
+
+it("propose de joindre une photo, ce que les affilies n'ont pas", async () => {
+  render(<CustomerSupport L={(fr) => fr} lang="fr" />);
+  expect(await screen.findByTestId("ticket-photo")).toBeInTheDocument();
 });

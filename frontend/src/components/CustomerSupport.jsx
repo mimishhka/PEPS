@@ -16,10 +16,11 @@ export default function CustomerSupport({ L, lang }) {
       lang={lang}
       base="/account/tickets"
       withContext={false}
+      avecPhoto
       testid="customer-support"
       intro={L(
-        "Une question sur un produit, une livraison ou votre compte ? Nous répondons sous 1 à 2 jours ouvrables. Pour annuler une commande ou signaler un produit endommagé, passez plutôt par la page de la commande concernée.",
-        "A question about a product, a delivery or your account? We reply within 1 to 2 business days. To cancel an order or report a damaged product, use the page of that order instead.")}
+        "Une question, ou un produit endommagé à nous montrer ? Joignez une photo, c'est ce qui nous permet de trancher vite. Nous répondons sous 1 à 2 jours ouvrables. Pour annuler une commande pas encore expédiée, passez par la page de cette commande.",
+        "A question, or a damaged product to show us? Attach a photo — it's what lets us decide quickly. We reply within 1 to 2 business days. To cancel an order that hasn't shipped yet, use that order's page.")}
       exemple={L("Ex. : délai de livraison vers Gaspé", "e.g. shipping time to Gaspé")}
     />
   );

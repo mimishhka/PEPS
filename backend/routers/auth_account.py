@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Body, Depends, Request, Response
+from fastapi import (APIRouter, Body, Depends, File, Form, Request, Response,
+                     UploadFile)
 
 import server as s
 from server import (
@@ -132,13 +133,18 @@ async def customer_tickets_list(user: dict = Depends(s.get_current_user)):
     return await s.customer_tickets_list(user)
 
 
+# Multipart et non JSON : un produit endommage se montre. C'etait la seule
+# chose que le fil de la commande savait faire et pas les billets — et c'est
+# ce qui justifiait de garder deux canaux pour une meme demande.
 @router.post("/account/tickets")
-async def customer_ticket_create(payload: s.CustomerTicketIn,
+async def customer_ticket_create(subject: str = Form(...), body: str = Form(...),
+                                 file: UploadFile | None = File(None),
                                  user: dict = Depends(s.get_current_user)):
-    return await s.customer_ticket_create(payload, user)
+    return await s.customer_ticket_create(subject, body, file, user)
 
 
 @router.post("/account/tickets/{ticket_id}/reply")
-async def customer_ticket_reply(ticket_id: str, payload: s.AffiliateTicketReplyIn,
+async def customer_ticket_reply(ticket_id: str, body: str = Form(...),
+                                file: UploadFile | None = File(None),
                                 user: dict = Depends(s.get_current_user)):
-    return await s.customer_ticket_reply(ticket_id, payload, user)
+    return await s.customer_ticket_reply(ticket_id, body, file, user)

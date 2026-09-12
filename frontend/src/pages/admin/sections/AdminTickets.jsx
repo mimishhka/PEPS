@@ -210,6 +210,16 @@ export default function AdminTickets({
                           { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                       </p>
                       <p className="whitespace-pre-wrap">{m.body}</p>
+                      {/* La photo du produit endommagé arrive ici depuis que
+                          le fil de la commande a été retiré. Cliquable :
+                          vous en aurez besoin en grand pour juger. */}
+                      {m.image_url && (
+                        <a href={m.image_url} target="_blank" rel="noopener noreferrer">
+                          <img src={m.image_url} alt={L("Pièce jointe", "Attachment")}
+                            data-testid="ticket-message-photo"
+                            className="mt-2 max-h-56 rounded border border-ash bg-white" />
+                        </a>
+                      )}
                     </div>
                   ))}
 
