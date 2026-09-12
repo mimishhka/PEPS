@@ -407,3 +407,86 @@ def test_les_commandes_du_billet_portent_ce_qui_bloque(server_module):
     # Le client est retrouve par son compte OU par son courriel, en minuscules.
     assert {"user_id": "u-1"} in capture["filtre"]["$or"]
     assert {"email": "marie@example.com"} in capture["filtre"]["$or"]
+
+
+# ---------------------------------------------------------------------------
+# L'ecran Remboursements : le parcours, et les commandes sans compte
+# ---------------------------------------------------------------------------
+
+class _CurseurListe:
+    def __init__(self, docs):
+        self.docs = docs
+
+    def sort(self, *a):
+        return self
+
+    def limit(self, n):
+        return self
+
+    async def to_list(self, n):
+        return [dict(d) for d in self.docs]
+
+    def __aiter__(self):
+        self._reste = [dict(d) for d in self.docs]
+        return self
+
+    async def __anext__(self):
+        if not self._reste:
+            raise StopAsyncIteration
+        return self._reste.pop(0)
+
+
+def test_la_recherche_trouve_une_commande_sans_compte(server_module):
+    """Un client invite n'a ni compte ni billet. Sans cette recherche, il
+    n'existait aucun chemin vers un remboursement depuis l'ecran."""
+    capture = {}
+
+    class Orders:
+        def find(self, filtre, projection=None):
+            capture["filtre"] = filtre
+            return _CurseurListe([{
+                "id": "o-9", "order_number": "FN-INVITE-1", "email": "invite@example.com",
+                "payment_status": "paid", "fulfillment_status": "processing", "user_id": None}])
+
+    server_module.db = types.SimpleNamespace(orders=Orders())
+    res = asyncio.run(server_module.admin_refund_candidates("invite@example.com"))
+
+    assert res["items"][0]["order_number"] == "FN-INVITE-1"
+    assert res["items"][0]["refund_blocked_reason"] is None
+    champs = {list(c.keys())[0] for c in capture["filtre"]["$or"]}
+    assert champs == {"order_number", "email", "shipping_address.full_name"}
+
+
+def test_une_recherche_trop_courte_ne_ramene_rien(server_module):
+    assert asyncio.run(server_module.admin_refund_candidates("a")) == {"items": []}
+
+
+def test_la_liste_renvoie_les_compteurs_de_toutes_les_etapes(server_module):
+    """Filtrer une etape vidait l'ecran des autres : un remboursement approuve
+    mais non verse devenait invisible, et l'argent pouvait ne jamais partir."""
+    class Agg:
+        def __init__(self, lignes):
+            self.reste = list(lignes)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self.reste:
+                raise StopAsyncIteration
+            return self.reste.pop(0)
+
+    class Orders:
+        def find(self, *a, **k):
+            return _CurseurListe([])
+
+        def aggregate(self, pipeline):
+            return Agg([{"_id": "requested", "n": 2}, {"_id": "approved", "n": 3}])
+
+        async def count_documents(self, q):
+            return 5
+
+    server_module.db = types.SimpleNamespace(orders=Orders())
+    res = asyncio.run(server_module.admin_refunds_list(status="requested"))
+
+    assert res["counts"] == {"requested": 2, "approved": 3, "processed": 0, "denied": 0}

@@ -4480,7 +4480,23 @@ async def admin_refunds_list(status: Optional[str] = None, limit: int = 50):
         "refund_source": 1, "refund_destination": 1, "refund_destination_type": 1,
         "payment_method": 1,
     }).sort("refund_requested_at", -1).limit(limit)
-    return {"items": [d async for d in cursor], "total": await db.orders.count_documents(q)}
+    # COMPTEURS DE TOUTES LES ETAPES, renvoyes meme quand on en filtre une.
+    #
+    # Filtrer « a examiner » vidait l'ecran des autres etapes. Apres une
+    # approbation, la demande quittait la liste et la page devenait vide :
+    # l'impression que tout etait fini, alors que l'ARGENT N'ETAIT PAS ENCORE
+    # PARTI. Ces compteurs sont ce qui rend l'etape suivante visible.
+    compte = {"requested": 0, "approved": 0, "processed": 0, "denied": 0}
+    async for ligne in db.orders.aggregate([
+        {"$match": {"refund_status": {"$exists": True, "$ne": None}}},
+        {"$group": {"_id": "$refund_status", "n": {"$sum": 1}}},
+    ]):
+        etape = ligne.get("_id")
+        if etape:
+            compte[etape] = ligne.get("n", 0)
+    return {"items": [d async for d in cursor],
+            "total": await db.orders.count_documents(q),
+            "counts": compte}
 
 
 async def admin_sync_delivery_status(order_id: str,
@@ -10470,6 +10486,50 @@ async def _notify_customer_ticket_reply(ticket: dict) -> None:
     await _send_email(email, f"Réponse à votre demande — {sujet[:60]}", body_html)
 
 
+PROJECTION_DOSSIER = {
+    "_id": 0, "id": 1, "order_number": 1, "total": 1, "created_at": 1,
+    "payment_status": 1, "fulfillment_status": 1, "refund_status": 1,
+    "payment_method": 1, "email": 1, "user_id": 1,
+}
+
+
+async def _commandes_pour_dossier(filtre: dict, limite: int = 50) -> list:
+    """Des commandes, chacune portant CE QUI EMPECHERAIT d'ouvrir un dossier.
+
+    La raison est calculee par _refund_eligibility_reason — la meme fonction
+    que le serveur applique au moment d'ouvrir. L'ecran peut donc desactiver
+    un choix au lieu d'echouer apres le clic, sans reimplementer la regle.
+    """
+    commandes = await db.orders.find(filtre, PROJECTION_DOSSIER).sort(
+        "created_at", -1).to_list(limite)
+    for commande in commandes:
+        commande["refund_blocked_reason"] = _refund_eligibility_reason(commande)
+    return commandes
+
+
+async def admin_refund_candidates(query: str = ""):
+    """Chercher une commande par numero, courriel ou nom, pour lui ouvrir un
+    dossier de remboursement.
+
+    Sans ceci, ouvrir un dossier supposait de passer par un BILLET — donc
+    d'avoir un compte. Les commandes passees en invite n'avaient aucun chemin
+    depuis l'ecran des remboursements.
+    """
+    recherche = (query or "").strip()
+    if len(recherche) < 2:
+        return {"items": []}
+    motif = re.escape(recherche)
+    filtre = {
+        "deleted_at": None,
+        "$or": [
+            {"order_number": {"$regex": motif, "$options": "i"}},
+            {"email": {"$regex": motif, "$options": "i"}},
+            {"shipping_address.full_name": {"$regex": motif, "$options": "i"}},
+        ],
+    }
+    return {"items": await _commandes_pour_dossier(filtre, 25)}
+
+
 async def admin_customer_ticket_orders(ticket_id: str):
     """Les commandes du client qui a ouvert ce billet.
 
@@ -10489,14 +10549,7 @@ async def admin_customer_ticket_orders(ticket_id: str):
     filtre = {"$or": [{"user_id": billet.get("user_id")}]}
     if courriel:
         filtre["$or"].append({"email": courriel})
-    commandes = await db.orders.find(filtre, {
-        "_id": 0, "id": 1, "order_number": 1, "total": 1, "created_at": 1,
-        "payment_status": 1, "fulfillment_status": 1, "refund_status": 1,
-        "payment_method": 1, "email": 1,
-    }).sort("created_at", -1).to_list(100)
-    for commande in commandes:
-        commande["refund_blocked_reason"] = _refund_eligibility_reason(commande)
-    return {"items": commandes}
+    return {"items": await _commandes_pour_dossier(filtre, 100)}
 
 
 async def admin_customer_ticket_status(ticket_id: str, payload: AffiliateTicketStatusIn):

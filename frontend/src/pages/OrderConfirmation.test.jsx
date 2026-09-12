@@ -2,7 +2,11 @@
 //
 // Le serveur savait la recevoir depuis longtemps ; aucune page ne la
 // proposait. Avant expedition c'est une annulation, apres un signalement.
-import { render, screen, waitFor } from "@testing-library/react";
+// fireEvent.change plutôt que userEvent.type pour les textes longs : la
+// frappe simulée caractère par caractère dépassait le délai d'attente quand
+// les dix suites tournent en parallèle, et faisait échouer un fichier au
+// hasard à chaque exécution.
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import OrderConfirmation from "./OrderConfirmation";
@@ -56,7 +60,8 @@ it("propose l'annulation d'une commande pas encore expediee", async () => {
   expect(screen.getByTestId("refund-card")).toHaveTextContent(/Annuler cette commande/);
   expect(screen.getByTestId("refund-submit")).toHaveTextContent(/Demander l'annulation/);
 
-  await userEvent.type(screen.getByTestId("refund-reason"), "Je me suis trompé de dosage");
+  fireEvent.change(screen.getByTestId("refund-reason"),
+                   { target: { value: "Je me suis trompé de dosage" } });
   await userEvent.click(screen.getByTestId("refund-submit"));
 
   await waitFor(() => expect(api.post).toHaveBeenCalledWith(
@@ -142,7 +147,8 @@ it("demande ou renvoyer les fonds quand la commande a ete payee en crypto", asyn
   render(<OrderConfirmation />);
   expect(screen.getByTestId("refund-destination")).toBeInTheDocument();
 
-  await userEvent.type(screen.getByTestId("refund-reason"), "Je me suis trompé de dosage");
+  fireEvent.change(screen.getByTestId("refund-reason"),
+                   { target: { value: "Je me suis trompé de dosage" } });
   await userEvent.click(screen.getByTestId("refund-submit"));
   expect(screen.getByTestId("refund-error")).toBeInTheDocument();
   expect(api.post).not.toHaveBeenCalled();
@@ -158,7 +164,7 @@ it("annonce le remboursement Interac a l'adresse de la commande", () => {
 it("refuse une demande vide sans appeler le serveur", async () => {
   mockEtat = { order: { ...COMMANDE } };
   render(<OrderConfirmation />);
-  await userEvent.type(screen.getByTestId("refund-reason"), "non");
+  fireEvent.change(screen.getByTestId("refund-reason"), { target: { value: "non" } });
   await userEvent.click(screen.getByTestId("refund-submit"));
   expect(screen.getByTestId("refund-error")).toBeInTheDocument();
   expect(api.post).not.toHaveBeenCalled();

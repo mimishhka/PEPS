@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { RefreshCw, DollarSign } from "lucide-react";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
+import OuvrirDossier from "./OuvrirDossier";
 
 /**
  * Item 5 — Refunds admin dashboard.
@@ -11,6 +12,19 @@ import { useLang } from "../../../contexts/LanguageContext";
 
 // Engagement de traitement : deux jours pour statuer sur une demande reçue.
 const SLA_JOURS = 2;
+
+/* LES ÉTAPES D'UN REMBOURSEMENT, dans l'ordre où on les franchit.
+ *
+ * Les deux premières sont du TRAVAIL À FAIRE, les deux dernières de
+ * l'archive. La liste déroulante les présentait comme quatre choix
+ * équivalents : après une approbation, la demande quittait « à examiner »,
+ * la page se vidait, et rien ne disait que l'argent n'était pas parti. */
+const ETAPES = [
+  { cle: "requested", fr: "À examiner", en: "To review", travail: true },
+  { cle: "approved", fr: "À envoyer", en: "To send", travail: true },
+  { cle: "processed", fr: "Traités", en: "Processed", travail: false },
+  { cle: "denied", fr: "Refusés", en: "Denied", travail: false },
+];
 
 /* Compte les demandes NON TRAITÉES qui dépassent l'engagement.
  *
@@ -46,8 +60,16 @@ export default function AdminRefunds() {
   // ici parce que pour un paiement crypto, l'adresse arrive souvent APRÈS —
   // dans la conversation avec le client, faute de la connaître au départ.
   const [dests, setDests] = useState({});
+  // Compteurs de TOUTES les étapes, renvoyés par le serveur même quand on en
+  // filtre une seule. C'est ce qui empêche un écran vide de passer pour
+  // « tout est réglé ».
+  const [counts, setCounts] = useState({ requested: 0, approved: 0, processed: 0, denied: 0 });
 
   const enRetard = compterEnRetard(items);
+  // Ce qui attend AILLEURS que sur l'étape affichée — la seule chose qui
+  // distingue « rien à faire » de « rien à faire ICI ».
+  const resteAFaire = ETAPES.filter((e) => e.travail && e.cle !== filter)
+    .reduce((somme, e) => somme + (counts[e.cle] ?? 0), 0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,6 +77,7 @@ export default function AdminRefunds() {
       const q = filter === "all" ? "" : `?status=${filter}`;
       const { data } = await api.get(`/admin/refunds${q}`);
       setItems(data.items || []);
+      if (data.counts) setCounts(data.counts);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally { setLoading(false); }
@@ -70,8 +93,17 @@ export default function AdminRefunds() {
         if (types[id]) body.approved_type = types[id];
       }
       await api.post(`/admin/orders/${id}/refund-decision`, body);
-      toast.success(L("Décision enregistrée", "Decision saved"));
-      await load();
+      // APRÈS UNE APPROBATION, L'ARGENT N'EST PAS ENCORE PARTI.
+      // La demande quittait la liste et la page devenait vide : on croyait
+      // avoir terminé. On suit donc le dossier jusqu'à l'étape qui reste.
+      if (action === "approve") {
+        toast.success(L("Approuvé — il reste à envoyer l'argent",
+                        "Approved — the money still has to be sent"));
+        setFilter("approved");
+      } else {
+        toast.success(L("Décision enregistrée", "Decision saved"));
+        await load();
+      }
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally { setBusy(""); }
@@ -135,23 +167,83 @@ export default function AdminRefunds() {
         </button>
       </header>
 
-      <div className="flex items-center gap-3">
-        <label className="text-xs font-mono uppercase tracking-widest text-compliance">{L("Statut", "Status")}</label>
-        <select value={filter} onChange={(e) => setFilter(e.target.value)} data-testid="status-filter"
-          className="border rounded-lg px-3 py-1.5 text-sm bg-white">
-          <option value="requested">{L("À examiner", "Pending")}</option>
-          <option value="approved">{L("Approuvés (à envoyer)", "Approved (to send)")}</option>
-          <option value="processed">{L("Traités", "Processed")}</option>
-          <option value="denied">{L("Refusés", "Denied")}</option>
-          <option value="all">{L("Tous", "All")}</option>
-        </select>
-        <span className="text-xs text-compliance">{items.length} {L("entrée(s)", "entrie(s)")}</span>
+      {/* Ouvrir un dossier depuis ICI, pour n'importe quelle commande.
+          Jusqu'ici il fallait passer par un billet — donc par un compte — ou
+          par la fiche de la commande. Une commande passée en INVITÉ n'avait
+          aucun chemin. Même appel que partout ailleurs. */}
+      <div className="flex flex-wrap items-start gap-3">
+        <OuvrirDossier avecRecherche testid="refund-new" L={L} onDone={load}
+          libelle={L("Ouvrir un dossier pour une commande", "Open a case for an order")}
+          charger={async (texte) => {
+            const { data } = await api.get("/admin/refund-candidates", { params: { query: texte } });
+            return data?.items || [];
+          }} />
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2" data-testid="refund-stages">
+          {ETAPES.map((e) => {
+            const actif = filter === e.cle;
+            const n = counts[e.cle] ?? 0;
+            return (
+              <button key={e.cle} onClick={() => setFilter(e.cle)} data-testid={`stage-${e.cle}`}
+                className={`px-3 py-1.5 rounded-full border text-sm transition ${
+                  actif ? "border-nova bg-nova/10 text-nordfjord font-semibold"
+                        : e.travail && n > 0 ? "border-warning text-warning"
+                        : "border-ash text-compliance hover:border-glacier"}`}>
+                {L(e.fr, e.en)}
+                <span className="ml-1.5 font-mono text-xs">{n}</span>
+              </button>
+            );
+          })}
+          <span className="text-ash">|</span>
+          <button onClick={() => setFilter("all")} data-testid="stage-all"
+            className={`px-3 py-1.5 rounded-full border text-sm ${
+              filter === "all" ? "border-nova bg-nova/10 text-nordfjord font-semibold"
+                               : "border-ash text-compliance hover:border-glacier"}`}>
+            {L("Tous", "All")}
+          </button>
+          <span className="text-xs text-compliance ml-auto">
+            {items.length} {L("affichée(s)", "shown")}
+          </span>
+        </div>
+
+        {/* L'ARGENT QUI N'EST PAS ENCORE PARTI, visible depuis n'importe
+            quelle étape. Un remboursement approuvé puis oublié, c'est un
+            client qui attend et une commission d'affilié gelée. */}
+        {counts.approved > 0 && filter !== "approved" && (
+          <button onClick={() => setFilter("approved")} data-testid="refunds-to-send"
+            className="w-full text-left rounded-lg border border-warning bg-warning/10 px-4 py-3">
+            <span className="block text-sm font-semibold text-warning">
+              {L(`${counts.approved} remboursement(s) approuvé(s) : l'argent n'est pas encore parti.`,
+                 `${counts.approved} approved refund(s): the money has not been sent yet.`)}
+            </span>
+            <span className="block text-xs text-compliance mt-0.5">
+              {L("Cliquez pour les envoyer.", "Click to send them.")}
+            </span>
+          </button>
+        )}
       </div>
 
       {loading ? <div className="text-sm">{L("Chargement…", "Loading…")}</div> :
        items.length === 0 ? (
-        <div className="rounded-xl bg-clinical/40 p-8 text-center text-compliance text-sm">
-          {L("Aucune demande.", "No requests.")}
+        <div className="rounded-xl bg-clinical/40 p-8 text-center text-compliance text-sm"
+             data-testid="refunds-empty">
+          <p>
+            {filter === "requested" ? L("Rien à examiner.", "Nothing to review.")
+             : filter === "approved" ? L("Rien à envoyer.", "Nothing to send.")
+             : L("Aucune demande à cette étape.", "No requests at this stage.")}
+          </p>
+          {/* Vide ne veut pas dire terminé. Sans cette phrase, une étape sans
+              rien à montrer laissait croire que le travail était fini. */}
+          {resteAFaire > 0 ? (
+            <p className="mt-2 font-semibold text-warning" data-testid="refunds-elsewhere">
+              {L(`Mais ${resteAFaire} dossier(s) attendent à une autre étape.`,
+                 `But ${resteAFaire} case(s) are waiting at another stage.`)}
+            </p>
+          ) : (
+            <p className="mt-2">{L("Aucun dossier en cours.", "No case in progress.")}</p>
+          )}
         </div>
       ) : (
         <div className="space-y-3">

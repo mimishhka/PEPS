@@ -124,3 +124,11 @@ async def admin_customer_ticket_orders(ticket_id: str,
     """Les commandes du client qui a ouvert ce billet, pour ouvrir un dossier
     de remboursement sans chercher le numero dans un autre ecran."""
     return await s.admin_customer_ticket_orders(ticket_id)
+
+
+@router.get("/admin/refund-candidates")
+async def admin_refund_candidates(query: str = "",
+                                  _admin: dict = Depends(s.require_area("orders", "view"))):
+    """Chercher n'importe quelle commande — invité compris — pour lui ouvrir
+    un dossier de remboursement depuis l'écran Remboursements."""
+    return await s.admin_refund_candidates(query)

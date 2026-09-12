@@ -20,7 +20,7 @@ import { MessageSquare, Clock, CheckCircle2 } from "lucide-react";
 import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
 import { Identity } from "../ui";
-import TicketRefund from "./TicketRefund";
+import OuvrirDossier from "./OuvrirDossier";
 
 const DELAI_HEURES = 48;   // au-delà, le billet est signalé comme en retard
 
@@ -242,8 +242,11 @@ export default function AdminTickets({
                       décidé dans Remboursements comme tous les autres. */}
                   {remboursement && (
                     <div className="pt-1">
-                      <TicketRefund ticketId={t.id} base={base} sujet={t.subject}
-                        L={L} onDone={charger} />
+                      <OuvrirDossier L={L} sujet={t.subject} onDone={charger}
+                        charger={async () => {
+                          const { data } = await api.get(`${base}/${t.id}/orders`);
+                          return data?.items || [];
+                        }} />
                     </div>
                   )}
 

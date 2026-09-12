@@ -1,5 +1,5 @@
 // Billets clients : un canal general, rattache au compte — pas a une commande.
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import CustomerSupport from "./CustomerSupport";
@@ -23,8 +23,12 @@ it("ouvre un billet sur le compte, sans page ni commande jointe", async () => {
   render(<CustomerSupport L={(fr) => fr} lang="fr" />);
   expect(await screen.findByTestId("customer-support")).toBeInTheDocument();
 
-  await userEvent.type(screen.getByTestId("ticket-subject"), "Délai de livraison");
-  await userEvent.type(screen.getByTestId("ticket-body"), "Combien de temps pour Gaspé ?");
+  // fireEvent.change : taper caractère par caractère dépasse le délai
+  // d'attente quand la suite complète tourne en parallèle.
+  fireEvent.change(screen.getByTestId("ticket-subject"),
+                   { target: { value: "Délai de livraison" } });
+  fireEvent.change(screen.getByTestId("ticket-body"),
+                   { target: { value: "Combien de temps pour Gaspé ?" } });
   await userEvent.click(screen.getByTestId("ticket-submit"));
 
   // Multipart et non JSON : le billet accepte desormais une photo, ce qui
