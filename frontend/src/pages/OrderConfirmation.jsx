@@ -434,9 +434,15 @@ export default function OrderConfirmation() {
         return (
           <div className="mt-10 border border-nordfjord/20 rounded-xl p-6 space-y-3" data-testid="refund-card">
             <div className="font-mono text-xs uppercase tracking-[0.25em] text-foreground/70">
-              {expediee
-                ? (fr ? "Produit endommagé ou erreur de commande" : "Damaged product or order error")
-                : (fr ? "Annuler cette commande" : "Cancel this order")}
+              {/* Dès qu'un dossier existe, le titre parle du dossier. Il
+                  annonçait « Annuler cette commande » au-dessus de
+                  « Remboursement effectué » : on proposait d'annuler ce qui
+                  était déjà remboursé. */}
+              {etat
+                ? (fr ? "Remboursement" : "Refund")
+                : expediee
+                  ? (fr ? "Produit endommagé ou erreur de commande" : "Damaged product or order error")
+                  : (fr ? "Annuler cette commande" : "Cancel this order")}
             </div>
             {etat ? (
               <p className="text-sm" data-testid="refund-status">
@@ -536,8 +542,16 @@ export default function OrderConfirmation() {
       </div>
 
       <div className="mt-10 flex gap-4">
-        <Link to="/" className="border border-nordfjord rounded-full font-mono text-xs uppercase tracking-[0.25em] px-6 py-4 hover:bg-nordfjord hover:text-white transition-colors" data-testid="back-home-btn">
-          ← {t("confirmation.backHome")}
+        {/* Après une commande, on veut revoir SES commandes — pas la vitrine.
+            Le renvoi à l'accueil obligeait à retrouver son compte à la main.
+            Une commande passée en invité n'a pas de tableau de bord : elle
+            garde l'accueil, qui reste la seule destination qui ait un sens. */}
+        <Link to={order.user_id ? "/account" : "/"}
+          className="border border-nordfjord rounded-full font-mono text-xs uppercase tracking-[0.25em] px-6 py-4 hover:bg-nordfjord hover:text-white transition-colors"
+          data-testid="back-home-btn">
+          ← {order.user_id
+            ? (lang === "fr" ? "Mes commandes" : "My orders")
+            : t("confirmation.backHome")}
         </Link>
       </div>
     </div>

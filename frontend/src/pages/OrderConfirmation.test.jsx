@@ -12,7 +12,9 @@ let mockEtat = {};
 jest.mock("react-router-dom", () => ({
   useParams: () => ({ id: "o-1" }),
   useLocation: () => ({ state: mockEtat, search: "" }),
-  Link: ({ children }) => children,
+  // Un vrai lien, pas seulement son contenu : sans le `to` ni le testid, la
+  // destination d'un bouton ne pouvait pas etre verifiee du tout.
+  Link: ({ to, children, ...reste }) => <a href={to} {...reste}>{children}</a>,
 }));
 
 jest.mock("../lib/api", () => ({
@@ -62,6 +64,29 @@ it("propose l'annulation d'une commande pas encore expediee", async () => {
     { reason: "Je me suis trompé de dosage", refund_type: "full", refund_destination: "" },
     expect.anything()));
   expect(await screen.findByTestId("refund-status")).toHaveTextContent(/Demande reçue/);
+});
+
+it("ramene le client vers ses commandes, pas vers la vitrine", () => {
+  mockEtat = { order: { ...COMMANDE } };
+  render(<OrderConfirmation />);
+  expect(screen.getByTestId("back-home-btn")).toHaveAttribute("href", "/account");
+});
+
+it("garde l'accueil pour une commande passee en invite", () => {
+  // Sans compte, il n'y a pas de tableau de bord a proposer.
+  mockEtat = { order: { ...COMMANDE, user_id: null } };
+  render(<OrderConfirmation />);
+  expect(screen.getByTestId("back-home-btn")).toHaveAttribute("href", "/");
+});
+
+it("titre le bloc « Remboursement » des qu'un dossier existe", () => {
+  // Le titre annoncait « Annuler cette commande » au-dessus de
+  // « Remboursement effectue » : on proposait d'annuler le deja-rembourse.
+  mockEtat = { order: { ...COMMANDE, payment_status: "refunded", refund_status: "processed" } };
+  render(<OrderConfirmation />);
+  const carte = screen.getByTestId("refund-card");
+  expect(carte).toHaveTextContent(/Remboursement/);
+  expect(carte).not.toHaveTextContent(/Annuler cette commande/);
 });
 
 it("dit qu'une commande remboursee est remboursee, jamais en attente de paiement", () => {
