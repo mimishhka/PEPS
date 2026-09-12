@@ -4779,6 +4779,16 @@ async def admin_confirm_payment(order_id: str, _admin: dict = Depends(require_ar
         raise HTTPException(404, "Order not found")
     if existing.get("payment_status") == "paid":
         return existing  # idempotent
+    # UNE COMMANDE REMBOURSEE N'EST PAS UNE COMMANDE « PAS ENCORE PAYEE ».
+    #
+    # L'ecran proposait « Confirm Payment » des que le statut n'etait pas
+    # « paid » — donc aussi sur une commande remboursee, qui porte
+    # payment_status = "refunded". Un clic la remarquait payee, relancait la
+    # preparation et envoyait au client un courriel de paiement confirme,
+    # apres lui avoir rendu son argent. La garde est ici, au serveur, parce
+    # que l'ecran n'est pas le seul chemin vers cet appel.
+    if existing.get("payment_status") == "refunded":
+        raise HTTPException(400, "Commande remboursée — impossible de la marquer payée.")
     updated = await _mark_order_paid(order_id, "Payment manually confirmed by admin")
     return updated or existing
 

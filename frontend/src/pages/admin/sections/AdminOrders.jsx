@@ -625,7 +625,11 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 <Undo2 size={14} /> {reopenBusy ? "Réouverture…" : "Réouvrir"}
               </button>
             )}
-            {order.payment_status !== "paid" && (
+            {/* Pas sur une commande remboursée : « pas payée » englobait aussi
+                « remboursée », et le bouton proposait de marquer payée une
+                commande dont l'argent avait été rendu. Le serveur refuse
+                désormais aussi — ceci évite simplement de le proposer. */}
+            {!["paid", "refunded"].includes(order.payment_status) && (
               <button
                 onClick={confirmPayment}
                 data-testid="confirm-payment-btn"

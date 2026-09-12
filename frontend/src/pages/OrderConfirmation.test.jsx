@@ -64,6 +64,37 @@ it("propose l'annulation d'une commande pas encore expediee", async () => {
   expect(await screen.findByTestId("refund-status")).toHaveTextContent(/Demande reçue/);
 });
 
+it("dit qu'une commande remboursee est remboursee, jamais en attente de paiement", () => {
+  // Cas reel signale : FN-260901-3A394C25 affichait « PAIEMENT EN ATTENTE »
+  // apres remboursement. Le serveur ecrit payment_status = "refunded" au
+  // reglement, et la page ne connaissait que « paid » ou non : elle reclamait
+  // un paiement a quelqu'un qu'on venait de rembourser.
+  mockEtat = { order: { ...COMMANDE, payment_status: "refunded", refund_status: "processed" } };
+  render(<OrderConfirmation />);
+  const page = screen.getByTestId("confirmation-page");
+  expect(page).toHaveTextContent(/Commande remboursée/);
+  expect(page).not.toHaveTextContent(/PAIEMENT EN ATTENTE/);
+  expect(page).not.toHaveTextContent(/compléter le paiement/);
+  // Et l'etat du dossier reste lisible : la carte disparaissait justement
+  // quand le remboursement aboutissait.
+  expect(screen.getByTestId("refund-status")).toHaveTextContent(/Remboursement effectué/);
+});
+
+it("dit qu'une commande annulee est annulee", () => {
+  mockEtat = { order: { ...COMMANDE, payment_status: "cancelled" } };
+  render(<OrderConfirmation />);
+  const page = screen.getByTestId("confirmation-page");
+  expect(page).toHaveTextContent(/Commande annulée/);
+  expect(page).not.toHaveTextContent(/compléter le paiement/);
+});
+
+it("garde l'attente de paiement pour une commande fraiche", () => {
+  // Le cas normal ne doit pas regresser.
+  mockEtat = { order: { ...COMMANDE, payment_status: "awaiting_etransfer" } };
+  render(<OrderConfirmation />);
+  expect(screen.getByTestId("confirmation-page")).toHaveTextContent(/compléter le paiement/);
+});
+
 it("apres expedition, renvoie vers la conversation au lieu d'un second formulaire", () => {
   // Deux entrees qui faisaient la meme chose : un formulaire de texte et une
   // conversation. Seule la conversation accepte les photos — c'est elle qui

@@ -174,14 +174,59 @@ export default function OrderConfirmation() {
   const interac = awaitingPayment && order.payment_info?.type === "interac" ? order.payment_info.instructions : null;
   const np = awaitingPayment && order.payment_info?.type === "nowpayments" ? order.payment_info.provider_response : null;
 
+  // L'ÉTAT DU PAIEMENT N'EST PAS UN BINAIRE.
+  //
+  // La page ne connaissait que « payée » ou « pas payée ». Or une commande
+  // REMBOURSÉE porte payment_status = "refunded" (écrit au règlement), et une
+  // commande annulée "cancelled" : toutes deux tombaient donc dans « pas
+  // payée » et réclamaient au client de compléter un paiement — à quelqu'un
+  // qu'on venait de rembourser. Chaque état dit maintenant ce qu'il est ;
+  // seul l'inconnu retombe sur l'attente de paiement, qui reste le cas
+  // normal d'une commande fraîche.
+  const ETATS_PAIEMENT = {
+    paid: {
+      bandeau: lang === "fr" ? "// COMMANDE CONFIRMÉE" : "// ORDER CONFIRMED",
+      titre: lang === "fr" ? "Commande confirmée" : "Order confirmed",
+      phrase: lang === "fr"
+        ? "Merci ! Votre paiement est confirmé et votre commande est en préparation."
+        : "Thank you! Your payment is confirmed and your order is being prepared.",
+    },
+    refunded: {
+      bandeau: lang === "fr" ? "// COMMANDE REMBOURSÉE" : "// ORDER REFUNDED",
+      titre: lang === "fr" ? "Commande remboursée" : "Order refunded",
+      phrase: lang === "fr"
+        ? "Le remboursement a été effectué. Il n'y a rien à payer."
+        : "The refund has been issued. There is nothing to pay.",
+    },
+    cancelled: {
+      bandeau: lang === "fr" ? "// COMMANDE ANNULÉE" : "// ORDER CANCELLED",
+      titre: lang === "fr" ? "Commande annulée" : "Order cancelled",
+      phrase: lang === "fr"
+        ? "Cette commande a été annulée. Il n'y a rien à payer."
+        : "This order was cancelled. There is nothing to pay.",
+    },
+    failed: {
+      bandeau: lang === "fr" ? "// PAIEMENT ÉCHOUÉ" : "// PAYMENT FAILED",
+      titre: lang === "fr" ? "Paiement échoué" : "Payment failed",
+      phrase: lang === "fr"
+        ? "Le paiement n'a pas abouti. Écrivez-nous et nous reprenons la commande avec vous."
+        : "The payment did not go through. Write to us and we'll pick the order back up with you.",
+    },
+  };
+  const etatPaiement = ETATS_PAIEMENT[order.payment_status] || {
+    bandeau: lang === "fr" ? "// COMMANDE REÇUE — PAIEMENT EN ATTENTE" : "// ORDER RECEIVED — AWAITING PAYMENT",
+    titre: lang === "fr" ? "Commande reçue" : "Order received",
+    phrase: lang === "fr"
+      ? "Conservez votre numéro de commande — il vous sera nécessaire pour compléter le paiement."
+      : "Save your order number — you'll need it to complete the payment.",
+  };
+
   return (
     <div className="max-w-4xl mx-auto px-6 py-16" data-testid="confirmation-page">
       <div className="border border-nordfjord/20 rounded-xl overflow-hidden">
         <div className="bg-nordfjord text-white px-6 py-4 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.25em]">
           <span>
-            {order.payment_status === "paid"
-              ? (lang === "fr" ? "// COMMANDE CONFIRMÉE" : "// ORDER CONFIRMED")
-              : (lang === "fr" ? "// COMMANDE REÇUE — PAIEMENT EN ATTENTE" : "// ORDER RECEIVED — AWAITING PAYMENT")}
+            {etatPaiement.bandeau}
           </span>
           <span>{new Date(order.created_at).toLocaleString()}</span>
         </div>
@@ -191,14 +236,10 @@ export default function OrderConfirmation() {
             {order.order_number}
           </div>
           <h1 className="font-display text-2xl uppercase tracking-tight mt-8">
-            {order.payment_status === "paid"
-              ? (lang === "fr" ? "Commande confirmée" : "Order confirmed")
-              : (lang === "fr" ? "Commande reçue" : "Order received")}
+            {etatPaiement.titre}
           </h1>
           <p className="text-foreground/70 mt-2">
-            {order.payment_status === "paid"
-              ? (lang === "fr" ? "Merci ! Votre paiement est confirmé et votre commande est en préparation." : "Thank you! Your payment is confirmed and your order is being prepared.")
-              : (lang === "fr" ? "Conservez votre numéro de commande — il vous sera nécessaire pour compléter le paiement." : "Save your order number — you'll need it to complete the payment.")}
+            {etatPaiement.phrase}
           </p>
         </div>
       </div>
@@ -376,7 +417,11 @@ export default function OrderConfirmation() {
           après, un signalement (produit endommagé, erreur de commande). Le
           délai de 48 h est RAPPELÉ, pas imposé : une demande tardive est reçue,
           signalée à l'équipe, et examinée. */}
-      {order.payment_status === "paid" && (() => {
+      {/* La carte reste visible tant qu'un dossier existe. Conditionnée au
+          seul « paid », elle disparaissait au moment exact où le
+          remboursement aboutissait — payment_status devient "refunded" — et
+          le client ne voyait jamais « Remboursement effectué ». */}
+      {(order.payment_status === "paid" || order.refund_status) && (() => {
         const fr = lang === "fr";
         const expediee = ["shipped", "delivered"].includes(order.fulfillment_status);
         const ETAT = {

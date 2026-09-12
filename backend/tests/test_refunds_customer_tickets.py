@@ -80,6 +80,22 @@ def test_ce_qui_bloque_encore(server_module):
         {"payment_status": "paid", "refund_status": "approved"})
 
 
+def test_une_commande_remboursee_ne_peut_pas_etre_marquee_payee(server_module):
+    """« Confirm Payment » s'affichait dès que le statut n'était pas « paid »,
+    donc aussi sur une commande remboursée. Un clic la remarquait payée et
+    envoyait un courriel de paiement confirmé au client qu'on venait de
+    rembourser. La garde est au serveur, pas seulement à l'écran."""
+    class Orders:
+        async def find_one(self, filtre, projection=None):
+            return {"id": "o-9", "payment_status": "refunded", "refund_status": "processed"}
+
+    server_module.db = types.SimpleNamespace(orders=Orders())
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.admin_confirm_payment("o-9", {"email": "admin@fironova.com"}))
+    assert exc.value.status_code == 400
+    assert "rembours" in exc.value.detail.lower()
+
+
 def test_une_commande_deja_remboursee_le_dit(server_module):
     """Cas réel : FN-260901-E8C78986, payée puis remboursée. Le blocage était
     juste, la raison non — « la commande n'est pas payée » à propos d'une
