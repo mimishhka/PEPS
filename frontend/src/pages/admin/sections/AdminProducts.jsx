@@ -194,9 +194,13 @@ export default function AdminProducts() {
   );
 }
 
+// Poids d'une unite quand rien n'est saisi — la meme valeur que le backend
+// (POIDS_PRODUIT_DEFAUT_G). Toujours modifiable produit par produit.
+const POIDS_DEFAUT_G = 0.3;
+
 function newVariant(name = "") {
   return {
-    name, price: 0, sale_price: null, stock: 0, sku: "", coa_url: "", weight_grams: 50,
+    name, price: 0, sale_price: null, stock: 0, sku: "", coa_url: "", weight_grams: POIDS_DEFAUT_G,
     coa_status: "none", badge_coming_soon: false,
     badge_coa_available: false, badge_coa_pending: false,
     preorder_enabled: false, preorder_delay_message: "", preorder_price: null, preorder_note: "",
@@ -309,7 +313,7 @@ function VariantRow({ index, variant, onChange, onRemove }) {
            test={`v-sale-price-${index}`} />
         <F label="Stock" type="number" value={variant.stock} onChange={(v) => onChange({ stock: parseInt(v) || 0 })} test={`v-stock-${index}`} />
         <F label="SKU" value={variant.sku} onChange={(v) => onChange({ sku: v })} test={`v-sku-${index}`} />
-        <F label="Weight (g)" type="number" value={variant.weight_grams ?? 50} onChange={(v) => onChange({ weight_grams: parseFloat(v) || 0 })} test={`v-weight-${index}`} />
+        <F label="Weight (g)" type="number" step="0.01" value={variant.weight_grams ?? POIDS_DEFAUT_G} onChange={(v) => onChange({ weight_grams: parseFloat(v) || 0 })} test={`v-weight-${index}`} />
         <CoaUploader value={variant.coa_url} onChange={(v) => onChange({ coa_url: v })} test={`v-coa-url-${index}`} />
       </div>
       {variant.sale_price != null && variant.sale_price >= variant.price && (
@@ -533,7 +537,9 @@ function CoaStatusField({ value, hasFile, onChange, test }) {
     </div>
   );
 }
-function F({ label, value, onChange, type = "text", select, test, placeholder }) {
+// `step` : sans lui, un champ numerique refuse les decimales (le poids par
+// defaut vaut 0,3 g) et les fleches sautent de 1 en 1.
+function F({ label, value, onChange, type = "text", select, test, placeholder, step }) {
   return (
     <div>
       <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1 text-foreground/60">{label}</label>
@@ -542,7 +548,7 @@ function F({ label, value, onChange, type = "text", select, test, placeholder })
           {select.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       ) : (
-        <input type={type} value={value ?? ""} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm" />
+        <input type={type} step={step} value={value ?? ""} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} data-testid={test} className="w-full border border-ink/20 px-3 py-2 text-sm" />
       )}
     </div>
   );

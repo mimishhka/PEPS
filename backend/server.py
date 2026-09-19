@@ -698,6 +698,13 @@ class UserOut(BaseModel):
     created_at: str
 
 
+# Poids d'une unite quand rien n'est saisi. UNE seule valeur : le modele, le
+# figeage du poids a l'achat et l'estimation du colis la lisent tous ici.
+# 0,3 g : les flacons sont quasi impalpables, c'est l'emballage qui pese. Si
+# un colis reel pese plus, Postes Canada le repese et refacture l'ecart.
+POIDS_PRODUIT_DEFAUT_G = 0.3
+
+
 class ProductVariant(BaseModel):
     id: Optional[str] = None  # generated server-side if missing
     name: str  # "5mg", "10mg", "500mcg"
@@ -721,7 +728,7 @@ class ProductVariant(BaseModel):
     preorder_delay_message: str = ""
     preorder_price: Optional[float] = None
     preorder_note: str = ""
-    weight_grams: float = 50.0  # used to estimate parcel weight for live Canada Post rating
+    weight_grams: float = POIDS_PRODUIT_DEFAUT_G  # used to estimate parcel weight for live Canada Post rating
 
 
 class ProductIn(BaseModel):
@@ -2869,8 +2876,8 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
             "preorder": is_preorder,
             # Poids figé à l'achat : l'étiquette doit refléter ce qui a été vendu,
             # même si la fiche produit change ensuite. Les commandes antérieures
-            # sans ce champ retombent sur 50 g/unité dans _order_weight_kg().
-            "weight_grams": float(v.get("weight_grams") or 50.0),
+            # sans ce champ retombent sur POIDS_PRODUIT_DEFAUT_G dans _order_weight_kg().
+            "weight_grams": float(v.get("weight_grams") or POIDS_PRODUIT_DEFAUT_G),
         })
         subtotal += line_total
     subtotal = round(subtotal, 2)
@@ -4437,7 +4444,7 @@ async def _create_replacement_order(original: dict) -> dict:
             "line_total": 0.0,
             "image_url": it.get("image_url", ""),
             "preorder": False,
-            "weight_grams": float(it.get("weight_grams") or 50.0),
+            "weight_grams": float(it.get("weight_grams") or POIDS_PRODUIT_DEFAUT_G),
         })
     if not items:
         raise HTTPException(400, "Aucun article à remplacer sur la commande")
@@ -5748,7 +5755,7 @@ def _order_weight_kg(order: dict) -> float:
     le poids doit refléter ce qui a été vendu, même si la fiche a changé depuis)."""
     total_g = 0.0
     for it in _order_items(order):
-        total_g += float(it.get("weight_grams") or 50.0) * int(it.get("qty") or 1)
+        total_g += float(it.get("weight_grams") or POIDS_PRODUIT_DEFAUT_G) * int(it.get("qty") or 1)
     return max(0.1, round(total_g / 1000.0, 3)) if total_g else 0.5
 
 

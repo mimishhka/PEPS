@@ -161,7 +161,7 @@ async def _estimate_parcel_weight_kg(items: Optional[List["CartItem"]]) -> float
         if not p:
             continue
         v = s._resolve_variant(p, it.variant_id)
-        total_g += float(v.get("weight_grams") or 50.0) * it.qty
+        total_g += float(v.get("weight_grams") or s.POIDS_PRODUIT_DEFAUT_G) * it.qty
     return max(0.1, round(total_g / 1000.0, 3))
 
 
