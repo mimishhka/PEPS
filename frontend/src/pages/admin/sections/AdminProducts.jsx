@@ -139,6 +139,9 @@ export default function AdminProducts() {
             {products.map((p) => {
               const totalStock = (p.variants || []).reduce((s, v) => s + (v.stock || 0), 0);
               const lowest = (p.variants || []).reduce((m, v) => v.price < m ? v.price : m, Infinity);
+              // Le total masquait une variante a zero : BPC-157 affichait
+              // « 58 units · Actif » alors que sa 10 mg etait en rupture.
+              const enRupture = (p.variants || []).filter((v) => !(v.stock > 0));
               return (
                 <tr key={p.id} className="border-t border-ink/5" data-testid={`product-row-${p.slug}`}>
                   <td className="px-6 py-3">
@@ -163,12 +166,34 @@ export default function AdminProducts() {
                   <td className="px-6 py-3 font-mono text-xs">
                     <span className="font-bold">{(p.variants || []).length}</span>
                     <span className="text-foreground/50"> · {totalStock} units</span>
+                    {/* Le detail par variante : c'est la seule facon de voir
+                        laquelle est a zero sans ouvrir la fiche. */}
+                    <div className="mt-1 flex flex-wrap gap-1" data-testid={`variants-${p.slug}`}>
+                      {(p.variants || []).map((v, i) => (
+                        <span key={v.id || i} data-testid={`variant-stock-${p.slug}-${i}`}
+                          className={`px-1.5 py-0.5 border ${v.stock > 0
+                            ? "border-ink/15 text-foreground/60"
+                            : "border-red-600 text-red-700 font-bold"}`}>
+                          {v.name} · {v.stock || 0}
+                        </span>
+                      ))}
+                    </div>
                   </td>
                   <td className="px-6 py-3">
                     {!p.active
                       ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-gray-400 text-white px-2 py-0.5">{L("Masqué", "Hidden")}</span>
                       : totalStock === 0
                       ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-red-600 text-white px-2 py-0.5">{L("Rupture", "Out")}</span>
+                      : enRupture.length
+                      // Un produit dont UNE variante est a zero n'est ni
+                      // « actif » ni « en rupture » : il se vend, mais pas dans
+                      // tous ses formats. Sans cet etat, la vente manquante
+                      // passait inapercue.
+                      ? <span data-testid={`partial-out-${p.slug}`}
+                          title={enRupture.map((v) => v.name).join(", ")}
+                          className="text-[10px] font-mono uppercase tracking-[0.15em] bg-amber-500 text-white px-2 py-0.5">
+                          {L("Rupture partielle", "Partly out")}
+                        </span>
                       : <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-emerald-600 text-white px-2 py-0.5">{L("Actif", "Active")}</span>}
                     {p.featured && <Star size={12} className="inline ml-2 fill-yellow-500 text-yellow-500" />}
                   </td>
