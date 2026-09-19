@@ -42,7 +42,7 @@ it("ouvre un billet sur le compte, sans page ni commande jointe", async () => {
   expect(api.get).toHaveBeenCalledWith("/account/tickets");
 });
 
-it("propose de joindre une photo, ce que les affilies n'ont pas", async () => {
+it("propose de joindre une photo", async () => {
   render(<CustomerSupport L={(fr) => fr} lang="fr" />);
   expect(await screen.findByTestId("ticket-photo")).toBeInTheDocument();
 });

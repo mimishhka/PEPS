@@ -288,6 +288,8 @@ def test_le_ramasse_miettes_epargne_les_photos_des_billets(server_module, monkey
     garder.write_bytes(b"photo du client")
     orphelin = tmp_path / "personne.jpg"
     orphelin.write_bytes(b"plus reference")
+    affilie = tmp_path / "affilie.jpg"
+    affilie.write_bytes(b"photo d'un affilie")
 
     class Vide:
         def find(self, *a, **k):
@@ -316,11 +318,14 @@ def test_le_ramasse_miettes_epargne_les_photos_des_billets(server_module, monkey
                     return self.reste.pop(0)
             return C()
 
-    server_module.db = types.SimpleNamespace(order_messages=Vide(), customer_tickets=Billets())
+    server_module.db = types.SimpleNamespace(
+        order_messages=Vide(), customer_tickets=Billets(),
+        affiliate_tickets=_Collection(["/api/uploads/messages/affilie.jpg"]))
     monkeypatch.setattr(server_module, "MESSAGE_UPLOAD_DIR", tmp_path)
     supprimes = asyncio.run(server_module._cleanup_orphan_message_images_once())
 
     assert garder.exists(), "la photo d'un billet a ete effacee par la purge"
+    assert affilie.exists(), "la photo d'un billet AFFILIE a ete effacee par la purge"
     assert not orphelin.exists()
     assert supprimes == 1
 
@@ -671,3 +676,109 @@ def test_une_decision_sur_une_demande_retiree_est_refusee(server_module, monkeyp
 
     assert exc.value.status_code == 409
     assert envois == []            # aucun client prevenu d'une decision fantome
+
+
+# ---------------------------------------------------------------------------
+# Billets affilies : la photo aussi
+# ---------------------------------------------------------------------------
+
+class _Collection:
+    """Une collection dont find() parcourt des messages portant ces images."""
+
+    def __init__(self, urls):
+        self.urls = urls
+
+    def find(self, *a, **k):
+        docs = [{"messages": [{"image_url": u}]} for u in self.urls]
+
+        class Curseur:
+            def __init__(self):
+                self.reste = list(docs)
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if not self.reste:
+                    raise StopAsyncIteration
+                return self.reste.pop(0)
+
+        return Curseur()
+
+
+def _affilie(server_module, monkeypatch):
+    journal = {"inseres": [], "majs": [], "limites": []}
+
+    class Tickets:
+        async def insert_one(self, doc):
+            journal["inseres"].append(dict(doc))
+
+        async def find_one_and_update(self, filtre, update, projection=None, return_document=None):
+            journal["majs"].append((filtre, update))
+            return {"id": filtre["id"], "messages": []}
+
+    async def affilie_courant(request):
+        return {"id": "a-1", "code": "KYRO", "email": "k@example.com", "first_name": "Kyro"}
+
+    async def metriques(aid):
+        return {"tier": "or"}
+
+    async def limite(*a, **k):
+        journal["limites"].append(a)
+
+    monkeypatch.setattr(server_module, "get_current_affiliate", affilie_courant)
+    monkeypatch.setattr(server_module, "_affiliate_compute_metrics", metriques)
+    monkeypatch.setattr(server_module, "_rate_limit", limite)
+    monkeypatch.setattr(server_module, "_validate_and_save_image",
+                        lambda contenu, dossier: "aff123.jpg")
+    server_module.db = types.SimpleNamespace(affiliate_tickets=Tickets())
+    return journal
+
+
+def test_un_affilie_joint_une_photo_a_son_billet(server_module, monkeypatch):
+    journal = _affilie(server_module, monkeypatch)
+    doc = asyncio.run(server_module.affiliate_ticket_create(
+        "Commission manquante", "Ma commission du 12 août n'apparaît pas.",
+        "/affiliate/payouts", _FauxFichier(), object()))
+
+    assert doc["messages"][0]["image_url"] == "/api/uploads/messages/aff123.jpg"
+    # Ce que le billet faisait deja, et qui ne doit pas se perdre :
+    assert doc["context_path"] == "/affiliate/payouts"     # la page d'origine
+    assert doc["snapshot"]["tier"] == "or"                 # le palier fige
+    assert doc["affiliate_id"] == "a-1"
+
+
+def test_la_photo_ouvre_une_limite_de_frequence(server_module, monkeypatch):
+    """Sans photo, l'absence de limite importait peu. Avec des images, un
+    compte pourrait remplir le disque : meme regle que le billet client."""
+    journal = _affilie(server_module, monkeypatch)
+    asyncio.run(server_module.affiliate_ticket_create(
+        "Commission manquante", "Ma commission du 12 août n'apparaît pas.", "", None, object()))
+    assert journal["limites"] and journal["limites"][0][0] == "affiliate_ticket"
+
+
+def test_un_billet_affilie_sans_photo_reste_valide(server_module, monkeypatch):
+    _affilie(server_module, monkeypatch)
+    doc = asyncio.run(server_module.affiliate_ticket_create(
+        "Commission manquante", "Ma commission du 12 août n'apparaît pas.", "", None, object()))
+    assert doc["messages"][0]["image_url"] is None
+
+
+def test_la_reponse_d_un_affilie_accepte_une_photo(server_module, monkeypatch):
+    journal = _affilie(server_module, monkeypatch)
+    asyncio.run(server_module.affiliate_ticket_reply(
+        "t-1", "Voici la capture d'écran.", _FauxFichier(), object()))
+
+    filtre, maj = journal["majs"][0]
+    # Toujours limite a SES billets : connaitre un identifiant ne suffit pas.
+    assert filtre == {"id": "t-1", "affiliate_id": "a-1"}
+    assert maj["$push"]["messages"]["image_url"] == "/api/uploads/messages/aff123.jpg"
+
+
+def test_un_billet_affilie_garde_ses_bornes(server_module, monkeypatch):
+    """La validation portee par l'ancien modele JSON est refaite, a l'identique."""
+    journal = _affilie(server_module, monkeypatch)
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.affiliate_ticket_create("x", "trop court", "", None, object()))
+    assert exc.value.status_code == 422
+    assert journal["inseres"] == []

@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
 
 import server as s
 
@@ -43,9 +43,13 @@ async def affiliate_tour_reset(request: Request):
     return await s.affiliate_tour_reset(request)
 
 
+# Multipart, comme le billet client : une photo ne passe pas en JSON.
 @router.post("/affiliate/tickets")
-async def affiliate_ticket_create(payload: s.AffiliateTicketIn, request: Request):
-    return await s.affiliate_ticket_create(payload, request)
+async def affiliate_ticket_create(request: Request,
+                                  subject: str = Form(...), body: str = Form(...),
+                                  context_path: str = Form(""),
+                                  file: Optional[UploadFile] = File(None)):
+    return await s.affiliate_ticket_create(subject, body, context_path, file, request)
 
 
 @router.get("/affiliate/tickets")
@@ -54,9 +58,10 @@ async def affiliate_tickets_list(request: Request):
 
 
 @router.post("/affiliate/tickets/{ticket_id}/reply")
-async def affiliate_ticket_reply(ticket_id: str, payload: s.AffiliateTicketReplyIn,
-                                 request: Request):
-    return await s.affiliate_ticket_reply(ticket_id, payload, request)
+async def affiliate_ticket_reply(ticket_id: str, request: Request,
+                                 body: str = Form(...),
+                                 file: Optional[UploadFile] = File(None)):
+    return await s.affiliate_ticket_reply(ticket_id, body, file, request)
 
 
 @router.get("/affiliate/referrals")

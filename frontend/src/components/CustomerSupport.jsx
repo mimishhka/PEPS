@@ -16,7 +16,6 @@ export default function CustomerSupport({ L, lang }) {
       lang={lang}
       base="/account/tickets"
       withContext={false}
-      avecPhoto
       testid="customer-support"
       intro={L(
         "Une question, ou un produit endommagé à nous montrer ? Joignez une photo, c'est ce qui nous permet de trancher vite. Nous répondons sous 1 à 2 jours ouvrables. Pour annuler une commande pas encore expédiée, passez par la page de cette commande.",

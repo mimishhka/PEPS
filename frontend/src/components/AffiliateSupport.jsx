@@ -49,9 +49,6 @@ export default function AffiliateSupport({
   withContext = true,
   intro,
   exemple,
-  // Une photo vaut mieux qu'une description pour un produit endommagé. Réservé
-  // aux clients : c'est leur besoin, et l'espace affilié ne change pas.
-  avecPhoto = false,
   testid = "affiliate-support",
 }) {
   const [tickets, setTickets] = useState(null);
@@ -84,21 +81,15 @@ export default function AffiliateSupport({
     }
     setBusy(true);
     try {
-      if (avecPhoto) {
-        // Le serveur attend du multipart de ce côté : une pièce jointe ne
-        // passe pas en JSON.
-        const fd = new FormData();
-        fd.append("subject", sujet.trim());
-        fd.append("body", corps.trim());
-        if (photo) fd.append("file", photo);
-        await api.post(base, fd);
-      } else {
-        await api.post(base, {
-          subject: sujet.trim(),
-          body: corps.trim(),
-          ...(withContext ? { context_path: window.location.pathname } : {}),
-        });
-      }
+      // Multipart pour les deux espaces : une photo ne passe pas en JSON.
+      // Un seul chemin d'envoi — il y en avait deux, dont un n'aurait plus
+      // servi à personne. La page d'origine suit l'affilié comme avant.
+      const fd = new FormData();
+      fd.append("subject", sujet.trim());
+      fd.append("body", corps.trim());
+      if (withContext) fd.append("context_path", window.location.pathname);
+      if (photo) fd.append("file", photo);
+      await api.post(base, fd);
       setSujet(""); setCorps(""); setPhoto(null);
       await charger();
       toast.success(L("Demande envoyée.", "Request sent."));
@@ -113,14 +104,10 @@ export default function AffiliateSupport({
     if (!reponse.trim()) return;
     setBusy(true);
     try {
-      if (avecPhoto) {
-        const fd = new FormData();
-        fd.append("body", reponse.trim());
-        if (photoReponse) fd.append("file", photoReponse);
-        await api.post(`${base}/${id}/reply`, fd);
-      } else {
-        await api.post(`${base}/${id}/reply`, { body: reponse.trim() });
-      }
+      const fd = new FormData();
+      fd.append("body", reponse.trim());
+      if (photoReponse) fd.append("file", photoReponse);
+      await api.post(`${base}/${id}/reply`, fd);
       setReponse(""); setPhotoReponse(null);
       await charger();
     } catch (e) {
@@ -159,8 +146,7 @@ export default function AffiliateSupport({
               data-testid="ticket-body" rows={4} maxLength={4000}
               className="w-full rounded-lg border border-ash px-4 py-2.5 text-sm text-nordfjord bg-white outline-none focus:border-nova" />
           </div>
-          {avecPhoto && (
-            <div>
+          <div>
               <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-1.5">
                 {L("Photo (facultative)", "Photo (optional)")}
               </label>
@@ -170,8 +156,7 @@ export default function AffiliateSupport({
               {photo && (
                 <p className="font-data text-[10px] text-glacier mt-1">{photo.name}</p>
               )}
-            </div>
-          )}
+          </div>
           <button type="submit" disabled={busy} data-testid="ticket-submit"
             className="px-6 py-2.5 rounded-full bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider disabled:opacity-40">
             {busy ? L("Envoi…", "Sending…") : L("Envoyer", "Send")}
@@ -243,7 +228,6 @@ export default function AffiliateSupport({
                         data-testid="ticket-reply-input" maxLength={4000}
                         placeholder={L("Ajouter une précision…", "Add a detail…")}
                         className="flex-1 rounded-lg border border-ash px-3.5 py-2 text-sm text-nordfjord bg-white outline-none focus:border-nova" />
-                      {avecPhoto && (
                         <label className="shrink-0 rounded-lg border border-ash px-3 py-2 text-sm cursor-pointer hover:border-glacier"
                           title={L("Joindre une photo", "Attach a photo")}>
                           <input type="file" accept="image/*" className="hidden"
@@ -251,7 +235,6 @@ export default function AffiliateSupport({
                             onChange={(e) => setPhotoReponse(e.target.files?.[0] || null)} />
                           📎
                         </label>
-                      )}
                       <button onClick={() => repondre(t.id)} disabled={busy || !reponse.trim()}
                         data-testid="ticket-reply-send"
                         className="px-4 py-2 rounded-lg bg-nordfjord text-clinical font-data text-[11px] font-bold uppercase tracking-wider disabled:opacity-40">

@@ -9579,10 +9579,13 @@ async def _cleanup_orphan_message_images_once() -> int:
     # LES BILLETS AUSSI. Leurs photos vivent dans le meme repertoire, et cette
     # purge supprime TOUT fichier non reference : les oublier ici revenait a
     # effacer chaque nuit les photos que les clients viennent d'envoyer.
-    async for t in db.customer_tickets.find(
-            {"messages.image_url": {"$ne": None}}, {"_id": 0, "messages": 1}):
-        for m in (t.get("messages") or []):
-            _retenir(m.get("image_url"))
+    # Les billets AFFILIES aussi, depuis qu'ils acceptent des photos : sans
+    # eux dans cette liste, la purge de la nuit les effacait.
+    for collection in (db.customer_tickets, db.affiliate_tickets):
+        async for t in collection.find(
+                {"messages.image_url": {"$ne": None}}, {"_id": 0, "messages": 1}):
+            for m in (t.get("messages") or []):
+                _retenir(m.get("image_url"))
     deleted = 0
     if MESSAGE_UPLOAD_DIR.exists():
         for f in MESSAGE_UPLOAD_DIR.iterdir():
@@ -9857,16 +9860,6 @@ class AffiliateTermsAcceptIn(BaseModel):
     # La version acceptée est imposée par le SERVEUR, jamais reçue du client :
     # sinon n'importe qui pourrait déclarer avoir accepté une version obsolète
     # pour échapper à une redemande.
-
-
-class AffiliateTicketIn(BaseModel):
-    """Ouverture d'un billet d'assistance par un affilié."""
-    subject: str = Field(min_length=3, max_length=140)
-    body: str = Field(min_length=10, max_length=4000)
-    # Page d'où part la demande. Recueillie automatiquement : une personne qui
-    # écrit « ça ne marche pas » depuis l'onglet des versements pose une
-    # question différente de la même phrase écrite depuis les paramètres.
-    context_path: Optional[str] = Field(default="", max_length=200)
 
 
 class AffiliateTicketReplyIn(BaseModel):
@@ -10300,11 +10293,33 @@ async def _photo_de_billet(file) -> Optional[str]:
     return f"/api/uploads/messages/{_validate_and_save_image(contenu, MESSAGE_UPLOAD_DIR)}"
 
 
-async def affiliate_ticket_create(payload: AffiliateTicketIn, request: Request):
+async def affiliate_ticket_create(subject: str, body: str, context_path: str, file,
+                                  request: Request):
     """Ouvre un billet. Le fil complet vit dans le document lui-même : une
     conversation d'assistance se lit d'un bloc, et la séparer en deux
-    collections obligerait à deux requêtes pour afficher trois messages."""
+    collections obligerait à deux requêtes pour afficher trois messages.
+
+    Multipart, comme le billet client : une photo ne passe pas en JSON. La
+    validation que portait AffiliateTicketIn est donc refaite ici, avec les
+    mêmes bornes."""
     aff = await get_current_affiliate(request)
+    subject = (subject or "").strip()
+    body = (body or "").strip()
+    context_path = (context_path or "").strip()
+    if not 3 <= len(subject) <= 140:
+        raise HTTPException(422, "Le sujet doit faire entre 3 et 140 caractères.")
+    if not 10 <= len(body) <= 4000:
+        raise HTTPException(422, "Décrivez votre demande en 10 caractères au moins.")
+    # Page d'où part la demande. Recueillie automatiquement : une personne qui
+    # écrit « ça ne marche pas » depuis l'onglet des versements pose une
+    # question différente de la même phrase écrite depuis les paramètres.
+    if len(context_path) > 200:
+        context_path = context_path[:200]
+    # Aucune limite n'existait : sans photo, peu importait. Avec des images,
+    # un compte pourrait remplir le disque. Même règle que le billet client.
+    await _rate_limit("affiliate_ticket", str(aff["id"]), 5, 3600,
+                      "Trop de demandes en peu de temps. Réessayez dans une heure.")
+    image_url = await _photo_de_billet(file)
     now = datetime.now(timezone.utc).isoformat()
     # Palier EFFECTIF, celui que l'affilie lit sur son tableau de bord. Un
     # echec de calcul ne doit pas empecher d'ouvrir un billet : le contexte est
@@ -10322,9 +10337,9 @@ async def affiliate_ticket_create(payload: AffiliateTicketIn, request: Request):
         "affiliate_name": " ".join(
             x for x in [aff.get("first_name"), aff.get("last_name")] if x
         ) or aff.get("name", ""),
-        "subject": payload.subject.strip(),
+        "subject": subject,
         "status": "open",
-        "context_path": (payload.context_path or "").strip(),
+        "context_path": context_path,
         # Contexte figé à l'ouverture : le palier et le solde d'aujourd'hui
         # expliquent la question d'aujourd'hui. Les relire au moment de
         # répondre donnerait un état qui a peut-être changé entre-temps.
@@ -10338,7 +10353,7 @@ async def affiliate_ticket_create(payload: AffiliateTicketIn, request: Request):
             "payout_address": aff.get("payout_address", ""),
             "payout_currency": aff.get("payout_currency", ""),
         },
-        "messages": [_ticket_message("affiliate", payload.body)],
+        "messages": [_ticket_message("affiliate", body, image_url)],
         "created_at": now,
         "updated_at": now,
         "last_from": "affiliate",
@@ -10361,14 +10376,17 @@ async def affiliate_tickets_list(request: Request):
     return rows
 
 
-async def affiliate_ticket_reply(ticket_id: str, payload: AffiliateTicketReplyIn,
-                                  request: Request):
+async def affiliate_ticket_reply(ticket_id: str, body: str, file, request: Request):
     aff = await get_current_affiliate(request)
+    body = (body or "").strip()
+    if not body or len(body) > 4000:
+        raise HTTPException(422, "Message vide ou trop long.")
+    image_url = await _photo_de_billet(file)
     # Le filtre porte AUSSI sur affiliate_id : sans lui, connaître un
     # identifiant suffirait à écrire dans le billet de quelqu'un d'autre.
     res = await db.affiliate_tickets.find_one_and_update(
         {"id": ticket_id, "affiliate_id": aff["id"]},
-        {"$push": {"messages": _ticket_message("affiliate", payload.body)},
+        {"$push": {"messages": _ticket_message("affiliate", body, image_url)},
          "$set": {"updated_at": datetime.now(timezone.utc).isoformat(),
                   "last_from": "affiliate",
                   # Répondre à un billet résolu le rouvre : la personne n'a
@@ -10508,11 +10526,6 @@ async def admin_affiliate_ticket_status(ticket_id: str, payload: AffiliateTicket
 # Meme mecanique que les billets affilies — fil complet dans un seul document,
 # statuts open / pending / resolved, repondre rouvre — pour qu'il n'y ait
 # qu'une facon de travailler.
-
-class CustomerTicketIn(BaseModel):
-    subject: str = Field(min_length=3, max_length=140)
-    body: str = Field(min_length=10, max_length=4000)
-
 
 async def customer_ticket_create(subject: str, body: str, file, user: dict):
     # La validation etait portee par CustomerTicketIn ; en multipart il n'y a
