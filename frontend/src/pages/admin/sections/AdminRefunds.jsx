@@ -155,7 +155,7 @@ export default function AdminRefunds() {
                 une note de version, qui n'avait de sens que pour qui
                 connaissait l'ancien comportement. */}
             {L("Délai annoncé aux clients : 48 h après la livraison — une demande tardive est signalée, c'est vous qui décidez. Engagement : statuer en 2 jours. Les remboursements crypto s'envoient depuis votre portefeuille : collez ensuite la référence de la transaction.",
-               "Window announced to customers: 48 h after delivery — a late request is flagged, and you decide. Commitment: decide within 2 days. Crypto refunds are sent from your wallet: then paste the transaction reference.")}
+               "Customers are asked to report issues within 48 h of delivery — a late request is flagged, and you decide. Commitment: decide within 2 days. Crypto refunds are sent from your wallet: then paste the transaction reference.")}
           </p>
           {/* Chaque demande gèle la commission de l'affilié jusqu'à la
               décision. Une demande oubliée immobilise donc l'argent de
