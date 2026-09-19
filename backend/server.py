@@ -7869,6 +7869,50 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
     }
 
 
+def _heure_locale(valeur) -> Optional[tuple]:
+    """(jour de la semaine 0=lundi, heure 0-23) en heure du Quebec.
+
+    Les dates sont stockees en UTC : lues telles quelles, les commandes du
+    soir basculeraient au lendemain et l'affluence serait decalee de cinq
+    heures — soit un tableau qui dit l'inverse de la realite."""
+    try:
+        if isinstance(valeur, datetime):
+            dt = valeur
+        else:
+            dt = datetime.fromisoformat(str(valeur).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        local = dt.astimezone(ZoneInfo(ORDER_CUTOFF_TZ))
+        return local.weekday(), local.hour
+    except Exception:
+        return None
+
+
+def _affluence(commandes: list) -> list:
+    """Quand les commandes arrivent : 7 jours x 24 heures, en argent.
+
+    Repondre a « quand dois-je etre disponible » et « quand lancer une
+    promotion » demande l'heure LOCALE, pas le nombre de commandes par jour."""
+    grille = [[0.0] * 24 for _ in range(7)]
+    for o in commandes:
+        moment = _heure_locale(o.get("created_at"))
+        if not moment:
+            continue
+        jour, heure = moment
+        grille[jour][heure] += float(o.get("total") or 0)
+    return [[round(v, 2) for v in ligne] for ligne in grille]
+
+
+def _premieres_commandes(lignes: list) -> dict:
+    """email -> date de sa PREMIERE commande payee, toutes periodes."""
+    premieres = {}
+    for ligne in lignes:
+        email = str(ligne.get("_id") or "").strip().lower()
+        if email:
+            premieres[email] = _texte_date(ligne.get("premiere"))
+    return premieres
+
+
 async def admin_analytics(period: int = 30,
                           _admin: dict = Depends(require_area("dashboard", "view"))):
     # --- Série de revenu sur la période demandée ----------------------------
@@ -7895,8 +7939,9 @@ async def admin_analytics(period: int = 30,
     # n'en garder que la periode demandee, avec un plafond de 20 000 non
     # trie : passe ce nombre, le graphique aurait perdu des ventes au hasard,
     # sans rien signaler. Le filtre est maintenant fait par la base.
-    paid, top, recent = await asyncio.gather(
-        db.orders.find(filtre_periode, {"_id": 0, "created_at": 1, "total": 1}).to_list(None),
+    paid, top, recent, premieres_lignes = await asyncio.gather(
+        db.orders.find(filtre_periode,
+                       {"_id": 0, "created_at": 1, "total": 1, "email": 1}).to_list(None),
         db.orders.aggregate([
             {"$match": filtre_periode},
             {"$unwind": "$items"},
@@ -7922,19 +7967,42 @@ async def admin_analytics(period: int = 30,
              "total": 1, "payment_status": 1, "fulfillment_status": 1,
              "shipping_address.full_name": 1},
         ).sort("created_at", -1).limit(8).to_list(8),
+        # La PREMIERE commande payee de chaque client, tous temps confondus :
+        # c'est elle qui dit si un achat de la periode vient d'un nouveau
+        # venu ou d'un client qui revient. Sans elle, la serie ne sait pas
+        # d'ou vient son argent.
+        db.orders.aggregate([
+            {"$match": {"payment_status": "paid", **SANS_CORBEILLE,
+                        "email": {"$nin": [None, ""]}}},
+            {"$group": {"_id": "$email", "premiere": {"$min": "$created_at"}}},
+        ]).to_list(None),
     )
+    premieres = _premieres_commandes(premieres_lignes)
 
     buckets: dict = {}
+    dans_la_periode = []
     for o in paid:
         day = _order_day(o.get("created_at"))
         if not day or day < since_day:
             continue
+        dans_la_periode.append(o)
         key = _bucket_key(day, granularity)
-        b = buckets.setdefault(key, {"revenue": 0.0, "orders": 0})
-        b["revenue"] += float(o.get("total") or 0)
+        b = buckets.setdefault(key, {"revenue": 0.0, "orders": 0, "returning": 0.0})
+        montant = float(o.get("total") or 0)
+        b["revenue"] += montant
         b["orders"] += 1
+        # Fidele = ce client avait deja paye AVANT le debut de la periode.
+        email = str(o.get("email") or "").strip().lower()
+        premiere = premieres.get(email)
+        if premiere and premiere < _texte_date(depuis.isoformat()):
+            b["returning"] += montant
     daily = [
-        {"date": d, "revenue": round(v["revenue"], 2), "orders": v["orders"]}
+        {"date": d, "revenue": round(v["revenue"], 2), "orders": v["orders"],
+         # Deux parts qui s'additionnent EXACTEMENT au revenu : une barre
+         # empilee dont les segments ne totalisent pas la barre est un
+         # mensonge graphique.
+         "returning_revenue": round(v["returning"], 2),
+         "new_revenue": round(v["revenue"] - v["returning"], 2)}
         for d, v in sorted(buckets.items())
     ]
 
@@ -7963,6 +8031,8 @@ async def admin_analytics(period: int = 30,
         "period": period,
         "top_products": top,
         "recent_orders": recent,
+        # Affluence : 7 lignes (lundi -> dimanche) de 24 heures locales.
+        "hourly": _affluence(dans_la_periode),
     }
 
 
@@ -13902,6 +13972,29 @@ def _pct_change(cur: float, prev: float):
     return round((cur - prev) / prev * 100, 1)
 
 
+# Etats de traitement qui valent « le colis est parti » et « le client l'a
+# recu ». Une commande livree est forcement passee par l'expedition : sans ce
+# cumul, l'entonnoir se retrecissait a mesure que les livraisons arrivaient.
+_EXPEDIEES = {"shipped", "delivered"}
+_LIVREES = {"delivered"}
+
+
+def _entonnoir_commandes(creees: int, payees: int, lignes: list) -> list:
+    """Le parcours reel d'une commande, marche par marche.
+
+    Chaque marche porte son compte ET sa part de la premiere : c'est la
+    comparaison qui informe, pas le nombre brut."""
+    par_etat = {str(l.get("_id") or ""): int(l.get("count") or 0) for l in lignes}
+    expediees = sum(n for e, n in par_etat.items() if e in _EXPEDIEES)
+    livrees = sum(n for e, n in par_etat.items() if e in _LIVREES)
+    marches = [("created", creees), ("paid", payees),
+               ("shipped", expediees), ("delivered", livrees)]
+    base = creees or 0
+    return [{"step": nom, "count": n,
+             "pct": round(n / base * 100, 1) if base else 0.0}
+            for nom, n in marches]
+
+
 async def admin_analytics_enhanced(period: int = 30,
                                    _admin: dict = Depends(require_area("dashboard", "view"))):  # noqa: F821
     """Métriques de pilotage avec comparaison période courante vs précédente."""
@@ -13926,8 +14019,8 @@ async def admin_analytics_enhanced(period: int = 30,
     twelve_start = (now - timedelta(days=365)).isoformat()
 
     # Sept lectures independantes, lancees ensemble : leurs temps s'ajoutaient.
-    doc_cur, doc_prev, created, paid, abandoned, clients_lignes, ytd_doc = \
-        await asyncio.gather(
+    doc_cur, doc_prev, created, paid, abandoned, clients_lignes, ytd_doc, \
+        traitement = await asyncio.gather(
             _somme_periode(cur_start_s, now.isoformat()),
             _somme_periode(prev_start_s, cur_start_s),
             db.orders.count_documents({**SANS_CORBEILLE, **depuis_courant}),  # noqa: F821
@@ -13953,6 +14046,16 @@ async def admin_analytics_enhanced(period: int = 30,
                             **_borne_date(twelve_start)}},  # noqa: F821
                 {"$group": {"_id": None, "total": {"$sum": "$total"}}},
             ]).to_list(1),
+            # ---- Ou en sont les commandes payees de la periode ----
+            # De quoi montrer le parcours reel : payee -> expediee -> livree.
+            # On ne peut pas suivre les vues produit ni les paniers abandonnes
+            # avant la commande : rien ne les enregistre, et un entonnoir dont
+            # la premiere marche est inventee ne vaut rien.
+            db.orders.aggregate([  # noqa: F821
+                {"$match": {"payment_status": "paid", **SANS_CORBEILLE,  # noqa: F821
+                            **depuis_courant}},
+                {"$group": {"_id": "$fulfillment_status", "count": {"$sum": 1}}},
+            ]).to_list(50),
         )
 
     def _lire(doc: list) -> dict:
@@ -13961,6 +14064,7 @@ async def admin_analytics_enhanced(period: int = 30,
         return {"revenue": rev, "orders": n, "aov": round(rev / n, 2) if n else 0.0}
 
     current = _lire(doc_cur)
+    entonnoir = _entonnoir_commandes(created, paid, traitement)
     previous = _lire(doc_prev)
     conversion = round(paid / created * 100, 1) if created else None
     clients = _repartir_clients(clients_lignes, cur_start_s)  # noqa: F821
@@ -13995,6 +14099,7 @@ async def admin_analytics_enhanced(period: int = 30,
             "returning": returning_customers,
             "total_active": clients["total_active"],
         },
+        "funnel": entonnoir,
         "tax_threshold": {
             "rolling_12mo_revenue": rolling_12mo,
             "threshold": TAX_THRESHOLD_CAD,

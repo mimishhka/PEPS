@@ -5,7 +5,7 @@ import {
   LogOut, X, Trash2, CheckCircle2, AlertCircle, Clock, UserCog,
   History, FolderTree, ListTree, Mail, Handshake, Globe,
   CalendarCheck, Send, Boxes, DollarSign, Inbox,
-  Link2, MessageSquare } from "lucide-react";
+  Link2, MessageSquare, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import api from "../../lib/api";
 import { useAuth } from "../../contexts/AuthContext";
 import { useLang } from "../../contexts/LanguageContext";
@@ -32,6 +32,8 @@ import AdminAffiliates from "./sections/AdminAffiliates";
 import AdminPayouts from "./sections/AdminPayouts";
 import AdminTickets from "./sections/AdminTickets";
 import ThemeToggle from "../../components/ThemeToggle";
+import PaletteRecherche from "./PaletteRecherche";
+import ClocheNotifications from "./ClocheNotifications";
 import AdminReconciliation from "./sections/AdminReconciliation";
 import AdminCheckoutFailures from "./sections/AdminCheckoutFailures";
 import AdminRefunds from "./sections/AdminRefunds";
@@ -58,6 +60,43 @@ export default function AdminLayout({ basePath = "/admin" }) {
     pull();
     const t = setInterval(pull, 60000);
     return () => { alive = false; clearInterval(t); };
+  }, []);
+
+  // Le pouls alimente la cloche : ce sont les memes compteurs que le tableau
+  // de bord, calcules une seule fois cote serveur. Deux sources auraient fini
+  // par afficher deux nombres differents pour la meme chose.
+  const [pouls, setPouls] = useState(null);
+  const voitTableauDeBord = hasAccess(user, "dashboard");
+  useEffect(() => {
+    if (!voitTableauDeBord) { setPouls(null); return undefined; }
+    let alive = true;
+    const pull = () => api.get("/admin/dashboard/pulse")
+      .then((r) => { if (alive) setPouls(r.data); })
+      .catch(() => {});
+    pull();
+    const t = setInterval(pull, 60000);
+    return () => { alive = false; clearInterval(t); };
+  }, [voitTableauDeBord]);
+
+  // La palette de recherche : Ctrl+K (ou Cmd+K), et « / » comme sur la
+  // maquette. « / » ne doit PAS voler la frappe de quelqu'un en train
+  // d'ecrire dans un champ — d'ou le test sur l'element actif.
+  const [paletteOuverte, setPaletteOuverte] = useState(false);
+  useEffect(() => {
+    const auClavier = (e) => {
+      const cible = e.target;
+      const dansUnChamp = cible && (
+        ["INPUT", "TEXTAREA", "SELECT"].includes(cible.tagName) || cible.isContentEditable);
+      if ((e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setPaletteOuverte((v) => !v);
+      } else if (e.key === "/" && !dansUnChamp && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setPaletteOuverte(true);
+      }
+    };
+    window.addEventListener("keydown", auClavier);
+    return () => window.removeEventListener("keydown", auClavier);
   }, []);
 
   // Pastille "stock faible" sur Produits. Endpoint distinct de ops/signals car
@@ -147,22 +186,72 @@ export default function AdminLayout({ basePath = "/admin" }) {
 
   const landingPath = navGroups[0]?.items[0]?.to || basePath;
 
+  // Le nom de l'ecran ouvert, pris dans la navigation : ajouter une entree au
+  // menu suffit pour que le fil d'Ariane la connaisse.
+  const titreCourant = useMemo(() => {
+    const entrees = navGroups.flatMap((g) => g.items);
+    const exact = entrees.find((n) => n.to === location.pathname);
+    if (exact) return exact.label;
+    const prefixe = entrees
+      .filter((n) => location.pathname.startsWith(n.to) && n.to !== basePath)
+      .sort((a, b) => b.to.length - a.to.length)[0];
+    return prefixe ? prefixe.label : L("Tableau de bord", "Dashboard");
+  }, [navGroups, location.pathname, basePath, L]);
+
+  const initiales = (user?.name || user?.email || "?")
+    .split(/[@\s.]+/).filter(Boolean).slice(0, 2).map((m) => m[0]).join("");
+
+  // Menu retractable. L'etat est MEMORISE : un menu qu'il faut replier a
+  // chaque visite n'est pas un confort, c'est une corvee. Sur un portable,
+  // ces 240 px repris rendent les tableaux du Dispatch enfin lisibles.
+  const [menuReplie, setMenuReplie] = useState(() => {
+    try { return localStorage.getItem("fironova_admin_menu") === "replie"; }
+    catch { return false; }
+  });
+  const basculerMenu = () => {
+    setMenuReplie((avant) => {
+      const apres = !avant;
+      try { localStorage.setItem("fironova_admin_menu", apres ? "replie" : "ouvert"); }
+      catch { /* navigation privee : le menu reste ouvert, sans erreur */ }
+      return apres;
+    });
+  };
+
   return (
     <div className="min-h-screen bg-[#f7f7f7] -mt-px" data-testid="admin-shell">
       <div className="flex">
-        <aside className="w-60 bg-white border-r border-ink/10 min-h-screen sticky top-0 hidden lg:flex flex-col" data-testid="admin-sidebar">
-          <div className="px-6 py-6 border-b border-ink/10">
-            <div className="font-display font-bold text-xl tracking-tight">
-              FIRONOVA<span style={{ color: "#00B8D4" }}>.</span>
-            </div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mt-1">// Admin</div>
+        <aside
+          className={`${menuReplie ? "w-16" : "w-60"} bg-white border-r border-ink/10 min-h-screen sticky top-0 hidden lg:flex flex-col transition-[width] duration-200`}
+          id="admin-sidebar"
+          data-testid="admin-sidebar"
+          data-collapsed={menuReplie ? "true" : "false"}
+        >
+          <div className={`${menuReplie ? "px-3 py-5" : "px-6 py-6"} border-b border-ink/10`}>
+            {menuReplie ? (
+              <div className="font-display font-bold text-xl tracking-tight text-center" title="FIRONOVA">
+                F<span style={{ color: "#00B8D4" }}>.</span>
+              </div>
+            ) : (
+              <>
+                <div className="font-display font-bold text-xl tracking-tight">
+                  FIRONOVA<span style={{ color: "#00B8D4" }}>.</span>
+                </div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mt-1">// Admin</div>
+              </>
+            )}
           </div>
           <nav className="flex-1 py-3 overflow-y-auto">
             {navGroups.map((group, gi) => (
               <div key={group.id} className={gi > 0 ? "mt-1" : ""}>
-                <div className="px-6 pt-4 pb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-foreground/40">
-                  {group.label}
-                </div>
+                {menuReplie ? (
+                  // Replie, l'intitule ne tiendrait pas : un filet garde la
+                  // separation entre groupes, qui est l'information utile.
+                  <div className="mx-3 my-2 h-px bg-ink/10" aria-hidden="true" />
+                ) : (
+                  <div className="px-6 pt-4 pb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-foreground/40">
+                    {group.label}
+                  </div>
+                )}
                 {group.items.map((n) => {
                   const signalBadge = n.signal && signals && signals[n.signal] > 0 ? signals[n.signal] : null;
                   const badge = signalBadge ?? (n.badge > 0 ? n.badge : null);
@@ -172,8 +261,14 @@ export default function AdminLayout({ basePath = "/admin" }) {
                       to={n.to}
                       end={n.end}
                       data-testid={n.testid || `admin-nav-${n.label.toLowerCase()}`}
+                      // Replie, le nom n'est plus lisible : il passe en
+                      // infobulle native, qui suit le clavier comme la souris.
+                      title={menuReplie ? n.label : undefined}
+                      aria-label={menuReplie ? n.label : undefined}
                       className={({ isActive }) =>
-                        `flex items-center gap-3 px-6 py-2.5 text-sm transition-colors ${
+                        `relative flex items-center text-sm transition-colors ${
+                          menuReplie ? "justify-center px-0 py-3" : "gap-3 px-6 py-2.5"
+                        } ${
                           isActive
                             ? "bg-ink text-white font-medium"
                             : "text-foreground/70 hover:bg-secondary"
@@ -181,10 +276,15 @@ export default function AdminLayout({ basePath = "/admin" }) {
                       }
                     >
                       <n.icon size={16} strokeWidth={1.6} />
-                      <span className="flex-1">{n.label}</span>
+                      {!menuReplie && <span className="flex-1">{n.label}</span>}
                       {badge && (
                         <span
-                          className="bg-red-600 text-white font-mono text-[10px] px-1.5 py-0.5 rounded-full"
+                          className={menuReplie
+                            // Replie, la pastille se pose sur l'icone : un
+                            // compteur d'alerte ne doit JAMAIS disparaitre
+                            // parce qu'on a gagne de la place.
+                            ? "absolute top-1.5 right-2 min-w-[14px] h-[14px] flex items-center justify-center bg-red-600 text-white font-mono text-[9px] px-1 rounded-full"
+                            : "bg-red-600 text-white font-mono text-[10px] px-1.5 py-0.5 rounded-full"}
                           data-testid={n.signal ? `nav-badge-${n.signal}` : "sidebar-low-stock-badge"}
                         >
                           {badge}
@@ -196,30 +296,94 @@ export default function AdminLayout({ basePath = "/admin" }) {
               </div>
             ))}
           </nav>
-          <div className="border-t border-ink/10 p-4 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 truncate">
-                {user?.email}
-              </div>
+          <div className={`border-t border-ink/10 ${menuReplie ? "p-2 space-y-2" : "p-4 space-y-2"}`}>
+            <div className={`flex items-center gap-2 ${menuReplie ? "justify-center" : "justify-between"}`}>
+              {!menuReplie && (
+                <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50 truncate"
+                     title={user?.email}>
+                  {user?.email}
+                </div>
+              )}
               <ThemeToggle />
             </div>
             <button
               onClick={() => { logout(); navigate("/"); }}
-              className="w-full flex items-center justify-center gap-2 border border-ink py-2 text-xs font-mono uppercase tracking-[0.2em] hover:bg-ink hover:text-white"
+              title={menuReplie ? L("Déconnexion", "Logout") : undefined}
+              aria-label={L("Déconnexion", "Logout")}
+              className={`w-full flex items-center justify-center gap-2 border border-ink text-xs font-mono uppercase tracking-[0.2em] hover:bg-ink hover:text-white ${
+                menuReplie ? "py-2" : "py-2"}`}
               data-testid="admin-logout"
             >
-              <LogOut size={12} /> {L("Déconnexion", "Logout")}
+              <LogOut size={12} /> {!menuReplie && L("Déconnexion", "Logout")}
             </button>
           </div>
         </aside>
 
+        <PaletteRecherche ouvert={paletteOuverte} setOuvert={setPaletteOuverte}
+          groupes={navGroups} L={L} lang={lang} />
+
         <main className="flex-1 min-w-0">
-          <div className="bg-white border-b border-ink/10 px-8 py-4 flex items-center justify-between" data-testid="admin-topbar">
-            <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/60">
-              {L("USAGE EN LABORATOIRE UNIQUEMENT · 19+", "FOR LABORATORY RESEARCH USE ONLY · 19+")}
+          <div className="bg-white border-b border-ink/10 px-8 py-4 flex items-center justify-between gap-4" data-testid="admin-topbar">
+            <div className="flex items-center gap-4 min-w-0">
+              <button
+                type="button"
+                onClick={basculerMenu}
+                data-testid="sidebar-toggle"
+                aria-expanded={!menuReplie}
+                aria-controls="admin-sidebar"
+                title={menuReplie ? L("Déplier le menu", "Expand menu") : L("Replier le menu", "Collapse menu")}
+                aria-label={menuReplie ? L("Déplier le menu", "Expand menu") : L("Replier le menu", "Collapse menu")}
+                className="hidden lg:flex items-center justify-center w-8 h-8 rounded-md border border-ink/15 text-foreground/60 hover:bg-secondary hover:text-foreground transition-colors shrink-0"
+              >
+                {menuReplie ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+              </button>
+              {/* Fil d'Ariane : ou suis-je. Il remplace la mention
+                  reglementaire, qui figure deja sur la boutique et sur chaque
+                  facture, et qui ne renseignait personne ici. */}
+              <nav aria-label={L("Fil d'Ariane", "Breadcrumb")} className="min-w-0">
+                <span className="text-sm font-medium text-foreground truncate block"
+                      data-testid="admin-breadcrumb">
+                  {titreCourant}
+                </span>
+              </nav>
             </div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/60">
-              {new Date().toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { weekday: "short", year: "numeric", month: "short", day: "numeric" })}
+
+            <div className="flex items-center gap-2 shrink-0">
+              {/* La loupe. Le raccourci est ecrit sur le bouton : un raccourci
+                  qu'il faut deviner n'existe pas. */}
+              <button
+                type="button"
+                onClick={() => setPaletteOuverte(true)}
+                data-testid="search-open"
+                aria-label={L("Rechercher", "Search")}
+                className="flex items-center gap-2 h-8 pl-2.5 pr-1.5 rounded-md border border-ink/15 text-foreground/60 hover:bg-secondary hover:text-foreground transition-colors"
+              >
+                <Search size={15} />
+                <span className="hidden xl:inline text-xs">{L("Rechercher", "Search")}</span>
+                <kbd className="hidden xl:inline font-mono text-[10px] border border-ink/15 rounded px-1 py-0.5 text-foreground/50">
+                  /
+                </kbd>
+              </button>
+
+              <ClocheNotifications pouls={pouls} signaux={signals} basePath={basePath} L={L}
+                argent={(n) => `${Number(n || 0).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA",
+                  { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`} />
+
+              <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-foreground/50 hidden xl:inline">
+                {new Date().toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { weekday: "short", month: "short", day: "numeric" })}
+              </span>
+
+              {/* L'avatar : les initiales, et le courriel au survol. Pas de
+                  menu de plus — deconnexion et theme vivent au pied du menu de
+                  gauche, un seul endroit ou les chercher. */}
+              <span
+                data-testid="admin-avatar"
+                title={user?.email}
+                aria-hidden="true"
+                className="w-8 h-8 rounded-full bg-ink text-white flex items-center justify-center text-[11px] font-bold uppercase shrink-0"
+              >
+                {initiales}
+              </span>
             </div>
           </div>
           {signals && signals.pending_manifest > 0 && !location.pathname.includes("/dispatch") && (

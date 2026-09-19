@@ -21,6 +21,11 @@ jest.mock("../../../contexts/LanguageContext", () => ({
   useLang: () => ({ lang: "fr" }),
 }));
 
+// La page salue la personne connectée : sans ce contexte, useAuth lève.
+jest.mock("../../../contexts/AuthContext", () => ({
+  useAuth: () => ({ user: { name: "Mireille", email: "mireille@example.com" } }),
+}));
+
 jest.mock("../AdminLayout", () => ({
   StatusBadge: ({ status }) => <span>{status || "—"}</span>,
 }));
@@ -36,7 +41,8 @@ jest.mock("lucide-react", () => new Proxy({}, {
 const PULSE_CALME = {
   money: { pending_payment: { amount: 0, count: 0, expiring_soon: 0, by_method: { interac: 0, crypto: 0 } },
            reconcile: { count: 0, by_provider: {} } },
-  rails: {},
+  rails: { interac: { paid_amount: 4491.47, paid_count: 38 },
+           crypto: { paid_amount: 782.89, paid_count: 4 } },
   ops: { to_ship: 0, low_stock: 0, low_stock_top: [], late_payments: 0, emails_failed: 0,
          tickets_open: 0, refunds: { to_review: 0, to_send: 0, to_send_amount: 0 } },
 };
@@ -52,8 +58,13 @@ const PULSE_CHARGE = {
 
 const ANALYTICS = {
   granularity: "day", period: 30,
-  daily_revenue: [{ date: "2026-09-17", revenue: 120, orders: 2 },
-                  { date: "2026-09-18", revenue: 300, orders: 3 }],
+  daily_revenue: [{ date: "2026-09-17", revenue: 120, orders: 2,
+                    returning_revenue: 100, new_revenue: 20 },
+                  { date: "2026-09-18", revenue: 300, orders: 3,
+                    returning_revenue: 250, new_revenue: 50 }],
+  // Sept lignes de 24 heures : une seule case chargee, jeudi 20 h.
+  hourly: Array.from({ length: 7 }, (_, j) =>
+    Array.from({ length: 24 }, (_, h) => (j === 3 && h === 20 ? 420 : 0))),
   top_products: [{ slug: "bpc-157-5mg", variant_name: "5.0mg", name_fr: "BPC-157",
                    name_en: "BPC-157", units_sold: 7, revenue: 217.96 }],
   recent_orders: [{ id: "o-1", order_number: "FN-1", created_at: "2026-09-18T14:07:00",
@@ -69,6 +80,10 @@ const ENHANCED = {
   changes: { revenue: 40, orders: 25, aov: 12 },
   conversion: { orders_created: 14, orders_paid: 6, orders_abandoned: 2, conversion_rate: 42.9 },
   customers: { new: 3, returning: 1, total_active: 4 },
+  funnel: [{ step: "created", count: 14, pct: 100.0 },
+           { step: "paid", count: 6, pct: 42.9 },
+           { step: "shipped", count: 4, pct: 28.6 },
+           { step: "delivered", count: 3, pct: 21.4 }],
   tax_threshold: { rolling_12mo_revenue: 5274.36, threshold: 30000, ratio: 0.176,
                    level: "ok", remaining: 24725.64 },
 };
@@ -144,12 +159,48 @@ it("compte les actions a cote du titre de section", async () => {
 // L'argent de la période
 // ---------------------------------------------------------------------------
 
-it("montre le revenu de la periode avec son ecart", async () => {
+it("montre les quatre chiffres de pilotage avec leur ecart", async () => {
   afficher();
   expect(await screen.findByTestId("kpi-revenue")).toHaveTextContent("420,00 $");
   expect(screen.getByTestId("kpi-revenue")).toHaveTextContent("+40");
+  expect(screen.getByTestId("kpi-orders")).toHaveTextContent("5");
+  expect(screen.getByTestId("kpi-aov")).toHaveTextContent("84,00 $");
   expect(screen.getByTestId("kpi-conversion")).toHaveTextContent("42.9 %");
-  expect(screen.getByTestId("kpi-customers")).toHaveTextContent("3 nouveaux");
+});
+
+it("la grande carte separe ce qui vient des fideles et des nouveaux", async () => {
+  // Deux series : la legende est obligatoire, et les deux montants doivent
+  // totaliser le revenu affiche en tete de carte.
+  afficher();
+  const carte = await screen.findByTestId("chart-revenue");
+  expect(carte.closest("div[class*='rounded']")).toBeTruthy();
+  expect(screen.getByText(/Clients fidèles/)).toBeInTheDocument();
+  expect(screen.getByText(/Nouveaux clients/)).toBeInTheDocument();
+  // 100 + 250 de fideles sur 420 de total.
+  expect(screen.getByText("350,00 $")).toBeInTheDocument();
+  expect(screen.getByText("70,00 $")).toBeInTheDocument();
+});
+
+it("montre ou se perdent les commandes", async () => {
+  afficher();
+  const entonnoir = await screen.findByTestId("funnel");
+  expect(screen.getByTestId("funnel-created")).toHaveTextContent("14");
+  expect(screen.getByTestId("funnel-delivered")).toHaveTextContent("3");
+  // La perte entre deux marches est ecrite : c'est elle qui appelle une action.
+  expect(entonnoir).toHaveTextContent("−8");
+});
+
+it("repartit l encaisse entre Interac et crypto", async () => {
+  afficher();
+  expect(await screen.findByTestId("rails-donut-interac")).toHaveTextContent("4 491,47 $");
+  expect(screen.getByTestId("rails-donut-crypto")).toHaveTextContent("782,89 $");
+});
+
+it("dit a quelle heure les clients commandent, en heure locale", async () => {
+  afficher();
+  // Le sommet est ecrit en toutes lettres : c'est l'information cherchee.
+  expect(await screen.findByTestId("affluence-sommet")).toHaveTextContent("Jeu");
+  expect(screen.getByTestId("affluence-sommet")).toHaveTextContent("20 h");
 });
 
 it("le graphique existe aussi en tableau, pour qui ne lit pas des barres", async () => {

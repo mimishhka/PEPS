@@ -255,6 +255,44 @@ def test_la_corbeille_disparait_aussi_des_graphiques(server_module, monkeypatch)
     assert out["top_products"][0]["revenue"] == 100.0
 
 
+def test_la_serie_dit_ce_qui_vient_des_clients_fideles(server_module, monkeypatch):
+    base = _Base(orders=[
+        # Ce client achetait deja avant la periode : son achat est « fidele ».
+        _commande(order_number="F0", id="f0", email="fidele@example.com",
+                  created_at=_il_y_a(200), total=90.0),
+        _commande(order_number="F1", id="f1", email="fidele@example.com",
+                  created_at=_il_y_a(2), total=60.0),
+        # Premier achat de sa vie : « nouveau ».
+        _commande(order_number="N1", id="n1", email="neuf@example.com",
+                  created_at=_il_y_a(2), total=40.0),
+    ])
+    _brancher(server_module, monkeypatch, base)
+
+    out = asyncio.run(server_module.admin_analytics(30, {}))
+    barre = out["daily_revenue"][-1]
+    assert barre["returning_revenue"] == 60.0
+    assert barre["new_revenue"] == 40.0
+    # Les deux parts totalisent EXACTEMENT la barre : une barre empilee dont
+    # les segments ne font pas le total est un mensonge graphique.
+    assert barre["returning_revenue"] + barre["new_revenue"] == barre["revenue"]
+
+
+def test_l_affluence_est_en_heure_locale(server_module, monkeypatch):
+    from datetime import datetime as dt, timezone as tz
+    # 2026-09-18 01:30 UTC = 2026-09-17 21:30 a Montreal : vendredi 1 h en
+    # UTC, jeudi 21 h chez nous. Lu en UTC, le tableau dirait le mauvais jour
+    # ET la mauvaise heure.
+    base = _Base(orders=[_commande(order_number="H", id="h", total=50.0,
+                                   created_at=dt(2026, 9, 18, 1, 30, tzinfo=tz.utc).isoformat())])
+    _brancher(server_module, monkeypatch, base)
+
+    out = asyncio.run(server_module.admin_analytics(365, {}))
+    grille = out["hourly"]
+    assert len(grille) == 7 and len(grille[0]) == 24
+    assert grille[3][21] == 50.0          # jeudi (indice 3), 21 h
+    assert sum(sum(ligne) for ligne in grille) == 50.0
+
+
 # ---------------------------------------------------------------------------
 # Metriques de pilotage
 # ---------------------------------------------------------------------------
@@ -293,6 +331,32 @@ def test_le_pilotage_compare_deux_periodes_sans_la_corbeille(server_module, monk
     assert out["conversion"]["orders_paid"] == 1
     assert out["conversion"]["orders_abandoned"] == 1
     assert out["tax_threshold"]["rolling_12mo_revenue"] == 400.0
+
+
+def test_l_entonnoir_suit_le_parcours_reel_d_une_commande(server_module, monkeypatch):
+    base = _Base(orders=[
+        _commande(order_number="A", id="a", fulfillment_status="delivered"),
+        _commande(order_number="B", id="b", fulfillment_status="shipped"),
+        _commande(order_number="C", id="c", fulfillment_status="processing"),
+        _commande(order_number="D", id="d", payment_status="awaiting_etransfer",
+                  fulfillment_status="pending"),
+    ])
+    _brancher(server_module, monkeypatch, base)
+
+    out = asyncio.run(server_module.admin_analytics_enhanced(30, {}))
+    # Une commande LIVREE est forcement passee par l'expedition : sans ce
+    # cumul, l'entonnoir se retrecirait a mesure que les livraisons arrivent.
+    assert [(m["step"], m["count"]) for m in out["funnel"]] == [
+        ("created", 4), ("paid", 3), ("shipped", 2), ("delivered", 1)]
+    assert [m["pct"] for m in out["funnel"]] == [100.0, 75.0, 50.0, 25.0]
+
+
+def test_un_entonnoir_sans_commande_ne_divise_pas_par_zero(server_module):
+    assert server_module._entonnoir_commandes(0, 0, []) == [
+        {"step": "created", "count": 0, "pct": 0.0},
+        {"step": "paid", "count": 0, "pct": 0.0},
+        {"step": "shipped", "count": 0, "pct": 0.0},
+        {"step": "delivered", "count": 0, "pct": 0.0}]
 
 
 def test_la_repartition_des_clients_est_une_fonction_pure(server_module):

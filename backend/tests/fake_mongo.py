@@ -324,10 +324,15 @@ def _accumuler(op: str, arg: Any, docs: list) -> Any:
     if op == "$first":
         return valeurs[0] if valeurs else None
     presentes = [v for v in valeurs if v is not None]
+    if not presentes:
+        return None
+    # L'ordre BSON, comme pour le tri : une collection ou created_at est
+    # tantot une chaine, tantot une date ferait lever un TypeError ici alors
+    # que Mongo, lui, repond sans broncher.
     if op == "$min":
-        return min(presentes, default=None)
+        return min(presentes, key=_CleTri)
     if op == "$max":
-        return max(presentes, default=None)
+        return max(presentes, key=_CleTri)
     raise NotImplementedError(f"accumulateur non gere : {op}")
 
 
