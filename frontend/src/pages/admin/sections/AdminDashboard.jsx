@@ -347,7 +347,20 @@ export default function AdminDashboard() {
         </div>
 
         <div className="bg-white border border-ash p-6 rounded-md">
-          <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">// {L("MEILLEURES VENTES", "BEST SELLERS")}</div>
+          {/* La période est annoncée : le classement la suit désormais, comme
+              le graphique. Sans cette mention, « 7 jours » pouvait afficher un
+              graphique vide au-dessus d'un classement bien garni — lu comme
+              une panne, alors que l'un portait sur la semaine et l'autre sur
+              toute l'histoire de la boutique. */}
+          <div className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier">
+            // {L("MEILLEURES VENTES", "BEST SELLERS")}
+            <span className="text-nova">
+              {" · "}
+              {period === 365 ? L("12 MOIS", "12 MONTHS")
+                : period === 180 ? L("6 MOIS", "6 MONTHS")
+                : L(`${period} JOURS`, `${period} DAYS`)}
+            </span>
+          </div>
           <h2 className="font-display text-xl font-bold tracking-tight mt-1 mb-4 text-nordfjord">{L("Top produits", "Top Products")}</h2>
           <ul className="divide-y divide-ash/60" data-testid="top-products">
             {(analytics?.top_products || []).slice(0, 6).map((p, idx) => (

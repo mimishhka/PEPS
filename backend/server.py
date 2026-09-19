@@ -5538,22 +5538,88 @@ async def _low_stock_variants(limit: int = 200) -> list:
     return rows[:limit]
 
 
+# ---------------------------------------------------------------------------
+# Tableau de bord — fondations communes aux quatre points d'acces
+# ---------------------------------------------------------------------------
+# La corbeille. Toutes les vues de commandes l'excluent (voir _orders_filter),
+# le tableau de bord ne l'excluait nulle part : une commande mise a la
+# corbeille restait dans le revenu, dans les compteurs et dans « Dernieres
+# commandes ». L'ecran Commandes et le tableau de bord donnaient donc deux
+# nombres differents pour la meme chose.
+SANS_CORBEILLE = {"deleted_at": None}
+
+
+def _borne_date(iso: str) -> dict:
+    """Filtre « created_at >= iso », que la date soit stockee en CHAINE ISO ou
+    en date BSON.
+
+    MongoDB ne compare qu'a l'interieur d'un meme type : une borne en chaine
+    laisse tomber en silence les documents ou created_at est une date, et
+    l'inverse est vrai aussi. Les deux formes coexistent dans cette base
+    (voir _order_day, ecrit pour la meme raison)."""
+    return {"$or": [{"created_at": {"$gte": iso}},
+                    {"created_at": {"$gte": datetime.fromisoformat(iso)}}]}
+
+
+def _borne_intervalle(debut: str, fin: str) -> dict:
+    """Meme precaution, pour un intervalle [debut, fin)."""
+    return {"$or": [{"created_at": {"$gte": debut, "$lt": fin}},
+                    {"created_at": {"$gte": datetime.fromisoformat(debut),
+                                    "$lt": datetime.fromisoformat(fin)}}]}
+
+
+def _texte_date(valeur) -> str:
+    """Une date comparable en Python, quel que soit son type de stockage."""
+    if isinstance(valeur, datetime):
+        return valeur.isoformat()
+    return str(valeur or "")
+
+
+def _repartir_clients(lignes: list, debut: str) -> dict:
+    """Nouveaux / fideles / actifs, a partir d'une ligne par client portant sa
+    PREMIERE et sa DERNIERE commande payee.
+
+    Remplace une boucle qui lancait une requete count_documents PAR CLIENT :
+    100 clients sur la periode = 101 allers-retours vers la base, et la page
+    ralentissait a proportion du succes de la boutique."""
+    nouveaux = fideles = 0
+    for ligne in lignes:
+        if _texte_date(ligne.get("derniere")) < debut:
+            continue                      # aucun achat sur la periode
+        if _texte_date(ligne.get("premiere")) < debut:
+            fideles += 1
+        else:
+            nouveaux += 1
+    return {"new": nouveaux, "returning": fideles, "total_active": nouveaux + fideles}
+
+
 async def admin_stats(_admin: dict = Depends(require_area("dashboard", "view"))):
-    total_orders = await db.orders.count_documents({})
-    pending = await db.orders.count_documents({"fulfillment_status": "pending"})
-    paid = await db.orders.count_documents({"payment_status": "paid"})
-    users = await db.users.count_documents({"role": "user"})
-    products = await db.products.count_documents({})
-    # Le compte portait sur products.stock — un champ « legacy/fallback » qui
-    # vaut souvent 0 puisque le stock réel vit sur les variantes. La tuile
-    # annonçait donc un stock bas que le panneau du dashboard, lui, ne voyait
-    # pas. Les deux lisent maintenant le même calcul, au niveau variante.
-    low_stock = len(await _low_stock_variants())
-    revenue_cursor = db.orders.aggregate([
-        {"$match": {"payment_status": "paid"}},
-        {"$group": {"_id": None, "total": {"$sum": "$total"}}},
-    ])
-    revenue_doc = await revenue_cursor.to_list(1)
+    """Totaux « depuis l'ouverture » de la ligne de reference du tableau de bord.
+
+    Les sept lectures se faisaient l'une apres l'autre alors qu'aucune ne
+    depend des autres : le temps de reponse etait leur SOMME. asyncio.gather
+    les lance ensemble."""
+    (total_orders, pending, paid, users, products,
+     low_stock_rows, revenue_doc) = await asyncio.gather(
+        db.orders.count_documents(SANS_CORBEILLE),
+        db.orders.count_documents({"fulfillment_status": "pending", **SANS_CORBEILLE}),
+        db.orders.count_documents({"payment_status": "paid", **SANS_CORBEILLE}),
+        db.users.count_documents({"role": "user"}),
+        # La tuile s'intitule « Produits actifs » et comptait TOUT : les
+        # produits masques et ceux mis a la corbeille compris. Elle annoncait
+        # 22 produits pour un catalogue de 12.
+        db.products.count_documents({"active": True, "deleted_at": None}),
+        # Le compte portait sur products.stock — un champ « legacy/fallback » qui
+        # vaut souvent 0 puisque le stock réel vit sur les variantes. La tuile
+        # annonçait donc un stock bas que le panneau du dashboard, lui, ne voyait
+        # pas. Les deux lisent maintenant le même calcul, au niveau variante.
+        _low_stock_variants(),
+        db.orders.aggregate([
+            {"$match": {"payment_status": "paid", **SANS_CORBEILLE}},
+            {"$group": {"_id": None, "total": {"$sum": "$total"}}},
+        ]).to_list(1),
+    )
+    low_stock = len(low_stock_rows)
     revenue = revenue_doc[0]["total"] if revenue_doc else 0
     return {
         "total_orders": total_orders,
@@ -7672,69 +7738,92 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
     now_s = now.isoformat()
     soon_s = (now + timedelta(hours=3)).isoformat()
 
-    # --- Commandes vendues mais pas encore encaissées, TOUS circuits -------
-    awaiting = await db.orders.find(
-        {"payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto"]},
-         "deleted_at": None},
-        {"_id": 0, "total": 1, "payment_method": 1, "payment_deadline": 1},
-    ).to_list(2000)
-    pending_total = round(sum(float(o.get("total") or 0) for o in awaiting), 2)
-    pending_expiring = sum(
-        1 for o in awaiting
-        if o.get("payment_deadline") and now_s < str(o["payment_deadline"]) <= soon_s
+    # Huit lectures independantes, lancees ENSEMBLE. Les sommes et les comptes
+    # se font desormais dans la base : on ramenait jusqu'a 2000 commandes et
+    # 1000 lignes de reconciliation en memoire pour n'en tirer que des totaux,
+    # et ces plafonds auraient fausse les chiffres en silence une fois
+    # depasses — sans le moindre message.
+    attente_lignes, recon_lignes, payes_lignes, to_ship, low_stock_rows, \
+        late_payments, emails_failed, tickets_open = await asyncio.gather(
+        db.orders.aggregate([
+            {"$match": {"payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto"]},
+                        **SANS_CORBEILLE}},
+            {"$group": {
+                "_id": "$payment_method",
+                "amount": {"$sum": "$total"},
+                "count": {"$sum": 1},
+                # Meme regle qu'avant : une echeance dans les trois heures.
+                # Une commande SANS echeance ne compte pas — une comparaison
+                # avec un champ absent est fausse, comme le test Python
+                # `o.get("payment_deadline") and ...` qu'elle remplace.
+                "expiring": {"$sum": {"$cond": [
+                    {"$and": [{"$gt": ["$payment_deadline", now_s]},
+                              {"$lte": ["$payment_deadline", soon_s]}]}, 1, 0]}},
+            }},
+        ]).to_list(50),
+        # La collection porte un nom historique (interac_) mais reçoit aussi les
+        # signaux crypto, distingués par le champ provider.
+        db.interac_reconciliation_queue.aggregate([
+            {"$match": {"status": "pending"}},
+            {"$group": {"_id": "$provider", "count": {"$sum": 1}}},
+        ]).to_list(50),
+        db.orders.aggregate([
+            {"$match": {"payment_status": "paid", **SANS_CORBEILLE}},
+            {"$group": {"_id": "$payment_method",
+                        "amount": {"$sum": "$total"}, "count": {"$sum": 1}}},
+        ]).to_list(50),
+        db.orders.count_documents({
+            "payment_status": "paid",
+            "fulfillment_status": {"$in": ["processing", "pending"]},
+            **SANS_CORBEILLE,
+        }),
+        _low_stock_variants(limit=50),
+        db.orders.count_documents({"late_payment_flagged": True, **SANS_CORBEILLE}),
+        db.email_outbox.count_documents({"status": "failed"}),
+        # Billets d'affiliés en attente de réponse. Exposé sur le pouls
+        # quotidien, et pas seulement dans l'écran des billets : un billet non
+        # relevé est pire qu'un courriel oublié, parce que l'affilié le voit
+        # « ouvert » et attend.
+        db.affiliate_tickets.count_documents({"status": "open"}),
     )
 
-    # --- Réconciliation : une seule file, deux fournisseurs ---------------
-    # La collection porte un nom historique (interac_) mais reçoit aussi les
-    # signaux crypto, distingués par le champ provider.
-    recon = await db.interac_reconciliation_queue.find(
-        {"status": "pending"}, {"_id": 0, "provider": 1},
-    ).to_list(1000)
-    recon_by_provider: dict = {}
-    for r in recon:
-        prov = (r.get("provider") or "interac").lower()
-        recon_by_provider[prov] = recon_by_provider.get(prov, 0) + 1
+    par_methode = {str(r.get("_id") or ""): r for r in attente_lignes}
+    pending_total = round(sum(float(r.get("amount") or 0) for r in attente_lignes), 2)
+    pending_count = sum(int(r.get("count") or 0) for r in attente_lignes)
+    pending_expiring = sum(int(r.get("expiring") or 0) for r in attente_lignes)
 
-    # --- Circuits de paiement : encaissé / en attente / à réconcilier -----
+    recon_by_provider: dict = {}
+    for r in recon_lignes:
+        prov = str(r.get("_id") or "interac").lower()
+        recon_by_provider[prov] = recon_by_provider.get(prov, 0) + int(r.get("count") or 0)
+    recon_total = sum(recon_by_provider.values())
+
+    payes = {str(r.get("_id") or ""): r for r in payes_lignes}
     rails: dict = {}
     for method in ("interac", "nowpayments"):
-        paid_rows = await db.orders.aggregate([
-            {"$match": {"payment_status": "paid", "payment_method": method}},
-            {"$group": {"_id": None, "amount": {"$sum": "$total"}, "count": {"$sum": 1}}},
-        ]).to_list(1)
-        pend = [o for o in awaiting if (o.get("payment_method") or "") == method]
+        p = payes.get(method) or {}
+        a = par_methode.get(method) or {}
         key = "crypto" if method == "nowpayments" else "interac"
         rails[key] = {
-            "paid_amount": round(float(paid_rows[0]["amount"]), 2) if paid_rows else 0.0,
-            "paid_count": int(paid_rows[0]["count"]) if paid_rows else 0,
-            "pending_amount": round(sum(float(o.get("total") or 0) for o in pend), 2),
-            "pending_count": len(pend),
-            "reconcile_count": recon_by_provider.get(
-                "crypto" if key == "crypto" else "interac", 0),
+            "paid_amount": round(float(p.get("amount") or 0), 2),
+            "paid_count": int(p.get("count") or 0),
+            "pending_amount": round(float(a.get("amount") or 0), 2),
+            "pending_count": int(a.get("count") or 0),
+            "reconcile_count": recon_by_provider.get(key, 0),
         }
-
-    # --- Opérations du jour ----------------------------------------------
-    to_ship = await db.orders.count_documents({
-        "payment_status": "paid",
-        "fulfillment_status": {"$in": ["processing", "pending"]},
-        "deleted_at": None,
-    })
-    low_stock_rows = await _low_stock_variants(limit=50)
-    late_payments = await db.orders.count_documents({"late_payment_flagged": True})
-    emails_failed = await db.email_outbox.count_documents({"status": "failed"})
 
     return {
         "money": {
             "pending_payment": {
                 "amount": pending_total,
-                "count": len(awaiting),
+                "count": pending_count,
                 "expiring_soon": pending_expiring,
                 "by_method": {
-                    "interac": sum(1 for o in awaiting if o.get("payment_method") == "interac"),
-                    "crypto": sum(1 for o in awaiting if o.get("payment_method") == "nowpayments"),
+                    "interac": int((par_methode.get("interac") or {}).get("count") or 0),
+                    "crypto": int((par_methode.get("nowpayments") or {}).get("count") or 0),
                 },
             },
-            "reconcile": {"count": len(recon), "by_provider": recon_by_provider},
+            "reconcile": {"count": recon_total, "by_provider": recon_by_provider},
         },
         "rails": rails,
         "ops": {
@@ -7748,9 +7837,7 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
             # un billet non relevé est pire qu'un courriel oublié, parce que
             # l'affilié le voit « ouvert » et attend. Le seul moyen que ce
             # système tienne sa promesse est qu'on ne puisse pas l'ignorer.
-            "tickets_open": await db.affiliate_tickets.count_documents(
-                {"status": "open"}
-            ),
+            "tickets_open": tickets_open,
         },
     }
 
@@ -7758,21 +7845,57 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
 async def admin_analytics(period: int = 30,
                           _admin: dict = Depends(require_area("dashboard", "view"))):
     # --- Série de revenu sur la période demandée ----------------------------
-    # Le regroupement se fait en Python, volontairement : l'agrégation Mongo
-    # comparait created_at (parfois stocké en Date) à une chaîne ISO, ce qui
-    # est fragile selon l'ordre des types BSON. Le volume (quelques centaines
-    # de commandes) rend le tri côté application sans coût mesurable.
+    # Le REGROUPEMENT par jour/semaine/mois reste en Python : il doit lire
+    # created_at qu'il soit stocké en chaîne ISO ou en date BSON, ce que
+    # _order_day sait faire et qu'une agrégation ferait mal. Le FILTRE, lui,
+    # est redescendu dans la base (voir _borne_date, qui couvre les deux
+    # types) : inutile de rapatrier l'historique entier pour en afficher
+    # trente jours.
     #
     # La série suivait auparavant 30 jours EN DUR : le sélecteur de période du
     # dashboard changeait les tuiles mais jamais le graphique.
     if period not in DASHBOARD_PERIODS:
         period = 30
     granularity = _series_granularity(period)
-    since_day = (datetime.now(timezone.utc) - timedelta(days=period)).strftime("%Y-%m-%d")
-    paid = await db.orders.find(
-        {"payment_status": "paid"},
-        {"_id": 0, "created_at": 1, "total": 1},
-    ).to_list(20000)
+    depuis = datetime.now(timezone.utc) - timedelta(days=period)
+    since_day = depuis.strftime("%Y-%m-%d")
+    filtre_periode = {"payment_status": "paid", **SANS_CORBEILLE, **_borne_date(depuis.isoformat())}
+
+    # La serie, le classement et les dernieres commandes sont independants :
+    # trois lectures lancees ensemble.
+    #
+    # La serie ramenait TOUTES les commandes payees depuis l'ouverture pour
+    # n'en garder que la periode demandee, avec un plafond de 20 000 non
+    # trie : passe ce nombre, le graphique aurait perdu des ventes au hasard,
+    # sans rien signaler. Le filtre est maintenant fait par la base.
+    paid, top, recent = await asyncio.gather(
+        db.orders.find(filtre_periode, {"_id": 0, "created_at": 1, "total": 1}).to_list(None),
+        db.orders.aggregate([
+            {"$match": filtre_periode},
+            {"$unwind": "$items"},
+            {"$group": {
+                "_id": {"slug": "$items.slug", "variant": "$items.variant_name"},
+                "name_en": {"$first": "$items.name_en"},
+                "name_fr": {"$first": "$items.name_fr"},
+                "units_sold": {"$sum": "$items.qty"},
+                "revenue": {"$sum": "$items.line_total"},
+            }},
+            # Trie par REVENU, pas par unités : 17 unités à 1 $ passaient devant
+            # 15 unités à 70 $, ce qui donnait un classement trompeur.
+            {"$sort": {"revenue": -1}},
+            {"$limit": 10},
+        ]).to_list(10),
+        # Les huit dernieres, et seulement les champs affiches. On renvoyait
+        # la commande ENTIERE — adresse, paiement, conformite, notes : 24 Ko
+        # sur 26, dont des donnees personnelles qui n'avaient rien a faire
+        # dans un tableau de bord qui n'affiche que huit colonnes.
+        db.orders.find(
+            SANS_CORBEILLE,
+            {"_id": 0, "id": 1, "order_number": 1, "created_at": 1, "email": 1,
+             "total": 1, "payment_status": 1, "fulfillment_status": 1,
+             "shipping_address.full_name": 1},
+        ).sort("created_at", -1).limit(8).to_list(8),
+    )
 
     buckets: dict = {}
     for o in paid:
@@ -7788,27 +7911,16 @@ async def admin_analytics(period: int = 30,
         for d, v in sorted(buckets.items())
     ]
 
-    # --- Meilleures ventes, PAR VARIANTE ------------------------------------
+    # --- Meilleures ventes, PAR VARIANTE et SUR LA PERIODE ------------------
     # Le regroupement se faisait sur le seul slug produit, si bien que deux
     # dosages du même composé apparaissaient comme deux lignes identiques aux
     # montants différents — illisible. On groupe désormais sur le couple
     # (slug, variante) et on renvoie le nom de la variante pour l'afficher.
-    top_cursor = db.orders.aggregate([
-        {"$match": {"payment_status": "paid"}},
-        {"$unwind": "$items"},
-        {"$group": {
-            "_id": {"slug": "$items.slug", "variant": "$items.variant_name"},
-            "name_en": {"$first": "$items.name_en"},
-            "name_fr": {"$first": "$items.name_fr"},
-            "units_sold": {"$sum": "$items.qty"},
-            "revenue": {"$sum": "$items.line_total"},
-        }},
-        # Trie par REVENU, pas par unités : 17 unités à 1 $ passaient devant
-        # 15 unités à 70 $, ce qui donnait un classement trompeur.
-        {"$sort": {"revenue": -1}},
-        {"$limit": 10},
-    ])
-    top = await top_cursor.to_list(10)
+    #
+    # Le classement portait sur TOUTES les ventes depuis l'ouverture, alors
+    # qu'il est affiche sous le selecteur de periode : en « 7 jours », le
+    # graphique pouvait etre vide pendant que le classement affichait des
+    # ventes. Il suit maintenant la periode choisie, comme le reste.
     top = [{
         "slug": t["_id"].get("slug"),
         "variant_name": t["_id"].get("variant") or "",
@@ -7817,9 +7929,6 @@ async def admin_analytics(period: int = 30,
         "units_sold": t["units_sold"],
         "revenue": round(t["revenue"], 2),
     } for t in top]
-
-    # Recent orders
-    recent = await db.orders.find({}, {"_id": 0}).sort("created_at", -1).limit(10).to_list(10)
 
     return {
         "daily_revenue": daily,
@@ -13777,56 +13886,59 @@ async def admin_analytics_enhanced(period: int = 30,
     cur_start_s = cur_start.isoformat()
     prev_start_s = prev_start.isoformat()
 
-    # ---- Période courante : commandes payées ----
-    async def _period_stats(start_s: str, end_s: str) -> dict:
-        cur = db.orders.aggregate([  # noqa: F821
-            {"$match": {"payment_status": "paid",
-                        "created_at": {"$gte": start_s, "$lt": end_s}}},
+    def _somme_periode(debut: str, fin: str):
+        return db.orders.aggregate([  # noqa: F821
+            {"$match": {"payment_status": "paid", **SANS_CORBEILLE,  # noqa: F821
+                        **_borne_intervalle(debut, fin)}},  # noqa: F821
             {"$group": {"_id": None,
                         "revenue": {"$sum": "$total"},
                         "orders": {"$sum": 1}}},
-        ])
-        doc = await cur.to_list(1)
+        ]).to_list(1)
+
+    depuis_courant = _borne_date(cur_start_s)  # noqa: F821
+    twelve_start = (now - timedelta(days=365)).isoformat()
+
+    # Sept lectures independantes, lancees ensemble : leurs temps s'ajoutaient.
+    doc_cur, doc_prev, created, paid, abandoned, clients_lignes, ytd_doc = \
+        await asyncio.gather(
+            _somme_periode(cur_start_s, now.isoformat()),
+            _somme_periode(prev_start_s, cur_start_s),
+            db.orders.count_documents({**SANS_CORBEILLE, **depuis_courant}),  # noqa: F821
+            db.orders.count_documents({"payment_status": "paid", **SANS_CORBEILLE,  # noqa: F821
+                                       **depuis_courant}),
+            db.orders.count_documents({"payment_status": {"$in": _UNPAID},  # noqa: F821
+                                       **SANS_CORBEILLE, **depuis_courant}),  # noqa: F821
+            # ---- Nouveaux vs récurrents ----
+            # Une requete par client, c'etait : « ce client avait-il deja
+            # achete ? » posee 1 fois par personne. Une seule agregation
+            # rapporte desormais, pour chaque client, sa PREMIERE et sa
+            # DERNIERE commande payee — de quoi repondre pour tout le monde.
+            db.orders.aggregate([  # noqa: F821
+                {"$match": {"payment_status": "paid", **SANS_CORBEILLE,  # noqa: F821
+                            "email": {"$nin": [None, ""]}}},
+                {"$group": {"_id": "$email",
+                            "premiere": {"$min": "$created_at"},
+                            "derniere": {"$max": "$created_at"}}},
+            ]).to_list(None),
+            # ---- Alerte seuil de taxe : CA payé sur 12 mois glissants ----
+            db.orders.aggregate([  # noqa: F821
+                {"$match": {"payment_status": "paid", **SANS_CORBEILLE,  # noqa: F821
+                            **_borne_date(twelve_start)}},  # noqa: F821
+                {"$group": {"_id": None, "total": {"$sum": "$total"}}},
+            ]).to_list(1),
+        )
+
+    def _lire(doc: list) -> dict:
         rev = round(doc[0]["revenue"], 2) if doc else 0.0
         n = doc[0]["orders"] if doc else 0
         return {"revenue": rev, "orders": n, "aov": round(rev / n, 2) if n else 0.0}
 
-    current = await _period_stats(cur_start_s, now.isoformat())
-    previous = await _period_stats(prev_start_s, cur_start_s)
-
-    # ---- Conversion : payées / créées (toutes, sur la période courante) ----
-    created = await db.orders.count_documents(  # noqa: F821
-        {"created_at": {"$gte": cur_start_s}})
-    paid = await db.orders.count_documents(  # noqa: F821
-        {"created_at": {"$gte": cur_start_s}, "payment_status": "paid"})
-    abandoned = await db.orders.count_documents(  # noqa: F821
-        {"created_at": {"$gte": cur_start_s}, "payment_status": {"$in": _UNPAID}})
+    current = _lire(doc_cur)
+    previous = _lire(doc_prev)
     conversion = round(paid / created * 100, 1) if created else None
-
-    # ---- Nouveaux vs récurrents (clients ayant payé sur la période) ----
-    cur = db.orders.aggregate([  # noqa: F821
-        {"$match": {"payment_status": "paid", "created_at": {"$gte": cur_start_s},
-                    "email": {"$nin": [None, ""]}}},
-        {"$group": {"_id": "$email"}},
-    ])
-    period_emails = [d["_id"] async for d in cur]
-    new_customers = 0
-    returning_customers = 0
-    for em in period_emails:
-        prior = await db.orders.count_documents(  # noqa: F821
-            {"email": em, "payment_status": "paid", "created_at": {"$lt": cur_start_s}})
-        if prior > 0:
-            returning_customers += 1
-        else:
-            new_customers += 1
-
-    # ---- Alerte seuil de taxe : CA payé sur 12 mois glissants ----
-    twelve_start = (now - timedelta(days=365)).isoformat()
-    ytd_cur = db.orders.aggregate([  # noqa: F821
-        {"$match": {"payment_status": "paid", "created_at": {"$gte": twelve_start}}},
-        {"$group": {"_id": None, "total": {"$sum": "$total"}}},
-    ])
-    ytd_doc = await ytd_cur.to_list(1)
+    clients = _repartir_clients(clients_lignes, cur_start_s)  # noqa: F821
+    new_customers = clients["new"]
+    returning_customers = clients["returning"]
     rolling_12mo = round(ytd_doc[0]["total"], 2) if ytd_doc else 0.0
     ratio = rolling_12mo / TAX_THRESHOLD_CAD if TAX_THRESHOLD_CAD else 0
     if rolling_12mo >= TAX_THRESHOLD_CAD:
@@ -13854,7 +13966,7 @@ async def admin_analytics_enhanced(period: int = 30,
         "customers": {
             "new": new_customers,
             "returning": returning_customers,
-            "total_active": len(period_emails),
+            "total_active": clients["total_active"],
         },
         "tax_threshold": {
             "rolling_12mo_revenue": rolling_12mo,

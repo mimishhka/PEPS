@@ -151,6 +151,13 @@ def _project(doc: dict, projection: Optional[dict]) -> dict:
             out[key] = [{k: copy.deepcopy(v) for k, v in item.items() if k in wanted}
                         if isinstance(item, dict) else copy.deepcopy(item)
                         for item in value]
+        elif key in subfields and isinstance(value, dict) and including:
+            # `shipping_address.full_name` ne rapporte QUE ce champ : le reste
+            # de l'adresse reste sur le serveur. La projection ne taillait que
+            # les tableaux, si bien qu'un test pouvait croire l'adresse
+            # entiere filtree alors qu'elle partait toujours.
+            wanted = subfields[key]
+            out[key] = {k: copy.deepcopy(v) for k, v in value.items() if k in wanted}
         else:
             out[key] = copy.deepcopy(value)
     return out
@@ -169,8 +176,10 @@ class FakeCursor:
     def sort(self, key, direction=1):
         if isinstance(key, list):
             key, direction = key[0]
-        self._docs.sort(key=lambda d: (d.get(key) is None, d.get(key)),
-                        reverse=direction == -1)
+        # L'ordre BSON, et non celui de Python : une collection ou created_at
+        # est tantot une chaine, tantot une date, faisait lever un TypeError
+        # ici alors que Mongo, lui, trie sans broncher.
+        self._docs.sort(key=lambda d: _CleTri(d.get(key)), reverse=direction == -1)
         return self
 
     def skip(self, n: int):
@@ -206,12 +215,14 @@ class FakeCollection:
         matches = [d for d in self.docs if _matches(d, filt or {})]
         if sort:
             key, direction = sort[0]
-            matches.sort(key=lambda d: (d.get(key) is None, d.get(key)),
-                         reverse=direction == -1)
+            matches.sort(key=lambda d: _CleTri(d.get(key)), reverse=direction == -1)
         return _project(matches[0], projection) if matches else None
 
     async def count_documents(self, filt=None):
         return sum(1 for d in self.docs if _matches(d, filt or {}))
+
+    def aggregate(self, pipeline):
+        return FakeCursor(_agreger(self.docs, pipeline))
 
     def _apply(self, doc: dict, update: dict) -> bool:
         before = copy.deepcopy(doc)
@@ -250,6 +261,126 @@ class FakeCollection:
 
     def by_id(self, doc_id: str) -> Optional[dict]:
         return next((d for d in self.docs if d.get("id") == doc_id), None)
+
+
+# ---------------------------------------------------------------------------
+# Agregation — le sous-ensemble utilise par le tableau de bord
+# ---------------------------------------------------------------------------
+# Sans elle, les quatre points d'acces du tableau de bord n'etaient pas
+# testables hors production : ils reposent entierement sur des pipelines.
+# Etapes : $match, $unwind, $group, $sort, $limit. Expressions : chemins
+# « $champ », $sum, $first, $min, $max, $cond, $and, $or, $gt, $gte, $lt,
+# $lte, $eq, $ifNull. Tout le reste leve, plutot que de renvoyer un chiffre
+# faux en silence.
+
+
+def _comparer(gauche: Any, droite: Any) -> int:
+    """Ordre de Mongo : entre types differents, c'est le RANG BSON qui tranche
+    (une date absente, donc nulle, passe avant une chaine)."""
+    rg, rd = _rang_bson(gauche), _rang_bson(droite)
+    if rg != rd:
+        return -1 if rg < rd else 1
+    if gauche == droite:
+        return 0
+    return -1 if gauche < droite else 1
+
+
+def _evaluer(doc: dict, expr: Any) -> Any:
+    if isinstance(expr, str) and expr.startswith("$"):
+        valeur = _resolve(doc, expr[1:])
+        return None if valeur is _MISSING else valeur
+    if not isinstance(expr, dict):
+        return expr
+    if len(expr) != 1:
+        raise NotImplementedError(f"expression non geree : {expr}")
+    op, arg = next(iter(expr.items()))
+    if op == "$cond":
+        test, oui, non = arg
+        return _evaluer(doc, oui) if _evaluer(doc, test) else _evaluer(doc, non)
+    if op == "$and":
+        return all(_evaluer(doc, a) for a in arg)
+    if op == "$or":
+        return any(_evaluer(doc, a) for a in arg)
+    if op == "$ifNull":
+        valeur = _evaluer(doc, arg[0])
+        return _evaluer(doc, arg[1]) if valeur is None else valeur
+    if op in ("$gt", "$gte", "$lt", "$lte", "$eq", "$ne"):
+        c = _comparer(_evaluer(doc, arg[0]), _evaluer(doc, arg[1]))
+        return {"$gt": c > 0, "$gte": c >= 0, "$lt": c < 0,
+                "$lte": c <= 0, "$eq": c == 0, "$ne": c != 0}[op]
+    raise NotImplementedError(f"operateur non gere : {op}")
+
+
+def _accumuler(op: str, arg: Any, docs: list) -> Any:
+    if op == "$sum":
+        if arg == 1:
+            return len(docs)
+        total = 0
+        for d in docs:
+            v = _evaluer(d, arg)
+            total += float(v) if isinstance(v, (int, float)) else 0
+        return round(total, 10)
+    valeurs = [_evaluer(d, arg) for d in docs]
+    if op == "$first":
+        return valeurs[0] if valeurs else None
+    presentes = [v for v in valeurs if v is not None]
+    if op == "$min":
+        return min(presentes, default=None)
+    if op == "$max":
+        return max(presentes, default=None)
+    raise NotImplementedError(f"accumulateur non gere : {op}")
+
+
+def _agreger(docs: list, pipeline: list) -> list:
+    lignes = [copy.deepcopy(d) for d in docs]
+    for etape in pipeline:
+        (nom, arg), = etape.items()
+        if nom == "$match":
+            lignes = [d for d in lignes if _matches(d, arg)]
+        elif nom == "$unwind":
+            chemin = arg[1:] if isinstance(arg, str) else arg["path"][1:]
+            eclatees = []
+            for d in lignes:
+                valeur = _resolve(d, chemin)
+                for item in (valeur if isinstance(valeur, list) else []):
+                    copie = copy.deepcopy(d)
+                    copie[chemin] = item
+                    eclatees.append(copie)
+            lignes = eclatees
+        elif nom == "$group":
+            groupes: dict = {}
+            for d in lignes:
+                cle = _evaluer(d, arg["_id"]) if not isinstance(arg["_id"], dict) else {
+                    k: _evaluer(d, v) for k, v in arg["_id"].items()}
+                signature = repr(sorted(cle.items())) if isinstance(cle, dict) else repr(cle)
+                groupes.setdefault(signature, (cle, []))[1].append(d)
+            lignes = []
+            for cle, membres in groupes.values():
+                ligne = {"_id": cle}
+                for champ, accumulateur in arg.items():
+                    if champ == "_id":
+                        continue
+                    (op, expression), = accumulateur.items()
+                    ligne[champ] = _accumuler(op, expression, membres)
+                lignes.append(ligne)
+        elif nom == "$sort":
+            for champ, sens in reversed(list(arg.items())):
+                lignes.sort(key=lambda d, c=champ: _CleTri(d.get(c)), reverse=sens == -1)
+        elif nom == "$limit":
+            lignes = lignes[:arg]
+        else:
+            raise NotImplementedError(f"etape non geree : {nom}")
+    return lignes
+
+
+class _CleTri:
+    """Rend comparables des valeurs de types differents, comme Mongo."""
+
+    def __init__(self, valeur):
+        self.valeur = valeur
+
+    def __lt__(self, autre):
+        return _comparer(self.valeur, autre.valeur) < 0
 
 
 class CompteurDeDebit:
