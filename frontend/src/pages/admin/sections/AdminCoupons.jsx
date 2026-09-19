@@ -34,6 +34,21 @@ const ETATS = {
   inactif: { fr: "Désactivé", en: "Off", classe: "bg-glacier/15 text-glacier" },
 };
 
+// Un code d'affilie n'accorde son rabais que si le COMPTE est actif : le
+// paiement relit le statut de l'affilie avant d'appliquer la remise (voir
+// _is_affiliate_coupon cote serveur). Un code allume dont l'affilie est
+// suspendu est donc refuse au panier — l'afficher « utilisable » serait faux.
+export function etatCodeAffilie(c, jour) {
+  const statut = String(c.affiliate_status || "").toLowerCase();
+  if (statut && statut !== "active") return statut === "invited" ? "affilie_invite" : "affilie_suspendu";
+  return etatCoupon(c, jour);
+}
+
+const ETATS_AFFILIE = {
+  affilie_suspendu: { fr: "Affilié suspendu", en: "Affiliate suspended", classe: "bg-error/15 text-error" },
+  affilie_invite: { fr: "Affilié invité", en: "Affiliate invited", classe: "bg-nova/15 text-nova" },
+};
+
 export default function AdminCoupons() {
   const confirm = useConfirm();
   const { lang } = useLang();
@@ -57,6 +72,19 @@ export default function AdminCoupons() {
     return String(c.code || "").toLowerCase().includes(q);
   });
   const utilisables = coupons.filter((c) => etatCoupon(c) === "actif").length;
+
+  const [rechercheAff, setRechercheAff] = useState("");
+  const [etatAff, setEtatAff] = useState("");
+
+  const qAff = rechercheAff.trim().toLowerCase();
+  const affilies = codesAffilies.filter((c) => {
+    if (etatAff && etatCodeAffilie(c) !== etatAff) return false;
+    if (!qAff) return true;
+    // Le nom et le courriel autant que le code : on cherche souvent « le code
+    // d'Untel » sans se souvenir du code lui-meme.
+    return [c.code, c.affiliate_name, c.affiliate_email]
+      .some((v) => String(v || "").toLowerCase().includes(qAff));
+  });
 
   const load = () => api.get("/admin/coupons")
     .then((r) => setCoupons(r.data))
@@ -304,6 +332,35 @@ export default function AdminCoupons() {
             {L("Ces codes appartiennent à des affiliés. Ils se modifient depuis la fiche de l'affilié, qui renomme le code et conserve l'ancien en alias — les liens déjà distribués restent valides.",
                "These codes belong to affiliates. Change them from the affiliate's record, which renames the code and keeps the old one as an alias, so links already handed out keep working.")}
           </p>
+          <div className="flex flex-wrap items-center gap-3 mt-4" data-testid="affiliate-codes-filters">
+            <input
+              value={rechercheAff}
+              onChange={(e) => setRechercheAff(e.target.value)}
+              placeholder={L("Rechercher un code, un affilié, un courriel…", "Search a code, an affiliate, an email…")}
+              data-testid="affiliate-codes-search"
+              className="border border-ash rounded-lg px-3 py-2 text-sm min-w-[16rem] flex-1" />
+            <select value={etatAff} onChange={(e) => setEtatAff(e.target.value)}
+              data-testid="affiliate-codes-status"
+              className="border border-ash rounded-lg px-3 py-2 text-sm bg-white font-data text-xs uppercase tracking-[0.12em]">
+              <option value="">{L("Tous les états", "All statuses")}</option>
+              {Object.entries({ ...ETATS, ...ETATS_AFFILIE }).map(([cle, e]) => (
+                <option key={cle} value={cle}>{L(e.fr, e.en)}</option>
+              ))}
+            </select>
+            {(qAff || etatAff) && (
+              <button onClick={() => { setRechercheAff(""); setEtatAff(""); }}
+                data-testid="affiliate-codes-reset"
+                className="border border-ash rounded-lg font-data text-[10px] uppercase tracking-[0.15em] px-3 py-2 hover:bg-clinical">
+                {L("Effacer", "Clear")}
+              </button>
+            )}
+            <span className="font-data text-xs text-glacier" data-testid="affiliate-codes-count">
+              {affilies.length === codesAffilies.length
+                ? L(`${codesAffilies.length} code(s)`, `${codesAffilies.length} code(s)`)
+                : L(`${affilies.length} sur ${codesAffilies.length}`, `${affilies.length} of ${codesAffilies.length}`)}
+            </span>
+          </div>
+
           <div className="mt-4 bg-white border border-ash rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -317,8 +374,8 @@ export default function AdminCoupons() {
                   </tr>
                 </thead>
                 <tbody>
-                  {codesAffilies.map((c) => (
-                    <tr key={c.code} className="border-t border-ash">
+                  {affilies.map((c) => (
+                    <tr key={c.code} className="border-t border-ash" data-testid={`affiliate-code-row-${c.code}`}>
                       <td className="px-4 py-3 font-data text-nordfjord">{c.code}</td>
                       <td className="px-4 py-3 text-nordfjord">
                         {c.affiliate_name || <span className="text-glacier">—</span>}
@@ -331,13 +388,36 @@ export default function AdminCoupons() {
                       </td>
                       <td className="px-4 py-3 font-data tabular-nums">{c.used_count || 0}</td>
                       <td className="px-4 py-3">
-                        <span className={`font-data text-[10px] uppercase tracking-[0.15em] ${
-                          c.affiliate_status === "active" ? "text-success" : "text-glacier"}`}>
-                          {c.affiliate_status || (c.active ? L("actif", "active") : L("inactif", "inactive"))}
-                        </span>
+                        {/* La colonne recopiait le statut BRUT de l'affilie
+                            (« active ») : un code expire ou epuise dont
+                            l'affilie va bien s'affichait « active », comme
+                            s'il marchait encore. */}
+                        {(() => {
+                          const cle = etatCodeAffilie(c);
+                          const e = { ...ETATS, ...ETATS_AFFILIE }[cle];
+                          return (
+                            <span data-testid={`affiliate-code-state-${c.code}`}
+                              className={`font-data text-[10px] uppercase tracking-[0.15em] px-2 py-0.5 rounded ${e.classe}`}>
+                              {L(e.fr, e.en)}
+                            </span>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}
+                  {!affilies.length && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-10 text-center font-data text-xs text-glacier"
+                          data-testid="affiliate-codes-empty">
+                        {L("Aucun code ne correspond aux filtres.", "No code matches the filters.")}
+                        <button onClick={() => { setRechercheAff(""); setEtatAff(""); }}
+                          data-testid="affiliate-codes-empty-reset"
+                          className="ml-3 border border-ash rounded-lg px-3 py-1.5 uppercase tracking-[0.15em] hover:bg-clinical">
+                          {L("Effacer les filtres", "Clear the filters")}
+                        </button>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
