@@ -7725,6 +7725,19 @@ def _bucket_key(day: str, granularity: str) -> str:
     return day
 
 
+def _pouls_remboursements(lignes: list) -> dict:
+    """Deux etapes qui n'ont pas le meme sens : « a examiner » attend une
+    DECISION, « a envoyer » attend un VIREMENT. Seule la seconde porte un
+    montant, parce que c'est celui qui doit sortir du compte."""
+    par_etape = {str(l.get("_id") or ""): l for l in lignes}
+    a_envoyer = par_etape.get("approved") or {}
+    return {
+        "to_review": int((par_etape.get("requested") or {}).get("count") or 0),
+        "to_send": int(a_envoyer.get("count") or 0),
+        "to_send_amount": round(float(a_envoyer.get("amount") or 0), 2),
+    }
+
+
 async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard", "view"))):
     """Ce qui demande une action maintenant, et où en est l'argent.
 
@@ -7744,7 +7757,7 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
     # et ces plafonds auraient fausse les chiffres en silence une fois
     # depasses — sans le moindre message.
     attente_lignes, recon_lignes, payes_lignes, to_ship, low_stock_rows, \
-        late_payments, emails_failed, tickets_open = await asyncio.gather(
+        late_payments, emails_failed, tickets_open, remboursements = await asyncio.gather(
         db.orders.aggregate([
             {"$match": {"payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto"]},
                         **SANS_CORBEILLE}},
@@ -7785,6 +7798,19 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
         # relevé est pire qu'un courriel oublié, parce que l'affilié le voit
         # « ouvert » et attend.
         db.affiliate_tickets.count_documents({"status": "open"}),
+        # L'argent qui doit PARTIR. Le pouls ne connaissait que l'argent qui
+        # doit rentrer : un remboursement approuve mais pas encore envoye
+        # n'apparaissait sur aucun tableau de bord, alors que c'est un client
+        # qui attend son argent — et le seul compteur qui se degrade tout seul
+        # avec le temps.
+        db.orders.aggregate([
+            {"$match": {"refund_status": {"$in": ["requested", "approved"]},
+                        **SANS_CORBEILLE}},
+            {"$group": {"_id": "$refund_status", "count": {"$sum": 1},
+                        # Le montant approuve s'il existe, sinon le total de la
+                        # commande : c'est ce qui partira.
+                        "amount": {"$sum": {"$ifNull": ["$refund_approved_amount", "$total"]}}}},
+        ]).to_list(10),
     )
 
     par_methode = {str(r.get("_id") or ""): r for r in attente_lignes}
@@ -7838,6 +7864,7 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
             # l'affilié le voit « ouvert » et attend. Le seul moyen que ce
             # système tienne sa promesse est qu'on ne puisse pas l'ignorer.
             "tickets_open": tickets_open,
+            "refunds": _pouls_remboursements(remboursements),
         },
     }
 

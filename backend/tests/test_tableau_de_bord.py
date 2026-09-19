@@ -166,6 +166,26 @@ def test_le_pouls_separe_les_circuits_et_les_echeances(server_module, monkeypatc
     assert out["rails"]["interac"]["reconcile_count"] == 1
 
 
+def test_le_pouls_montre_l_argent_qui_doit_partir(server_module, monkeypatch):
+    # Un remboursement approuve mais pas encore envoye n'apparaissait sur
+    # AUCUN tableau de bord : un client attendait son argent sans que rien ne
+    # le rappelle.
+    base = _Base(orders=[
+        _commande(order_number="R1", id="r1", refund_status="requested", total=80.0),
+        _commande(order_number="R2", id="r2", refund_status="approved", total=100.0,
+                  refund_approved_amount=60.0),
+        # Sans montant approuve : c'est le total de la commande qui partira.
+        _commande(order_number="R3", id="r3", refund_status="approved", total=25.0),
+        _commande(order_number="R4", id="r4", refund_status="processed", total=999.0),
+        _commande(order_number="R5", id="r5", refund_status="approved", total=500.0,
+                  deleted_at=_il_y_a(1)),
+    ])
+    _brancher(server_module, monkeypatch, base)
+
+    out = asyncio.run(server_module.admin_dashboard_pulse({}))
+    assert out["ops"]["refunds"] == {"to_review": 1, "to_send": 2, "to_send_amount": 85.0}
+
+
 # ---------------------------------------------------------------------------
 # Analytics
 # ---------------------------------------------------------------------------
