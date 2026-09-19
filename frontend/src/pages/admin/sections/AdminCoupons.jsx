@@ -6,6 +6,34 @@ import { useConfirm } from "../../../components/ConfirmDialog";
 import { useLang } from "../../../contexts/LanguageContext";
 import { Th } from "../ui";
 
+// Le jour courant en heure locale, au format AAAA-MM-JJ — le meme que les
+// dates stockees. Passer par toISOString() aurait compare une date locale a
+// une date UTC : un coupon aurait expire quelques heures trop tot le soir.
+function aujourdHui() {
+  return new Date().toLocaleDateString("en-CA");
+}
+
+// L'etat REEL d'un coupon. « Actif » dans la fiche ne veut pas dire
+// utilisable : un code peut etre allume mais expire, epuise, ou pas encore
+// ouvert. Une seule definition, lue par le badge ET par le filtre.
+export function etatCoupon(c, jour = aujourdHui()) {
+  if (!c.active) return "inactif";
+  const debut = String(c.start_at || "").slice(0, 10);
+  const fin = String(c.expires_at || "").slice(0, 10);
+  if (fin && fin < jour) return "expire";
+  if (debut && debut > jour) return "a_venir";
+  if (c.usage_limit && (c.used_count || 0) >= c.usage_limit) return "epuise";
+  return "actif";
+}
+
+const ETATS = {
+  actif: { fr: "Utilisable", en: "Usable", classe: "bg-success/15 text-success" },
+  a_venir: { fr: "À venir", en: "Scheduled", classe: "bg-nova/15 text-nova" },
+  expire: { fr: "Expiré", en: "Expired", classe: "bg-warning/15 text-warning" },
+  epuise: { fr: "Épuisé", en: "Used up", classe: "bg-warning/15 text-warning" },
+  inactif: { fr: "Désactivé", en: "Off", classe: "bg-glacier/15 text-glacier" },
+};
+
 export default function AdminCoupons() {
   const confirm = useConfirm();
   const { lang } = useLang();
@@ -18,6 +46,17 @@ export default function AdminCoupons() {
   // un code — mais les mêler ici permettait d'en modifier la valeur ou de les
   // supprimer, ce qui coupait le rabais d'un partenaire sans prévenir personne.
   const [codesAffilies, setCodesAffilies] = useState([]);
+
+  const [recherche, setRecherche] = useState("");
+  const [etat, setEtat] = useState("");
+
+  const q = recherche.trim().toLowerCase();
+  const affiches = coupons.filter((c) => {
+    if (etat && etatCoupon(c) !== etat) return false;
+    if (!q) return true;
+    return String(c.code || "").toLowerCase().includes(q);
+  });
+  const utilisables = coupons.filter((c) => etatCoupon(c) === "actif").length;
 
   const load = () => api.get("/admin/coupons")
     .then((r) => setCoupons(r.data))
@@ -94,8 +133,14 @@ export default function AdminCoupons() {
         <div>
           <p className="font-data text-[11px] uppercase tracking-[0.24em] text-glacier">{L("PROMOTIONS", "PROMOTIONS")}</p>
           <h1 className="font-display text-3xl font-bold uppercase tracking-tight text-nordfjord mt-1">Coupons</h1>
-          <p className="font-data text-xs text-glacier mt-1">
-            {coupons.length} {L("code(s) actif(s)", "active code(s)")}
+          {/* Disait « X code(s) actif(s) » en comptant TOUS les coupons,
+              desactives et expires compris. */}
+          <p className="font-data text-xs text-glacier mt-1" data-testid="coupons-count">
+            {L(`${coupons.length} code(s) · ${utilisables} utilisable(s)`,
+               `${coupons.length} code(s) · ${utilisables} usable`)}
+            {affiches.length !== coupons.length
+              ? L(` · ${affiches.length} affiché(s)`, ` · ${affiches.length} shown`)
+              : ""}
           </p>
         </div>
         <button
@@ -105,6 +150,30 @@ export default function AdminCoupons() {
         >
           <Plus size={16} /> {L("Nouveau coupon", "New coupon")}
         </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 mb-4" data-testid="coupons-filters">
+        <input
+          value={recherche}
+          onChange={(e) => setRecherche(e.target.value)}
+          placeholder={L("Rechercher un code…", "Search a code…")}
+          data-testid="coupons-search"
+          className="border border-ash rounded-lg px-3 py-2 text-sm min-w-[16rem] flex-1" />
+        <select value={etat} onChange={(e) => setEtat(e.target.value)}
+          data-testid="coupons-status"
+          className="border border-ash rounded-lg px-3 py-2 text-sm bg-white font-data text-xs uppercase tracking-[0.12em]">
+          <option value="">{L("Tous les états", "All statuses")}</option>
+          {Object.entries(ETATS).map(([cle, e]) => (
+            <option key={cle} value={cle}>{L(e.fr, e.en)}</option>
+          ))}
+        </select>
+        {(q || etat) && (
+          <button onClick={() => { setRecherche(""); setEtat(""); }}
+            data-testid="coupons-filters-reset"
+            className="border border-ash rounded-lg font-data text-[10px] uppercase tracking-[0.15em] px-3 py-2 hover:bg-clinical">
+            {L("Effacer", "Clear")}
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -123,7 +192,7 @@ export default function AdminCoupons() {
             </tr>
           </thead>
           <tbody>
-            {coupons.map((c) => (
+            {affiches.map((c) => (
               <tr key={c.id} className="border-t border-ash/60" data-testid={`coupon-row-${c.code}`}>
                 <td className="px-6 py-3">
                   <div className="flex items-center gap-2 text-nordfjord">
@@ -161,9 +230,18 @@ export default function AdminCoupons() {
                     : "—"}
                 </td>
                 <td className="px-6 py-3">
-                  {c.active
-                    ? <span className="text-[10px] font-data uppercase tracking-[0.15em] bg-success/15 text-success px-2 py-0.5 rounded">ON</span>
-                    : <span className="text-[10px] font-data uppercase tracking-[0.15em] bg-glacier/15 text-glacier px-2 py-0.5 rounded">OFF</span>}
+                  {/* ON/OFF ne disait que l'interrupteur. Un code allume mais
+                      expire ou epuise s'affichait « ON » alors qu'aucun client
+                      ne pouvait s'en servir — et personne ne voyait pourquoi. */}
+                  {(() => {
+                    const e = ETATS[etatCoupon(c)];
+                    return (
+                      <span data-testid={`coupon-state-${c.code}`}
+                        className={`text-[10px] font-data uppercase tracking-[0.15em] px-2 py-0.5 rounded ${e.classe}`}>
+                        {L(e.fr, e.en)}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="px-6 py-3 text-right">
                   <button
@@ -185,10 +263,20 @@ export default function AdminCoupons() {
                 </td>
               </tr>
             ))}
-            {!coupons.length && (
+            {!affiches.length && (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center font-data text-xs text-glacier">
-                  {L("Aucun coupon pour le moment", "No coupons yet")}
+                <td colSpan={7} className="px-6 py-12 text-center font-data text-xs text-glacier"
+                    data-testid={coupons.length ? "coupons-empty-filtered" : "coupons-empty"}>
+                  {coupons.length ? (
+                    <>
+                      {L("Aucun code ne correspond aux filtres.", "No code matches the filters.")}
+                      <button onClick={() => { setRecherche(""); setEtat(""); }}
+                        data-testid="coupons-empty-reset"
+                        className="ml-3 border border-ash rounded-lg px-3 py-1.5 uppercase tracking-[0.15em] hover:bg-clinical">
+                        {L("Effacer les filtres", "Clear the filters")}
+                      </button>
+                    </>
+                  ) : L("Aucun coupon pour le moment", "No coupons yet")}
                 </td>
               </tr>
             )}
