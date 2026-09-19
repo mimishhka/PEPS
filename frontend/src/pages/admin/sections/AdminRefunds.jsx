@@ -106,6 +106,10 @@ export default function AdminRefunds() {
       }
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
+      // 409 : le client a retiré sa demande pendant que vous décidiez. Rien
+      // n'a été écrit, mais la liste est périmée — on la recharge pour que
+      // le dossier disparaisse au lieu de rester cliquable.
+      if (e.response?.status === 409) await load();
     } finally { setBusy(""); }
   };
 

@@ -4062,7 +4062,21 @@ async def _set_refund_requested(order_id: str, reason: str, amount_requested, re
     if not destination and type_destination == "interac_email":
         destination = (order.get("email") or "").strip()
     now_iso = datetime.now(timezone.utc).isoformat()
-    await db.orders.update_one({"id": order_id}, {"$set": {
+    # UNE SEULE DEMANDE PAR COMMANDE — GARANTIE PAR LA BASE, PAS PAR L'ECRAN.
+    #
+    # Deux chemins menent ici : le client depuis sa commande, et l'equipe
+    # depuis son billet d'aide. Chacun verifiait d'abord qu'aucune demande
+    # n'etait en cours, puis ecrivait — deux operations separees. Entre les
+    # deux, l'autre chemin pouvait passer, et le second ECRASAIT le premier :
+    # motif, auteur, adresse de remboursement, date.
+    #
+    # La condition est maintenant DANS l'ecriture : la base n'ecrit que si
+    # aucune demande n'est en cours ou deja reglee. Une demande refusee peut
+    # etre refaite, comme avant.
+    ecrit = await db.orders.update_one({
+        "id": order_id,
+        "refund_status": {"$nin": ["requested", "approved", "processed"]},
+    }, {"$set": {
         "refund_status": "requested", "refund_requested_at": now_iso,
         "refund_reason": reason, "refund_amount_requested": amount_requested,
         "refund_type_requested": refund_type,
@@ -4073,6 +4087,8 @@ async def _set_refund_requested(order_id: str, reason: str, amount_requested, re
         "refund_destination": destination,
         "refund_destination_type": type_destination,
     }})
+    if not ecrit.matched_count:
+        raise HTTPException(409, "Une demande de remboursement est déjà en cours pour cette commande.")
     return now_iso
 
 
@@ -4248,19 +4264,84 @@ async def order_request_refund(order_id: str, payload: RefundRequestIn, request:
             "before_shipping": avant, "late": bool(tardif)}
 
 
+async def order_cancel_refund_request(order_id: str, request: Request):
+    """Le client retire une demande posee par erreur.
+
+    Seulement SA demande (source « client ») et seulement tant qu'elle est
+    « a examiner ». Une fois approuvee, de l'argent est en jeu : c'est a
+    l'equipe de trancher. Un dossier ouvert par l'equipe se retire par un
+    billet d'aide, pas d'un clic.
+
+    La demande est EFFACEE plutot que marquee « retiree » : un statut de plus
+    aurait du etre compris par chaque ecran, chaque compteur et chaque regle
+    d'eligibilite. La trace reste dans l'historique de la commande.
+
+    Aucun degel a faire : la commission de l'affilie n'est gelee que tant que
+    refund_status vaut « requested » ou « approved » (_echeance_acquisition).
+    Le statut efface, elle reprend d'elle-meme.
+    """
+    await _rate_limit("refund_cancel", _client_ip(request), 10, 3600,
+                      "Trop de tentatives. Réessayez plus tard.")
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    user = await _resolve_user(request)
+    is_owner = user and (order.get("user_id") == user.get("id") or user.get("role") == "admin")
+    if not is_owner:
+        if order.get("user_id") or not _guest_order_accessible(order, request):
+            raise HTTPException(403, "Not authorized")
+    if order.get("refund_status") != "requested":
+        raise HTTPException(409, "Cette demande a déjà été traitée — écrivez-nous depuis l'aide.")
+    if order.get("refund_source") != "client":
+        raise HTTPException(409, "Ce dossier a été ouvert par notre équipe — écrivez-nous depuis l'aide pour le retirer.")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    motif = (order.get("refund_reason") or "")[:300]
+    # Meme garantie que pour la poser : l'ecriture n'a lieu que si la demande
+    # est TOUJOURS a examiner et TOUJOURS celle du client. Une decision prise
+    # a la meme seconde l'emporte, et le retrait est refuse.
+    ecrit = await db.orders.update_one(
+        {"id": order_id, "refund_status": "requested", "refund_source": "client"},
+        {"$unset": {champ: "" for champ in ['refund_status', 'refund_requested_at', 'refund_reason', 'refund_amount_requested', 'refund_type_requested', 'refund_before_shipping', 'refund_late', 'refund_late_note', 'refund_source', 'refund_destination', 'refund_destination_type']},
+         "$push": {"notes": {
+             "id": str(uuid.uuid4()),
+             "text": f"Demande de remboursement retirée par le client. Motif initial : {motif}",
+             "author": "system",
+             "created_at": now_iso,
+         }}},
+    )
+    if not ecrit.matched_count:
+        raise HTTPException(409, "Cette demande vient d'être traitée — écrivez-nous depuis l'aide.")
+    try:
+        await _send_email(
+            os.environ.get("ADMIN_NOTIFICATION_EMAIL", ADMIN_EMAIL),
+            f"[FIRONOVA] Demande retirée — {order.get('order_number')}",
+            f"<p>Le client a retiré sa demande sur <b>{order.get('order_number')}</b>. "
+            f"Rien à décider.</p>",
+        )
+    except Exception:
+        pass
+    return {"ok": True, "refund_status": None}
+
+
 async def admin_refund_decision(order_id: str, payload: RefundDecisionIn, admin: dict):
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(404, "Order not found")
     if order.get("refund_status") != "requested":
         raise HTTPException(400, f"Cannot decide — status is {order.get('refund_status')}")
+    # La lecture ci-dessus ne suffit pas : le client peut retirer sa demande
+    # entre elle et l'ecriture. Chaque ecriture de decision exige donc que la
+    # demande soit TOUJOURS la — sinon une approbation s'ecrirait sur une
+    # demande qui n'existe plus, avec de l'argent a envoyer.
     now_iso = datetime.now(timezone.utc).isoformat()
     if payload.action == "deny":
-        await db.orders.update_one({"id": order_id}, {"$set": {
+        _ecrit = await db.orders.update_one({"id": order_id, "refund_status": "requested"}, {"$set": {
             "refund_status": "denied", "refund_decided_at": now_iso,
             "refund_decided_by": admin.get("email"),
             "refund_admin_note": payload.admin_note or "",
         }})
+        if not _ecrit.matched_count:
+            raise HTTPException(409, "Le client a retiré sa demande entre-temps — rien n'a été décidé.")
         try:
             await _send_email(order.get("email", ""),
                 "Votre demande de remboursement FIRONOVA",
@@ -4272,12 +4353,14 @@ async def admin_refund_decision(order_id: str, payload: RefundDecisionIn, admin:
     if payload.approved_type == "replace":
         # Résolution par REMPLACEMENT : pas de montant monétaire, la commission
         # reste acquise (la vente aboutit via le produit remplacé).
-        await db.orders.update_one({"id": order_id}, {"$set": {
+        _ecrit = await db.orders.update_one({"id": order_id, "refund_status": "requested"}, {"$set": {
             "refund_status": "approved", "refund_decided_at": now_iso,
             "refund_decided_by": admin.get("email"),
             "refund_approved_type": "replace", "refund_approved_amount": 0,
             "refund_admin_note": payload.admin_note or "",
         }})
+        if not _ecrit.matched_count:
+            raise HTTPException(409, "Le client a retiré sa demande entre-temps — rien n'a été décidé.")
         try:
             await _send_email(order.get("email", ""),
                 "Votre remplacement FIRONOVA est approuvé",
@@ -4290,12 +4373,14 @@ async def admin_refund_decision(order_id: str, payload: RefundDecisionIn, admin:
     if amount <= 0 or amount > total:
         raise HTTPException(400, f"Montant invalide (max {total} CAD)")
     approved_type = payload.approved_type or ("full" if amount == total else "partial")
-    await db.orders.update_one({"id": order_id}, {"$set": {
+    _ecrit = await db.orders.update_one({"id": order_id, "refund_status": "requested"}, {"$set": {
         "refund_status": "approved", "refund_decided_at": now_iso,
         "refund_decided_by": admin.get("email"),
         "refund_approved_amount": amount, "refund_approved_type": approved_type,
         "refund_admin_note": payload.admin_note or "",
     }})
+    if not _ecrit.matched_count:
+        raise HTTPException(409, "Le client a retiré sa demande entre-temps — rien n'a été décidé.")
     try:
         await _send_email(order.get("email", ""),
             "Votre remboursement FIRONOVA est approuvé",

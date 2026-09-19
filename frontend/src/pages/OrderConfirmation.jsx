@@ -3,6 +3,7 @@ import { useParams, useLocation, Link } from "react-router-dom";
 import { Copy, Check } from "lucide-react";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
+import { useConfirm } from "../components/ConfirmDialog";
 import useDocumentHead from "../hooks/useDocumentHead";
 
 const guestRequestConfig = (token) => token
@@ -14,6 +15,7 @@ export default function OrderConfirmation() {
   const { id } = useParams();
   const { state, search } = useLocation();
   const { t, lang } = useLang();
+  const confirm = useConfirm();
   const [order, setOrder] = useState(state?.order || null);
   const [copied, setCopied] = useState("");
   const [remainingMs, setRemainingMs] = useState(null);
@@ -102,6 +104,30 @@ export default function OrderConfirmation() {
     navigator.clipboard.writeText(text);
     setCopied(label);
     setTimeout(() => setCopied(""), 1500);
+  };
+
+  // Retirer une demande posée par erreur. Le serveur ne l'accepte que pour
+  // SA demande, tant qu'elle est « à examiner » ; ailleurs il refuse et dit
+  // pourquoi. La commission de l'affilié, gelée par la demande, se dégèle
+  // d'elle-même : elle ne dépend que du statut de la demande.
+  const retirerDemande = async () => {
+    if (!await confirm({
+      title: lang === "fr" ? "Retirer votre demande ?" : "Withdraw your request?",
+      description: lang === "fr"
+        ? "Votre commande reprend son cours normal. Vous pourrez refaire une demande tant qu'elle n'est pas expédiée."
+        : "Your order continues as normal. You can make a new request as long as it hasn't shipped.",
+    })) return;
+    setRefundBusy(true);
+    setRefundError("");
+    try {
+      await api.post(`/orders/${order.id}/refund-request/cancel`, {}, guestRequestConfig(guestToken));
+      const fresh = await api.get(`/orders/${order.id}`, guestRequestConfig(guestToken));
+      setOrder(fresh.data);
+    } catch (e) {
+      setRefundError(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setRefundBusy(false);
+    }
   };
 
   const demanderRemboursement = async () => {
@@ -411,10 +437,31 @@ export default function OrderConfirmation() {
                   : (fr ? "Annuler cette commande" : "Cancel this order")}
             </div>
             {etat ? (
-              <p className="text-sm" data-testid="refund-status">
-                {fr ? etat[0] : etat[1]}
-                {order.refund_status === "denied" && order.refund_admin_note ? ` — ${order.refund_admin_note}` : ""}
-              </p>
+              <>
+                <p className="text-sm" data-testid="refund-status">
+                  {fr ? etat[0] : etat[1]}
+                  {order.refund_status === "denied" && order.refund_admin_note ? ` — ${order.refund_admin_note}` : ""}
+                </p>
+                {/* Une demande posée PAR ERREUR se retire d'un clic — la sienne
+                    seulement, tant qu'elle n'est pas examinée. Une fois
+                    approuvée, de l'argent est en jeu : c'est à l'équipe. */}
+                {order.refund_status === "requested" && order.refund_source === "client" && (
+                  <button onClick={retirerDemande} disabled={refundBusy} data-testid="refund-withdraw"
+                    className="text-sm underline text-foreground/70 hover:text-foreground disabled:opacity-50">
+                    {refundBusy
+                      ? (fr ? "Retrait…" : "Withdrawing…")
+                      : (fr ? "Retirer ma demande" : "Withdraw my request")}
+                  </button>
+                )}
+                {order.refund_status === "requested" && order.refund_source !== "client" && (
+                  <p className="text-xs text-foreground/60" data-testid="refund-withdraw-help">
+                    {fr
+                      ? "Ce dossier a été ouvert par notre équipe. Pour le retirer, écrivez-nous."
+                      : "This case was opened by our team. To withdraw it, write to us."}
+                  </p>
+                )}
+                {refundError && <p className="text-sm text-error" data-testid="refund-error">{refundError}</p>}
+              </>
             ) : expediee ? (
               /* APRES EXPEDITION : PAS DE SECOND FORMULAIRE.
                  Un produit endommage se montre — la conversation ci-dessous

@@ -31,6 +31,11 @@ jest.mock("../contexts/LanguageContext", () => ({
   useLang: () => ({ t: (k) => k, lang: "fr" }),
 }));
 
+// Le dialogue de confirmation du projet. Sans cette simulation, la page —
+// qui l'appelle dès son ouverture — ne se rendrait plus du tout en test.
+const mockConfirm = jest.fn(async () => true);
+jest.mock("../components/ConfirmDialog", () => ({ useConfirm: () => mockConfirm }));
+
 jest.mock("../hooks/useDocumentHead", () => ({ __esModule: true, default: () => {} }));
 
 jest.mock("lucide-react", () => new Proxy({}, {
@@ -47,6 +52,11 @@ const COMMANDE = {
 beforeEach(() => {
   jest.clearAllMocks();
   api.get.mockResolvedValue({ data: [] });
+  // Réinstallé à CHAQUE test : Create React App règle Jest sur
+  // resetMocks: true, qui efface l'implémentation de toute simulation avant
+  // chaque test. Sans cette ligne, le dialogue répondait `undefined` — lu
+  // comme un refus — et « Retirer ma demande » ne partait jamais.
+  mockConfirm.mockResolvedValue(true);
 });
 
 it("propose l'annulation d'une commande pas encore expediee", async () => {
@@ -175,4 +185,61 @@ it("montre ou en est un dossier deja ouvert, sans reproposer le formulaire", () 
   render(<OrderConfirmation />);
   expect(screen.getByTestId("refund-status")).toHaveTextContent(/approuvée/);
   expect(screen.queryByTestId("refund-reason")).not.toBeInTheDocument();
+});
+
+
+// ---------------------------------------------------------------------------
+// Retirer une demande posée par erreur
+// ---------------------------------------------------------------------------
+
+it("le client retire sa demande posee par erreur", async () => {
+  mockEtat = { order: { ...COMMANDE, refund_status: "requested", refund_source: "client" } };
+  api.post.mockResolvedValue({ data: { ok: true } });
+  // Après le retrait, la commande relue n'a plus de demande.
+  api.get.mockImplementation(async () => ({ data: { ...COMMANDE } }));
+  render(<OrderConfirmation />);
+
+  await userEvent.click(screen.getByTestId("refund-withdraw"));
+
+  expect(mockConfirm).toHaveBeenCalled();
+  await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+    "/orders/o-1/refund-request/cancel", {}, expect.anything()));
+  // La demande retirée, le formulaire d'annulation revient.
+  expect(await screen.findByTestId("refund-reason")).toBeInTheDocument();
+});
+
+it("rien n'est retire si le client renonce dans la confirmation", async () => {
+  mockConfirm.mockResolvedValueOnce(false);
+  mockEtat = { order: { ...COMMANDE, refund_status: "requested", refund_source: "client" } };
+  render(<OrderConfirmation />);
+
+  await userEvent.click(screen.getByTestId("refund-withdraw"));
+  expect(api.post).not.toHaveBeenCalled();
+});
+
+it("un dossier ouvert par l'equipe ne se retire pas d'un clic", async () => {
+  // Ouvert depuis un billet d'aide : c'est l'équipe qui l'a posé.
+  mockEtat = { order: { ...COMMANDE, refund_status: "requested", refund_source: "admin" } };
+  render(<OrderConfirmation />);
+  expect(screen.queryByTestId("refund-withdraw")).not.toBeInTheDocument();
+  expect(screen.getByTestId("refund-withdraw-help")).toHaveTextContent("écrivez-nous");
+});
+
+it("une demande deja approuvee ne se retire plus", async () => {
+  // De l'argent est en jeu : c'est à l'équipe de trancher.
+  mockEtat = { order: { ...COMMANDE, refund_status: "approved", refund_source: "client" } };
+  render(<OrderConfirmation />);
+  expect(screen.queryByTestId("refund-withdraw")).not.toBeInTheDocument();
+});
+
+it("le refus du serveur s'affiche au lieu de disparaitre", async () => {
+  // Cas limite : l'équipe décide à la même seconde. Le serveur refuse (409)
+  // et la page le dit, au lieu de laisser croire que rien ne s'est passé.
+  mockEtat = { order: { ...COMMANDE, refund_status: "requested", refund_source: "client" } };
+  api.post.mockRejectedValue({ response: { status: 409,
+    data: { detail: "Cette demande vient d'être traitée — écrivez-nous depuis l'aide." } } });
+  render(<OrderConfirmation />);
+
+  await userEvent.click(screen.getByTestId("refund-withdraw"));
+  expect(await screen.findByTestId("refund-error")).toHaveTextContent("vient d'être traitée");
 });

@@ -81,10 +81,13 @@ def test_ce_qui_bloque_encore(server_module):
 
 
 def test_une_commande_remboursee_ne_peut_pas_etre_marquee_payee(server_module):
-    """« Confirm Payment » s'affichait dès que le statut n'était pas « paid »,
-    donc aussi sur une commande remboursée. Un clic la remarquait payée et
-    envoyait un courriel de paiement confirmé au client qu'on venait de
-    rembourser. La garde est au serveur, pas seulement à l'écran."""
+    """« Confirm Payment » s'affichait sur une commande remboursee. Le clic ne
+    la remarquait PAS payee — _mark_order_paid ignore deja les statuts
+    terminaux — mais repondait 200, et l'ecran annoncait « Payment
+    confirmed ». Le serveur refuse maintenant et dit pourquoi.
+
+    (Une version precedente de ce commentaire affirmait le contraire. C'etait
+    faux ; corrige le 2026-09-19.)"""
     class Orders:
         async def find_one(self, filtre, projection=None):
             return {"id": "o-9", "payment_status": "refunded", "refund_status": "processed"}
@@ -129,6 +132,8 @@ def test_le_dossier_porte_ses_signaux(server_module):
     class Orders:
         async def update_one(self, filtre, update):
             ecrit.update(update["$set"])
+            # Comme la vraie base : le nombre de documents concernes.
+            return types.SimpleNamespace(matched_count=1)
 
     server_module.db = types.SimpleNamespace(orders=Orders())
     commande = {"id": "o-1", "payment_status": "paid", "fulfillment_status": "delivered",
@@ -149,6 +154,8 @@ def test_une_annulation_est_marquee_comme_telle(server_module):
     class Orders:
         async def update_one(self, filtre, update):
             ecrit.update(update["$set"])
+            # Comme la vraie base : le nombre de documents concernes.
+            return types.SimpleNamespace(matched_count=1)
 
     server_module.db = types.SimpleNamespace(orders=Orders())
     asyncio.run(server_module._set_refund_requested(
@@ -328,6 +335,8 @@ def _capturer_dossier(server_module):
     class Orders:
         async def update_one(self, filtre, update):
             ecrit.update(update["$set"])
+            # Comme la vraie base : le nombre de documents concernes.
+            return types.SimpleNamespace(matched_count=1)
 
     server_module.db = types.SimpleNamespace(orders=Orders())
     return ecrit
@@ -490,3 +499,175 @@ def test_la_liste_renvoie_les_compteurs_de_toutes_les_etapes(server_module):
     res = asyncio.run(server_module.admin_refunds_list(status="requested"))
 
     assert res["counts"] == {"requested": 2, "approved": 3, "processed": 0, "denied": 0}
+
+
+# ---------------------------------------------------------------------------
+# Une seule demande par commande — garantie par la base
+# ---------------------------------------------------------------------------
+
+def test_l_ecriture_elle_meme_refuse_une_seconde_demande(server_module):
+    """Le client depuis sa commande et l'equipe depuis son billet : deux
+    chemins. Chacun verifiait, puis ecrivait ; entre les deux, l'autre
+    pouvait passer, et le second ECRASAIT le premier. La condition est
+    maintenant dans l'ecriture."""
+    filtres = []
+
+    class Orders:
+        async def update_one(self, filtre, update):
+            filtres.append(filtre)
+            # La base dit : aucune commande ne remplit la condition — une
+            # demande est arrivee entre la verification et l'ecriture.
+            return types.SimpleNamespace(matched_count=0)
+
+    server_module.db = types.SimpleNamespace(orders=Orders())
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module._set_refund_requested(
+            "o-1", "flacon fissure a la reception", None, "full",
+            order={"id": "o-1", "payment_status": "paid", "fulfillment_status": "delivered"},
+            source="admin"))
+
+    assert exc.value.status_code == 409
+    assert filtres[0]["refund_status"] == {"$nin": ["requested", "approved", "processed"]}
+
+
+def test_une_demande_refusee_peut_etre_refaite(server_module):
+    """La garde ne bloque pas une nouvelle demande apres un refus."""
+    assert "denied" not in ["requested", "approved", "processed"]
+    assert server_module._refund_eligibility_reason(
+        {"payment_status": "paid", "refund_status": "denied"}) is None
+
+
+# ---------------------------------------------------------------------------
+# Le client retire une demande posee par erreur
+# ---------------------------------------------------------------------------
+
+def _retrait(server_module, monkeypatch, commande, matched=1, utilisateur=None):
+    ecrit = {}
+    envois = []
+
+    class Orders:
+        async def find_one(self, filtre, projection=None):
+            return dict(commande)
+
+        async def update_one(self, filtre, update):
+            ecrit["filtre"] = filtre
+            ecrit["update"] = update
+            return types.SimpleNamespace(matched_count=matched)
+
+    async def rien(*a, **k):
+        return None
+
+    async def qui(request):
+        return utilisateur
+
+    async def envoyer(*a, **k):
+        envois.append(a)
+
+    monkeypatch.setattr(server_module, "_rate_limit", rien)
+    monkeypatch.setattr(server_module, "_client_ip", lambda request: "1.2.3.4")
+    monkeypatch.setattr(server_module, "_resolve_user", qui)
+    monkeypatch.setattr(server_module, "_guest_order_accessible", lambda order, request: False)
+    monkeypatch.setattr(server_module, "_send_email", envoyer)
+    server_module.db = types.SimpleNamespace(orders=Orders())
+    return ecrit, envois
+
+
+_DEMANDE_CLIENT = {"id": "o-1", "order_number": "FN-1", "user_id": "u-1",
+                   "payment_status": "paid", "refund_status": "requested",
+                   "refund_source": "client", "refund_reason": "Je me suis trompé de dosage"}
+
+
+def test_le_client_retire_sa_demande(server_module, monkeypatch):
+    ecrit, envois = _retrait(server_module, monkeypatch, _DEMANDE_CLIENT,
+                             utilisateur={"id": "u-1"})
+    res = asyncio.run(server_module.order_cancel_refund_request("o-1", object()))
+
+    assert res["ok"] is True
+    # Toute la demande disparait — donc le gel de la commission aussi, qui
+    # ne depend que de refund_status.
+    efface = ecrit["update"]["$unset"]
+    for champ in ["refund_status", "refund_reason", "refund_source", "refund_destination",
+                  "refund_requested_at", "refund_before_shipping"]:
+        assert champ in efface
+    # La trace reste dans l'historique de la commande.
+    assert "retirée par le client" in ecrit["update"]["$push"]["notes"]["text"]
+    assert "trompé de dosage" in ecrit["update"]["$push"]["notes"]["text"]
+    # L'ecriture exige que la demande soit TOUJOURS la sienne et a examiner.
+    assert ecrit["filtre"] == {"id": "o-1", "refund_status": "requested", "refund_source": "client"}
+    assert len(envois) == 1                       # l'equipe est prevenue
+
+
+def test_une_demande_deja_approuvee_ne_se_retire_pas(server_module, monkeypatch):
+    """Une fois approuvee, de l'argent est en jeu : c'est a l'equipe."""
+    ecrit, _ = _retrait(server_module, monkeypatch,
+                        {**_DEMANDE_CLIENT, "refund_status": "approved"},
+                        utilisateur={"id": "u-1"})
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.order_cancel_refund_request("o-1", object()))
+    assert exc.value.status_code == 409
+    assert ecrit == {}                            # rien n'a ete ecrit
+
+
+def test_un_dossier_ouvert_par_l_equipe_ne_se_retire_pas_d_un_clic(server_module, monkeypatch):
+    ecrit, _ = _retrait(server_module, monkeypatch,
+                        {**_DEMANDE_CLIENT, "refund_source": "admin"},
+                        utilisateur={"id": "u-1"})
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.order_cancel_refund_request("o-1", object()))
+    assert exc.value.status_code == 409
+    assert "équipe" in exc.value.detail
+    assert ecrit == {}
+
+
+def test_personne_d_autre_ne_retire_la_demande(server_module, monkeypatch):
+    ecrit, _ = _retrait(server_module, monkeypatch, _DEMANDE_CLIENT,
+                        utilisateur={"id": "u-2"})
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.order_cancel_refund_request("o-1", object()))
+    assert exc.value.status_code == 403
+    assert ecrit == {}
+
+
+def test_si_l_equipe_decide_a_la_meme_seconde_le_retrait_est_refuse(server_module, monkeypatch):
+    """La lecture dit « a examiner », mais une decision s'ecrit juste avant :
+    l'ecriture conditionnelle ne trouve plus rien, et le dit."""
+    _, envois = _retrait(server_module, monkeypatch, _DEMANDE_CLIENT,
+                         matched=0, utilisateur={"id": "u-1"})
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.order_cancel_refund_request("o-1", object()))
+    assert exc.value.status_code == 409
+    assert envois == []
+
+
+# ---------------------------------------------------------------------------
+# La decision ne s'ecrit pas sur une demande retiree entre-temps
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("decision", [
+    {"action": "deny", "admin_note": "non"},
+    {"action": "approve", "approved_type": "replace"},
+    {"action": "approve", "approved_type": "full"},
+])
+def test_une_decision_sur_une_demande_retiree_est_refusee(server_module, monkeypatch, decision):
+    envois = []
+
+    class Orders:
+        async def find_one(self, filtre, projection=None):
+            return {"id": "o-1", "order_number": "FN-1", "email": "a@example.com",
+                    "total": 64.99, "refund_status": "requested"}
+
+        async def update_one(self, filtre, update):
+            assert filtre == {"id": "o-1", "refund_status": "requested"}
+            return types.SimpleNamespace(matched_count=0)   # retiree entre-temps
+
+    async def envoyer(*a, **k):
+        envois.append(a)
+
+    monkeypatch.setattr(server_module, "_send_email", envoyer)
+    server_module.db = types.SimpleNamespace(orders=Orders())
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(server_module.admin_refund_decision(
+            "o-1", server_module.RefundDecisionIn(**decision), {"email": "admin@x"}))
+
+    assert exc.value.status_code == 409
+    assert envois == []            # aucun client prevenu d'une decision fantome

@@ -139,3 +139,19 @@ it("permet d ouvrir un dossier pour une commande sans compte", async () => {
     "/admin/orders/o-9/refund-case",
     { reason: "Produit endommagé à la livraison" }));
 });
+
+
+it("une decision refusee parce que le client a retire sa demande recharge la liste", async () => {
+  // Le client retire sa demande pendant que l'équipe décide : le serveur
+  // refuse (409) et rien n'est écrit. La liste, périmée, se recharge pour
+  // que le dossier disparaisse au lieu de rester cliquable.
+  api.get.mockResolvedValue({
+    data: { items: DOSSIERS, counts: { requested: 2, approved: 0, processed: 0, denied: 0 } } });
+  api.post.mockRejectedValue({ response: { status: 409,
+    data: { detail: "Le client a retiré sa demande entre-temps" } } });
+  render(<AdminRefunds />);
+
+  const avant = api.get.mock.calls.length;
+  await userEvent.click(await screen.findByTestId("approve-o-2"));
+  await waitFor(() => expect(api.get.mock.calls.length).toBeGreaterThan(avant));
+});

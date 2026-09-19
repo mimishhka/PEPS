@@ -34,6 +34,13 @@ async def order_request_refund(order_id: str, payload: s.RefundRequestIn, reques
     return await s.order_request_refund(order_id, payload, request)
 
 
+# Le client retire une demande posée par erreur — la sienne, tant qu'elle est
+# à examiner. Mêmes droits d'accès que pour la poser (compte ou lien invité).
+@router.post("/orders/{order_id}/refund-request/cancel")
+async def order_cancel_refund_request(order_id: str, request: Request):
+    return await s.order_cancel_refund_request(order_id, request)
+
+
 @router.get("/orders/{order_id}/messages")
 async def order_messages(order_id: str, request: Request):
     return await s.order_messages(order_id, request)
