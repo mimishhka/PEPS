@@ -110,3 +110,109 @@ it("le lien direct demande la commande seule, pas la liste entiere", async () =>
   await waitFor(() => expect(api.get).toHaveBeenCalledWith("/admin/orders/o-9"));
   expect(appelsVers("/admin/orders")).toHaveLength(0);
 });
+
+// ---------------------------------------------------------------------------
+// La fiche d'une commande : chaque bloc n'apparaît que s'il a un sens
+// ---------------------------------------------------------------------------
+
+const BASE = {
+  id: "o-1", order_number: "FN-1", email: "marie@example.com", user_id: "u-1",
+  payment_status: "paid", fulfillment_status: "processing", payment_method: "interac",
+  created_at: "2026-09-01T10:00:00Z", subtotal: 49.99, shipping: 20, total: 69.99, tax: 0,
+  items: [{ product_id: "p-1", name_en: "BPC-157", slug: "bpc-157-5mg", qty: 1,
+            price_cad: 49.99, line_total: 49.99 }],
+  shipping_address: { full_name: "Marie Tremblay" }, shipping_info: {}, notes: [],
+};
+
+const ouvrir = async (surcharge) => {
+  const commande = { ...BASE, ...surcharge };
+  mockParams = { id: commande.id };
+  const parDefaut = api.get.getMockImplementation();
+  api.get.mockImplementation(async (url, config) => (
+    url === `/admin/orders/${commande.id}` ? { data: commande } : parDefaut(url, config)));
+  render(<AdminOrders />);
+  await screen.findByTestId("order-detail-drawer");
+};
+
+const absent = (id) => expect(screen.queryByTestId(id)).not.toBeInTheDocument();
+const present = (id) => expect(screen.getByTestId(id)).toBeInTheDocument();
+
+it("une commande sans articles ne fait plus tomber l'ecran", async () => {
+  // Cas réel : FN-AUTO-B3AD4F n'a pas de champ `items`. Son ouverture
+  // affichait « Something went wrong » sur tout l'écran d'administration.
+  await ouvrir({ items: undefined });
+  present("order-no-items");
+});
+
+it("commande payee : on expedie, on peut ouvrir un dossier, rien a confirmer", async () => {
+  await ouvrir({});
+  absent("confirm-payment-btn");      // déjà payée
+  absent("order-status-actions");     // ne s'affiche plus vide
+  present("save-shipping-btn");
+  present("open-refund-case-btn");
+  present("download-invoice-pdf");
+  present("resend-email-btn");
+});
+
+it("commande en attente de paiement : on confirme ou on annule, pas plus", async () => {
+  await ouvrir({ payment_status: "awaiting_etransfer", fulfillment_status: "pending" });
+  present("confirm-payment-btn");
+  present("order-status-actions");
+  absent("order-shipping");           // le serveur refuse tout suivi sans paiement
+  absent("order-refund");             // rien à rembourser
+});
+
+it("commande annulee : ni facture, ni courriel, ni suivi, ni confirmation", async () => {
+  await ouvrir({ payment_status: "cancelled", fulfillment_status: "cancelled" });
+  absent("confirm-payment-btn");      // annonçait un succès sans rien changer
+  absent("download-invoice-pdf");     // pas de facture pour une vente non faite
+  absent("resend-email-btn");         // lui demanderait de payer
+  absent("order-shipping");
+  absent("order-refund");
+  present("reopen-order-btn");        // le seul chemin, qui revérifie le stock
+});
+
+it("commande remboursee : la facture reste, l'etat du dossier se lit en clair", async () => {
+  await ouvrir({ payment_status: "refunded", fulfillment_status: "refunded",
+                 refund_status: "processed", refunded_amount: 69.99 });
+  absent("confirm-payment-btn");
+  absent("resend-email-btn");
+  present("download-invoice-pdf");    // la vente a existé
+  expect(screen.getByTestId("refund-case-state")).toHaveTextContent("remboursé");
+  expect(screen.getByTestId("refund-case-state")).not.toHaveTextContent("processed");
+});
+
+it("une commande close deja expediee garde son suivi, en lecture seule", async () => {
+  await ouvrir({ payment_status: "refunded", fulfillment_status: "refunded",
+                 refund_status: "processed",
+                 shipping_info: { carrier: "Canada Post", tracking_number: "1234567890" } });
+  expect(screen.getByTestId("order-shipping-readonly")).toHaveTextContent("1234567890");
+  absent("save-shipping-btn");
+});
+
+it("dit qu'un client n'a pas de compte", async () => {
+  await ouvrir({ user_id: null });
+  present("order-guest");
+});
+
+it("regroupe les reports de lot consecutifs sans perdre les notes humaines", async () => {
+  // Cas réel : FN-260824-4182B7 portait un report par jour depuis le 27 août.
+  const report = (lot) => ({ author: "system", text: `Reportée au lot ${lot} — étiquette non imprimée.`,
+                             created_at: `${lot}T10:00:00Z` });
+  await ouvrir({ notes: [
+    { author: "admin@fironova.com", text: "Client prévenu du retard", created_at: "2026-08-26T10:00:00Z" },
+    report("2026-08-27"), report("2026-08-28"), report("2026-08-29"),
+    report("2026-08-30"), report("2026-08-31"),
+  ] });
+  expect(screen.getByTestId("note-0")).toHaveTextContent("Client prévenu du retard");
+  expect(screen.getByTestId("note-1"))
+    .toHaveTextContent("Reportée 5 fois — du lot 2026-08-27 au lot 2026-08-31");
+  absent("note-2");
+});
+
+it("un motif de dossier trop court ne part pas", async () => {
+  // Le serveur exige 10 caractères ; en dessous il répondait en 422 muet.
+  await ouvrir({});
+  fireEvent.change(screen.getByTestId("refund-case-reason"), { target: { value: "cassé" } });
+  expect(screen.getByTestId("open-refund-case-btn")).toBeDisabled();
+});

@@ -4834,16 +4834,27 @@ async def admin_confirm_payment(order_id: str, _admin: dict = Depends(require_ar
         raise HTTPException(404, "Order not found")
     if existing.get("payment_status") == "paid":
         return existing  # idempotent
-    # UNE COMMANDE REMBOURSEE N'EST PAS UNE COMMANDE « PAS ENCORE PAYEE ».
+    # UN STATUT TERMINAL NE SE « CONFIRME » PAS.
     #
-    # L'ecran proposait « Confirm Payment » des que le statut n'etait pas
-    # « paid » — donc aussi sur une commande remboursee, qui porte
-    # payment_status = "refunded". Un clic la remarquait payee, relancait la
-    # preparation et envoyait au client un courriel de paiement confirme,
-    # apres lui avoir rendu son argent. La garde est ici, au serveur, parce
-    # que l'ecran n'est pas le seul chemin vers cet appel.
-    if existing.get("payment_status") == "refunded":
-        raise HTTPException(400, "Commande remboursée — impossible de la marquer payée.")
+    # _mark_order_paid ignore deja les commandes annulees, echouees ou
+    # remboursees : elle ne fait rien et sort. Cette fonction renvoyait alors
+    # la commande INCHANGEE avec un 200 — et l'ecran affichait « Payment
+    # confirmed — moved to Processing ». Un faux succes : rien n'avait bouge.
+    #
+    # (Un commentaire precedent, ici meme, affirmait qu'un clic remarquait une
+    # commande remboursee payee et prevenait le client. C'etait faux : la
+    # fonction ci-dessous l'en empechait deja. Le defaut reel etait ce faux
+    # succes, pas une corruption.)
+    #
+    # Une commande annulee se rouvre par /reopen, qui reverifie le stock.
+    statut = existing.get("payment_status")
+    if statut in ("refunded", "cancelled", "failed"):
+        raison = {
+            "refunded": "Commande remboursée — impossible de la marquer payée.",
+            "cancelled": "Commande annulée — utilisez « Réouvrir », qui revérifie le stock.",
+            "failed": "Paiement échoué — la commande ne peut pas être confirmée telle quelle.",
+        }[statut]
+        raise HTTPException(400, raison)
     updated = await _mark_order_paid(order_id, "Payment manually confirmed by admin")
     return updated or existing
 
@@ -5585,6 +5596,11 @@ async def admin_resend_order_email(order_id: str, _admin: dict = Depends(require
         raise HTTPException(404, "Order not found")
     if not order.get("email"):
         raise HTTPException(400, "Order has no customer email")
+    # Ce courriel reprend le detail de la commande et, s'il n'y a pas eu de
+    # paiement, les instructions pour payer. L'envoyer a un client annule ou
+    # rembourse lui demanderait de payer une commande qui n'existe plus.
+    if order.get("payment_status") in ("cancelled", "failed", "refunded"):
+        raise HTTPException(400, "Commande close — ce courriel n'a plus de sens pour le client.")
     heading = "Payment received" if order.get("payment_status") == "paid" else "Order received"
     html = _order_email_html(order, heading)
     await _send_email(order["email"], f"FIRONOVA — Order {order['order_number']} details", html)
@@ -5593,7 +5609,8 @@ async def admin_resend_order_email(order_id: str, _admin: dict = Depends(require
 
 async def admin_set_shipping_info(order_id: str, payload: ShippingInfoIn, _admin: dict = Depends(require_area("orders", "manage"))):
     existing_order = await db.orders.find_one(
-        {"id": order_id}, {"_id": 0, "shipping_info": 1, "payment_status": 1},
+        {"id": order_id},
+        {"_id": 0, "shipping_info": 1, "payment_status": 1, "fulfillment_status": 1},
     )
     if not existing_order:
         raise HTTPException(404, "Order not found")
@@ -5613,7 +5630,15 @@ async def admin_set_shipping_info(order_id: str, payload: ShippingInfoIn, _admin
         "shipped_at": shipped_at,
     }
     update = {"shipping_info": shipping_info}
-    if payload.tracking_number:
+    # NE JAMAIS FAIRE REGRESSER UNE COMMANDE.
+    # Tout numero de suivi passait la commande en « shipped », quel que soit
+    # son etat. Or le formulaire reste ouvert sur une commande LIVREE — pour
+    # corriger une coquille dans le numero, par exemple. L'enregistrer la
+    # renvoyait en « expediee » : elle quittait l'onglet Completed et
+    # revenait dans Active. Le suivi se corrige ; le statut, lui, n'avance
+    # que vers l'avant.
+    if payload.tracking_number and existing_order.get("fulfillment_status") not in (
+            "delivered", "refunded", "cancelled", "failed"):
         update["fulfillment_status"] = "shipped"
     res = await db.orders.update_one({"id": order_id}, {"$set": update})
     if res.matched_count == 0:

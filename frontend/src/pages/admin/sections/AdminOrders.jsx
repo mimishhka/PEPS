@@ -22,6 +22,47 @@ const TABS = [
   { key: "all", label: "All" },
 ];
 
+// Seuls ces paiements peuvent encore être confirmés. _mark_order_paid ignore
+// les statuts terminaux (payé, annulé, échoué, remboursé) : le bouton y
+// affichait « Payment confirmed » sans que rien ne change.
+const EN_ATTENTE = ["awaiting_etransfer", "awaiting_crypto"];
+
+// Une commande close n'a plus de facture, de suivi ni de courriel à renvoyer.
+const CLOSES = ["cancelled", "failed"];
+
+// Le serveur exige 10 caractères de motif pour ouvrir un dossier.
+const MOTIF_MIN = 10;
+
+// L'état d'un dossier de remboursement, dans les mots de l'écran Remboursements.
+const ETAT_DOSSIER = {
+  requested: "à examiner",
+  approved: "approuvé — l'argent reste à envoyer",
+  processed: "remboursé",
+  denied: "refusé",
+};
+
+/* Regroupe les reports de lot CONSÉCUTIFS en une seule ligne.
+ *
+ * Le lot d'expédition ajoute une note chaque jour où l'étiquette n'est pas
+ * imprimée. Une commande bloquée trois semaines en accumulait une vingtaine,
+ * et les vraies notes disparaissaient dessous. Rien n'est supprimé : les
+ * notes restent en base, seul l'affichage les regroupe. Une note humaine
+ * entre deux reports coupe le groupe, pour garder l'ordre des événements. */
+const REPORT = /^Reportée au lot (\S+) — étiquette non imprimée\.$/;
+function regrouperReports(notes) {
+  const sortie = [];
+  for (const n of notes) {
+    const m = n.author === "system" ? REPORT.exec(n.text || "") : null;
+    const dernier = sortie[sortie.length - 1];
+    if (m && dernier?.report) {
+      dernier.report = { ...dernier.report, jusqua: m[1], n: dernier.report.n + 1 };
+      continue;
+    }
+    sortie.push(m ? { ...n, report: { depuis: m[1], jusqua: m[1], n: 1 } } : n);
+  }
+  return sortie;
+}
+
 // Paramètres d'URL d'une vue — partagés par la liste ET les exports.
 const enQuery = (params) => {
   const q = new URLSearchParams(
@@ -500,7 +541,8 @@ function OrderDetail({ order, onClose, onUpdate }) {
 
   const openRefundCase = async () => {
     const motif = refundReason.trim();
-    if (!motif) return;
+    // Même règle que le serveur, qui refusait sinon en 422 muet.
+    if (motif.length < MOTIF_MIN) return;
     try {
       await api.post(`/admin/orders/${order.id}/refund-case`, { reason: motif });
       toast.success("Dossier ouvert — la commission affiliée est gelée");
@@ -614,11 +656,11 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 <Undo2 size={14} /> {reopenBusy ? "Réouverture…" : "Réouvrir"}
               </button>
             )}
-            {/* Pas sur une commande remboursée : « pas payée » englobait aussi
-                « remboursée », et le bouton proposait de marquer payée une
-                commande dont l'argent avait été rendu. Le serveur refuse
-                désormais aussi — ceci évite simplement de le proposer. */}
-            {!["paid", "refunded"].includes(order.payment_status) && (
+            {/* Seulement si le paiement est encore ATTENDU. Sur une commande
+                annulée, échouée ou remboursée, le serveur ne faisait rien —
+                mais l'écran annonçait « Payment confirmed ». Une commande
+                annulée se rouvre par « Réouvrir », qui revérifie le stock. */}
+            {EN_ATTENTE.includes(order.payment_status) && (
               <button
                 onClick={confirmPayment}
                 data-testid="confirm-payment-btn"
@@ -627,15 +669,22 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 <CheckCircle2 size={14} /> Confirm Payment
               </button>
             )}
-            <a
-              href={`${API_BASE}/orders/${order.id}/invoice.pdf`}
-              target="_blank" rel="noopener noreferrer"
-              data-testid="download-invoice-pdf"
-              className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
-            >
-              <FileText size={14} /> Invoice PDF
-            </a>
-            {order.email && (
+            {/* Pas de facture pour une vente qui n'a pas eu lieu. Une commande
+                remboursée garde la sienne : la vente a existé. */}
+            {!CLOSES.includes(order.payment_status) && (
+              <a
+                href={`${API_BASE}/orders/${order.id}/invoice.pdf`}
+                target="_blank" rel="noopener noreferrer"
+                data-testid="download-invoice-pdf"
+                className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
+              >
+                <FileText size={14} /> Invoice PDF
+              </a>
+            )}
+            {/* Ce courriel reprend la commande et, sans paiement, les
+                instructions pour payer. Le renvoyer à un client annulé ou
+                remboursé lui demanderait de payer ce qui n'existe plus. */}
+            {order.email && [...EN_ATTENTE, "paid"].includes(order.payment_status) && (
               <button
                 onClick={resendEmail}
                 data-testid="resend-email-btn"
@@ -651,7 +700,16 @@ function OrderDetail({ order, onClose, onUpdate }) {
             <div className="bg-white border border-ink/10 p-4">
               <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50">Customer</div>
               <div className="font-bold mt-1">{addr.full_name || "—"}</div>
-              <div className="text-sm text-foreground/70">{order.email || "Guest"}</div>
+              <div className="text-sm text-foreground/70">{order.email || "—"}</div>
+              {/* « Guest » ne s'affichait que sans courriel — or un invité en a
+                  toujours un. C'est l'absence de COMPTE qui compte : elle dit
+                  que ce client n'a pas accès aux billets d'aide. */}
+              {!order.user_id && (
+                <span data-testid="order-guest"
+                  className="inline-block mt-1 font-mono text-[10px] uppercase tracking-[0.15em] border border-ink/20 px-2 py-0.5 text-foreground/60">
+                  Guest checkout — no account
+                </span>
+              )}
               {addr.phone && <div className="text-sm text-foreground/70">{addr.phone}</div>}
             </div>
             <div className="bg-white border border-ink/10 p-4">
@@ -668,7 +726,10 @@ function OrderDetail({ order, onClose, onUpdate }) {
             <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <tbody>
-                {order.items.map((it) => (
+                {/* `order.items` peut manquer : FN-AUTO-B3AD4F n'a pas ce champ.
+                    L'appel direct à .map() faisait tomber TOUT l'écran
+                    d'administration — « Something went wrong ». */}
+                {(order.items || []).map((it) => (
                   <tr key={it.product_id} className="border-t border-ink/5">
                     <td className="px-4 py-3">
                       <div className="font-bold">{it.name_en}</div>
@@ -678,6 +739,11 @@ function OrderDetail({ order, onClose, onUpdate }) {
                     <td className="px-4 py-3 text-right font-bold tabular-nums">${it.line_total?.toFixed(2)}</td>
                   </tr>
                 ))}
+                {!(order.items || []).length && (
+                  <tr><td colSpan={2} className="px-4 py-3 text-sm text-amber-700" data-testid="order-no-items">
+                    Aucun article sur cette commande — enregistrement incomplet.
+                  </td></tr>
+                )}
               </tbody>
               <tfoot className="bg-secondary/50">
                 <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Subtotal</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.subtotal?.toFixed(2)}</td></tr>
@@ -685,15 +751,29 @@ function OrderDetail({ order, onClose, onUpdate }) {
                   <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Discount {order.coupon?.code && `(${order.coupon.code})`}</td><td className="px-4 py-1 text-right text-sm tabular-nums text-emerald-700">-${order.discount?.toFixed(2)}</td></tr>
                 )}
                 <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Shipping</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.shipping?.toFixed(2)}</td></tr>
+                {/* Sans cette ligne, une commande taxée affichait des montants
+                    dont la somme ne donnait pas le total. */}
+                {order.tax > 0 && (
+                  <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Tax</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.tax.toFixed(2)}</td></tr>
+                )}
                 <tr><td className="px-4 py-2 text-right font-bold uppercase">Total CAD</td><td className="px-4 py-2 text-right font-display font-bold text-lg tabular-nums" data-testid="order-total">${order.total?.toFixed(2)}</td></tr>
               </tfoot>
             </table>
             </div>
           </div>
 
-          {/* Shipping */}
-          <div className="bg-white border border-ink/10 p-4">
+          {/* Expédition — le formulaire seulement pour une commande PAYÉE : le
+              serveur refuse tout suivi sur une commande impayée (409), qu'elle
+              soit en attente, annulée ou remboursée. Une commande close qui a
+              été expédiée garde ses informations, en lecture seule. */}
+          {(order.payment_status === "paid" || !!(shipInfo.tracking_number || shipInfo.label_url)) && (
+          <div className="bg-white border border-ink/10 p-4" data-testid="order-shipping">
             <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3 flex items-center gap-2"><Truck size={12} /> Shipping & Tracking</div>
+            {order.payment_status !== "paid" ? (
+              <div className="text-sm text-foreground/70" data-testid="order-shipping-readonly">
+                {shipInfo.carrier || "—"} · {shipInfo.tracking_number || "pas de numéro de suivi"}
+              </div>
+            ) : (<>
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Carrier</label>
@@ -720,6 +800,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 </button>
               )}
             </div>
+            </>)}
             {order.shipping_info?.shipped_at && (
               <div className="font-mono text-[10px] text-foreground/50 mt-2">Shipped at: {order.shipping_info.shipped_at}</div>
             )}
@@ -754,37 +835,42 @@ function OrderDetail({ order, onClose, onUpdate }) {
               </div>
             )}
           </div>
+          )}
 
           {/* Actions de statut — remplacent les menus déroulants libres : chaque
               transition a désormais UN chemin dédié avec ses effets de bord.
               La préparation (packing/packed) avance depuis l'écran Fulfillment,
               l'expédition via le suivi, l'étiquetage via Dispatch, le
               remboursement via l'écran Refunds. */}
-          <div className="bg-white border border-ink/10 p-4">
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3">Actions de statut</div>
-            <div className="flex flex-wrap gap-2">
-              {["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status) && (
+          {/* Ces deux actions n'existent que pour un paiement en attente.
+              Ailleurs, le bloc s'affichait vide : un titre sans bouton. */}
+          {EN_ATTENTE.includes(order.payment_status) && (
+            <div className="bg-white border border-ink/10 p-4" data-testid="order-status-actions">
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3">Actions de statut</div>
+              <div className="flex flex-wrap gap-2">
                 <button onClick={() => updateStatus("payment_status", "cancelled")} data-testid="cancel-order-btn"
                   className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:border-red-500 hover:text-red-500">
                   Annuler
                 </button>
-              )}
-              {["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status) && (
                 <button onClick={() => updateStatus("payment_status", "failed")} data-testid="mark-failed-btn"
                   className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:border-amber-500 hover:text-amber-500">
                   Marquer échoué
                 </button>
-              )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Remboursement — décision et règlement dans l'écran Refunds. Ici :
               ouvrir un dossier (gèle la commission) ou lire l'état. */}
-          <div className="bg-white border border-ink/10 p-4">
+          {/* Le formulaire n'a de sens que pour une commande PAYÉE : le serveur
+              refuse les autres. Il s'affichait partout, et la personne ne
+              l'apprenait qu'après avoir tapé un motif. */}
+          {(order.refund_status || order.payment_status === "paid") && (
+          <div className="bg-white border border-ink/10 p-4" data-testid="order-refund">
             <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-2">Remboursement</div>
             {order.refund_status ? (
               <div className="font-mono text-[11px] text-foreground/70" data-testid="refund-case-state">
-                Dossier : {order.refund_status}
+                Dossier : {ETAT_DOSSIER[order.refund_status] || order.refund_status}
                 {order.refund_reason ? ` — ${order.refund_reason}` : ""}
                 {order.refunded_amount > 0 ? ` · Remboursé : $${order.refunded_amount.toFixed(2)}` : ""}
               </div>
@@ -793,11 +879,11 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 <input
                   value={refundReason}
                   onChange={(e) => setRefundReason(e.target.value)}
-                  placeholder="Motif (erreur / dommage — sous 48 h)"
+                  placeholder="Motif — produit endommagé, erreur de commande… (10 caractères au moins)"
                   data-testid="refund-case-reason"
                   className="border border-ink/20 px-3 py-2 text-sm flex-1 min-w-[16rem]"
                 />
-                <button onClick={openRefundCase} disabled={!refundReason.trim()}
+                <button onClick={openRefundCase} disabled={refundReason.trim().length < MOTIF_MIN}
                   data-testid="open-refund-case-btn"
                   className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:border-nova hover:text-nova disabled:opacity-40 disabled:cursor-not-allowed">
                   Ouvrir un dossier
@@ -806,14 +892,19 @@ function OrderDetail({ order, onClose, onUpdate }) {
               </div>
             )}
           </div>
+          )}
 
           {/* Notes */}
           <div className="bg-white border border-ink/10 p-4">
             <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3 flex items-center gap-2"><MessageSquarePlus size={12} /> Order Notes</div>
             <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
-              {(order.notes || []).map((n, i) => (
+              {regrouperReports(order.notes || []).map((n, i) => (
                 <div key={i} className={`text-sm border-l-2 pl-3 py-1 ${n.visible_to_customer ? "border-emerald-500" : "border-ink/30"}`} data-testid={`note-${i}`}>
-                  <div className="text-foreground/85">{n.text}</div>
+                  <div className="text-foreground/85">
+                    {n.report && n.report.n > 1
+                      ? `Reportée ${n.report.n} fois — du lot ${n.report.depuis} au lot ${n.report.jusqua} (étiquette non imprimée).`
+                      : n.text}
+                  </div>
                   <div className="font-mono text-[10px] text-foreground/50 mt-1">
                     {n.admin_email || n.author} · {((n.ts || n.created_at) || "").slice(0, 16).replace("T", " ")}
                     {n.visible_to_customer && <span className="ml-2 text-emerald-600 font-bold">CUSTOMER</span>}
