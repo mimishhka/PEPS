@@ -226,8 +226,85 @@ async def _canada_post_get_rates(destination_postal_code: str, destination_count
         return []
 
 
+def _cp_lire_suivi_xml(pin: str, texte: str) -> dict:
+    """Lit la reponse XML du suivi (ancienne API) en evenements.
+
+    Separe de l'appel reseau pour etre verifiable sur une vraie reponse. Le
+    FUSEAU de chaque evenement (event-time-zone) etait lu par Postes Canada
+    mais jete ici : sans lui, une heure de livraison est ambigue de
+    plusieurs heures, et c'est cette heure qui demarre le delai de 48 h."""
+    root = ET.fromstring(texte)
+    events = []
+    for ev in root.findall(".//cp:occurrence", _CP_TRACK_NS):
+        events.append({
+            "date": ev.findtext("cp:event-date", default="", namespaces=_CP_TRACK_NS),
+            "time": ev.findtext("cp:event-time", default="", namespaces=_CP_TRACK_NS),
+            "time_zone": ev.findtext("cp:event-time-zone", default="", namespaces=_CP_TRACK_NS),
+            "description": ev.findtext("cp:event-description", default="", namespaces=_CP_TRACK_NS),
+            "location": ev.findtext("cp:event-site", default="", namespaces=_CP_TRACK_NS),
+        })
+    summary = root.findtext(".//cp:significant-status/cp:description", default="", namespaces=_CP_TRACK_NS)
+    return {"pin": pin, "summary": summary, "events": events}
+
+
+def _cp_suivi_disponible() -> bool:
+    """Un suivi est-il interrogeable ? Nouveau portail (OAuth) ou ancien (cle)."""
+    return bool((s.CANADA_POST_OAUTH_CLIENT_ID and s.CANADA_POST_OAUTH_CLIENT_SECRET)
+                or s.CANADA_POST_API_KEY)
+
+
+def _cp_lire_suivi_json(pin: str, donnees: dict) -> dict:
+    """Lit la reponse JSON du nouveau portail en evenements — la meme forme
+    que l'ancienne API, pour que la suite du code n'ait qu'un seul format.
+
+    Champs releves sur la specification officielle (Tracking 2.0.0,
+    GET /pins/{pinNumber}/details) : significantEvents[], eventDate,
+    eventTime, eventTimeZone, eventDescription, eventSite, eventIdentifier.
+    """
+    events = []
+    for ev in (donnees or {}).get("significantEvents") or []:
+        if not isinstance(ev, dict):
+            continue
+        events.append({
+            # eventDate arrive comme « 2023-12-11T00:00:00.000Z » : c'est une
+            # DATE locale portee par un minuit UTC. La convertir en heure du
+            # Quebec la ferait reculer d'un jour ; seuls les 10 premiers
+            # caracteres comptent. L'heure et le fuseau sont a part.
+            "date": str(ev.get("eventDate") or "")[:10],
+            "time": str(ev.get("eventTime") or ""),
+            "time_zone": str(ev.get("eventTimeZone") or ""),
+            "description": str(ev.get("eventDescription") or ""),
+            "location": str(ev.get("eventSite") or ""),
+            "identifier": str(ev.get("eventIdentifier") or ""),
+        })
+    return {"pin": pin, "summary": "", "events": events}
+
+
+async def _canada_post_track_openapi(pin: str) -> Optional[dict]:
+    """Suivi par le nouveau portail : jeton OAuth (le meme que pour les
+    etiquettes), puis GET /pins/{pin}/details. None sur toute erreur."""
+    try:
+        r = await s._cp_openapi_call("GET", f"{s.CANADA_POST_OPENAPI_TRACKING_URL}/pins/{pin}/details")
+    except Exception as e:
+        logging.error("Canada Post OpenAPI tracking failed: %s", type(e).__name__)
+        return None
+    if r.status_code >= 400:
+        logging.error("Canada Post OpenAPI tracking status=%s response_ref=%s",
+                      r.status_code, s._private_ref(r.text))
+        return None
+    return _cp_lire_suivi_json(pin, _cp_safe_json(r))
+
+
 async def _canada_post_track(pin: str) -> Optional[dict]:
-    """Live tracking lookup by PIN. Returns None if not configured or on any error."""
+    """Live tracking lookup by PIN. Returns None if not configured or on any error.
+
+    Le NOUVEAU portail d'abord, des que ses identifiants OAuth sont la : ce
+    sont ceux que Postes Canada delivre aujourd'hui. L'ancienne API ne sert
+    plus que si seule sa cle est configuree. Pas de repli silencieux de l'un
+    vers l'autre : une erreur se lit dans le journal, elle n'est pas masquee.
+    """
+    if s.CANADA_POST_OAUTH_CLIENT_ID and s.CANADA_POST_OAUTH_CLIENT_SECRET:
+        return await _canada_post_track_openapi(pin)
     if not s.CANADA_POST_API_KEY:
         return None
     try:
@@ -240,20 +317,19 @@ async def _canada_post_track(pin: str) -> Optional[dict]:
             if r.status_code >= 400:
                 logging.error("Canada Post tracking status=%s response_ref=%s", r.status_code, s._private_ref(r.text))
                 return None
-            root = ET.fromstring(r.text)
-            events = []
-            for ev in root.findall(".//cp:occurrence", _CP_TRACK_NS):
-                events.append({
-                    "date": ev.findtext("cp:event-date", default="", namespaces=_CP_TRACK_NS),
-                    "time": ev.findtext("cp:event-time", default="", namespaces=_CP_TRACK_NS),
-                    "description": ev.findtext("cp:event-description", default="", namespaces=_CP_TRACK_NS),
-                    "location": ev.findtext("cp:event-site", default="", namespaces=_CP_TRACK_NS),
-                })
-            summary = root.findtext(".//cp:significant-status/cp:description", default="", namespaces=_CP_TRACK_NS)
-            return {"pin": pin, "summary": summary, "events": events}
+            return _cp_lire_suivi_xml(pin, r.text)
     except Exception as e:
         logging.error("Canada Post tracking request failed: %s", e)
         return None
+
+
+# Mots-cles de livraison FINALE (evite « out for delivery » et « en cours de
+# livraison »). Une seule definition, lue par la detection ET par la
+# recherche de l'evenement date.
+_CP_LIVRE_RE = re.compile(
+    r"\b(delivered|item delivered|successfully delivered|livr[ée]e?|colis livr[ée]|livraison effectu[ée])\b",
+    re.IGNORECASE,
+)
 
 
 def _cp_tracking_indicates_delivered(track_data: Optional[dict]) -> tuple[bool, str]:
@@ -273,15 +349,102 @@ def _cp_tracking_indicates_delivered(track_data: Optional[dict]) -> tuple[bool, 
         if desc:
             texts.append(desc)
 
-    # Mots-clés de livraison finale (évite "out for delivery" / "en cours de livraison").
-    delivered_re = re.compile(
-        r"\b(delivered|item delivered|successfully delivered|livr[ée]e?|colis livr[ée]|livraison effectu[ée])\b",
-        re.IGNORECASE,
-    )
     for txt in texts:
-        if delivered_re.search(txt):
+        if _CP_LIVRE_RE.search(txt):
             return True, txt
     return False, ""
+
+
+# Fuseaux que Postes Canada inscrit dans ses evenements de suivi.
+_CP_FUSEAUX_H = {"NST": -3.5, "NDT": -2.5, "AST": -4, "ADT": -3, "EST": -5, "EDT": -4,
+                 "CST": -6, "CDT": -5, "MST": -7, "MDT": -6, "PST": -8, "PDT": -7,
+                 "UTC": 0, "GMT": 0}
+
+
+def _cp_evenement_livraison(track_data: Optional[dict]) -> Optional[dict]:
+    """L'evenement de suivi qui dit « livre », avec sa date et son heure."""
+    if not isinstance(track_data, dict):
+        return None
+    for ev in track_data.get("events") or []:
+        if isinstance(ev, dict) and _CP_LIVRE_RE.search(str(ev.get("description") or "")):
+            return ev
+    return None
+
+
+def _cp_horodatage(evenement: dict) -> tuple[Optional[str], str]:
+    """(instant ISO en UTC, libelle tel que le donne le transporteur).
+
+    Sans heure, la journee compte jusqu'a 23:59 : c'est le choix favorable
+    au client, puisque cette date demarre son delai de 48 h. Sans fuseau
+    reconnu, l'heure de l'Est (UTC-5) est retenue — un ecart d'une heure au
+    plus, sans effet reel sur un delai de 48 h ; le libelle garde, lui, le
+    texte exact du transporteur."""
+    date = str(evenement.get("date") or "").strip()
+    heure = str(evenement.get("time") or "").strip()
+    fuseau = str(evenement.get("time_zone") or "").strip().upper()
+    try:
+        jour = datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        return None, ""
+    instant = None
+    for gabarit in ("%H:%M:%S", "%H:%M"):
+        try:
+            lu = datetime.strptime(heure, gabarit)
+            instant = jour.replace(hour=lu.hour, minute=lu.minute, second=lu.second)
+            break
+        except ValueError:
+            continue
+    if instant is None:
+        instant = jour.replace(hour=23, minute=59)
+    instant = instant.replace(tzinfo=timezone(timedelta(hours=_CP_FUSEAUX_H.get(fuseau, -5))))
+    libelle = date + (f" à {heure[:5]}" if heure else "") + (f" {fuseau}" if fuseau else "")
+    return instant.astimezone(timezone.utc).isoformat(), libelle
+
+
+async def _cp_marquer_livree(order_id: str, pin: str, live: Optional[dict], source: str,
+                             checked_at: Optional[str] = None,
+                             statuts_depart: tuple = ("shipped",)) -> int:
+    """Passe une commande a « livree » — le SEUL endroit qui le fait.
+
+    Le veilleur automatique et le bouton « Verifier la livraison » avaient
+    chacun leur copie de cette ecriture, et elles divergeaient deja. Toutes
+    deux dataient la livraison au moment ou le serveur s'en APERCEVAIT —
+    jusqu'a 15 minutes plus tard pour le veilleur, des jours pour un bouton
+    clique tard. Or cette date demarre le delai de 48 h des remboursements.
+    On retient la date et l'heure REELLES du transporteur, et une note le dit
+    dans la commande.
+
+    L'ecriture exige un statut de depart : jamais une commande annulee ou
+    remboursee ne repasse a « livree ». Renvoie 1 si elle a eu lieu, 0 sinon.
+    """
+    maintenant = datetime.now(timezone.utc).isoformat()
+    evenement = _cp_evenement_livraison(live) if live else None
+    instant, libelle = _cp_horodatage(evenement) if evenement else (None, "")
+    lieu = str((evenement or {}).get("location") or "").strip()
+    if source.startswith("sandbox"):
+        texte = f"Statut livré par le repli de TEST après délai — aucune confirmation Postes Canada ({pin})."
+    elif libelle:
+        texte = (f"Livrée le {libelle} — confirmé par Postes Canada ({pin})"
+                 + (f", {lieu}" if lieu else "") + ".")
+    else:
+        texte = (f"Livraison confirmée par Postes Canada ({pin}), sans heure de livraison "
+                 f"fournie — la date de détection est retenue.")
+    champs = {
+        "fulfillment_status": "delivered",
+        "shipping_info.delivered_at": instant or maintenant,
+        "shipping_info.delivered_at_label": libelle,
+        "shipping_info.delivery_detected_at": maintenant,
+        "shipping_info.delivery_source": source,
+    }
+    if checked_at:
+        champs["shipping_info.delivery_checked_at"] = checked_at
+    res = await s.db.orders.update_one(
+        {"id": order_id, "fulfillment_status": {"$in": list(statuts_depart)}},
+        {"$set": champs,
+         "$push": {"notes": {"id": str(uuid.uuid4()), "text": texte,
+                             "author": "system", "created_at": maintenant}}},
+    )
+    return res.modified_count
 
 
 def _sandbox_fallback_ready(shipped_at_iso: str) -> bool:
@@ -1059,7 +1222,10 @@ async def _auto_label_paid_orders_watchdog() -> None:
 async def _auto_sync_delivered_orders_once(limit: int = 200) -> int:
     """Passe automatiquement en 'delivered' les commandes expédiées dont le
     repérage Canada Post confirme la livraison."""
-    if not s.CANADA_POST_API_KEY:
+    # Le veilleur s'arretait des qu'il manquait la cle de l'ANCIENNE API :
+    # avec les seuls identifiants du nouveau portail, aucune livraison
+    # n'aurait jamais ete confirmee.
+    if not _cp_suivi_disponible():
         return 0
     rows = await s.db.orders.find(
         {
@@ -1086,38 +1252,17 @@ async def _auto_sync_delivered_orders_once(limit: int = 200) -> int:
         )
 
         live = await s._canada_post_track(pin)
-        delivered, evidence = s._cp_tracking_indicates_delivered(live)
+        delivered, _ = s._cp_tracking_indicates_delivered(live)
         source = "canada_post_tracking_auto"
         if not delivered:
             shipped_at = str(info.get("shipped_at") or "")
             if s._sandbox_fallback_ready(shipped_at):
                 delivered = True
-                evidence = "sandbox fallback after delay"
                 source = "sandbox_time_fallback_auto"
         if not delivered:
             continue
 
-        now = datetime.now(timezone.utc).isoformat()
-        res = await s.db.orders.update_one(
-            {"id": order["id"], "fulfillment_status": "shipped"},
-            {
-                "$set": {
-                    "fulfillment_status": "delivered",
-                    "shipping_info.delivered_at": now,
-                    "shipping_info.delivery_checked_at": checked_at,
-                    "shipping_info.delivery_source": source,
-                },
-                "$push": {
-                    "notes": {
-                        "id": str(uuid.uuid4()),
-                        "text": f"Statut livré auto-confirmé par repérage Canada Post ({pin}) — {evidence or 'delivered'}.",
-                        "author": "system",
-                        "created_at": now,
-                    }
-                },
-            },
-        )
-        if res.modified_count:
+        if await _cp_marquer_livree(order["id"], pin, live, source, checked_at):
             updated += 1
     return updated
 

@@ -272,3 +272,18 @@ it("la corbeille a quitte l'en-tete, loin de la croix de fermeture", async () =>
   expect(entete).not.toContainElement(screen.getByTestId("delete-order-btn"));
   expect(screen.getByTestId("delete-order-btn")).toHaveTextContent("Mettre à la corbeille");
 });
+
+it("la fiche dit quand la commande a ete livree, telle que le dit Postes Canada", async () => {
+  await ouvrir({ fulfillment_status: "delivered",
+                 shipping_info: { delivered_at: "2026-09-18T18:07:32+00:00",
+                                  delivered_at_label: "2026-09-18 à 14:07 EDT" } });
+  expect(screen.getByTestId("order-delivered-at")).toHaveTextContent("2026-09-18 à 14:07 EDT");
+});
+
+it("le dossier de remboursement montre aussi la livraison", async () => {
+  // C'est de cette date que part le délai de 48 h annoncé au client.
+  await ouvrir({ fulfillment_status: "delivered", refund_status: "requested",
+                 shipping_info: { delivered_at: "2026-09-18T18:07:32+00:00",
+                                  delivered_at_label: "2026-09-18 à 14:07 EDT" } });
+  expect(screen.getByTestId("refund-delivered-at")).toHaveTextContent("2026-09-18 à 14:07 EDT");
+});

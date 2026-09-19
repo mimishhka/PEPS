@@ -856,6 +856,14 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 {L("Expédiée le", "Shipped")} {dateLongue(order.shipping_info.shipped_at, lang) || order.shipping_info.shipped_at}
               </div>
             )}
+            {/* L'heure donnée par Postes Canada quand elle existe — telle
+                quelle, fuseau compris. */}
+            {order.shipping_info?.delivered_at && (
+              <div className="font-mono text-[10px] text-foreground/50 mt-1" data-testid="order-delivered-at">
+                {L("Livrée le", "Delivered")} {order.shipping_info.delivered_at_label
+                  || dateLongue(order.shipping_info.delivered_at, lang) || order.shipping_info.delivered_at}
+              </div>
+            )}
 
             {/* Postes Canada — l'étiquette se génère depuis l'écran Dispatch.
                 Ici, lecture seule : télécharger l'étiquette / le manifeste. */}
@@ -913,6 +921,14 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 {order.refunded_amount > 0 ? L(` · Remboursé : $${order.refunded_amount.toFixed(2)}`,
                                                ` · Refunded: $${order.refunded_amount.toFixed(2)}`) : ""}
               </div>
+              {/* Dans le dossier aussi : c'est de cette date que part le
+                  délai de 48 h annoncé au client. */}
+              {order.shipping_info?.delivered_at && (
+                <div className="text-sm text-foreground/70 mt-1" data-testid="refund-delivered-at">
+                  {L("Livrée le", "Delivered")} {order.shipping_info.delivered_at_label
+                    || dateLongue(order.shipping_info.delivered_at, lang) || order.shipping_info.delivered_at}
+                </div>
+              )}
               <div className="font-mono text-[10px] text-foreground/50 mt-1">
                 {L("La décision et le versement se font dans l'écran Remboursements.",
                    "The decision and the payment happen in the Refunds screen.")}

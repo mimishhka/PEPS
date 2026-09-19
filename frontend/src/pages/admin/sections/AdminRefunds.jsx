@@ -295,6 +295,16 @@ export default function AdminRefunds() {
                   {/* OU renvoyer l'argent. Pour un paiement crypto sans
                       adresse fournie, la case est vide et le dit : il faut la
                       demander au client avant d'envoyer quoi que ce soit. */}
+                  {/* La LIVRAISON, pour décider : le délai de 48 h part de cette
+                      date — celle donnée par Postes Canada, pas celle où le
+                      serveur s'en est aperçu. */}
+                  {r.shipping_info?.delivered_at && (
+                    <div className="text-xs text-compliance mt-1" data-testid={`refund-delivered-${r.id}`}>
+                      {L("Livrée le", "Delivered")} :{" "}
+                      <b>{r.shipping_info.delivered_at_label
+                        || new Date(r.shipping_info.delivered_at).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA")}</b>
+                    </div>
+                  )}
                   <div className="text-xs text-compliance mt-1" data-testid={`refund-dest-${r.id}`}>
                     {L("Renvoyer à", "Send back to")} :{" "}
                     {r.refund_destination

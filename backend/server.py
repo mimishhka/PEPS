@@ -231,10 +231,20 @@ CANADA_POST_BASE_URL = (
 # - legacy: existing XML/basic-auth flow
 # - openapi: OAuth2 + JSON flow from the shipping v1 OpenAPI spec
 # - auto: openapi if OAuth creds are present, otherwise legacy
+# CE MODE NE REGIT QUE LES ETIQUETTES. Le suivi, lui, passe par le nouveau
+# portail des que ses identifiants OAuth sont presents (voir
+# _canada_post_track) : lire un suivi ne cree rien, on peut l'activer sans
+# toucher a la creation d'etiquettes.
 CANADA_POST_API_MODE = os.environ.get("CANADA_POST_API_MODE", "auto").strip().lower()
 CANADA_POST_OPENAPI_BASE_URL = os.environ.get(
     "CANADA_POST_OPENAPI_BASE_URL",
     "https://api.canadapost-postescanada.ca/prod/devportal-portaildesdeveloppeurs/shipping/v1",
+).rstrip("/")
+# Suivi (Tracking 2.0.0) : meme hote, meme jeton OAuth et meme perimetre
+# « merchant » que les etiquettes — releve sur la specification officielle.
+CANADA_POST_OPENAPI_TRACKING_URL = os.environ.get(
+    "CANADA_POST_OPENAPI_TRACKING_URL",
+    "https://api.canadapost-postescanada.ca/prod/devportal-portaildesdeveloppeurs/tracking/v1",
 ).rstrip("/")
 CANADA_POST_OAUTH_TOKEN_URL = os.environ.get(
     "CANADA_POST_OAUTH_TOKEN_URL",
@@ -2889,6 +2899,8 @@ try:
         _canada_post_get_artifact, _canada_post_transmit, _canada_post_void,
         _auto_create_dispatch_label, _auto_label_paid_orders_watchdog,
         _auto_sync_delivered_orders_once, _auto_sync_delivered_orders_watchdog,
+        _cp_marquer_livree, _cp_evenement_livraison, _cp_horodatage, _cp_lire_suivi_xml,
+        _cp_lire_suivi_json, _canada_post_track_openapi, _cp_suivi_disponible,
         UNTRANSMITTED_MATCH, pending_manifest_state,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
@@ -2903,6 +2915,8 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
         _canada_post_get_artifact, _canada_post_transmit, _canada_post_void,
         _auto_create_dispatch_label, _auto_label_paid_orders_watchdog,
         _auto_sync_delivered_orders_once, _auto_sync_delivered_orders_watchdog,
+        _cp_marquer_livree, _cp_evenement_livraison, _cp_horodatage, _cp_lire_suivi_xml,
+        _cp_lire_suivi_json, _canada_post_track_openapi, _cp_suivi_disponible,
         UNTRANSMITTED_MATCH, pending_manifest_state,
     )
 
@@ -4563,6 +4577,8 @@ async def admin_refunds_list(status: Optional[str] = None, limit: int = 50):
         "refund_method": 1,
         "refund_before_shipping": 1, "refund_late": 1, "refund_late_note": 1,
         "refund_source": 1, "refund_destination": 1, "refund_destination_type": 1,
+        # La livraison, pour decider : le delai de 48 h part de cette date.
+        "shipping_info.delivered_at": 1, "shipping_info.delivered_at_label": 1,
     }).sort("refund_requested_at", -1).limit(limit)
     # COMPTEURS DE TOUTES LES ETAPES, renvoyes meme quand on en filtre une.
     #
@@ -4602,25 +4618,7 @@ async def admin_sync_delivery_status(order_id: str,
         # l'auth tracking CP indisponible.
         shipped_at = str(info.get("shipped_at") or "")
         if _sandbox_fallback_ready(shipped_at):
-            now = datetime.now(timezone.utc).isoformat()
-            await db.orders.update_one(
-                {"id": order_id, "fulfillment_status": "shipped"},
-                {
-                    "$set": {
-                        "fulfillment_status": "delivered",
-                        "shipping_info.delivered_at": now,
-                        "shipping_info.delivery_source": "sandbox_time_fallback_manual",
-                    },
-                    "$push": {
-                        "notes": {
-                            "id": str(uuid.uuid4()),
-                            "text": f"Statut livré (fallback sandbox après délai) — {pin}.",
-                            "author": "system",
-                            "created_at": now,
-                        }
-                    },
-                },
-            )
+            await _cp_marquer_livree(order_id, pin, None, "sandbox_time_fallback_manual")
             updated = await db.orders.find_one({"id": order_id}, {"_id": 0, "fulfillment_status": 1, "shipping_info": 1})
             return {
                 "ok": True,
@@ -4639,7 +4637,7 @@ async def admin_sync_delivery_status(order_id: str,
             "fulfillment_status": order.get("fulfillment_status"),
         }
 
-    delivered, evidence = _cp_tracking_indicates_delivered(live)
+    delivered, _ = _cp_tracking_indicates_delivered(live)
     if not delivered:
         return {
             "ok": True,
@@ -4663,25 +4661,23 @@ async def admin_sync_delivery_status(order_id: str,
             "summary": live.get("summary"),
         }
 
-    now = datetime.now(timezone.utc).isoformat()
-    await db.orders.update_one(
-        {"id": order_id},
-        {
-            "$set": {
-                "fulfillment_status": "delivered",
-                "shipping_info.delivered_at": now,
-                "shipping_info.delivery_source": "canada_post_tracking",
-            },
-            "$push": {
-                "notes": {
-                    "id": str(uuid.uuid4()),
-                    "text": f"Statut livré confirmé par repérage Canada Post ({pin}) — {evidence or 'delivered'}.",
-                    "author": "system",
-                    "created_at": now,
-                }
-            },
-        },
-    )
+    # Le bouton accepte toute commande pas encore livree ni close : une
+    # etiquette peut etre imprimee sans que la commande ait ete marquee
+    # « expediee », et Postes Canada dit alors la verite. Jamais une commande
+    # annulee, echouee ou remboursee ne repasse a « livree ».
+    ecrit = await _cp_marquer_livree(
+        order_id, pin, live, "canada_post_tracking",
+        statuts_depart=("pending", "preorder", "processing", "packing", "packed", "shipped"))
+    if not ecrit:
+        return {
+            "ok": True,
+            "tracked": True,
+            "delivered": True,
+            "updated": False,
+            "reason": "status_not_eligible",
+            "fulfillment_status": order.get("fulfillment_status"),
+            "summary": live.get("summary"),
+        }
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0, "fulfillment_status": 1, "shipping_info": 1})
     return {
         "ok": True,

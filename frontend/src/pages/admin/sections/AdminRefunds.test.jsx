@@ -155,3 +155,12 @@ it("une decision refusee parce que le client a retire sa demande recharge la lis
   await userEvent.click(await screen.findByTestId("approve-o-2"));
   await waitFor(() => expect(api.get.mock.calls.length).toBeGreaterThan(avant));
 });
+
+it("montre la date de livraison donnee par Postes Canada, pour decider", async () => {
+  // Le délai de 48 h part de cette date : elle doit être sous les yeux.
+  api.get.mockResolvedValue({ data: { items: [{
+    ...DOSSIERS[0], shipping_info: { delivered_at: "2026-09-18T18:07:32+00:00",
+                                     delivered_at_label: "2026-09-18 à 14:07 EDT" } }] } });
+  render(<AdminRefunds />);
+  expect(await screen.findByTestId("refund-delivered-o-1")).toHaveTextContent("2026-09-18 à 14:07 EDT");
+});
