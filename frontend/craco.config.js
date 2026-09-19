@@ -119,6 +119,20 @@ let webpackConfig = {
       },
     },
   },
+  /* Le meme alias pour JEST.
+   *
+   * webpack resolvait deja `@/…`, pas Jest : tout composant important
+   * `@/lib/utils` — donc TOUS ceux de components/ui/ — echouait au chargement
+   * du test avec « Cannot find module ». Consequence : aucun ecran batî sur
+   * ces composants n'etait testable, et le defaut ne se voyait qu'en ecrivant
+   * le premier test. */
+  jest: {
+    configure: {
+      moduleNameMapper: {
+        "^@/(.*)$": "<rootDir>/src/$1",
+      },
+    },
+  },
   webpack: {
     alias: {
       '@': path.resolve(__dirname, 'src'),

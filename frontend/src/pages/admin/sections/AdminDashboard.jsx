@@ -1,31 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  AlertTriangle, ArrowUpRight, Check, DollarSign, Percent, Repeat, TrendingDown, TrendingUp,
+  AlertTriangle, ArrowRight, Check, CreditCard, DollarSign, Mail, Package, Percent,
+  Repeat, RotateCcw, Ticket, TrendingDown, TrendingUp, Truck, Users, Wallet,
 } from "lucide-react";
 import api from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
 import { useLang } from "../../../contexts/LanguageContext";
 import { DashboardSkeleton } from "../../../components/LoadingSkeletons";
 import { LowStockCard } from "./dashboard/LowStockCard";
-import { Th } from "../ui";
+import { AireRevenu } from "./dashboard/AireRevenu";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 
 // ---------------------------------------------------------------------------
-// Ce que cette page doit répondre, et RIEN d'autre :
+// Ce que cette page doit répondre en un coup d'œil, et RIEN d'autre :
 //   1. Qu'est-ce qui demande mon action maintenant ?
 //   2. L'argent rentre-t-il, et par rapport à avant ?
 //   3. Qu'est-ce qui traîne : stock, commandes récentes ?
 //
-// Elle affichait une vingtaine de nombres de poids visuel égal, dont huit
-// cartes d'action qui restaient affichées à zéro : le regard ne savait plus
-// où se poser, et un vrai signal se noyait parmi les zéros. Les compteurs
-// ne s'affichent désormais que lorsqu'ils demandent QUELQUE CHOSE ; quand
-// tout est réglé, la page le dit en une ligne.
+// Elle alignait une vingtaine de nombres de poids visuel égal, dont huit
+// cartes d'action affichées en permanence même à zéro : un vrai signal s'y
+// noyait. Les compteurs ne s'affichent plus que lorsqu'ils demandent quelque
+// chose ; quand tout est réglé, la page le dit en une ligne.
 //
-// Ont été retirés : les cinq colonnes « circuits de paiement » (le détail
-// vit dans l'écran Réconciliation, et rien ne s'y décidait), et les quatre
-// grandes tuiles de totaux historiques, réduites à une ligne de bas de page :
-// elles ne déclenchent aucune décision quotidienne.
+// Mise en page inspirée du bloc « dashboard-4 » d'Efferd — grille de quatre,
+// étiquette discrète au-dessus d'un grand nombre tabulaire, écart en pastille,
+// courbe en aire — mais peinte avec l'identité FIRONOVA (nordfjord, nova,
+// glacier, ash) et non avec le thème par défaut de shadcn.
 // ---------------------------------------------------------------------------
 
 export default function AdminDashboard() {
@@ -69,7 +70,7 @@ export default function AdminDashboard() {
     return () => { active = false; };
   }, []);
 
-  // La serie ET les tuiles suivent la periode choisie.
+  // La serie ET les chiffres suivent la periode choisie.
   useEffect(() => {
     let active = true;
     api.get(`/admin/analytics?period=${period}`)
@@ -82,85 +83,85 @@ export default function AdminDashboard() {
   }, [period]);
 
   // --- Ce qui demande une action, et seulement cela ------------------------
-  // Une seule liste, triée par urgence : l'ordre du tableau de bord est
-  // l'ordre dans lequel on traite sa journée. Un compteur à zéro n'entre pas.
+  // Une seule liste, triée par urgence : l'ordre de la page est l'ordre dans
+  // lequel on traite sa journée. Un compteur à zéro n'entre pas.
   const actions = useMemo(() => {
     if (!pulse) return [];
     const r = pulse.ops?.refunds || {};
-    const lignes = [
-      { cle: "refunds-send", ton: "urgent", vers: "refunds",
+    const p = pulse.money?.pending_payment || {};
+    return [
+      { cle: "refunds-send", ton: "urgent", vers: "refunds", icone: RotateCcw,
         n: r.to_send || 0, valeur: argent(r.to_send_amount),
         titre: L("Remboursements à envoyer", "Refunds to send"),
         quoi: L("le client attend son argent", "the customer is waiting") },
-      { cle: "reconcile", ton: "urgent", vers: "reconciliation",
+      { cle: "reconcile", ton: "urgent", vers: "reconciliation", icone: CreditCard,
         n: pulse.money?.reconcile?.count || 0,
         titre: L("Paiements à réconcilier", "Payments to reconcile"),
         quoi: L("reçus, non attribués", "received, unmatched") },
-      { cle: "late", ton: "urgent", vers: "orders",
+      { cle: "late", ton: "urgent", vers: "orders", icone: AlertTriangle,
         n: pulse.ops?.late_payments || 0,
         titre: L("Paiements tardifs", "Late payments"),
         quoi: L("commandes à rouvrir", "orders to reopen") },
-      { cle: "ship", ton: "warn", vers: "dispatch",
+      { cle: "ship", ton: "warn", vers: "dispatch", icone: Truck,
         n: pulse.ops?.to_ship || 0,
         titre: L("Commandes à expédier", "Orders to ship"),
         quoi: L("payées, pas encore parties", "paid, not shipped") },
-      { cle: "refunds-review", ton: "warn", vers: "refunds",
+      { cle: "refunds-review", ton: "warn", vers: "refunds", icone: RotateCcw,
         n: r.to_review || 0,
         titre: L("Remboursements à examiner", "Refunds to review"),
         quoi: L("en attente d'une décision", "awaiting a decision") },
-      { cle: "stock", ton: "warn", vers: "products",
+      { cle: "stock", ton: "warn", vers: "products", icone: Package,
         n: pulse.ops?.low_stock || 0,
-        titre: L("Variantes en rupture ou basses", "Out of or low stock"),
+        titre: L("Stock bas ou en rupture", "Low or out of stock"),
         quoi: pulse.ops?.low_stock_top?.[0]
           ? `${pulse.ops.low_stock_top[0].product_name} · ${pulse.ops.low_stock_top[0].variant_name}`
           : L("à réapprovisionner", "to restock") },
-      { cle: "tickets", ton: "warn", vers: "tickets",
+      { cle: "tickets", ton: "warn", vers: "tickets", icone: Ticket,
         n: pulse.ops?.tickets_open || 0,
         titre: L("Billets d'affiliés ouverts", "Open affiliate tickets"),
         quoi: L("l'affilié voit « ouvert » et attend", "the affiliate sees “open” and waits") },
-      { cle: "payouts", ton: "warn", vers: "payouts",
+      { cle: "payouts", ton: "warn", vers: "payouts", icone: Wallet,
         n: affiliate?.alerts?.payouts_ready || 0,
         valeur: argent(affiliate?.alerts?.payouts_ready_amount),
         titre: L("Versements affiliés prêts", "Affiliate payouts ready"),
         quoi: L("exécution + 2FA", "execute + 2FA") },
-      { cle: "emails", ton: "warn", vers: "emails/outbox",
+      { cle: "emails", ton: "warn", vers: "emails/outbox", icone: Mail,
         n: pulse.ops?.emails_failed || 0,
         titre: L("Courriels non délivrés", "Undelivered emails"),
         quoi: L("après 5 tentatives", "after 5 attempts") },
-      { cle: "pending", ton: "info", vers: "orders",
-        n: pulse.money?.pending_payment?.count || 0,
-        valeur: argent(pulse.money?.pending_payment?.amount),
+      { cle: "pending", ton: "info", vers: "orders", icone: DollarSign,
+        n: p.count || 0, valeur: argent(p.amount),
         titre: L("En attente de paiement", "Awaiting payment"),
-        quoi: pulse.money?.pending_payment?.expiring_soon
-          ? L(`${pulse.money.pending_payment.expiring_soon} expirent sous 3 h`,
-               `${pulse.money.pending_payment.expiring_soon} expiring within 3 h`)
-          : `${pulse.money?.pending_payment?.by_method?.interac || 0} Interac · ${pulse.money?.pending_payment?.by_method?.crypto || 0} crypto` },
-    ];
-    return lignes.filter((l) => l.n > 0);
+        quoi: p.expiring_soon
+          ? L(`${p.expiring_soon} expirent sous 3 h`, `${p.expiring_soon} expiring within 3 h`)
+          : `${p.by_method?.interac || 0} Interac · ${p.by_method?.crypto || 0} crypto` },
+    ].filter((l) => l.n > 0);
   }, [pulse, affiliate, lang]);          // eslint-disable-line react-hooks/exhaustive-deps
 
   const serie = analytics?.daily_revenue || [];
-  const maxSerie = serie.length ? Math.max(...serie.map((d) => d.revenue), 1) : 1;
-  const totalCommandes = serie.reduce((s, d) => s + d.orders, 0);
+  const revenuPeriode = serie.reduce((s, d) => s + d.revenue, 0);
+  const commandesPeriode = serie.reduce((s, d) => s + d.orders, 0);
   const libellePeriode = period === 365 ? L("12 mois", "12 months")
     : period === 180 ? L("6 mois", "6 months")
     : L(`${period} jours`, `${period} days`);
+  const vsPrecedent = L(`vs ${libellePeriode} précédents`, `vs prior ${libellePeriode}`);
+  const topMax = Math.max(...(analytics?.top_products || []).map((p) => p.revenue), 1);
 
   if (initialLoading) return <DashboardSkeleton />;
 
   return (
-    <div className="p-8 max-w-[1500px]" data-testid="admin-dashboard">
-      {/* En-tête : le titre, et la période qui pilote TOUT le bas de page. */}
-      <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
+    <div className="p-6 lg:p-8 max-w-[1600px] mx-auto" data-testid="admin-dashboard">
+      {/* En-tête : le titre, et la période qui pilote tout le bas de page. */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
-          <div className="font-data text-[11px] uppercase tracking-[0.3em] text-nova">
-            // {L("APERÇU", "OVERVIEW")}
-          </div>
-          <h1 className="font-display text-4xl font-bold tracking-[-0.01em] mt-2 text-nordfjord">
+          <h1 className="font-display text-[28px] leading-tight font-bold tracking-[-0.01em] text-nordfjord">
             {L("Tableau de bord", "Dashboard")}
           </h1>
+          <p className="text-sm text-glacier mt-1">
+            {L("Ce qui demande une décision, puis l'argent.", "What needs a decision, then the money.")}
+          </p>
         </div>
-        <div className="flex items-center gap-1 border border-ash rounded-lg p-1 bg-white"
+        <div className="flex items-center gap-1 border border-ash rounded-lg p-1 bg-card"
              role="group" aria-label={L("Période", "Period")}>
           {[[7, L("7 j", "7 d")], [30, L("30 j", "30 d")], [90, L("3 mois", "3 mo")],
             [180, L("6 mois", "6 mo")], [365, L("1 an", "1 y")]].map(([p, label]) => (
@@ -181,7 +182,7 @@ export default function AdminDashboard() {
           enhanced.tax_threshold.level === "exceeded"
             ? "border-error/40 bg-error/5" : "border-warning/40 bg-warning/5"}`} data-testid="tax-alert">
           <AlertTriangle size={18} className={enhanced.tax_threshold.level === "exceeded"
-            ? "text-error mt-0.5" : "text-warning mt-0.5"} />
+            ? "text-error mt-0.5 shrink-0" : "text-warning mt-0.5 shrink-0"} />
           <div className="min-w-0">
             <p className="font-medium text-sm text-nordfjord">
               {enhanced.tax_threshold.level === "exceeded"
@@ -195,8 +196,8 @@ export default function AdminDashboard() {
               {enhanced.tax_threshold.level === "exceeded"
                 ? L(" Vous devez vous inscrire à la TPS/TVQ et percevoir les taxes. Consultez votre comptable.",
                     " You must register for GST/QST and collect taxes. Consult your accountant.")
-                : L(` Il reste ${enhanced.tax_threshold.remaining.toLocaleString("fr-CA")} $ avant le seuil de 30 000 $. Préparez l'inscription TPS/TVQ.`,
-                    ` ${enhanced.tax_threshold.remaining.toLocaleString("en-CA")} $ remaining before the $30,000 threshold. Prepare your GST/QST registration.`)}
+                : L(` Il reste ${enhanced.tax_threshold.remaining.toLocaleString("fr-CA")} $ avant le seuil de 30 000 $.`,
+                    ` ${enhanced.tax_threshold.remaining.toLocaleString("en-CA")} $ remaining before the $30,000 threshold.`)}
             </p>
           </div>
           <button onClick={dismissTaxAlert} aria-label={L("Fermer", "Dismiss")} data-testid="tax-alert-dismiss"
@@ -204,69 +205,67 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ---------------------------------------------------------------
+      {/* =================================================================
           1. À FAIRE — la seule zone qui appelle une décision.
-          --------------------------------------------------------------- */}
-      <SectionLabel compte={actions.length}>{L("À FAIRE MAINTENANT", "TO DO NOW")}</SectionLabel>
+          ================================================================= */}
+      <Titre compte={actions.length}>{L("À faire maintenant", "To do now")}</Titre>
       {actions.length ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-8" data-testid="dashboard-actions">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 mb-8" data-testid="dashboard-actions">
           {actions.map((a) => <CarteAction key={a.cle} {...a} />)}
         </div>
       ) : (
-        <div className="mb-8 flex items-center gap-3 bg-white border border-ash rounded-lg px-5 py-4"
-             data-testid="dashboard-calm">
-          <span className="w-8 h-8 rounded-full bg-success/10 text-success flex items-center justify-center">
-            <Check size={16} strokeWidth={2} />
-          </span>
-          <div>
-            <p className="text-sm font-medium text-nordfjord">
-              {L("Rien ne demande d'action.", "Nothing needs action.")}
-            </p>
-            <p className="font-data text-[11px] text-glacier mt-0.5">
-              {L("Commandes expédiées, paiements réconciliés, stock au-dessus des seuils.",
-                 "Orders shipped, payments reconciled, stock above thresholds.")}
-            </p>
-          </div>
-        </div>
+        <Card className="mb-8 border-ash" data-testid="dashboard-calm">
+          <CardContent className="flex items-center gap-3 py-5">
+            <span className="w-9 h-9 rounded-full bg-success/10 text-success flex items-center justify-center shrink-0">
+              <Check size={17} strokeWidth={2.2} />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-nordfjord">
+                {L("Rien ne demande d'action.", "Nothing needs action.")}
+              </p>
+              <p className="text-xs text-glacier mt-0.5">
+                {L("Commandes expédiées, paiements réconciliés, stock au-dessus des seuils.",
+                   "Orders shipped, payments reconciled, stock above thresholds.")}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* ---------------------------------------------------------------
+      {/* =================================================================
           2. L'ARGENT SUR LA PÉRIODE
-          --------------------------------------------------------------- */}
-      <SectionLabel>{L(`REVENU · ${libellePeriode}`, `REVENUE · ${libellePeriode}`)}</SectionLabel>
+          ================================================================= */}
+      <Titre>{L(`Performance · ${libellePeriode}`, `Performance · ${libellePeriode}`)}</Titre>
       {enhanced && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4" data-testid="enhanced-metrics">
-          <Chiffre testid="kpi-revenue" label={L("Revenu", "Revenue")}
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-4" data-testid="enhanced-metrics">
+          <Chiffre testid="kpi-revenue" label={L("Revenu encaissé", "Collected revenue")}
             valeur={argent(enhanced.current.revenue)} delta={enhanced.changes.revenue}
-            icone={DollarSign} L={L} />
-          <Chiffre testid="kpi-aov" label={L("Panier moyen", "Avg. order value")}
+            indice={vsPrecedent} icone={DollarSign} L={L} />
+          <Chiffre testid="kpi-aov" label={L("Panier moyen", "Average order value")}
             valeur={argent(enhanced.current.aov)} delta={enhanced.changes.aov}
-            icone={TrendingUp} L={L} />
+            indice={vsPrecedent} icone={TrendingUp} L={L} />
           <Chiffre testid="kpi-conversion" label={L("Taux de conversion", "Conversion rate")}
             valeur={enhanced.conversion.conversion_rate != null ? `${enhanced.conversion.conversion_rate} %` : "—"}
-            sous={L(`${enhanced.conversion.orders_paid} payées sur ${enhanced.conversion.orders_created} créées`,
-                    `${enhanced.conversion.orders_paid} paid of ${enhanced.conversion.orders_created} created`)}
+            indice={L(`${enhanced.conversion.orders_paid} payées sur ${enhanced.conversion.orders_created} créées`,
+                      `${enhanced.conversion.orders_paid} paid of ${enhanced.conversion.orders_created} created`)}
             icone={Percent} L={L} />
           <Chiffre testid="kpi-customers" label={L("Clients", "Customers")}
             valeur={`${enhanced.customers.new + enhanced.customers.returning}`}
-            sous={L(`${enhanced.customers.new} nouveaux · ${enhanced.customers.returning} fidèles`,
-                    `${enhanced.customers.new} new · ${enhanced.customers.returning} returning`)}
+            indice={L(`${enhanced.customers.new} nouveaux · ${enhanced.customers.returning} fidèles`,
+                      `${enhanced.customers.new} new · ${enhanced.customers.returning} returning`)}
             icone={Repeat} L={L} />
         </div>
       )}
 
-      <div className="grid lg:grid-cols-3 gap-4 mb-4 items-start">
-        {/* Le graphique : une seule série, donc aucune légende — le titre la
-            nomme. Barres fines, extrémités arrondies posées sur la ligne de
-            base, écart de 2 px, et un repère de lecture sous l'axe : sans
-            échelle ni dates, des barres ne disent rien. */}
-        <div className="lg:col-span-2 bg-white border border-ash p-6 rounded-xl">
-          <div className="flex items-start justify-between mb-5">
+      <div className="grid xl:grid-cols-3 gap-4 mb-4 items-start">
+        {/* La courbe : une seule série, donc pas de légende. */}
+        <Card className="xl:col-span-2 border-ash">
+          <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 pb-2">
             <div>
-              <h2 className="font-display text-lg font-bold tracking-tight text-nordfjord">
+              <CardTitle className="font-display text-base font-bold text-nordfjord">
                 {L("Revenu encaissé", "Collected revenue")}
-              </h2>
-              <p className="font-data text-[11px] text-glacier mt-0.5">
+              </CardTitle>
+              <p className="text-xs text-glacier mt-1">
                 {libellePeriode}
                 {analytics?.granularity && (
                   <span>{" · "}{analytics.granularity === "month" ? L("par mois", "monthly")
@@ -276,152 +275,153 @@ export default function AdminDashboard() {
               </p>
             </div>
             {serie.length > 0 && (
-              <div className="text-right">
+              <div className="text-right shrink-0">
                 <div className="font-display text-2xl font-bold tabular-nums text-nordfjord leading-none">
-                  {argent(serie.reduce((s, d) => s + d.revenue, 0))}
+                  {argent(revenuPeriode)}
                 </div>
-                <div className="font-data text-[11px] text-glacier mt-1">
-                  {totalCommandes} {L("commande(s)", "order(s)")}
+                <div className="text-xs text-glacier mt-1.5">
+                  {commandesPeriode} {L("commandes", "orders")}
                 </div>
               </div>
             )}
-          </div>
-
-          <div className="h-52 flex items-end gap-[2px] border-b border-ash" data-testid="chart-revenue">
-            {serie.map((d) => (
-              <div key={d.date} className="flex-1 h-full flex flex-col justify-end items-center group">
-                <div
-                  className="w-full bg-nordfjord/85 group-hover:bg-nova transition-colors relative rounded-t-[4px]"
-                  style={{ height: `${Math.max(2, (d.revenue / maxSerie) * 100)}%` }}
-                  title={`${d.date} · ${argent(d.revenue)} · ${d.orders} ${L("commande(s)", "order(s)")}`}
-                >
-                  <div className="absolute -top-9 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 font-data text-[10px] bg-nordfjord text-white px-2 py-1 whitespace-nowrap pointer-events-none transition-opacity rounded z-10">
-                    {d.date} · {argent(d.revenue)} · {d.orders}
-                  </div>
+          </CardHeader>
+          <CardContent className="pt-2">
+            {serie.length > 0 ? (
+              <>
+                <div data-testid="chart-revenue">
+                  <AireRevenu serie={serie} argent={argent} L={L}
+                    libelleCommandes={L("commande(s)", "order(s)")} />
                 </div>
-              </div>
-            ))}
-            {!serie.length && (
-              <div className="flex-1 text-center self-center px-4">
+                <div className="flex items-center justify-between mt-3 font-data text-[10px] text-glacier tabular-nums">
+                  <span>{serie[0].date}</span>
+                  <span>{serie[serie.length - 1].date}</span>
+                </div>
+                {/* Les mêmes données en tableau, pour qui n'exploite pas une
+                    courbe : lecteur d'écran, impression, daltonisme. */}
+                <table className="sr-only" data-testid="chart-revenue-table">
+                  <caption>{L("Revenu encaissé par période", "Collected revenue per period")}</caption>
+                  <tbody>
+                    {serie.map((d) => (
+                      <tr key={d.date}><th scope="row">{d.date}</th>
+                        <td>{argent(d.revenue)}</td><td>{d.orders}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            ) : (
+              <div className="h-52 flex flex-col items-center justify-center text-center px-4"
+                   data-testid="chart-revenue">
                 {analyticsError ? (
                   <>
-                    <p className="font-data text-xs text-error" data-testid="chart-revenue-error">
+                    <p className="text-sm text-error" data-testid="chart-revenue-error">
                       {L("Impossible de charger les revenus.", "Could not load revenue data.")}
                     </p>
-                    <p className="font-data text-[10px] text-glacier mt-1">
+                    <p className="text-xs text-glacier mt-1">
                       {L("Les autres chiffres de cette page peuvent être incomplets.",
                          "Other figures on this page may be incomplete.")}
                     </p>
                   </>
                 ) : (
-                  <p className="font-data text-xs text-glacier" data-testid="chart-revenue-empty">
+                  <p className="text-sm text-glacier" data-testid="chart-revenue-empty">
                     {L("Aucune commande payée sur la période", "No paid orders in this period")}
                   </p>
                 )}
               </div>
             )}
-          </div>
-          {serie.length > 0 && (
-            <div className="flex items-center justify-between mt-2 font-data text-[10px] text-glacier tabular-nums">
-              <span>{serie[0].date}</span>
-              <span className="text-nordfjord">{L("sommet", "peak")} {argent(maxSerie)}</span>
-              <span>{serie[serie.length - 1].date}</span>
-            </div>
-          )}
-          {/* Les mêmes données en tableau, pour qui n'exploite pas des barres
-              (lecteur d'écran, forte impression, daltonisme). */}
-          {serie.length > 0 && (
-            <table className="sr-only" data-testid="chart-revenue-table">
-              <caption>{L("Revenu encaissé par période", "Collected revenue per period")}</caption>
-              <tbody>
-                {serie.map((d) => (
-                  <tr key={d.date}><th scope="row">{d.date}</th>
-                    <td>{argent(d.revenue)}</td><td>{d.orders}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+          </CardContent>
+        </Card>
 
-        {/* Top produits — sur la période, comme le graphique. */}
-        <div className="bg-white border border-ash p-6 rounded-xl">
-          <h2 className="font-display text-lg font-bold tracking-tight text-nordfjord">
-            {L("Meilleures ventes", "Best sellers")}
-          </h2>
-          <p className="font-data text-[11px] text-glacier mt-0.5 mb-4">{libellePeriode}</p>
-          <ul className="divide-y divide-ash/60" data-testid="top-products">
-            {(analytics?.top_products || []).slice(0, 6).map((p, idx) => (
-              // La cle inclut la variante : deux dosages du meme compose sont
-              // deux lignes distinctes, et p.slug seul les ferait entrer en
-              // collision (React n'en afficherait qu'une).
-              <li key={`${p.slug}-${p.variant_name || "root"}`} className="py-2.5 flex items-center gap-3">
-                <span className="font-data text-[10px] text-glacier w-4">{idx + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm truncate text-nordfjord">
-                    {lang === "fr" ? (p.name_fr || p.name_en) : (p.name_en || p.name_fr)}
-                    {p.variant_name && (
-                      <span className="font-data text-[11px] text-nova font-semibold"> · {p.variant_name}</span>
-                    )}
+        {/* Meilleures ventes — la barre derrière chaque ligne donne le rapport
+            entre les produits sans qu'on ait à comparer des montants. */}
+        <Card className="border-ash">
+          <CardHeader className="pb-3">
+            <CardTitle className="font-display text-base font-bold text-nordfjord">
+              {L("Meilleures ventes", "Best sellers")}
+            </CardTitle>
+            <p className="text-xs text-glacier mt-1">{libellePeriode}</p>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-1" data-testid="top-products">
+              {(analytics?.top_products || []).slice(0, 6).map((p, idx) => (
+                // La cle inclut la variante : deux dosages du meme compose sont
+                // deux lignes distinctes, et p.slug seul les ferait entrer en
+                // collision (React n'en afficherait qu'une).
+                <li key={`${p.slug}-${p.variant_name || "root"}`}
+                    className="relative flex items-center gap-3 px-2 py-2 rounded-md overflow-hidden">
+                  <span className="absolute inset-y-0 left-0 bg-nova/10 rounded-md" aria-hidden="true"
+                        style={{ width: `${Math.max(6, (p.revenue / topMax) * 100)}%` }} />
+                  <span className="relative font-data text-[10px] text-glacier w-3">{idx + 1}</span>
+                  <div className="relative flex-1 min-w-0">
+                    <div className="font-semibold text-sm truncate text-nordfjord">
+                      {lang === "fr" ? (p.name_fr || p.name_en) : (p.name_en || p.name_fr)}
+                      {p.variant_name && (
+                        <span className="text-nova font-semibold"> · {p.variant_name}</span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-glacier">
+                      {p.units_sold} {L("unités", "units")}
+                    </div>
                   </div>
-                  <div className="font-data text-[10px] text-glacier">
-                    {p.units_sold} {L("unités", "units")}
+                  <div className="relative font-bold tabular-nums text-nordfjord whitespace-nowrap text-sm">
+                    {argent(p.revenue)}
                   </div>
-                </div>
-                <div className="font-bold tabular-nums text-nordfjord whitespace-nowrap text-sm">
-                  {argent(p.revenue)}
-                </div>
-              </li>
-            ))}
-            {!analytics?.top_products?.length && (
-              <li className="py-4 font-data text-xs text-glacier text-center">
-                {L("Aucune vente sur la période", "No sales in this period")}
-              </li>
-            )}
-          </ul>
-        </div>
+                </li>
+              ))}
+              {!analytics?.top_products?.length && (
+                <li className="py-6 text-xs text-glacier text-center">
+                  {L("Aucune vente sur la période", "No sales in this period")}
+                </li>
+              )}
+            </ul>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* ---------------------------------------------------------------
-          3. CE QUI TRAÎNE : commandes récentes et stock
-          --------------------------------------------------------------- */}
-      <div className="grid lg:grid-cols-3 gap-4 mb-6 items-start">
-        <div className="lg:col-span-2 bg-white border border-ash rounded-xl">
-          <div className="flex items-center justify-between px-6 py-5 border-b border-ash">
-            <h2 className="font-display text-lg font-bold tracking-tight text-nordfjord">
+      {/* =================================================================
+          3. CE QUI TRAÎNE
+          ================================================================= */}
+      <div className="grid xl:grid-cols-3 gap-4 mb-6 items-start">
+        <Card className="xl:col-span-2 border-ash overflow-hidden">
+          <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="font-display text-base font-bold text-nordfjord">
               {L("Dernières commandes", "Latest orders")}
-            </h2>
-            <Link to="orders" className="font-data text-[11px] uppercase tracking-[0.2em] flex items-center gap-1 text-nova hover:text-nordfjord">
-              {L("Voir tout", "View all")} <ArrowUpRight size={13} />
+            </CardTitle>
+            <Link to="orders"
+              className="text-xs font-medium flex items-center gap-1 text-nova hover:text-nordfjord">
+              {L("Voir tout", "View all")} <ArrowRight size={13} />
             </Link>
-          </div>
-          <div className="overflow-x-auto">
+          </CardHeader>
+          <CardContent className="px-0 pb-0">
             <table className="w-full text-sm" data-testid="recent-orders-table">
               <thead>
-                <tr>
-                  <Th>{L("Commande", "Order")}</Th>
-                  <Th>{L("Client", "Customer")}</Th>
-                  <Th>{L("Paiement", "Payment")}</Th>
-                  <Th>{L("Traitement", "Fulfillment")}</Th>
-                  <Th align="right">{L("Total", "Total")}</Th>
+                <tr className="text-[10px] uppercase tracking-[0.14em] text-glacier border-y border-ash">
+                  <th className="text-left font-medium px-6 py-2">{L("Commande", "Order")}</th>
+                  <th className="text-left font-medium px-6 py-2">{L("Client", "Customer")}</th>
+                  <th className="text-left font-medium px-6 py-2">{L("Paiement", "Payment")}</th>
+                  <th className="text-left font-medium px-6 py-2">{L("Traitement", "Fulfillment")}</th>
+                  <th className="text-right font-medium px-6 py-2">{L("Total", "Total")}</th>
                 </tr>
               </thead>
               <tbody>
                 {(analytics?.recent_orders || []).map((o) => (
-                  <tr key={o.id} className="border-t border-ash/40 hover:bg-clinical/60">
+                  <tr key={o.id} className="border-b border-ash/50 last:border-0 hover:bg-clinical/60">
                     <td className="px-6 py-3">
                       {/* Lien relatif : `/admin/...` en absolu tombe sur l'alias de
                           compatibilité qui redirige vers la racine du portail en
                           perdant le sous-chemin, donc le clic ne menait nulle part. */}
-                      <Link to={`orders/${o.id}`} className="font-data font-bold text-xs text-nova hover:text-nordfjord">
+                      <Link to={`orders/${o.id}`}
+                        className="font-data font-bold text-xs text-nova hover:text-nordfjord">
                         {o.order_number}
                       </Link>
-                      <div className="font-data text-[10px] text-glacier">
+                      <div className="text-[10px] text-glacier">
                         {(o.created_at || "").slice(0, 16).replace("T", " ")}
                       </div>
                     </td>
                     <td className="px-6 py-3">
-                      <div className="text-sm text-nordfjord">{o.shipping_address?.full_name || o.email || "—"}</div>
-                      <div className="font-data text-[10px] text-glacier">{o.email}</div>
+                      <div className="text-sm text-nordfjord truncate max-w-[14rem]">
+                        {o.shipping_address?.full_name || o.email || "—"}
+                      </div>
+                      <div className="text-[10px] text-glacier truncate max-w-[14rem]">{o.email}</div>
                     </td>
                     <td className="px-6 py-3"><StatusBadge status={o.payment_status} lang={lang} /></td>
                     <td className="px-6 py-3"><StatusBadge status={o.fulfillment_status} lang={lang} /></td>
@@ -431,14 +431,14 @@ export default function AdminDashboard() {
                   </tr>
                 ))}
                 {!analytics?.recent_orders?.length && (
-                  <tr><td colSpan={5} className="px-6 py-8 text-center font-data text-xs text-glacier">
+                  <tr><td colSpan={5} className="px-6 py-10 text-center text-xs text-glacier">
                     {L("Aucune commande pour l'instant", "No orders yet")}
                   </td></tr>
                 )}
               </tbody>
             </table>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         <LowStockCard />
       </div>
@@ -446,10 +446,10 @@ export default function AdminDashboard() {
       {/* Totaux historiques : consultables, mais ils ne déclenchent aucune
           décision quotidienne. Une ligne de bas de page leur suffit. */}
       {stats && (
-        <div className="border-t border-ash pt-4 flex flex-wrap gap-x-8 gap-y-1.5"
+        <div className="border-t border-ash pt-4 flex flex-wrap items-center gap-x-8 gap-y-2"
              data-testid="reference-totals">
-          <span className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier self-center">
-            {L("DEPUIS L'OUVERTURE", "ALL TIME")}
+          <span className="text-[10px] uppercase tracking-[0.2em] text-glacier flex items-center gap-1.5">
+            <Users size={12} /> {L("Depuis l'ouverture", "All time")}
           </span>
           {[
             [L("Revenu", "Revenue"), argent(stats.revenue_cad)],
@@ -457,7 +457,7 @@ export default function AdminDashboard() {
             [L("Clients", "Customers"), stats.customers],
             [L("Produits actifs", "Active products"), stats.products],
           ].map(([k, v]) => (
-            <span key={k} className="text-[12px] text-glacier">
+            <span key={k} className="text-xs text-glacier">
               {k} <b className="text-nordfjord font-semibold tabular-nums">{v}</b>
             </span>
           ))}
@@ -469,14 +469,14 @@ export default function AdminDashboard() {
 
 // Intitulé de section : structure la page en zones lisibles plutôt qu'en une
 // suite de tuiles de poids égal, où l'œil ne sait pas où se poser.
-function SectionLabel({ children, compte }) {
+function Titre({ children, compte }) {
   return (
-    <div className="flex items-center gap-3 mb-3">
-      <span className="font-data text-[10px] uppercase tracking-[0.25em] text-glacier whitespace-nowrap">
+    <div className="flex items-center gap-2.5 mb-3">
+      <h2 className="font-display text-sm font-bold uppercase tracking-[0.12em] text-nordfjord">
         {children}
-      </span>
+      </h2>
       {compte > 0 && (
-        <span className="font-data text-[10px] font-bold bg-nordfjord text-white rounded px-1.5 py-0.5"
+        <span className="text-[10px] font-bold bg-nordfjord text-white rounded-full px-2 py-0.5"
               data-testid="actions-count">
           {compte}
         </span>
@@ -487,60 +487,66 @@ function SectionLabel({ children, compte }) {
 }
 
 // Carte d'action : un compteur qui appelle une décision, jamais une
-// statistique. Le liseré coloré encode l'urgence SANS dépendre de la seule
-// couleur — le titre et la phrase la disent aussi.
+// statistique. La pastille colorée encode l'urgence SANS en dépendre — le
+// titre et la phrase la disent aussi.
 const TONS = {
-  urgent: "border-l-error",
-  warn: "border-l-warning",
-  info: "border-l-nova",
+  urgent: { medaille: "bg-error/10 text-error", liseré: "border-l-error" },
+  warn: { medaille: "bg-warning/10 text-warning", liseré: "border-l-warning" },
+  info: { medaille: "bg-nova/10 text-nova", liseré: "border-l-nova" },
 };
 
-function CarteAction({ ton = "info", titre, quoi, n, valeur, vers, cle }) {
+function CarteAction({ ton = "info", titre, quoi, n, valeur, vers, cle, icone: Icone }) {
+  const t = TONS[ton];
   return (
     <Link to={vers} data-testid={`action-${cle}`}
-      className={`bg-white border border-ash border-l-[3px] ${TONS[ton]} rounded-lg px-4 py-3.5 flex items-center gap-4 hover:border-nova transition-colors`}>
+      className={`group bg-card border border-ash border-l-[3px] ${t.liseré} rounded-xl px-4 py-3.5
+                  flex items-center gap-3.5 hover:border-nova hover:shadow-sm transition-all`}>
+      <span className={`w-9 h-9 rounded-lg ${t.medaille} flex items-center justify-center shrink-0`}>
+        {Icone && <Icone size={17} strokeWidth={1.8} />}
+      </span>
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold text-nordfjord truncate">{titre}</div>
-        <div className="font-data text-[11px] text-glacier truncate mt-0.5">{quoi}</div>
+        <div className="text-[11px] text-glacier truncate mt-0.5">{quoi}</div>
       </div>
       <div className="text-right shrink-0">
         <div className="font-display text-xl font-bold tabular-nums text-nordfjord leading-none whitespace-nowrap">
           {valeur || n}
         </div>
-        {valeur && <div className="font-data text-[10px] text-glacier mt-1">{n}</div>}
+        {valeur && <div className="text-[10px] text-glacier mt-1">{n}</div>}
       </div>
     </Link>
   );
 }
 
-// Un chiffre de pilotage : la valeur d'abord, l'écart ensuite, l'icône en
-// dernier. Le texte ne porte jamais la couleur d'une série.
-function Chiffre({ label, valeur, delta, sous, icone: Icone, testid, L }) {
+// Un chiffre de pilotage : l'étiquette d'abord, la valeur en grand, l'écart
+// dessous. Le texte ne porte jamais la couleur d'une série.
+function Chiffre({ label, valeur, delta, indice, icone: Icone, testid, L }) {
   const hausse = delta != null && delta >= 0;
   const Fleche = hausse ? TrendingUp : TrendingDown;
   return (
-    <div className="bg-white border border-ash p-5 rounded-xl" data-testid={testid}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier">{label}</div>
-          <div className="font-display text-[26px] leading-none font-bold mt-2 tabular-nums text-nordfjord whitespace-nowrap">
-            {valeur}
-          </div>
-          {delta != null ? (
-            <div className={`flex items-center gap-1 mt-2 text-xs font-medium ${hausse ? "text-success" : "text-error"}`}>
-              <Fleche size={13} /> {hausse ? "+" : ""}{delta} %
-              <span className="text-glacier font-normal">{L("vs période précédente", "vs previous period")}</span>
-            </div>
-          ) : (
-            <div className="font-data text-[10px] text-glacier mt-2">{sous}</div>
+    <Card className="border-ash" data-testid={testid}>
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <span className="text-[11px] text-glacier">{label}</span>
+          {Icone && (
+            <span className="w-7 h-7 shrink-0 flex items-center justify-center text-glacier bg-clinical rounded-lg">
+              <Icone size={14} strokeWidth={1.8} />
+            </span>
           )}
         </div>
-        {Icone && (
-          <div className="w-8 h-8 shrink-0 flex items-center justify-center text-nordfjord bg-clinical rounded-lg">
-            <Icone size={16} strokeWidth={1.7} />
-          </div>
-        )}
-      </div>
-    </div>
+        <p className="font-display text-[26px] leading-none font-bold mt-3 tabular-nums text-nordfjord whitespace-nowrap">
+          {valeur}
+        </p>
+        <div className="flex items-center gap-1.5 mt-3 text-[11px] flex-wrap">
+          {delta != null && (
+            <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-medium ${
+              hausse ? "bg-success/10 text-success" : "bg-error/10 text-error"}`}>
+              <Fleche size={11} /> {hausse ? "+" : ""}{delta} %
+            </span>
+          )}
+          <span className="text-glacier">{indice}</span>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
