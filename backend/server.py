@@ -231,10 +231,10 @@ CANADA_POST_BASE_URL = (
 # - legacy: existing XML/basic-auth flow
 # - openapi: OAuth2 + JSON flow from the shipping v1 OpenAPI spec
 # - auto: openapi if OAuth creds are present, otherwise legacy
-# CE MODE NE REGIT QUE LES ETIQUETTES. Le suivi, lui, passe par le nouveau
-# portail des que ses identifiants OAuth sont presents (voir
-# _canada_post_track) : lire un suivi ne cree rien, on peut l'activer sans
-# toucher a la creation d'etiquettes.
+# CE MODE NE REGIT QUE LES ETIQUETTES. Le suivi et la tarification, eux,
+# passent par le nouveau portail des que ses identifiants OAuth sont presents
+# (voir _canada_post_track et _canada_post_get_rates) : lire un suivi ou un
+# prix ne cree rien, on peut les activer sans toucher aux etiquettes.
 CANADA_POST_API_MODE = os.environ.get("CANADA_POST_API_MODE", "auto").strip().lower()
 CANADA_POST_OPENAPI_BASE_URL = os.environ.get(
     "CANADA_POST_OPENAPI_BASE_URL",
@@ -245,6 +245,11 @@ CANADA_POST_OPENAPI_BASE_URL = os.environ.get(
 CANADA_POST_OPENAPI_TRACKING_URL = os.environ.get(
     "CANADA_POST_OPENAPI_TRACKING_URL",
     "https://api.canadapost-postescanada.ca/prod/devportal-portaildesdeveloppeurs/tracking/v1",
+).rstrip("/")
+# Tarification (Rating) : meme hote, meme jeton OAuth, perimetre « merchant ».
+CANADA_POST_OPENAPI_RATING_URL = os.environ.get(
+    "CANADA_POST_OPENAPI_RATING_URL",
+    "https://api.canadapost-postescanada.ca/prod/devportal-portaildesdeveloppeurs/rating/v1",
 ).rstrip("/")
 CANADA_POST_OAUTH_TOKEN_URL = os.environ.get(
     "CANADA_POST_OAUTH_TOKEN_URL",
@@ -2894,13 +2899,15 @@ try:
         _cp_tracking_indicates_delivered, _sandbox_fallback_ready, is_canada_post_configured,
         _canada_post_create_shipment_openapi, _canada_post_get_artifact_openapi,
         _canada_post_get_manifest_artifact_openapi, _canada_post_shipment_price,
-        _canada_post_estimate_openapi, _canada_post_manifest_details,
+        _canada_post_manifest_details,
         _canada_post_transmit_openapi, _canada_post_void_openapi, _canada_post_create_shipment,
         _canada_post_get_artifact, _canada_post_transmit, _canada_post_void,
         _auto_create_dispatch_label, _auto_label_paid_orders_watchdog,
         _auto_sync_delivered_orders_once, _auto_sync_delivered_orders_watchdog,
         _cp_marquer_livree, _cp_evenement_livraison, _cp_horodatage, _cp_lire_suivi_xml,
         _cp_lire_suivi_json, _canada_post_track_openapi, _cp_suivi_disponible,
+        _cp_lire_tarifs_json, _canada_post_get_rates_openapi, _cp_tarifs_disponibles,
+        _cp_source_tarifs, _cp_choisir_tarif,
         UNTRANSMITTED_MATCH, pending_manifest_state,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
@@ -2910,13 +2917,15 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
         _cp_tracking_indicates_delivered, _sandbox_fallback_ready, is_canada_post_configured,
         _canada_post_create_shipment_openapi, _canada_post_get_artifact_openapi,
         _canada_post_get_manifest_artifact_openapi, _canada_post_shipment_price,
-        _canada_post_estimate_openapi, _canada_post_manifest_details,
+        _canada_post_manifest_details,
         _canada_post_transmit_openapi, _canada_post_void_openapi, _canada_post_create_shipment,
         _canada_post_get_artifact, _canada_post_transmit, _canada_post_void,
         _auto_create_dispatch_label, _auto_label_paid_orders_watchdog,
         _auto_sync_delivered_orders_once, _auto_sync_delivered_orders_watchdog,
         _cp_marquer_livree, _cp_evenement_livraison, _cp_horodatage, _cp_lire_suivi_xml,
         _cp_lire_suivi_json, _canada_post_track_openapi, _cp_suivi_disponible,
+        _cp_lire_tarifs_json, _canada_post_get_rates_openapi, _cp_tarifs_disponibles,
+        _cp_source_tarifs, _cp_choisir_tarif,
         UNTRANSMITTED_MATCH, pending_manifest_state,
     )
 
@@ -3032,14 +3041,14 @@ async def admin_email_requeue(payload: EmailRequeueIn,
 
 
 async def get_shipping_rates(payload: ShippingRateRequest, request: Request):
-    """Live Canada Post rates when CANADA_POST_API_KEY is configured; otherwise falls back
-    to the existing flat-rate shipping_zones/shipping_methods (same zones used at checkout)."""
+    """Tarifs de livraison FACTURES au client : les zones fixes, les memes que
+    le checkout. N'interroge PAS Postes Canada : la tarification en direct sert
+    aux envois de la boutique (fiche commande, Dispatch), pas au client — et un
+    point d'acces public qui appelait l'API a chaque requete consommait le
+    quota du compte pour n'importe quel visiteur."""
     await _rate_limit("shipping_rates", _client_ip(request), 20, 60,
                        "Too many shipping rate requests. Try again later.")
     weight_kg = await _estimate_parcel_weight_kg(payload.items)
-    live_rates = await _canada_post_get_rates(payload.postal_code, payload.country, weight_kg)
-    if live_rates:
-        return {"source": "canada_post_live", "weight_kg": weight_kg, "rates": live_rates}
 
     zones = await db.shipping_zones.find({"deleted_at": None}, {"_id": 0}).to_list(50)
     zone = next((z for z in zones if payload.country in z.get("countries", [])), None)
@@ -3056,7 +3065,7 @@ async def get_shipping_rates(payload: ShippingRateRequest, request: Request):
         for m in methods
     ] or [{"carrier": "FIRONOVA", "service_code": None, "service_name": "Standard",
            "cost_cad": SHIPPING_FLAT_CAD, "eta_days": "3-7 business days"}]
-    return {"source": "flat_rate_fallback", "weight_kg": weight_kg, "rates": rates}
+    return {"source": "flat_rate", "weight_kg": weight_kg, "rates": rates}
 
 
 # ---------------------------------------------------------------------------
@@ -5743,12 +5752,21 @@ def _order_weight_kg(order: dict) -> float:
     return max(0.1, round(total_g / 1000.0, 3)) if total_g else 0.5
 
 
+def _poids_emballe_kg(order: dict, box: Optional[dict]) -> float:
+    """Poids du colis tel qu'il part : produits + boite. Seule source pour les
+    estimations Dispatch (liste du jour et recalcul d'une ligne)."""
+    tare_kg = float((box or {}).get("tare_grams") or 0.0) / 1000.0
+    return max(0.1, round(_order_weight_kg(order) + tare_kg, 3))
+
+
 async def admin_order_shipping_rates(order_id: str, _admin: dict = Depends(require_area("orders", "view"))):
     """Services disponibles pour CETTE commande, afin de peupler le sélecteur admin."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(404, "Order not found")
-    if not is_canada_post_configured():
+    # La tarification a sa propre condition : elle ne depend pas du mode des
+    # etiquettes (voir _cp_tarifs_disponibles).
+    if not _cp_tarifs_disponibles():
         return {"configured": False, "rates": []}
     ship = order.get("shipping_address") or {}
     rates = await _canada_post_get_rates(
@@ -5889,6 +5907,15 @@ async def admin_shipping_config_status(_admin: dict = Depends(require_area("ship
         "has_mailed_by": bool(mailed_by),
         "has_mobo": bool(mobo),
         "missing_required": missing_required,
+        # Quelle API — donc quelles cles — sert a chaque usage. Les etiquettes
+        # suivent CANADA_POST_API_MODE ; suivi et tarification prennent les
+        # cles OAuth du nouveau portail des qu'elles sont presentes.
+        "sources": {
+            "labels": "openapi" if using_openapi else f"legacy-{CANADA_POST_ENVIRONMENT}",
+            "tracking": ("openapi" if (CANADA_POST_OAUTH_CLIENT_ID and CANADA_POST_OAUTH_CLIENT_SECRET)
+                         else ("legacy" if CANADA_POST_API_KEY else None)),
+            "rating": _cp_source_tarifs(),
+        },
     }
 
 
@@ -6319,48 +6346,33 @@ async def admin_dispatch_today(date: Optional[str] = None,
             # selon le service sélectionné dans l'écran Dispatch.
             row["estimated_cost_due"] = None
             row["estimated_eta_days"] = None
-            if is_canada_post_configured():
+            # Emballage sélectionné (auto ou override) pour cette commande.
+            # Choisi AVANT l'estimation : le colis pese aussi le poids de sa
+            # boite. Sans elle, la liste et le bouton « recalculer » (qui, lui,
+            # l'ajoutait) donnaient deux prix differents pour la meme commande.
+            chosen_box = await _select_box_for_order(o, all_boxes=available_boxes)
+            if _cp_tarifs_disponibles():
                 ship = o.get("shipping_address") or {}
                 dest_pc = str(ship.get("postal_code") or "").replace(" ", "").upper()
                 dest_country = str(ship.get("country") or "CA").upper()
-                weight_kg = _order_weight_kg(o)
-                if _cp_use_openapi():
-                    cache_key = ("openapi", o.get("id"), selected_service)
-                    if cache_key not in rate_cache:
-                        rate_cache[cache_key] = await _canada_post_estimate_openapi(o, selected_service, weight_kg)
-                    chosen = rate_cache.get(cache_key)
-                    if chosen is not None:
-                        row["estimated_cost_due"] = chosen.get("cost_cad")
-                        row["estimated_eta_days"] = chosen.get("eta_days")
-                        row["line_label_cost"] = chosen.get("cost_cad")
-                        chosen_code = str(chosen.get("service_code") or "").upper()
-                        row["line_label_cost_source"] = (
-                            "estimated_cp"
-                            if (not chosen_code) or (chosen_code == selected_service)
-                            else "estimated_cp_alt"
-                        )
-                else:
-                    cache_key = (dest_pc, dest_country, weight_kg)
-                    if cache_key not in rate_cache:
-                        rate_cache[cache_key] = await _canada_post_get_rates(dest_pc, dest_country, weight_kg)
-                    rates = rate_cache.get(cache_key) or []
-                    chosen = next((r for r in rates if str(r.get("service_code") or "").upper() == selected_service), None)
-                    # Si le service exact n'est pas renvoyé, on prend un devis CP
-                    # alternatif plutôt qu'un montant checkout interne.
-                    if chosen is None and rates:
-                        chosen = rates[0]
-                    if chosen is not None:
-                        row["estimated_cost_due"] = chosen.get("cost_cad")
-                        row["estimated_eta_days"] = chosen.get("eta_days")
-                        row["line_label_cost"] = chosen.get("cost_cad")
-                        chosen_code = str(chosen.get("service_code") or "").upper()
-                        row["line_label_cost_source"] = (
-                            "estimated_cp"
-                            if chosen_code == selected_service
-                            else "estimated_cp_alt"
-                        )
-            # Emballage sélectionné (auto ou override) pour cette commande.
-            chosen_box = await _select_box_for_order(o, all_boxes=available_boxes)
+                weight_kg = _poids_emballe_kg(o, chosen_box)
+                # Une vraie cotation (Get Rates) : autrefois, en mode OpenAPI,
+                # on CREAIT un envoi pour lire son prix puis on l'annulait —
+                # un envoi fantome par commande a chaque ouverture de l'ecran.
+                cache_key = (dest_pc, dest_country, weight_kg)
+                if cache_key not in rate_cache:
+                    rate_cache[cache_key] = await _canada_post_get_rates(dest_pc, dest_country, weight_kg)
+                chosen = _cp_choisir_tarif(rate_cache.get(cache_key) or [], selected_service)
+                if chosen is not None:
+                    row["estimated_cost_due"] = chosen.get("cost_cad")
+                    row["estimated_eta_days"] = chosen.get("eta_days")
+                    row["line_label_cost"] = chosen.get("cost_cad")
+                    chosen_code = str(chosen.get("service_code") or "").upper()
+                    row["line_label_cost_source"] = (
+                        "estimated_cp"
+                        if chosen_code == selected_service
+                        else "estimated_cp_alt"
+                    )
             row["box_id"] = chosen_box.get("id") if chosen_box else None
             row["box_name"] = chosen_box.get("name") if chosen_box else None
             to_label.append(row)
@@ -6450,7 +6462,7 @@ async def admin_order_refresh_dispatch_estimate(
     chosen_box = await _select_box_for_order(order)
     products_weight_kg = _order_weight_kg(order)
     box_tare_kg = round(float((chosen_box or {}).get("tare_grams") or 0.0) / 1000.0, 3)
-    total_weight_kg = max(0.1, round(products_weight_kg + box_tare_kg, 3))
+    total_weight_kg = _poids_emballe_kg(order, chosen_box)
 
     out = {
         "order_id": order_id,
@@ -6466,20 +6478,15 @@ async def admin_order_refresh_dispatch_estimate(
         "packaged_weight_kg": total_weight_kg,
     }
 
-    if not is_canada_post_configured():
+    if not _cp_tarifs_disponibles():
         return out
 
     ship = order.get("shipping_address") or {}
     dest_pc = str(ship.get("postal_code") or "").replace(" ", "").upper()
     dest_country = str(ship.get("country") or "CA").upper()
 
-    if _cp_use_openapi():
-        chosen = await _canada_post_estimate_openapi(order, selected_service, products_weight_kg)
-    else:
-        rates = await _canada_post_get_rates(dest_pc, dest_country, total_weight_kg)
-        chosen = next((r for r in rates if str(r.get("service_code") or "").upper() == selected_service), None)
-        if chosen is None and rates:
-            chosen = rates[0]
+    rates = await _canada_post_get_rates(dest_pc, dest_country, total_weight_kg)
+    chosen = _cp_choisir_tarif(rates, selected_service)
 
     if chosen is None:
         return out
@@ -6488,7 +6495,7 @@ async def admin_order_refresh_dispatch_estimate(
     out["estimated_eta_days"] = chosen.get("eta_days")
     out["line_label_cost"] = chosen.get("cost_cad")
     chosen_code = str(chosen.get("service_code") or "").upper()
-    out["line_label_cost_source"] = "estimated_cp" if (not chosen_code) or (chosen_code == selected_service) else "estimated_cp_alt"
+    out["line_label_cost_source"] = "estimated_cp" if chosen_code == selected_service else "estimated_cp_alt"
     return out
 
 

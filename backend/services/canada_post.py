@@ -165,10 +165,144 @@ async def _estimate_parcel_weight_kg(items: Optional[List["CartItem"]]) -> float
     return max(0.1, round(total_g / 1000.0, 3))
 
 
+def _cp_oauth_present() -> bool:
+    return bool(s.CANADA_POST_OAUTH_CLIENT_ID and s.CANADA_POST_OAUTH_CLIENT_SECRET)
+
+
+def _cp_source_tarifs() -> Optional[str]:
+    """Quelle API cote les envois : « openapi » (nouveau portail, cles OAuth),
+    « legacy » (ancienne cle) ou None. Independant de CANADA_POST_API_MODE,
+    qui ne regit que les etiquettes : coter un envoi ne cree rien."""
+    if not s.CANADA_POST_ORIGIN_POSTAL_CODE:
+        return None
+    if _cp_oauth_present():
+        return "openapi"
+    if s.CANADA_POST_API_KEY and s.CANADA_POST_CUSTOMER_NUMBER:
+        return "legacy"
+    return None
+
+
+def _cp_tarifs_disponibles() -> bool:
+    return _cp_source_tarifs() is not None
+
+
+def _cp_choisir_tarif(rates: list, service_code: str) -> Optional[dict]:
+    """Le devis du service demande ; a defaut, le premier devis Postes Canada
+    (signale « estimated_cp_alt » par l'appelant) plutot qu'un tarif interne."""
+    voulu = (service_code or "").strip().upper()
+    for r in rates or []:
+        if str(r.get("service_code") or "").upper() == voulu:
+            return r
+    return rates[0] if rates else None
+
+
+def _cp_lire_tarifs_json(donnees) -> list:
+    """Lit la reponse JSON de Get Rates en devis — la meme forme que l'ancienne
+    API (carrier, service_code, service_name, cost_cad, eta_days), pour que
+    les appelants n'aient qu'un format.
+
+    Champs releves sur la specification officielle (POST /prices) : un
+    TABLEAU de {serviceCode, serviceName, priceDetails{base, taxes, due},
+    serviceStandard{expectedTransitTime, expectedDeliveryDate}}. « due » est
+    le cout total, options, surcharges, rabais et taxes compris."""
+    devis = []
+    for q in donnees if isinstance(donnees, list) else []:
+        if not isinstance(q, dict):
+            continue
+        prix = q.get("priceDetails") if isinstance(q.get("priceDetails"), dict) else {}
+        norme = q.get("serviceStandard") if isinstance(q.get("serviceStandard"), dict) else {}
+        try:
+            due = float(prix.get("due"))
+        except (TypeError, ValueError):
+            continue
+        transit = norme.get("expectedTransitTime")
+        devis.append({
+            "carrier": "Canada Post",
+            "service_code": str(q.get("serviceCode") or ""),
+            "service_name": str(q.get("serviceName") or ""),
+            "cost_cad": due,
+            # Texte, comme l'ancienne API : les ecrans l'affichent tel quel.
+            "eta_days": "" if transit is None else str(transit),
+            # Meme piege que le suivi : une DATE portee par un minuit UTC.
+            "expected_delivery": str(norme.get("expectedDeliveryDate") or "")[:10],
+        })
+    return devis
+
+
+_CP_CODE_POSTAL_CA = re.compile(r"^[A-Z][0-9][A-Z][0-9][A-Z][0-9]$")
+_CP_ZIP_US = re.compile(r"^[0-9]{5}(-[0-9]{4})?$")
+
+
+async def _canada_post_get_rates_openapi(destination_postal_code: str, destination_country: str,
+                                         weight_kg: float) -> list:
+    """Get Rates par le nouveau portail : POST {RATING_URL}/prices, jeton OAuth
+    (le meme que le suivi). [] sur toute erreur — l'erreur est journalisee."""
+    origine = (s.CANADA_POST_ORIGIN_POSTAL_CODE or "").replace(" ", "").upper()
+    pays = (destination_country or "CA").strip().upper()
+    code = (destination_postal_code or "").replace(" ", "").upper()
+    # Les formats sont imposes par la specification : un code mal forme
+    # serait refuse (400). Inutile de l'envoyer.
+    if not _CP_CODE_POSTAL_CA.match(origine):
+        logging.error("Canada Post rating: code postal d'origine invalide")
+        return []
+    if pays == "CA":
+        if not _CP_CODE_POSTAL_CA.match(code):
+            return []
+        destination = {"domestic": {"postalCode": code}}
+    elif pays == "US":
+        if not _CP_ZIP_US.match(code):
+            return []
+        destination = {"unitedStates": {"zipCode": code}}
+    elif re.fullmatch(r"[A-Z]{2}", pays):
+        destination = {"international": {"countryCode": pays}}
+    else:
+        return []
+
+    corps = {
+        "parcelCharacteristics": {"weight": min(99.999, max(0.001, round(float(weight_kg), 3)))},
+        "originPostalCode": origine,
+        "destination": destination,
+    }
+    client = (s.CANADA_POST_CUSTOMER_NUMBER or "").strip()
+    if client:
+        # Avec le numero client (et le contrat), Postes Canada renvoie le
+        # tarif COMMERCIAL, celui que la boutique paiera vraiment.
+        corps["customerNumber"] = client
+        corps["quoteType"] = "commercial"
+        if s.CANADA_POST_CONTRACT_ID:
+            corps["contractId"] = s.CANADA_POST_CONTRACT_ID.strip()
+    else:
+        # La specification exige d'omettre le numero client pour le prix
+        # au comptoir.
+        corps["quoteType"] = "counter"
+
+    try:
+        r = await s._cp_openapi_call("POST", f"{s.CANADA_POST_OPENAPI_RATING_URL}/prices", json_body=corps)
+    except Exception as e:
+        logging.error("Canada Post OpenAPI rating failed: %s", type(e).__name__)
+        return []
+    if r.status_code >= 400:
+        logging.error("Canada Post OpenAPI rating status=%s response_ref=%s",
+                      r.status_code, s._private_ref(r.text))
+        return []
+    # _cp_safe_json ne garde que les objets : la reponse est un TABLEAU.
+    try:
+        donnees = r.json()
+    except Exception:
+        return []
+    return _cp_lire_tarifs_json(donnees)
+
+
 async def _canada_post_get_rates(destination_postal_code: str, destination_country: str, weight_kg: float) -> list:
-    """Calls Canada Post's Rating API (rate-v4). Returns [] if not configured or on any error —
-    callers must fall back to the flat-rate system in that case."""
-    if not (s.CANADA_POST_API_KEY and s.CANADA_POST_CUSTOMER_NUMBER and s.CANADA_POST_ORIGIN_POSTAL_CODE):
+    """Cotation des envois de la boutique. Returns [] if not configured or on any error.
+
+    Le NOUVEAU portail des que ses identifiants OAuth sont la (cles de l'app
+    Fironova) ; l'ancienne API seulement si elle est seule configuree. Pas de
+    repli silencieux de l'un vers l'autre : une erreur se lit dans le journal."""
+    source = _cp_source_tarifs()
+    if source == "openapi":
+        return await _canada_post_get_rates_openapi(destination_postal_code, destination_country, weight_kg)
+    if source != "legacy":
         return []
 
     origin_pc = s.CANADA_POST_ORIGIN_POSTAL_CODE.replace(" ", "").upper()
@@ -768,43 +902,6 @@ async def _canada_post_shipment_price(shipment_id: str, preferred_service_code: 
         "expected_transit_days": std.get("expectedTransitTime"),
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
-
-
-async def _canada_post_estimate_openapi(order: dict, service_code: str, weight_kg: float) -> Optional[dict]:
-    """Estimation du coût via OpenAPI sans transmission:
-    on crée un envoi temporaire, on lit son prix, puis on l'annule (void)."""
-    if not (s._cp_use_openapi() and s.is_canada_post_configured()):
-        return None
-    shipment_id = ""
-    try:
-        # Réutilise le payload officiel déjà accepté en prod par la création
-        # d'étiquette normale pour éviter les erreurs de schéma.
-        created = await s._canada_post_create_shipment_openapi(order, service_code, weight_kg)
-        shipment_id = str(created.get("shipment_id") or "")
-        if not shipment_id:
-            return None
-
-        price = await s._canada_post_shipment_price(shipment_id, preferred_service_code=service_code)
-
-        if not price:
-            return None
-
-        due = price.get("due_amount")
-        eta = price.get("expected_transit_days")
-        svc = price.get("service_code")
-
-        return {
-            "service_code": svc,
-            "cost_cad": float(due) if due is not None else None,
-            "eta_days": eta,
-        }
-    except Exception as ex:
-        logging.error("Canada Post OpenAPI estimate failed: %s", ex)
-        return None
-
-    finally:
-        if shipment_id:
-            await s._canada_post_void_openapi(shipment_id)
 
 
 async def _canada_post_manifest_details(manifest_href: str) -> Optional[dict]:
