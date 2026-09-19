@@ -8,6 +8,21 @@ import { Th } from "../ui";
 
 const CATEGORIES = ["healing", "gh-secretagogues", "weight-loss", "cognitive", "longevity"];
 
+// L'etat d'un produit, calcule a un SEUL endroit : le badge de la ligne et le
+// filtre le lisent tous les deux. Definis deux fois, ils auraient fini par se
+// contredire — un produit affiche « actif » mais absent du filtre « actif ».
+//   masque  : retire de la boutique
+//   rupture : plus rien a vendre
+//   partiel : se vend, mais pas dans tous ses formats
+//   actif   : tout est disponible
+export function etatProduit(p) {
+  const variantes = p.variants || [];
+  const total = variantes.reduce((s, v) => s + (v.stock || 0), 0);
+  if (!p.active) return "masque";
+  if (total === 0) return "rupture";
+  return variantes.some((v) => !(v.stock > 0)) ? "partiel" : "actif";
+}
+
 /** Traduction courte, partagée par les six composants de ce fichier. Les
  *  chaînes visibles y étaient restées en anglais faute de useLang ; les
  *  éclater en six appels séparés aurait multiplié la même ligne. */
@@ -46,6 +61,25 @@ export default function AdminProducts() {
     acc[a.product_id] = (acc[a.product_id] || 0) + 1;
     return acc;
   }, {});
+
+  // Filtres : la liste tient sur un ecran aujourd'hui, mais chercher un
+  // produit par son nom ou isoler les ruptures ne doit pas dependre de sa
+  // taille. Tout se fait ici, sans requete : les produits sont deja charges.
+  const [recherche, setRecherche] = useState("");
+  const [categorie, setCategorie] = useState("");
+  const [etat, setEtat] = useState("");
+
+  const q = recherche.trim().toLowerCase();
+  const affiches = products.filter((p) => {
+    if (categorie && p.category !== categorie) return false;
+    if (etat && etatProduit(p) !== etat) return false;
+    if (!q) return true;
+    // Le SKU et le nom des formats aussi : c'est souvent par la qu'on
+    // cherche un produit precis.
+    const champs = [p.name_en, p.name_fr, p.slug, p.category,
+                    ...(p.variants || []).flatMap((v) => [v.sku, v.name])];
+    return champs.some((c) => String(c || "").toLowerCase().includes(q));
+  });
 
   const blank = {
     slug: "", name_en: "", name_fr: "", category: "healing", sequence: "",
@@ -106,7 +140,12 @@ export default function AdminProducts() {
               </div>
             </div>
           )}
-          <p className="font-mono text-xs text-foreground/60 mt-1">{products.length} compounds</p>
+          <p className="font-mono text-xs text-foreground/60 mt-1" data-testid="products-count">
+            {affiches.length === products.length
+              ? `${products.length} compounds`
+              : L(`${affiches.length} sur ${products.length} produits`,
+                  `${affiches.length} of ${products.length} compounds`)}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <a href={`${API_BASE}/admin/products.csv`} target="_blank" rel="noopener noreferrer" data-testid="export-products-csv"
@@ -124,6 +163,37 @@ export default function AdminProducts() {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 mb-4" data-testid="products-filters">
+        <input
+          value={recherche}
+          onChange={(e) => setRecherche(e.target.value)}
+          placeholder={L("Rechercher un produit, un format, un SKU…", "Search a product, a format, a SKU…")}
+          data-testid="products-search"
+          className="border border-ink/20 px-3 py-2 text-sm min-w-[18rem] flex-1" />
+        <select value={categorie} onChange={(e) => setCategorie(e.target.value)}
+          data-testid="products-category"
+          className="border border-ink/20 px-3 py-2 text-sm bg-white font-mono text-xs uppercase tracking-[0.15em]">
+          <option value="">{L("Toutes catégories", "All categories")}</option>
+          {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={etat} onChange={(e) => setEtat(e.target.value)}
+          data-testid="products-status"
+          className="border border-ink/20 px-3 py-2 text-sm bg-white font-mono text-xs uppercase tracking-[0.15em]">
+          <option value="">{L("Tous les états", "All statuses")}</option>
+          <option value="actif">{L("Actif", "Active")}</option>
+          <option value="partiel">{L("Rupture partielle", "Partly out")}</option>
+          <option value="rupture">{L("Rupture", "Out")}</option>
+          <option value="masque">{L("Masqué", "Hidden")}</option>
+        </select>
+        {(q || categorie || etat) && (
+          <button onClick={() => { setRecherche(""); setCategorie(""); setEtat(""); }}
+            data-testid="products-filters-reset"
+            className="border border-ink/30 font-mono text-[10px] uppercase tracking-[0.2em] px-3 py-2 hover:bg-ink hover:text-white">
+            {L("Effacer", "Clear")}
+          </button>
+        )}
+      </div>
+
       <div className="bg-white border border-ink/10 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -136,12 +206,13 @@ export default function AdminProducts() {
             </tr>
           </thead>
           <tbody>
-            {products.map((p) => {
+            {affiches.map((p) => {
               const totalStock = (p.variants || []).reduce((s, v) => s + (v.stock || 0), 0);
               const lowest = (p.variants || []).reduce((m, v) => v.price < m ? v.price : m, Infinity);
               // Le total masquait une variante a zero : BPC-157 affichait
               // « 58 units · Actif » alors que sa 10 mg etait en rupture.
               const enRupture = (p.variants || []).filter((v) => !(v.stock > 0));
+              const statut = etatProduit(p);
               return (
                 <tr key={p.id} className="border-t border-ink/5" data-testid={`product-row-${p.slug}`}>
                   <td className="px-6 py-3">
@@ -180,11 +251,11 @@ export default function AdminProducts() {
                     </div>
                   </td>
                   <td className="px-6 py-3">
-                    {!p.active
+                    {statut === "masque"
                       ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-gray-400 text-white px-2 py-0.5">{L("Masqué", "Hidden")}</span>
-                      : totalStock === 0
+                      : statut === "rupture"
                       ? <span className="text-[10px] font-mono uppercase tracking-[0.15em] bg-red-600 text-white px-2 py-0.5">{L("Rupture", "Out")}</span>
-                      : enRupture.length
+                      : statut === "partiel"
                       // Un produit dont UNE variante est a zero n'est ni
                       // « actif » ni « en rupture » : il se vend, mais pas dans
                       // tous ses formats. Sans cet etat, la vente manquante
@@ -210,6 +281,20 @@ export default function AdminProducts() {
             })}
           </tbody>
         </table>
+        {products.length > 0 && affiches.length === 0 && (
+          // Une liste vide sans explication laisse croire a une perte de
+          // donnees ; ici, ce sont les filtres.
+          <div className="px-6 py-10 text-center" data-testid="products-empty">
+            <p className="text-sm text-foreground/60">
+              {L("Aucun produit ne correspond aux filtres.", "No product matches the filters.")}
+            </p>
+            <button onClick={() => { setRecherche(""); setCategorie(""); setEtat(""); }}
+              data-testid="products-empty-reset"
+              className="mt-3 border border-ink font-mono text-[10px] uppercase tracking-[0.2em] px-3 py-2 hover:bg-ink hover:text-white">
+              {L("Effacer les filtres", "Clear the filters")}
+            </button>
+          </div>
+        )}
       </div>
 
       {editing && <ProductEditor product={editing} setProduct={setEditing} onSave={save} onCancel={() => setEditing(null)} />}

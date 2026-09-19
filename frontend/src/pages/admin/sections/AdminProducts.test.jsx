@@ -1,5 +1,5 @@
 // La liste des produits : ce qu'il faut VOIR sans ouvrir une fiche.
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import AdminProducts from "./AdminProducts";
 import api from "../../../lib/api";
@@ -66,6 +66,61 @@ it("un produit entierement en stock reste simplement actif", async () => {
   render(<AdminProducts />);
   await waitFor(() => expect(screen.getByTestId("variants-tb-500")).toBeInTheDocument());
   expect(screen.queryByTestId("partial-out-tb-500")).not.toBeInTheDocument();
+});
+
+// ---------------------------------------------------------------------------
+// Filtres
+// ---------------------------------------------------------------------------
+
+it("la recherche trouve un produit par son nom, son format ou son SKU", async () => {
+  render(<AdminProducts />);
+  const champ = await screen.findByTestId("products-search");
+
+  fireEvent.change(champ, { target: { value: "tb-500" } });
+  expect(screen.queryByTestId("product-row-bpc-157-5mg")).not.toBeInTheDocument();
+  expect(screen.getByTestId("product-row-tb-500")).toBeInTheDocument();
+
+  // Un format ne figure nulle part ailleurs dans la ligne : sans lui dans la
+  // recherche, impossible de retrouver « la 10 mg ».
+  fireEvent.change(champ, { target: { value: "10.0mg" } });
+  expect(screen.getByTestId("product-row-bpc-157-5mg")).toBeInTheDocument();
+  expect(screen.queryByTestId("product-row-tb-500")).not.toBeInTheDocument();
+});
+
+it("le filtre d etat s accorde avec le badge affiche", async () => {
+  // Le piege : deux definitions de « actif », l'une pour le badge, l'autre
+  // pour le filtre. BPC-157 porte « Rupture partielle » : il ne doit PAS
+  // apparaitre dans « Actif », et doit apparaitre dans « Rupture partielle ».
+  render(<AdminProducts />);
+  const etat = await screen.findByTestId("products-status");
+
+  fireEvent.change(etat, { target: { value: "actif" } });
+  expect(screen.queryByTestId("product-row-bpc-157-5mg")).not.toBeInTheDocument();
+  expect(screen.getByTestId("product-row-tb-500")).toBeInTheDocument();
+
+  fireEvent.change(etat, { target: { value: "partiel" } });
+  expect(screen.getByTestId("partial-out-bpc-157-5mg")).toBeInTheDocument();
+  expect(screen.queryByTestId("product-row-tb-500")).not.toBeInTheDocument();
+});
+
+it("un ecran vide dit que ce sont les filtres, et les efface", async () => {
+  render(<AdminProducts />);
+  fireEvent.change(await screen.findByTestId("products-search"), { target: { value: "zzz" } });
+
+  expect(screen.getByTestId("products-empty")).toBeInTheDocument();
+  expect(screen.getByTestId("products-count")).toHaveTextContent("0 sur 2");
+
+  fireEvent.click(screen.getByTestId("products-empty-reset"));
+  expect(screen.getByTestId("product-row-bpc-157-5mg")).toBeInTheDocument();
+});
+
+it("le filtre de categorie se combine avec la recherche", async () => {
+  render(<AdminProducts />);
+  fireEvent.change(await screen.findByTestId("products-category"), { target: { value: "weight-loss" } });
+  expect(screen.getByTestId("products-empty")).toBeInTheDocument();
+
+  fireEvent.change(screen.getByTestId("products-category"), { target: { value: "healing" } });
+  expect(screen.getByTestId("products-count")).toHaveTextContent("2 compounds");
 });
 
 it("une nouvelle variante pese le poids par defaut, modifiable", async () => {
