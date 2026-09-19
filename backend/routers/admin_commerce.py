@@ -147,14 +147,32 @@ async def admin_dashboard_pulse(_admin: dict = Depends(s.require_area("dashboard
     return await s.admin_dashboard_pulse(_admin)
 
 
+# Les exports reçoivent les MÊMES filtres que la liste : on télécharge ce
+# que l'on voit, pas l'onglet entier.
 @router.get("/admin/orders.csv")
-async def admin_orders_csv(status_group: Optional[str] = None, _admin: dict = Depends(s.require_area("orders", "view"))):
-    return await s.admin_orders_csv(status_group, _admin)
+async def admin_orders_csv(status_group: Optional[str] = None,
+                           query: Optional[str] = None,
+                           payment_status: Optional[str] = None,
+                           fulfillment_status: Optional[str] = None,
+                           late_only: bool = False,
+                           _admin: dict = Depends(s.require_area("orders", "view"))):
+    return await s.admin_orders_csv(status_group, _admin, query=query,
+                                    payment_status=payment_status,
+                                    fulfillment_status=fulfillment_status,
+                                    late_only=late_only)
 
 
 @router.get("/admin/orders.xlsx")
-async def admin_orders_xlsx(status_group: Optional[str] = None, _admin: dict = Depends(s.require_area("orders", "view"))):
-    return await s.admin_orders_xlsx(status_group, _admin)
+async def admin_orders_xlsx(status_group: Optional[str] = None,
+                            query: Optional[str] = None,
+                            payment_status: Optional[str] = None,
+                            fulfillment_status: Optional[str] = None,
+                            late_only: bool = False,
+                            _admin: dict = Depends(s.require_area("orders", "view"))):
+    return await s.admin_orders_xlsx(status_group, _admin, query=query,
+                                     payment_status=payment_status,
+                                     fulfillment_status=fulfillment_status,
+                                     late_only=late_only)
 
 
 @router.get("/admin/products.csv")

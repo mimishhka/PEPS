@@ -4610,15 +4610,68 @@ async def admin_sync_delivery_status(order_id: str,
     }
 
 
+# LES ONGLETS DE LA LISTE DES COMMANDES — la SEULE definition.
+#
+# « active » se definissait par exclusion : tout sauf livre, annule, echoue.
+# Or un remboursement complet ecrit fulfillment_status = "refunded" : ces
+# commandes-la, closes et l'argent rendu, restaient dans « active » pour
+# toujours. Constate le 2026-09-19 : 4 des 13 commandes « actives » etaient
+# remboursees — la file de travail gonflee de 30 % par des dossiers termines.
+#
+# Elles ont leur propre onglet plutot que d'aller dans « cancelled » : une
+# annulation est une vente qui n'a pas eu lieu, un remboursement une vente
+# payee dont l'argent a ete rendu. Les confondre fausse la comptabilite.
 _ORDER_STATUS_GROUPS = {
-    "active": {"fulfillment_status": {"$nin": ["delivered", "cancelled", "failed"]}},
+    "active": {"fulfillment_status": {"$nin": ["delivered", "cancelled", "failed", "refunded"]}},
     "completed": {"fulfillment_status": "delivered"},
+    "refunded": {"fulfillment_status": "refunded"},
     "cancelled": {"fulfillment_status": {"$in": ["cancelled", "failed"]}},
 }
 
 
 def _status_group_filter(status_group: Optional[str]) -> dict:
     return dict(_ORDER_STATUS_GROUPS.get(status_group or "", {}))
+
+
+def _orders_filter(status_group: Optional[str] = None, query: Optional[str] = None,
+                   payment_status: Optional[str] = None,
+                   fulfillment_status: Optional[str] = None,
+                   late_only: bool = False) -> dict:
+    """Le filtre d'une vue de commandes — liste, compteurs ET exports.
+
+    Une seule fonction pour tous parce que chacun avait la sienne, et
+    qu'elles avaient diverge : la liste excluait la corbeille, les compteurs
+    et les deux exports non. Un export CSV pouvait donc contenir des
+    commandes supprimees, et un onglet afficher un compte different de ce
+    qu'il listait.
+
+    Le dictionnaire reste PLAT dans le cas courant. Un seul cas l'emboite :
+    un filtre d'expedition choisi dans le menu alors que l'onglet porte deja
+    sa propre regle d'expedition. L'affectation directe remplacait la regle
+    de l'onglet au lieu de s'y ajouter — sur l'onglet « active », choisir
+    « delivered » ramenait les 35 commandes livrees.
+    """
+    filt = _status_group_filter(status_group)
+    filt["deleted_at"] = None
+    if payment_status:
+        filt["payment_status"] = payment_status
+    if fulfillment_status:
+        if "fulfillment_status" in filt:
+            filt["$and"] = [{"fulfillment_status": filt.pop("fulfillment_status")},
+                            {"fulfillment_status": fulfillment_status}]
+        else:
+            filt["fulfillment_status"] = fulfillment_status
+    if late_only:
+        filt["late_payment_flagged"] = True
+    recherche = (query or "").strip()
+    if recherche:
+        motif = re.escape(recherche)
+        filt["$or"] = [
+            {"order_number": {"$regex": motif, "$options": "i"}},
+            {"email": {"$regex": motif, "$options": "i"}},
+            {"shipping_address.full_name": {"$regex": motif, "$options": "i"}},
+        ]
+    return filt
 
 
 async def admin_orders(status_group: Optional[str] = None, _admin: dict = Depends(require_area("orders", "view"))):
@@ -4648,22 +4701,7 @@ async def admin_orders_page(
 ):
     page = max(1, int(page))
     limit = max(1, min(int(limit), 100))
-    filt = _status_group_filter(status_group)
-    filt["deleted_at"] = None
-    if payment_status:
-        filt["payment_status"] = payment_status
-    if fulfillment_status:
-        filt["fulfillment_status"] = fulfillment_status
-    if late_only:
-        filt["late_payment_flagged"] = True
-    search = (query or "").strip()
-    if search:
-        pattern = re.escape(search)
-        filt["$or"] = [
-            {"order_number": {"$regex": pattern, "$options": "i"}},
-            {"email": {"$regex": pattern, "$options": "i"}},
-            {"shipping_address.full_name": {"$regex": pattern, "$options": "i"}},
-        ]
+    filt = _orders_filter(status_group, query, payment_status, fulfillment_status, late_only)
     total = await db.orders.count_documents(filt)
     items = await (
         db.orders.find(filt, {"_id": 0})
@@ -4682,10 +4720,12 @@ async def admin_delete_order(order_id: str, admin: dict = Depends(require_area("
 
 
 async def admin_order_counts(_admin: dict = Depends(require_area("orders", "view"))):
+    # Meme filtre que la liste. Sans « deleted_at », une commande mise en
+    # corbeille restait comptee dans son onglet sans y etre listee.
     out = {}
-    for group, filt in _ORDER_STATUS_GROUPS.items():
-        out[group] = await db.orders.count_documents(filt)
-    out["all"] = await db.orders.count_documents({})
+    for group in _ORDER_STATUS_GROUPS:
+        out[group] = await db.orders.count_documents(_orders_filter(group))
+    out["all"] = await db.orders.count_documents(_orders_filter())
     return out
 
 
@@ -7721,8 +7761,17 @@ def _csv_cursor_response(cursor, row_mapper, fieldnames: list[str], filename: st
     )
 
 
-async def admin_orders_csv(status_group: Optional[str] = None, _admin: dict = Depends(require_area("orders", "view"))):
-    cursor = db.orders.find(_status_group_filter(status_group), {"_id": 0}).sort("created_at", -1)
+async def admin_orders_csv(status_group: Optional[str] = None,
+                           _admin: dict = Depends(require_area("orders", "view")),
+                           query: Optional[str] = None,
+                           payment_status: Optional[str] = None,
+                           fulfillment_status: Optional[str] = None,
+                           late_only: bool = False):
+    # Exporter CE QUE L'ON VOIT. L'export ne recevait que l'onglet : une
+    # recherche ou un filtre de paiement a l'ecran etaient ignores, et la
+    # corbeille y figurait. Meme filtre que la liste, desormais.
+    filt = _orders_filter(status_group, query, payment_status, fulfillment_status, late_only)
+    cursor = db.orders.find(filt, {"_id": 0}).sort("created_at", -1)
     fieldnames = list(_orders_export_rows([{}])[0].keys())
     return _csv_cursor_response(
         cursor,
@@ -7786,10 +7835,14 @@ def _xlsx_response(rows: list, filename: str) -> Response:
     )
 
 
-async def admin_orders_xlsx(status_group: Optional[str] = None, _admin: dict = Depends(require_area("orders", "view"))):
-    orders = await _cursor_all(db.orders.find(
-        _status_group_filter(status_group), {"_id": 0}
-    ).sort("created_at", -1))
+async def admin_orders_xlsx(status_group: Optional[str] = None,
+                            _admin: dict = Depends(require_area("orders", "view")),
+                            query: Optional[str] = None,
+                            payment_status: Optional[str] = None,
+                            fulfillment_status: Optional[str] = None,
+                            late_only: bool = False):
+    filt = _orders_filter(status_group, query, payment_status, fulfillment_status, late_only)
+    orders = await _cursor_all(db.orders.find(filt, {"_id": 0}).sort("created_at", -1))
     return _xlsx_response(_orders_export_rows(orders), f"fironova-orders-{datetime.now().strftime('%Y%m%d')}.xlsx")
 
 

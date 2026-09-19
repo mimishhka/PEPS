@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Download, Search, X, FileText, CheckCircle2, Save, Truck, MessageSquarePlus, Mail, Undo2, Trash2, AlertTriangle, Send } from "lucide-react";
 import { toast } from "sonner";
@@ -11,12 +11,23 @@ import { Th } from "../ui";
 const FULFILLMENT_OPTS = ["pending", "preorder", "processing", "shipped", "delivered", "cancelled", "failed", "refunded"];
 const PAYMENT_OPTS = ["awaiting_etransfer", "awaiting_crypto", "paid", "refunded", "cancelled", "failed"];
 const PAGE_SIZE = 50;
+// Mêmes clés que _ORDER_STATUS_GROUPS côté serveur. « Refunded » a son
+// onglet : les commandes remboursées restaient dans « Active » pour toujours
+// (4 des 13 le 2026-09-19), et une vente remboursée n'est pas une annulation.
 const TABS = [
   { key: "active", label: "Active" },
   { key: "completed", label: "Completed" },
+  { key: "refunded", label: "Refunded" },
   { key: "cancelled", label: "Cancelled" },
   { key: "all", label: "All" },
 ];
+
+// Paramètres d'URL d'une vue — partagés par la liste ET les exports.
+const enQuery = (params) => {
+  const q = new URLSearchParams(
+    Object.entries(params).map(([cle, valeur]) => [cle, String(valeur)])).toString();
+  return q ? `?${q}` : "";
+};
 
 export default function AdminOrders() {
   const confirm = useConfirm();
@@ -91,32 +102,46 @@ export default function AdminOrders() {
     }
   };
 
-  const load = useCallback(() => {
-    const params = {
-      page,
-      limit: PAGE_SIZE,
-      ...(tab === "all" ? {} : { status_group: tab }),
-      ...(deferredQuery ? { query: deferredQuery } : {}),
-      ...(filterPayment === "all" ? {} : { payment_status: filterPayment }),
-      ...(filterFulfill === "all" ? {} : { fulfillment_status: filterFulfill }),
-      ...(filterLate === "late_only" ? { late_only: true } : {}),
-    };
-    // Un .catch() sur chaque appel : sans lui, une réponse en erreur devient
-    // une unhandled rejection, que l'overlay CRA affiche en « [object Object] »
-    // et que le build de prod avale en silence.
-    api.get("/admin/orders/page", { params }).then((r) => {
-      setOrders(r.data.items || []);
-      setTotal(r.data.total || 0);
-    }).catch((e) => {
-      setOrders([]);
-      setTotal(0);
-      toast.error(formatApiError(e.response?.data?.detail) || e.message);
-    });
+  // Les filtres de la vue, une seule fois : la liste ET les exports les
+  // lisent. Les exports ne recevaient que l'onglet — une recherche ou un
+  // filtre à l'écran étaient ignorés dans le fichier téléchargé.
+  const filtresVue = useMemo(() => ({
+    ...(tab === "all" ? {} : { status_group: tab }),
+    ...(deferredQuery ? { query: deferredQuery } : {}),
+    ...(filterPayment === "all" ? {} : { payment_status: filterPayment }),
+    ...(filterFulfill === "all" ? {} : { fulfillment_status: filterFulfill }),
+    ...(filterLate === "late_only" ? { late_only: true } : {}),
+  }), [deferredQuery, filterFulfill, filterLate, filterPayment, tab]);
+
+  // Un .catch() sur chaque appel : sans lui, une réponse en erreur devient
+  // une unhandled rejection, que l'overlay CRA affiche en « [object Object] »
+  // et que le build de prod avale en silence.
+  const loadList = useCallback(() => {
+    api.get("/admin/orders/page", { params: { page, limit: PAGE_SIZE, ...filtresVue } })
+      .then((r) => {
+        setOrders(r.data.items || []);
+        setTotal(r.data.total || 0);
+      }).catch((e) => {
+        setOrders([]);
+        setTotal(0);
+        toast.error(formatApiError(e.response?.data?.detail) || e.message);
+      });
+  }, [filtresVue, page]);
+
+  // Les compteurs d'onglets ne dépendent d'AUCUN filtre. Ils étaient pourtant
+  // redemandés à chaque frappe dans la recherche — cinq requêtes de comptage
+  // par caractère tapé. Chargés à l'ouverture, puis après chaque action.
+  const loadCounts = useCallback(() => {
     api.get("/admin/orders/counts")
       .then((r) => setCounts(r.data))
       .catch(() => setCounts({}));
-  }, [deferredQuery, filterFulfill, filterLate, filterPayment, page, tab]);
-  useEffect(() => { load(); }, [load]);
+  }, []);
+
+  // Tout rafraîchir : ce qu'appellent les actions qui changent une commande.
+  const load = useCallback(() => { loadList(); loadCounts(); }, [loadList, loadCounts]);
+
+  useEffect(() => { loadList(); }, [loadList]);
+  useEffect(() => { loadCounts(); }, [loadCounts]);
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const pageRows = orders;
@@ -131,12 +156,13 @@ export default function AdminOrders() {
   useEffect(() => {
     if (!routeOrderId || selected?.id === routeOrderId) return undefined;
     let alive = true;
-    api.get("/admin/orders")
+    // La commande seule, par son id. Le lien chargeait la liste entière —
+    // plafonnée à 500 — pour la chercher côté navigateur : au-delà de 500
+    // commandes, un lien vers une commande ancienne aurait répondu « Order
+    // not found » alors qu'elle existe. L'endpoint dédié existait déjà.
+    api.get(`/admin/orders/${routeOrderId}`)
       .then((r) => {
-        if (!alive) return;
-        const found = (r.data || []).find((o) => o.id === routeOrderId);
-        if (found) setSelected(found);
-        else toast.error("Order not found");
+        if (alive && r.data) setSelected(r.data);
       })
       .catch((e) => {
         if (alive) toast.error(formatApiError(e.response?.data?.detail) || e.message);
@@ -204,11 +230,11 @@ export default function AdminOrders() {
         <div>
           <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-foreground/50">// ORDERS</div>
           <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">Orders</h1>
-          <p className="font-mono text-xs text-foreground/60 mt-1">{total}</p>
+          <p className="font-mono text-xs text-foreground/60 mt-1" data-testid="orders-shown">{total} shown</p>
         </div>
         <div className="flex items-center gap-2">
           <a
-            href={`${API_BASE}/admin/orders.csv${tab === "all" ? "" : `?status_group=${tab}`}`}
+            href={`${API_BASE}/admin/orders.csv${enQuery(filtresVue)}`}
             target="_blank" rel="noopener noreferrer"
             data-testid="export-orders-csv"
             className="bg-ink text-white font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-foreground/80"
@@ -216,7 +242,7 @@ export default function AdminOrders() {
             <Download size={14} /> CSV
           </a>
           <a
-            href={`${API_BASE}/admin/orders.xlsx${tab === "all" ? "" : `?status_group=${tab}`}`}
+            href={`${API_BASE}/admin/orders.xlsx${enQuery(filtresVue)}`}
             target="_blank" rel="noopener noreferrer"
             data-testid="export-orders-xlsx"
             className="border border-ink font-mono text-xs uppercase tracking-[0.25em] px-4 py-2.5 flex items-center gap-2 hover:bg-ink hover:text-white"
@@ -263,7 +289,7 @@ export default function AdminOrders() {
           {FULFILLMENT_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <select value={filterLate} onChange={(e) => setFilterLate(e.target.value)} className="border border-ink/15 px-3 py-2 text-sm bg-white" data-testid="filter-late-payment">
-          <option value="all">All payments</option>
+          <option value="all">Late or on time</option>
           <option value="late_only">Late payments only</option>
         </select>
       </div>
