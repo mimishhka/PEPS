@@ -150,8 +150,12 @@ export default function AdminRefunds() {
             <DollarSign size={22} />{L("Remboursements", "Refunds")}
           </h1>
           <p className="text-sm text-compliance mt-1">
-            {L("Délai annoncé aux clients : 48 h après la livraison. Une demande tardive n'est plus refusée : elle est signalée, et vous décidez. Engagement : statuer en 2 jours. Crypto envoyée manuellement, collez la référence de transaction.",
-               "Window announced to customers: 48 h after delivery. A late request is no longer refused: it is flagged, and you decide. Commitment: decide within 2 days. Crypto sent manually, paste the transaction reference.")}
+            {/* Ce qu'il faut savoir pour décider — rien de plus. La version
+                précédente disait « une demande tardive n'est PLUS refusée » :
+                une note de version, qui n'avait de sens que pour qui
+                connaissait l'ancien comportement. */}
+            {L("Délai annoncé aux clients : 48 h après la livraison — une demande tardive est signalée, c'est vous qui décidez. Engagement : statuer en 2 jours. Les remboursements crypto s'envoient depuis votre portefeuille : collez ensuite la référence de la transaction.",
+               "Window announced to customers: 48 h after delivery — a late request is flagged, and you decide. Commitment: decide within 2 days. Crypto refunds are sent from your wallet: then paste the transaction reference.")}
           </p>
           {/* Chaque demande gèle la commission de l'affilié jusqu'à la
               décision. Une demande oubliée immobilise donc l'argent de
