@@ -4478,7 +4478,6 @@ async def admin_refunds_list(status: Optional[str] = None, limit: int = 50):
         "refund_method": 1,
         "refund_before_shipping": 1, "refund_late": 1, "refund_late_note": 1,
         "refund_source": 1, "refund_destination": 1, "refund_destination_type": 1,
-        "payment_method": 1,
     }).sort("refund_requested_at", -1).limit(limit)
     # COMPTEURS DE TOUTES LES ETAPES, renvoyes meme quand on en filtre une.
     #
