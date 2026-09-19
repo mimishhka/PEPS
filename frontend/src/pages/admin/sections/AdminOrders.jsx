@@ -6,6 +6,7 @@ import api, { API_BASE, formatApiError } from "../../../lib/api";
 import { StatusBadge } from "../AdminLayout";
 import { useConfirm } from "../../../components/ConfirmDialog";
 import { useAuth } from "../../../contexts/AuthContext";
+import { useLang } from "../../../contexts/LanguageContext";
 import { Th } from "../ui";
 
 const FULFILLMENT_OPTS = ["pending", "preorder", "processing", "shipped", "delivered", "cancelled", "failed", "refunded"];
@@ -30,15 +31,27 @@ const EN_ATTENTE = ["awaiting_etransfer", "awaiting_crypto"];
 // Une commande close n'a plus de facture, de suivi ni de courriel à renvoyer.
 const CLOSES = ["cancelled", "failed"];
 
-// Le serveur exige 10 caractères de motif pour ouvrir un dossier.
-const MOTIF_MIN = 10;
-
 // L'état d'un dossier de remboursement, dans les mots de l'écran Remboursements.
 const ETAT_DOSSIER = {
-  requested: "à examiner",
-  approved: "approuvé — l'argent reste à envoyer",
-  processed: "remboursé",
-  denied: "refusé",
+  requested: { fr: "à examiner", en: "to review" },
+  approved: { fr: "approuvé — l'argent reste à envoyer", en: "approved — the money still has to be sent" },
+  processed: { fr: "remboursé", en: "refunded" },
+  denied: { fr: "refusé", en: "denied" },
+};
+
+// Le moyen de paiement, lisible. La liste l'affichait ; la fiche, jamais.
+const METHODES = {
+  interac: "Interac",
+  etransfer: "Interac",
+  nowpayments: "Crypto · NOWPayments",
+};
+
+const dateLongue = (iso, lang) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
+    { day: "numeric", month: "long", year: "numeric" });
 };
 
 /* Regroupe les reports de lot CONSÉCUTIFS en une seule ligne.
@@ -441,6 +454,11 @@ export default function AdminOrders() {
 
 function OrderDetail({ order, onClose, onUpdate }) {
   const { user } = useAuth();
+  // La fiche suit la langue de l'interface, comme les écrans Remboursements et
+  // Billets. Elle mélangeait l'anglais (Customer, Items, Order Notes) et le
+  // français (Lot d'expédition, Remboursement) sur un même écran.
+  const { lang } = useLang();
+  const L = (fr, en) => (lang === "fr" ? fr : en);
   // Sans cette ligne, `confirm(...)` ne designait pas le dialogue stylé du
   // projet mais le window.confirm DU NAVIGATEUR — un global, donc aucune
   // erreur. Or ce composant lui passe un OBJET { title, description }, la ou
@@ -474,7 +492,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
         mark_paid: true,
         note: "Late payment received after auto-cancel",
       });
-      toast.success("Order reopened and marked as paid");
+      toast.success(L("Commande rouverte et marquée payée", "Order reopened and marked as paid"));
       onUpdate();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
@@ -484,15 +502,19 @@ function OrderDetail({ order, onClose, onUpdate }) {
   };
 
   const reopenOrder = async () => {
-    const note = window.prompt("Motif de réouverture (optionnel — trace dans l'historique) :", "") || "";
+    const note = window.prompt(
+      L("Motif de réouverture (optionnel — conservé dans l'historique) :",
+        "Reason for reopening (optional — kept in the history):"), "") || "";
     if (!await confirm({
-      title: "Réouvrir cette commande annulée ?",
-      description: "Le stock sera à nouveau décrémenté (409 si un article n'est plus disponible). La commande repasse en attente de paiement.",
+      title: L("Rouvrir cette commande annulée ?", "Reopen this cancelled order?"),
+      description: L(
+        "Le stock sera à nouveau décrémenté (refusé si un article n'est plus disponible). La commande repasse en attente de paiement.",
+        "Stock will be decremented again (refused if an item is no longer available). The order goes back to awaiting payment."),
     })) return;
     setReopenBusy(true);
     try {
       await api.post(`/admin/orders/${order.id}/reopen`, { mark_paid: false, note });
-      toast.success("Commande réouverte");
+      toast.success(L("Commande rouverte", "Order reopened"));
       onUpdate();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
@@ -502,10 +524,16 @@ function OrderDetail({ order, onClose, onUpdate }) {
   };
 
   const deleteOrder = async () => {
-    if (!await confirm({ title: `Move order ${order.order_number} to trash?`, description: "It stays recoverable there — nothing is lost." })) return;
+    if (!await confirm({
+      title: L(`Mettre la commande ${order.order_number} à la corbeille ?`,
+               `Move order ${order.order_number} to trash?`),
+      description: L("Elle reste récupérable dans la corbeille — rien n'est perdu.",
+                     "It stays recoverable there — nothing is lost."),
+      destructive: true,
+    })) return;
     try {
       await api.delete(`/admin/orders/${order.id}`);
-      toast.success("Order moved to trash");
+      toast.success(L("Commande mise à la corbeille", "Order moved to trash"));
       onUpdate();
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || err.message);
@@ -523,7 +551,6 @@ function OrderDetail({ order, onClose, onUpdate }) {
 
   const [noteText, setNoteText] = useState("");
   const [noteVisible, setNoteVisible] = useState(false);
-  const [refundReason, setRefundReason] = useState("");
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -534,21 +561,9 @@ function OrderDetail({ order, onClose, onUpdate }) {
   const confirmPayment = async () => {
     try {
       await api.post(`/admin/orders/${order.id}/confirm-payment`);
-      toast.success("Payment confirmed — moved to Processing");
+      toast.success(L("Paiement confirmé — commande en préparation", "Payment confirmed — moved to Processing"));
       onUpdate();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
-  };
-
-  const openRefundCase = async () => {
-    const motif = refundReason.trim();
-    // Même règle que le serveur, qui refusait sinon en 422 muet.
-    if (motif.length < MOTIF_MIN) return;
-    try {
-      await api.post(`/admin/orders/${order.id}/refund-case`, { reason: motif });
-      toast.success("Dossier ouvert — la commission affiliée est gelée");
-      setRefundReason("");
-      onUpdate();
-    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
 
   const updateStatus = async (field, value) => {
@@ -558,10 +573,16 @@ function OrderDetail({ order, onClose, onUpdate }) {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
 
+  // Le serveur ne fait plus reculer un statut : sur une commande déjà livrée,
+  // enregistrer le suivi le corrige sans la repasser en « expédiée ». Le
+  // message et le libellé du bouton disent donc ce qui se passe VRAIMENT.
+  const dejaPartie = ["shipped", "delivered"].includes(order.fulfillment_status);
   const saveShipping = async () => {
     try {
-      await api.put(`/admin/orders/${order.id}/shipping`, { carrier, tracking_number: tracking });
-      toast.success("Tracking saved — order marked as shipped");
+      const { data } = await api.put(`/admin/orders/${order.id}/shipping`, { carrier, tracking_number: tracking });
+      toast.success(data?.fulfillment_status === "shipped" && order.fulfillment_status !== "shipped"
+        ? L("Suivi enregistré — commande marquée expédiée", "Tracking saved — order marked as shipped")
+        : L("Suivi enregistré", "Tracking saved"));
       onUpdate();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
@@ -571,15 +592,15 @@ function OrderDetail({ order, onClose, onUpdate }) {
     try {
       const { data } = await api.post(`/admin/orders/${order.id}/sync-delivery`);
       if (!data?.tracked) {
-        toast.error("Repérage Canada Post indisponible pour le moment.");
+        toast.error(L("Repérage Postes Canada indisponible pour le moment.", "Canada Post tracking unavailable right now."));
         return;
       }
       if (data?.updated) {
-        toast.success("Livraison confirmée: statut mis à jour à delivered.");
+        toast.success(L("Livraison confirmée — statut passé à livré.", "Delivery confirmed — status set to delivered."));
       } else if (data?.delivered) {
-        toast.success("Commande déjà marquée delivered.");
+        toast.success(L("Commande déjà marquée livrée.", "Order already marked delivered."));
       } else {
-        toast("Colis pas encore livré selon le repérage.");
+        toast(L("Colis pas encore livré selon le repérage.", "Parcel not delivered yet according to tracking."));
       }
       onUpdate();
     } catch (e) {
@@ -593,7 +614,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
     if (!noteText.trim()) return;
     try {
       await api.post(`/admin/orders/${order.id}/notes`, { text: noteText, visible_to_customer: noteVisible });
-      if (noteVisible) toast.success("Note added — email sent to customer");
+      if (noteVisible) toast.success(L("Note ajoutée — courriel envoyé au client", "Note added — email sent to customer"));
       setNoteText(""); setNoteVisible(false); onUpdate();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
@@ -601,235 +622,257 @@ function OrderDetail({ order, onClose, onUpdate }) {
   const resendEmail = async () => {
     try {
       const { data } = await api.post(`/admin/orders/${order.id}/resend-email`);
-      toast.success(`Order email re-sent to ${data.sent_to}`);
+      toast.success(L(`Courriel de commande renvoyé à ${data.sent_to}`, `Order email re-sent to ${data.sent_to}`));
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
 
   const addr = order.shipping_address || {};
+  const aUneAdresse = !!(addr.address1 || addr.city || addr.postal_code);
+  const articles = order.items || [];
+  const nomArticle = (it) => (lang === "fr" ? (it.name_fr || it.name_en) : it.name_en) || "—";
+
+  // Le lot d'expédition n'a de sens que pour une commande qui ATTEND de
+  // partir. Il restait affiché sur les commandes expédiées, livrées,
+  // annulées ou remboursées, où il ne désigne plus rien d'actionnable.
+  const enPreparation = order.payment_status === "paid"
+    && !["shipped", "delivered", "cancelled", "failed", "refunded"].includes(order.fulfillment_status);
+
+  // Les actions ne s'affichent que si l'une d'elles s'applique : une rangée
+  // vide sous les statuts n'aurait rien à dire.
+  const peutFacturer = !CLOSES.includes(order.payment_status);
+  const peutRenvoyer = !!order.email && [...EN_ATTENTE, "paid"].includes(order.payment_status);
+  const peutConfirmer = EN_ATTENTE.includes(order.payment_status);
+  const aDesActions = canReopenLatePaid || canReopenGeneric || peutConfirmer || peutFacturer || peutRenvoyer;
+
+  const placee = dateLongue(order.created_at, lang);
+  const payee = dateLongue(order.paid_at, lang);
+  const titre = "font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50";
+  const carte = "bg-white border border-ink/10 p-4";
+  const bouton = "border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white";
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex justify-end" onClick={onClose}>
       <div className="bg-[#fafafa] w-full max-w-3xl h-full overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="order-detail-drawer">
-        <div className="bg-ink text-white px-6 py-4 sticky top-0 z-10 flex items-center justify-between">
-          <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em]">// ORDER</div>
+        {/* En-tête : QUI et QUAND, d'un coup d'œil. La date et le moyen de
+            paiement n'apparaissaient nulle part dans la fiche. La corbeille a
+            quitté l'en-tête : collée à la croix de fermeture, un clic de
+            travers suffisait. Elle est en bas, dans sa propre zone. */}
+        <div className="bg-ink text-white px-6 py-4 sticky top-0 z-10 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-white/60">{L("// COMMANDE", "// ORDER")}</div>
             <div className="font-display text-xl font-bold tracking-tight" data-testid="order-detail-number">{order.order_number}</div>
-            {order.dispatch_batch && (
-              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-glacier" data-testid="order-detail-dispatch-batch">
-                LOT D'EXPÉDITION · {order.dispatch_batch}
+            <div className="font-mono text-[11px] text-white/70 mt-0.5" data-testid="order-detail-summary">
+              {placee ? L(`Passée le ${placee}`, `Placed ${placee}`) : L("Date inconnue", "Unknown date")}
+              {order.payment_method && ` · ${METHODES[order.payment_method] || order.payment_method}`}
+            </div>
+            {order.dispatch_batch && enPreparation && (
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-glacier mt-0.5" data-testid="order-detail-dispatch-batch">
+                {L("Lot d'expédition", "Dispatch batch")} · {order.dispatch_batch}
               </div>
             )}
           </div>
-          <div className="flex items-center gap-4">
-            <button onClick={deleteOrder} data-testid="delete-order-btn" title="Move to trash"
-              className="text-white/60 hover:text-white">
-              <Trash2 size={18} />
-            </button>
-            <button onClick={onClose} aria-label="Close" data-testid="close-order-detail"><X size={20} /></button>
-          </div>
+          <button onClick={onClose} aria-label={L("Fermer", "Close")} data-testid="close-order-detail"
+            className="text-white/80 hover:text-white shrink-0"><X size={20} /></button>
         </div>
 
-        <div className="p-6 space-y-6">
-          {/* Status row */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <StatusBadge status={order.payment_status} />
-            <StatusBadge status={order.fulfillment_status} />
-            {canReopenLatePaid && (
-              <button
-                onClick={reopenLatePaidOrder}
-                disabled={reopenBusy}
-                data-testid="reopen-late-paid-btn"
-                className="bg-amber-600 text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-amber-700 disabled:opacity-50"
-                title="Réouvrir la commande annulée automatiquement après paiement tardif détecté"
-              >
-                <Undo2 size={14} /> {reopenBusy ? "Réouverture…" : "Réouvrir + marquer payé"}
-              </button>
-            )}
-            {canReopenGeneric && (
-              <button
-                onClick={reopenOrder}
-                disabled={reopenBusy}
-                data-testid="reopen-order-btn"
-                className="bg-nordfjord text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
-                title="Réouvrir cette commande annulée (repasse en attente de paiement)"
-              >
-                <Undo2 size={14} /> {reopenBusy ? "Réouverture…" : "Réouvrir"}
-              </button>
-            )}
-            {/* Seulement si le paiement est encore ATTENDU. Sur une commande
-                annulée, échouée ou remboursée, le serveur ne faisait rien —
-                mais l'écran annonçait « Payment confirmed ». Une commande
-                annulée se rouvre par « Réouvrir », qui revérifie le stock. */}
-            {EN_ATTENTE.includes(order.payment_status) && (
-              <button
-                onClick={confirmPayment}
-                data-testid="confirm-payment-btn"
-                className="bg-emerald-600 text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-emerald-700"
-              >
-                <CheckCircle2 size={14} /> Confirm Payment
-              </button>
-            )}
-            {/* Pas de facture pour une vente qui n'a pas eu lieu. Une commande
-                remboursée garde la sienne : la vente a existé. */}
-            {!CLOSES.includes(order.payment_status) && (
-              <a
-                href={`${API_BASE}/orders/${order.id}/invoice.pdf`}
-                target="_blank" rel="noopener noreferrer"
-                data-testid="download-invoice-pdf"
-                className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
-              >
-                <FileText size={14} /> Invoice PDF
-              </a>
-            )}
-            {/* Ce courriel reprend la commande et, sans paiement, les
-                instructions pour payer. Le renvoyer à un client annulé ou
-                remboursé lui demanderait de payer ce qui n'existe plus. */}
-            {order.email && [...EN_ATTENTE, "paid"].includes(order.payment_status) && (
-              <button
-                onClick={resendEmail}
-                data-testid="resend-email-btn"
-                className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
-              >
-                <Mail size={14} /> Resend Email
-              </button>
-            )}
-          </div>
-
-          {/* Customer + Address */}
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="bg-white border border-ink/10 p-4">
-              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50">Customer</div>
-              <div className="font-bold mt-1">{addr.full_name || "—"}</div>
-              <div className="text-sm text-foreground/70">{order.email || "—"}</div>
-              {/* « Guest » ne s'affichait que sans courriel — or un invité en a
-                  toujours un. C'est l'absence de COMPTE qui compte : elle dit
-                  que ce client n'a pas accès aux billets d'aide. */}
-              {!order.user_id && (
-                <span data-testid="order-guest"
-                  className="inline-block mt-1 font-mono text-[10px] uppercase tracking-[0.15em] border border-ink/20 px-2 py-0.5 text-foreground/60">
-                  Guest checkout — no account
+        <div className="p-6 space-y-5">
+          {/* Statuts d'abord, sur leur propre ligne ; les actions ensuite. Ils
+              étaient mêlés dans une seule rangée, badges et boutons confondus. */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap" data-testid="order-detail-statuses">
+              <StatusBadge status={order.payment_status} lang={lang} />
+              <StatusBadge status={order.fulfillment_status} lang={lang} />
+              {order.late_payment_flagged && (
+                <span className="inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-red-700">
+                  {L("Paiement tardif", "Late payment")}
                 </span>
               )}
+              {!order.user_id && (
+                <span data-testid="order-guest"
+                  className="inline-flex items-center rounded-full border border-ink/20 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-foreground/60">
+                  {L("Invité — sans compte", "Guest — no account")}
+                </span>
+              )}
+            </div>
+
+            {aDesActions && (
+              <div className="flex items-center gap-2 flex-wrap" data-testid="order-detail-actions">
+                {canReopenLatePaid && (
+                  <button onClick={reopenLatePaidOrder} disabled={reopenBusy} data-testid="reopen-late-paid-btn"
+                    className="bg-amber-600 text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-amber-700 disabled:opacity-50"
+                    title={L("Rouvrir la commande annulée automatiquement après un paiement tardif",
+                             "Reopen the order auto-cancelled after a late payment")}>
+                    <Undo2 size={14} /> {reopenBusy ? L("Réouverture…", "Reopening…") : L("Rouvrir et marquer payée", "Reopen + mark paid")}
+                  </button>
+                )}
+                {canReopenGeneric && (
+                  <button onClick={reopenOrder} disabled={reopenBusy} data-testid="reopen-order-btn"
+                    className="bg-nordfjord text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
+                    title={L("Rouvrir cette commande annulée (repasse en attente de paiement)",
+                             "Reopen this cancelled order (back to awaiting payment)")}>
+                    <Undo2 size={14} /> {reopenBusy ? L("Réouverture…", "Reopening…") : L("Rouvrir", "Reopen")}
+                  </button>
+                )}
+                {/* Seulement si le paiement est encore ATTENDU. Sur une commande
+                    annulée, échouée ou remboursée, le serveur ne faisait rien —
+                    mais l'écran annonçait « Payment confirmed ». */}
+                {peutConfirmer && (
+                  <button onClick={confirmPayment} data-testid="confirm-payment-btn"
+                    className="bg-emerald-600 text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-emerald-700">
+                    <CheckCircle2 size={14} /> {L("Confirmer le paiement", "Confirm payment")}
+                  </button>
+                )}
+                {/* Pas de facture pour une vente qui n'a pas eu lieu. Une commande
+                    remboursée garde la sienne : la vente a existé. */}
+                {peutFacturer && (
+                  <a href={`${API_BASE}/orders/${order.id}/invoice.pdf`} target="_blank" rel="noopener noreferrer"
+                    data-testid="download-invoice-pdf" className={bouton}>
+                    <FileText size={14} /> {L("Facture PDF", "Invoice PDF")}
+                  </a>
+                )}
+                {/* Ce courriel reprend la commande et, sans paiement, les
+                    instructions pour payer : pas pour une commande close. */}
+                {peutRenvoyer && (
+                  <button onClick={resendEmail} data-testid="resend-email-btn" className={bouton}>
+                    <Mail size={14} /> {L("Renvoyer le courriel", "Resend email")}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Client · Livraison · Paiement */}
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div className={carte}>
+              <div className={titre}>{L("Client", "Customer")}</div>
+              <div className="font-bold mt-1">{addr.full_name || "—"}</div>
+              <div className="text-sm text-foreground/70 break-all">{order.email || "—"}</div>
               {addr.phone && <div className="text-sm text-foreground/70">{addr.phone}</div>}
             </div>
-            <div className="bg-white border border-ink/10 p-4">
-              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50">Ship to</div>
-              <div className="text-sm mt-1">{addr.address1}{addr.address2 ? `, ${addr.address2}` : ""}</div>
-              <div className="text-sm">{addr.city}, {addr.province} {addr.postal_code}</div>
-              <div className="text-sm">{addr.country}</div>
+            <div className={carte}>
+              <div className={titre}>{L("Livraison", "Ship to")}</div>
+              {aUneAdresse ? (
+                <>
+                  <div className="text-sm mt-1">{addr.address1}{addr.address2 ? `, ${addr.address2}` : ""}</div>
+                  <div className="text-sm">{[addr.city, addr.province].filter(Boolean).join(", ")} {addr.postal_code}</div>
+                  <div className="text-sm">{addr.country}</div>
+                </>
+              ) : (
+                <div className="text-sm mt-1 text-foreground/50" data-testid="order-no-address">{L("Aucune adresse", "No address")}</div>
+              )}
+            </div>
+            <div className={carte} data-testid="order-detail-payment">
+              <div className={titre}>{L("Paiement", "Payment")}</div>
+              <div className="text-sm mt-1">{METHODES[order.payment_method] || order.payment_method || "—"}</div>
+              <div className="text-sm text-foreground/70">
+                {payee ? L(`Payée le ${payee}`, `Paid ${payee}`) : L("Pas encore payée", "Not paid yet")}
+              </div>
             </div>
           </div>
 
-          {/* Items */}
+          {/* Articles */}
           <div className="bg-white border border-ink/10">
-            <div className="px-4 py-3 border-b border-ink/10 font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50">Items</div>
+            <div className={`px-4 py-3 border-b border-ink/10 ${titre}`}>{L("Articles", "Items")}</div>
             <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <tbody>
                 {/* `order.items` peut manquer : FN-AUTO-B3AD4F n'a pas ce champ.
                     L'appel direct à .map() faisait tomber TOUT l'écran
                     d'administration — « Something went wrong ». */}
-                {(order.items || []).map((it) => (
+                {articles.map((it) => (
                   <tr key={it.product_id} className="border-t border-ink/5">
                     <td className="px-4 py-3">
-                      <div className="font-bold">{it.name_en}</div>
-                      <div className="font-mono text-[10px] text-foreground/50">{it.slug} · {it.qty}× @ ${it.price_cad?.toFixed(2)}</div>
-                      {it.preorder && <span className="inline-block mt-1 text-[10px] font-mono uppercase tracking-[0.15em] bg-orange-500 text-white px-2 py-0.5">PRE-ORDER</span>}
+                      <div className="font-bold">{nomArticle(it)}</div>
+                      <div className="font-mono text-[10px] text-foreground/50">
+                        {it.variant_name || it.slug} · {it.qty}× @ ${it.price_cad?.toFixed(2)}
+                      </div>
+                      {it.preorder && <span className="inline-block mt-1 text-[10px] font-mono uppercase tracking-[0.15em] bg-orange-500 text-white px-2 py-0.5">{L("Précommande", "Pre-order")}</span>}
                     </td>
                     <td className="px-4 py-3 text-right font-bold tabular-nums">${it.line_total?.toFixed(2)}</td>
                   </tr>
                 ))}
-                {!(order.items || []).length && (
+                {!articles.length && (
                   <tr><td colSpan={2} className="px-4 py-3 text-sm text-amber-700" data-testid="order-no-items">
-                    Aucun article sur cette commande — enregistrement incomplet.
+                    {L("Aucun article sur cette commande — enregistrement incomplet.",
+                       "No items on this order — incomplete record.")}
                   </td></tr>
                 )}
               </tbody>
               <tfoot className="bg-secondary/50">
-                <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Subtotal</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.subtotal?.toFixed(2)}</td></tr>
+                <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">{L("Sous-total", "Subtotal")}</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.subtotal?.toFixed(2)}</td></tr>
                 {order.discount > 0 && (
-                  <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Discount {order.coupon?.code && `(${order.coupon.code})`}</td><td className="px-4 py-1 text-right text-sm tabular-nums text-emerald-700">-${order.discount?.toFixed(2)}</td></tr>
+                  <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">{L("Rabais", "Discount")} {order.coupon?.code && `(${order.coupon.code})`}</td><td className="px-4 py-1 text-right text-sm tabular-nums text-emerald-700">-${order.discount?.toFixed(2)}</td></tr>
                 )}
-                <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Shipping</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.shipping?.toFixed(2)}</td></tr>
+                <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">{L("Livraison", "Shipping")}</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.shipping?.toFixed(2)}</td></tr>
                 {/* Sans cette ligne, une commande taxée affichait des montants
                     dont la somme ne donnait pas le total. */}
                 {order.tax > 0 && (
-                  <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">Tax</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.tax.toFixed(2)}</td></tr>
+                  <tr><td className="px-4 py-1 text-right text-xs text-foreground/60">{L("Taxes", "Tax")}</td><td className="px-4 py-1 text-right text-sm tabular-nums">${order.tax.toFixed(2)}</td></tr>
                 )}
-                <tr><td className="px-4 py-2 text-right font-bold uppercase">Total CAD</td><td className="px-4 py-2 text-right font-display font-bold text-lg tabular-nums" data-testid="order-total">${order.total?.toFixed(2)}</td></tr>
+                <tr><td className="px-4 py-2 text-right font-bold uppercase">{L("Total CAD", "Total CAD")}</td><td className="px-4 py-2 text-right font-display font-bold text-lg tabular-nums" data-testid="order-total">${order.total?.toFixed(2)}</td></tr>
               </tfoot>
             </table>
             </div>
           </div>
 
           {/* Expédition — le formulaire seulement pour une commande PAYÉE : le
-              serveur refuse tout suivi sur une commande impayée (409), qu'elle
-              soit en attente, annulée ou remboursée. Une commande close qui a
-              été expédiée garde ses informations, en lecture seule. */}
+              serveur refuse tout suivi sur une commande impayée (409). Une
+              commande close déjà expédiée garde ses informations, en lecture
+              seule. */}
           {(order.payment_status === "paid" || !!(shipInfo.tracking_number || shipInfo.label_url)) && (
-          <div className="bg-white border border-ink/10 p-4" data-testid="order-shipping">
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3 flex items-center gap-2"><Truck size={12} /> Shipping & Tracking</div>
+          <div className={carte} data-testid="order-shipping">
+            <div className={`${titre} mb-3 flex items-center gap-2`}><Truck size={12} /> {L("Expédition et suivi", "Shipping & tracking")}</div>
             {order.payment_status !== "paid" ? (
               <div className="text-sm text-foreground/70" data-testid="order-shipping-readonly">
-                {shipInfo.carrier || "—"} · {shipInfo.tracking_number || "pas de numéro de suivi"}
+                {shipInfo.carrier || "—"} · {shipInfo.tracking_number || L("pas de numéro de suivi", "no tracking number")}
               </div>
             ) : (<>
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
-                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Carrier</label>
+                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">{L("Transporteur", "Carrier")}</label>
                 <input value={carrier} onChange={(e) => setCarrier(e.target.value)} data-testid="shipping-carrier" className="w-full border border-ink/20 px-3 py-2 text-sm" />
               </div>
               <div>
-                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">Tracking Number</label>
+                <label className="block font-mono text-[10px] uppercase tracking-[0.2em] mb-1">{L("Numéro de suivi", "Tracking number")}</label>
                 <input value={tracking} onChange={(e) => setTracking(e.target.value)} data-testid="shipping-tracking" className="w-full border border-ink/20 px-3 py-2 text-sm" />
               </div>
             </div>
-            <div className="flex items-center gap-3 mt-3">
+            <div className="flex items-center gap-3 mt-3 flex-wrap">
               <button onClick={saveShipping} data-testid="save-shipping-btn" className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-foreground/80">
-                <Save size={14} /> Save & Mark Shipped
+                <Save size={14} /> {dejaPartie ? L("Enregistrer le suivi", "Save tracking") : L("Enregistrer et marquer expédiée", "Save & mark shipped")}
               </button>
               {tracking && order.fulfillment_status !== "delivered" && (
-                <button
-                  onClick={syncDeliveredFromTracking}
-                  disabled={deliverySyncBusy}
-                  data-testid="sync-delivery-btn"
-                  className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:bg-ink hover:text-white disabled:opacity-50"
-                  title="Vérifier le repérage Canada Post et passer la commande en livré"
-                >
-                  <Truck size={14} /> {deliverySyncBusy ? "Vérification…" : "Vérifier livraison"}
+                <button onClick={syncDeliveredFromTracking} disabled={deliverySyncBusy} data-testid="sync-delivery-btn"
+                  className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white disabled:opacity-50"
+                  title={L("Vérifier le repérage Postes Canada et passer la commande en livrée",
+                           "Check Canada Post tracking and mark the order delivered")}>
+                  <Truck size={14} /> {deliverySyncBusy ? L("Vérification…", "Checking…") : L("Vérifier la livraison", "Check delivery")}
                 </button>
               )}
             </div>
             </>)}
             {order.shipping_info?.shipped_at && (
-              <div className="font-mono text-[10px] text-foreground/50 mt-2">Shipped at: {order.shipping_info.shipped_at}</div>
+              <div className="font-mono text-[10px] text-foreground/50 mt-2">
+                {L("Expédiée le", "Shipped")} {dateLongue(order.shipping_info.shipped_at, lang) || order.shipping_info.shipped_at}
+              </div>
             )}
 
             {/* Postes Canada — l'étiquette se génère depuis l'écran Dispatch.
                 Ici, lecture seule : télécharger l'étiquette / le manifeste. */}
             {shipInfo?.label_url && (
               <div className="mt-4 pt-4 border-t border-ink/10 flex flex-wrap items-center gap-3">
-                <a
-                  href={`${API_BASE.replace(/\/api$/, "")}${shipInfo.label_url}`}
-                  target="_blank" rel="noopener noreferrer"
+                <a href={`${API_BASE.replace(/\/api$/, "")}${shipInfo.label_url}`} target="_blank" rel="noopener noreferrer"
                   data-testid="download-label-btn"
-                  className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 inline-flex items-center gap-2"
-                >
-                  <Download size={14} /> Download label PDF
+                  className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 inline-flex items-center gap-2">
+                  <Download size={14} /> {L("Étiquette PDF", "Label PDF")}
                 </a>
                 <span className={`font-mono text-[10px] uppercase tracking-[0.2em] px-2 py-1 border ${
                   shipInfo.cp_transmitted ? "border-green-600 text-green-700" : "border-red-600 text-red-700"}`}>
-                  {shipInfo.cp_transmitted ? "Manifest transmitted" : "Not transmitted"}
+                  {shipInfo.cp_transmitted ? L("Manifeste transmis", "Manifest transmitted") : L("Non transmis", "Not transmitted")}
                 </span>
                 {manifestUrl && (
-                  <a
-                    href={manifestUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-testid="download-manifest-btn"
-                    className="border border-ink text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:bg-ink hover:text-white"
-                  >
-                    <Download size={14} /> Download manifest PDF
+                  <a href={manifestUrl} target="_blank" rel="noopener noreferrer" data-testid="download-manifest-btn" className={bouton}>
+                    <Download size={14} /> {L("Manifeste PDF", "Manifest PDF")}
                   </a>
                 )}
               </div>
@@ -837,90 +880,85 @@ function OrderDetail({ order, onClose, onUpdate }) {
           </div>
           )}
 
-          {/* Actions de statut — remplacent les menus déroulants libres : chaque
-              transition a désormais UN chemin dédié avec ses effets de bord.
-              La préparation (packing/packed) avance depuis l'écran Fulfillment,
-              l'expédition via le suivi, l'étiquetage via Dispatch, le
-              remboursement via l'écran Refunds. */}
           {/* Ces deux actions n'existent que pour un paiement en attente.
               Ailleurs, le bloc s'affichait vide : un titre sans bouton. */}
           {EN_ATTENTE.includes(order.payment_status) && (
-            <div className="bg-white border border-ink/10 p-4" data-testid="order-status-actions">
-              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3">Actions de statut</div>
+            <div className={carte} data-testid="order-status-actions">
+              <div className={`${titre} mb-3`}>{L("Paiement en attente", "Awaiting payment")}</div>
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => updateStatus("payment_status", "cancelled")} data-testid="cancel-order-btn"
                   className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:border-red-500 hover:text-red-500">
-                  Annuler
+                  {L("Annuler la commande", "Cancel order")}
                 </button>
                 <button onClick={() => updateStatus("payment_status", "failed")} data-testid="mark-failed-btn"
                   className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:border-amber-500 hover:text-amber-500">
-                  Marquer échoué
+                  {L("Marquer échoué", "Mark failed")}
                 </button>
               </div>
             </div>
           )}
 
-          {/* Remboursement — décision et règlement dans l'écran Refunds. Ici :
-              ouvrir un dossier (gèle la commission) ou lire l'état. */}
-          {/* Le formulaire n'a de sens que pour une commande PAYÉE : le serveur
-              refuse les autres. Il s'affichait partout, et la personne ne
-              l'apprenait qu'après avoir tapé un motif. */}
-          {(order.refund_status || order.payment_status === "paid") && (
-          <div className="bg-white border border-ink/10 p-4" data-testid="order-refund">
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-2">Remboursement</div>
-            {order.refund_status ? (
-              <div className="font-mono text-[11px] text-foreground/70" data-testid="refund-case-state">
-                Dossier : {ETAT_DOSSIER[order.refund_status] || order.refund_status}
+          {/* Remboursement — LECTURE SEULE. La fiche ouvrait aussi des
+              dossiers : un doublon de l'écran Remboursements, qui sait
+              désormais ouvrir un dossier pour n'importe quelle commande,
+              invités compris. Un seul endroit pour créer ; ici on lit. */}
+          {order.refund_status && (
+            <div className={carte} data-testid="order-refund">
+              <div className={`${titre} mb-2`}>{L("Remboursement", "Refund")}</div>
+              <div className="text-sm text-foreground/80" data-testid="refund-case-state">
+                {L("Dossier", "Case")} : {ETAT_DOSSIER[order.refund_status]
+                  ? L(ETAT_DOSSIER[order.refund_status].fr, ETAT_DOSSIER[order.refund_status].en)
+                  : order.refund_status}
                 {order.refund_reason ? ` — ${order.refund_reason}` : ""}
-                {order.refunded_amount > 0 ? ` · Remboursé : $${order.refunded_amount.toFixed(2)}` : ""}
+                {order.refunded_amount > 0 ? L(` · Remboursé : $${order.refunded_amount.toFixed(2)}`,
+                                               ` · Refunded: $${order.refunded_amount.toFixed(2)}`) : ""}
               </div>
-            ) : (
-              <div className="flex items-center gap-3 flex-wrap">
-                <input
-                  value={refundReason}
-                  onChange={(e) => setRefundReason(e.target.value)}
-                  placeholder="Motif — produit endommagé, erreur de commande… (10 caractères au moins)"
-                  data-testid="refund-case-reason"
-                  className="border border-ink/20 px-3 py-2 text-sm flex-1 min-w-[16rem]"
-                />
-                <button onClick={openRefundCase} disabled={refundReason.trim().length < MOTIF_MIN}
-                  data-testid="open-refund-case-btn"
-                  className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:border-nova hover:text-nova disabled:opacity-40 disabled:cursor-not-allowed">
-                  Ouvrir un dossier
-                </button>
-                <span className="font-mono text-[10px] text-foreground/50">gèle la commission affiliée</span>
+              <div className="font-mono text-[10px] text-foreground/50 mt-1">
+                {L("La décision et le versement se font dans l'écran Remboursements.",
+                   "The decision and the payment happen in the Refunds screen.")}
               </div>
-            )}
-          </div>
+            </div>
           )}
 
-          {/* Notes */}
-          <div className="bg-white border border-ink/10 p-4">
-            <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50 mb-3 flex items-center gap-2"><MessageSquarePlus size={12} /> Order Notes</div>
-            <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
+          {/* Notes — la liste suit le défilement de la fiche. Elle avait sa
+              propre barre de défilement, dans une fiche qui défile déjà. */}
+          <div className={carte}>
+            <div className={`${titre} mb-3 flex items-center gap-2`}><MessageSquarePlus size={12} /> {L("Notes", "Notes")}</div>
+            <div className="space-y-2 mb-3">
               {regrouperReports(order.notes || []).map((n, i) => (
                 <div key={i} className={`text-sm border-l-2 pl-3 py-1 ${n.visible_to_customer ? "border-emerald-500" : "border-ink/30"}`} data-testid={`note-${i}`}>
                   <div className="text-foreground/85">
                     {n.report && n.report.n > 1
-                      ? `Reportée ${n.report.n} fois — du lot ${n.report.depuis} au lot ${n.report.jusqua} (étiquette non imprimée).`
+                      ? L(`Reportée ${n.report.n} fois — du lot ${n.report.depuis} au lot ${n.report.jusqua} (étiquette non imprimée).`,
+                          `Rolled over ${n.report.n} times — from batch ${n.report.depuis} to ${n.report.jusqua} (label not printed).`)
                       : n.text}
                   </div>
                   <div className="font-mono text-[10px] text-foreground/50 mt-1">
                     {n.admin_email || n.author} · {((n.ts || n.created_at) || "").slice(0, 16).replace("T", " ")}
-                    {n.visible_to_customer && <span className="ml-2 text-emerald-600 font-bold">CUSTOMER</span>}
+                    {n.visible_to_customer && <span className="ml-2 text-emerald-600 font-bold">{L("VISIBLE CLIENT", "CUSTOMER")}</span>}
                   </div>
                 </div>
               ))}
-              {!order.notes?.length && <div className="font-mono text-[10px] text-foreground/50">No notes yet.</div>}
+              {!order.notes?.length && <div className="font-mono text-[10px] text-foreground/50">{L("Aucune note.", "No notes yet.")}</div>}
             </div>
             <div className="flex gap-2">
-              <input value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Add a note…" data-testid="note-input" className="flex-1 border border-ink/20 px-3 py-2 text-sm" />
-              <button onClick={addNote} data-testid="add-note-btn" className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4">Add</button>
+              <input value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder={L("Ajouter une note…", "Add a note…")} data-testid="note-input" className="flex-1 border border-ink/20 px-3 py-2 text-sm" />
+              <button onClick={addNote} data-testid="add-note-btn" className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-4">{L("Ajouter", "Add")}</button>
             </div>
             <label className="flex items-center gap-2 mt-2 cursor-pointer">
               <input type="checkbox" checked={noteVisible} onChange={(e) => setNoteVisible(e.target.checked)} data-testid="note-visible-checkbox" />
-              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-foreground/70">Visible to customer (sends email)</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-foreground/70">
+                {L("Visible par le client (envoie un courriel)", "Visible to customer (sends email)")}
+              </span>
             </label>
+          </div>
+
+          {/* Zone sensible, séparée du reste et loin de la croix de fermeture. */}
+          <div className="pt-2 border-t border-ink/10 flex justify-end">
+            <button onClick={deleteOrder} data-testid="delete-order-btn"
+              className="text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 text-foreground/50 hover:text-red-600">
+              <Trash2 size={14} /> {L("Mettre à la corbeille", "Move to trash")}
+            </button>
           </div>
         </div>
       </div>

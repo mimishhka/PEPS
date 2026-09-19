@@ -28,6 +28,11 @@ jest.mock("../../../contexts/AuthContext", () => ({
   useAuth: () => ({ user: { role: "admin" } }),
 }));
 
+// La fiche suit la langue de l'interface. Les tests la lisent en français.
+jest.mock("../../../contexts/LanguageContext", () => ({
+  useLang: () => ({ lang: "fr" }),
+}));
+
 jest.mock("lucide-react", () => new Proxy({}, {
   get: (cible, nom) => (nom === "__esModule" ? true : () => null),
 }));
@@ -144,12 +149,11 @@ it("une commande sans articles ne fait plus tomber l'ecran", async () => {
   present("order-no-items");
 });
 
-it("commande payee : on expedie, on peut ouvrir un dossier, rien a confirmer", async () => {
+it("commande payee : on expedie, rien a confirmer", async () => {
   await ouvrir({});
   absent("confirm-payment-btn");      // déjà payée
   absent("order-status-actions");     // ne s'affiche plus vide
   present("save-shipping-btn");
-  present("open-refund-case-btn");
   present("download-invoice-pdf");
   present("resend-email-btn");
 });
@@ -210,9 +214,61 @@ it("regroupe les reports de lot consecutifs sans perdre les notes humaines", asy
   absent("note-2");
 });
 
-it("un motif de dossier trop court ne part pas", async () => {
-  // Le serveur exige 10 caractères ; en dessous il répondait en 422 muet.
+it("la fiche n'ouvre plus de dossier de remboursement", async () => {
+  // Doublon de l'écran Remboursements, qui ouvre un dossier pour n'importe
+  // quelle commande, invités compris. Un seul endroit pour créer.
   await ouvrir({});
-  fireEvent.change(screen.getByTestId("refund-case-reason"), { target: { value: "cassé" } });
-  expect(screen.getByTestId("open-refund-case-btn")).toBeDisabled();
+  absent("open-refund-case-btn");
+  absent("refund-case-reason");
+  absent("order-refund");             // pas de dossier : rien à lire non plus
+});
+
+it("elle lit le dossier qui existe, sans permettre d'en ouvrir un autre", async () => {
+  await ouvrir({ refund_status: "approved", refund_reason: "Flacon fissuré" });
+  expect(screen.getByTestId("refund-case-state")).toHaveTextContent("approuvé");
+  expect(screen.getByTestId("refund-case-state")).toHaveTextContent("Flacon fissuré");
+  absent("open-refund-case-btn");
+});
+
+it("l'en-tete dit quand la commande a ete passee et comment elle a ete payee", async () => {
+  // Ni la date ni le moyen de paiement n'apparaissaient dans la fiche.
+  await ouvrir({ paid_at: "2026-09-02T10:00:00Z" });
+  const resume = screen.getByTestId("order-detail-summary");
+  expect(resume).toHaveTextContent("Passée le");
+  expect(resume).toHaveTextContent("Interac");
+  expect(screen.getByTestId("order-detail-payment")).toHaveTextContent("Payée le");
+});
+
+it("une commande en attente dit qu'elle n'est pas encore payee", async () => {
+  await ouvrir({ payment_status: "awaiting_etransfer", fulfillment_status: "pending", paid_at: null });
+  expect(screen.getByTestId("order-detail-payment")).toHaveTextContent("Pas encore payée");
+});
+
+it("le lot d'expedition disparait une fois la commande partie", async () => {
+  await ouvrir({ fulfillment_status: "delivered", dispatch_batch: "2026-09-19" });
+  absent("order-detail-dispatch-batch");
+});
+
+it("le lot d'expedition reste affiche tant que la commande attend de partir", async () => {
+  await ouvrir({ fulfillment_status: "processing", dispatch_batch: "2026-09-19" });
+  expect(screen.getByTestId("order-detail-dispatch-batch")).toHaveTextContent("2026-09-19");
+});
+
+it("sur une commande livree, le bouton ne promet plus de la marquer expediee", async () => {
+  // Le serveur ne fait plus reculer un statut : le libellé doit le dire.
+  await ouvrir({ fulfillment_status: "delivered" });
+  expect(screen.getByTestId("save-shipping-btn")).toHaveTextContent("Enregistrer le suivi");
+  expect(screen.getByTestId("save-shipping-btn")).not.toHaveTextContent("expédiée");
+});
+
+it("une commande sans adresse le dit au lieu d'afficher des virgules", async () => {
+  await ouvrir({ shipping_address: { full_name: "Marie" } });
+  present("order-no-address");
+});
+
+it("la corbeille a quitte l'en-tete, loin de la croix de fermeture", async () => {
+  await ouvrir({});
+  const entete = screen.getByTestId("close-order-detail").parentElement;
+  expect(entete).not.toContainElement(screen.getByTestId("delete-order-btn"));
+  expect(screen.getByTestId("delete-order-btn")).toHaveTextContent("Mettre à la corbeille");
 });
