@@ -1489,6 +1489,10 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const [data, setData] = useState(null);
   // Mois choisi pour l'export des commissions. Vaut "" = tout exporter.
   const [mois, setMois] = useState("");
+  // Serie mensuelle : trois mois visibles, le plus recent D'ABORD, et un tri
+  // par colonne. Les douze mois entiers restent a un clic.
+  const [serieEtendue, setSerieEtendue] = useState(false);
+  const [triSerie, setTriSerie] = useState({ cle: "mois", sens: -1 });
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [resending, setResending] = useState(false);
@@ -1690,6 +1694,13 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const a = data?.affiliate;
   const m = data?.metrics;
 
+  // Le versement automatique part le 1er du mois suivant, pour la periode
+  // ecoulee. L'afficher rappelle le delai de debourse, sans qu'aucune date
+  // soit ecrite en dur dans la page.
+  const prochainCycle = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)
+    .toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
+      { year: "numeric", month: "long", day: "numeric" });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl border border-ash w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()} data-testid="affiliate-detail-modal">
@@ -1748,7 +1759,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-ash border border-ash rounded-xl overflow-hidden">
                   {[
                     [L("En attente", "Pending"), money(m.pending_commission), "text-warning"],
-                    [L("À verser", "To pay"), money(m.approved_commission), "text-nova"],
+                    [L("À verser · prochain cycle", "To pay · next cycle"), money(m.approved_commission), "text-nova"],
                     [L("Payée", "Paid"), money(m.paid_commission), "text-success"],
                     [L("Récupérée", "Reversed"), money(m.reversed_commission), "text-error"],
                     [L("Exclue", "Excluded"), money(m.excluded_commission), "text-glacier"],
@@ -1761,12 +1772,20 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     </div>
                   ))}
                 </div>
-                {/* Le contexte sur une ligne : le CA qui a produit ces
-                    commissions, et le taux qui les calcule. */}
+                {/* Le contexte NOMNE ses periodes : un montant sans sa fenetre
+                    est une enigme. « Tout » = depuis l'ouverture ; « 12 mois
+                    glissants » = la base du palier du programme. */}
                 <p className="text-[11px] text-glacier mt-1.5">
-                  {L("CA validé", "Validated revenue")} <span className="tabular-nums text-nordfjord">{money(m.cumulative_revenue)}</span>
-                  {" · "}{L("Taux effectif", "Rate")} <span className="tabular-nums text-nordfjord">{Math.round(m.commission_rate * 100)} %</span>
+                  {L("CA validé (tout)", "Validated revenue (all time)")} <span className="tabular-nums text-nordfjord">{money(m.cumulative_revenue)}</span>
+                  {" · "}{L("12 mois glissants", "rolling 12 months")} <span className="tabular-nums text-nordfjord">{money(m.rolling12_revenue)}</span>
+                  {" · "}{L("Taux", "Rate")} <span className="tabular-nums text-nordfjord">{Math.round(m.commission_rate * 100)} %</span>
                 </p>
+                {m.approved_commission > 0 && (
+                  <p className="text-[11px] text-nova mt-1" data-testid="cycle-versement">
+                    {L(`Cycle du ${prochainCycle} : ${money(m.approved_commission)} à débourser`,
+                       `Payout cycle of ${prochainCycle}: ${money(m.approved_commission)} to send`)}
+                  </p>
+                )}
 
                 {/* VUE MENSUELLE : le retour en arriere demande. Trois sommes
                     par mois — ce que le mois a valide, ce qu'il doit, et ce
@@ -1781,25 +1800,61 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="text-left text-glacier border-b border-ash">
-                            <Th>{L("Mois", "Month")}</Th>
-                            <Th>{L("CA validé", "Validated revenue")}</Th>
-                            <Th>{L("Commissions", "Commissions")}</Th>
-                            <Th>{L("Versées ce mois", "Paid this month")}</Th>
+                            {/* Colonnes triables : un clic inverse le sens. La
+                                fleche dit ou l'on en est. */}
+                            {[
+                              ["mois", L("Mois", "Month")],
+                              ["ca_valide", L("CA validé", "Validated revenue")],
+                              ["commissions", L("Commissions", "Commissions")],
+                              ["payee", L("Versées ce mois", "Paid this month")],
+                              ["recuperee", L("Annulées (remboursements)", "Reversed (refunds)")],
+                            ].map(([cle, libelle]) => (
+                              <Th key={cle}>
+                                <button
+                                  onClick={() => setTriSerie((t) => ({
+                                    cle, sens: t.cle === cle ? -t.sens : -1 }))}
+                                  data-testid={`series-tri-${cle}`}
+                                  className="uppercase tracking-[0.12em] text-glacier hover:text-nordfjord inline-flex items-center gap-1">
+                                  {libelle}
+                                  {triSerie.cle === cle && (
+                                    <span aria-hidden="true">{triSerie.sens === -1 ? "↓" : "↑"}</span>
+                                  )}
+                                </button>
+                              </Th>
+                            ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {data.series.map((s) => (
-                            <tr key={s.mois} className="border-b border-ash/60"
-                                data-testid={`series-${s.mois}`}>
-                              <td className="px-3 py-2 font-data tabular-nums text-nordfjord">{s.mois}</td>
-                              <td className="px-3 py-2 tabular-nums">{money(s.ca_valide)}</td>
-                              <td className="px-3 py-2 tabular-nums">{money(s.commissions)}</td>
-                              <td className="px-3 py-2 tabular-nums text-success">{money(s.payee)}</td>
-                            </tr>
-                          ))}
+                          {(() => {
+                            // Le plus recent D'ABORD, puis le tri choisi.
+                            const ordre = [...data.series].sort((x, y) => {
+                              const a = x[triSerie.cle], b = y[triSerie.cle];
+                              if (a === b) return 0;
+                              return (a > b ? 1 : -1) * triSerie.sens;
+                            });
+                            return (serieEtendue ? ordre : ordre.slice(0, 3)).map((s) => (
+                              <tr key={s.mois} className="border-b border-ash/60"
+                                  data-testid={`series-${s.mois}`}>
+                                <td className="px-3 py-2 font-data tabular-nums text-nordfjord">{s.mois}</td>
+                                <td className="px-3 py-2 tabular-nums">{money(s.ca_valide)}</td>
+                                <td className="px-3 py-2 tabular-nums">{money(s.commissions)}</td>
+                                <td className="px-3 py-2 tabular-nums text-success">{money(s.payee)}</td>
+                                <td className="px-3 py-2 tabular-nums text-error">{money(s.recuperee)}</td>
+                              </tr>
+                            ));
+                          })()}
                         </tbody>
                       </table>
                     </div>
+                    {data.series.length > 3 && (
+                      <button onClick={() => setSerieEtendue((v) => !v)}
+                        data-testid="series-etendre"
+                        className="mt-2 font-data text-[10px] uppercase tracking-[0.2em] text-nova hover:text-nordfjord">
+                        {serieEtendue
+                          ? L("Réduire aux 3 derniers mois", "Show last 3 months only")
+                          : L(`Tout afficher (${data.series.length} mois)`, `Show all (${data.series.length} months)`)}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

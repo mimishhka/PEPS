@@ -161,6 +161,24 @@ def test_la_serie_mensuelle_repartit_ce_qui_est_du_et_ce_qui_est_verse(server_mo
     assert octo["ca_valide"] == 50 and octo["commissions"] == 8 and octo["payee"] == 24
 
 
+def test_une_commission_annulee_par_remboursement_est_tracee(server_module):
+    """Une commission recuperee disparait du CA et des commissions, mais elle
+    doit laisser une trace dans SON mois : sans la colonne des annulations, le
+    mois affichait simplement moins, comme si rien ne s'etait passe."""
+    lignes = [
+        {"order_number": "FN-1", "base_amount": 100, "commission_amount": 16,
+         "status": "reversed", "approved_at": "2026-09-10T10:00:00",
+         "created_at": "2026-09-09T10:00:00",
+         "reversed_at": "2026-09-28T10:00:00"},
+    ]
+    serie = server_module._affiliate_serie_mensuelle(lignes)
+    assert serie[0]["mois"] == "2026-09"
+    # Rien n'est du, rien n'est verse...
+    assert serie[0]["ca_valide"] == 0 and serie[0]["commissions"] == 0
+    # ...mais l'annulation est ecrite.
+    assert serie[0]["recuperee"] == 16
+
+
 def test_la_serie_mensuelle_ne_brode_pas_des_mois_vides(server_module):
     """Seuls les mois avec une activite sont renvoyes : des zeros ajoutes
     donneraient une fausse impression de serie continue."""

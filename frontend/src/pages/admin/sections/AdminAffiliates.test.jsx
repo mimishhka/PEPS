@@ -15,7 +15,7 @@
 //
 // Ni le lint ni le build ni les tests backend ne voyaient l'un ou l'autre. Il a
 // fallu ouvrir la page et cliquer.
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import AdminAffiliates from "./AdminAffiliates";
@@ -98,12 +98,15 @@ function reponsesParDefaut() {
     if (url === "/admin/affiliates/risk") return { data: null };
     if (url.startsWith("/admin/affiliates/aff-1")) {
       return { data: { affiliate: AFFILIE, referrals: REFERRALS, payouts: [],
-      metrics: { cumulative_revenue: 323.96, pending_commission: 3.2,
+      metrics: { cumulative_revenue: 323.96, rolling12_revenue: 323.96,
+                 pending_commission: 3.2,
                  approved_commission: 6.24, paid_commission: 28.5,
                  reversed_commission: 0, excluded_commission: 0,
                  quarter_revenue: 323.96, commission_rate: 0.16 },
-      series: [{ mois: "2026-08", ca_valide: 258.97, commissions: 22, payee: 28.5 },
-               { mois: "2026-09", ca_valide: 64.99, commissions: 12.48, payee: 0 }] } };
+      series: [{ mois: "2026-06", ca_valide: 40, commissions: 6.4, payee: 6.4, recuperee: 0 },
+               { mois: "2026-07", ca_valide: 90, commissions: 14.4, payee: 0, recuperee: 4 },
+               { mois: "2026-08", ca_valide: 258.97, commissions: 22, payee: 28.5, recuperee: 0 },
+               { mois: "2026-09", ca_valide: 64.99, commissions: 12.48, payee: 0, recuperee: 0 }] } };
     }
     return { data: {} };
   });
@@ -264,6 +267,52 @@ describe("AdminAffiliates — conciliation des commissions", () => {
     await ouvrirFiche();
     expect(screen.getByText("2026-09-20")).toBeInTheDocument();
     expect(screen.getByText("2026-08-25")).toBeInTheDocument();
+  });
+
+  it("la serie commence par le mois le plus recent et se deplie", async () => {
+    // Trois mois visibles, le dernier en premier : c'est lui qu'on vient
+    // consulter. Les autres restent a un clic.
+    await ouvrirFiche();
+    const lignes = [...screen.getByTestId("affiliate-series").querySelectorAll("tbody tr")]
+      .map((tr) => tr.getAttribute("data-testid"));
+    expect(lignes.slice(0, 3)).toEqual([
+      "series-2026-09", "series-2026-08", "series-2026-07"]);
+    expect(screen.queryByTestId("series-2026-06")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("series-etendre"));
+    expect(screen.getByTestId("series-2026-06")).toBeInTheDocument();
+  });
+
+  it("un clic sur une colonne inverse le tri", async () => {
+    await ouvrirFiche();
+    // Par defaut : mois decroissant. Tri par CA valide : aout (258.97) passe
+    // devant septembre.
+    fireEvent.click(screen.getByTestId("series-tri-ca_valide"));
+    const lignes = [...screen.getByTestId("affiliate-series").querySelectorAll("tbody tr")]
+      .map((tr) => tr.getAttribute("data-testid"));
+    expect(lignes[0]).toBe("series-2026-08");
+    // Reclic : sens inverse (croissant), le PLUS PETIT CA passe devant.
+    fireEvent.click(screen.getByTestId("series-tri-ca_valide"));
+    const lignes2 = [...screen.getByTestId("affiliate-series").querySelectorAll("tbody tr")]
+      .map((tr) => tr.getAttribute("data-testid"));
+    expect(lignes2[0]).toBe("series-2026-06");
+  });
+
+  it("les annulations par remboursement apparaissent dans leur mois", async () => {
+    // Une commission recuperee en juillet doit se VOIR en juillet — sinon le
+    // mois affiche simplement moins, comme si rien ne s'etait passe.
+    await ouvrirFiche();
+    expect(screen.getByTestId("series-2026-07")).toHaveTextContent("$4.00");
+  });
+
+  it("le contexte nomme ses periodes et le cycle de versement", async () => {
+    // Un montant sans sa fenetre est une enigme : tout, 12 mois glissants, et
+    // le cycle qui doit etre debourse.
+    await ouvrirFiche();
+    const figures = screen.getByTestId("affiliate-figures");
+    expect(figures).toHaveTextContent("CA validé (tout)");
+    expect(figures).toHaveTextContent("12 mois glissants");
+    expect(screen.getByTestId("cycle-versement")).toHaveTextContent("à débourser");
   });
 
   it("la vue mensuelle permet le retour en arriere", async () => {

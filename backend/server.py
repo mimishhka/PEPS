@@ -11532,7 +11532,7 @@ async def affiliate_dashboard(request: Request, ref_page: int = 1, pay_page: int
     # Une section en panne est un incident partiel. Une session expiree est un
     # refus, et le client doit le recevoir comme tel pour rediriger vers la
     # connexion.
-    await get_current_affiliate(request)
+    aff = await get_current_affiliate(request)
 
     async def _safe(name: str, coro):
         try:
@@ -11551,6 +11551,48 @@ async def affiliate_dashboard(request: Request, ref_page: int = 1, pay_page: int
     await _safe("clicks_sources", affiliate_clicks_sources(request))
     await _safe("activity", affiliate_activity(request))
     await _safe("customers", affiliate_customers(request))
+
+    # LES CHAMPS DE TETE DE PAGE, oublies par l'agregation.
+    #
+    # Le refactor en « une seule requete » avait regroupe les huit sections,
+    # mais pas les champs que l'interface lit a la RACINE de la reponse :
+    # commission_rate, approved_commission, paid_commission,
+    # approval_hold_days, payout_min_cad, terms_ok... Pour l'affilie, tout
+    # cela valait donc toujours 0 ou « pas encore accepte » :
+    #   - le montant « a recevoir au prochain versement » n'existait jamais ;
+    #   - le taux s'affichait a 0 % ;
+    #   - le seuil de versement etait invisible.
+    # Le portail d'acceptation, lui, ne se declenchait jamais — un affilie
+    # qui n'avait jamais accepte les conditions voyait quand meme ses
+    # chiffres.
+    #
+    # On recolle ces champs ici, au meme endroit ou l'interface les lit. Un
+    # echec ne prive pas l'affilie de ses sections : le forfait vaut mieux
+    # qu'un tableau de bord vide.
+    try:
+        m = await _affiliate_compute_metrics(aff["id"])
+        out.update({
+            "commission_rate": m["commission_rate"],
+            "tier": m["tier"],
+            "cumulative_revenue": m["cumulative_revenue"],
+            "rolling12_revenue": m["rolling12_revenue"],
+            "pending_commission": m["pending_commission"],
+            "approved_commission": m["approved_commission"],
+            "paid_commission": m["paid_commission"],
+            "reversed_commission": m["reversed_commission"],
+            "excluded_commission": m["excluded_commission"],
+            "approval_hold_days": AFFILIATE_APPROVAL_HOLD_DAYS,
+            "payout_min_cad": AFFILIATE_PAYOUT_MIN_CAD,
+            "terms_accepted_at": aff.get("terms_accepted_at"),
+            "terms_version": aff.get("terms_version"),
+            # Accepte la version COURANTE ? Le portail ne doit se montrer que
+            # pour qui ne l'a pas fait — ni avant, ni a chaque visite.
+            "terms_ok": aff.get("terms_version") == AFFILIATE_TERMS_VERSION,
+            "tour_done": bool(aff.get("tour_done")),
+        })
+    except Exception as e:
+        logging.error("[affiliate-dashboard] summary merge failed: %s",
+                      type(e).__name__)
     return out
 
 
@@ -12389,7 +12431,11 @@ def _affiliate_serie_mensuelle(rows: list, nb_mois: int = 12) -> list:
         le palier, donc les totaux se recoupent ;
       - commissions : ce qui est du ou paye pour ce mois-la (meme convention) ;
       - payee : ce qui a ete VERSE ce mois-la, d'apres paid_at — la colonne qui
-        permet le retour en arriere demande : « combien ai-je verse en mai ? ».
+        permet le retour en arriere demande : « combien ai-je verse en mai ? » ;
+      - recuperee : ce qui a ete ANNULE ce mois-la a cause d'un remboursement,
+        d'apres reversed_at. Sans cette colonne, une annulation disparaissait
+        du CA et des commissions sans laisser de trace — le mois affichait
+        simplement moins, comme si rien ne s'etait passe.
 
     Un affilie n'a pas d'activite tous les mois : seuls les mois avec au moins
     une ligne sont renvoyes, ce qui reste vrai plutot que de broder des zeros.
@@ -12402,11 +12448,12 @@ def _affiliate_serie_mensuelle(rows: list, nb_mois: int = 12) -> list:
     mois_presents = {_mois(r.get("approved_at") or r.get("created_at"))
                      for r in rows if _mois(r.get("approved_at") or r.get("created_at"))}
     mois_presents |= {_mois(r.get("paid_at")) for r in rows if _mois(r.get("paid_at"))}
+    mois_presents |= {_mois(r.get("reversed_at")) for r in rows if _mois(r.get("reversed_at"))}
     mois_ordonnes = sorted(m for m in mois_presents if m)[-nb_mois:]
 
     serie = []
     for mois in mois_ordonnes:
-        ca = comm = payee = 0.0
+        ca = comm = payee = recuperee = 0.0
         for r in rows:
             eff = _mois(r.get("approved_at") or r.get("created_at"))
             if eff == mois and r.get("status") in valides:
@@ -12414,8 +12461,11 @@ def _affiliate_serie_mensuelle(rows: list, nb_mois: int = 12) -> list:
                 comm += float(r.get("commission_amount") or 0)
             if _mois(r.get("paid_at")) == mois and r.get("status") == "paid":
                 payee += float(r.get("commission_amount") or 0)
+            if _mois(r.get("reversed_at")) == mois and r.get("status") == "reversed":
+                recuperee += float(r.get("commission_amount") or 0)
         serie.append({"mois": mois, "ca_valide": round(ca, 2),
-                      "commissions": round(comm, 2), "payee": round(payee, 2)})
+                      "commissions": round(comm, 2), "payee": round(payee, 2),
+                      "recuperee": round(recuperee, 2)})
     return serie
 
 
