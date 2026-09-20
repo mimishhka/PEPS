@@ -195,15 +195,9 @@ export default function ProductDetail() {
               />
               <div className="absolute bottom-5 right-5"><Seal size={92} /></div>
             </div>
-            {coaAvailable ? (
-              <div data-testid="coa-badge-verified" className="mt-4 inline-flex items-center gap-2 rounded-full border border-ash bg-white px-4 py-2 font-data text-[11px] uppercase tracking-[0.16em] text-nordfjord">
-                <FileText size={13} /> {lang === "fr" ? "Certificat d'analyse disponible" : "Certificate of Analysis available"}
-              </div>
-            ) : coaPending ? (
-              <div data-testid="coa-badge-pending" className="mt-4 inline-flex items-center gap-2 rounded-full border border-ash bg-white px-4 py-2 font-data text-[11px] uppercase tracking-[0.16em] text-warning">
-                <FileText size={13} /> COA · {lang === "fr" ? "À VENIR" : "PENDING"}
-              </div>
-            ) : null}
+            {/* Rien sous la photo : l'image se suffit. L'etat du certificat se dit
+                dans la colonne de droite, la ou on decide d'acheter — encadre
+                « COA a venir », ou bouton de telechargement quand il existe. */}
           </div>
 
           <div>
