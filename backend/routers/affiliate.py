@@ -192,6 +192,16 @@ async def admin_affiliate_ticket_status(ticket_id: str, payload: s.AffiliateTick
     return await s.admin_affiliate_ticket_status(ticket_id, payload, admin)
 
 
+@router.get("/admin/affiliates/{affiliate_id}/referrals/export.csv")
+async def admin_affiliate_referrals_csv(affiliate_id: str, month: str = None,
+                                        admin: dict = Depends(s.get_admin_user)):
+    """Export CSV des commissions d'un affilie (conciliation mensuelle).
+
+    `month` au format AAAA-MM filtre sur la date de creation. Tous les statuts
+    sont exportes, excluded compris."""
+    return await s.admin_affiliate_referrals_csv(affiliate_id, month, admin)
+
+
 @router.get("/admin/affiliates/{affiliate_id}")
 async def admin_affiliate_detail(affiliate_id: str, admin: dict = Depends(s.get_admin_user)):
     return await s.admin_affiliate_detail(affiliate_id, admin)

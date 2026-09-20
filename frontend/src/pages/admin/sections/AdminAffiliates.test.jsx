@@ -24,6 +24,7 @@ import api from "../../../lib/api";
 jest.mock("../../../lib/api", () => ({
   __esModule: true,
   default: { get: jest.fn(), post: jest.fn(), put: jest.fn(), patch: jest.fn() },
+  API_BASE: "/api",
   formatApiError: (e) => String(e),
 }));
 
@@ -66,6 +67,17 @@ const AFFILIE = {
   clicks: 3, cumulative_revenue: 0, pending_commission: 0,
 };
 
+// Une commission par etat, aux dates de la conciliation de septembre.
+const REFERRALS = [
+  { id: "r-1", order_number: "FN-260920-D6217DAA", created_at: "2026-09-20T15:36:00",
+    base_amount: 38.99, commission_amount: 6.24, status: "approved" },
+  { id: "r-2", order_number: "FN-260825-6A35BD", created_at: "2026-08-25T16:10:00",
+    base_amount: 49.99, commission_amount: 0, status: "excluded",
+    excluded_reason: "fraud" },
+  { id: "r-3", order_number: "FN-260901-E8C7", created_at: "2026-09-01T09:00:00",
+    base_amount: 20, commission_amount: 3.2, status: "pending", self_order: true },
+];
+
 const APERCU = {
   financial: {}, affiliates: {}, attribution: {},
   alerts: { clawback_count: 2, clawback_amount: 340.5 },
@@ -85,7 +97,9 @@ function reponsesParDefaut() {
     if (url === "/admin/affiliates") return { data: [AFFILIE] };
     if (url === "/admin/affiliates/risk") return { data: null };
     if (url.startsWith("/admin/affiliates/aff-1")) {
-      return { data: { affiliate: AFFILIE, referrals: [], payouts: [] } };
+      return { data: { affiliate: AFFILIE, referrals: REFERRALS, payouts: [],
+      metrics: { cumulative_revenue: 323.96, pending_commission: 3.2,
+                 quarter_revenue: 323.96, commission_rate: 0.16 } } };
     }
     return { data: {} };
   });
@@ -205,4 +219,47 @@ describe("AdminAffiliates — classement des top affiliés", () => {
     await screen.findByTestId("affiliate-detail-modal");
     expect(screen.queryByTestId("affiliate-close")).not.toBeInTheDocument();
   });
+describe("AdminAffiliates — conciliation des commissions", () => {
+  const ouvrirFiche = async () => {
+    render(<AdminAffiliates />);
+    const ligne = (await screen.findByText(/4 commandes/)).closest("button");
+    await userEvent.click(ligne);
+    // La fenetre de detail se distingue par ses chiffres de CA.
+    await screen.findByTestId("affiliate-figures");
+  };
+
+  it("exporte les commissions avec un lien CSV", async () => {
+    await ouvrirFiche();
+    const lien = screen.getByTestId("referrals-export");
+    // Sans mois choisi : tout l'historique.
+    expect(lien).toHaveAttribute(
+      "href", "/api/admin/affiliates/aff-1/referrals/export.csv");
+  });
+
+  it("le choix d un mois filtre l export", async () => {
+    await ouvrirFiche();
+    await userEvent.type(screen.getByTestId("referrals-month"), "2026-09");
+    expect(screen.getByTestId("referrals-export")).toHaveAttribute(
+      "href", "/api/admin/affiliates/aff-1/referrals/export.csv?month=2026-09");
+  });
+
+  it("les statuts se lisent en clair, pas en chaines brutes", async () => {
+    await ouvrirFiche();
+    // « pending » brut obligeait l'admin a traduire lui-meme ; « excluded »
+    // ne disait pas que l'argent a ete retire. « En attente » figure aussi
+    // comme colonne de la liste principale : on verifie donc SUR LA LIGNE de
+    // la commande, pas dans la page entiere.
+    expect(screen.getByText("Approuvée")).toBeInTheDocument();
+    expect(screen.getByText("Exclue")).toBeInTheDocument();
+    const ligne = screen.getByText("FN-260901-E8C7").closest("tr");
+    expect(ligne).toHaveTextContent("En attente");
+  });
+
+  it("chaque commission porte sa date", async () => {
+    await ouvrirFiche();
+    expect(screen.getByText("2026-09-20")).toBeInTheDocument();
+    expect(screen.getByText("2026-08-25")).toBeInTheDocument();
+  });
+});
+
 });

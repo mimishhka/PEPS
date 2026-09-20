@@ -10,7 +10,7 @@ import {
   Upload, FileText, CheckCircle2, XCircle } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
-import api, { formatApiError } from "../../../lib/api";
+import api, { API_BASE, formatApiError } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
 import { useLang } from "../../../contexts/LanguageContext";
 import { Th, Num, Identity, TierBadge, TIER_TONE } from "../ui";
@@ -1487,6 +1487,8 @@ function BulkInviteModal({ L, onClose, onDone }) {
 
 function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const [data, setData] = useState(null);
+  // Mois choisi pour l'export des commissions. Vaut "" = tout exporter.
+  const [mois, setMois] = useState("");
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
   const [resending, setResending] = useState(false);
@@ -2117,12 +2119,28 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
             </div>
 
             <div>
-              <p className="text-xs uppercase tracking-wider text-glacier mb-2">{L("Commandes attribuées", "Attributed orders")}</p>
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <p className="text-xs uppercase tracking-wider text-glacier mr-2">{L("Commandes attribuées", "Attributed orders")}</p>
+                {/* La conciliation mensuelle : choisir un mois, exporter le CSV,
+                    pointer avec le releve NOWPayments. Sans cela, il fallait
+                    recopier le tableau a la main. */}
+                <input type="month" value={mois} onChange={(e) => setMois(e.target.value)}
+                  data-testid="referrals-month"
+                  aria-label={L("Mois", "Month")}
+                  className="rounded-lg border border-ash px-2.5 py-1.5 text-xs outline-none focus:border-nova" />
+                <a href={`${API_BASE}/admin/affiliates/${affiliateId}/referrals/export.csv${mois ? `?month=${mois}` : ""}`}
+                  target="_blank" rel="noopener noreferrer"
+                  data-testid="referrals-export"
+                  className="inline-flex items-center gap-1.5 border border-ash font-data text-[10px] uppercase tracking-[0.2em] px-3 py-1.5 hover:bg-ink hover:text-white transition-colors">
+                  <Download size={11} /> {L("Exporter CSV", "Export CSV")}
+                </a>
+              </div>
               {data.referrals?.length ? (
                 <div className="overflow-x-auto rounded-lg border border-ash">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-left text-glacier border-b border-ash">
+                        <Th>{L("Date", "Date")}</Th>
                         <Th>{L("Commande", "Order")}</Th>
                         <Th>{L("Base", "Base")}</Th>
                         <Th>{L("Commission", "Commission")}</Th>
@@ -2132,10 +2150,12 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     <tbody>
                       {data.referrals.map((r) => (
                         <tr key={r.id} className="border-b border-ash/60">
+                          <td className="px-3 py-2 text-glacier tabular-nums">{(r.created_at || "").slice(0, 10) || "—"}</td>
                           <td className="px-3 py-2 text-nordfjord">{r.order_number || "—"}</td>
                           <td className="px-3 py-2">{money(r.base_amount)}</td>
                           <td className="px-3 py-2">{money(r.commission_amount)}</td>
-                          <td className="px-3 py-2">{r.status}{r.excluded_reason ? ` (${r.excluded_reason})` : ""}
+                          <td className="px-3 py-2"><StatutCommission statut={r.status} L={L} lang={lang} />
+                            {r.excluded_reason ? ` · ${r.excluded_reason}` : ""}
                             {r.self_order && <span className="ml-1 inline-block text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-nova/15 text-nova">{L("auto-achat", "self-order")}</span>}
                           </td>
                         </tr>
@@ -2150,6 +2170,23 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
       </div>
     </div>
   );
+}
+
+/* Statut d'une commission, en clair. Le serveur renvoie des chaines
+ * brutes (pending/approved/paid/reversed/excluded) : les afficher telles
+ * quelles laisse l'admin les traduire lui-meme, et « excluded » ne dit pas
+ * QUE l'argent a ete retire. */
+const STATUTS_COMMISSION = {
+  pending: { fr: "En attente", en: "Pending", classe: "text-warning" },
+  approved: { fr: "Approuvée", en: "Approved", classe: "text-nova" },
+  paid: { fr: "Payée", en: "Paid", classe: "text-success" },
+  reversed: { fr: "Récupérée", en: "Reversed", classe: "text-error" },
+  excluded: { fr: "Exclue", en: "Excluded", classe: "text-glacier" },
+};
+
+function StatutCommission({ statut, L, lang }) {
+  const e = STATUTS_COMMISSION[statut] || { fr: statut, en: statut, classe: "text-glacier" };
+  return <span className={`font-medium ${e.classe}`}>{lang === "fr" ? e.fr : e.en}</span>;
 }
 
 /* Champ de formulaire — refait pour être lisible.

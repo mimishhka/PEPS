@@ -12402,6 +12402,47 @@ async def admin_affiliate_detail(affiliate_id: str,
             "referrals": referrals, "payouts": payouts}
 
 
+async def admin_affiliate_referrals_csv(affiliate_id: str, month: Optional[str] = None,
+                                            admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """Export CSV des commissions d'un affilie, pour la conciliation mensuelle.
+
+    Il n'existait AUCUN export des commissions : la fiche les affichait a
+    l'ecran, et c'est tout. Reconciller un mois (ce qui a ete approuve, ce qui
+    a ete paye, ce qui a ete retire) imposait de recopier le tableau a la main.
+
+    `month` au format AAAA-MM filtre sur la date de creation — created_at est
+    TOUJOURS une chaine ISO ici, c'est affiliate_on_order_paid qui l'ecrit.
+    TOUS les statuts sont exportes, excluded compris : une conciliation doit
+    voir ce qui a ete retire autant que ce qui est du.
+    """
+    aff = await db.affiliates.find_one(
+        {"id": affiliate_id}, {"_id": 0, "name": 1, "code": 1, "email": 1}
+    )
+    if not aff:
+        raise HTTPException(404, "Affiliate not found")
+
+    q: dict = {"affiliate_id": affiliate_id}
+    mois = (month or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}", mois):
+        q["created_at"] = {"$regex": "^" + mois}
+    rows = await db.affiliate_referrals.find(q, {"_id": 0}).sort("created_at", 1).to_list(None)
+
+    lignes = [{
+        "mois": str(r.get("created_at") or "")[:7],
+        "date": str(r.get("created_at") or "")[:10],
+        "commande": r.get("order_number") or "",
+        "courriel_client": r.get("order_email") or "",
+        "base_cad": r.get("base_amount"),
+        "commission_cad": r.get("commission_amount"),
+        "statut": r.get("status") or "",
+        "motif_exclusion": r.get("excluded_reason") or "",
+        "auto_achat": "oui" if r.get("self_order") else "",
+        "payout_id": r.get("payout_id") or "",
+    } for r in rows]
+    code = str(aff.get("code") or affiliate_id)[:24].replace("/", "_")
+    return _csv_response(lignes, f"commissions_{code}_{mois or 'tout'}.csv")
+
+
 async def admin_affiliate_update(affiliate_id: str, payload: AffiliateAdminUpdateIn,
                                  admin: dict = Depends(get_admin_user)):  # noqa: F821
     aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
