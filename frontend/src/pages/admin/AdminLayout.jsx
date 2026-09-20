@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, ShoppingCart, Package, Ticket, Users, Truck,
@@ -52,31 +52,49 @@ export default function AdminLayout({ basePath = "/admin" }) {
   const { lang } = useLang();
   const L = useCallback((fr, en) => (lang === "fr" ? fr : en), [lang]);
   const [signals, setSignals] = useState(null);
-  useEffect(() => {
-    let alive = true;
-    const pull = () => api.get("/admin/ops/signals")
-      .then((r) => { if (alive) setSignals(r.data); })
-      .catch(() => {});
-    pull();
-    const t = setInterval(pull, 60000);
-    return () => { alive = false; clearInterval(t); };
-  }, []);
-
-  // Le pouls alimente la cloche : ce sont les memes compteurs que le tableau
-  // de bord, calcules une seule fois cote serveur. Deux sources auraient fini
-  // par afficher deux nombres differents pour la meme chose.
   const [pouls, setPouls] = useState(null);
   const voitTableauDeBord = hasAccess(user, "dashboard");
-  useEffect(() => {
-    if (!voitTableauDeBord) { setPouls(null); return undefined; }
-    let alive = true;
-    const pull = () => api.get("/admin/dashboard/pulse")
-      .then((r) => { if (alive) setPouls(r.data); })
+
+  // Un compteur d'alerte qui ment est pire que pas de compteur. Celui-ci se
+  // relit donc chaque fois que l'etat a pu changer :
+  //   - au changement d'ecran (on vient de traiter quelque chose) ;
+  //   - au retour sur l'onglet (on a agi ailleurs, ou attendu) ;
+  //   - apres un clic dans la cloche ;
+  //   - et, a defaut, toutes les 60 secondes.
+  // Sans le retour sur l'onglet, une situation reglee restait affichee jusqu'a
+  // une minute ; sans le changement d'ecran, expedier ses commandes laissait
+  // la pastille inchangee tant qu'on ne rechargeait pas la page.
+  const vivant = useRef(true);
+  useEffect(() => () => { vivant.current = false; }, []);
+
+  const relire = useCallback(() => {
+    api.get("/admin/ops/signals")
+      .then((r) => { if (vivant.current) setSignals(r.data); })
       .catch(() => {});
-    pull();
-    const t = setInterval(pull, 60000);
-    return () => { alive = false; clearInterval(t); };
+    if (voitTableauDeBord) {
+      api.get("/admin/dashboard/pulse")
+        .then((r) => { if (vivant.current) setPouls(r.data); })
+        .catch(() => {});
+    } else {
+      setPouls(null);
+    }
   }, [voitTableauDeBord]);
+
+  useEffect(() => {
+    relire();
+    const t = setInterval(relire, 60000);
+    const auRetour = () => { if (document.visibilityState === "visible") relire(); };
+    document.addEventListener("visibilitychange", auRetour);
+    window.addEventListener("focus", relire);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", auRetour);
+      window.removeEventListener("focus", relire);
+    };
+  }, [relire]);
+
+  // Changer d'ecran, c'est presque toujours avoir termine quelque chose.
+  useEffect(() => { relire(); }, [location.pathname, relire]);
 
   // La palette de recherche : Ctrl+K (ou Cmd+K), et « / » comme sur la
   // maquette. « / » ne doit PAS voler la frappe de quelqu'un en train
@@ -323,7 +341,11 @@ export default function AdminLayout({ basePath = "/admin" }) {
           groupes={navGroups} L={L} lang={lang} />
 
         <main className="flex-1 min-w-0">
-          <div className="bg-white border-b border-ink/10 px-8 py-4 flex items-center justify-between gap-4" data-testid="admin-topbar">
+          {/* Figee : sur un ecran de commandes qui descend loin, la
+              recherche, la cloche et le nom de l'ecran doivent rester a
+              portee de regard sans remonter. z-30 passe devant le contenu,
+              mais derriere la palette de recherche et les dialogues. */}
+          <div className="sticky top-0 z-30 bg-white border-b border-ink/10 px-8 py-4 flex items-center justify-between gap-4" data-testid="admin-topbar">
             <div className="flex items-center gap-4 min-w-0">
               <button
                 type="button"
@@ -366,6 +388,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
               </button>
 
               <ClocheNotifications pouls={pouls} signaux={signals} basePath={basePath} L={L}
+                surAction={relire}
                 argent={(n) => `${Number(n || 0).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA",
                   { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`} />
 

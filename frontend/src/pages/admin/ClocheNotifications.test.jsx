@@ -1,0 +1,82 @@
+// La cloche : un compteur d'alerte qui ment est pire que pas de compteur.
+import { fireEvent, render, screen } from "@testing-library/react";
+
+import ClocheNotifications from "./ClocheNotifications";
+
+jest.mock("react-router-dom", () => ({
+  Link: ({ to, children, ...reste }) => <a href={String(to)} {...reste}>{children}</a>,
+}));
+
+jest.mock("lucide-react", () => new Proxy({}, {
+  get: (cible, nom) => (nom === "__esModule" ? true : () => null),
+}));
+
+const L = (fr) => fr;
+const argent = (n) => `${Number(n || 0).toFixed(2)} $`;
+
+const POULS = {
+  money: { reconcile: { count: 1 }, pending_payment: {} },
+  ops: { to_ship: 4, low_stock: 2, late_payments: 0, emails_failed: 0, tickets_open: 1,
+         refunds: { to_review: 1, to_send: 2, to_send_amount: 145.75 } },
+};
+
+const afficher = (extra = {}) => render(
+  <ClocheNotifications pouls={POULS} signaux={{ pending_manifest: 0 }}
+    basePath="/ops" L={L} argent={argent} {...extra} />
+);
+
+it("additionne ce qui reste a traiter, et le dit sans ouvrir", () => {
+  // 2 remboursements à envoyer + 1 à examiner + 1 réconciliation
+  // + 4 expéditions + 2 stocks + 1 billet = 11.
+  afficher();
+  expect(screen.getByTestId("notifications-dot")).toHaveTextContent("11");
+  expect(screen.getByTestId("notifications-toggle"))
+    .toHaveAttribute("aria-label", "Notifications : 11 en attente");
+});
+
+it("se tait quand il n y a rien — et le dit si on ouvre", () => {
+  // Une cloche qui sonne pour rien finit ignorée, et ce jour-là elle ne
+  // prévient plus de ce qui compte.
+  render(<ClocheNotifications pouls={{ money: {}, ops: { refunds: {} } }} signaux={{}}
+           basePath="/ops" L={L} argent={argent} />);
+  expect(screen.queryByTestId("notifications-dot")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByTestId("notifications-toggle"));
+  expect(screen.getByTestId("notifications-vide")).toHaveTextContent("Rien à traiter");
+});
+
+it("chaque ligne mene a l ecran qui permet d agir", () => {
+  afficher();
+  fireEvent.click(screen.getByTestId("notifications-toggle"));
+  expect(screen.getByTestId("notification-refunds-send")).toHaveAttribute("href", "/ops/refunds");
+  expect(screen.getByTestId("notification-ship")).toHaveAttribute("href", "/ops/dispatch");
+  expect(screen.getByTestId("notification-stock")).toHaveAttribute("href", "/ops/products");
+  // L'urgent porte son montant : c'est ce qui décide de l'ordre de la journée.
+  expect(screen.getByTestId("notification-refunds-send")).toHaveTextContent("145.75 $");
+});
+
+it("relit les compteurs quand on part traiter une ligne", () => {
+  // Sans cela, la pastille garde son ancien nombre jusqu'au prochain relevé,
+  // et on croit avoir travaillé pour rien.
+  const relire = jest.fn();
+  afficher({ surAction: relire });
+  fireEvent.click(screen.getByTestId("notifications-toggle"));
+  expect(relire).toHaveBeenCalledTimes(1);           // ouvrir vérifie déjà
+
+  fireEvent.click(screen.getByTestId("notification-ship"));
+  expect(relire).toHaveBeenCalledTimes(2);
+  // Le panneau se referme : on s'en va, il n'a plus de raison de rester.
+  expect(screen.queryByTestId("notifications-panel")).not.toBeInTheDocument();
+});
+
+it("le ton suit la ligne la plus grave", () => {
+  // Rouge s'il y a de l'urgent, ambre sinon : la couleur double le nombre,
+  // elle ne le remplace pas.
+  afficher();
+  expect(screen.getByTestId("notifications-dot").className).toMatch(/bg-red-600/);
+
+  render(<ClocheNotifications
+    pouls={{ money: {}, ops: { to_ship: 3, refunds: {} } }} signaux={{}}
+    basePath="/ops" L={L} argent={argent} />);
+  const pastilles = screen.getAllByTestId("notifications-dot");
+  expect(pastilles[pastilles.length - 1].className).toMatch(/bg-amber-500/);
+});

@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bell } from "lucide-react";
 
-export function ClocheNotifications({ pouls, signaux, basePath, L, argent }) {
+export function ClocheNotifications({ pouls, signaux, basePath, L, argent, surAction }) {
   const [ouvert, setOuvert] = useState(false);
   const boite = useRef(null);
 
@@ -60,7 +60,7 @@ export function ClocheNotifications({ pouls, signaux, basePath, L, argent }) {
     <div className="relative" ref={boite}>
       <button
         type="button"
-        onClick={() => setOuvert((v) => !v)}
+        onClick={() => { setOuvert((v) => !v); if (surAction) surAction(); }}
         data-testid="notifications-toggle"
         aria-expanded={ouvert}
         aria-label={total
@@ -101,7 +101,10 @@ export function ClocheNotifications({ pouls, signaux, basePath, L, argent }) {
                 <li key={l.cle}>
                   <Link
                     to={`${basePath}/${l.vers}`}
-                    onClick={() => setOuvert(false)}
+                    // On relit les compteurs en partant traiter la chose :
+                    // sinon la pastille garde son ancien nombre jusqu'au
+                    // prochain relevé, et on croit avoir travaillé pour rien.
+                    onClick={() => { setOuvert(false); if (surAction) surAction(); }}
                     data-testid={`notification-${l.cle}`}
                     className="flex items-start gap-3 px-4 py-3 hover:bg-secondary transition-colors"
                   >
