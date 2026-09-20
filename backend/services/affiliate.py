@@ -675,6 +675,10 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
         "paid_commission": round(paid_commission, 2),
         "reversed_commission": round(reversed_commission, 2),
         "excluded_commission": round(excluded_commission, 2),
+        # Le seuil de versement : la fiche en a besoin pour dire SI le prochain
+        # cycle paiera. Sans lui, « a debourser le 1er » promet un versement
+        # que le programme refuse sous le seuil.
+        "payout_min_cad": float(s.AFFILIATE_PAYOUT_MIN_CAD),
         "next_review": _affiliate_next_quarter_start().isoformat(),
         "quarter_target": quarter_target,
         "quarter_progress": round(quarter_progress, 4) if quarter_progress is not None else None,

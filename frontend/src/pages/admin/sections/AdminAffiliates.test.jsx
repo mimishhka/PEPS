@@ -102,7 +102,8 @@ function reponsesParDefaut() {
                  pending_commission: 3.2,
                  approved_commission: 6.24, paid_commission: 28.5,
                  reversed_commission: 0, excluded_commission: 0,
-                 quarter_revenue: 323.96, commission_rate: 0.16 },
+                 quarter_revenue: 323.96, commission_rate: 0.16,
+                 payout_min_cad: 25 },
       series: [{ mois: "2026-06", ca_valide: 40, commissions: 6.4, payee: 6.4, recuperee: 0 },
                { mois: "2026-07", ca_valide: 90, commissions: 14.4, payee: 0, recuperee: 4 },
                { mois: "2026-08", ca_valide: 258.97, commissions: 22, payee: 28.5, recuperee: 0 },
@@ -305,14 +306,40 @@ describe("AdminAffiliates — conciliation des commissions", () => {
     expect(screen.getByTestId("series-2026-07")).toHaveTextContent("$4.00");
   });
 
-  it("le contexte nomme ses periodes et le cycle de versement", async () => {
-    // Un montant sans sa fenetre est une enigme : tout, 12 mois glissants, et
-    // le cycle qui doit etre debourse.
+  it("le contexte nomme ses periodes, son seuil, et dit la verite du cycle", async () => {
+    // Un montant sans sa fenetre est une enigme : tout, 12 mois glissants, le
+    // seuil. Et 6,24 $ approuves SONT sous le seuil de 25 $ : le cycle du
+    // 1er ne paiera pas — la fiche doit le dire au lieu de promettre un
+    // debourse qui n'arrivera pas.
     await ouvrirFiche();
     const figures = screen.getByTestId("affiliate-figures");
     expect(figures).toHaveTextContent("CA validé (tout)");
     expect(figures).toHaveTextContent("12 mois glissants");
+    expect(figures).toHaveTextContent("Seuil de versement");
+    expect(screen.getByTestId("cycle-versement")).toHaveTextContent("sous le seuil");
+  });
+
+  it("au-dessus du seuil, le cycle est annonce avec sa date", async () => {
+    // 30 $ approuves : cette fois, le debourse part VRAIMENT le 1er du mois
+    // suivant, et la fiche l'annonce.
+    api.get.mockImplementation(async (url) => {
+      if (url === "/admin/affiliates/overview") return { data: APERCU };
+      if (url === "/admin/affiliates") return { data: [AFFILIE] };
+      if (url === "/admin/affiliates/risk") return { data: null };
+      if (url.startsWith("/admin/affiliates/aff-1")) {
+        return { data: { affiliate: AFFILIE, referrals: REFERRALS, payouts: [],
+          metrics: { cumulative_revenue: 323.96, rolling12_revenue: 323.96,
+                     pending_commission: 0, approved_commission: 30,
+                     paid_commission: 28.5, reversed_commission: 0,
+                     excluded_commission: 0, quarter_revenue: 323.96,
+                     commission_rate: 0.16, payout_min_cad: 25 },
+          series: [] } };
+      }
+      return { data: {} };
+    });
+    await ouvrirFiche();
     expect(screen.getByTestId("cycle-versement")).toHaveTextContent("à débourser");
+    expect(screen.getByTestId("cycle-versement")).toHaveTextContent("Cycle du");
   });
 
   it("la vue mensuelle permet le retour en arriere", async () => {

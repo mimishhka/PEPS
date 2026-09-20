@@ -1700,6 +1700,9 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const prochainCycle = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)
     .toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
       { year: "numeric", month: "long", day: "numeric" });
+  // Le seuil decide si le prochain cycle paie vraiment. La ligne de cycle ne
+  // doit jamais promettre un debourse que le programme refuse.
+  const seuilVersement = Number(m?.payout_min_cad || 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -1819,7 +1822,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-ash border border-ash rounded-xl overflow-hidden">
                   {[
                     [L("En attente", "Pending"), money(m.pending_commission), "text-warning"],
-                    [L("À verser · prochain cycle", "To pay · next cycle"), money(m.approved_commission), "text-nova"],
+                    [L("À verser", "To pay"), money(m.approved_commission), "text-nova"],
                     [L("Payée", "Paid"), money(m.paid_commission), "text-success"],
                     [L("Récupérée", "Reversed"), money(m.reversed_commission), "text-error"],
                     [L("Exclue", "Excluded"), money(m.excluded_commission), "text-glacier"],
@@ -1839,11 +1842,20 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                   {L("CA validé (tout)", "Validated revenue (all time)")} <span className="tabular-nums text-nordfjord">{money(m.cumulative_revenue)}</span>
                   {" · "}{L("12 mois glissants", "rolling 12 months")} <span className="tabular-nums text-nordfjord">{money(m.rolling12_revenue)}</span>
                   {" · "}{L("Taux", "Rate")} <span className="tabular-nums text-nordfjord">{Math.round(m.commission_rate * 100)} %</span>
+                  {seuilVersement > 0 && (
+                    <>{L(" · Seuil de versement", " · Payout threshold")} <span className="tabular-nums text-nordfjord">{money(seuilVersement)}</span></>
+                  )}
                 </p>
                 {m.approved_commission > 0 && (
                   <p className="text-[11px] text-nova mt-1" data-testid="cycle-versement">
-                    {L(`Cycle du ${prochainCycle} : ${money(m.approved_commission)} à débourser`,
-                       `Payout cycle of ${prochainCycle}: ${money(m.approved_commission)} to send`)}
+                    {seuilVersement > 0 && m.approved_commission < seuilVersement
+                      // Sous le seuil, le run du 1er DIFFERE le versement :
+                      // annoncer un debourse serait un mensonge qui se verrait
+                      // le 1er venu.
+                      ? L(`${money(m.approved_commission)} approuvés · sous le seuil de ${money(seuilVersement)} : versés au cycle où le seuil est atteint`,
+                           `${money(m.approved_commission)} approved · below the ${money(seuilVersement)} threshold: paid in the first cycle that reaches it`)
+                      : L(`Cycle du ${prochainCycle} : ${money(m.approved_commission)} à débourser`,
+                           `Payout cycle of ${prochainCycle}: ${money(m.approved_commission)} to send`)}
                   </p>
                 )}
 
