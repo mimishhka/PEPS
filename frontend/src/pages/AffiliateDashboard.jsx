@@ -746,6 +746,11 @@ export default function AffiliateDashboard() {
 
   const payoutMin = Number(data?.payout_min_cad || 0);
   const dueNow = Number(data?.approved_commission || 0);
+  // Le cycle de versement part le 1er du mois suivant : l'annoncer dit a
+  // l'affilie QUAND son argent partira, pas seulement combien.
+  const prochainCycle = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)
+    .toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
+      { year: "numeric", month: "long", day: "numeric" });
   const payoutPct = payoutMin > 0 ? Math.min(100, Math.round((dueNow / payoutMin) * 100)) : null;
 
   const TABS = [
@@ -966,6 +971,27 @@ export default function AffiliateDashboard() {
                   <div className="h-full rounded-full transition-all"
                        style={{ width: `${payoutPct || 0}%`, background: "#00B8D4" }} />
                 </div>
+
+                {/* La regle du cycle, sans mystere : rien accumule, sous le
+                    seuil (differe), ou verse a telle date. Et ce qui est
+                    encore en maturation, separement — ce n'est PAS de
+                    l'argent du, pas encore. */}
+                <p className="font-data text-[11px] text-glacier mt-2" data-testid="payout-cycle">
+                  {dueNow <= 0
+                    ? L("Rien d'accumulé pour l'instant — vos gains du mois en cours restent visibles ci-dessus.",
+                        "Nothing accumulated yet — this month's earnings stay visible above.")
+                    : dueNow < payoutMin
+                    ? L(`Sous le seuil de ${money(payoutMin)} : versé au premier cycle qui l'atteint.`,
+                        `Below the ${money(payoutMin)} threshold: paid in the first cycle that reaches it.`)
+                    : L(`Versement au cycle du ${prochainCycle}.`,
+                        `Paid in the cycle of ${prochainCycle}.`)}
+                </p>
+                {Number(data?.pending_commission || 0) > 0 && (
+                  <p className="font-data text-[11px] text-warning mt-1" data-testid="payout-maturing">
+                    {L(`En maturation : ${money(data.pending_commission)}`,
+                       `Maturing: ${money(data.pending_commission)}`)}
+                  </p>
+                )}
 
                 {/* Le parcours complet de l'argent. Ce panneau n'affichait que
                     le montant validé, sans dire d'où il venait ni où il allait :
