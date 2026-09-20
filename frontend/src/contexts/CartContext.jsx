@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import {  } from "../lib/api";
 import ProductImage from "../components/ProductImage";
@@ -35,17 +35,34 @@ export function CartProvider({ children }) {
     catch { return []; }
   });
   const [open, setOpen] = useState(false);
+  // Le courriel de la session en cours, retenu à la volée : `clear()` en a
+  // besoin pour effacer LA bonne sauvegarde, et pas celles des autres comptes
+  // qui se sont connectés sur ce navigateur.
+  const courrielConnu = useRef(null);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
   useEffect(() => {
+    // Le panier mis de côté à la déconnexion est un PASSAGE DE MAIN, pas une
+    // archive : il se dépose une fois, se reprend une fois, et disparaît.
+    //
+    // Il ne disparaissait jamais. Se déconnecter avec un panier vide ne
+    // touchait pas à l'ancienne sauvegarde (on sortait avant), et la reprise
+    // ne l'effaçait pas davantage. Or `refresh()` rejoue « session rétablie »
+    // à CHAQUE chargement de page : on retirait l'article, on rechargeait, il
+    // revenait. Indéfiniment, quoi qu'on fasse.
     const onBeforeSessionClear = (event) => {
       const email = (event?.detail?.email || "").toLowerCase().trim();
-      if (!email || !Array.isArray(items) || items.length === 0) return;
+      if (!email) return;
       const byUser = loadSavedByUser();
-      byUser[email] = items;
+      if (Array.isArray(items) && items.length > 0) {
+        byUser[email] = items;
+      } else {
+        // Panier vidé volontairement : la sauvegarde doit partir avec lui.
+        delete byUser[email];
+      }
       saveSavedByUser(byUser);
     };
 
@@ -58,12 +75,16 @@ export function CartProvider({ children }) {
     const onSessionRestored = (event) => {
       const email = (event?.detail?.email || "").toLowerCase().trim();
       if (!email) return;
-      if (Array.isArray(items) && items.length > 0) return;
+      courrielConnu.current = email;
       const byUser = loadSavedByUser();
       const saved = byUser[email];
-      if (Array.isArray(saved) && saved.length > 0) {
-        setItems(saved);
-      }
+      if (saved === undefined) return;
+      // Reprise UNIQUE : on consomme la sauvegarde, qu'on s'en serve ou non.
+      // Sans cela elle se réapplique à chaque chargement de page.
+      delete byUser[email];
+      saveSavedByUser(byUser);
+      if (Array.isArray(items) && items.length > 0) return;   // panier en cours : on n'écrase rien
+      if (Array.isArray(saved) && saved.length > 0) setItems(saved);
     };
 
     window.addEventListener("fironova:before-session-clear", onBeforeSessionClear);
@@ -159,7 +180,20 @@ export function CartProvider({ children }) {
     setItems((curr) => curr.map((i) => (i.product_id === productId && (i.variant_id || null) === (variantId || null) ? { ...i, qty: Math.max(1, qty) } : i)));
   }, []);
 
-  const clear = useCallback(() => setItems([]), []);
+  // Vider le panier — ou terminer une commande, qui appelle ceci — doit aussi
+  // emporter la sauvegarde. Sans cela, l'article revenait APRÈS le paiement :
+  // le panier repartait vide, puis le rechargement suivant le remplissait de
+  // nouveau avec l'ancien contenu.
+  const clear = useCallback(() => {
+    setItems([]);
+    const email = courrielConnu.current;
+    if (!email) return;
+    const byUser = loadSavedByUser();
+    if (email in byUser) {
+      delete byUser[email];
+      saveSavedByUser(byUser);
+    }
+  }, []);
 
   const subtotal = useMemo(
     () => items.reduce((s, i) => s + i.price_cad * i.qty, 0),
