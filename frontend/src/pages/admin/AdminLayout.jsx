@@ -104,6 +104,32 @@ export default function AdminLayout({ basePath = "/admin" }) {
   // Changer d'ecran, c'est presque toujours avoir termine quelque chose.
   useEffect(() => { relire(); }, [location.pathname, relire]);
 
+  // L'administration vit SOUS l'en-tete de la boutique, qui est lui-meme
+  // fige (sticky, 65 px, z-40). Une barre collee a top:0 se plaçait donc
+  // DERRIERE lui : elle etait bien figee, mais invisible — ce qui revient au
+  // meme pour qui regarde l'ecran.
+  //
+  // La hauteur est MESUREE, pas ecrite en dur : cet en-tete change de taille
+  // selon la langue, la largeur et les bandeaux d'alerte qu'il porte. Un
+  // nombre fige aurait laisse un filet de travers le jour ou il grandit.
+  const [hautEntete, setHautEntete] = useState(0);
+  useEffect(() => {
+    const entete = document.querySelector("header");
+    if (!entete) return undefined;
+    const mesurer = () => setHautEntete(Math.round(entete.getBoundingClientRect().height));
+    mesurer();
+    let observateur;
+    if (typeof ResizeObserver !== "undefined") {
+      observateur = new ResizeObserver(mesurer);
+      observateur.observe(entete);
+    }
+    window.addEventListener("resize", mesurer);
+    return () => {
+      if (observateur) observateur.disconnect();
+      window.removeEventListener("resize", mesurer);
+    };
+  }, []);
+
   // La palette de recherche : Ctrl+K (ou Cmd+K), et « / » comme sur la
   // maquette. « / » ne doit PAS voler la frappe de quelqu'un en train
   // d'ecrire dans un champ — d'ou le test sur l'element actif.
@@ -247,7 +273,8 @@ export default function AdminLayout({ basePath = "/admin" }) {
     <div className="min-h-screen bg-[#f7f7f7] -mt-px" data-testid="admin-shell">
       <div className="flex">
         <aside
-          className={`${menuReplie ? "w-16" : "w-60"} bg-white border-r border-ink/10 min-h-screen sticky top-0 hidden lg:flex flex-col transition-[width] duration-200`}
+          style={{ top: hautEntete, maxHeight: `calc(100vh - ${hautEntete}px)` }}
+          className={`${menuReplie ? "w-16" : "w-60"} bg-white border-r border-ink/10 sticky hidden lg:flex flex-col transition-[width] duration-200`}
           id="admin-sidebar"
           data-testid="admin-sidebar"
           data-collapsed={menuReplie ? "true" : "false"}
@@ -349,11 +376,14 @@ export default function AdminLayout({ basePath = "/admin" }) {
           groupes={navGroups} L={L} lang={lang} />
 
         <main className="flex-1 min-w-0">
-          {/* Figee : sur un ecran de commandes qui descend loin, la
-              recherche, la cloche et le nom de l'ecran doivent rester a
-              portee de regard sans remonter. z-30 passe devant le contenu,
-              mais derriere la palette de recherche et les dialogues. */}
-          <div className="sticky top-0 z-30 bg-white border-b border-ink/10 px-8 py-4 flex items-center justify-between gap-4" data-testid="admin-topbar">
+          {/* Figee SOUS l'en-tete de la boutique : sur un ecran de commandes
+              qui descend loin, la recherche, la cloche et le nom de l'ecran
+              restent a portee de regard sans remonter. z-30 passe devant le
+              contenu, mais derriere l'en-tete (z-40), la palette de recherche
+              et les dialogues. */}
+          <div style={{ top: hautEntete }}
+               className="sticky z-30 bg-white border-b border-ink/10 px-8 py-4 flex items-center justify-between gap-4"
+               data-testid="admin-topbar">
             <div className="flex items-center gap-4 min-w-0">
               <button
                 type="button"
