@@ -127,3 +127,44 @@ def test_un_affilie_inconnu_refuse_net(server_module, monkeypatch):
     with pytest.raises(HTTPException) as erreur:
         asyncio.run(server_module.admin_affiliate_referrals_csv("fantome", None, {}))
     assert erreur.value.status_code == 404
+
+# ---------------------------------------------------------------------------
+# La serie mensuelle de la fiche
+# ---------------------------------------------------------------------------
+
+def test_la_serie_mensuelle_repartit_ce_qui_est_du_et_ce_qui_est_verse(server_module):
+    """Le retour en arriere demande : trois sommes par mois, chacune a SA date.
+
+    Une commission approuvee en septembre mais VERSEE en octobre compte dans
+    le CA et les commissions de septembre (date effective), et dans les
+    « versees » d'octobre (paid_at). Melanger les deux rendrait la
+    conciliation fausse d'un mois.
+    """
+    lignes = [
+        # Approuvee en septembre, versee en octobre.
+        {"order_number": "FN-1", "base_amount": 100, "commission_amount": 16,
+         "status": "paid", "approved_at": "2026-09-10T10:00:00",
+         "created_at": "2026-09-09T10:00:00", "paid_at": "2026-10-05T10:00:00"},
+        # Approuvee et versee dans le meme mois.
+        {"order_number": "FN-2", "base_amount": 50, "commission_amount": 8,
+         "status": "paid", "approved_at": "2026-10-02T10:00:00",
+         "created_at": "2026-10-01T10:00:00", "paid_at": "2026-10-03T10:00:00"},
+        # Exclue : ne compte NI dans le CA, NI dans les commissions.
+        {"order_number": "FN-3", "base_amount": 999, "commission_amount": 99,
+         "status": "excluded", "excluded_reason": "fraud",
+         "created_at": "2026-09-15T10:00:00"},
+    ]
+    serie = server_module._affiliate_serie_mensuelle(lignes)
+    assert [s["mois"] for s in serie] == ["2026-09", "2026-10"]
+    sept, octo = serie
+    assert sept["ca_valide"] == 100 and sept["commissions"] == 16 and sept["payee"] == 0
+    assert octo["ca_valide"] == 50 and octo["commissions"] == 8 and octo["payee"] == 24
+
+
+def test_la_serie_mensuelle_ne_brode_pas_des_mois_vides(server_module):
+    """Seuls les mois avec une activite sont renvoyes : des zeros ajoutes
+    donneraient une fausse impression de serie continue."""
+    lignes = [{"order_number": "FN-1", "base_amount": 10, "commission_amount": 2,
+               "status": "approved", "created_at": "2026-05-04T10:00:00"}]
+    serie = server_module._affiliate_serie_mensuelle(lignes)
+    assert [s["mois"] for s in serie] == ["2026-05"]

@@ -12380,6 +12380,45 @@ async def admin_affiliates_risk(admin: dict = Depends(get_admin_user)):  # noqa:
 # ===== FIRONOVA_AFFILIATE_ADMIN_OVERVIEW_END =====
 
 
+def _affiliate_serie_mensuelle(rows: list, nb_mois: int = 12) -> list:
+    """Douze derniers mois d'activite d'un affilie, du plus ancien au plus recent.
+
+    Trois sommes par mois, chacune avec SA date :
+      - ca_valide : la base des commissions approuvees|payees, au mois de leur
+        date EFFECTIVE (approved_at sinon created_at) — la meme convention que
+        le palier, donc les totaux se recoupent ;
+      - commissions : ce qui est du ou paye pour ce mois-la (meme convention) ;
+      - payee : ce qui a ete VERSE ce mois-la, d'apres paid_at — la colonne qui
+        permet le retour en arriere demande : « combien ai-je verse en mai ? ».
+
+    Un affilie n'a pas d'activite tous les mois : seuls les mois avec au moins
+    une ligne sont renvoyes, ce qui reste vrai plutot que de broder des zeros.
+    """
+    def _mois(valeur):
+        texte = str(valeur or "")
+        return texte[:7] if len(texte) >= 7 and texte[4] == "-" else ""
+
+    valides = {"approved", "paid"}
+    mois_presents = {_mois(r.get("approved_at") or r.get("created_at"))
+                     for r in rows if _mois(r.get("approved_at") or r.get("created_at"))}
+    mois_presents |= {_mois(r.get("paid_at")) for r in rows if _mois(r.get("paid_at"))}
+    mois_ordonnes = sorted(m for m in mois_presents if m)[-nb_mois:]
+
+    serie = []
+    for mois in mois_ordonnes:
+        ca = comm = payee = 0.0
+        for r in rows:
+            eff = _mois(r.get("approved_at") or r.get("created_at"))
+            if eff == mois and r.get("status") in valides:
+                ca += float(r.get("base_amount") or 0)
+                comm += float(r.get("commission_amount") or 0)
+            if _mois(r.get("paid_at")) == mois and r.get("status") == "paid":
+                payee += float(r.get("commission_amount") or 0)
+        serie.append({"mois": mois, "ca_valide": round(ca, 2),
+                      "commissions": round(comm, 2), "payee": round(payee, 2)})
+    return serie
+
+
 async def admin_affiliate_detail(affiliate_id: str,
                                  admin: dict = Depends(get_admin_user)):  # noqa: F821
     aff = await db.affiliates.find_one(
@@ -12392,14 +12431,20 @@ async def admin_affiliate_detail(affiliate_id: str,
     # mais jamais renvoyé : l'admin voyait « — » et concluait que la sauvegarde
     # avait échoué. Le coût est nul — c'est le détail d'UN affilié.
     metrics = await _affiliate_compute_metrics(affiliate_id)
-    referrals = await db.affiliate_referrals.find(
+    # On lit TOUT l'historique pour la serie mensuelle — un calcul tronque a
+    # 500 lignes aurait perdu les premiers mois en silence. La table affichee,
+    # elle, reste plafonnee aux 500 plus recentes.
+    toutes = await db.affiliate_referrals.find(
         {"affiliate_id": affiliate_id}, {"_id": 0}
-    ).sort("created_at", -1).to_list(500)
+    ).sort("created_at", -1).to_list(None)
+    series = _affiliate_serie_mensuelle(toutes)
+    referrals = toutes[:500]
     payouts = await db.affiliate_payouts.find(
         {"affiliate_id": affiliate_id}, {"_id": 0}
     ).sort("created_at", -1).to_list(200)
     return {"affiliate": aff, "metrics": metrics,
-            "referrals": referrals, "payouts": payouts}
+            "referrals": referrals, "payouts": payouts,
+            "series": series}
 
 
 async def admin_affiliate_referrals_csv(affiliate_id: str, month: Optional[str] = None,

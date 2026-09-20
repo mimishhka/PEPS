@@ -1692,7 +1692,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl border border-ash w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()} data-testid="affiliate-detail-modal">
+      <div className="bg-white rounded-xl border border-ash w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()} data-testid="affiliate-detail-modal">
         {/* EN-TETE : qui, dans quel etat, a quel taux — en une ligne.
             Le nom et le courriel etaient seuls ; statut, code et palier se
             trouvaient plus bas, noyes parmi douze champs de meme apparence. */}
@@ -1765,9 +1765,43 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     commissions, et le taux qui les calcule. */}
                 <p className="text-[11px] text-glacier mt-1.5">
                   {L("CA validé", "Validated revenue")} <span className="tabular-nums text-nordfjord">{money(m.cumulative_revenue)}</span>
-                  {" · "}{L("CA du trimestre", "Quarter")} <span className="tabular-nums text-nordfjord">{money(m.quarter_revenue)}</span>
                   {" · "}{L("Taux effectif", "Rate")} <span className="tabular-nums text-nordfjord">{Math.round(m.commission_rate * 100)} %</span>
                 </p>
+
+                {/* VUE MENSUELLE : le retour en arriere demande. Trois sommes
+                    par mois — ce que le mois a valide, ce qu'il doit, et ce
+                    qu'il a VRAIMENT verse. La ligne du haut en est la somme,
+                    mais c'est ici qu'on voit QUAND. */}
+                {Array.isArray(data.series) && data.series.length > 0 && (
+                  <div className="mt-4" data-testid="affiliate-series">
+                    <p className="text-[9.5px] uppercase tracking-[0.12em] text-glacier mb-1.5">
+                      {L("Sur le temps · 12 derniers mois actifs", "Over time · last 12 active months")}
+                    </p>
+                    <div className="overflow-x-auto rounded-lg border border-ash">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-left text-glacier border-b border-ash">
+                            <Th>{L("Mois", "Month")}</Th>
+                            <Th>{L("CA validé", "Validated revenue")}</Th>
+                            <Th>{L("Commissions", "Commissions")}</Th>
+                            <Th>{L("Versées ce mois", "Paid this month")}</Th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.series.map((s) => (
+                            <tr key={s.mois} className="border-b border-ash/60"
+                                data-testid={`series-${s.mois}`}>
+                              <td className="px-3 py-2 font-data tabular-nums text-nordfjord">{s.mois}</td>
+                              <td className="px-3 py-2 tabular-nums">{money(s.ca_valide)}</td>
+                              <td className="px-3 py-2 tabular-nums">{money(s.commissions)}</td>
+                              <td className="px-3 py-2 tabular-nums text-success">{money(s.payee)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1778,6 +1812,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 [L("Activé le", "Activated"), fmtDate(a.activated_at)],
                 [L("Conformité", "Compliance"), a.compliance_status || "—"],
                 [L("Invitations envoyées", "Invites sent"), a.invite_sent_count || 0],
+                ...(m ? [[L("CA du trimestre", "Quarter revenue"), money(m.quarter_revenue)]] : []),
                 ...(a.coupon_percent != null
                   ? [[L("Rabais public", "Public discount"), `${a.coupon_percent} %`]] : []),
                 ...(a.closed_at

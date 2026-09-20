@@ -101,7 +101,9 @@ function reponsesParDefaut() {
       metrics: { cumulative_revenue: 323.96, pending_commission: 3.2,
                  approved_commission: 6.24, paid_commission: 28.5,
                  reversed_commission: 0, excluded_commission: 0,
-                 quarter_revenue: 323.96, commission_rate: 0.16 } } };
+                 quarter_revenue: 323.96, commission_rate: 0.16 },
+      series: [{ mois: "2026-08", ca_valide: 258.97, commissions: 22, payee: 28.5 },
+               { mois: "2026-09", ca_valide: 64.99, commissions: 12.48, payee: 0 }] } };
     }
     return { data: {} };
   });
@@ -262,6 +264,27 @@ describe("AdminAffiliates — conciliation des commissions", () => {
     await ouvrirFiche();
     expect(screen.getByText("2026-09-20")).toBeInTheDocument();
     expect(screen.getByText("2026-08-25")).toBeInTheDocument();
+  });
+
+  it("la vue mensuelle permet le retour en arriere", async () => {
+    // Trois sommes par mois : ce que le mois a valide, ce qu'il doit, et ce
+    // qu'il a VRAIMENT verse ce mois-la.
+    await ouvrirFiche();
+    const aout = screen.getByTestId("series-2026-08");
+    expect(aout).toHaveTextContent("$22.00");
+    expect(aout).toHaveTextContent("$28.50");          // versees ce mois
+    expect(screen.getByTestId("series-2026-09")).toHaveTextContent("$0.00");
+  });
+
+  it("le contexte ne juxtapose plus deux sommes identiques", async () => {
+    // CA valide et CA du trimestre valaient la meme somme (toutes les ventes
+    // tombent dans le trimestre courant) : deux montants egaux cote a cote se
+    // lisaient comme une erreur. Le trimestre descend dans l etat civil.
+    await ouvrirFiche();
+    const figures = screen.getByTestId("affiliate-figures");
+    expect(figures).not.toHaveTextContent("Quarter");
+    // Et il reste consultable plus bas.
+    expect(screen.getByText("CA du trimestre")).toBeInTheDocument();
   });
 
   it("le pipeline montre l argent etape par etape, sans rien oublier", async () => {
