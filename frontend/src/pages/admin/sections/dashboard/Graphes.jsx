@@ -1,209 +1,154 @@
-// Les graphiques du tableau de bord, en SVG et en HTML — sans bibliothèque.
+// Les graphiques du tableau de bord — SVG pur, aucune bibliothèque.
 //
 // Deux raisons. Les couleurs vivent en variables CSS et changent au mode
 // nuit ; or une couleur posée en attribut SVG (`fill="rgb(var(--x))"`) n'est
 // jamais résolue, alors que `currentColor` hérite de la classe Tailwind. Et
-// une dépendance de graphiques pèse plus lourd que ces quelques dizaines de
-// lignes.
+// une dépendance de graphiques pèse plus lourd que ces quelques lignes.
+//
+// Parti pris, repris de Plausible et de Vercel : grilles presque invisibles,
+// aucune légende quand il n'y a qu'une série, une seule couleur. Chaque
+// pixel doit aider à décider — sinon il sort.
 import { useState } from "react";
 
 // ---------------------------------------------------------------------------
-// Minigraphe en barres — celui des cartes de chiffres.
-// N'apparaît QUE si la série existe : dessiner une tendance là où nous n'avons
-// pas d'historique (le taux de conversion, par exemple) serait l'inventer.
+// Courbe principale. Une aire, un trait, trois repères d'échelle.
 // ---------------------------------------------------------------------------
-export function BarresMini({ valeurs, etiquette }) {
-  const utiles = (valeurs || []).filter((v) => Number.isFinite(v));
-  if (utiles.length < 2) return null;
-  const max = Math.max(...utiles, 1);
+export function Aire({ serie, argent, L, hauteur = "h-56" }) {
+  const [survol, setSurvol] = useState(null);
+  if (!serie.length) return null;
+
+  const W = 1000, H = 200, MARGE = 14;
+  const max = Math.max(...serie.map((d) => d.revenue), 1);
+  const pas = serie.length > 1 ? W / (serie.length - 1) : 0;
+  const x = (i) => (serie.length > 1 ? i * pas : W / 2);
+  const y = (v) => MARGE + (H - MARGE) * (1 - v / max);
+  const points = serie.map((d, i) => `${x(i)},${y(d.revenue)}`).join(" ");
+  const aire = `M0,${H} L${points.split(" ").join(" L")} L${W},${H} Z`;
+  const vu = survol != null ? serie[survol] : null;
+
   return (
-    <div className="flex items-end gap-[2px] h-8 shrink-0" role="img" aria-label={etiquette}>
-      {utiles.slice(-14).map((v, i) => (
-        <span key={i} className="w-[3px] rounded-[1px] bg-nordfjord/25"
-              style={{ height: `${Math.max(8, (v / max) * 100)}%` }} />
+    <div className="relative">
+      {/* Trois repères, très pâles : sans échelle, une courbe n'est qu'une
+          forme. Le zéro reste implicite, il est sur la ligne de base. */}
+      <div className={`absolute inset-x-0 top-0 ${hauteur} flex flex-col justify-between pointer-events-none`}
+           aria-hidden="true">
+        {[max, max / 2].map((v, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <span className="font-data text-[10px] text-glacier/60 tabular-nums w-14 shrink-0">{argent(v)}</span>
+            <span className="flex-1 h-px bg-ash/40" />
+          </div>
+        ))}
+        <span className="h-px bg-ash/40 ml-[4.25rem]" />
+      </div>
+
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img"
+           className={`w-full ${hauteur} text-nova overflow-visible`}
+           aria-label={L("Revenu encaissé par période", "Collected revenue per period")}>
+        <defs>
+          <linearGradient id="fnAire" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="currentColor" stopOpacity="0.20" />
+            <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={aire} fill="url(#fnAire)" />
+        <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2"
+                  vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+        {serie.map((d, i) => (
+          <rect key={d.date} x={x(i) - pas / 2} y="0" width={pas || W} height={H} fill="transparent"
+                onMouseEnter={() => setSurvol(i)} onMouseLeave={() => setSurvol(null)}>
+            <title>{`${d.date} · ${argent(d.revenue)}`}</title>
+          </rect>
+        ))}
+        {vu && (
+          <line x1={x(survol)} y1="0" x2={x(survol)} y2={H} stroke="currentColor" strokeWidth="1"
+                opacity="0.35" vectorEffect="non-scaling-stroke" />
+        )}
+        <circle cx={x(survol != null ? survol : serie.length - 1)}
+                cy={y((vu || serie[serie.length - 1]).revenue)} r="3.5"
+                fill="currentColor" vectorEffect="non-scaling-stroke" />
+      </svg>
+
+      <div className="flex items-center justify-between mt-2 pl-[4.25rem] font-data text-[10px] text-glacier/70 tabular-nums">
+        <span>{serie[0].date}</span>
+        <span className="text-nordfjord">
+          {vu ? `${vu.date} · ${argent(vu.revenue)} · ${vu.orders} ${L("cmd", "ord")}` : ""}
+        </span>
+        <span>{serie[serie.length - 1].date}</span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Barre de proportion : une seule ligne, pas un camembert. Deux valeurs se
+// comparent mieux côte à côte qu'en tranches.
+// ---------------------------------------------------------------------------
+export function Proportion({ lignes, argent, testid }) {
+  const total = lignes.reduce((s, l) => s + l.valeur, 0) || 1;
+  return (
+    <div data-testid={testid}>
+      {lignes.map((l) => (
+        <div key={l.cle} className="py-2.5 border-b border-ash/40 last:border-0"
+             data-testid={`${testid}-${l.cle}`}>
+          <div className="flex items-baseline gap-3 text-sm">
+            <span className="text-nordfjord">{l.nom}</span>
+            <span className="font-data text-[11px] text-glacier tabular-nums">
+              {Math.round((l.valeur / total) * 100)} %
+            </span>
+            <span className="ml-auto font-data tabular-nums text-nordfjord">{argent(l.valeur)}</span>
+          </div>
+          <div className="mt-1.5 h-[3px] bg-ash/40">
+            <div className="h-full bg-nordfjord" style={{ width: `${(l.valeur / total) * 100}%` }}
+                 aria-hidden="true" />
+          </div>
+        </div>
       ))}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Barres empilées : ce que rapportent les nouveaux clients, et les fidèles.
-// Les deux segments totalisent EXACTEMENT la barre — une pile dont les parts
-// ne font pas le total est un mensonge graphique.
-// ---------------------------------------------------------------------------
-export function BarresEmpilees({ serie, argent, L, max: maxImpose }) {
-  const [survol, setSurvol] = useState(null);
-  if (!serie.length) return null;
-
-  const max = maxImpose || Math.max(...serie.map((d) => d.revenue), 1);
-  const paliers = [max, max * 0.5, 0];
-  // Au-delà d'une douzaine de barres, une date sur deux suffit : les
-  // étiquettes se chevauchaient et devenaient illisibles.
-  const pasEtiquette = Math.ceil(serie.length / 8);
-
-  return (
-    <div>
-      <div className="flex gap-3">
-        {/* L'échelle à gauche : sans elle, des barres ne sont qu'une forme. */}
-        <div className="flex flex-col justify-between h-56 py-1 shrink-0" aria-hidden="true">
-          {paliers.map((v, i) => (
-            <span key={i} className="font-data text-[10px] text-glacier/70 tabular-nums">
-              {argent(v)}
-            </span>
-          ))}
-        </div>
-        <div className="flex-1 min-w-0 relative">
-          <div className="absolute inset-0 flex flex-col justify-between" aria-hidden="true">
-            {paliers.map((_, i) => <span key={i} className="h-px bg-ash/60" />)}
-          </div>
-          <div className="relative h-56 flex items-end gap-[3px]">
-            {serie.map((d, i) => {
-              const hauteur = (d.revenue / max) * 100;
-              const partFidele = d.revenue ? (d.returning_revenue / d.revenue) * 100 : 0;
-              return (
-                <div key={d.date}
-                     className="flex-1 h-full flex flex-col justify-end min-w-[3px] group relative"
-                     onMouseEnter={() => setSurvol(i)} onMouseLeave={() => setSurvol(null)}
-                     data-testid={`bar-${d.date}`}>
-                  <div className="w-full rounded-t-[3px] overflow-hidden flex flex-col justify-end
-                                  transition-opacity"
-                       style={{ height: `${Math.max(1.5, hauteur)}%` }}
-                       title={`${d.date} · ${argent(d.revenue)} · ${d.orders} ${L("commande(s)", "order(s)")}`}>
-                    {/* Nouveaux au-dessus, fidèles en dessous : la base de la
-                        barre est ce qui revient tout seul chaque période. */}
-                    <span className="w-full bg-nova/45 group-hover:bg-nova/60"
-                          style={{ height: `${100 - partFidele}%` }} />
-                    <span className="w-full bg-nordfjord group-hover:bg-nordfjord/85"
-                          style={{ height: `${partFidele}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {/* Les dates sous l'axe. */}
-          <div className="flex gap-[3px] mt-2">
-            {serie.map((d, i) => (
-              <span key={d.date} className="flex-1 min-w-0 text-center font-data text-[9px] text-glacier truncate">
-                {i % pasEtiquette === 0 ? d.date.slice(5) : ""}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {survol != null && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] bg-clinical rounded-lg px-3 py-2"
-             data-testid="bar-hover">
-          <span className="font-data font-semibold text-nordfjord">{serie[survol].date}</span>
-          <span className="text-glacier">{L("Total", "Total")}
-            <b className="text-nordfjord tabular-nums"> {argent(serie[survol].revenue)}</b></span>
-          <span className="text-glacier">{L("Fidèles", "Returning")}
-            <b className="text-nordfjord tabular-nums"> {argent(serie[survol].returning_revenue)}</b></span>
-          <span className="text-glacier">{L("Nouveaux", "New")}
-            <b className="text-nordfjord tabular-nums"> {argent(serie[survol].new_revenue)}</b></span>
-          <span className="text-glacier tabular-nums">
-            {serie[survol].orders} {L("commande(s)", "order(s)")}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Anneau des circuits de paiement — deux parts, pas douze : un camembert de
-// deux tranches se lit d'un coup, ce qui est précisément son seul usage
-// légitime.
-// ---------------------------------------------------------------------------
-export function Anneau({ parts, argent, testid = "donut" }) {
-  const total = parts.reduce((s, p) => s + p.valeur, 0);
-  const R = 42, C = 2 * Math.PI * R;
-  let debut = 0;
-
-  return (
-    <div className="flex items-center gap-5" data-testid={testid}>
-      <svg viewBox="0 0 100 100" className="w-28 h-28 shrink-0 -rotate-90" role="img"
-           aria-label={parts.map((p) => `${p.nom} ${argent(p.valeur)}`).join(", ")}>
-        <circle cx="50" cy="50" r={R} fill="none" strokeWidth="12" className="stroke-clinical" />
-        {total > 0 && parts.map((p) => {
-          const part = p.valeur / total;
-          const dash = `${part * C} ${C}`;
-          const offset = -debut * C;
-          debut += part;
-          return (
-            <circle key={p.nom} cx="50" cy="50" r={R} fill="none" strokeWidth="12"
-                    strokeDasharray={dash} strokeDashoffset={offset}
-                    className={p.classe} strokeLinecap="butt" />
-          );
-        })}
-      </svg>
-      <ul className="flex-1 min-w-0 space-y-2">
-        {parts.map((p) => (
-          <li key={p.nom} className="flex items-center gap-2 text-sm"
-              data-testid={`${testid}-${p.cle}`}>
-            <span className={`w-2.5 h-2.5 rounded-sm shrink-0 ${p.pastille}`} aria-hidden="true" />
-            <span className="flex-1 min-w-0 truncate text-nordfjord">{p.nom}</span>
-            <span className="text-glacier tabular-nums text-xs">
-              {total > 0 ? Math.round((p.valeur / total) * 100) : 0} %
-            </span>
-            <span className="font-semibold tabular-nums text-nordfjord whitespace-nowrap">
-              {argent(p.valeur)}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Affluence : 7 jours × 24 heures. Répond à « quand mes clients commandent »,
-// donc à « quand dois-je être disponible » et « quand lancer une promotion ».
+// donc à « quand être disponible » et « quand lancer une promotion ».
 // Chaque case porte son libellé complet : la couleur seule ne dit rien à qui
-// la distingue mal, et une infobulle native suit aussi le clavier.
+// la distingue mal, et l'infobulle native suit aussi le clavier.
 // ---------------------------------------------------------------------------
-const JOURS_FR = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-const JOURS_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const JOURS_FR = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"];
+const JOURS_EN = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
 export function Affluence({ grille, argent, L, lang }) {
   const jours = lang === "fr" ? JOURS_FR : JOURS_EN;
   const lignes = grille || [];
-  const max = Math.max(...lignes.flat(), 1);
-  const total = lignes.flat().reduce((s, v) => s + v, 0);
-  if (!total) return null;
+  const plat = lignes.flat();
+  const max = Math.max(...plat, 1);
+  if (!plat.some((v) => v > 0)) return null;
 
-  // Le sommet, écrit en toutes lettres : c'est l'information qu'on cherche.
   let sommet = { jour: 0, heure: 0, valeur: 0 };
   lignes.forEach((ligne, j) => ligne.forEach((v, h) => {
     if (v > sommet.valeur) sommet = { jour: j, heure: h, valeur: v };
   }));
 
   return (
-    <div>
-      <div className="flex items-baseline gap-2 mb-3">
-        <span className="font-display text-xl font-bold tabular-nums text-nordfjord">
-          {argent(sommet.valeur)}
-        </span>
-        <span className="text-[11px] text-glacier" data-testid="affluence-sommet">
-          {L("sommet", "peak")} · {jours[sommet.jour]} {sommet.heure} h
-        </span>
-      </div>
-      <div className="space-y-[3px]" data-testid="affluence">
+    <div data-testid="affluence">
+      <p className="font-data text-[11px] text-glacier mb-3" data-testid="affluence-sommet">
+        {L("Sommet", "Peak")} {jours[sommet.jour]} {sommet.heure} h
+        <span className="text-nordfjord"> · {argent(sommet.valeur)}</span>
+      </p>
+      <div className="space-y-[3px]">
         {lignes.map((ligne, j) => (
           <div key={j} className="flex items-center gap-2">
-            <span className="font-data text-[10px] text-glacier w-8 shrink-0">{jours[j]}</span>
+            <span className="font-data text-[10px] text-glacier/70 w-7 shrink-0">{jours[j]}</span>
             <div className="flex-1 flex gap-[2px]">
               {ligne.map((v, h) => (
-                <span key={h}
-                      title={`${jours[j]} ${h} h — ${argent(v)}`}
-                      data-testid={v === sommet.valeur && v > 0 ? "affluence-max" : undefined}
-                      className="flex-1 h-4 rounded-[2px] bg-nova"
-                      style={{ opacity: v ? 0.15 + (v / max) * 0.85 : 0.06 }} />
+                <span key={h} title={`${jours[j]} ${h} h — ${argent(v)}`}
+                      className="flex-1 h-3.5 bg-nordfjord"
+                      style={{ opacity: v ? 0.12 + (v / max) * 0.88 : 0.05 }} />
               ))}
             </div>
           </div>
         ))}
       </div>
-      <div className="flex justify-between font-data text-[9px] text-glacier mt-1.5 pl-10">
+      <div className="flex justify-between font-data text-[9px] text-glacier/70 mt-1.5 pl-9">
         <span>0 h</span><span>6 h</span><span>12 h</span><span>18 h</span><span>23 h</span>
       </div>
     </div>

@@ -131,7 +131,7 @@ it("n affiche que les compteurs qui demandent quelque chose", async () => {
 it("dit clairement quand il n y a rien a faire", async () => {
   // Une zone vide ne doit pas se lire comme une panne.
   afficher();
-  expect(await screen.findByTestId("dashboard-calm")).toHaveTextContent("Rien ne demande d'action");
+  expect(await screen.findByTestId("dashboard-calm")).toHaveTextContent("Rien à traiter");
   expect(screen.queryByTestId("dashboard-actions")).not.toBeInTheDocument();
 });
 
@@ -159,26 +159,27 @@ it("compte les actions a cote du titre de section", async () => {
 // L'argent de la période
 // ---------------------------------------------------------------------------
 
-it("montre les quatre chiffres de pilotage avec leur ecart", async () => {
+it("un seul chiffre regne, les autres sont secondaires", async () => {
+  // Le revenu occupe le haut de page ; panier moyen, conversion et clients
+  // vivent sur une ligne de filets, sans carte, donc sans se disputer l oeil.
   afficher();
   expect(await screen.findByTestId("kpi-revenue")).toHaveTextContent("420,00 $");
-  expect(screen.getByTestId("kpi-revenue")).toHaveTextContent("+40");
-  expect(screen.getByTestId("kpi-orders")).toHaveTextContent("5");
   expect(screen.getByTestId("kpi-aov")).toHaveTextContent("84,00 $");
   expect(screen.getByTestId("kpi-conversion")).toHaveTextContent("42.9 %");
+  expect(screen.getByTestId("kpi-customers")).toHaveTextContent("3 nouveaux");
+  // L ecart est ecrit a cote du grand chiffre, en texte, pas en pastille.
+  const ecart = screen.getByTestId("kpi-revenue-delta");
+  expect(ecart).toHaveTextContent("40");
+  expect(ecart).toHaveTextContent("30 jours précédents");
 });
 
-it("la grande carte separe ce qui vient des fideles et des nouveaux", async () => {
-  // Deux series : la legende est obligatoire, et les deux montants doivent
-  // totaliser le revenu affiche en tete de carte.
+it("la part des clients fideles est consultable, pas imposee", async () => {
+  // Elle vit dans un bloc replie : on ne la regarde pas chaque matin, mais
+  // elle reste a un clic. 100 + 250 de fideles sur 420 de total.
   afficher();
-  const carte = await screen.findByTestId("chart-revenue");
-  expect(carte.closest("div[class*='rounded']")).toBeTruthy();
-  expect(screen.getByText(/Clients fidèles/)).toBeInTheDocument();
-  expect(screen.getByText(/Nouveaux clients/)).toBeInTheDocument();
-  // 100 + 250 de fideles sur 420 de total.
-  expect(screen.getByText("350,00 $")).toBeInTheDocument();
-  expect(screen.getByText("70,00 $")).toBeInTheDocument();
+  await screen.findByTestId("repli-circuits");
+  expect(screen.getByTestId("fidelite-fideles")).toHaveTextContent("350,00 $");
+  expect(screen.getByTestId("fidelite-nouveaux")).toHaveTextContent("70,00 $");
 });
 
 it("montre ou se perdent les commandes", async () => {
@@ -199,7 +200,7 @@ it("repartit l encaisse entre Interac et crypto", async () => {
 it("dit a quelle heure les clients commandent, en heure locale", async () => {
   afficher();
   // Le sommet est ecrit en toutes lettres : c'est l'information cherchee.
-  expect(await screen.findByTestId("affluence-sommet")).toHaveTextContent("Jeu");
+  expect(await screen.findByTestId("affluence-sommet")).toHaveTextContent("jeu");
   expect(screen.getByTestId("affluence-sommet")).toHaveTextContent("20 h");
 });
 
@@ -261,4 +262,15 @@ it("n affiche plus le tableau des circuits de paiement", async () => {
   afficher();
   await screen.findByTestId("recent-orders-table");
   expect(screen.queryByTestId("payment-rails")).not.toBeInTheDocument();
+});
+
+it("la densite du tableau se regle et se retient", async () => {
+  // Recommandation constante des guides sur les tableaux denses : offrir le
+  // choix, et s en souvenir d une visite a l autre.
+  afficher();
+  const bouton = await screen.findByTestId("densite");
+  expect(bouton).toHaveTextContent("confortable");
+  fireEvent.click(bouton);
+  expect(bouton).toHaveTextContent("compacte");
+  expect(localStorage.getItem("fironova_densite")).toBe("compacte");
 });

@@ -12,7 +12,10 @@ const MAX_ROWS = 8;
 
 // Les liens sont relatifs : le dashboard est monté sous un basePath variable
 // (/admin en dev, /ops-portal-fn7k2q en prod) et les resolve donc tout seul.
-export function LowStockCard() {
+// `nu` : sans cadre ni en-tête. Le tableau de bord place ce panneau dans un
+// bloc repliable qui porte déjà son titre — une carte dans une carte doublerait
+// les bordures et les intitulés.
+export function LowStockCard({ nu = false }) {
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
 
@@ -51,9 +54,9 @@ export function LowStockCard() {
   return (
     <div
       data-testid="low-stock-card"
-      className={`bg-white border ${borderClass} p-6 rounded-md`}
+      className={nu ? "" : `bg-white border ${borderClass} p-6 rounded-md`}
     >
-      <div className="flex items-center justify-between mb-4">
+      <div className={`flex items-center justify-between mb-4 ${nu ? "hidden" : ""}`}>
         <div className="flex items-center gap-2">
           <AlertTriangle
             size={16}
