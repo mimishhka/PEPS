@@ -381,4 +381,30 @@ describe("AdminAffiliates — conciliation des commissions", () => {
   });
 });
 
+  it("les KPI portent leur ecart contre le mois precedent", async () => {
+    // Un KPI sans direction ni reference ne dit pas si le chiffre est bon :
+    // valeur, ecart, comparaison — les trois en meme temps.
+    api.get.mockImplementation(async (url) => {
+      if (url === "/admin/affiliates/overview") return { data: { ...APERCU,
+        monthly_series: [{ month: "2026-08", revenue: 1000, commission: 100 },
+                         { month: "2026-09", revenue: 1400, commission: 90 }] } };
+      if (url === "/admin/affiliates") return { data: [AFFILIE] };
+      if (url === "/admin/affiliates/risk") return { data: null };
+      return { data: {} };
+    });
+    render(<AdminAffiliates />);
+
+    // +40 % sur le CA, −10 % sur les commissions — la fleche et le nombre
+    // vivent dans le meme element, le texte exact peut varier d'un espace.
+    // Le chargement passe par une Promise.all : laisser le temps aux etats
+    // de se poser avant de lire les KPI.
+    await new Promise((r) => setTimeout(r, 500));
+    // La fleche et le nombre vivent dans la meme ligne d'ecart : on les lit
+    // ensemble, dans l'element qui porte « vs mois precedent ».
+    const ecarts = screen.getAllByText("vs mois précédent");
+    expect(ecarts.length).toBeGreaterThanOrEqual(2);
+    expect(ecarts[0].parentElement).toHaveTextContent("▲");
+    expect(ecarts[1].parentElement).toHaveTextContent("▼");
+  });
+
 });

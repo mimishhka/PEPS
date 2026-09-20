@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import {
-  Plus, RefreshCw, Copy, X, Users, TrendingUp, Clock,
+  Plus, RefreshCw, Copy, X, Users, Clock,
   AlertTriangle, MousePointerClick, Award, Wallet, ShieldAlert, Eye,
   Search, Download, Smartphone, Globe, MousePointerClick as CursorClick,
   Upload, FileText, CheckCircle2, XCircle } from "lucide-react";
@@ -156,6 +156,18 @@ export default function AdminAffiliates() {
   const aff = ov?.affiliates || {};
   const al = ov?.alerts || {};
   const attr = ov?.attribution || {};
+
+  // Un KPI sans direction ni reference ne dit pas si le chiffre est bon : la
+  // serie des 12 mois, deja chargee, fournit la comparaison sans requete de
+  // plus. Sans mois anterieur, pas de pourcentage invente.
+  const deltaMois = (cle) => {
+    const serie = ov?.monthly_series || [];
+    if (serie.length < 2) return null;
+    const [avant, apres] = serie.slice(-2);
+    const a = Number(avant[cle] || 0), b = Number(apres[cle] || 0);
+    if (!a) return null;
+    return Math.round(((b - a) / a) * 100);
+  };
 
   const ql = (q || "").trim().toLowerCase();
   const filteredRows = rows.filter((a) => {
@@ -318,13 +330,17 @@ export default function AdminAffiliates() {
               historique. « Versé à vie » descend en ligne de référence. */}
           <SectionRule>{L("PERFORMANCE", "PERFORMANCE")}</SectionRule>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-            <Kpi icon={TrendingUp} accent="#0d9d57" label={L("CA généré (validé)", "Generated revenue")} value={money(fin.validated_revenue)} sub={`CAD · ${int(fin.validated_orders)} ${L("commandes", "orders")}`} />
-            <Kpi icon={Wallet} accent="#00B8D4" label={L("Commissions dues", "Commissions due")} value={money(fin.commission_due)} sub={L("CAD · approuvé, versé en USDT", "CAD · approved, paid in USDT")} />
+            <Kpi label={L("CA généré (validé)", "Generated revenue")} value={money(fin.validated_revenue)}
+              sub={`CAD · ${int(fin.validated_orders)} ${L("commandes", "orders")}`}
+              delta={deltaMois("revenue")} deltaSub={L("vs mois précédent", "vs prior month")} />
+            <Kpi label={L("À verser", "To pay")} value={money(fin.commission_due)}
+              sub={L("approuvé · versé en USDT au prochain cycle", "approved · paid in USDT next cycle")}
+              delta={deltaMois("commission")} deltaSub={L("vs mois précédent", "vs prior month")} />
             {/* « Actifs » designait le STATUT du compte, pas l'activite : 78
                 comptes acceptes dont aucun n'a genere une vente se lisaient
                 comme 78 affilies productifs. Le libelle dit maintenant ce
                 qu'il compte, et le sous-titre montre combien produisent. */}
-            <Kpi icon={Users} accent="#f59e0b"
+            <Kpi
               label={L("Comptes acceptés", "Accepted accounts")}
               value={int(aff.active)}
               sub={ov?.top_affiliates?.length
@@ -385,9 +401,13 @@ export default function AdminAffiliates() {
               <div style={{ width: "100%", height: 260 }}>
                 <ResponsiveContainer>
                   <LineChart data={ov?.monthly_series || []} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={couleursGraphique.grille} />
+                    {/* Grille pleine, pas de pointilles : le trace n'a pas
+                        besoin de bruit. L'axe Y en milliers se lit plus vite
+                        que cinq chiffres serres. */}
+                    <CartesianGrid stroke={couleursGraphique.grille} />
                     <XAxis dataKey="month" tick={{ fontSize: 10, fill: couleursGraphique.axe }} />
-                    <YAxis tick={{ fontSize: 10, fill: couleursGraphique.axe }} />
+                    <YAxis tick={{ fontSize: 10, fill: couleursGraphique.axe }}
+                           tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)} />
                     <Tooltip formatter={(v) => money(v)} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                     {/* dot : VISIBLE quand il n'y a qu'un mois de donnees.
@@ -795,19 +815,26 @@ function RiskPanel({ risk, L, lang, onOpen }) {
   );
 }
 
-function Kpi({ icon: Icon, accent, label, value, sub }) {
+function Kpi({ label, value, sub, delta, deltaSub }) {
+  // Plus de medaillon d'icone colore : sur le tableau de bord principal, ce
+  // marqueur decoratif a ete rejete — la hierarchie passe par la taille, la
+  // couleur est reservee au sens. L'ecart contre le mois precedent est, lui,
+  // la troisieme chose qu'un KPI doit porter (valeur, direction, reference).
   return (
     <div className="bg-white border border-ash rounded-xl p-5">
-      <div className="flex items-start justify-between mb-3 gap-2">
-        <p className="font-data text-[10px] uppercase tracking-[0.18em] text-glacier min-w-0">{label}</p>
-        <span className="w-8 h-8 shrink-0 rounded-lg grid place-items-center" style={{ background: `${accent}1a` }}>
-          <Icon size={16} style={{ color: accent }} />
-        </span>
-      </div>
+      <p className="font-data text-[10px] uppercase tracking-[0.18em] text-glacier min-w-0">{label}</p>
       {/* whitespace-nowrap : money() rend « 1 234,56 $ » et la valeur se
           coupait, laissant le symbole seul sur une deuxième ligne. */}
-      <p className="font-display text-2xl font-bold text-nordfjord tabular-nums whitespace-nowrap">{value}</p>
+      <p className="font-display text-2xl font-bold text-nordfjord tabular-nums whitespace-nowrap mt-2">{value}</p>
       {sub && <p className="text-[11px] text-glacier mt-1">{sub}</p>}
+      {delta != null && (
+        <p className="font-data text-[11px] mt-1.5">
+          <span className={delta >= 0 ? "text-success" : "text-error"}>
+            {delta >= 0 ? "▲" : "▼"} {Math.abs(delta)} %
+          </span>{" "}
+          {deltaSub && <span className="text-glacier">{deltaSub}</span>}
+        </p>
+      )}
     </div>
   );
 }
