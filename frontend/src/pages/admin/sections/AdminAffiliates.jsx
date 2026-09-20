@@ -1742,12 +1742,72 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
           <p className="text-sm text-glacier">{L("Chargement…", "Loading…")}</p>
         ) : (
           <div className="space-y-6">
+            {/* DECISIONS D'ABORD : elles etaient noyees sous les chiffres et
+                l'etat civil. Suspendre, rouvrir, marquer conforme — c'est ce
+                qu'on vient faire ici, cela passe devant l'argent. */}
+            {/* Status actions */}
+            <div className="flex flex-wrap gap-2">
+              {a.status === "invited" && (
+                <ActBtn onClick={resendInvite} data-testid="affiliate-resend-invite">
+                  {resending ? L("Envoi…", "Sending…") : L("Renvoyer l'invitation", "Resend invite")}
+                </ActBtn>
+              )}
+              {/* La suspension DEMANDE confirmation — elle ne le faisait pas.
+                  C'est l'action la plus lourde de cet écran : le statut est lu
+                  à chaque validation de coupon ET au paiement, donc le code de
+                  l'affilié cesse instantanément d'accorder son rabais, codes
+                  principaux ET alias, et plus aucune commande ne lui est
+                  attribuée. Il n'en est averti par rien ; il constate l'arrêt
+                  de ses ventes.
+                  Le formulaire d'édition confirmait déjà un changement de
+                  palier — un réglage bien moins grave. La suspension avait été
+                  oubliée de cette liste, et son bouton est voisin de
+                  « Marquer en révision », de même apparence. */}
+              {a.status === "active" && (
+                <ActBtn onClick={async () => {
+                  const ok = await confirm({
+                    title: L("Suspendre cet affilié ?", "Suspend this affiliate?"),
+                    description: L(
+                      `Effet immédiat : le code ${a.code || ""} et tous ses alias cessent d'accorder le rabais, et plus aucune commande ne lui est attribuée. Ses contacts verront « code invalide » au paiement. L'affilié n'en est pas averti automatiquement.`,
+                      `Immediate effect: code ${a.code || ""} and all its aliases stop granting the discount, and no order is credited to them any more. Their contacts will see “invalid code” at checkout. The affiliate is not notified automatically.`),
+                    confirmLabel: L("Suspendre", "Suspend"),
+                    cancelLabel: L("Annuler", "Cancel"),
+                    destructive: true,
+                  });
+                  if (ok) setPatch({ status: "suspended" });
+                }} data-testid="affiliate-suspend">
+                  {L("Suspendre", "Suspend")}
+                </ActBtn>
+              )}
+              {a.status === "suspended" && <ActBtn onClick={() => setPatch({ status: "active" })}>{L("Réactiver", "Reactivate")}</ActBtn>}
+              {/* Fermeture : proposee pour un invite qui ne repondra jamais, et
+                  pour un suspendu dont on solde le dossier. Jamais pour un
+                  actif — son code est en circulation, il faut le suspendre
+                  d'abord, et le serveur le refuse de toute facon. */}
+              {(a.status === "invited" || a.status === "suspended") && (
+                <ActBtn onClick={fermerDossier} data-testid="affiliate-close">
+                  {L("Fermer le dossier", "Close file")}
+                </ActBtn>
+              )}
+              {a.status === "closed" && (
+                <ActBtn onClick={rouvrirDossier} data-testid="affiliate-reopen">
+                  {L("Rouvrir le dossier", "Reopen file")}
+                </ActBtn>
+              )}
+              {a.compliance_status !== "review" && <ActBtn onClick={() => setPatch({ compliance_status: "review" })}>{L("Marquer en révision", "Flag review")}</ActBtn>}
+              {a.compliance_status !== "compliant" && <ActBtn onClick={() => setPatch({ compliance_status: "compliant" })}>{L("Marquer conforme", "Mark compliant")}</ActBtn>}
+              <ActBtn onClick={() => setEditing((v) => !v)} data-testid="affiliate-edit-toggle">
+                {editing ? L("Annuler l'édition", "Cancel edit") : L("Éditer les paramètres", "Edit settings")}
+              </ActBtn>
+            </div>
             {/* DEUX POIDS AU LIEU D'UN.
                 Douze champs se partageaient la meme apparence : « Cree le » et
                 « CA valide » avaient exactement le meme poids typographique. On
                 lisait la fiche ligne a ligne, faute de pouvoir la survoler.
                 Les chiffres d'argent passent devant ; l'etat civil du dossier
                 reste consultable, en retrait. */}
+            <TitreSection>{L("L'argent", "The money")}</TitreSection>
+
             {/* L'ARGENT, ETAPE PAR ETAPE.
                 L'ancien bloc melangeait CA et commissions, et ignorait
                 l'argent retire : comprendre le dossier imposait de descendre
@@ -1860,6 +1920,8 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
               </div>
             )}
 
+            <TitreSection>{L("Le dossier", "The file")}</TitreSection>
+
             {/* Etat civil du dossier : consultable, jamais decisif. */}
             <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-2.5 text-[12px]">
               {[
@@ -1881,61 +1943,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
               ))}
             </dl>
 
-            {/* Status actions */}
-            <div className="flex flex-wrap gap-2">
-              {a.status === "invited" && (
-                <ActBtn onClick={resendInvite} data-testid="affiliate-resend-invite">
-                  {resending ? L("Envoi…", "Sending…") : L("Renvoyer l'invitation", "Resend invite")}
-                </ActBtn>
-              )}
-              {/* La suspension DEMANDE confirmation — elle ne le faisait pas.
-                  C'est l'action la plus lourde de cet écran : le statut est lu
-                  à chaque validation de coupon ET au paiement, donc le code de
-                  l'affilié cesse instantanément d'accorder son rabais, codes
-                  principaux ET alias, et plus aucune commande ne lui est
-                  attribuée. Il n'en est averti par rien ; il constate l'arrêt
-                  de ses ventes.
-                  Le formulaire d'édition confirmait déjà un changement de
-                  palier — un réglage bien moins grave. La suspension avait été
-                  oubliée de cette liste, et son bouton est voisin de
-                  « Marquer en révision », de même apparence. */}
-              {a.status === "active" && (
-                <ActBtn onClick={async () => {
-                  const ok = await confirm({
-                    title: L("Suspendre cet affilié ?", "Suspend this affiliate?"),
-                    description: L(
-                      `Effet immédiat : le code ${a.code || ""} et tous ses alias cessent d'accorder le rabais, et plus aucune commande ne lui est attribuée. Ses contacts verront « code invalide » au paiement. L'affilié n'en est pas averti automatiquement.`,
-                      `Immediate effect: code ${a.code || ""} and all its aliases stop granting the discount, and no order is credited to them any more. Their contacts will see “invalid code” at checkout. The affiliate is not notified automatically.`),
-                    confirmLabel: L("Suspendre", "Suspend"),
-                    cancelLabel: L("Annuler", "Cancel"),
-                    destructive: true,
-                  });
-                  if (ok) setPatch({ status: "suspended" });
-                }} data-testid="affiliate-suspend">
-                  {L("Suspendre", "Suspend")}
-                </ActBtn>
-              )}
-              {a.status === "suspended" && <ActBtn onClick={() => setPatch({ status: "active" })}>{L("Réactiver", "Reactivate")}</ActBtn>}
-              {/* Fermeture : proposee pour un invite qui ne repondra jamais, et
-                  pour un suspendu dont on solde le dossier. Jamais pour un
-                  actif — son code est en circulation, il faut le suspendre
-                  d'abord, et le serveur le refuse de toute facon. */}
-              {(a.status === "invited" || a.status === "suspended") && (
-                <ActBtn onClick={fermerDossier} data-testid="affiliate-close">
-                  {L("Fermer le dossier", "Close file")}
-                </ActBtn>
-              )}
-              {a.status === "closed" && (
-                <ActBtn onClick={rouvrirDossier} data-testid="affiliate-reopen">
-                  {L("Rouvrir le dossier", "Reopen file")}
-                </ActBtn>
-              )}
-              {a.compliance_status !== "review" && <ActBtn onClick={() => setPatch({ compliance_status: "review" })}>{L("Marquer en révision", "Flag review")}</ActBtn>}
-              {a.compliance_status !== "compliant" && <ActBtn onClick={() => setPatch({ compliance_status: "compliant" })}>{L("Marquer conforme", "Mark compliant")}</ActBtn>}
-              <ActBtn onClick={() => setEditing((v) => !v)} data-testid="affiliate-edit-toggle">
-                {editing ? L("Annuler l'édition", "Cancel edit") : L("Éditer les paramètres", "Edit settings")}
-              </ActBtn>
-            </div>
+
 
             {/* Aliases historiques (codes précédents suite à changement de rabais) */}
             {(a.aliases || []).length > 0 && (
@@ -2158,6 +2166,8 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
               ) : <p className="text-sm text-glacier">{L("Aucun relevé.", "No payouts.")}</p>}
             </div>
 
+            <TitreSection>{L("Clients et commandes", "Customers and orders")}</TitreSection>
+
             <div>
               <div className="flex items-center justify-between mb-2">
                 {/* « à vie » retiré : le rattachement n'attribue plus rien.
@@ -2272,6 +2282,20 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* Titre de section de la fiche : la meme grammaire que le reste du site —
+ * un libelle en capitales espacees et un filet. La fiche enchainait dix blocs
+ * sans aucune structure : l'oeil ne savait plus ou commencait quoi, et les
+ * decisions se trouvaient sous les chiffres. Trois sections nommees, et les
+ * boutons d'action remontes juste sous l'en-tete. */
+function TitreSection({ children }) {
+  return (
+    <div className="flex items-center gap-3 mb-2">
+      <span className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier">{children}</span>
+      <span className="flex-1 h-px bg-ash/60" />
     </div>
   );
 }
