@@ -340,7 +340,12 @@ export default function AdminDashboard() {
           </Link>
         </div>
 
-        <table className="w-full text-[13px]" data-testid="recent-orders-table">
+        {/* Le tableau défile DANS sa boîte. Sans cela, sur un écran étroit,
+            ses six colonnes poussaient la page entière vers la droite : tout
+            le tableau de bord se décalait, et une barre horizontale
+            apparaissait sous la fenêtre. */}
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[46rem] text-[13px]" data-testid="recent-orders-table">
           <thead>
             <tr className="font-data text-[10px] uppercase tracking-[0.12em] text-glacier">
               <th className="text-left font-normal px-4 py-2 border-y border-ash/60">{L("Commande", "Order")}</th>
@@ -400,6 +405,7 @@ export default function AdminDashboard() {
             )}
           </tbody>
         </table>
+        </div>
       </section>
 
       {/* ================== LE RESTE, REPLIÉ ================== */}

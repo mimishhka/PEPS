@@ -64,8 +64,16 @@ export default function AdminLayout({ basePath = "/admin" }) {
   // Sans le retour sur l'onglet, une situation reglee restait affichee jusqu'a
   // une minute ; sans le changement d'ecran, expedier ses commandes laissait
   // la pastille inchangee tant qu'on ne rechargeait pas la page.
+  // `vivant` doit être REMIS À VRAI au montage, pas seulement mis à faux au
+  // démontage. En mode strict, React monte, démonte puis remonte le composant :
+  // le premier démontage laissait le drapeau à faux pour toujours, toutes les
+  // réponses étaient ignorées, et la cloche affichait « rien en attente »
+  // alors que le serveur annonçait six choses à traiter.
   const vivant = useRef(true);
-  useEffect(() => () => { vivant.current = false; }, []);
+  useEffect(() => {
+    vivant.current = true;
+    return () => { vivant.current = false; };
+  }, []);
 
   const relire = useCallback(() => {
     api.get("/admin/ops/signals")
