@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
+import NomEnDeux from "../components/NomEnDeux";
 import { useLang } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useSiteConfig } from "../contexts/SiteConfigContext";
@@ -724,13 +725,9 @@ function AddressForm({ value, setValue, lang, prefix }) {
   const lbl = (en, fr) => lang === "fr" ? fr : en;
   return (
     <div className="grid sm:grid-cols-2 gap-3">
-      <label className="sm:col-span-2 flex flex-col gap-1">
-        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Full name", "Nom complet")}</span>
-        <input value={value.full_name} onChange={(e) => set("full_name", e.target.value)}
-          placeholder={lbl("Full name", "Nom complet")} data-testid={`${prefix}-full-name`}
-          autoComplete="name"
-          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
-      </label>
+      {/* Deux champs a l'ecran, un seul stocke : voir NomEnDeux. */}
+      <NomEnDeux valeur={value.full_name} onChange={(v) => set("full_name", v)}
+        lang={lang} prefix={prefix} />
       <label className="sm:col-span-2 flex flex-col gap-1">
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Address", "Adresse")}</span>
         <input value={value.line1} onChange={(e) => set("line1", e.target.value)}

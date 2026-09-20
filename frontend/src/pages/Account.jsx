@@ -7,6 +7,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import useAffiliate from "../hooks/useAffiliate";
+import NomEnDeux from "../components/NomEnDeux";
 import { useConfirm } from "../components/ConfirmDialog";
 import ThemeToggle from "../components/ThemeToggle";
 import CustomerSupport from "../components/CustomerSupport";
@@ -138,7 +139,7 @@ export default function Account() {
 
         {tab === "orders" && <OrdersTab t={t} lang={lang} />}
         {tab === "profile" && <ProfileTab t={t} user={user} refresh={refresh} />}
-        {tab === "addresses" && <AddressesTab t={t} />}
+        {tab === "addresses" && <AddressesTab t={t} lang={lang} />}
         {tab === "security" && <SecurityTab t={t} user={user} logout={logout} navigate={navigate} />}
         {tab === "support" && <CustomerSupport L={(fr, en) => (lang === "fr" ? fr : en)} lang={lang} />}
       </div>
@@ -300,7 +301,7 @@ function ProfileTab({ t, user, refresh }) {
 }
 
 /* Addresses */
-function AddressesTab({ t }) {
+function AddressesTab({ t, lang }) {
   const confirm = useConfirm();
   const [addresses, setAddresses] = useState([]);
   const [editing, setEditing] = useState(null);
@@ -364,7 +365,10 @@ function AddressesTab({ t }) {
       {editing && (
         <form onSubmit={save} className="rounded-xl border border-ash bg-white p-6 mb-8 grid sm:grid-cols-2 gap-4" data-testid="address-form">
           <Field label={t("account.addressLabel")} value={editing.label} onChange={(v) => setEditing({ ...editing, label: v })} testid="address-label" />
-          <Field label={t("checkout.fullName")} value={editing.full_name} required onChange={(v) => setEditing({ ...editing, full_name: v })} testid="address-fullname" />
+          <NomEnDeux valeur={editing.full_name} onChange={(v) => setEditing({ ...editing, full_name: v })}
+            lang={lang} prefix="address"
+            classeChamp="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova"
+            classeEtiquette="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-1" />
           <Field label={t("checkout.address1")} value={editing.address1} required className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address1: v })} testid="address-address1" />
           <Field label={t("checkout.address2")} value={editing.address2} className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address2: v })} testid="address-address2" />
           <Field label={t("checkout.city")} value={editing.city} required onChange={(v) => setEditing({ ...editing, city: v })} testid="address-city" />
