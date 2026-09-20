@@ -99,6 +99,8 @@ function reponsesParDefaut() {
     if (url.startsWith("/admin/affiliates/aff-1")) {
       return { data: { affiliate: AFFILIE, referrals: REFERRALS, payouts: [],
       metrics: { cumulative_revenue: 323.96, pending_commission: 3.2,
+                 approved_commission: 6.24, paid_commission: 28.5,
+                 reversed_commission: 0, excluded_commission: 0,
                  quarter_revenue: 323.96, commission_rate: 0.16 } } };
     }
     return { data: {} };
@@ -250,7 +252,8 @@ describe("AdminAffiliates — conciliation des commissions", () => {
     // comme colonne de la liste principale : on verifie donc SUR LA LIGNE de
     // la commande, pas dans la page entiere.
     expect(screen.getByText("Approuvée")).toBeInTheDocument();
-    expect(screen.getByText("Exclue")).toBeInTheDocument();
+    const ligneExclue = screen.getByText("FN-260825-6A35BD").closest("tr");
+    expect(ligneExclue).toHaveTextContent("Exclue");
     const ligne = screen.getByText("FN-260901-E8C7").closest("tr");
     expect(ligne).toHaveTextContent("En attente");
   });
@@ -259,6 +262,23 @@ describe("AdminAffiliates — conciliation des commissions", () => {
     await ouvrirFiche();
     expect(screen.getByText("2026-09-20")).toBeInTheDocument();
     expect(screen.getByText("2026-08-25")).toBeInTheDocument();
+  });
+
+  it("le pipeline montre l argent etape par etape, sans rien oublier", async () => {
+    // En attente, a verser, payee, recuperee, exclue : cinq sommes, cinq
+    // couleurs. L'ancien bloc ne montrait ni le paye ni le retire.
+    await ouvrirFiche();
+    const figures = screen.getByTestId("affiliate-figures");
+    expect(figures).toHaveTextContent("En attente");
+    expect(figures).toHaveTextContent("À verser");
+    expect(figures).toHaveTextContent("Payée");
+    expect(figures).toHaveTextContent("Récupérée");
+    expect(figures).toHaveTextContent("Exclue");
+    expect(figures).toHaveTextContent("$6.24");
+    expect(figures).toHaveTextContent("$28.50");
+    // Le contexte suit sur une ligne : le CA et le taux.
+    expect(figures).toHaveTextContent("CA validé");
+    expect(figures).toHaveTextContent("16 %");
   });
 });
 

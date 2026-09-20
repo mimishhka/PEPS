@@ -1737,23 +1737,37 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 lisait la fiche ligne a ligne, faute de pouvoir la survoler.
                 Les chiffres d'argent passent devant ; l'etat civil du dossier
                 reste consultable, en retrait. */}
+            {/* L'ARGENT, ETAPE PAR ETAPE.
+                L'ancien bloc melangeait CA et commissions, et ignorait
+                l'argent retire : comprendre le dossier imposait de descendre
+                lire les lignes une a une. Ce pipeline montre chaque somme que
+                porte un statut — en attente, a verser, payee, recuperee,
+                exclue — et rien n'est oublie. */}
             {m && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-ash border border-ash rounded-xl overflow-hidden"
-                   data-testid="affiliate-figures">
-                {[
-                  [L("CA validé", "Validated revenue"), money(m.cumulative_revenue), true],
-                  [L("Commissions en attente", "Pending commissions"), money(m.pending_commission), false],
-                  [L("CA du trimestre", "Quarter revenue"), money(m.quarter_revenue), false],
-                  [L("Taux effectif", "Effective rate"), `${Math.round(m.commission_rate * 100)} %`, false],
-                ].map(([libelle, valeur, fort]) => (
-                  <div key={libelle} className="bg-white px-3 py-2.5">
-                    <p className="text-[9.5px] uppercase tracking-[0.12em] text-glacier leading-tight">{libelle}</p>
-                    <p className={`tabular-nums mt-1 leading-none ${
-                      fort ? "text-[19px] font-bold text-nordfjord" : "text-[16px] font-semibold text-nordfjord/80"}`}>
-                      {valeur}
-                    </p>
-                  </div>
-                ))}
+              <div data-testid="affiliate-figures">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-ash border border-ash rounded-xl overflow-hidden">
+                  {[
+                    [L("En attente", "Pending"), money(m.pending_commission), "text-warning"],
+                    [L("À verser", "To pay"), money(m.approved_commission), "text-nova"],
+                    [L("Payée", "Paid"), money(m.paid_commission), "text-success"],
+                    [L("Récupérée", "Reversed"), money(m.reversed_commission), "text-error"],
+                    [L("Exclue", "Excluded"), money(m.excluded_commission), "text-glacier"],
+                  ].map(([libelle, valeur, couleur]) => (
+                    <div key={libelle} className="bg-white px-3 py-2.5">
+                      <p className="text-[9.5px] uppercase tracking-[0.12em] text-glacier leading-tight">{libelle}</p>
+                      <p className={`tabular-nums mt-1 leading-none text-[16px] font-semibold ${couleur}`}>
+                        {valeur}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                {/* Le contexte sur une ligne : le CA qui a produit ces
+                    commissions, et le taux qui les calcule. */}
+                <p className="text-[11px] text-glacier mt-1.5">
+                  {L("CA validé", "Validated revenue")} <span className="tabular-nums text-nordfjord">{money(m.cumulative_revenue)}</span>
+                  {" · "}{L("CA du trimestre", "Quarter")} <span className="tabular-nums text-nordfjord">{money(m.quarter_revenue)}</span>
+                  {" · "}{L("Taux effectif", "Rate")} <span className="tabular-nums text-nordfjord">{Math.round(m.commission_rate * 100)} %</span>
+                </p>
               </div>
             )}
 

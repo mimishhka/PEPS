@@ -605,6 +605,14 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
                 {"$eq": ["$status", "approved"]}, "$comm", 0.0]}},
             "paid_commission": {"$sum": {"$cond": [
                 {"$eq": ["$status", "paid"]}, "$comm", 0.0]}},
+            # L'argent RETIRE compte autant que celui qui est du : une fiche
+            # qui ne montre que pending/approuve/paye ne dit rien d'une
+            # commission recuperee lors d'un remboursement, ni d'une exclue
+            # pour fraude — l'admin ne voyait que les lignes, pas le total.
+            "reversed_commission": {"$sum": {"$cond": [
+                {"$eq": ["$status", "reversed"]}, "$comm", 0.0]}},
+            "excluded_commission": {"$sum": {"$cond": [
+                {"$eq": ["$status", "excluded"]}, "$comm", 0.0]}},
         }},
     ]
     totals = await s.db.affiliate_referrals.aggregate(pipeline).to_list(1)
@@ -615,6 +623,8 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
     pending_commission = float(t.get("pending_commission", 0.0))
     approved_commission = float(t.get("approved_commission", 0.0))
     paid_commission = float(t.get("paid_commission", 0.0))
+    reversed_commission = float(t.get("reversed_commission", 0.0))
+    excluded_commission = float(t.get("excluded_commission", 0.0))
     validated_orders = int(t.get("validated_orders", 0))
 
     # Palier selon le CA des 12 derniers mois. Plus de rétrogradation
@@ -663,6 +673,8 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
         "pending_commission": round(pending_commission, 2),
         "approved_commission": round(approved_commission, 2),
         "paid_commission": round(paid_commission, 2),
+        "reversed_commission": round(reversed_commission, 2),
+        "excluded_commission": round(excluded_commission, 2),
         "next_review": _affiliate_next_quarter_start().isoformat(),
         "quarter_target": quarter_target,
         "quarter_progress": round(quarter_progress, 4) if quarter_progress is not None else None,
