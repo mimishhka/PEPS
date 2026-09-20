@@ -43,6 +43,10 @@ export default function AdminDashboard() {
   // meme ecran vide que « aucune vente ». Une boite vide ne doit jamais etre
   // ambigue entre « pas de donnees » et « c'est casse ».
   const [analyticsError, setAnalyticsError] = useState(false);
+  // L'heure de la derniere lecture : un tableau de bord sans horodatage ne
+  // dit pas si l'on regarde le matin ou la veille. Releve a chaque arrivee
+  // des donnees de la periode.
+  const [horodatage, setHorodatage] = useState("");
   const [pulse, setPulse] = useState(null);
   const [affiliate, setAffiliate] = useState(null);
   // Densité du tableau, mémorisée. Recommandation constante de la littérature
@@ -82,7 +86,9 @@ export default function AdminDashboard() {
   useEffect(() => {
     let active = true;
     api.get(`/admin/analytics?period=${period}`)
-      .then((r) => { if (active) { setAnalytics(r.data); setAnalyticsError(false); } })
+      .then((r) => { if (active) { setAnalytics(r.data); setAnalyticsError(false);
+                     setHorodatage(new Date().toLocaleTimeString(locale,
+                       { hour: "2-digit", minute: "2-digit" })); } })
       .catch(() => { if (active) setAnalyticsError(true); });
     api.get(`/admin/analytics/enhanced?period=${period}`)
       .then((r) => { if (active) setEnhanced(r.data); })
@@ -146,6 +152,28 @@ export default function AdminDashboard() {
   const rails = pulse?.rails || {};
   const cellule = compact ? "px-4 py-1.5" : "px-4 py-3";
 
+  // Les valeurs cles des blocs repliés : un titre qui n'annonce rien oblige a
+  // ouvrir chaque bloc pour savoir s'il vaut la peine. Le premier produit, le
+  // taux de conversion, l'heure de pointe et la part d'Interac se lisent des
+  // le premier ecran.
+  const top1 = analytics?.top_products?.[0];
+  const tauxConversion = enhanced?.conversion?.conversion_rate;
+  const JOURS = lang === "fr"
+    ? ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
+    : ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+  const pointe = useMemo(() => {
+    const g = analytics?.hourly;
+    if (!g) return null;
+    let m = 0, bj = 0, bh = 0;
+    g.forEach((l, j) => l.forEach((v, h) => {
+      if (v > m) { m = v; bj = j; bh = h; }
+    }));
+    return m > 0 ? { j: bj, h: bh } : null;
+  }, [analytics?.hourly]);
+  const totalCircuits = (rails.interac?.paid_amount || 0) + (rails.crypto?.paid_amount || 0);
+  const partInterac = totalCircuits > 0
+    ? Math.round(((rails.interac?.paid_amount || 0) / totalCircuits) * 100) : null;
+
   if (initialLoading) return <DashboardSkeleton />;
 
   return (
@@ -170,6 +198,11 @@ export default function AdminDashboard() {
             {L(`vs les ${period} jours précédents`, `vs prior ${period} days`)}
             {" · "}{commandesPeriode} {L("commandes", "orders")}
           </p>
+          {horodatage && (
+            <p className="font-data text-[10px] text-glacier/60 mt-1" data-testid="donnees-a">
+              {L(`Actualisé à ${horodatage}`, `Updated at ${horodatage}`)}
+            </p>
+          )}
         </div>
 
         <div className="flex border border-ash" role="group" aria-label={L("Période", "Period")}>
@@ -183,43 +216,6 @@ export default function AdminDashboard() {
             </button>
           ))}
         </div>
-      </div>
-
-      <div className="mt-8" data-testid="chart-revenue">
-        {serie.length > 0 ? (
-          <>
-            <Aire serie={serie} argent={argent} L={L} />
-            {/* Les mêmes données en tableau, pour qui ne lit pas une courbe :
-                lecteur d'écran, impression, daltonisme. */}
-            <table className="sr-only" data-testid="chart-revenue-table">
-              <caption>{L("Revenu encaissé par période", "Collected revenue per period")}</caption>
-              <tbody>
-                {serie.map((d) => (
-                  <tr key={d.date}><th scope="row">{d.date}</th>
-                    <td>{argent(d.revenue)}</td><td>{d.orders}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        ) : (
-          <div className="h-40 flex flex-col items-center justify-center text-center border-y border-ash/40">
-            {analyticsError ? (
-              <>
-                <p className="text-sm text-error" data-testid="chart-revenue-error">
-                  {L("Impossible de charger les revenus.", "Could not load revenue data.")}
-                </p>
-                <p className="text-xs text-glacier mt-1">
-                  {L("Les autres chiffres de cette page peuvent être incomplets.",
-                     "Other figures on this page may be incomplete.")}
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-glacier" data-testid="chart-revenue-empty">
-                {L("Aucune commande payée sur la période", "No paid orders in this period")}
-              </p>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Trois chiffres secondaires, séparés par des filets — pas par des
@@ -259,6 +255,73 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* ================== À TRAITER ================== */}
+      <section className="mt-10">
+        <Intitule compte={actions.length}>{L("À traiter", "To handle")}</Intitule>
+        {actions.length ? (
+          <div className="border-t border-ash/60" data-testid="dashboard-actions">
+            {actions.map((a) => (
+              <Link key={a.cle} to={a.vers} data-testid={`action-${a.cle}`}
+                className="group flex items-center gap-4 py-3.5 border-b border-ash/40
+                           hover:bg-clinical/60 transition-colors">
+                <span className={`w-[3px] h-7 shrink-0 ${a.urgent ? "bg-error" : "bg-warning"}`}
+                      aria-hidden="true" />
+                <span className="font-display text-[19px] font-semibold tabular-nums min-w-[2.5rem]">
+                  {a.n}
+                </span>
+                <span className="text-[15px] min-w-0 truncate">{a.titre}</span>
+                <span className="ml-auto font-data text-[11px] text-glacier truncate max-w-[45%] text-right">
+                  {a.note}
+                </span>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="border-t border-ash/60 py-5 text-[14px] text-glacier" data-testid="dashboard-calm">
+            {L("Rien à traiter. Commandes expédiées, paiements réconciliés, stock au-dessus des seuils.",
+               "Nothing to handle. Orders shipped, payments reconciled, stock above thresholds.")}
+          </p>
+        )}
+      </section>
+
+      <div className="mt-8" data-testid="chart-revenue">
+        {serie.length > 0 ? (
+          <>
+            <Aire serie={serie} argent={argent} L={L} />
+            {/* Les mêmes données en tableau, pour qui ne lit pas une courbe :
+                lecteur d'écran, impression, daltonisme. */}
+            <table className="sr-only" data-testid="chart-revenue-table">
+              <caption>{L("Revenu encaissé par période", "Collected revenue per period")}</caption>
+              <tbody>
+                {serie.map((d) => (
+                  <tr key={d.date}><th scope="row">{d.date}</th>
+                    <td>{argent(d.revenue)}</td><td>{d.orders}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        ) : (
+          <div className="h-40 flex flex-col items-center justify-center text-center border-y border-ash/40">
+            {analyticsError ? (
+              <>
+                <p className="text-sm text-error" data-testid="chart-revenue-error">
+                  {L("Impossible de charger les revenus.", "Could not load revenue data.")}
+                </p>
+                <p className="text-xs text-glacier mt-1">
+                  {L("Les autres chiffres de cette page peuvent être incomplets.",
+                     "Other figures on this page may be incomplete.")}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-glacier" data-testid="chart-revenue-empty">
+                {L("Aucune commande payée sur la période", "No paid orders in this period")}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+
       {/* Alerte seuil de taxe (30 000 $ CA sur 12 mois glissants) */}
       {enhanced?.tax_threshold && enhanced.tax_threshold.level !== "ok"
         && dismissedTaxLevel !== enhanced.tax_threshold.level && (
@@ -292,34 +355,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ================== À TRAITER ================== */}
-      <section className="mt-10">
-        <Intitule compte={actions.length}>{L("À traiter", "To handle")}</Intitule>
-        {actions.length ? (
-          <div className="border-t border-ash/60" data-testid="dashboard-actions">
-            {actions.map((a) => (
-              <Link key={a.cle} to={a.vers} data-testid={`action-${a.cle}`}
-                className="group flex items-center gap-4 py-3.5 border-b border-ash/40
-                           hover:bg-clinical/60 transition-colors">
-                <span className={`w-[3px] h-7 shrink-0 ${a.urgent ? "bg-error" : "bg-warning"}`}
-                      aria-hidden="true" />
-                <span className="font-display text-[19px] font-semibold tabular-nums min-w-[2.5rem]">
-                  {a.n}
-                </span>
-                <span className="text-[15px] min-w-0 truncate">{a.titre}</span>
-                <span className="ml-auto font-data text-[11px] text-glacier truncate max-w-[45%] text-right">
-                  {a.note}
-                </span>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <p className="border-t border-ash/60 py-5 text-[14px] text-glacier" data-testid="dashboard-calm">
-            {L("Rien à traiter. Commandes expédiées, paiements réconciliés, stock au-dessus des seuils.",
-               "Nothing to handle. Orders shipped, payments reconciled, stock above thresholds.")}
-          </p>
-        )}
-      </section>
 
       {/* ================== DERNIÈRES COMMANDES ================== */}
       <section className="mt-10">
@@ -412,7 +447,9 @@ export default function AdminDashboard() {
       <section className="mt-10">
         <Intitule>{L("Analyse", "Analysis")}</Intitule>
 
-        <Repli titre={L("Meilleures ventes", "Best sellers")} sous={libellePeriode} testid="repli-ventes">
+        <Repli titre={L("Meilleures ventes", "Best sellers")}
+         sous={top1 ? `${lang === "fr" ? (top1.name_fr || top1.name_en) : (top1.name_en || top1.name_fr)} · ${argent(top1.revenue)}` : libellePeriode}
+         testid="repli-ventes">
           <ul data-testid="top-products">
             {(analytics?.top_products || []).slice(0, 6).map((p, idx) => (
               // La cle inclut la variante : deux dosages du meme compose sont
@@ -440,7 +477,7 @@ export default function AdminDashboard() {
         </Repli>
 
         <Repli titre={L("Où se perdent les commandes", "Where orders drop off")}
-               sous={L("Créées → payées → expédiées → livrées", "Created → paid → shipped → delivered")}
+               sous={tauxConversion != null ? `${tauxConversion} % ${L("payées", "paid")}` : L("Créées → payées → expédiées → livrées", "Created → paid → shipped → delivered")}
                testid="repli-entonnoir">
           {enhanced?.funnel?.length ? <Entonnoir marches={enhanced.funnel} L={L} /> : (
             <p className="py-3 text-[13px] text-glacier" data-testid="funnel-empty">
@@ -450,7 +487,8 @@ export default function AdminDashboard() {
         </Repli>
 
         <Repli titre={L("Quand vos clients commandent", "When your customers order")}
-               sous={L("Heure du Québec", "Quebec time")} testid="repli-affluence">
+               sous={pointe ? `${JOURS[pointe.j]} ${pointe.h} h` : L("Heure du Québec", "Quebec time")}
+               testid="repli-affluence">
           {analytics?.hourly
             ? <Affluence grille={analytics.hourly} argent={argent} L={L} lang={lang} />
             : null}
@@ -462,7 +500,8 @@ export default function AdminDashboard() {
         </Repli>
 
         <Repli titre={L("D'où vient l'argent", "Where the money comes from")}
-               sous={L("Circuits et fidélité", "Rails and loyalty")} testid="repli-circuits">
+               sous={partInterac != null ? `${partInterac} % Interac` : L("Circuits et fidélité", "Rails and loyalty")}
+               testid="repli-circuits">
           <Proportion argent={argent} testid="rails-donut" lignes={[
             { cle: "interac", nom: "Interac", valeur: rails.interac?.paid_amount || 0 },
             { cle: "crypto", nom: L("Crypto", "Crypto"), valeur: rails.crypto?.paid_amount || 0 },

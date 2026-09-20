@@ -274,3 +274,40 @@ it("la densite du tableau se regle et se retient", async () => {
   expect(bouton).toHaveTextContent("compacte");
   expect(localStorage.getItem("fironova_densite")).toBe("compacte");
 });
+
+// ---------------------------------------------------------------------------
+// L'ordre et la lecture rapide — documente par la recherche 2026
+// ---------------------------------------------------------------------------
+
+it("les chiffres secondaires et les actions passent avant la courbe", async () => {
+  // Les guides 2026 s'accordent : la rangee KPI (lecture de 10 secondes) et
+  // la liste d'actions (le tableau de bord devient une liste de travail)
+  // doivent etre au-dessus de la pliure — la courbe, elle, est de la lecture,
+  // pas une decision.
+  afficher();
+  const courbe = await screen.findByTestId("chart-revenue");
+  const chiffres = screen.getByTestId("enhanced-metrics");
+  const actions = screen.queryByTestId("dashboard-actions") || screen.getByTestId("dashboard-calm");
+  const suit = Node.DOCUMENT_POSITION_FOLLOWING;
+  expect(chiffres.compareDocumentPosition(courbe) & suit).toBeTruthy();
+  expect(actions.compareDocumentPosition(courbe) & suit).toBeTruthy();
+});
+
+it("chaque bloc d analyse annonce sa valeur cle sans l ouvrir", async () => {
+  // Un titre qui n'annonce rien oblige a ouvrir chaque bloc pour savoir s'il
+  // vaut la peine. Le premier produit, la conversion, l'heure de pointe et la
+  // part d'Interac se lisent depuis le premier ecran.
+  afficher();
+  await screen.findByTestId("repli-ventes");
+  expect(screen.getByTestId("repli-ventes")).toHaveTextContent("BPC-157");
+  expect(screen.getByTestId("repli-entonnoir")).toHaveTextContent("42.9");
+  expect(screen.getByTestId("repli-affluence")).toHaveTextContent("jeu 20 h");
+  expect(screen.getByTestId("repli-circuits")).toHaveTextContent("% Interac");
+});
+
+it("annonce l heure de la derniere lecture", async () => {
+  // Sans horodatage, un tableau de bord ne dit pas si l'on regarde le matin
+  // ou la veille.
+  afficher();
+  expect(await screen.findByTestId("donnees-a")).toHaveTextContent(/Actualisé à/);
+});
