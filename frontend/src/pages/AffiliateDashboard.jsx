@@ -149,7 +149,6 @@ export default function AffiliateDashboard() {
   const [series, setSeries] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [insights, setInsights] = useState(null);
-  const [, setClicksStats] = useState(null);
   const [sources, setSources] = useState(null);
   const [activity, setActivity] = useState([]);
   const [tab, setTab] = useState("overview");
@@ -196,7 +195,6 @@ export default function AffiliateDashboard() {
       setPayouts(items(data?.payouts));
       setPayTotal(data?.payouts?.total ?? 0);
       setInsights(data?.insights || null);
-      setClicksStats(data?.clicks || null);
       setSources(data?.clicks_sources || null);
       setActivity(Array.isArray(data?.activity) ? data.activity : []);
       setCustomers(Array.isArray(data?.customers?.customers) ? data.customers.customers : []);
@@ -205,6 +203,10 @@ export default function AffiliateDashboard() {
         month: s.month,
         revenue: s.revenue,
         commission: s.commission,
+        // Les commissions reprises lors d'un remboursement. Sans cette ligne,
+        // un mois maigrissait sans explication : la vente sortait de
+        // « valide » et rien ne disait ou elle etait passee.
+        reversed: s.reversed ?? 0,
       })));
     } catch (e) {
       // Un 403 ici = compte suspendu ou retiré : l'écran dédié s'affiche déjà
@@ -1377,6 +1379,10 @@ export default function AffiliateDashboard() {
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
                 {L("REVENU VALIDÉ — 12 DERNIERS MOIS", "VALIDATED REVENUE — LAST 12 MONTHS")}
               </p>
+              <p className="font-data text-[11px] text-glacier mb-4 -mt-3">
+                {L("Sous-total des produits, remise déduite — hors livraison et taxes. C'est la base qui porte votre commission.",
+                   "Product subtotal, less discount — shipping and taxes excluded. This is the base your commission is paid on.")}
+              </p>
               {series.length === 0 ? (
                 <p className="text-glacier text-sm py-12 text-center">
                   {L("Aucune donnée pour l'instant.", "No data yet.")}
@@ -1392,6 +1398,7 @@ export default function AffiliateDashboard() {
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Line type="monotone" dataKey="revenue" name={L("CA validé", "Revenue")} stroke="#0B2E4F" strokeWidth={2} dot={false} />
                       <Line type="monotone" dataKey="commission" name={L("Commissions", "Commissions")} stroke="#00B8D4" strokeWidth={2} dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="reversed" name={L("Annulées (remboursements)", "Cancelled (refunds)")} stroke="#D64545" strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>

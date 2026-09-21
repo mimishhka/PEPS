@@ -11090,7 +11090,8 @@ async def affiliate_me(request: Request, lang: str = "fr"):
 
 
 async def affiliate_referrals(request: Request, limit: int = 200,
-                              page: Optional[int] = None, page_size: int = 10):
+                              page: Optional[int] = None, page_size: int = 10,
+                              aff: Optional[dict] = None):
     """Références de l'affilié (hors « excluded »), tri par `created_at` desc.
 
     Deux contrats, choisis par la présence de `page` :
@@ -11100,7 +11101,7 @@ async def affiliate_referrals(request: Request, limit: int = 200,
         page_size} — utilisée par le tableau de bord pour ne transporter que
         la page affichée.
     """
-    aff = await get_current_affiliate(request)
+    aff = aff or await get_current_affiliate(request)
     q = {"affiliate_id": aff["id"], "status": {"$ne": "excluded"}}
     proj = {"_id": 0, "order_email": 0, "affiliate_ip_hash": 0}
     if page is not None:
@@ -11117,11 +11118,12 @@ async def affiliate_referrals(request: Request, limit: int = 200,
 
 
 async def affiliate_payouts(request: Request,
-                            page: Optional[int] = None, page_size: int = 10):
+                            page: Optional[int] = None, page_size: int = 10,
+                            aff: Optional[dict] = None):
     """Paiements de l'affilié. Même double contrat que `/affiliate/referrals` :
     liste plate par défaut (export CSV, tests), enveloppe paginée
     {items,total,page,page_size} dès que `page` est fourni."""
-    aff = await get_current_affiliate(request)
+    aff = aff or await get_current_affiliate(request)
     q = {"affiliate_id": aff["id"]}
     if page is not None:
         page = max(1, int(page))
@@ -11156,35 +11158,125 @@ async def affiliate_payout_settings(payload: AffiliatePayoutSettingsIn, request:
     return _affiliate_public(fresh)
 
 
-async def affiliate_performance(request: Request):
-    """Séries mensuelles (12 derniers mois) de CA validé + commissions correspondantes."""
-    aff = await get_current_affiliate(request)
-    buckets: dict = {}
-    cursor = db.affiliate_referrals.find(
-        {"affiliate_id": aff["id"], "status": {"$in": ["approved", "paid"]}},
-        {"_id": 0, "base_amount": 1, "commission_amount": 1, "approved_at": 1, "created_at": 1},
-    )
-    async for r in cursor:
-        ts = r.get("approved_at") or r.get("created_at")
-        if not ts:
-            continue
-        try:
-            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-        except Exception:
-            continue
-        key = f"{dt.year}-{dt.month:02d}"
-        entry = buckets.setdefault(key, {"revenue": 0.0, "commission": 0.0})
-        entry["revenue"] += float(r.get("base_amount", 0.0))
-        entry["commission"] += float(r.get("commission_amount", 0.0))
-    series = [
-        {"month": k, "revenue": round(v["revenue"], 2),
-         "commission": round(v["commission"], 2)}
-        for k, v in sorted(buckets.items())
+def _mois_de(champ_principal: str, champ_repli: Optional[str] = None) -> dict:
+    """Expression Mongo qui extrait « AAAA-MM » d'une date, quel que soit son type.
+
+    Les dates de ce projet cohabitent sous deux formes : chaîne ISO posée à la
+    création, ou vrai BSON date hérité. Un `$dateToString` sur une chaîne
+    échoue, un `$substrCP` sur une date renvoie du vide : il faut les deux.
+    """
+    source = ({"$ifNull": [f"${champ_principal}", f"${champ_repli}", None]}
+              if champ_repli else {"$ifNull": [f"${champ_principal}", None]})
+    return {"$switch": {
+        "branches": [
+            {"case": {"$in": [{"$type": source}, ["date", "timestamp"]]},
+             "then": {"$dateToString": {"format": "%Y-%m", "date": source}}},
+        ],
+        # `case`, SANS dollar : `$case` en ferait un nom de champ inconnu et
+        # l'agregation entiere serait rejetee.
+        "default": {"$substrCP": [{"$ifNull": [source, ""]}, 0, 7]},
+    }}
+
+
+def _douze_derniers_mois(depuis: Optional[str] = None) -> list:
+    """Les clés « AAAA-MM » des 12 derniers mois, mois courant inclus.
+
+    `depuis` borne le début : inutile d'afficher onze mois à zéro à quelqu'un
+    qui a rejoint le programme le mois dernier. Un zéro inventé se lit comme
+    un mois raté.
+    """
+    maintenant = datetime.now(timezone.utc)
+    cles = []
+    annee, mois = maintenant.year, maintenant.month
+    for _ in range(12):
+        cles.append(f"{annee}-{mois:02d}")
+        mois -= 1
+        if mois == 0:
+            annee, mois = annee - 1, 12
+    cles.reverse()
+    if depuis:
+        cles = [c for c in cles if c >= depuis]
+    return cles
+
+
+async def affiliate_performance(request: Request, aff: Optional[dict] = None):
+    """Séries mensuelles sur 12 mois : CA validé, commissions, et commissions
+    ANNULÉES par remboursement.
+
+    Trois corrections d'un même défaut — la fonction ne faisait pas ce que son
+    nom promettait.
+
+    1. Elle annonçait « 12 derniers mois » et ne bornait RIEN. Elle transférait
+       tout l'historique de l'affilié vers FastAPI, ligne par ligne, et
+       renvoyait autant de mois qu'il en existait.
+    2. Elle ignorait les commissions `reversed`. Une vente de juillet
+       remboursée en septembre disparaît des deux côtés à la fois : elle sort
+       de `approved|paid`, donc la barre de juillet MAIGRIT sans qu'aucun
+       chiffre à l'écran n'explique pourquoi. L'affilié voyait son passé
+       changer tout seul.
+    3. Le regroupement par mois se faisait en Python. Il se fait maintenant
+       dans la base, qui ne renvoie qu'une ligne par mois.
+
+    Les annulations sont datées de `reversed_at` — le mois où l'argent est
+    repris — comme dans la fiche d'affilié de l'administration, pour que les
+    deux écrans racontent la même histoire du même programme.
+    """
+    aff = aff or await get_current_affiliate(request)
+    pipeline = [
+        {"$match": {"affiliate_id": aff["id"],
+                    "status": {"$in": ["approved", "paid", "reversed"]}}},
+        {"$facet": {
+            # Le validé est daté de son approbation ; l'annulé, de sa reprise.
+            "valide": [
+                {"$match": {"status": {"$in": ["approved", "paid"]}}},
+                {"$group": {
+                    "_id": _mois_de("approved_at", "created_at"),
+                    "revenue": {"$sum": {"$ifNull": ["$base_amount", 0.0]}},
+                    "commission": {"$sum": {"$ifNull": ["$commission_amount", 0.0]}},
+                    "orders": {"$sum": 1},
+                }},
+            ],
+            "annule": [
+                {"$match": {"status": "reversed"}},
+                {"$group": {
+                    "_id": _mois_de("reversed_at", "created_at"),
+                    "reversed": {"$sum": {"$ifNull": ["$commission_amount", 0.0]}},
+                    "reversed_orders": {"$sum": 1},
+                }},
+            ],
+        }},
     ]
-    return {"series": series}
+    try:
+        facettes = await db.affiliate_referrals.aggregate(pipeline).to_list(1)
+    except Exception:
+        facettes = []
+    f = facettes[0] if facettes else {}
+    valide = {r["_id"]: r for r in (f.get("valide") or []) if r.get("_id")}
+    annule = {r["_id"]: r for r in (f.get("annule") or []) if r.get("_id")}
+    if not valide and not annule:
+        return {"series": [], "basis": "base_amount"}
+
+    premier = min(list(valide) + list(annule))
+    series = []
+    for mois in _douze_derniers_mois(depuis=premier):
+        v = valide.get(mois, {})
+        a = annule.get(mois, {})
+        series.append({
+            "month": mois,
+            "revenue": round(float(v.get("revenue", 0.0)), 2),
+            "commission": round(float(v.get("commission", 0.0)), 2),
+            "orders": int(v.get("orders", 0)),
+            "reversed": round(float(a.get("reversed", 0.0)), 2),
+            "reversed_orders": int(a.get("reversed_orders", 0)),
+        })
+    # `basis` nomme la base du chiffre : sous-total produits net de remise,
+    # hors port et hors taxes. C'est celle qui porte la commission, et c'est
+    # la même que le palier — sans ce mot, « revenu » se lit comme le total
+    # payé par le client, qui est plus élevé.
+    return {"series": series, "basis": "base_amount"}
 
 
-async def affiliate_customers(request: Request):
+async def affiliate_customers(request: Request, aff: Optional[dict] = None):
     """Liste des clients que l'affilié a APPORTÉS. Historique, pas un droit.
 
     Un client entre dans cette liste quand une commande lui a été attribuée
@@ -11201,7 +11293,7 @@ async def affiliate_customers(request: Request):
     Retour agrégé : par client, on renvoie {email, bound_at, source,
     orders_count, revenue_validated, commission_validated, last_order_at}.
     """
-    aff = await get_current_affiliate(request)
+    aff = aff or await get_current_affiliate(request)
     return await _compute_affiliate_customers(aff["id"])
 
 
@@ -11332,12 +11424,12 @@ async def _compute_affiliate_customers(affiliate_id: str, masquer: bool = True) 
 # ENDPOINTS — ATTRIBUTION PUBLIQUE (pose du cookie)
 # ===========================================================================
 
-async def affiliate_insights(request: Request):
+async def affiliate_insights(request: Request, aff: Optional[dict] = None):
     """Indicateurs synthétiques pour le tableau de bord affilié :
     mois courant, meilleur mois, clics, taux de conversion, commandes
     validées, panier moyen. Données réelles agrégées depuis les referrals
     et les clics."""
-    aff = await get_current_affiliate(request)
+    aff = aff or await get_current_affiliate(request)
     aff_id = aff["id"]
 
     # Referrals non exclus — agrégation SERVEUR au lieu de tout charger en
@@ -11475,8 +11567,8 @@ def _top_clicks(d, n=8):
             for k, v in sorted(d.items(), key=lambda kv: kv[1], reverse=True)[:n]]
 
 
-async def affiliate_clicks(request: Request, days: int = 30):
-    aff = await get_current_affiliate(request)
+async def affiliate_clicks(request: Request, days: int = 30, aff: Optional[dict] = None):
+    aff = aff or await get_current_affiliate(request)
     days = max(7, min(int(days), 90))
     start_date = datetime.now(timezone.utc).date() - timedelta(days=days - 1)
     start = start_date.isoformat() + "T00:00:00"
@@ -11510,10 +11602,11 @@ async def affiliate_clicks(request: Request, days: int = 30):
     }
 
 
-async def affiliate_clicks_sources(request: Request, days: int = 30):
+async def affiliate_clicks_sources(request: Request, days: int = 30,
+                                   aff: Optional[dict] = None):
     """Top sources des clics de l'affilié : pages d'atterrissage, domaines
     référents et types d'appareil (30 derniers jours par défaut)."""
-    aff = await get_current_affiliate(request)  # noqa: F821
+    aff = aff or await get_current_affiliate(request)  # noqa: F821
     days = max(7, min(int(days), 90))
     start = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     pages, refs, devices = {}, {}, {}
@@ -11540,10 +11633,10 @@ async def affiliate_clicks_sources(request: Request, days: int = 30):
     }
 
 
-async def affiliate_activity(request: Request, limit: int = 20):
+async def affiliate_activity(request: Request, limit: int = 20, aff: Optional[dict] = None):
     """Flux d'activité récent de l'affilié : clics, commandes et paiements
     fusionnés, triés par date décroissante (type/at/label/status/amount)."""
-    aff = await get_current_affiliate(request)  # noqa: F821
+    aff = aff or await get_current_affiliate(request)  # noqa: F821
     limit = max(5, min(int(limit), 50))
     events = []
 
@@ -11628,14 +11721,26 @@ async def affiliate_dashboard(request: Request, ref_page: int = 1, pay_page: int
         except Exception:
             out[name] = [] if name in ("referrals", "payouts", "activity") else None
 
-    await _safe("referrals", affiliate_referrals(request, page=ref_page, page_size=page_size))
-    await _safe("payouts", affiliate_payouts(request, page=pay_page, page_size=page_size))
-    await _safe("performance", affiliate_performance(request))
-    await _safe("insights", affiliate_insights(request))
-    await _safe("clicks", affiliate_clicks(request))
-    await _safe("clicks_sources", affiliate_clicks_sources(request))
-    await _safe("activity", affiliate_activity(request))
-    await _safe("customers", affiliate_customers(request))
+    # L'IDENTITE EST PROUVEE UNE FOIS, PUIS PASSEE DE MAIN EN MAIN.
+    #
+    # Chaque section rappelait `get_current_affiliate`, qui coute un decodage
+    # de jeton, une lecture dans `users` et une lecture dans `affiliates`.
+    # Huit sections : seize lectures pour reprouver huit fois de suite la
+    # meme identite, dans la meme requete, a la meme seconde. Le refus reste
+    # possible — il a eu lieu plus haut, hors du filet.
+    await _safe("referrals", affiliate_referrals(request, page=ref_page, page_size=page_size, aff=aff))
+    await _safe("payouts", affiliate_payouts(request, page=pay_page, page_size=page_size, aff=aff))
+    await _safe("performance", affiliate_performance(request, aff=aff))
+    await _safe("insights", affiliate_insights(request, aff=aff))
+    # PAS de section « clicks » ici. Le tableau de bord la recevait, la
+    # rangeait dans un etat que personne ne lisait — `const [, setClicksStats]`
+    # jette la valeur des la destructuration — et l'oubliait. La produire
+    # coutait pourtant une lecture de CHAQUE clic de la periode, document par
+    # document, pour aboutir a trente entiers jamais affiches. L'endpoint
+    # `/affiliate/clicks` existe toujours pour qui en a l'usage.
+    await _safe("clicks_sources", affiliate_clicks_sources(request, aff=aff))
+    await _safe("activity", affiliate_activity(request, aff=aff))
+    await _safe("customers", affiliate_customers(request, aff=aff))
 
     # LES CHAMPS DE TETE DE PAGE, oublies par l'agregation.
     #
