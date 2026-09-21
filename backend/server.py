@@ -18,6 +18,7 @@ import logging
 import secrets
 import asyncio
 import ipaddress
+import unicodedata
 import sys
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal, Any
@@ -2450,6 +2451,7 @@ async def admin_create_product(payload: ProductIn, _admin: dict = Depends(requir
     doc = _normalize_images(doc)
     doc["id"] = str(uuid.uuid4())
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    doc["admin_edited_at"] = doc["created_at"]
     await db.products.insert_one(doc)
     doc.pop("_id", None)
     return doc
@@ -2460,6 +2462,10 @@ async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict
     update = payload.model_dump()
     update = _ensure_variant_ids(update)
     update = _normalize_images(update)
+    # Marque la fiche comme touchee par une main humaine. Les routines de
+    # reparation du seed s'arretent devant cette marque : une valeur saisie
+    # dans l'admin ne doit jamais etre ecrasee par une donnee de demonstration.
+    update["admin_edited_at"] = datetime.now(timezone.utc).isoformat()
     res = await db.products.update_one({"id": product_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Product not found")
@@ -8868,12 +8874,79 @@ def _variant_stock_or_default(variants: list[dict], name: str, fallback: int) ->
     return fallback
 
 
+# Les notes de precommande qui ne disent rien de plus que l'etat du certificat.
+# « COA pending » s'affichait sous le prix alors que l'encadre dedie le disait
+# deja : deux fois la meme phrase, dont une sans lien cliquable.
+NOTES_COA_REDONDANTES = {
+    "coa pending",
+    "coa a venir",
+    "coa en attente",
+    "certificat d analyse a venir",
+    "certificat d analyse en attente",
+    "certificate of analysis pending",
+}
+
+
+def _note_repete_le_coa(note: str) -> bool:
+    """Vrai si la note ne fait que repeter l'etat du certificat.
+
+    Comparaison sans accent, sans casse et sans ponctuation. Une note ecrite a
+    la main pour autre chose — « Expedie des le 15 novembre » — renvoie False
+    et n'est jamais touchee.
+    """
+    sans_accent = unicodedata.normalize("NFKD", note or "")
+    sans_accent = "".join(c for c in sans_accent if not unicodedata.combining(c))
+    propre = "".join(c if c.isalnum() else " " for c in sans_accent.lower())
+    return " ".join(propre.split()) in NOTES_COA_REDONDANTES
+
+
+def _garder_valeur(doc: dict, cle: str, defaut):
+    """Renvoie la valeur du document, ou le defaut si elle est vide ou absente.
+
+    `False` et `0` sont des reglages legitimes : ils sont conserves.
+    """
+    valeur = doc.get(cle)
+    if valeur is None or valeur == "":
+        return defaut
+    return valeur
+
+
+def _completer_variante(existant: Optional[dict], defauts: dict) -> dict:
+    """Garde tout ce que la variante contient deja, ne pose que les cles absentes.
+
+    L'identite (`id`, `name`) et le stock viennent des defauts, qui les ont
+    eux-memes deduits de l'existant. Le reste — prix, rabais, badges, COA,
+    precommande, SKU — appartient a qui l'a saisi et n'est pas touche.
+    """
+    fusion = dict(defauts)
+    for cle, valeur in (existant or {}).items():
+        if cle in ("_id", "id", "name", "stock"):
+            continue
+        fusion[cle] = valeur
+    return fusion
+
+
 async def _repair_nonprod_bpc_seed() -> None:
     """Converge legacy preview/demo BPC seed drift to a single canonical doc.
 
     Older preview data used slug `bpc-157` with the fixed product id, while a
     later seed inserted a second `bpc-157-5mg` row. Tests and the frontend
     expect the fixed id and canonical slug to point to the same product.
+
+    Cette routine REECRIT la fiche : elle a donc trois garde-fous.
+
+    1. Elle ne tourne pas en production.
+    2. Elle s'arrete devant une fiche enregistree depuis l'admin
+       (`admin_edited_at`). Une saisie humaine prime sur une donnee de demo.
+    3. Sa condition de sante ne regarde plus que l'IDENTITE du document : un
+       seul doc, le bon id, le bon slug, ses deux variantes. Elle exigeait
+       autrefois que le 10 mg soit en precommande avec `badge_coa_pending` —
+       autrement dit, le jour ou le certificat arrivait et ou l'on decochait
+       ce badge, le redemarrage suivant remettait le produit en precommande a
+       85 $ avec « COA a venir ». C'etait une perte de donnees silencieuse.
+
+    Et quand elle repare pour de bon, elle ne pose que ce qui MANQUE : toute
+    valeur deja presente est conservee (voir `_completer_variante`).
     """
     if IS_PRODUCTION:
         return
@@ -8884,6 +8957,8 @@ async def _repair_nonprod_bpc_seed() -> None:
 
     source = legacy or legacy_slug or canonical
     if not source:
+        return
+    if any(doc and doc.get("admin_edited_at") for doc in (legacy, canonical, legacy_slug)):
         return
 
     all_variants = []
@@ -8897,8 +8972,6 @@ async def _repair_nonprod_bpc_seed() -> None:
         and source.get("slug") == BPC_157_CANONICAL_SLUG
         and five_variant is not None
         and ten_variant is not None
-        and bool(ten_variant.get("preorder_enabled"))
-        and bool(ten_variant.get("badge_coa_pending"))
     )
     duplicate_slug_doc = canonical and canonical.get("id") != BPC_157_CANONICAL_ID
     if canonical_ok and not duplicate_slug_doc:
@@ -8908,7 +8981,7 @@ async def _repair_nonprod_bpc_seed() -> None:
     five_stock = _variant_stock_or_default(all_variants, "5.0mg", 12)
     ten_stock = _variant_stock_or_default(all_variants, "10.0mg", 6)
     repaired_variants = [
-        {
+        _completer_variante(five_variant, {
             "id": (five_variant or {}).get("id") or str(uuid.uuid4()),
             "name": "5.0mg",
             "price": 64.99,
@@ -8924,8 +8997,8 @@ async def _repair_nonprod_bpc_seed() -> None:
             "preorder_price": None,
             "preorder_note": "",
             "coa_url": (five_variant or {}).get("coa_url") or "https://example.com/coa-bpc157-5mg.pdf",
-        },
-        {
+        }),
+        _completer_variante(ten_variant, {
             "id": (ten_variant or {}).get("id") or str(uuid.uuid4()),
             "name": "10.0mg",
             "price": 100.0,
@@ -8944,7 +9017,7 @@ async def _repair_nonprod_bpc_seed() -> None:
             # note reparee a chaque demarrage reviendrait apres chaque menage.
             "preorder_note": "",
             "coa_url": "",
-        },
+        }),
     ]
 
     if canonical and canonical.get("_id") != source.get("_id"):
@@ -8967,12 +9040,14 @@ async def _repair_nonprod_bpc_seed() -> None:
             "dosage_mg": bpc_seed["dosage_mg"],
             "description_en": bpc_seed["description_en"],
             "description_fr": bpc_seed["description_fr"],
-            "price_cad": 64.99,
+            # Commercial : ce que quelqu'un a pu regler reste regle. Seuls
+            # les champs vides ou absents recoivent la valeur de reference.
+            "price_cad": _garder_valeur(source, "price_cad", 64.99),
             "stock": five_stock + ten_stock,
-            "active": True,
-            "featured": True,
-            "preorder_allowed": False,
-            "coa_url": "",
+            "active": _garder_valeur(source, "active", True),
+            "featured": _garder_valeur(source, "featured", True),
+            "preorder_allowed": _garder_valeur(source, "preorder_allowed", False),
+            "coa_url": source.get("coa_url", ""),
             "coa_lot": source.get("coa_lot", ""),
             "coa_date": source.get("coa_date", ""),
             "variants": repaired_variants,
@@ -9241,6 +9316,13 @@ async def seed_admin_and_products():
         vs = prod.get("variants") or []
         changed = False
         for v in vs:
+            # La note de precommande ne repete plus l'etat du certificat : la
+            # phrase « COA pending » s'affichait sous le prix alors que
+            # l'encadre dedie la disait deja. Une note ecrite a la main pour
+            # autre chose est reconnue et laissee intacte.
+            if v.get("preorder_note") and _note_repete_le_coa(v["preorder_note"]):
+                v["preorder_note"] = ""
+                changed = True
             if "coa_status" in v and v["coa_status"] in ("available", "pending", "none"):
                 continue
             if v.get("coa_url") or v.get("badge_coa_available"):
