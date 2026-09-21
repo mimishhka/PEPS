@@ -11698,31 +11698,74 @@ async def affiliate_clicks(request: Request, days: int = 30, aff: Optional[dict]
 async def affiliate_clicks_sources(request: Request, days: int = 30,
                                    aff: Optional[dict] = None):
     """Top sources des clics de l'affilié : pages d'atterrissage, domaines
-    référents et types d'appareil (30 derniers jours par défaut)."""
+    référents et types d'appareil (30 derniers jours par défaut).
+
+    Le regroupement se fait dans la base. Il se faisait en Python : chaque
+    clic de la période traversait le réseau, document par document, pour
+    alimenter trois compteurs et n'en ressortir que seize lignes. Un affilié
+    qui marche bien paie donc sa réussite en lenteur, et c'est la même faute
+    que la section `clicks` retirée du tableau de bord.
+
+    Le domaine du référent, lui, reste calculé ici : `https://a.com/x?y` doit
+    devenir `a.com`, ce qu'aucune expression Mongo ne fait proprement. Mais
+    il s'applique désormais aux VALEURS DISTINCTES déjà comptées, pas à
+    chaque clic — quelques dizaines de lignes au lieu de milliers.
+    """
     aff = aff or await get_current_affiliate(request)  # noqa: F821
     days = max(7, min(int(days), 90))
     start = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    pages, refs, devices = {}, {}, {}
-    total = 0
-    cursor = db.affiliate_clicks.find(
-        {"affiliate_id": aff["id"], "created_at": {"$gte": start}},
-        {"_id": 0, "page": 1, "referrer": 1, "device": 1},
-    )
-    async for c in cursor:
-        total += 1
-        page = str(c.get("page") or "").strip() or "direct"
-        pages[page] = pages.get(page, 0) + 1
-        ref = _affiliate_referrer_domain(str(c.get("referrer") or "")) or "direct"
-        refs[ref] = refs.get(ref, 0) + 1
-        dev = str(c.get("device") or "").strip() or "unknown"
-        devices[dev] = devices.get(dev, 0) + 1
 
+    def _compter(champ: str, defaut: str) -> list:
+        return [
+            {"$group": {
+                # Une chaîne vide et un champ absent sont la même chose ici :
+                # un accès direct. Les séparer ferait deux lignes pour un seul
+                # comportement.
+                "_id": {"$ifNull": [f"${champ}", defaut]},
+                "clicks": {"$sum": 1},
+            }},
+            {"$sort": {"clicks": -1}},
+            # 500 valeurs distinctes : bien au-delà des huit affichées, assez
+            # pour que le repli sur domaine ne perde aucun référent réel.
+            {"$limit": 500},
+        ]
+
+    pipeline = [
+        {"$match": {"affiliate_id": aff["id"], "created_at": {"$gte": start}}},
+        {"$facet": {
+            "pages": _compter("page", "direct"),
+            "referrers": _compter("referrer", ""),
+            "devices": _compter("device", "unknown"),
+            "total": [{"$count": "n"}],
+        }},
+    ]
+    try:
+        facettes = await db.affiliate_clicks.aggregate(pipeline).to_list(1)
+    except Exception:
+        facettes = []
+    f = facettes[0] if facettes else {}
+
+    def _en_dict(lignes, defaut: str) -> dict:
+        out: dict = {}
+        for ligne in lignes or []:
+            cle = str(ligne.get("_id") or "").strip() or defaut
+            out[cle] = out.get(cle, 0) + int(ligne.get("clicks", 0))
+        return out
+
+    # Le repli sur domaine peut fusionner deux lignes (`a.com/x` et
+    # `a.com/y`) : on réadditionne après conversion, jamais avant.
+    refs: dict = {}
+    for ligne in f.get("referrers") or []:
+        domaine = _affiliate_referrer_domain(str(ligne.get("_id") or "")) or "direct"
+        refs[domaine] = refs.get(domaine, 0) + int(ligne.get("clicks", 0))
+
+    total_lignes = f.get("total") or []
     return {
         "days": days,
-        "total_clicks": total,
-        "top_pages": _top_clicks(pages),
+        "total_clicks": int(total_lignes[0]["n"]) if total_lignes else 0,
+        "top_pages": _top_clicks(_en_dict(f.get("pages"), "direct")),
         "top_referrers": _top_clicks(refs),
-        "devices": devices,
+        "devices": _en_dict(f.get("devices"), "unknown"),
     }
 
 

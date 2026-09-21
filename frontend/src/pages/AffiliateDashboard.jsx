@@ -1076,12 +1076,26 @@ export default function AffiliateDashboard() {
               </div>
             )}
 
-            {/* Insights secondaires : clics / conversion / commandes / panier */}
+            {/* Insights secondaires : clics / conversion / commandes / panier.
+                CHAQUE VIGNETTE DIT SA FENETRE. Ces quatre chiffres comptent
+                depuis l'ouverture du compte ; la carte « sources de vos clics »
+                plus bas compte sur 30 jours. Deux totaux de clics differents
+                sur le meme ecran, sans un mot pour les distinguer, se lisent
+                comme une erreur — et on finit par ne plus croire ni l'un ni
+                l'autre. */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <MiniInsight label={L("Clics sur votre lien", "Clicks on your link")} value={insights?.clicks != null ? insights.clicks.toLocaleString("en-CA") : "—"} />
-              <MiniInsight label={L("Taux de conversion", "Conversion rate")} value={insights?.conversion_rate != null ? `${(insights.conversion_rate * 100).toFixed(1)}%` : "—"} />
-              <MiniInsight label={L("Commandes validées", "Validated orders")} value={insights?.validated_orders != null ? insights.validated_orders.toLocaleString("en-CA") : "—"} />
-              <MiniInsight label={L("Panier moyen", "Avg order")} value={money(insights?.avg_order_value)} />
+              <MiniInsight label={L("Clics sur votre lien", "Clicks on your link")}
+                           fenetre={L("depuis le début", "all time")}
+                           value={insights?.clicks != null ? insights.clicks.toLocaleString("en-CA") : "—"} />
+              <MiniInsight label={L("Taux de conversion", "Conversion rate")}
+                           fenetre={L("depuis le début", "all time")}
+                           value={insights?.conversion_rate != null ? `${(insights.conversion_rate * 100).toFixed(1)}%` : "—"} />
+              <MiniInsight label={L("Commandes validées", "Validated orders")}
+                           fenetre={L("depuis le début", "all time")}
+                           value={insights?.validated_orders != null ? insights.validated_orders.toLocaleString("en-CA") : "—"} />
+              <MiniInsight label={L("Panier moyen", "Avg order")}
+                           fenetre={L("sous-total produits", "product subtotal")}
+                           value={money(insights?.avg_order_value)} />
             </div>
 
             {/* Palier. La bascule se fait sur tier_agreement, PAS sur
@@ -2060,11 +2074,14 @@ function KpiCard({ label, value, sub, accent }) {
   );
 }
 
-function MiniInsight({ label, value }) {
+function MiniInsight({ label, value, fenetre }) {
   return (
     <div className="rounded-xl border border-ash bg-white px-4 py-3">
       <p className="font-data text-[10px] font-semibold uppercase tracking-[0.18em] text-glacier mb-1">{label}</p>
       <p className="font-display text-xl font-bold text-nordfjord tabular-nums">{value}</p>
+      {fenetre && (
+        <p className="font-data text-[10px] text-glacier mt-0.5">{fenetre}</p>
+      )}
     </div>
   );
 }

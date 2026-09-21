@@ -189,3 +189,83 @@ def test_le_tableau_de_bord_ne_transporte_plus_la_section_morte(server_module):
     source = inspect.getsource(server_module.affiliate_dashboard)
     assert '_safe("clicks"' not in source
     assert '_safe("clicks_sources"' in source
+
+
+# ------------------------------------------------ les sources des clics -----
+
+def _brancher_clics(server_module, facette):
+    vu = {}
+
+    class Clicks:
+        def aggregate(self, pipeline):
+            vu["pipeline"] = pipeline
+            return _Curseur([facette] if facette is not None else [])
+
+        def find(self, *args, **kwargs):
+            raise AssertionError("les sources se groupent dans la base, pas ici")
+
+    server_module.db = SimpleNamespace(affiliate_clicks=Clicks())
+    return vu
+
+
+def test_les_sources_se_groupent_dans_la_base(server_module):
+    # Chaque clic traversait le reseau, document par document, pour alimenter
+    # trois compteurs et n'en ressortir que seize lignes. Le stub fait echouer
+    # tout retour a `find`.
+    vu = _brancher_clics(server_module, {"pages": [], "referrers": [], "devices": [], "total": []})
+
+    out = asyncio.run(server_module.affiliate_clicks_sources(None, aff={"id": "a-1"}))
+
+    assert "$facet" in vu["pipeline"][-1]
+    assert out["total_clicks"] == 0
+    assert out["top_pages"] == []
+    assert out["devices"] == {}
+
+
+def test_deux_pages_du_meme_domaine_comptent_pour_un_referent(server_module):
+    # `a.com/x` et `a.com/y?z` sont le MEME referent. Le repli sur domaine
+    # peut donc fusionner deux lignes : il faut readditionner apres conversion.
+    _brancher_clics(server_module, {
+        "pages": [], "devices": [], "total": [{"n": 9}],
+        "referrers": [
+            {"_id": "https://www.a.com/x", "clicks": 5},
+            {"_id": "https://a.com/y?z=1", "clicks": 3},
+            {"_id": "", "clicks": 1},
+        ],
+    })
+
+    out = asyncio.run(server_module.affiliate_clicks_sources(None, aff={"id": "a-1"}))
+    par_source = {r["source"]: r["clicks"] for r in out["top_referrers"]}
+
+    assert par_source["a.com"] == 8
+    # Un referent vide, c'est un acces direct : le dire, pas l'effacer.
+    assert par_source["direct"] == 1
+    assert out["total_clicks"] == 9
+
+
+def test_la_fenetre_est_bornee_et_reglable(server_module):
+    vu = _brancher_clics(server_module, {"pages": [], "referrers": [], "devices": [], "total": []})
+
+    asyncio.run(server_module.affiliate_clicks_sources(None, days=400, aff={"id": "a-1"}))
+
+    selection = vu["pipeline"][0]["$match"]
+    assert selection["affiliate_id"] == "a-1"
+    # 400 jours demandes, 90 accordes : une fenetre sans plafond laisse un
+    # visiteur commander un balayage de toute la collection.
+    assert "$gte" in selection["created_at"]
+    debut = datetime.fromisoformat(selection["created_at"]["$gte"])
+    jours = (datetime.now(timezone.utc) - debut).days
+    assert 89 <= jours <= 91
+
+
+def test_une_agregation_en_panne_rend_une_carte_vide_mais_valide(server_module):
+    class Clicks:
+        def aggregate(self, pipeline):
+            raise RuntimeError("mongo indisponible")
+
+    server_module.db = SimpleNamespace(affiliate_clicks=Clicks())
+
+    out = asyncio.run(server_module.affiliate_clicks_sources(None, aff={"id": "a-1"}))
+
+    assert out == {"days": 30, "total_clicks": 0,
+                   "top_pages": [], "top_referrers": [], "devices": {}}
