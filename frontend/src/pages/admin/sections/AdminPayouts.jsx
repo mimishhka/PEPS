@@ -112,6 +112,18 @@ export default function AdminPayouts() {
   // d'aout est parti dans ses cinq jours, oui ou non.
   const [cycles, setCycles] = useState([]);
   const [joursCycle, setJoursCycle] = useState(5);
+  // La tendance, pas seulement le dernier mois. Un tableau de douze lignes
+  // dit ce qui s'est passe ; il ne dit pas si ca se degrade.
+  const tenue = useMemo(() => {
+    const clos = cycles.filter((c) => c.days_late !== null && c.days_late !== undefined);
+    if (clos.length === 0) return null;
+    const aTemps = clos.filter((c) => c.days_late === 0).length;
+    const enRetard = clos.filter((c) => c.days_late > 0);
+    const moyen = enRetard.length
+      ? enRetard.reduce((s, c) => s + c.days_late, 0) / enRetard.length
+      : 0;
+    return { clos: clos.length, aTemps, enRetard: enRetard.length, moyen };
+  }, [cycles]);
 
   const load = useCallback(async (filters = {}) => {
     try {
@@ -728,12 +740,34 @@ export default function AdminPayouts() {
           differentes, et seule la seconde engage vis-a-vis de l'affilie.
           Elle ne se lisait nulle part : il fallait recouper des dates a la
           main, donc elle ne se lisait pas du tout. */}
-      {cycles.length > 0 && (
-        <div className="rounded-xl border border-ash bg-white overflow-hidden" data-testid="cycles-passes">
+      {/* Le bloc reste visible meme vide : masquer le tableau quand il n'y a
+          rien laisse croire a une panne autant qu'a un calme. Une phrase dit
+          « aucun cycle termine » ; un vide ne dit rien. */}
+      <div className="rounded-xl border border-ash bg-white overflow-hidden" data-testid="cycles-passes">
           <p className="px-5 py-3 font-data text-[11px] uppercase tracking-[0.2em] text-nova border-b border-ash">
             {L(`Cycles passés — délai de ${joursCycle} jours`,
                `Past cycles — ${joursCycle}-day deadline`)}
           </p>
+          {tenue && (
+            <p className="px-5 py-2.5 text-sm border-b border-ash/60" data-testid="cycles-tenue">
+              <b className="tabular-nums">{tenue.aTemps}</b>
+              {L(` cycle(s) sur ${tenue.clos} terminé(s) sont partis dans les temps`,
+                 ` of ${tenue.clos} completed cycle(s) went out on time`)}
+              {tenue.enRetard > 0 && (
+                <span className="text-glacier">
+                  {L(` · retard moyen ${tenue.moyen.toFixed(1)} jour(s) sur les ${tenue.enRetard} autres`,
+                     ` · average delay ${tenue.moyen.toFixed(1)} day(s) on the other ${tenue.enRetard}`)}
+                </span>
+              )}
+            </p>
+          )}
+          {cycles.length === 0 && (
+            <p className="px-5 py-6 text-sm text-glacier text-center" data-testid="cycles-vide">
+              {L("Aucun cycle terminé pour l'instant. Le premier apparaîtra après le premier versement mensuel.",
+                 "No completed cycle yet. The first one appears after the first monthly payout.")}
+            </p>
+          )}
+          {cycles.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -774,8 +808,8 @@ export default function AdminPayouts() {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+          )}
+      </div>
 
       {/* Historique des generations. Il repond a une question precise, posee
           chaque mois : « est-ce que le planificateur a bien tourne ? ». Sans

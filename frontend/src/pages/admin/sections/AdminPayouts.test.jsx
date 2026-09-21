@@ -314,12 +314,43 @@ describe("AdminPayouts — cycles passes", () => {
     expect(ligne).not.toHaveTextContent("dans les temps");
   });
 
-  it("n affiche pas le tableau quand aucun cycle n existe", async () => {
+  it("dit qu il n y a aucun cycle, au lieu de disparaitre", async () => {
+    // Masquer le tableau laisse croire a une panne autant qu'a un calme.
     reponses({ cycles: [] });
     render(<AdminPayouts />);
-    await screen.findByTestId("admin-payouts");
 
-    expect(screen.queryByTestId("cycles-passes")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("cycles-vide"))
+      .toHaveTextContent("Aucun cycle terminé");
+    expect(screen.getByTestId("cycles-passes")).toBeInTheDocument();
+    expect(screen.queryByTestId("cycles-tenue")).not.toBeInTheDocument();
+  });
+
+  it("resume la tenue des douze derniers cycles", async () => {
+    // Douze lignes disent ce qui s'est passe ; elles ne disent pas si ca se
+    // degrade.
+    reponses({ cycles: [
+      { ...CYCLE, period: "2026-08", days_late: 0 },
+      { ...CYCLE, period: "2026-07", days_late: 0 },
+      { ...CYCLE, period: "2026-06", days_late: 4 },
+      { ...CYCLE, period: "2026-05", days_late: 2 },
+      { ...CYCLE, period: "2026-04", days_late: null, pending: 1 },
+    ] });
+    render(<AdminPayouts />);
+
+    const ligne = await screen.findByTestId("cycles-tenue");
+    // 4 cycles termines, 2 a temps ; le cinquieme n'est pas clos, il ne
+    // compte ni d'un cote ni de l'autre.
+    expect(ligne).toHaveTextContent("2 cycle(s) sur 4 terminé(s)");
+    expect(ligne).toHaveTextContent("3.0 jour(s)");
+  });
+
+  it("ne parle pas de retard moyen quand il n y en a aucun", async () => {
+    reponses({ cycles: [{ ...CYCLE, days_late: 0 }] });
+    render(<AdminPayouts />);
+
+    const ligne = await screen.findByTestId("cycles-tenue");
+    expect(ligne).toHaveTextContent("1 cycle(s) sur 1");
+    expect(ligne).not.toHaveTextContent("retard moyen");
   });
 
   it("n affiche aucun horodatage brut dans le tableau", async () => {
