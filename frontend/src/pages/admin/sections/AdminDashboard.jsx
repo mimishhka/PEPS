@@ -131,6 +131,10 @@ export default function AdminDashboard() {
               ? `${argent(v.amount)} · ${L("échéance dépassée", "deadline passed")}`
               : `${argent(v.amount)} · ${L(`à verser sous ${v.days_left} jour(s)`, `to send within ${v.days_left} day(s)`)}`)
           : `${argent(affiliate?.alerts?.payouts_ready_amount)} · ${L("exécution + 2FA", "execute + 2FA")}` },
+      { cle: "notices", urgent: false, vers: "payouts", n: pulse.ops?.affiliate_notices_stuck || 0,
+        titre: L("avis d'affiliés restés en échec", "affiliate notices stuck"),
+        note: L("au-delà de toute reprise — l'affilié n'a rien reçu",
+                "beyond any retry — the affiliate got nothing") },
       { cle: "emails", urgent: false, vers: "emails/outbox", n: pulse.ops?.emails_failed || 0,
         titre: L("courriels non délivrés", "undelivered emails"),
         note: L("après 5 tentatives", "after 5 attempts") },

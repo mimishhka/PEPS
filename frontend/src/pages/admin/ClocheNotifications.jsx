@@ -62,6 +62,9 @@ export function ClocheNotifications({ pouls, signaux, basePath, L, argent, surAc
       texte: L("billet(s) d'affilié ouvert(s)", "open affiliate ticket(s)") },
     { cle: "stock", n: pouls?.ops?.low_stock || 0, vers: "products", ton: "warn",
       texte: L("variante(s) en stock bas", "variant(s) low on stock") },
+    { cle: "notices", n: pouls?.ops?.affiliate_notices_stuck || 0, vers: "payouts", ton: "warn",
+      texte: L("avis d'affilié resté(s) en échec", "affiliate notice(s) stuck"),
+      détail: L("au-delà de toute reprise", "beyond any retry") },
     { cle: "emails", n: pouls?.ops?.emails_failed || 0, vers: "emails/outbox", ton: "warn",
       texte: L("courriel(s) non délivré(s)", "undelivered email(s)") },
   ].filter((l) => l.n > 0);

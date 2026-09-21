@@ -453,3 +453,69 @@ def test_une_panne_du_releve_des_avis_ne_vide_pas_les_cycles(server_module):
 
     assert len(out["cycles"]) == 1
     assert out["cycles"][0]["notices_announced"] == 0
+
+
+# --------------------------------------------- les avis restes en echec -----
+
+def test_les_avis_bloques_sont_comptes(server_module):
+    # Deux facons de sortir du champ de la reprise : depasser 48 heures, ou
+    # epuiser le plafond. Dans les deux cas l'avis reste en echec pour
+    # toujours, et l'affilie sans nouvelle.
+    vu = {}
+
+    class Notices:
+        async def count_documents(self, filtre):
+            vu["filtre"] = filtre
+            return 4
+
+    server_module.db = SimpleNamespace(affiliate_payout_notices=Notices())
+
+    assert asyncio.run(server_module._avis_bloques()) == 4
+    ou = vu["filtre"]["$or"]
+    assert any("created_at" in clause for clause in ou)
+    assert any("attempts" in clause for clause in ou)
+
+
+def test_un_affilie_sans_adresse_compte_comme_bloque(server_module):
+    # « Aucune adresse au dossier » n'est pas rattrapable par une reprise :
+    # il n'y a personne a qui ecrire.
+    vu = {}
+
+    class Notices:
+        async def count_documents(self, filtre):
+            vu["filtre"] = filtre
+            return 0
+
+    server_module.db = SimpleNamespace(affiliate_payout_notices=Notices())
+    asyncio.run(server_module._avis_bloques())
+
+    assert "skipped_no_email" in vu["filtre"]["email_status"]["$in"]
+
+
+def test_une_collection_absente_compte_zero(server_module):
+    server_module.db = SimpleNamespace()
+
+    assert asyncio.run(server_module._avis_bloques()) == 0
+
+
+def test_le_pouls_porte_le_compteur_des_avis_bloques(server_module, monkeypatch):
+    class Vide:
+        def aggregate(self, pipeline):
+            return _Curseur([])
+
+        async def count_documents(self, *a, **k):
+            return 2
+
+    async def _rien():
+        return []
+
+    monkeypatch.setattr(server_module, "_low_stock_variants", lambda limit=50: _rien())
+    server_module.db = SimpleNamespace(
+        orders=Vide(), interac_reconciliation_queue=Vide(),
+        email_outbox=Vide(), affiliate_tickets=Vide(),
+        affiliate_referrals=Vide(), affiliate_payout_notices=Vide(),
+    )
+
+    out = asyncio.run(server_module.admin_dashboard_pulse({}))
+
+    assert out["ops"]["affiliate_notices_stuck"] == 2

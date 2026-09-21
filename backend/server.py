@@ -7777,7 +7777,7 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
     # depasses — sans le moindre message.
     attente_lignes, recon_lignes, payes_lignes, to_ship, low_stock_rows, \
         late_payments, emails_failed, tickets_open, remboursements, \
-        cycle_affilie = await asyncio.gather(
+        cycle_affilie, avis_bloques = await asyncio.gather(
         db.orders.aggregate([
             {"$match": {"payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto"]},
                         **SANS_CORBEILLE}},
@@ -7837,6 +7837,10 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
         # attend. Lance avec les autres lectures : le pouls est releve toutes
         # les minutes, il n'a pas les moyens d'un aller-retour de plus.
         _commissions_par_cycle(),
+        # Les avis d'affilies restes en echec au-dela de toute reprise.
+        # Un affilie sans nouvelle ne se plaint qu'une fois — et jamais
+        # au bon moment.
+        _avis_bloques(),
     )
 
     par_methode = {str(r.get("_id") or ""): r for r in attente_lignes}
@@ -7904,6 +7908,7 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
                            and cycle_affilie.get("due_now", 0.0) > 0,
                 "due_by": cycle_affilie.get("due_by"),
             },
+            "affiliate_notices_stuck": avis_bloques,
         },
     }
 
@@ -12672,6 +12677,18 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
         {"status": "invited", "invite_expires_at": {"$lt": now.isoformat()}}
     )
     compliance_review = await db.affiliates.count_documents({"compliance_status": "review"})
+    # UN AFFILIE ACTIF SANS ADRESSE DE PAIEMENT NE SERA PAS PAYE.
+    #
+    # Le versement se calcule, la commission lui reste due, et le run bute
+    # sur une adresse vide — en silence, le 1er du mois, quand personne ne
+    # regarde. Ca se voit le jour ou il ecrit, des semaines plus tard.
+    # Le compter AVANT le cycle laisse le temps de le lui demander.
+    sans_adresse = await db.affiliates.count_documents({
+        "status": "active",
+        "$or": [{"payout_address": {"$exists": False}},
+                {"payout_address": None},
+                {"payout_address": ""}],
+    })
     commissions_maturing = await db.affiliate_referrals.count_documents({"status": "pending"})
 
     # SOMMES A RECUPERER. Quand une commande deja versee est annulee, le
@@ -12706,6 +12723,7 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
             "invites_expired": invites_expired,
             "compliance_review": compliance_review,
             "commissions_maturing": commissions_maturing,
+            "no_payout_address": sans_adresse,
             "clawback_count": clawback_count,
             "clawback_amount": clawback_amount,
         },
@@ -14132,6 +14150,28 @@ async def admin_affiliate_force_monthly_run(payload: AffiliatePayoutRunForceIn,
         )
         logging.error("Manual payout run failed run=%s error_type=%s", run_id, type(e).__name__)
         raise HTTPException(500, "Payout generation failed") from e
+
+
+async def _avis_bloques(maintenant: Optional[datetime] = None) -> int:
+    """Les avis que la reprise ne prendra PLUS JAMAIS.
+
+    Deux facons de sortir du champ de la reprise : depasser les 48 heures,
+    ou epuiser le plafond de tentatives. Dans les deux cas l'avis reste en
+    echec pour toujours, et l'affilie sans nouvelle — sans que rien nulle
+    part ne le dise. C'est le seul etat de ce systeme qui ne se repare pas
+    tout seul et ne se signale pas non plus.
+    """
+    now = maintenant or datetime.now(timezone.utc)
+    limite = (now - timedelta(hours=48)).isoformat()
+    try:
+        return await db.affiliate_payout_notices.count_documents({
+            "email_status": {"$in": ["failed", "skipped_no_email"]},
+            "$or": [{"created_at": {"$lt": limite}},
+                    {"attempts": {"$gte": AFFILIATE_NOTICE_MAX_ATTEMPTS}},
+                    {"email_status": "skipped_no_email"}],
+        })
+    except Exception:
+        return 0
 
 
 async def _dernier_avis(affiliate_id: str) -> Optional[dict]:

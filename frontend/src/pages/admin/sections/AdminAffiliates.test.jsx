@@ -169,22 +169,45 @@ describe("AdminAffiliates — classement des top affiliés", () => {
     expect(screen.getByText(/2 . \$340\.50/)).toBeInTheDocument();
   });
 
-  it("garde les cinq compteurs, et met en retrait ceux a zero", async () => {
+  it("garde tous les compteurs, et met en retrait ceux a zero", async () => {
     // Le repli sur une ligne a ete essaye puis abandonne : on lit « tout est a
-    // zero » plus vite sur cinq chiffres que dans une phrase, et il faut relire
+    // zero » plus vite sur des chiffres que dans une phrase, et il faut relire
     // pour verifier qu'aucun poste ne manque. C'est le POIDS qui change
     // desormais, pas la presence.
+    //
+    // Le test comptait « cinq » ; il en compte desormais six, « Sans adresse
+    // de paiement » ayant rejoint la bande. C'est la LISTE qui fait foi, pas
+    // le nombre : un nombre nu ne dit pas lequel manque quand il tombe.
     render(<AdminAffiliates />);
 
     const bande = await screen.findByTestId("affiliate-alerts");
 
-    // Les cinq postes sont la, quel que soit leur compteur.
-    for (const titre of [/Paiements . envoyer/, /Commissions . approuver/,
-                         /r.vision conformit/, /Invitations expir/,
-                         /Sommes . r.cup.rer/]) {
+    const postes = [/Paiements . envoyer/, /Commissions . approuver/,
+                    /Sans adresse de paiement/, /r.vision conformit/,
+                    /Invitations expir/, /Sommes . r.cup.rer/];
+    for (const titre of postes) {
       expect(screen.getByText(titre)).toBeInTheDocument();
     }
-    expect(bande.children).toHaveLength(5);
+    expect(bande.children).toHaveLength(postes.length);
+  });
+
+  it("annonce les affilies qui ne pourront pas etre payes", async () => {
+    // Le versement se calcule, la commission reste due, et le run bute sur
+    // une adresse vide — en silence, le 1er du mois. Ca se voit le jour ou
+    // l'affilie ecrit, des semaines apres.
+    api.get.mockImplementation(async (url) => {
+      if (url === "/admin/affiliates/overview") {
+        return { data: { ...APERCU,
+          alerts: { ...APERCU.alerts, no_payout_address: 3 } } };
+      }
+      if (url === "/admin/affiliates") return { data: [AFFILIE] };
+      if (url === "/admin/affiliates/risk") return { data: null };
+      return { data: {} };
+    });
+    render(<AdminAffiliates />);
+
+    await screen.findByText(/Sans adresse de paiement/);
+    expect(screen.getByText(/ne seront pas pay/)).toBeInTheDocument();
   });
   it("propose de fermer un dossier invité, et n'envoie aucun courriel", async () => {
     // Une invitation qui ne sera jamais acceptee restait « invited » pour

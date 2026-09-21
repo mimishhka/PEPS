@@ -126,3 +126,22 @@ it("mene a l ecran ou le versement s execute", () => {
   expect(screen.getByTestId("notification-affiliate-payout"))
     .toHaveAttribute("href", "/ops/payouts");
 });
+
+it("sonne pour un avis d'affilié resté en échec", () => {
+  // Au-delà de 48 h ou du plafond de reprises, plus rien ne le rattrape :
+  // l'affilié n'a rien reçu et personne ne le sait.
+  afficher({ pouls: { ...POULS, ops: { ...POULS.ops, affiliate_notices_stuck: 2 } } });
+
+  fireEvent.click(screen.getByTestId("notifications-toggle"));
+  const item = screen.getByTestId("notification-notices");
+  expect(item).toHaveTextContent("2 avis d'affilié resté(s) en échec");
+  expect(item).toHaveTextContent("au-delà de toute reprise");
+  expect(item).toHaveAttribute("href", "/ops/payouts");
+});
+
+it("ne sonne pas quand aucun avis n'est bloqué", () => {
+  afficher({ pouls: { ...POULS, ops: { ...POULS.ops, affiliate_notices_stuck: 0 } } });
+
+  fireEvent.click(screen.getByTestId("notifications-toggle"));
+  expect(screen.queryByTestId("notification-notices")).not.toBeInTheDocument();
+});

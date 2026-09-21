@@ -327,6 +327,15 @@ export default function AdminAffiliates() {
                 action: Number(al.commissions_maturing) > 0
                   ? L("prêtes sous peu", "maturing soon")
                   : L("aucune en attente", "none pending") },
+              { cle: "sans-adresse", icon: Wallet, ton: "amber", n: al.no_payout_address,
+                titre: L("Sans adresse de paiement", "No payout address"),
+                valeur: int(al.no_payout_address),
+                // Le versement se calcule, la commission reste due, et le run
+                // bute sur une adresse vide — en silence, le 1er du mois.
+                // Ca se voit le jour ou l'affilie ecrit, des semaines apres.
+                action: Number(al.no_payout_address) > 0
+                  ? L("ne seront pas payés", "will not be paid")
+                  : L("tous joignables", "all reachable") },
               { cle: "compliance", icon: ShieldAlert, ton: "red", n: al.compliance_review,
                 titre: L("En révision conformité", "In compliance review"),
                 valeur: int(al.compliance_review),
