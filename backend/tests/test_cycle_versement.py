@@ -293,3 +293,108 @@ def test_une_collection_absente_ne_fait_pas_tomber_le_pouls(server_module, monke
 
     assert out["ops"]["affiliate_payout"]["amount"] == 0.0
     assert "money" in out and "rails" in out
+
+
+# ------------------------------------------------- l'historique des cycles --
+
+def test_l_echeance_d_un_mois_quelconque_suit_la_meme_regle(server_module):
+    # Une seule source pour cette date : si l'historique la recalculait de son
+    # cote, deux ecrans annonceraient deux echeances pour le meme cycle.
+    echeance = server_module._echeance_pour_periode("2026-08")
+
+    assert _le(echeance).astimezone(timezone.utc).isoformat() == "2026-09-06T04:00:00+00:00"
+
+
+def test_decembre_bascule_sur_janvier_suivant(server_module):
+    echeance = server_module._echeance_pour_periode("2026-12")
+
+    # Janvier : heure normale de l'Est, UTC-5.
+    assert _le(echeance).astimezone(timezone.utc).isoformat() == "2027-01-06T05:00:00+00:00"
+
+
+@pytest.mark.parametrize("periode", ["", None, "2026", "2026-13", "aout", "2026-00"])
+def test_une_periode_illisible_ne_fabrique_pas_de_date(server_module, periode):
+    # Mieux vaut pas de date qu'une date inventee : c'est elle qui decide si
+    # un cycle est en retard.
+    assert server_module._echeance_pour_periode(periode) is None
+
+
+def _brancher_cycles(server_module, lignes):
+    class Payouts:
+        def aggregate(self, pipeline):
+            return _Curseur(lignes)
+
+    server_module.db = SimpleNamespace(affiliate_payouts=Payouts())
+
+
+def test_un_cycle_parti_dans_les_temps_ne_porte_aucun_retard(server_module):
+    _brancher_cycles(server_module, [{
+        "_id": "2026-08", "total_cad": 412.5, "affiliates": 3, "referrals": 7,
+        "sent": 3, "first_sent_at": "2026-09-02T14:00:00+00:00",
+        "last_sent_at": "2026-09-04T16:00:00+00:00",
+    }])
+
+    out = asyncio.run(server_module.admin_affiliate_cycles({}))
+    c = out["cycles"][0]
+
+    assert c["days_late"] == 0
+    assert c["on_time"] is True
+    assert c["total_cad"] == 412.5
+    assert c["pending"] == 0
+
+
+def test_un_cycle_en_retard_compte_ses_jours(server_module):
+    # Echeance au 6 septembre 04:00 UTC ; dernier envoi le 9 a 16:00.
+    _brancher_cycles(server_module, [{
+        "_id": "2026-08", "total_cad": 412.5, "affiliates": 2, "referrals": 5,
+        "sent": 2, "first_sent_at": "2026-09-09T10:00:00+00:00",
+        "last_sent_at": "2026-09-09T16:00:00+00:00",
+    }])
+
+    out = asyncio.run(server_module.admin_affiliate_cycles({}))
+    c = out["cycles"][0]
+
+    assert c["days_late"] == 3
+    assert c["on_time"] is False
+
+
+def test_le_retard_se_compte_sur_le_DERNIER_envoi(server_module):
+    # Un cycle n'est pas clos tant qu'un affilie du mois n'a pas ete paye :
+    # compter sur le premier envoi dirait « dans les temps » alors qu'il reste
+    # quelqu'un a payer.
+    _brancher_cycles(server_module, [{
+        "_id": "2026-08", "total_cad": 900.0, "affiliates": 2, "referrals": 9,
+        "sent": 2, "first_sent_at": "2026-09-02T10:00:00+00:00",
+        "last_sent_at": "2026-09-11T10:00:00+00:00",
+    }])
+
+    assert asyncio.run(server_module.admin_affiliate_cycles({}))["cycles"][0]["days_late"] == 5
+
+
+def test_un_cycle_pas_encore_parti_ne_porte_pas_de_retard(server_module):
+    # « Pas encore parti » et « en retard » ne sont pas la meme information :
+    # l'une appelle une action, l'autre un constat.
+    _brancher_cycles(server_module, [{
+        "_id": "2026-09", "total_cad": 88.25, "affiliates": 2, "referrals": 2,
+        "sent": 1, "first_sent_at": "2026-10-02T10:00:00+00:00",
+        "last_sent_at": "2026-10-02T10:00:00+00:00",
+    }])
+
+    c = asyncio.run(server_module.admin_affiliate_cycles({}))["cycles"][0]
+
+    assert c["days_late"] is None
+    assert c["on_time"] is None
+    assert c["pending"] == 1
+
+
+def test_une_agregation_en_panne_rend_une_liste_vide(server_module):
+    class Payouts:
+        def aggregate(self, pipeline):
+            raise RuntimeError("mongo indisponible")
+
+    server_module.db = SimpleNamespace(affiliate_payouts=Payouts())
+
+    out = asyncio.run(server_module.admin_affiliate_cycles({}))
+
+    assert out["cycles"] == []
+    assert out["due_days"] == 5

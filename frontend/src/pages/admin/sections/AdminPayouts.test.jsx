@@ -42,7 +42,8 @@ const RUN = {
   created_at: "2026-08-14T21:20:48.474350+00:00",
 };
 
-function reponses({ payouts = [], runs = [], paymentRuns = [RUN], listeBlanche = [] } = {}) {
+function reponses({ payouts = [], runs = [], paymentRuns = [RUN], listeBlanche = [],
+                    cycles = [] } = {}) {
   // Les URL exactes du composant : « payouts/all » pour la liste,
   // « payouts/runs » pour les generations, « payments/runs » pour les envois.
   api.get.mockImplementation(async (url) => {
@@ -52,6 +53,8 @@ function reponses({ payouts = [], runs = [], paymentRuns = [RUN], listeBlanche =
     if (url.startsWith("/admin/affiliates/payments/runs")) return { data: { runs: paymentRuns } };
     if (url.startsWith("/admin/affiliates/whitelist/pending"))
       return { data: { items: listeBlanche, count: listeBlanche.length } };
+    if (url.startsWith("/admin/affiliates/cycles"))
+      return { data: { cycles, due_days: 5, count: cycles.length } };
     return { data: [] };
   });
 }
@@ -266,5 +269,64 @@ describe("AdminPayouts", () => {
       render(<AdminPayouts />);
       expect(await screen.findByTestId("payout-not-whitelisted-p-1")).toBeInTheDocument();
     });
+  });
+});
+
+
+// Les cycles passes. « Est-ce que le planificateur a tourne » et « est-ce que
+// l'argent est parti a temps » sont deux questions differentes, et seule la
+// seconde engage vis-a-vis de l'affilie. Elle ne se lisait nulle part.
+describe("AdminPayouts — cycles passes", () => {
+  const CYCLE = {
+    period: "2026-08", due_by: "2026-09-06T04:00:00+00:00", total_cad: 412.5,
+    affiliates: 3, referrals: 7, sent: 3, pending: 0,
+    first_sent_at: "2026-09-02T14:00:00+00:00",
+    last_sent_at: "2026-09-04T16:00:00+00:00",
+    days_late: 0, on_time: true,
+  };
+
+  it("dit qu un cycle est parti dans les temps", async () => {
+    reponses({ cycles: [CYCLE] });
+    render(<AdminPayouts />);
+
+    const ligne = await screen.findByTestId("cycle-2026-08");
+    expect(ligne).toHaveTextContent("$412.50");
+    expect(ligne).toHaveTextContent("dans les temps");
+  });
+
+  it("compte les jours quand le cycle est parti en retard", async () => {
+    reponses({ cycles: [{ ...CYCLE, days_late: 3, on_time: false }] });
+    render(<AdminPayouts />);
+
+    expect(await screen.findByTestId("cycle-2026-08"))
+      .toHaveTextContent("3 jour(s) de retard");
+  });
+
+  it("distingue un cycle inacheve d un cycle reussi", async () => {
+    // Ranger « pas encore parti » avec « dans les temps » ferait passer un
+    // cycle inacheve pour un succes.
+    reponses({ cycles: [{ ...CYCLE, sent: 1, pending: 2,
+                          days_late: null, on_time: null }] });
+    render(<AdminPayouts />);
+
+    const ligne = await screen.findByTestId("cycle-2026-08");
+    expect(ligne).toHaveTextContent("2 en attente");
+    expect(ligne).not.toHaveTextContent("dans les temps");
+  });
+
+  it("n affiche pas le tableau quand aucun cycle n existe", async () => {
+    reponses({ cycles: [] });
+    render(<AdminPayouts />);
+    await screen.findByTestId("admin-payouts");
+
+    expect(screen.queryByTestId("cycles-passes")).not.toBeInTheDocument();
+  });
+
+  it("n affiche aucun horodatage brut dans le tableau", async () => {
+    reponses({ cycles: [CYCLE] });
+    render(<AdminPayouts />);
+
+    const ligne = await screen.findByTestId("cycle-2026-08");
+    expect(ligne.textContent).not.toMatch(/T\d{2}:\d{2}:\d{2}/);
   });
 });

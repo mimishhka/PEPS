@@ -318,6 +318,18 @@ async def admin_affiliate_force_monthly_run(payload: s.AffiliatePayoutRunForceIn
     return await s.admin_affiliate_force_monthly_run(payload, admin)
 
 
+@router.get("/admin/affiliates/cycles")
+async def admin_affiliate_cycles(admin: dict = Depends(s.get_admin_user),
+                                 limit: int = 12):
+    """Les cycles passes : montant, date d'envoi reelle, ecart avec l'echeance.
+
+    Hors de `/payouts/...` a dessein : une route freres d'un `{payout_id}`
+    finirait par etre lue comme un identifiant le jour ou quelqu'un ajoute
+    `/payouts/{payout_id}`.
+    """
+    return await s.admin_affiliate_cycles(admin, limit)
+
+
 @router.get("/admin/affiliates/payouts/runs")
 async def admin_affiliate_payout_runs(admin: dict = Depends(s.get_admin_user),
                                        limit: int = 50):

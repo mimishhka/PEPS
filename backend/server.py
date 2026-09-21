@@ -11242,6 +11242,26 @@ def _date_effective(champ_principal: str, champ_repli: str) -> dict:
     }}
 
 
+def _echeance_pour_periode(period: str) -> Optional[str]:
+    """Date limite de deboursement du mois `period` (AAAA-MM), en ISO UTC.
+
+    Meme regle que le cycle courant : le mois se regle dans les
+    AFFILIATE_PAYOUT_DUE_DAYS premiers jours du SUIVANT, a minuit heure du
+    Quebec. Extraite ici pour que l'historique et le cycle en cours ne
+    puissent pas diverger — deux calculs de la meme date, c'est deux dates.
+    """
+    if not re.fullmatch(r"\d{4}-\d{2}", str(period or "")):
+        return None
+    annee, mois = int(period[:4]), int(period[5:7])
+    if not 1 <= mois <= 12:
+        return None
+    tz = ZoneInfo(ORDER_CUTOFF_TZ)
+    suivant = datetime(annee + (1 if mois == 12 else 0),
+                       1 if mois == 12 else mois + 1, 1, tzinfo=tz)
+    echeance = suivant + timedelta(days=AFFILIATE_PAYOUT_DUE_DAYS)
+    return echeance.astimezone(timezone.utc).isoformat()
+
+
 def _cycle_versement(maintenant: Optional[datetime] = None) -> dict:
     """Quel mois est clos, et jusqu'a quand il doit etre verse.
 
@@ -11260,14 +11280,15 @@ def _cycle_versement(maintenant: Optional[datetime] = None) -> dict:
     now = (maintenant or datetime.now(timezone.utc)).astimezone(tz)
     debut_mois = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     mois_clos = (debut_mois - timedelta(days=1)).strftime("%Y-%m")
-    echeance = debut_mois + timedelta(days=AFFILIATE_PAYOUT_DUE_DAYS)
-    restant = (echeance - now).total_seconds()
+    # Une seule source pour l'echeance : celle que l'historique utilise aussi.
+    due_by = _echeance_pour_periode(mois_clos)
+    restant = (datetime.fromisoformat(due_by) - now).total_seconds()
     return {
         "period": mois_clos,
         "current_period": debut_mois.strftime("%Y-%m"),
         # Tout ce qui est approuve AVANT cette date appartient au mois clos.
         "cutoff": debut_mois.astimezone(timezone.utc).isoformat(),
-        "due_by": echeance.astimezone(timezone.utc).isoformat(),
+        "due_by": due_by,
         "due_days": AFFILIATE_PAYOUT_DUE_DAYS,
         "days_left": max(0, int(restant // 86400)),
         "overdue": restant <= 0,
@@ -14084,6 +14105,80 @@ async def admin_affiliate_force_monthly_run(payload: AffiliatePayoutRunForceIn,
         )
         logging.error("Manual payout run failed run=%s error_type=%s", run_id, type(e).__name__)
         raise HTTPException(500, "Payout generation failed") from e
+
+
+async def admin_affiliate_cycles(admin: dict = Depends(get_admin_user),  # noqa: F821
+                                 limit: int = 12):
+    """Les cycles passes : combien est parti, quand, et avec quel ecart.
+
+    L'ecran des paiements montrait les versements un par un, et les runs du
+    planificateur un par un. Nulle part on ne voyait la seule chose qui
+    engage : est-ce que le mois d'aout est parti dans ses cinq jours, oui ou
+    non. Sans cette vue, un retard ne se constate qu'en recoupant des dates a
+    la main, donc il ne se constate pas.
+
+    `days_late` compte a partir du DERNIER envoi du cycle : tant qu'un
+    affilie du mois n'a pas ete paye, le cycle n'est pas clos. Un cycle
+    encore en attente ne porte pas de retard — il porte « pas encore parti »,
+    ce qui n'est pas la meme information.
+    """
+    limite = max(1, min(int(limit or 12), 60))
+    pipeline = [
+        {"$group": {
+            "_id": "$period",
+            "total_cad": {"$sum": {"$ifNull": ["$amount_cad", 0.0]}},
+            "affiliates": {"$sum": 1},
+            "referrals": {"$sum": {"$ifNull": ["$referral_count", 0]}},
+            "sent": {"$sum": {"$cond": [
+                {"$in": ["$status", ["paid", "paid_manual"]]}, 1, 0]}},
+            # $min et $max ignorent les valeurs nulles : un versement pas
+            # encore parti ne tire pas la date vers le vide.
+            "first_sent_at": {"$min": "$paid_at"},
+            "last_sent_at": {"$max": "$paid_at"},
+        }},
+        {"$sort": {"_id": -1}},
+        {"$limit": limite},
+    ]
+    try:
+        lignes = await db.affiliate_payouts.aggregate(pipeline).to_list(limite)
+    except Exception:
+        lignes = []
+
+    cycles = []
+    for r in lignes:
+        periode = r.get("_id")
+        if not periode:
+            continue
+        echeance = _echeance_pour_periode(periode)
+        dernier = r.get("last_sent_at")
+        total = int(r.get("affiliates", 0))
+        envoyes = int(r.get("sent", 0))
+        retard = None
+        if echeance and dernier and envoyes >= total and total > 0:
+            try:
+                fin = datetime.fromisoformat(str(dernier).replace("Z", "+00:00"))
+                if fin.tzinfo is None:
+                    fin = fin.replace(tzinfo=timezone.utc)
+                ecart = (fin - datetime.fromisoformat(echeance)).total_seconds()
+                retard = max(0, int(ecart // 86400)) if ecart > 0 else 0
+            except Exception:
+                retard = None
+        cycles.append({
+            "period": periode,
+            "due_by": echeance,
+            "total_cad": round(float(r.get("total_cad", 0.0)), 2),
+            "affiliates": total,
+            "referrals": int(r.get("referrals", 0)),
+            "sent": envoyes,
+            "pending": max(0, total - envoyes),
+            "first_sent_at": r.get("first_sent_at"),
+            "last_sent_at": dernier,
+            # None = cycle pas encore clos. 0 = parti dans les temps.
+            "days_late": retard,
+            "on_time": (retard == 0) if retard is not None else None,
+        })
+    return {"cycles": cycles, "due_days": AFFILIATE_PAYOUT_DUE_DAYS,
+            "count": len(cycles)}
 
 
 async def admin_affiliate_payout_runs(admin: dict = Depends(get_admin_user),  # noqa: F821

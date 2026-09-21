@@ -107,6 +107,11 @@ export default function AdminPayouts() {
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailOpen, setDetailOpen] = useState(null);
+  // Les cycles passes. L'ecran montrait les versements un par un et les runs
+  // un par un ; nulle part la seule chose qui engage : est-ce que le mois
+  // d'aout est parti dans ses cinq jours, oui ou non.
+  const [cycles, setCycles] = useState([]);
+  const [joursCycle, setJoursCycle] = useState(5);
 
   const load = useCallback(async (filters = {}) => {
     try {
@@ -122,6 +127,14 @@ export default function AdminPayouts() {
       setPayouts([]);
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     }
+  }, []);
+
+  const loadCycles = useCallback(async () => {
+    try {
+      const r = await api.get("/admin/affiliates/cycles?limit=12");
+      setCycles(r.data?.cycles || []);
+      if (r.data?.due_days) setJoursCycle(r.data.due_days);
+    } catch { /* l'historique est un confort : son echec ne bloque rien */ }
   }, []);
 
   const loadRuns = useCallback(async () => {
@@ -145,8 +158,8 @@ export default function AdminPayouts() {
     } catch { setListeBlanche([]); }
   }, []);
 
-  useEffect(() => { load(); loadRuns(); loadPaymentRuns(); loadListeBlanche(); },
-    [load, loadRuns, loadPaymentRuns, loadListeBlanche]);
+  useEffect(() => { load(); loadRuns(); loadPaymentRuns(); loadListeBlanche(); loadCycles(); },
+    [load, loadRuns, loadPaymentRuns, loadListeBlanche, loadCycles]);
 
   // Debounce de la recherche : on n'appelle le serveur qu'après 350ms
   // d'accalmie, pas à chaque frappe.
@@ -707,6 +720,60 @@ export default function AdminPayouts() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* LES CYCLES PASSES. « Est-ce que le planificateur a tourne » et
+          « est-ce que l'argent est parti a temps » sont deux questions
+          differentes, et seule la seconde engage vis-a-vis de l'affilie.
+          Elle ne se lisait nulle part : il fallait recouper des dates a la
+          main, donc elle ne se lisait pas du tout. */}
+      {cycles.length > 0 && (
+        <div className="rounded-xl border border-ash bg-white overflow-hidden" data-testid="cycles-passes">
+          <p className="px-5 py-3 font-data text-[11px] uppercase tracking-[0.2em] text-nova border-b border-ash">
+            {L(`Cycles passés — délai de ${joursCycle} jours`,
+               `Past cycles — ${joursCycle}-day deadline`)}
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-ash text-left font-data text-[10px] uppercase tracking-[0.16em] text-glacier">
+                  <th className="px-5 py-2 font-normal">{L("Mois", "Month")}</th>
+                  <th className="px-5 py-2 font-normal text-right">{L("Montant", "Amount")}</th>
+                  <th className="px-5 py-2 font-normal text-right">{L("Affiliés", "Affiliates")}</th>
+                  <th className="px-5 py-2 font-normal">{L("Échéance", "Deadline")}</th>
+                  <th className="px-5 py-2 font-normal">{L("Dernier envoi", "Last sent")}</th>
+                  <th className="px-5 py-2 font-normal">{L("Écart", "Gap")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cycles.map((c) => (
+                  <tr key={c.period} data-testid={`cycle-${c.period}`}
+                      className="border-b border-ash/60 last:border-0">
+                    <td className="px-5 py-2.5 font-data">{c.period}</td>
+                    <td className="px-5 py-2.5 text-right tabular-nums">{money(c.total_cad)}</td>
+                    <td className="px-5 py-2.5 text-right tabular-nums">{c.affiliates}</td>
+                    <td className="px-5 py-2.5 text-glacier">{dateHeure(c.due_by)}</td>
+                    <td className="px-5 py-2.5 text-glacier">{dateHeure(c.last_sent_at)}</td>
+                    <td className="px-5 py-2.5">
+                      {/* Trois etats, pas deux : a temps, en retard, et pas
+                          encore clos. Ranger le troisieme avec « a temps »
+                          ferait passer un cycle inacheve pour un succes. */}
+                      {c.days_late === null || c.days_late === undefined
+                        ? <span className="text-glacier">
+                            {L(`${c.pending} en attente`, `${c.pending} pending`)}
+                          </span>
+                        : c.days_late === 0
+                          ? <span className="text-success">{L("dans les temps", "on time")}</span>
+                          : <span className="text-error">
+                              {L(`${c.days_late} jour(s) de retard`, `${c.days_late} day(s) late`)}
+                            </span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
