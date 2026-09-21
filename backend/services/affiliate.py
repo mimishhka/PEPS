@@ -1744,6 +1744,14 @@ async def affiliate_ensure_indexes():
     await s.db.affiliate_payouts.create_index(
         [("affiliate_id", 1), ("period", 1)], unique=True,
     )
+    # Un avis de versement par affilie et par periode. C'est l'INDEX qui rend
+    # l'idempotence structurelle : un planificateur qui rejoue, un serveur qui
+    # redemarre au mauvais moment, un run admin lance en double, et l'affilie
+    # recevrait deux fois le meme courriel annoncant la meme somme. Une
+    # verification applicative perdrait la course entre deux runs.
+    await s.db.affiliate_payout_notices.create_index(
+        [("affiliate_id", 1), ("period", 1)], unique=True,
+    )
     # Menage unique des index devenus inutiles. Idempotent : une fois retires,
     # les passages suivants ne trouvent plus rien a faire.
     await _retirer_index_redondant(
@@ -1955,6 +1963,155 @@ async def _defer_affiliate_payout_below_threshold(
         logging.error("[payout-deferral] email queue failed affiliate=%s period=%s",
                       aff.get("id"), period)
         return False
+
+async def _annoncer_versement_du_cycle(
+    aff: dict, period: str, amount_cad: float, referral_count: int,
+) -> bool:
+    """Previent l'affilie que son versement du mois clos est calcule, et dit
+    avant quelle date il partira.
+
+    POURQUOI C'EST AUTOMATIQUE. Le tableau de bord affiche l'echeance, mais il
+    faut y aller pour la voir. Un affilie qui attend son argent ne rafraichit
+    pas une page tous les jours : il ecrit, ou il doute. Et un courriel qui
+    dependrait d'un geste manuel le 1er de chaque mois est un courriel qui
+    finira par ne pas partir — precisement le mois ou il comptait.
+
+    Le programme envoie DEJA un courriel automatique dans le cas inverse,
+    quand le solde est sous le seuil (`_defer_affiliate_payout_below_threshold`).
+    N'ecrire que pour reporter, jamais pour verser, ce serait n'ecrire que les
+    mauvaises nouvelles.
+
+    Trois garde-fous, parce qu'un courriel parti ne se rattrape pas :
+
+    1. UN SEUL par (affilie, periode), garanti par un index unique et non par
+       une verification applicative qui perdrait la course entre deux runs.
+    2. Appele uniquement sur un versement reste « ready ». Un versement en
+       revue attend un humain : lui promettre une date serait promettre ce
+       qu'on ne tiendra peut-etre pas.
+    3. Coupable sans redeploiement par AFFILIATE_PAYOUT_NOTICE_ENABLED.
+
+    Retourne True si un courriel a ete mis en file, False sinon.
+    """
+    if not getattr(s, "AFFILIATE_PAYOUT_NOTICE_ENABLED", True):
+        return False
+
+    now = datetime.now(timezone.utc)
+    avis = {
+        "id": str(uuid.uuid4()),
+        "affiliate_id": aff.get("id"),
+        "affiliate_code": aff.get("code"),
+        "affiliate_email": aff.get("email"),
+        "period": period,
+        "amount_cad": round(float(amount_cad), 2),
+        "referral_count": int(referral_count),
+        "created_at": now.isoformat(),
+        "email_status": "pending",
+    }
+    try:
+        await s.db.affiliate_payout_notices.insert_one(avis)
+    except DuplicateKeyError:
+        return False
+    except Exception as e:  # une collection indisponible ne casse pas un run
+        logging.warning("[payout-notice] enregistrement impossible : %s", type(e).__name__)
+        return False
+
+    courriel = (aff.get("email") or "").strip()
+    if not courriel:
+        await s.db.affiliate_payout_notices.update_one(
+            {"id": avis["id"]}, {"$set": {"email_status": "skipped_no_email"}})
+        return False
+
+    # L'echeance vient du MEME calcul que les trois ecrans. Une date de plus,
+    # recalculee ici, serait une quatrieme verite sur la meme obligation.
+    echeance_iso = s._echeance_pour_periode(period)
+    jour_fr = jour_en = period
+    if echeance_iso:
+        try:
+            from zoneinfo import ZoneInfo
+            echeance = datetime.fromisoformat(echeance_iso).astimezone(
+                ZoneInfo(s.ORDER_CUTOFF_TZ))
+            jour_fr = echeance.strftime("%d/%m/%Y")
+            jour_en = echeance.strftime("%Y-%m-%d")
+        except Exception:
+            pass
+
+    lang = (aff.get("preferred_lang") or "fr").lower()
+    prenom = aff.get("first_name") or aff.get("name") or ""
+    montant = f"{float(amount_cad):.2f} $ CAD"
+    sujet = (f"FIRONOVA — Votre versement d'affilie de {period} est en route"
+             if lang == "fr"
+             else f"FIRONOVA — Your {period} affiliate payout is on its way")
+
+    bonjour_fr = f"Bonjour {prenom}," if prenom else "Bonjour,"
+    bonjour_en = f"Hello {prenom}," if prenom else "Hello,"
+
+    corps_fr = f"""
+      <p style="margin:0 0 16px">{bonjour_fr}</p>
+      <p style="margin:0 0 16px">
+        Vos commissions pour la période <strong>{period}</strong> sont arrêtées :
+        <strong>{montant}</strong>, sur {referral_count} commande(s).
+      </p>
+      <p style="margin:0 0 16px">
+        Ce montant vous sera versé <strong>au plus tard le {jour_fr}</strong>, à l'adresse
+        de paiement enregistrée dans votre tableau de bord. Aucune démarche de votre part.
+      </p>
+      <p style="margin:0 0 16px">
+        Si votre adresse de paiement a changé, modifiez-la avant cette date depuis votre
+        tableau de bord — après l'envoi, un versement ne peut plus être redirigé.
+      </p>
+      <p style="margin:24px 0 0;color:#666;font-size:12px">
+        Les commissions du mois en cours continuent de s'accumuler et partiront au cycle suivant.
+      </p>
+    """
+    corps_en = f"""
+      <p style="margin:0 0 16px">{bonjour_en}</p>
+      <p style="margin:0 0 16px">
+        Your commissions for period <strong>{period}</strong> are final:
+        <strong>{montant}</strong>, across {referral_count} order(s).
+      </p>
+      <p style="margin:0 0 16px">
+        This amount will be paid <strong>no later than {jour_en}</strong>, to the payout
+        address saved in your dashboard. Nothing for you to do.
+      </p>
+      <p style="margin:0 0 16px">
+        If your payout address has changed, update it before that date from your
+        dashboard — once sent, a payout cannot be redirected.
+      </p>
+      <p style="margin:24px 0 0;color:#666;font-size:12px">
+        This month's commissions keep accruing and will go out in the next cycle.
+      </p>
+    """
+    corps = corps_fr if lang == "fr" else corps_en
+
+    html = f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#F5F1EA;font-family:Inter,Arial,sans-serif;color:#0B2E4F">
+  <table style="max-width:600px;margin:24px auto;background:#fff;border:1px solid #E5DED0;border-radius:8px;overflow:hidden">
+    <tr><td style="background:#0B2E4F;color:#fff;padding:20px 28px;font-family:monospace;letter-spacing:3px;font-size:14px">FIRONOVA · AFFILIATE PROGRAM</td></tr>
+    <tr><td style="padding:32px 28px;font-size:14px;line-height:1.6">
+      {corps}
+    </td></tr>
+    <tr><td style="background:#0B2E4F;color:#fff;padding:14px 28px;font-family:monospace;font-size:10px;letter-spacing:2px">FIRONOVA · CANADA · {now.strftime("%Y")}</td></tr>
+  </table>
+</body></html>"""
+
+    try:
+        await s._send_email(courriel, sujet, html)
+        await s.db.affiliate_payout_notices.update_one(
+            {"id": avis["id"]},
+            {"$set": {"email_status": "queued",
+                      "email_queued_at": datetime.now(timezone.utc).isoformat(),
+                      "due_by": echeance_iso}},
+        )
+        return True
+    except Exception as e:
+        await s.db.affiliate_payout_notices.update_one(
+            {"id": avis["id"]},
+            {"$set": {"email_status": "failed", "email_error": type(e).__name__}},
+        )
+        logging.error("[payout-notice] envoi impossible affiliate=%s period=%s",
+                      aff.get("id"), period)
+        return False
+
 
 # ---- Scheduler mensuel (America/Toronto minuit local) ------------------------
 async def _monthly_payouts_scheduler():
@@ -2228,5 +2385,10 @@ async def _generate_payouts_for_period(period: str, fx_rate: float,
                 "attendues — versement mis en revue, NON envoye",
                 aff.get("code"), period, revendiquees.modified_count, len(grp["ids"]),
             )
+        else:
+            # Meme regle que le run admin : l'avis ne part que sur un
+            # versement complet, jamais sur un versement mis en revue.
+            await _annoncer_versement_du_cycle(
+                aff, period, amount_cad, len(grp["ids"]))
         count += 1
     return count

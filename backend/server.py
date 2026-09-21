@@ -156,6 +156,11 @@ AFFILIATE_PAYOUT_MIN_CAD = float(os.environ.get("AFFILIATE_PAYOUT_MIN_CAD", "25.
 # versement en debut de mois ; sans chiffre, « debut » ne veut rien dire ni
 # pour l'affilie qui attend, ni pour celle qui doit payer.
 AFFILIATE_PAYOUT_DUE_DAYS = int(os.environ.get("AFFILIATE_PAYOUT_DUE_DAYS", "5"))
+# L'avis de versement part avec le calcul mensuel. Interrupteur separe pour
+# pouvoir le couper sans redeploiement, et sans toucher aux autres courriels
+# du programme : le jour ou il faut l'arreter, ce sera en urgence.
+AFFILIATE_PAYOUT_NOTICE_ENABLED = os.environ.get(
+    "AFFILIATE_PAYOUT_NOTICE_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
 PREORDER_RELEASE_INTERVAL_SECONDS = int(os.environ.get("PREORDER_RELEASE_INTERVAL_SECONDS", "300"))
 # Rabais % du coupon auto-lié à chaque affilié (0 = pas de coupon auto).
 AFFILIATE_COUPON_PERCENT = float(os.environ.get("AFFILIATE_COUPON_PERCENT", "10"))
@@ -10090,6 +10095,7 @@ try:
         _process_affiliate_email_job, _affiliate_email_worker, affiliate_ensure_indexes,
         _defer_affiliate_payout_below_threshold, _monthly_payouts_scheduler,
         _generate_payouts_for_period, _affiliate_payout_amounts,
+        _annoncer_versement_du_cycle,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
     from backend.services.affiliate import (  # noqa: F401
@@ -10104,6 +10110,7 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
         _process_affiliate_email_job, _affiliate_email_worker, affiliate_ensure_indexes,
         _defer_affiliate_payout_below_threshold, _monthly_payouts_scheduler,
         _generate_payouts_for_period, _affiliate_payout_amounts,
+        _annoncer_versement_du_cycle,
     )
 
 
@@ -13465,6 +13472,14 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
                 f"claimed={revendiquees.modified_count}/{len(grp['ids'])} cause=double_revendication",
                 "affiliates",
             )
+        # L'AVIS A L'AFFILIE. Il part ici et nulle part ailleurs : c'est
+        # l'instant precis ou la somme devient due et ou son echeance existe.
+        # Pas sur un versement passe en « review » — annoncer une date pour
+        # une somme qu'un humain doit encore trancher, c'est promettre ce
+        # qu'on ne tiendra peut-etre pas.
+        if revendiquees.modified_count == len(grp["ids"]):
+            await _annoncer_versement_du_cycle(
+                aff, period, amount_cad, len(grp["ids"]))
         created.append({"affiliate_id": affiliate_id, "amount": amount_target,
                         "amount_cad": amount_cad, "currency": payout_currency,
                         "payout_id": payout_id,
