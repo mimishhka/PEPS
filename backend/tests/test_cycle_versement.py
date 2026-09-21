@@ -1,0 +1,208 @@
+# -*- coding: utf-8 -*-
+"""Le cycle de versement des commissions d'affiliation.
+
+Demande du 2026-09-20 : « lorsque la fin de mois arrive, j'ai 5 jours pour
+faire le debourse. Comment le tableau de bord admin et affilie fait la
+distinction entre le mois courant et la commission cumulee du mois precedent
+qui est a verser ? »
+
+Il ne la faisait pas. Le run mensuel regroupe TOUTES les commissions
+approuvees et non payees sans regarder leur mois — le champ `period` n'est
+qu'une etiquette posee au moment du run. « Commissions approuvees »
+melangeait donc deux obligations dont une seule a une echeance.
+"""
+import asyncio
+import importlib
+import os
+import sys
+from datetime import datetime, timezone
+from types import SimpleNamespace
+
+import pytest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+
+@pytest.fixture
+def server_module(monkeypatch):
+    monkeypatch.setenv("MONGO_URL", "mongodb://localhost:27017")
+    monkeypatch.setenv("DB_NAME", "testdb")
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setenv("ADMIN_PASSWORD", "admin-pass")
+    monkeypatch.setenv("ORDER_CUTOFF_TZ", "America/Toronto")
+    import server
+    return importlib.reload(server)
+
+
+def _le(texte: str) -> datetime:
+    return datetime.fromisoformat(texte)
+
+
+# ------------------------------------------------------- quel mois est du ---
+
+def test_en_milieu_de_mois_le_mois_clos_est_le_precedent(server_module):
+    cycle = server_module._cycle_versement(_le("2026-09-20T15:00:00+00:00"))
+
+    assert cycle["period"] == "2026-08"
+    assert cycle["current_period"] == "2026-09"
+
+
+def test_le_passage_a_l_annee_suivante(server_module):
+    cycle = server_module._cycle_versement(_le("2026-01-10T15:00:00+00:00"))
+
+    assert cycle["period"] == "2025-12"
+    assert cycle["current_period"] == "2026-01"
+
+
+# ------------------------------------------------------ l'heure du Quebec ---
+
+def test_la_bascule_se_fait_a_minuit_heure_du_quebec(server_module):
+    # En UTC, le 1er septembre commence QUATRE heures trop tot : une vente du
+    # 31 aout a 22 h a Montreal basculerait dans le cycle suivant et sortirait
+    # du montant a verser. La limite doit donc tomber a 04:00 UTC.
+    cycle = server_module._cycle_versement(_le("2026-09-20T15:00:00+00:00"))
+
+    limite = _le(cycle["cutoff"]).astimezone(timezone.utc)
+    assert limite.isoformat() == "2026-09-01T04:00:00+00:00"
+
+
+def test_en_hiver_le_decalage_est_de_cinq_heures(server_module):
+    # Meme regle, autre saison : l'heure normale de l'Est est a UTC-5.
+    cycle = server_module._cycle_versement(_le("2026-01-10T15:00:00+00:00"))
+
+    limite = _le(cycle["cutoff"]).astimezone(timezone.utc)
+    assert limite.isoformat() == "2026-01-01T05:00:00+00:00"
+
+
+# ----------------------------------------------------------- l'echeance -----
+
+def test_les_cinq_jours_se_comptent_depuis_le_premier(server_module):
+    cycle = server_module._cycle_versement(_le("2026-09-01T04:00:00+00:00"))
+
+    echeance = _le(cycle["due_by"]).astimezone(timezone.utc)
+    assert echeance.isoformat() == "2026-09-06T04:00:00+00:00"
+    assert cycle["due_days"] == 5
+    assert cycle["days_left"] == 5
+    assert cycle["overdue"] is False
+
+
+def test_le_troisieme_jour_il_en_reste_deux(server_module):
+    cycle = server_module._cycle_versement(_le("2026-09-03T16:00:00+00:00"))
+
+    assert cycle["days_left"] == 2
+    assert cycle["overdue"] is False
+
+
+def test_passe_l_echeance_le_retard_est_dit(server_module):
+    cycle = server_module._cycle_versement(_le("2026-09-20T15:00:00+00:00"))
+
+    assert cycle["overdue"] is True
+    # Un compte a rebours negatif ne veut rien dire : on affiche zero et on
+    # dit « en retard » a cote.
+    assert cycle["days_left"] == 0
+
+
+def test_le_delai_est_un_reglage(server_module, monkeypatch):
+    monkeypatch.setattr(server_module, "AFFILIATE_PAYOUT_DUE_DAYS", 10)
+    cycle = server_module._cycle_versement(_le("2026-09-01T04:00:00+00:00"))
+
+    assert cycle["due_days"] == 10
+    assert _le(cycle["due_by"]).astimezone(timezone.utc).day == 11
+
+
+# ------------------------------------------------- la separation de l'argent -
+
+class _Curseur:
+    def __init__(self, lignes):
+        self._lignes = lignes
+
+    async def to_list(self, limit):
+        return self._lignes[:limit]
+
+
+def _brancher(server_module, ligne):
+    vu = {}
+
+    class Referrals:
+        def aggregate(self, pipeline):
+            vu["pipeline"] = pipeline
+            return _Curseur([ligne] if ligne else [])
+
+    server_module.db = SimpleNamespace(affiliate_referrals=Referrals())
+    return vu
+
+
+def test_l_argent_du_est_separe_de_celui_qui_court(server_module):
+    _brancher(server_module, {
+        "due_now": 412.5, "due_count": 7,
+        "current_cycle": 88.25, "current_count": 2,
+    })
+
+    out = asyncio.run(server_module._commissions_par_cycle(
+        "a-1", _le("2026-09-03T16:00:00+00:00")))
+
+    assert out["due_now"] == 412.5
+    assert out["due_count"] == 7
+    assert out["current_cycle"] == 88.25
+    assert out["current_count"] == 2
+    # Le montant du est inseparable de sa date limite : l'un sans l'autre ne
+    # dit pas s'il faut agir aujourd'hui.
+    assert out["period"] == "2026-08"
+    assert out["days_left"] == 2
+
+
+def test_seules_les_commissions_approuvees_et_non_versees_comptent(server_module):
+    vu = _brancher(server_module, None)
+    asyncio.run(server_module._commissions_par_cycle("a-1"))
+
+    selection = vu["pipeline"][0]["$match"]
+    assert selection["status"] == "approved"
+    assert selection["payout_id"] is None
+    assert selection["affiliate_id"] == "a-1"
+
+
+def test_sans_affilie_la_vue_porte_sur_tout_le_programme(server_module):
+    vu = _brancher(server_module, None)
+    asyncio.run(server_module._commissions_par_cycle())
+
+    assert "affiliate_id" not in vu["pipeline"][0]["$match"]
+
+
+def test_la_separation_se_fait_sur_la_date_effective(server_module):
+    # `approved_at` sinon `created_at` : la meme regle que le palier et que la
+    # serie mensuelle. Une autre date ici ferait diverger les trois ecrans.
+    vu = _brancher(server_module, None)
+    asyncio.run(server_module._commissions_par_cycle("a-1"))
+
+    eff = vu["pipeline"][1]["$project"]["eff"]
+    source = eff["$switch"]["branches"][0]["case"]["$in"][0]["$type"]
+    assert source == {"$ifNull": ["$approved_at", "$created_at", None]}
+
+
+def test_une_agregation_en_panne_rend_zero_et_garde_les_dates(server_module):
+    class Referrals:
+        def aggregate(self, pipeline):
+            raise RuntimeError("mongo indisponible")
+
+    server_module.db = SimpleNamespace(affiliate_referrals=Referrals())
+
+    out = asyncio.run(server_module._commissions_par_cycle(
+        "a-1", _le("2026-09-03T16:00:00+00:00")))
+
+    assert out["due_now"] == 0.0
+    assert out["current_cycle"] == 0.0
+    # Zero avec la bonne echeance vaut mieux qu'une carte vide : la date, elle,
+    # ne depend pas de la base.
+    assert out["period"] == "2026-08"
+    assert out["due_days"] == 5
+
+
+def test_sans_aucune_commission_les_deux_totaux_sont_nuls(server_module):
+    _brancher(server_module, None)
+
+    out = asyncio.run(server_module._commissions_par_cycle("a-1"))
+
+    assert out["due_now"] == 0.0
+    assert out["due_count"] == 0
+    assert out["current_cycle"] == 0.0
+    assert out["current_count"] == 0

@@ -152,6 +152,10 @@ UNPAID_ORDER_TTL_HOURS = float(os.environ.get("UNPAID_ORDER_TTL_HOURS", "0.5"))
 # Les commissions restent en `approved` (payout_id=None) et roulent au mois suivant.
 # Une notification email bilingue est envoyée UNE seule fois par (affilié, période).
 AFFILIATE_PAYOUT_MIN_CAD = float(os.environ.get("AFFILIATE_PAYOUT_MIN_CAD", "25.00"))
+# Jours ouvrables pour debourser le mois clos. Le programme promet un
+# versement en debut de mois ; sans chiffre, « debut » ne veut rien dire ni
+# pour l'affilie qui attend, ni pour celle qui doit payer.
+AFFILIATE_PAYOUT_DUE_DAYS = int(os.environ.get("AFFILIATE_PAYOUT_DUE_DAYS", "5"))
 PREORDER_RELEASE_INTERVAL_SECONDS = int(os.environ.get("PREORDER_RELEASE_INTERVAL_SECONDS", "300"))
 # Rabais % du coupon auto-lié à chaque affilié (0 = pas de coupon auto).
 AFFILIATE_COUPON_PERCENT = float(os.environ.get("AFFILIATE_COUPON_PERCENT", "10"))
@@ -11199,6 +11203,100 @@ def _douze_derniers_mois(depuis: Optional[str] = None) -> list:
     return cles
 
 
+def _date_effective(champ_principal: str, champ_repli: str) -> dict:
+    """Expression Mongo qui rend une VRAIE date, comparable a un datetime.
+
+    Meme cohabitation que partout ici : chaîne ISO ou BSON date. Une date
+    illisible devient `null`, qui se classe AVANT toute date dans l'ordre
+    BSON — une commission sans date lisible tombe donc du côté « dû », ce
+    qui est le bon côté quand on doit de l'argent a quelqu'un.
+    """
+    source = {"$ifNull": [f"${champ_principal}", f"${champ_repli}", None]}
+    return {"$switch": {
+        "branches": [
+            {"case": {"$in": [{"$type": source}, ["date", "timestamp"]]}, "then": source},
+        ],
+        "default": {"$dateFromString": {
+            "dateString": source, "onError": None, "onNull": None,
+        }},
+    }}
+
+
+def _cycle_versement(maintenant: Optional[datetime] = None) -> dict:
+    """Quel mois est clos, et jusqu'a quand il doit etre verse.
+
+    POURQUOI CE CALCUL EXISTE. Le run mensuel regroupe TOUTES les commissions
+    approuvees et non payees, sans regarder leur mois : le champ `period`
+    n'est qu'une etiquette posee au moment du run. Rien, ni dans
+    l'administration ni chez l'affilie, ne distinguait donc l'argent qui doit
+    partir MAINTENANT de celui qui court encore. Ce sont deux obligations
+    differentes, et une seule a une echeance.
+
+    La bascule se fait a minuit, heure du Quebec. En UTC, le 1er du mois
+    commence cinq heures trop tot : les ventes du 31 au soir basculeraient
+    dans le cycle suivant et sortiraient du montant a verser.
+    """
+    tz = ZoneInfo(ORDER_CUTOFF_TZ)
+    now = (maintenant or datetime.now(timezone.utc)).astimezone(tz)
+    debut_mois = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    mois_clos = (debut_mois - timedelta(days=1)).strftime("%Y-%m")
+    echeance = debut_mois + timedelta(days=AFFILIATE_PAYOUT_DUE_DAYS)
+    restant = (echeance - now).total_seconds()
+    return {
+        "period": mois_clos,
+        "current_period": debut_mois.strftime("%Y-%m"),
+        # Tout ce qui est approuve AVANT cette date appartient au mois clos.
+        "cutoff": debut_mois.astimezone(timezone.utc).isoformat(),
+        "due_by": echeance.astimezone(timezone.utc).isoformat(),
+        "due_days": AFFILIATE_PAYOUT_DUE_DAYS,
+        "days_left": max(0, int(restant // 86400)),
+        "overdue": restant <= 0,
+        "timezone": ORDER_CUTOFF_TZ,
+    }
+
+
+async def _commissions_par_cycle(affiliate_id: Optional[str] = None,
+                                 maintenant: Optional[datetime] = None) -> dict:
+    """Separe l'argent approuve et non verse : ce qui est DU, ce qui court.
+
+    Sans `affiliate_id`, la reponse porte sur tout le programme — c'est la
+    vue de celle qui paie. Avec, elle porte sur un seul dossier.
+    """
+    cycle = _cycle_versement(maintenant)
+    limite = datetime.fromisoformat(cycle["cutoff"])
+    selection: dict = {"status": "approved", "payout_id": None}
+    if affiliate_id:
+        selection["affiliate_id"] = affiliate_id
+    du = {"$lt": ["$eff", limite]}
+    pipeline = [
+        {"$match": selection},
+        {"$project": {
+            "_id": 0,
+            "comm": {"$ifNull": ["$commission_amount", 0.0]},
+            "eff": _date_effective("approved_at", "created_at"),
+        }},
+        {"$group": {
+            "_id": None,
+            "due_now": {"$sum": {"$cond": [du, "$comm", 0.0]}},
+            "due_count": {"$sum": {"$cond": [du, 1, 0]}},
+            "current_cycle": {"$sum": {"$cond": [du, 0.0, "$comm"]}},
+            "current_count": {"$sum": {"$cond": [du, 0, 1]}},
+        }},
+    ]
+    try:
+        lignes = await db.affiliate_referrals.aggregate(pipeline).to_list(1)
+    except Exception:
+        lignes = []
+    t = lignes[0] if lignes else {}
+    return {
+        **cycle,
+        "due_now": round(float(t.get("due_now", 0.0)), 2),
+        "due_count": int(t.get("due_count", 0)),
+        "current_cycle": round(float(t.get("current_cycle", 0.0)), 2),
+        "current_count": int(t.get("current_count", 0)),
+    }
+
+
 async def affiliate_performance(request: Request, aff: Optional[dict] = None):
     """Séries mensuelles sur 12 mois : CA validé, commissions, et commissions
     ANNULÉES par remboursement.
@@ -11432,34 +11530,25 @@ async def affiliate_insights(request: Request, aff: Optional[dict] = None):
     aff = aff or await get_current_affiliate(request)
     aff_id = aff["id"]
 
-    # Referrals non exclus — agrégation SERVEUR au lieu de tout charger en
-    # mémoire. Seul le mois (YYYY-MM issu de created_at) est extrait puis on
-    # somme commission/revenue par mois. Équivalent strict de l'ancienne
-    # boucle, qui ne comptait que les ventes validées (approved|paid) — c'est
-    # exactement le filtre porté par le $match ci-dessous.
+    # DEUX CORRECTIONS DE VOCABULAIRE, sur le même écran.
+    #
+    # 1. `rev` sommait `order_total` — le total PAYÉ par le client, livraison
+    #    et taxes comprises. Le palier, le CA validé et le graphique somment
+    #    `base_amount` : le sous-total produits net de remise. Deux chiffres
+    #    pour le même mois, sur la même page, dont l'un juste sous la phrase
+    #    « X % du sous-total des produits après rabais » qui énonçait la
+    #    règle que l'autre ne suivait pas.
+    # 2. Le mois venait de `created_at` seul, alors que partout ailleurs la
+    #    date effective est `approved_at` sinon `created_at`. Une commission
+    #    de fin septembre approuvée en octobre tombait donc dans deux mois
+    #    différents selon la vignette regardée.
     pipeline = [
         {"$match": {"affiliate_id": aff_id, "status": {"$in": ["approved", "paid"]}}},
         {"$project": {
             "_id": 0,
             "comm": {"$ifNull": ["$commission_amount", 0.0]},
-            "rev": {"$ifNull": ["$order_total", 0.0]},
-            # Mois = YYYY-MM extrait de created_at, quel que soit son type
-            # (chaîne ISO posée à la création, ou datetime hérité) — même
-            # résultat que le `[:7]` de l'ancienne boucle.
-            # `case`, SANS dollar — meme faute que dans _affiliate_compute_metrics.
-            "month": {"$switch": {
-                "branches": [
-                    {"case": {"$in": [
-                        {"$type": {"$ifNull": ["$created_at", None]}},
-                        ["date", "timestamp"],
-                    ]}, "then": {
-                        "$dateToString": {
-                            "format": "%Y-%m",
-                            "date": {"$ifNull": ["$created_at", None]},
-                        }}},
-                ],
-                "default": {"$substrCP": [{"$ifNull": ["$created_at", ""]}, 0, 7]},
-            }},
+            "rev": {"$ifNull": ["$base_amount", 0.0]},
+            "month": _mois_de("approved_at", "created_at"),
         }},
         {"$group": {
             "_id": "$month",
@@ -11503,6 +11592,10 @@ async def affiliate_insights(request: Request, aff: Optional[dict] = None):
         "conversion_rate": conversion_rate,
         "validated_orders": validated_orders,
         "avg_order_value": round(avg_order_value, 2) if avg_order_value is not None else None,
+        # Nommer la base et la fenêtre, sinon chaque vignette invite a une
+        # lecture differente du meme mot.
+        "basis": "base_amount",
+        "clicks_window": "all_time",
     }
 
 
@@ -11779,6 +11872,13 @@ async def affiliate_dashboard(request: Request, ref_page: int = 1, pay_page: int
             # pour qui ne l'a pas fait — ni avant, ni a chaque visite.
             "terms_ok": aff.get("terms_version") == AFFILIATE_TERMS_VERSION,
             "tour_done": bool(aff.get("tour_done")),
+            # LE CYCLE DE VERSEMENT, qui n'existait nulle part.
+            #
+            # « Commissions approuvées » mélangeait deux choses : l'argent du
+            # mois clos, qui doit partir dans les jours qui viennent, et celui
+            # du mois en cours, qui attendra le cycle suivant. Un seul total
+            # pour deux obligations dont une seule a une échéance.
+            "payout_cycle": await _commissions_par_cycle(aff["id"]),
         })
     except Exception as e:
         logging.error("[affiliate-dashboard] summary merge failed: %s",
@@ -12516,6 +12616,13 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
             "total_clicks": total_clicks,
             "conversion_rate": conversion_rate,
         },
+        # LE CYCLE, VU DE CELLE QUI PAIE.
+        #
+        # `payouts_ready_amount` additionne tout l'approuve non verse, sans
+        # distinguer le mois clos du mois en cours. En fin de mois, ce total
+        # unique ne repond pas a la seule question qui compte alors : combien
+        # dois-je sortir, et avant quelle date.
+        "payout_cycle": await _commissions_par_cycle(),
         "monthly_series": monthly_series,
         "top_affiliates": top_affiliates,
         "tier_distribution": tier_distribution,
@@ -12684,7 +12791,11 @@ async def admin_affiliate_detail(affiliate_id: str,
     ).sort("created_at", -1).to_list(200)
     return {"affiliate": aff, "metrics": metrics,
             "referrals": referrals, "payouts": payouts,
-            "series": series}
+            "series": series,
+            # Le meme cycle que l'affilie voit de son cote. Deux ecrans qui
+            # annoncent deux dates pour le meme versement, c'est un appel au
+            # service a la clientele.
+            "payout_cycle": await _commissions_par_cycle(affiliate_id)}
 
 
 async def admin_affiliate_referrals_csv(affiliate_id: str, month: Optional[str] = None,

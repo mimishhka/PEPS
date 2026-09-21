@@ -18,6 +18,19 @@ import { Th, Num, Identity, TierBadge, TIER_TONE } from "../ui";
 import useChartColors from "../../../hooks/useChartColors";
 const money = (n) => `$${Number(n || 0).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const int = (n) => Number(n || 0).toLocaleString("en-CA");
+// « AAAA-MM » -> « août 2026 ». Un mois en chiffres se décode ; en lettres,
+// il se lit.
+const moisLisible = (cle, lang) => (
+  /^\d{4}-\d{2}$/.test(cle || "")
+    ? new Date(Number(cle.slice(0, 4)), Number(cle.slice(5, 7)) - 1, 1)
+        .toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { month: "long", year: "numeric" })
+    : (cle || "—")
+);
+const jourLisible = (iso, lang) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—"
+    : d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { day: "numeric", month: "long" });
+};
 
 const PAGE_SIZE = 10;
 const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -155,6 +168,10 @@ export default function AdminAffiliates() {
   const fin = ov?.financial || {};
   const aff = ov?.affiliates || {};
   const al = ov?.alerts || {};
+  // Le cycle : ce qui doit sortir, et avant quand. `payouts_ready_amount`
+  // additionne tout l'approuve non verse sans distinguer le mois clos du mois
+  // en cours ; en fin de mois, ce total unique ne repond pas a la question.
+  const cycle = ov?.payout_cycle || null;
   const attr = ov?.attribution || {};
 
   // Un KPI sans direction ni reference ne dit pas si le chiffre est bon : la
@@ -281,8 +298,16 @@ export default function AdminAffiliates() {
                 titre: L("Paiements à envoyer", "Payouts to send"),
                 valeur: Number(al.payouts_ready) > 0
                   ? `${int(al.payouts_ready)} · ${money(al.payouts_ready_amount)}` : "0",
+                // L'action dit l'ECHEANCE quand il y a du du : « execution
+                // + 2FA » decrit le geste, pas le delai. En fin de mois,
+                // c'est le delai qui commande.
                 action: Number(al.payouts_ready) > 0
-                  ? L("exécution + 2FA", "execute + 2FA")
+                  ? (cycle && Number(cycle.due_now) > 0
+                      ? (cycle.overdue
+                          ? L(`${money(cycle.due_now)} en retard`, `${money(cycle.due_now)} overdue`)
+                          : L(`${money(cycle.due_now)} dû · ${cycle.days_left} j`,
+                               `${money(cycle.due_now)} due · ${cycle.days_left}d`))
+                      : L("exécution + 2FA", "execute + 2FA"))
                   : L("rien à verser", "nothing to pay") },
               { cle: "maturing", icon: Clock, ton: "amber", n: al.commissions_maturing,
                 titre: L("Commissions à approuver", "Commissions maturing"),
@@ -1724,9 +1749,15 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   // Le versement automatique part le 1er du mois suivant, pour la periode
   // ecoulee. L'afficher rappelle le delai de debourse, sans qu'aucune date
   // soit ecrite en dur dans la page.
-  const prochainCycle = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)
-    .toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
-      { year: "numeric", month: "long", day: "numeric" });
+  // LE CYCLE VIENT DU SERVEUR, plus du navigateur.
+  //
+  // La date etait calculee ici comme « le 1er du mois prochain », et le
+  // montant annonce etait TOUT l'approuve. Deux erreurs dans la meme phrase :
+  // l'argent approuve avant ce mois-ci est du MAINTENANT, pas le mois
+  // prochain, et le total melangeait le mois clos avec le mois en cours. Le
+  // serveur tranche la separation a minuit heure du Quebec et compte les
+  // jours restants.
+  const cycle = data?.payout_cycle || null;
   // Le seuil decide si le prochain cycle paie vraiment. La ligne de cycle ne
   // doit jamais promettre un debourse que le programme refuse.
   const seuilVersement = Number(m?.payout_min_cad || 0);
@@ -1881,8 +1912,13 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                       // le 1er venu.
                       ? L(`${money(m.approved_commission)} approuvés · sous le seuil de ${money(seuilVersement)} : versés au cycle où le seuil est atteint`,
                            `${money(m.approved_commission)} approved · below the ${money(seuilVersement)} threshold: paid in the first cycle that reaches it`)
-                      : L(`Cycle du ${prochainCycle} : ${money(m.approved_commission)} à débourser`,
-                           `Payout cycle of ${prochainCycle}: ${money(m.approved_commission)} to send`)}
+                      : cycle && Number(cycle.due_now) > 0
+                        ? L(`${money(cycle.due_now)} à verser pour ${moisLisible(cycle.period, lang)} · ${cycle.overdue ? "échéance dépassée" : `avant le ${jourLisible(cycle.due_by, lang)}, ${cycle.days_left} jour(s)`}`,
+                             `${money(cycle.due_now)} to send for ${moisLisible(cycle.period, lang)} · ${cycle.overdue ? "deadline passed" : `by ${jourLisible(cycle.due_by, lang)}, ${cycle.days_left} day(s)`}`)
+                        // Rien pour le mois clos : tout ce qui est approuve
+                        // vient du mois en cours et partira au cycle suivant.
+                        : L(`${money(m.approved_commission)} approuvés · ${moisLisible(cycle?.current_period, lang)} en cours, versés au prochain cycle`,
+                             `${money(m.approved_commission)} approved · ${moisLisible(cycle?.current_period, lang)} in progress, paid next cycle`)}
                   </p>
                 )}
 

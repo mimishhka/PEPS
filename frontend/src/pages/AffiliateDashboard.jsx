@@ -887,6 +887,15 @@ export default function AffiliateDashboard() {
               )}
             </div>
 
+            {/* Le cycle de versement. « Commissions approuvées » mêlait deux
+                choses : l'argent du mois clos, qui part dans les jours qui
+                viennent, et celui du mois en cours, qui attendra. Un seul
+                total pour deux échéances ne dit ni quand ni combien. */}
+            {data?.payout_cycle && (
+              <CycleVersement cycle={data.payout_cycle} seuil={data?.payout_min_cad}
+                              L={L} lang={lang} />
+            )}
+
             {/* Chemin de demarrage. Il ne s'affiche que tant qu'une etape reste
                 a franchir : garde en permanence, il deviendrait du decor. */}
             {onboarding && (
@@ -2076,6 +2085,79 @@ function SourceBars({ rows, fmt, L }) {
           <span className="text-[11px] text-glacier tabular-nums w-8 text-right">{r.clicks}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+// « AAAA-MM » -> « août 2026 ». Un mois écrit en chiffres oblige a le
+// décoder ; écrit en toutes lettres, il se lit.
+function moisLisible(cle, lang) {
+  if (!cle || !/^\d{4}-\d{2}$/.test(cle)) return cle || "—";
+  const [a, m] = cle.split("-").map(Number);
+  return new Date(a, m - 1, 1).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
+    { month: "long", year: "numeric" });
+}
+
+function jourLisible(iso, lang) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
+    { day: "numeric", month: "long" });
+}
+
+// Ce qui doit partir, et ce qui attend. La couleur ne sert qu'au retard :
+// partout ailleurs, la hiérarchie passe par la taille et le blanc.
+function CycleVersement({ cycle, seuil, L, lang }) {
+  const du = Number(cycle?.due_now || 0);
+  const enCours = Number(cycle?.current_cycle || 0);
+  const retard = !!cycle?.overdue && du > 0;
+  const sousLeSeuil = seuil != null && du > 0 && du < Number(seuil);
+
+  return (
+    <div className="bg-white rounded-xl border border-ash p-6" data-testid="cycle-versement">
+      <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">
+        {L("PROCHAIN VERSEMENT", "NEXT PAYOUT")}
+      </p>
+
+      <div className="flex items-baseline justify-between gap-6 flex-wrap">
+        <p className="font-display text-4xl font-bold text-nordfjord tabular-nums"
+           data-testid="cycle-du">
+          {money(du)}
+        </p>
+        <div className="text-right">
+          <p className="font-data text-xs uppercase tracking-[0.14em] text-glacier">
+            {L(`À verser · ${moisLisible(cycle?.period, lang)}`,
+               `To be paid · ${moisLisible(cycle?.period, lang)}`)}
+          </p>
+          <p className={`font-data text-xs mt-1 ${retard ? "text-error" : "text-glacier"}`}
+             data-testid="cycle-echeance">
+            {retard
+              ? L("En retard — l'échéance est passée",
+                   "Overdue — the deadline has passed")
+              : L(`Avant le ${jourLisible(cycle?.due_by, lang)} · ${cycle?.days_left} jour(s)`,
+                   `By ${jourLisible(cycle?.due_by, lang)} · ${cycle?.days_left} day(s)`)}
+          </p>
+        </div>
+      </div>
+
+      {sousLeSeuil && (
+        <p className="font-data text-[11px] text-warning mt-3" data-testid="cycle-sous-seuil">
+          {L(`Sous le seuil de ${money(seuil)} : le montant est reporté au cycle suivant.`,
+             `Below the ${money(seuil)} threshold: this amount rolls over to the next cycle.`)}
+        </p>
+      )}
+
+      <div className="border-t border-ash mt-5 pt-4 flex items-baseline justify-between gap-6 flex-wrap">
+        <p className="font-display text-xl font-bold text-glacier tabular-nums"
+           data-testid="cycle-en-cours">
+          {money(enCours)}
+        </p>
+        <p className="font-data text-xs uppercase tracking-[0.14em] text-glacier text-right">
+          {L(`En cours · ${moisLisible(cycle?.current_period, lang)} — versé au cycle suivant`,
+             `In progress · ${moisLisible(cycle?.current_period, lang)} — paid next cycle`)}
+        </p>
+      </div>
     </div>
   );
 }

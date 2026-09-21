@@ -319,9 +319,13 @@ describe("AdminAffiliates — conciliation des commissions", () => {
     expect(screen.getByTestId("cycle-versement")).toHaveTextContent("sous le seuil");
   });
 
-  it("au-dessus du seuil, le cycle est annonce avec sa date", async () => {
-    // 30 $ approuves : cette fois, le debourse part VRAIMENT le 1er du mois
-    // suivant, et la fiche l'annonce.
+  // La date du cycle ne se calcule plus dans le navigateur.
+  //
+  // Elle valait « le 1er du mois prochain » et le montant annonce etait TOUT
+  // l'approuve : l'argent approuve AVANT ce mois-ci est du maintenant, pas le
+  // mois prochain, et le total melangeait le mois clos avec le mois en cours.
+  // Le serveur tranche la separation a minuit heure du Quebec.
+  const ficheAvecCycle = (cycle, approuve = 30) => {
     api.get.mockImplementation(async (url) => {
       if (url === "/admin/affiliates/overview") return { data: APERCU };
       if (url === "/admin/affiliates") return { data: [AFFILIE] };
@@ -329,17 +333,51 @@ describe("AdminAffiliates — conciliation des commissions", () => {
       if (url.startsWith("/admin/affiliates/aff-1")) {
         return { data: { affiliate: AFFILIE, referrals: REFERRALS, payouts: [],
           metrics: { cumulative_revenue: 323.96, rolling12_revenue: 323.96,
-                     pending_commission: 0, approved_commission: 30,
+                     pending_commission: 0, approved_commission: approuve,
                      paid_commission: 28.5, reversed_commission: 0,
                      excluded_commission: 0, quarter_revenue: 323.96,
                      commission_rate: 0.16, payout_min_cad: 25 },
-          series: [] } };
+          series: [], payout_cycle: cycle } };
       }
       return { data: {} };
     });
+  };
+
+  it("au-dessus du seuil, le mois clos est nomme avec son echeance", async () => {
+    ficheAvecCycle({ period: "2026-08", current_period: "2026-09",
+                     due_now: 30, due_count: 2, current_cycle: 0,
+                     current_count: 0, days_left: 3, overdue: false,
+                     due_by: "2026-09-06T04:00:00+00:00", due_days: 5 });
     await ouvrirFiche();
-    expect(screen.getByTestId("cycle-versement")).toHaveTextContent("à débourser");
-    expect(screen.getByTestId("cycle-versement")).toHaveTextContent("Cycle du");
+
+    const ligne = screen.getByTestId("cycle-versement");
+    expect(ligne).toHaveTextContent("$30.00 à verser pour");
+    expect(ligne).toHaveTextContent("août 2026");
+    expect(ligne).toHaveTextContent("3 jour(s)");
+  });
+
+  it("dit le retard au lieu d'un compte a rebours", async () => {
+    ficheAvecCycle({ period: "2026-08", current_period: "2026-09",
+                     due_now: 30, due_count: 2, current_cycle: 0,
+                     current_count: 0, days_left: 0, overdue: true,
+                     due_by: "2026-09-06T04:00:00+00:00", due_days: 5 });
+    await ouvrirFiche();
+
+    expect(screen.getByTestId("cycle-versement")).toHaveTextContent("échéance dépassée");
+  });
+
+  it("n'annonce aucune echeance quand tout vient du mois en cours", async () => {
+    // Promettre une date pour de l'argent qui n'est pas encore du ferait
+    // courir apres un delai qui n'existe pas.
+    ficheAvecCycle({ period: "2026-08", current_period: "2026-09",
+                     due_now: 0, due_count: 0, current_cycle: 30,
+                     current_count: 2, days_left: 3, overdue: false,
+                     due_by: "2026-09-06T04:00:00+00:00", due_days: 5 });
+    await ouvrirFiche();
+
+    const ligne = screen.getByTestId("cycle-versement");
+    expect(ligne).toHaveTextContent("septembre 2026 en cours");
+    expect(ligne).not.toHaveTextContent("à verser pour");
   });
 
   it("la vue mensuelle permet le retour en arriere", async () => {
@@ -407,4 +445,59 @@ describe("AdminAffiliates — conciliation des commissions", () => {
     expect(ecarts[1].parentElement).toHaveTextContent("▼");
   });
 
+});
+
+
+describe("AdminAffiliates — le cycle de versement", () => {
+  // « Paiements à envoyer : 3 · 412,50 $ — exécution + 2FA » décrivait le
+  // GESTE. En fin de mois, ce qui commande c'est le DÉLAI : Mireille a cinq
+  // jours pour débourser le mois clos, et l'écran ne le disait nulle part.
+  const avecCycle = (cycle) => {
+    const origine = api.get.getMockImplementation();
+    api.get.mockImplementation(async (url) => {
+      if (url === "/admin/affiliates/overview") {
+        return { data: { ...APERCU,
+          alerts: { ...APERCU.alerts, payouts_ready: 3, payouts_ready_amount: 500.75 },
+          payout_cycle: cycle } };
+      }
+      return origine(url);
+    });
+  };
+
+  it("annonce le montant dû et les jours restants", async () => {
+    avecCycle({ period: "2026-08", current_period: "2026-09", due_now: 412.5,
+                due_count: 7, current_cycle: 88.25, current_count: 2,
+                days_left: 2, overdue: false, due_days: 5 });
+    render(<AdminAffiliates />);
+
+    await waitFor(() => expect(screen.getByText(/412\.50 dû · 2 j/)).toBeInTheDocument());
+  });
+
+  it("dit le retard quand l'échéance est passée", async () => {
+    avecCycle({ period: "2026-08", current_period: "2026-09", due_now: 412.5,
+                due_count: 7, current_cycle: 88.25, current_count: 2,
+                days_left: 0, overdue: true, due_days: 5 });
+    render(<AdminAffiliates />);
+
+    await waitFor(() => expect(screen.getByText(/412\.50 en retard/)).toBeInTheDocument());
+  });
+
+  it("retombe sur le geste quand rien n'est dû pour le mois clos", async () => {
+    // Tout l'approuvé vient du mois en cours : il n'y a pas d'échéance à
+    // annoncer, et inventer une date ferait courir après un délai qui
+    // n'existe pas.
+    avecCycle({ period: "2026-08", current_period: "2026-09", due_now: 0,
+                due_count: 0, current_cycle: 500.75, current_count: 3,
+                days_left: 2, overdue: false, due_days: 5 });
+    render(<AdminAffiliates />);
+
+    await waitFor(() => expect(screen.getByText(/exécution \+ 2FA/)).toBeInTheDocument());
+  });
+
+  it("ne casse pas quand le serveur ne renvoie pas le cycle", async () => {
+    avecCycle(undefined);
+    render(<AdminAffiliates />);
+
+    await waitFor(() => expect(screen.getByText(/exécution \+ 2FA/)).toBeInTheDocument());
+  });
 });
