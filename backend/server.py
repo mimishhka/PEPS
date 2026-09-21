@@ -8939,7 +8939,10 @@ async def _repair_nonprod_bpc_seed() -> None:
             "preorder_enabled": True,
             "preorder_delay_message": "",
             "preorder_price": 85.0,
-            "preorder_note": "COA pending",
+            # Pas de note ici : la pastille de stock dit deja « Precommande ·
+            # Rupture », et l'etat du COA se lit dans son propre encadre. Une
+            # note reparee a chaque demarrage reviendrait apres chaque menage.
+            "preorder_note": "",
             "coa_url": "",
         },
     ]

@@ -267,10 +267,15 @@ export default function ProductDetail() {
                   <div className="font-data text-[11px] text-warning mt-1" data-testid="preorder-note">{selectedVariant.preorder_note}</div>
                 )}
               </div>
-              <span className={`font-data text-[12px] uppercase tracking-[0.14em] flex items-center gap-2 ${stockN > 0 ? "text-success" : "text-warning"}`}>
+              <span data-testid="stock-state" className={`font-data text-[12px] uppercase tracking-[0.14em] flex items-center gap-2 ${stockN > 0 ? "text-success" : "text-warning"}`}>
                 <span className={`w-2 h-2 rounded-full ${stockN > 0 ? "bg-success" : "bg-warning"}`} />
+                {/* En precommande on annonce AUSSI la rupture : « Precommande »
+                    seul laisse croire que le flacon part demain, alors qu'il n'y
+                    en a pas un seul en tablette. */}
                 {isComingSoon ? (lang === "fr" ? "À venir" : "Coming soon")
-                  : isVariantPreorder ? (lang === "fr" ? "Précommande" : "Pre-order")
+                  : isVariantPreorder ? (stockN > 0
+                      ? (lang === "fr" ? "Précommande" : "Pre-order")
+                      : (lang === "fr" ? "Précommande · Rupture" : "Pre-order · Out of stock"))
                   : stockN > 0 ? (lang === "fr" ? "En stock" : "In stock")
                   : (lang === "fr" ? "Rupture" : "Out of stock")}
               </span>
