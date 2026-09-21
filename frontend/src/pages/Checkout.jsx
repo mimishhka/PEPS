@@ -2,6 +2,8 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import NomEnDeux from "../components/NomEnDeux";
+import { regionsDuPays, provinceDepuisCodePostal, formaterCodePostal,
+         codePostalComplet, provinceCoherente } from "../lib/adresse";
 import { useLang } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useSiteConfig } from "../contexts/SiteConfigContext";
@@ -723,6 +725,40 @@ export default function Checkout() {
 function AddressForm({ value, setValue, lang, prefix }) {
   const set = (k, v) => setValue((s) => ({ ...s, [k]: v }));
   const lbl = (en, fr) => lang === "fr" ? fr : en;
+  const regions = regionsDuPays(value.country);
+
+  // LE CODE POSTAL REMPLIT LA PROVINCE.
+  //
+  // C'est la seule chose qu'on puisse déduire d'une adresse sans interroger
+  // personne : la première lettre d'un code postal canadien DÉSIGNE sa
+  // province. On ne remplit que si le champ est vide — écraser une saisie
+  // volontaire serait pire que de ne rien faire.
+  const majCodePostal = (saisie) => {
+    const formate = formaterCodePostal(value.country, saisie);
+    setValue((s) => {
+      const suite = { ...s, postal_code: formate };
+      if (String(s.country || "CA").toUpperCase() === "CA" && !s.province) {
+        const deduite = provinceDepuisCodePostal(formate);
+        if (deduite) suite.province = deduite;
+      }
+      return suite;
+    });
+  };
+
+  // Changer de pays vide la région : « QC » n'existe pas aux États-Unis, et
+  // une valeur orpheline dans une liste déroulante s'affiche comme vide tout
+  // en étant envoyée au serveur.
+  const majPays = (pays) => setValue((s) => ({
+    ...s,
+    country: pays,
+    province: regionsDuPays(pays).some((r) => r.code === s.province) ? s.province : "",
+    postal_code: formaterCodePostal(pays, s.postal_code),
+  }));
+
+  const cpMalForme = !!value.postal_code && !codePostalComplet(value.country, value.postal_code);
+  const desaccord = !provinceCoherente(value.country, value.postal_code, value.province);
+  const attendue = desaccord ? provinceDepuisCodePostal(value.postal_code) : null;
+
   return (
     <div className="grid sm:grid-cols-2 gap-3">
       {/* Deux champs a l'ecran, un seul stocke : voir NomEnDeux. */}
@@ -742,6 +778,24 @@ function AddressForm({ value, setValue, lang, prefix }) {
           autoComplete="address-line2"
           className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
       </label>
+
+      {/* Le code postal passe AVANT la ville et la province : c'est lui qui
+          les renseigne, il doit donc se saisir en premier. */}
+      <label className="flex flex-col gap-1">
+        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Postal / ZIP code", "Code postal")}</span>
+        <input value={value.postal_code} onChange={(e) => majCodePostal(e.target.value)}
+          placeholder={value.country === "CA" ? "A1A 1A1" : "12345"} data-testid={`${prefix}-postal`}
+          autoComplete="postal-code" inputMode={value.country === "CA" ? "text" : "numeric"}
+          className={`rounded-xl border px-4 py-3 outline-none focus:border-nova ${cpMalForme ? "border-error" : "border-ash"}`} />
+        {cpMalForme && (
+          <span className="font-data text-[11px] text-error" data-testid={`${prefix}-postal-erreur`}>
+            {value.country === "CA"
+              ? lbl("Six characters, like A1A 1A1.", "Six caractères, comme A1A 1A1.")
+              : lbl("Five digits, like 12345.", "Cinq chiffres, comme 12345.")}
+          </span>
+        )}
+      </label>
+
       <label className="flex flex-col gap-1">
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("City", "Ville")}</span>
         <input value={value.city} onChange={(e) => set("city", e.target.value)}
@@ -749,23 +803,30 @@ function AddressForm({ value, setValue, lang, prefix }) {
           autoComplete="address-level2"
           className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
       </label>
+
+      {/* LISTE DÉROULANTE, plus un champ libre. « Quebec », « Qc », « PQ »
+          partaient tels quels : ni le serveur ni Postes Canada ne les
+          corrigeaient, et l'étiquette était refusée des jours plus tard. */}
       <label className="flex flex-col gap-1">
-        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Province / State", "Province / \u00c9tat")}</span>
-        <input value={value.province} onChange={(e) => set("province", e.target.value)}
-          placeholder={lbl("Province / State", "Province / \u00c9tat")} data-testid={`${prefix}-province`}
-          autoComplete="address-level1"
-          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Province / State", "Province / État")}</span>
+        <select value={value.province} onChange={(e) => set("province", e.target.value)}
+          data-testid={`${prefix}-province`} autoComplete="address-level1"
+          className={`rounded-xl border px-4 py-3 outline-none focus:border-nova bg-white ${desaccord ? "border-error" : "border-ash"}`}>
+          <option value="">{lbl("Select…", "Choisir…")}</option>
+          {regions.map((r) => (
+            <option key={r.code} value={r.code}>{r.code} — {lang === "fr" ? r.fr : r.en}</option>
+          ))}
+        </select>
+        {desaccord && attendue && (
+          <span className="font-data text-[11px] text-error" data-testid={`${prefix}-province-desaccord`}>
+            {lbl(`This postal code is in ${attendue}.`, `Ce code postal est en ${attendue}.`)}
+          </span>
+        )}
       </label>
-      <label className="flex flex-col gap-1">
-        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Postal / ZIP code", "Code postal")}</span>
-        <input value={value.postal_code} onChange={(e) => set("postal_code", e.target.value)}
-          placeholder={value.country === "CA" ? "A1A 1A1" : "12345"} data-testid={`${prefix}-postal`}
-          autoComplete="postal-code"
-          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
-      </label>
-      <label className="flex flex-col gap-1">
+
+      <label className="flex flex-col gap-1 sm:col-span-2">
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Country", "Pays")}</span>
-        <select value={value.country} onChange={(e) => set("country", e.target.value)} data-testid={`${prefix}-country`}
+        <select value={value.country} onChange={(e) => majPays(e.target.value)} data-testid={`${prefix}-country`}
           autoComplete="country"
           className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova bg-white">
           <option value="CA">Canada</option>

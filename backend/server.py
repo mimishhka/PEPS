@@ -797,6 +797,21 @@ class CartItem(BaseModel):
     qty: int = Field(ge=1, le=1000)
 
 
+# Les regions admises. Le formulaire propose desormais une liste
+# deroulante, mais un modele qui accepte « Quebec » laisse la porte
+# ouverte a tout ce qui n'est pas le formulaire : une API, un ancien
+# onglet, un script. La contrainte appartient au modele, pas a l'ecran.
+REGIONS_US = {
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI",
+    "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN",
+    "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH",
+    "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA",
+    "WV", "WI", "WY",
+}
+_REGIONS_CA = {"AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE",
+               "QC", "SK", "YT"}
+
+
 class ShippingAddress(BaseModel):
     full_name: str = Field(min_length=1, max_length=120)
     address1: str = Field(min_length=1, max_length=160)
@@ -806,6 +821,34 @@ class ShippingAddress(BaseModel):
     postal_code: str = Field(min_length=3, max_length=20)
     country: str = "CA"
     phone: Optional[str] = Field(default="", max_length=32)
+
+    @model_validator(mode="after")
+    def _region_connue(self):
+        """Rejette une region que le transporteur ne saura pas lire.
+
+        « Quebec », « Qc », « PQ » passaient tels quels jusqu'a Postes
+        Canada, qui refuse l'etiquette — des jours plus tard, apres
+        l'encaissement, et sans que le refus dise quel champ fautait.
+        Refuser ici coute un message d'erreur ; refuser la-bas coute une
+        commande payee qu'on ne peut pas expedier.
+
+        La casse et les espaces sont corriges plutot que refuses : « qc »
+        est une faute de frappe, pas une erreur d'adresse.
+        """
+        pays = (self.country or "CA").strip().upper()
+        region = (self.province or "").strip().upper()
+        admises = _REGIONS_CA if pays == "CA" else REGIONS_US if pays == "US" else None
+        if admises is None:
+            return self
+        if region not in admises:
+            attendu = "province" if pays == "CA" else "state"
+            raise ValueError(
+                f"Unknown {attendu} '{self.province}' for {pays}. "
+                f"Use the two-letter code (e.g. QC, ON)."
+            )
+        self.province = region
+        self.country = pays
+        return self
 
 
 class CheckoutIn(BaseModel):
