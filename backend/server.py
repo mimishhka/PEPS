@@ -161,6 +161,10 @@ AFFILIATE_PAYOUT_DUE_DAYS = int(os.environ.get("AFFILIATE_PAYOUT_DUE_DAYS", "5")
 # du programme : le jour ou il faut l'arreter, ce sera en urgence.
 AFFILIATE_PAYOUT_NOTICE_ENABLED = os.environ.get(
     "AFFILIATE_PAYOUT_NOTICE_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
+# Combien de fois rejouer le DEPOT en file d'un avis. Une panne qui resiste
+# a trois reprises n'est pas passagere : insister masquerait la vraie cause
+# derriere un compteur qui monte.
+AFFILIATE_NOTICE_MAX_ATTEMPTS = int(os.environ.get("AFFILIATE_NOTICE_MAX_ATTEMPTS", "3"))
 PREORDER_RELEASE_INTERVAL_SECONDS = int(os.environ.get("PREORDER_RELEASE_INTERVAL_SECONDS", "300"))
 # Rabais % du coupon auto-lié à chaque affilié (0 = pas de coupon auto).
 AFFILIATE_COUPON_PERCENT = float(os.environ.get("AFFILIATE_COUPON_PERCENT", "10"))
@@ -10096,6 +10100,7 @@ try:
         _defer_affiliate_payout_below_threshold, _monthly_payouts_scheduler,
         _generate_payouts_for_period, _affiliate_payout_amounts,
         _annoncer_versement_du_cycle, _confirmer_versement_envoye,
+        _reprendre_avis_en_echec,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
     from backend.services.affiliate import (  # noqa: F401
@@ -10111,6 +10116,7 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
         _defer_affiliate_payout_below_threshold, _monthly_payouts_scheduler,
         _generate_payouts_for_period, _affiliate_payout_amounts,
         _annoncer_versement_du_cycle, _confirmer_versement_envoye,
+        _reprendre_avis_en_echec,
     )
 
 
@@ -12883,6 +12889,12 @@ async def admin_affiliate_detail(affiliate_id: str,
     return {"affiliate": aff, "metrics": metrics,
             "referrals": referrals, "payouts": payouts,
             "series": series,
+            # LE DERNIER AVIS ENVOYE. La colonne des cycles dit combien
+            # d'affilies ont ete prevenus ; elle ne dit pas LESQUELS. Quand
+            # quelqu'un ecrit « je n'ai rien recu », c'est ici qu'on
+            # regarde. Le corps conserve en cas d'echec est exclu : il ne
+            # sert qu'a la reprise, et il pese.
+            "last_notice": await _dernier_avis(affiliate_id),
             # Le meme cycle que l'affilie voit de son cote. Deux ecrans qui
             # annoncent deux dates pour le meme versement, c'est un appel au
             # service a la clientele.
@@ -14120,6 +14132,18 @@ async def admin_affiliate_force_monthly_run(payload: AffiliatePayoutRunForceIn,
         )
         logging.error("Manual payout run failed run=%s error_type=%s", run_id, type(e).__name__)
         raise HTTPException(500, "Payout generation failed") from e
+
+
+async def _dernier_avis(affiliate_id: str) -> Optional[dict]:
+    """Le dernier avis adresse a cet affilie, quel qu'en soit le sort."""
+    try:
+        return await db.affiliate_payout_notices.find_one(
+            {"affiliate_id": affiliate_id},
+            {"_id": 0, "email_html": 0, "email_subject": 0, "email_to": 0},
+            sort=[("created_at", -1)],
+        )
+    except Exception:
+        return None
 
 
 async def admin_affiliate_cycles(admin: dict = Depends(get_admin_user),  # noqa: F821

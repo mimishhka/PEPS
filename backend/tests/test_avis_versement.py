@@ -16,6 +16,7 @@ import asyncio
 import importlib
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -359,3 +360,161 @@ def test_les_deux_chemins_de_paiement_confirment(server_module):
 
     assert "_confirmer_versement_envoye" in manuel
     assert "_confirmer_versement_envoye" in synchro
+
+
+# ------------------------------------------- la reprise des avis rates ------
+
+class _Avis_file:
+    """Une file d'avis : sert le plus ancien qui satisfait le filtre."""
+
+    def __init__(self, docs):
+        self.docs = [dict(d) for d in docs]
+        self.updates = []
+
+    async def find_one_and_update(self, filtre, maj, sort=None, return_document=None):
+        limite = filtre.get("created_at", {}).get("$gte")
+        plafond = None
+        for clause in filtre.get("$or", []):
+            if "$lt" in clause.get("attempts", {}):
+                plafond = clause["attempts"]["$lt"]
+        candidats = []
+        for d in self.docs:
+            if d.get("email_status") != filtre.get("email_status"):
+                continue
+            if limite and str(d.get("created_at", "")) < limite:
+                continue
+            if "email_html" in filtre and "email_html" not in d:
+                continue
+            if plafond is not None and int(d.get("attempts", 0)) >= plafond:
+                continue
+            candidats.append(d)
+        if not candidats:
+            return None
+        candidats.sort(key=lambda d: str(d.get("created_at", "")))
+        pris = candidats[0]
+        pris.update(maj.get("$set", {}))
+        for cle, pas in (maj.get("$inc") or {}).items():
+            pris[cle] = int(pris.get(cle, 0)) + pas
+        return dict(pris)
+
+    async def update_one(self, filtre, maj):
+        self.updates.append(maj)
+        for d in self.docs:
+            if d.get("id") == filtre.get("id"):
+                d.update(maj.get("$set", {}))
+                for cle in (maj.get("$unset") or {}):
+                    d.pop(cle, None)
+
+
+def _avis_rate(id_, minutes=10, tentatives=0):
+    quand = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    return {"id": id_, "affiliate_id": "a-1", "period": "2026-08",
+            "kind": "annonce", "email_status": "failed",
+            "created_at": quand.isoformat(), "attempts": tentatives,
+            "email_to": "affilie@example.com", "email_subject": "sujet",
+            "email_html": "<p>corps</p>"}
+
+
+def _brancher_reprise(server_module, docs, envoyer=None):
+    envois = []
+
+    async def _send_email(destinataire, sujet, html):
+        if envoyer:
+            return envoyer(destinataire, sujet, html)
+        envois.append(destinataire)
+
+    file = _Avis_file(docs)
+    server_module.db = SimpleNamespace(affiliate_payout_notices=file)
+    server_module._send_email = _send_email
+    return file, envois
+
+
+def test_un_avis_rate_recemment_est_rejoue(server_module, affiliation):
+    # Le depot en file a echoue, pas la livraison : c'est le genre de panne
+    # qui se repare toute seule dix minutes plus tard.
+    file, envois = _brancher_reprise(server_module, [_avis_rate("n-1")])
+
+    repris = asyncio.run(affiliation._reprendre_avis_en_echec())
+
+    assert repris == 1
+    assert envois == ["affilie@example.com"]
+    assert file.docs[0]["email_status"] == "queued"
+
+
+def test_le_corps_conserve_disparait_une_fois_parti(server_module, affiliation):
+    # Il n'etait garde que pour la reprise.
+    file, _ = _brancher_reprise(server_module, [_avis_rate("n-1")])
+    asyncio.run(affiliation._reprendre_avis_en_echec())
+
+    assert "email_html" not in file.docs[0]
+    assert "email_to" not in file.docs[0]
+
+
+def test_un_avis_de_plus_de_48h_n_est_plus_rejoue(server_module, affiliation):
+    # Annoncer « votre versement part avant le 6 » un 9 septembre n'informe
+    # plus : ca desinforme.
+    file, envois = _brancher_reprise(server_module, [_avis_rate("n-1", minutes=60 * 49)])
+
+    assert asyncio.run(affiliation._reprendre_avis_en_echec()) == 0
+    assert envois == []
+    assert file.docs[0]["email_status"] == "failed"
+
+
+def test_le_plafond_de_tentatives_arrete_la_reprise(server_module, affiliation, monkeypatch):
+    monkeypatch.setattr(server_module, "AFFILIATE_NOTICE_MAX_ATTEMPTS", 3)
+    file, envois = _brancher_reprise(server_module, [_avis_rate("n-1", tentatives=3)])
+
+    assert asyncio.run(affiliation._reprendre_avis_en_echec()) == 0
+    assert envois == []
+
+
+def test_le_plafond_est_reglable(server_module, affiliation, monkeypatch):
+    monkeypatch.setattr(server_module, "AFFILIATE_NOTICE_MAX_ATTEMPTS", 5)
+    file, envois = _brancher_reprise(server_module, [_avis_rate("n-1", tentatives=3)])
+
+    assert asyncio.run(affiliation._reprendre_avis_en_echec()) == 1
+
+
+def test_un_echec_de_reprise_remet_l_avis_en_echec(server_module, affiliation):
+    # Le compteur a deja ete incremente : la prochaine reprise en aura une de
+    # moins avant le plafond, et la boucle ne tourne pas indefiniment.
+    def tomber(*_a, **_k):
+        raise RuntimeError("mongo indisponible")
+
+    file, _ = _brancher_reprise(server_module, [_avis_rate("n-1")], envoyer=tomber)
+
+    assert asyncio.run(affiliation._reprendre_avis_en_echec()) == 0
+    assert file.docs[0]["email_status"] == "failed"
+    assert file.docs[0]["attempts"] == 1
+
+
+def test_la_reprise_prend_les_plus_anciens_d_abord(server_module, affiliation):
+    file, envois = _brancher_reprise(server_module, [
+        {**_avis_rate("n-recent", minutes=5), "email_to": "recent@example.com"},
+        {**_avis_rate("n-ancien", minutes=600), "email_to": "ancien@example.com"},
+    ])
+
+    asyncio.run(affiliation._reprendre_avis_en_echec())
+
+    assert envois[0] == "ancien@example.com"
+    assert len(envois) == 2
+
+
+def test_un_avis_sans_corps_conserve_est_ignore(server_module, affiliation):
+    # Les avis d'avant cette reprise n'ont pas de corps : les rejouer
+    # enverrait un courriel vide.
+    sans_corps = _avis_rate("n-1")
+    sans_corps.pop("email_html")
+    file, envois = _brancher_reprise(server_module, [sans_corps])
+
+    assert asyncio.run(affiliation._reprendre_avis_en_echec()) == 0
+    assert envois == []
+
+
+def test_le_watchdog_lance_la_reprise(server_module):
+    # Une reprise que personne n'appelle ne reprend rien.
+    import inspect
+    import services.affiliate as module
+
+    assert "_reprendre_avis_en_echec" in inspect.getsource(
+        module.affiliate_maintenance_watchdog)

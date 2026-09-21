@@ -20,6 +20,18 @@ const money = (n) => `$${Number(n || 0).toLocaleString("en-CA", { minimumFractio
 const int = (n) => Number(n || 0).toLocaleString("en-CA");
 // « AAAA-MM » -> « août 2026 ». Un mois en chiffres se décode ; en lettres,
 // il se lit.
+const ETATS_AVIS = {
+  queued: { fr: "remis à la file d'envoi", en: "queued for delivery", ton: "text-glacier" },
+  retrying: { fr: "reprise en cours", en: "retrying", ton: "text-warning" },
+  failed: { fr: "échec du dépôt", en: "queueing failed", ton: "text-error" },
+  pending: { fr: "en préparation", en: "preparing", ton: "text-glacier" },
+  skipped_no_email: { fr: "aucune adresse au dossier", en: "no address on file", ton: "text-error" },
+};
+const TYPES_AVIS = {
+  annonce: { fr: "annonce du versement", en: "payout announcement" },
+  confirmation: { fr: "confirmation d'envoi", en: "sending confirmation" },
+};
+
 const moisLisible = (cle, lang) => (
   /^\d{4}-\d{2}$/.test(cle || "")
     ? new Date(Number(cle.slice(0, 4)), Number(cle.slice(5, 7)) - 1, 1)
@@ -1758,6 +1770,10 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   // serveur tranche la separation a minuit heure du Quebec et compte les
   // jours restants.
   const cycle = data?.payout_cycle || null;
+  // Le dernier avis adresse a cet affilie. La colonne des cycles dit
+  // COMBIEN ont ete prevenus ; elle ne dit pas lesquels. Quand quelqu'un
+  // ecrit « je n'ai rien recu », c'est ici qu'on regarde.
+  const avis = data?.last_notice || null;
   // Le seuil decide si le prochain cycle paie vraiment. La ligne de cycle ne
   // doit jamais promettre un debourse que le programme refuse.
   const seuilVersement = Number(m?.payout_min_cad || 0);
@@ -1919,6 +1935,23 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                         // vient du mois en cours et partira au cycle suivant.
                         : L(`${money(m.approved_commission)} approuvés · ${moisLisible(cycle?.current_period, lang)} en cours, versés au prochain cycle`,
                              `${money(m.approved_commission)} approved · ${moisLisible(cycle?.current_period, lang)} in progress, paid next cycle`)}
+                  </p>
+                )}
+                {avis && (
+                  <p className="text-[11px] text-glacier mt-1" data-testid="dernier-avis">
+                    {L("Dernier avis", "Last notice")}{" "}
+                    {(TYPES_AVIS[avis.kind] || {})[lang === "fr" ? "fr" : "en"] || avis.kind}
+                    {" · "}{avis.period}
+                    {" · "}{fmtDate(avis.email_queued_at || avis.created_at)}
+                    {" · "}
+                    <span className={(ETATS_AVIS[avis.email_status] || {}).ton || "text-glacier"}>
+                      {(ETATS_AVIS[avis.email_status] || {})[lang === "fr" ? "fr" : "en"] || avis.email_status}
+                    </span>
+                    {/* Le compteur n'apparait qu'une fois une reprise tentee :
+                        « tentative 1 » sur un envoi du premier coup ne dit rien. */}
+                    {avis.attempts > 0 && (
+                      <span>{L(` · ${avis.attempts} reprise(s)`, ` · ${avis.attempts} retry(ies)`)}</span>
+                    )}
                   </p>
                 )}
 

@@ -1520,6 +1520,10 @@ async def affiliate_maintenance_watchdog():
         try:
             await _affiliate_approve_matured()
             await _affiliate_clicks_cleanup()
+            # Les avis dont le DEPOT en file a echoue. Sans cette reprise,
+            # un hoquet d'une seconde laissait un affilie sans nouvelle
+            # pour de bon, et personne ne serait alle voir.
+            await _reprendre_avis_en_echec()
         except Exception as e:  # pragma: no cover
             logging.error("[affiliate] maintenance error: %s", e)
         await asyncio.sleep(3600)  # toutes les heures
@@ -1762,6 +1766,10 @@ async def affiliate_ensure_indexes():
     # Un avis est une trace, pas un registre : deux ans suffisent a repondre
     # « est-ce que je l'ai prevenu », au-dela c'est du poids.
     await _index_ttl(s.db.affiliate_payout_notices, "expires_at")
+    # Sert la prise de la reprise : les echecs les plus anciens d'abord.
+    await s.db.affiliate_payout_notices.create_index(
+        [("email_status", 1), ("created_at", 1)],
+    )
     # Menage unique des index devenus inutiles. Idempotent : une fois retires,
     # les passages suivants ne trouvent plus rien a faire.
     await _retirer_index_redondant(
@@ -2116,10 +2124,7 @@ async def _annoncer_versement_du_cycle(
         )
         return True
     except Exception as e:
-        await s.db.affiliate_payout_notices.update_one(
-            {"id": avis["id"]},
-            {"$set": {"email_status": "failed", "email_error": type(e).__name__}},
-        )
+        await _echec_d_avis(avis["id"], courriel, sujet, html, e)
         logging.error("[payout-notice] envoi impossible affiliate=%s period=%s",
                       aff.get("id"), period)
         return False
@@ -2255,13 +2260,114 @@ async def _confirmer_versement_envoye(payout: dict) -> bool:
         )
         return True
     except Exception as e:
-        await s.db.affiliate_payout_notices.update_one(
-            {"id": avis["id"]},
-            {"$set": {"email_status": "failed", "email_error": type(e).__name__}},
-        )
+        await _echec_d_avis(avis["id"], courriel, sujet, html, e)
         logging.error("[payout-notice] confirmation non envoyee affiliate=%s period=%s",
                       affiliate_id, period)
         return False
+
+
+async def _echec_d_avis(avis_id: str, destinataire: str, sujet: str, html: str,
+                        erreur: Exception) -> None:
+    """Note l'echec ET garde de quoi le rejouer.
+
+    `_send_email` n'envoie pas : il depose dans la file d'attente, qui a sa
+    propre reprise. Un avis « failed » signifie donc que le DEPOT lui-meme a
+    echoue — une base indisponible une seconde, pas un destinataire injoignable.
+
+    C'est exactement le genre de panne qui se repare toute seule dix minutes
+    plus tard, et c'est pour ca qu'on conserve le message : le rejouer doit
+    renvoyer CE message, pas une version reconstruite depuis des champs qui
+    auront peut-etre change entre-temps (la langue de l'affilie, son prenom).
+    Le corps n'est garde qu'en cas d'echec, et disparait des que l'avis part.
+    """
+    await s.db.affiliate_payout_notices.update_one(
+        {"id": avis_id},
+        {"$set": {"email_status": "failed",
+                  "email_error": type(erreur).__name__,
+                  "email_to": destinataire,
+                  "email_subject": sujet,
+                  "email_html": html}},
+    )
+
+
+async def _reprendre_avis_en_echec(maintenant=None) -> int:
+    """Rejoue les avis dont le depot en file a echoue, et seulement ceux-la.
+
+    TROIS BORNES, parce qu'une reprise sans limite est une boucle.
+
+    1. QUARANTE-HUIT HEURES. Passe ce delai, annoncer « votre versement part
+       avant le 6 » un 9 septembre n'informe plus : ca desinforme. Un avis
+       trop vieux reste en echec, il se lit dans la colonne « Avis » de
+       l'ecran des paiements, et un humain decide.
+    2. UN PLAFOND DE TENTATIVES (AFFILIATE_NOTICE_MAX_ATTEMPTS), compte en
+       PASSAGES et non en iterations : un echec arrete le passage en cours,
+       la reprise suivante aura lieu au tour d'apres de la maintenance,
+       une heure plus tard. Trois reprises couvrent donc trois heures.
+       Une panne qui y resiste n'est pas passagere, et insister masquerait
+       la vraie cause derriere un compteur qui monte.
+    3. UNE PRISE ATOMIQUE. Le statut passe a « retrying » DANS le
+       find_one_and_update : deux boucles de maintenance concurrentes ne
+       peuvent pas rejouer le meme avis, donc l'affilie ne recoit pas deux
+       fois le meme courriel.
+
+    Retourne le nombre d'avis effectivement remis en file.
+    """
+    now = maintenant or datetime.now(timezone.utc)
+    limite = (now - timedelta(hours=48)).isoformat()
+    plafond = int(getattr(s, "AFFILIATE_NOTICE_MAX_ATTEMPTS", 3))
+    repris = 0
+
+    while True:
+        try:
+            avis = await s.db.affiliate_payout_notices.find_one_and_update(
+                {"email_status": "failed",
+                 "created_at": {"$gte": limite},
+                 "email_html": {"$exists": True},
+                 "$or": [{"attempts": {"$exists": False}},
+                         {"attempts": {"$lt": plafond}}]},
+                {"$set": {"email_status": "retrying",
+                          "last_retry_at": now.isoformat()},
+                 "$inc": {"attempts": 1}},
+                sort=[("created_at", 1)],
+                return_document=ReturnDocument.AFTER,
+            )
+        except Exception as e:
+            logging.warning("[payout-notice] reprise impossible : %s", type(e).__name__)
+            return repris
+        if not avis:
+            return repris
+
+        try:
+            await s._send_email(avis.get("email_to"), avis.get("email_subject"),
+                                avis.get("email_html"))
+        except Exception as e:
+            # Retour en « failed », puis ON ARRETE LE PASSAGE.
+            #
+            # `continue` reprenait le meme avis dans la foulee : trois
+            # tentatives brulees en trois millisecondes sur une panne qui
+            # aurait cede en dix minutes, et le plafond atteint avant
+            # meme que quiconque ait pu reagir. Le plafond doit compter
+            # des PASSAGES, pas des iterations.
+            #
+            # Et si le depot echoue pour un avis, il echouera pour le
+            # suivant : la panne est celle de la file, pas du message.
+            await s.db.affiliate_payout_notices.update_one(
+                {"id": avis.get("id")},
+                {"$set": {"email_status": "failed", "email_error": type(e).__name__}},
+            )
+            return repris
+
+        # Parti : le corps conserve ne sert plus a rien, et c'est pour ca
+        # qu'on le retire.
+        await s.db.affiliate_payout_notices.update_one(
+            {"id": avis.get("id")},
+            {"$set": {"email_status": "queued",
+                      "email_queued_at": datetime.now(timezone.utc).isoformat()},
+             "$unset": {"email_html": "", "email_subject": "", "email_to": ""}},
+        )
+        repris += 1
+        logging.info("[payout-notice] avis rejoue affiliate=%s period=%s tentative=%s",
+                     avis.get("affiliate_id"), avis.get("period"), avis.get("attempts"))
 
 
 # ---- Scheduler mensuel (America/Toronto minuit local) ------------------------

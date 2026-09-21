@@ -501,3 +501,82 @@ describe("AdminAffiliates — le cycle de versement", () => {
     await waitFor(() => expect(screen.getByText(/exécution \+ 2FA/)).toBeInTheDocument());
   });
 });
+
+describe("AdminAffiliates — le dernier avis envoyé", () => {
+  // Meme ouverture que la conciliation : le classement, puis la fiche.
+  const ouvrirFiche = async () => {
+    render(<AdminAffiliates />);
+    const ligne = (await screen.findByText(/4 commandes/)).closest("button");
+    await userEvent.click(ligne);
+    await screen.findByTestId("affiliate-figures");
+  };
+
+  // La colonne des cycles dit COMBIEN d'affiliés ont été prévenus ; elle ne
+  // dit pas lesquels. Quand quelqu'un écrit « je n'ai rien reçu », c'est la
+  // fiche qu'on ouvre.
+  const ficheAvecAvis = (avis) => {
+    api.get.mockImplementation(async (url) => {
+      if (url === "/admin/affiliates/overview") return { data: APERCU };
+      if (url === "/admin/affiliates") return { data: [AFFILIE] };
+      if (url === "/admin/affiliates/risk") return { data: null };
+      if (url.startsWith("/admin/affiliates/aff-1")) {
+        return { data: { affiliate: AFFILIE, referrals: REFERRALS, payouts: [],
+          metrics: { cumulative_revenue: 323.96, rolling12_revenue: 323.96,
+                     pending_commission: 0, approved_commission: 30,
+                     paid_commission: 28.5, reversed_commission: 0,
+                     excluded_commission: 0, quarter_revenue: 323.96,
+                     commission_rate: 0.16, payout_min_cad: 25 },
+          series: [], last_notice: avis } };
+      }
+      return { data: {} };
+    });
+  };
+
+  it("dit le type, la période et l'état de l'avis", async () => {
+    ficheAvecAvis({ kind: "annonce", period: "2026-08", email_status: "queued",
+                    email_queued_at: "2026-09-01T09:12:00+00:00", attempts: 0 });
+    await ouvrirFiche();
+
+    const ligne = screen.getByTestId("dernier-avis");
+    expect(ligne).toHaveTextContent("annonce du versement");
+    expect(ligne).toHaveTextContent("2026-08");
+    expect(ligne).toHaveTextContent("remis à la file d'envoi");
+  });
+
+  it("signale en rouge un dépôt qui a échoué", async () => {
+    ficheAvecAvis({ kind: "confirmation", period: "2026-08", email_status: "failed",
+                    created_at: "2026-09-04T16:00:00+00:00", attempts: 2 });
+    await ouvrirFiche();
+
+    const ligne = screen.getByTestId("dernier-avis");
+    expect(ligne).toHaveTextContent("échec du dépôt");
+    expect(ligne.querySelector(".text-error")).not.toBeNull();
+    expect(ligne).toHaveTextContent("2 reprise(s)");
+  });
+
+  it("ne parle pas de reprise quand il n'y en a pas eu", async () => {
+    // « tentative 1 » sur un envoi du premier coup ne dit rien.
+    ficheAvecAvis({ kind: "annonce", period: "2026-08", email_status: "queued",
+                    email_queued_at: "2026-09-01T09:12:00+00:00", attempts: 0 });
+    await ouvrirFiche();
+
+    expect(screen.getByTestId("dernier-avis")).not.toHaveTextContent("reprise");
+  });
+
+  it("dit clairement l'affilié sans adresse au dossier", async () => {
+    ficheAvecAvis({ kind: "annonce", period: "2026-08",
+                    email_status: "skipped_no_email",
+                    created_at: "2026-09-01T09:12:00+00:00" });
+    await ouvrirFiche();
+
+    expect(screen.getByTestId("dernier-avis"))
+      .toHaveTextContent("aucune adresse au dossier");
+  });
+
+  it("n'affiche aucune ligne quand aucun avis n'est jamais parti", async () => {
+    ficheAvecAvis(null);
+    await ouvrirFiche();
+
+    expect(screen.queryByTestId("dernier-avis")).not.toBeInTheDocument();
+  });
+});
