@@ -97,6 +97,9 @@ export default function AdminDashboard() {
     if (!pulse) return [];
     const r = pulse.ops?.refunds || {};
     const p = pulse.money?.pending_payment || {};
+    // Le versement du mois clos, avec sa date limite. « Exécution + 2FA »
+    // décrivait le geste ; en fin de mois, c'est le délai qui commande.
+    const v = pulse.ops?.affiliate_payout || {};
     return [
       { cle: "refunds-send", urgent: true, vers: "refunds", n: r.to_send || 0,
         titre: L("remboursements à envoyer", "refunds to send"),
@@ -121,9 +124,13 @@ export default function AdminDashboard() {
       { cle: "tickets", urgent: false, vers: "tickets", n: pulse.ops?.tickets_open || 0,
         titre: L("billets d'affiliés ouverts", "open affiliate tickets"),
         note: L("l'affilié voit « ouvert » et attend", "the affiliate sees “open” and waits") },
-      { cle: "payouts", urgent: false, vers: "payouts", n: affiliate?.alerts?.payouts_ready || 0,
+      { cle: "payouts", urgent: !!v.overdue, vers: "payouts", n: affiliate?.alerts?.payouts_ready || 0,
         titre: L("versements affiliés prêts", "affiliate payouts ready"),
-        note: `${argent(affiliate?.alerts?.payouts_ready_amount)} · ${L("exécution + 2FA", "execute + 2FA")}` },
+        note: v.count
+          ? (v.overdue
+              ? `${argent(v.amount)} · ${L("échéance dépassée", "deadline passed")}`
+              : `${argent(v.amount)} · ${L(`à verser sous ${v.days_left} jour(s)`, `to send within ${v.days_left} day(s)`)}`)
+          : `${argent(affiliate?.alerts?.payouts_ready_amount)} · ${L("exécution + 2FA", "execute + 2FA")}` },
       { cle: "emails", urgent: false, vers: "emails/outbox", n: pulse.ops?.emails_failed || 0,
         titre: L("courriels non délivrés", "undelivered emails"),
         note: L("après 5 tentatives", "after 5 attempts") },

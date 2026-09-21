@@ -206,3 +206,90 @@ def test_sans_aucune_commission_les_deux_totaux_sont_nuls(server_module):
     assert out["due_count"] == 0
     assert out["current_cycle"] == 0.0
     assert out["current_count"] == 0
+
+
+# ------------------------------------------------- le signal du pouls -------
+
+def test_le_pouls_annonce_le_versement_et_son_echeance(server_module, monkeypatch):
+    # Le pouls savait dire « paiements prets » sans jamais dire AVANT QUAND.
+    # Un debourse en retard ne se signalait nulle part, alors que c'est le
+    # seul engagement de cet ecran qui porte une date et un tiers qui attend.
+    class Vide:
+        def aggregate(self, pipeline):
+            return _Curseur([])
+
+        async def count_documents(self, *a, **k):
+            return 0
+
+    class Referrals(Vide):
+        def aggregate(self, pipeline):
+            return _Curseur([{"due_now": 412.5, "due_count": 7,
+                              "current_cycle": 88.25, "current_count": 2}])
+
+    monkeypatch.setattr(server_module, "_low_stock_variants",
+                        lambda limit=50: _rien())
+    server_module.db = SimpleNamespace(
+        orders=Vide(), interac_reconciliation_queue=Vide(),
+        email_outbox=Vide(), affiliate_tickets=Vide(),
+        affiliate_referrals=Referrals(),
+    )
+
+    out = asyncio.run(server_module.admin_dashboard_pulse({}))
+    v = out["ops"]["affiliate_payout"]
+
+    assert v["amount"] == 412.5
+    assert v["count"] == 7
+    assert v["due_by"]
+    assert v["period"]
+
+
+async def _rien():
+    return []
+
+
+def test_le_retard_ne_s_allume_pas_a_zero(server_module, monkeypatch):
+    # Un compteur qui s'allume a zero apprend a etre ignore, et le jour ou il
+    # compte, on ne le regarde plus. L'echeance de ce mois-ci est depassee
+    # depuis longtemps, mais il n'y a rien a sortir.
+    class Vide:
+        def aggregate(self, pipeline):
+            return _Curseur([])
+
+        async def count_documents(self, *a, **k):
+            return 0
+
+    monkeypatch.setattr(server_module, "_low_stock_variants",
+                        lambda limit=50: _rien())
+    server_module.db = SimpleNamespace(
+        orders=Vide(), interac_reconciliation_queue=Vide(),
+        email_outbox=Vide(), affiliate_tickets=Vide(),
+        affiliate_referrals=Vide(),
+    )
+
+    out = asyncio.run(server_module.admin_dashboard_pulse({}))
+
+    assert out["ops"]["affiliate_payout"]["amount"] == 0.0
+    assert out["ops"]["affiliate_payout"]["overdue"] is False
+
+
+def test_une_collection_absente_ne_fait_pas_tomber_le_pouls(server_module, monkeypatch):
+    # Le cycle est lance DANS le asyncio.gather du pouls : une exception y
+    # remonte et emporterait les neuf autres lectures avec elle.
+    class Vide:
+        def aggregate(self, pipeline):
+            return _Curseur([])
+
+        async def count_documents(self, *a, **k):
+            return 0
+
+    monkeypatch.setattr(server_module, "_low_stock_variants",
+                        lambda limit=50: _rien())
+    server_module.db = SimpleNamespace(
+        orders=Vide(), interac_reconciliation_queue=Vide(),
+        email_outbox=Vide(), affiliate_tickets=Vide(),
+    )  # pas d'affiliate_referrals du tout
+
+    out = asyncio.run(server_module.admin_dashboard_pulse({}))
+
+    assert out["ops"]["affiliate_payout"]["amount"] == 0.0
+    assert "money" in out and "rails" in out

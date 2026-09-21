@@ -274,3 +274,52 @@ it("la densite du tableau se regle et se retient", async () => {
   expect(bouton).toHaveTextContent("compacte");
   expect(localStorage.getItem("fironova_densite")).toBe("compacte");
 });
+
+
+// Le versement affilie : « execution + 2FA » decrivait le GESTE. En fin de
+// mois, c'est le DELAI qui commande — Mireille a cinq jours pour debourser le
+// mois clos, et la ligne ne le disait nulle part.
+const avecVersement = (versement, prets = 3) => brancher({
+  pulse: { ...PULSE_CHARGE,
+           ops: { ...PULSE_CHARGE.ops, affiliate_payout: versement } },
+  affilie: { alerts: { payouts_ready: prets, payouts_ready_amount: 500.75 } },
+});
+
+it("annonce l echeance du versement au lieu du geste", async () => {
+  avecVersement({ count: 7, amount: 412.5, days_left: 3, overdue: false });
+  afficher();
+
+  const ligne = await screen.findByTestId("action-payouts");
+  expect(ligne).toHaveTextContent("412,50 $");
+  expect(ligne).toHaveTextContent("sous 3 jour(s)");
+  expect(ligne).not.toHaveTextContent("2FA");
+});
+
+it("passe la ligne en urgent quand l echeance est depassee", async () => {
+  avecVersement({ count: 7, amount: 412.5, days_left: 0, overdue: true });
+  afficher();
+
+  const ligne = await screen.findByTestId("action-payouts");
+  expect(ligne).toHaveTextContent("échéance dépassée");
+  // Le filet vertical porte l'urgence : rouge au lieu d'ambre. C'est le seul
+  // endroit ou la couleur dit quelque chose sur cet ecran.
+  expect(ligne.querySelector(".bg-error")).not.toBeNull();
+  expect(ligne.querySelector(".bg-warning")).toBeNull();
+});
+
+it("retombe sur le geste quand rien n est du pour le mois clos", async () => {
+  // Promettre une date pour de l argent qui n est pas encore du ferait courir
+  // apres un delai qui n existe pas.
+  avecVersement({ count: 0, amount: 0, days_left: 3, overdue: false });
+  afficher();
+
+  expect(await screen.findByTestId("action-payouts")).toHaveTextContent("2FA");
+});
+
+it("ne casse pas quand le pouls ne porte pas le cycle", async () => {
+  brancher({ pulse: PULSE_CHARGE,
+             affilie: { alerts: { payouts_ready: 3, payouts_ready_amount: 500.75 } } });
+  afficher();
+
+  expect(await screen.findByTestId("action-payouts")).toHaveTextContent("2FA");
+});

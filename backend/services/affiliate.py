@@ -1640,6 +1640,31 @@ async def _index_ttl(collection, champ: str) -> None:
         logging.error("[affiliate] index TTL %s irreparable : %s", champ, e)
 
 
+async def _retirer_index_redondant(collection, nom: str, couvert_par: str) -> None:
+    """Supprime un index simple qu'un index compose sert deja.
+
+    Mongo sert toute requete sur le PREFIXE d'un index compose : `{a:1, b:-1}`
+    couvre `{a}`, tri compris. Un index simple sur `a` ne sert alors plus
+    aucune lecture, mais continue d'etre reecrit a CHAQUE insertion. Sur
+    `affiliate_referrals`, ecrite a chaque commande payee, et sur
+    `affiliate_clicks`, ecrite a chaque clic de parrainage, c'est du poids
+    mort sur le chemin chaud.
+
+    Retirer l'appel a `create_index` ne suffit pas : l'index deja pose reste
+    en base. Il faut le supprimer, une fois, comme on l'a fait pour `code_1`.
+    Toute erreur est journalisee sans interrompre la suite — un demarrage ne
+    doit jamais tomber sur un menage d'index.
+    """
+    try:
+        info = await collection.index_information()
+        if nom not in info:
+            return
+        await collection.drop_index(nom)
+        logging.info("[affiliate] index %s retire (couvert par %s)", nom, couvert_par)
+    except Exception as e:  # pragma: no cover
+        logging.warning("[affiliate] index %s non retire : %s", nom, e)
+
+
 async def affiliate_ensure_indexes():
     """Index — à appeler dans seed_admin_and_products() ou au startup."""
     await s.db.affiliates.create_index("id", unique=True)
@@ -1700,17 +1725,17 @@ async def affiliate_ensure_indexes():
             e,
         )
     await s.db.affiliate_referrals.create_index("order_id", unique=True)
-    await s.db.affiliate_referrals.create_index("affiliate_id")
-    await s.db.affiliate_referrals.create_index("status")
     # Index composés : servent les requêtes de calcul les plus chaudes
-    # (metrics par affilié, liste du dashboard, pipeline de payout).
+    # (metrics par affilié, liste du dashboard, pipeline de payout). Leur
+    # PREFIXE sert aussi les requêtes sur le seul premier champ : les index
+    # simples sur `affiliate_id` et `status` qui vivaient ici faisaient
+    # doublon, et se réécrivaient a chaque commission créée.
     await s.db.affiliate_referrals.create_index(
         [("affiliate_id", 1), ("status", 1)],
     )
     await s.db.affiliate_referrals.create_index(
         [("status", 1), ("payout_id", 1)],
     )
-    await s.db.affiliate_clicks.create_index("affiliate_id")
     await _index_ttl(s.db.affiliate_clicks, "expires_at")
     await s.db.affiliate_clicks.create_index(
         [("affiliate_id", 1), ("created_at", -1)],
@@ -1719,7 +1744,16 @@ async def affiliate_ensure_indexes():
     await s.db.affiliate_payouts.create_index(
         [("affiliate_id", 1), ("period", 1)], unique=True,
     )
-    await s.db.affiliate_payouts.create_index("affiliate_id")
+    # Menage unique des index devenus inutiles. Idempotent : une fois retires,
+    # les passages suivants ne trouvent plus rien a faire.
+    await _retirer_index_redondant(
+        s.db.affiliate_referrals, "affiliate_id_1", "affiliate_id_1_status_1")
+    await _retirer_index_redondant(
+        s.db.affiliate_referrals, "status_1", "status_1_payout_id_1")
+    await _retirer_index_redondant(
+        s.db.affiliate_clicks, "affiliate_id_1", "affiliate_id_1_created_at_-1")
+    await _retirer_index_redondant(
+        s.db.affiliate_payouts, "affiliate_id_1", "affiliate_id_1_period_1")
     await s.db.affiliate_email_jobs.create_index("id", unique=True)
     await s.db.affiliate_email_jobs.create_index([("status", 1), ("available_at", 1), ("created_at", 1)])
     await _index_ttl(s.db.affiliate_email_jobs, "expires_at")

@@ -30,12 +30,25 @@ export function ClocheNotifications({ pouls, signaux, basePath, L, argent, surAc
   }, [ouvert]);
 
   const r = pouls?.ops?.refunds || {};
+  // Le versement du mois clos. Le pouls disait « paiements prêts » sans
+  // jamais dire avant quand : un déboursé en retard ne sonnait nulle part,
+  // alors que c'est le seul engagement ici qui porte une date et un tiers qui
+  // attend. Rouge s'il est dépassé, ambre tant qu'il reste des jours.
+  const v = pouls?.ops?.affiliate_payout || {};
   const lignes = [
     { cle: "refunds-send", n: r.to_send || 0, vers: "refunds", ton: "urgent",
       texte: L("remboursement(s) à envoyer", "refund(s) to send"),
       détail: r.to_send ? argent(r.to_send_amount) : "" },
     { cle: "reconcile", n: pouls?.money?.reconcile?.count || 0, vers: "reconciliation", ton: "urgent",
       texte: L("paiement(s) à réconcilier", "payment(s) to reconcile") },
+    { cle: "affiliate-payout", n: v.count || 0, vers: "payouts",
+      ton: v.overdue ? "urgent" : "warn",
+      texte: L("commission(s) d'affilié à verser", "affiliate commission(s) to pay"),
+      détail: v.count
+        ? (v.overdue
+            ? L(`${argent(v.amount)} · échéance dépassée`, `${argent(v.amount)} · deadline passed`)
+            : L(`${argent(v.amount)} · ${v.days_left} jour(s)`, `${argent(v.amount)} · ${v.days_left} day(s)`))
+        : "" },
     { cle: "manifest", n: signaux?.pending_manifest || 0, vers: "dispatch", ton: "urgent",
       texte: L("étiquette(s) non transmise(s)", "label(s) not transmitted"),
       détail: L("surcharge de 2 $/article", "$2/item surcharge") },

@@ -80,3 +80,49 @@ it("le ton suit la ligne la plus grave", () => {
   const pastilles = screen.getAllByTestId("notifications-dot");
   expect(pastilles[pastilles.length - 1].className).toMatch(/bg-amber-500/);
 });
+
+
+// Le versement du mois clos. Le pouls savait dire « paiements prets » sans
+// jamais dire AVANT QUAND : un debourse en retard ne sonnait nulle part,
+// alors que c'est le seul engagement de cet ecran qui porte une date et un
+// tiers qui attend.
+const avecVersement = (v) => afficher({
+  pouls: { ...POULS, ops: { ...POULS.ops, affiliate_payout: v } },
+});
+
+it("sonne rouge quand le versement du mois clos est en retard", () => {
+  avecVersement({ count: 7, amount: 412.5, days_left: 0, overdue: true });
+
+  const ligne = screen.getByTestId("notifications-toggle");
+  fireEvent.click(ligne);
+  const item = screen.getByTestId("notification-affiliate-payout");
+  expect(item).toHaveTextContent("7 commission(s) d'affilié à verser");
+  expect(item).toHaveTextContent("échéance dépassée");
+  expect(item).toHaveTextContent("412.50");
+  // Rouge, pas ambre : la pastille du haut suit le ton le plus grave.
+  expect(screen.getByTestId("notifications-dot").className).toMatch(/bg-red-600/);
+});
+
+it("reste ambre tant qu'il reste des jours", () => {
+  avecVersement({ count: 7, amount: 412.5, days_left: 3, overdue: false });
+
+  fireEvent.click(screen.getByTestId("notifications-toggle"));
+  expect(screen.getByTestId("notification-affiliate-payout")).toHaveTextContent("3 jour(s)");
+});
+
+it("ne compte rien quand il n y a aucune commission a verser", () => {
+  // Un compteur qui s'allume a zero apprend a etre ignore.
+  avecVersement({ count: 0, amount: 0, days_left: 0, overdue: true });
+
+  expect(screen.getByTestId("notifications-dot")).toHaveTextContent("11");
+  fireEvent.click(screen.getByTestId("notifications-toggle"));
+  expect(screen.queryByTestId("notification-affiliate-payout")).not.toBeInTheDocument();
+});
+
+it("mene a l ecran ou le versement s execute", () => {
+  avecVersement({ count: 2, amount: 50, days_left: 1, overdue: false });
+
+  fireEvent.click(screen.getByTestId("notifications-toggle"));
+  expect(screen.getByTestId("notification-affiliate-payout"))
+    .toHaveAttribute("href", "/ops/payouts");
+});

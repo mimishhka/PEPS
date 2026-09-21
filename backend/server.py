@@ -7767,7 +7767,8 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
     # et ces plafonds auraient fausse les chiffres en silence une fois
     # depasses — sans le moindre message.
     attente_lignes, recon_lignes, payes_lignes, to_ship, low_stock_rows, \
-        late_payments, emails_failed, tickets_open, remboursements = await asyncio.gather(
+        late_payments, emails_failed, tickets_open, remboursements, \
+        cycle_affilie = await asyncio.gather(
         db.orders.aggregate([
             {"$match": {"payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto"]},
                         **SANS_CORBEILLE}},
@@ -7821,6 +7822,12 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
                         # commande : c'est ce qui partira.
                         "amount": {"$sum": {"$ifNull": ["$refund_approved_amount", "$total"]}}}},
         ]).to_list(10),
+        # Le versement aux affilies. Le pouls savait dire « paiements prets »
+        # sans jamais dire AVANT QUAND : un debourse en retard ne se signalait
+        # nulle part, alors que c'est un engagement DATE envers quelqu'un qui
+        # attend. Lance avec les autres lectures : le pouls est releve toutes
+        # les minutes, il n'a pas les moyens d'un aller-retour de plus.
+        _commissions_par_cycle(),
     )
 
     par_methode = {str(r.get("_id") or ""): r for r in attente_lignes}
@@ -7875,6 +7882,19 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
             # système tienne sa promesse est qu'on ne puisse pas l'ignorer.
             "tickets_open": tickets_open,
             "refunds": _pouls_remboursements(remboursements),
+            # Le versement du mois clos. `overdue` ne s'allume que s'il y a
+            # vraiment quelque chose a sortir : un compteur qui s'allume a
+            # zero apprend a etre ignore, et le jour ou il compte, on ne le
+            # regarde plus.
+            "affiliate_payout": {
+                "period": cycle_affilie.get("period"),
+                "amount": cycle_affilie.get("due_now", 0.0),
+                "count": cycle_affilie.get("due_count", 0),
+                "days_left": cycle_affilie.get("days_left", 0),
+                "overdue": bool(cycle_affilie.get("overdue"))
+                           and cycle_affilie.get("due_now", 0.0) > 0,
+                "due_by": cycle_affilie.get("due_by"),
+            },
         },
     }
 
