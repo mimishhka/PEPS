@@ -778,6 +778,7 @@ export default function AdminPayouts() {
                   <th className="px-5 py-2 font-normal">{L("Échéance", "Deadline")}</th>
                   <th className="px-5 py-2 font-normal">{L("Dernier envoi", "Last sent")}</th>
                   <th className="px-5 py-2 font-normal">{L("Écart", "Gap")}</th>
+                  <th className="px-5 py-2 font-normal">{L("Avis", "Notices")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -802,6 +803,23 @@ export default function AdminPayouts() {
                           : <span className="text-error">
                               {L(`${c.days_late} jour(s) de retard`, `${c.days_late} day(s) late`)}
                             </span>}
+                    </td>
+                    <td className="px-5 py-2.5 font-data text-[11px]" data-testid={`cycle-avis-${c.period}`}>
+                      {/* Deux nombres, pas un : l'annonce et la confirmation
+                          n'informent pas de la meme chose. Compares au nombre
+                          d'affilies du cycle, ils disent si quelqu'un est
+                          reste sans nouvelle — un courriel qui echoue le fait
+                          en silence. */}
+                      <span className={(c.notices_announced ?? 0) < c.affiliates ? "text-warning" : "text-glacier"}>
+                        {L(`${c.notices_announced ?? 0}/${c.affiliates} annoncé`,
+                           `${c.notices_announced ?? 0}/${c.affiliates} announced`)}
+                      </span>
+                      {c.sent > 0 && (
+                        <span className={`block ${(c.notices_confirmed ?? 0) < c.sent ? "text-warning" : "text-glacier"}`}>
+                          {L(`${c.notices_confirmed ?? 0}/${c.sent} confirmé`,
+                             `${c.notices_confirmed ?? 0}/${c.sent} confirmed`)}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

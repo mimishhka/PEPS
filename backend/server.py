@@ -10095,7 +10095,7 @@ try:
         _process_affiliate_email_job, _affiliate_email_worker, affiliate_ensure_indexes,
         _defer_affiliate_payout_below_threshold, _monthly_payouts_scheduler,
         _generate_payouts_for_period, _affiliate_payout_amounts,
-        _annoncer_versement_du_cycle,
+        _annoncer_versement_du_cycle, _confirmer_versement_envoye,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
     from backend.services.affiliate import (  # noqa: F401
@@ -10110,7 +10110,7 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
         _process_affiliate_email_job, _affiliate_email_worker, affiliate_ensure_indexes,
         _defer_affiliate_payout_below_threshold, _monthly_payouts_scheduler,
         _generate_payouts_for_period, _affiliate_payout_amounts,
-        _annoncer_versement_du_cycle,
+        _annoncer_versement_du_cycle, _confirmer_versement_envoye,
     )
 
 
@@ -14159,6 +14159,21 @@ async def admin_affiliate_cycles(admin: dict = Depends(get_admin_user),  # noqa:
     except Exception:
         lignes = []
 
+    # LES AVIS PARTIS. « L'affilie a-t-il ete prevenu » n'etait verifiable
+    # nulle part : un courriel qui echoue le fait en silence, et c'est
+    # exactement le mois ou quelqu'un demande pourquoi il n'a rien recu.
+    avis = {}
+    try:
+        for r in await db.affiliate_payout_notices.aggregate([
+            {"$match": {"email_status": "queued"}},
+            {"$group": {"_id": {"period": "$period", "kind": "$kind"},
+                        "n": {"$sum": 1}}},
+        ]).to_list(500):
+            cle = r.get("_id") or {}
+            avis[(cle.get("period"), cle.get("kind"))] = int(r.get("n", 0))
+    except Exception:
+        avis = {}
+
     cycles = []
     for r in lignes:
         periode = r.get("_id")
@@ -14188,6 +14203,11 @@ async def admin_affiliate_cycles(admin: dict = Depends(get_admin_user),  # noqa:
             "pending": max(0, total - envoyes),
             "first_sent_at": r.get("first_sent_at"),
             "last_sent_at": dernier,
+            # Combien d'affilies ont recu l'annonce, puis la confirmation.
+            # Compares a `affiliates`, ils disent si quelqu'un est reste sans
+            # nouvelle.
+            "notices_announced": avis.get((periode, "annonce"), 0),
+            "notices_confirmed": avis.get((periode, "confirmation"), 0),
             # None = cycle pas encore clos. 0 = parti dans les temps.
             "days_late": retard,
             "on_time": (retard == 0) if retard is not None else None,
@@ -14294,6 +14314,13 @@ async def admin_affiliate_mark_paid(payout_id: str, payload: AffiliatePayoutMark
         {"$set": {"status": "paid", "paid_at": now}},
     )
     fresh = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
+    # LA CONFIRMATION A L'AFFILIE. L'annonce disait « vous serez paye avant
+    # le 6 » ; entre-temps il n'avait que le silence et un solde qui passe a
+    # zero. La reference de transaction lui permet de retrouver l'envoi sans
+    # nous ecrire. En tache de fond : un courriel ne doit pas retarder la
+    # reponse d'une action deja accomplie.
+    if fresh:
+        asyncio.create_task(_confirmer_versement_envoye(fresh))
     asyncio.create_task(_log_action(
         admin, "affiliate_payout_mark_paid",
         (f"payout={payout_id} affiliate={payout.get('affiliate_code')}"
@@ -15299,6 +15326,13 @@ async def admin_payout_status(payout_id: str, admin: dict = Depends(get_admin_us
                 {"$set": {"status": "paid", "paid_at": now}},
             )
         await db.affiliate_payouts.update_one({"id": payout_id}, {"$set": upd})
+        # Meme confirmation que le chemin manuel. Un affilie paye par le
+        # fournisseur n'a aucune raison d'etre moins informe que celui paye a
+        # la main — et c'est justement le chemin ou personne ne le fera.
+        if mapped == "paid":
+            fresh = await db.affiliate_payouts.find_one({"id": payout_id}, {"_id": 0})
+            if fresh:
+                asyncio.create_task(_confirmer_versement_envoye(fresh))
     return {"status": mapped, "np_status": np_status}
 
 

@@ -1744,14 +1744,24 @@ async def affiliate_ensure_indexes():
     await s.db.affiliate_payouts.create_index(
         [("affiliate_id", 1), ("period", 1)], unique=True,
     )
-    # Un avis de versement par affilie et par periode. C'est l'INDEX qui rend
+    # Un avis par affilie, par periode ET PAR TYPE. C'est l'INDEX qui rend
     # l'idempotence structurelle : un planificateur qui rejoue, un serveur qui
     # redemarre au mauvais moment, un run admin lance en double, et l'affilie
     # recevrait deux fois le meme courriel annoncant la meme somme. Une
     # verification applicative perdrait la course entre deux runs.
+    #
+    # `kind` est arrive avec le second avis : l'annonce du calcul, puis la
+    # confirmation de l'envoi. Sans lui, la cle (affilie, periode) bloquait le
+    # second — l'affilie apprenait qu'il serait paye, jamais qu'il l'avait ete.
+    await _retirer_index_redondant(
+        s.db.affiliate_payout_notices, "affiliate_id_1_period_1",
+        "affiliate_id_1_period_1_kind_1")
     await s.db.affiliate_payout_notices.create_index(
-        [("affiliate_id", 1), ("period", 1)], unique=True,
+        [("affiliate_id", 1), ("period", 1), ("kind", 1)], unique=True,
     )
+    # Un avis est une trace, pas un registre : deux ans suffisent a repondre
+    # « est-ce que je l'ai prevenu », au-dela c'est du poids.
+    await _index_ttl(s.db.affiliate_payout_notices, "expires_at")
     # Menage unique des index devenus inutiles. Idempotent : une fois retires,
     # les passages suivants ne trouvent plus rien a faire.
     await _retirer_index_redondant(
@@ -2002,9 +2012,11 @@ async def _annoncer_versement_du_cycle(
         "affiliate_code": aff.get("code"),
         "affiliate_email": aff.get("email"),
         "period": period,
+        "kind": "annonce",
         "amount_cad": round(float(amount_cad), 2),
         "referral_count": int(referral_count),
         "created_at": now.isoformat(),
+        "expires_at": now + timedelta(days=730),
         "email_status": "pending",
     }
     try:
@@ -2110,6 +2122,145 @@ async def _annoncer_versement_du_cycle(
         )
         logging.error("[payout-notice] envoi impossible affiliate=%s period=%s",
                       aff.get("id"), period)
+        return False
+
+
+async def _confirmer_versement_envoye(payout: dict) -> bool:
+    """Confirme a l'affilie que son versement est PARTI, avec sa reference.
+
+    L'annonce dit « vous serez paye avant le 6 ». Elle ne dit pas que ca a eu
+    lieu. Entre les deux, l'affilie n'a que le silence et son solde qui passe
+    a zero : il ne peut ni verifier sa reception, ni la reclamer, ni meme
+    savoir a quelle date se fier si son portefeuille tarde a afficher.
+
+    La REFERENCE est le coeur du message : c'est elle qui permet de retrouver
+    la transaction sur la chaine sans nous ecrire. Sans elle, ce courriel ne
+    vaudrait qu'une politesse.
+
+    Idempotent par (affilie, periode, "confirmation"). Une panne d'envoi ne
+    remet jamais le versement en cause : il est parti, le courriel n'est que
+    la nouvelle.
+    """
+    if not getattr(s, "AFFILIATE_PAYOUT_NOTICE_ENABLED", True):
+        return False
+
+    affiliate_id = payout.get("affiliate_id")
+    period = payout.get("period")
+    if not affiliate_id or not period:
+        return False
+
+    aff = await s.db.affiliates.find_one({"id": affiliate_id}, {"_id": 0})
+    if not aff:
+        return False
+
+    now = datetime.now(timezone.utc)
+    reference = str(payout.get("reference") or "").strip()
+    avis = {
+        "id": str(uuid.uuid4()),
+        "affiliate_id": affiliate_id,
+        "affiliate_code": aff.get("code"),
+        "affiliate_email": aff.get("email"),
+        "period": period,
+        "kind": "confirmation",
+        "amount_cad": round(float(payout.get("amount_cad") or 0.0), 2),
+        "reference": reference,
+        "payout_id": payout.get("id"),
+        "created_at": now.isoformat(),
+        "expires_at": now + timedelta(days=730),
+        "email_status": "pending",
+    }
+    try:
+        await s.db.affiliate_payout_notices.insert_one(avis)
+    except DuplicateKeyError:
+        return False
+    except Exception as e:
+        logging.warning("[payout-notice] confirmation non enregistree : %s", type(e).__name__)
+        return False
+
+    courriel = (aff.get("email") or "").strip()
+    if not courriel:
+        await s.db.affiliate_payout_notices.update_one(
+            {"id": avis["id"]}, {"$set": {"email_status": "skipped_no_email"}})
+        return False
+
+    lang = (aff.get("preferred_lang") or "fr").lower()
+    prenom = aff.get("first_name") or aff.get("name") or ""
+    montant = f"{float(payout.get('amount_cad') or 0.0):.2f} $ CAD"
+    devise = str(payout.get("currency") or "").upper()
+    quantite = payout.get("amount")
+    envoye = f"{quantite} {devise}".strip() if quantite and devise else ""
+
+    sujet = (f"FIRONOVA — Votre versement d'affilie de {period} est parti"
+             if lang == "fr"
+             else f"FIRONOVA — Your {period} affiliate payout has been sent")
+
+    bonjour_fr = f"Bonjour {prenom}," if prenom else "Bonjour,"
+    bonjour_en = f"Hello {prenom}," if prenom else "Hello,"
+
+    # La reference n'apparait que si elle existe : une ligne « Reference : »
+    # vide vaut moins que pas de ligne du tout.
+    ref_fr = (f'<p style="margin:0 0 16px">Reference de la transaction :<br>'
+              f'<code style="font-size:13px;word-break:break-all">{reference}</code></p>'
+              if reference else "")
+    ref_en = (f'<p style="margin:0 0 16px">Transaction reference:<br>'
+              f'<code style="font-size:13px;word-break:break-all">{reference}</code></p>'
+              if reference else "")
+    envoye_fr = f" ({envoye})" if envoye else ""
+
+    corps_fr = f"""
+      <p style="margin:0 0 16px">{bonjour_fr}</p>
+      <p style="margin:0 0 16px">
+        Votre versement pour la période <strong>{period}</strong> a été envoyé :
+        <strong>{montant}</strong>{envoye_fr}, à l'adresse enregistrée dans votre
+        tableau de bord.
+      </p>
+      {ref_fr}
+      <p style="margin:0 0 16px">
+        Selon le réseau, la réception peut prendre quelques minutes. Si rien
+        n'apparaît après 24 heures, répondez à ce courriel avec la référence
+        ci-dessus.
+      </p>
+    """
+    corps_en = f"""
+      <p style="margin:0 0 16px">{bonjour_en}</p>
+      <p style="margin:0 0 16px">
+        Your payout for period <strong>{period}</strong> has been sent:
+        <strong>{montant}</strong>{envoye_fr}, to the address saved in your dashboard.
+      </p>
+      {ref_en}
+      <p style="margin:0 0 16px">
+        Depending on the network, arrival can take a few minutes. If nothing
+        shows up after 24 hours, reply to this email with the reference above.
+      </p>
+    """
+    corps = corps_fr if lang == "fr" else corps_en
+
+    html = f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#F5F1EA;font-family:Inter,Arial,sans-serif;color:#0B2E4F">
+  <table style="max-width:600px;margin:24px auto;background:#fff;border:1px solid #E5DED0;border-radius:8px;overflow:hidden">
+    <tr><td style="background:#0B2E4F;color:#fff;padding:20px 28px;font-family:monospace;letter-spacing:3px;font-size:14px">FIRONOVA · AFFILIATE PROGRAM</td></tr>
+    <tr><td style="padding:32px 28px;font-size:14px;line-height:1.6">
+      {corps}
+    </td></tr>
+    <tr><td style="background:#0B2E4F;color:#fff;padding:14px 28px;font-family:monospace;font-size:10px;letter-spacing:2px">FIRONOVA · CANADA · {now.strftime("%Y")}</td></tr>
+  </table>
+</body></html>"""
+
+    try:
+        await s._send_email(courriel, sujet, html)
+        await s.db.affiliate_payout_notices.update_one(
+            {"id": avis["id"]},
+            {"$set": {"email_status": "queued",
+                      "email_queued_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        return True
+    except Exception as e:
+        await s.db.affiliate_payout_notices.update_one(
+            {"id": avis["id"]},
+            {"$set": {"email_status": "failed", "email_error": type(e).__name__}},
+        )
+        logging.error("[payout-notice] confirmation non envoyee affiliate=%s period=%s",
+                      affiliate_id, period)
         return False
 
 

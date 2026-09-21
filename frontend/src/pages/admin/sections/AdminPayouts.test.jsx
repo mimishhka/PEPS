@@ -361,3 +361,52 @@ describe("AdminPayouts — cycles passes", () => {
     expect(ligne.textContent).not.toMatch(/T\d{2}:\d{2}:\d{2}/);
   });
 });
+
+
+describe("AdminPayouts — les avis envoyés", () => {
+  const CYCLE = {
+    period: "2026-08", due_by: "2026-09-06T04:00:00+00:00", total_cad: 412.5,
+    affiliates: 3, referrals: 7, sent: 2, pending: 1,
+    first_sent_at: "2026-09-02T14:00:00+00:00",
+    last_sent_at: "2026-09-04T16:00:00+00:00",
+    days_late: null, on_time: null,
+  };
+
+  it("compare les avis partis au nombre d affilies du cycle", async () => {
+    reponses({ cycles: [{ ...CYCLE, notices_announced: 3, notices_confirmed: 2 }] });
+    render(<AdminPayouts />);
+
+    const cellule = await screen.findByTestId("cycle-avis-2026-08");
+    expect(cellule).toHaveTextContent("3/3 annoncé");
+    expect(cellule).toHaveTextContent("2/2 confirmé");
+  });
+
+  it("signale en ambre l affilie reste sans nouvelle", async () => {
+    // Un courriel qui echoue le fait en silence. Deux affilies prevenus sur
+    // trois, c'est une question a poser tout de suite.
+    reponses({ cycles: [{ ...CYCLE, notices_announced: 2, notices_confirmed: 2 }] });
+    render(<AdminPayouts />);
+
+    const cellule = await screen.findByTestId("cycle-avis-2026-08");
+    expect(cellule.querySelector(".text-warning")).not.toBeNull();
+    expect(cellule).toHaveTextContent("2/3 annoncé");
+  });
+
+  it("ne parle pas de confirmation tant que rien n est parti", async () => {
+    reponses({ cycles: [{ ...CYCLE, sent: 0, notices_announced: 3,
+                          notices_confirmed: 0 }] });
+    render(<AdminPayouts />);
+
+    const cellule = await screen.findByTestId("cycle-avis-2026-08");
+    expect(cellule).toHaveTextContent("3/3 annoncé");
+    expect(cellule).not.toHaveTextContent("confirmé");
+  });
+
+  it("affiche zéro plutôt que rien quand le serveur est muet", async () => {
+    reponses({ cycles: [CYCLE] });
+    render(<AdminPayouts />);
+
+    expect(await screen.findByTestId("cycle-avis-2026-08"))
+      .toHaveTextContent("0/3 annoncé");
+  });
+});

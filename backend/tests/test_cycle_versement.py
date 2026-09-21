@@ -319,12 +319,17 @@ def test_une_periode_illisible_ne_fabrique_pas_de_date(server_module, periode):
     assert server_module._echeance_pour_periode(periode) is None
 
 
-def _brancher_cycles(server_module, lignes):
+def _brancher_cycles(server_module, lignes, avis=()):
     class Payouts:
         def aggregate(self, pipeline):
             return _Curseur(lignes)
 
-    server_module.db = SimpleNamespace(affiliate_payouts=Payouts())
+    class Notices:
+        def aggregate(self, pipeline):
+            return _Curseur(list(avis))
+
+    server_module.db = SimpleNamespace(
+        affiliate_payouts=Payouts(), affiliate_payout_notices=Notices())
 
 
 def test_un_cycle_parti_dans_les_temps_ne_porte_aucun_retard(server_module):
@@ -398,3 +403,53 @@ def test_une_agregation_en_panne_rend_une_liste_vide(server_module):
 
     assert out["cycles"] == []
     assert out["due_days"] == 5
+
+
+def test_le_cycle_dit_combien_d_affilies_ont_ete_prevenus(server_module):
+    # Un courriel qui echoue le fait en silence, et c'est exactement le mois
+    # ou quelqu'un demande pourquoi il n'a rien recu.
+    _brancher_cycles(
+        server_module,
+        [{"_id": "2026-08", "total_cad": 412.5, "affiliates": 3, "referrals": 7,
+          "sent": 2, "first_sent_at": "2026-09-02T14:00:00+00:00",
+          "last_sent_at": "2026-09-04T16:00:00+00:00"}],
+        avis=[{"_id": {"period": "2026-08", "kind": "annonce"}, "n": 3},
+              {"_id": {"period": "2026-08", "kind": "confirmation"}, "n": 1}],
+    )
+
+    c = asyncio.run(server_module.admin_affiliate_cycles({}))["cycles"][0]
+
+    assert c["notices_announced"] == 3
+    assert c["notices_confirmed"] == 1
+
+
+def test_sans_avis_les_compteurs_valent_zero_et_pas_None(server_module):
+    # Zero se compare a `affiliates` ; None ne se compare a rien.
+    _brancher_cycles(server_module, [{
+        "_id": "2026-08", "total_cad": 10.0, "affiliates": 1, "referrals": 1,
+        "sent": 1, "first_sent_at": None, "last_sent_at": None}])
+
+    c = asyncio.run(server_module.admin_affiliate_cycles({}))["cycles"][0]
+
+    assert c["notices_announced"] == 0
+    assert c["notices_confirmed"] == 0
+
+
+def test_une_panne_du_releve_des_avis_ne_vide_pas_les_cycles(server_module):
+    class Payouts:
+        def aggregate(self, pipeline):
+            return _Curseur([{"_id": "2026-08", "total_cad": 10.0, "affiliates": 1,
+                              "referrals": 1, "sent": 1,
+                              "first_sent_at": None, "last_sent_at": None}])
+
+    class Notices:
+        def aggregate(self, pipeline):
+            raise RuntimeError("mongo indisponible")
+
+    server_module.db = SimpleNamespace(
+        affiliate_payouts=Payouts(), affiliate_payout_notices=Notices())
+
+    out = asyncio.run(server_module.admin_affiliate_cycles({}))
+
+    assert len(out["cycles"]) == 1
+    assert out["cycles"][0]["notices_announced"] == 0

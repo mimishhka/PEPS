@@ -53,7 +53,11 @@ class _Avis:
         self._cles = set(deja)
 
     async def insert_one(self, doc):
-        cle = (doc.get("affiliate_id"), doc.get("period"))
+        # La cle DOIT suivre l'index reel : (affilie, periode, type). Tant
+        # qu'elle ignorait `kind`, la doublure refusait la confirmation comme
+        # un doublon de l'annonce — le defaut meme que `kind` est venu
+        # corriger, reproduit dans le test cense le surveiller.
+        cle = (doc.get("affiliate_id"), doc.get("period"), doc.get("kind"))
         if cle in self._cles:
             from pymongo.errors import DuplicateKeyError
             raise DuplicateKeyError("avis deja envoye")
@@ -223,3 +227,135 @@ def test_un_versement_mis_en_revue_n_annonce_aucune_date(server_module):
         assert re.search(r"revendiquees\.modified_count", avant_l_appel), (
             "l'avis part sans verifier que le versement est complet"
         )
+
+
+# ------------------------------------------- la confirmation de l'envoi -----
+
+VERSEMENT = {
+    "id": "p-1", "affiliate_id": "a-1", "period": "2026-08",
+    "amount_cad": 412.5, "amount": 305.12, "currency": "usdt",
+    "reference": "0xabc123def456", "status": "paid",
+}
+
+
+# `affiliation` n'est pas utilise ici, mais la signature suit celle de
+# `_brancher` : deux aides voisines appelees differemment, c'est le genre
+# de detail qui fait passer un module pour une collection.
+def _brancher_confirmation(server_module, affiliation=None, avis=None,
+                           envoyer=None, affilie=AFFILIE):
+    envois = []
+
+    async def _send_email(destinataire, sujet, html):
+        if envoyer:
+            return envoyer(destinataire, sujet, html)
+        envois.append({"a": destinataire, "sujet": sujet, "html": html})
+
+    class Affilies:
+        async def find_one(self, filtre, projection=None):
+            return affilie
+
+    avis = avis if avis is not None else _Avis()
+    server_module.db = SimpleNamespace(
+        affiliate_payout_notices=avis, affiliates=Affilies())
+    server_module._send_email = _send_email
+    return avis, envois
+
+
+def test_la_confirmation_porte_la_reference_de_transaction(server_module, affiliation):
+    # Sans la reference, ce courriel ne vaudrait qu'une politesse : c'est elle
+    # qui permet de retrouver l'envoi sans nous ecrire.
+    avis, envois = _brancher_confirmation(server_module, affiliation)
+
+    parti = asyncio.run(affiliation._confirmer_versement_envoye(VERSEMENT))
+
+    assert parti is True
+    corps = envois[0]["html"]
+    assert "0xabc123def456" in corps
+    assert "412.50 $ CAD" in corps
+    assert "305.12 USDT" in corps
+    assert "est parti" in envois[0]["sujet"]
+
+
+def test_sans_reference_la_ligne_disparait_au_lieu_d_etre_vide(server_module, affiliation):
+    # Une ligne « Reference : » vide vaut moins que pas de ligne du tout.
+    avis, envois = _brancher_confirmation(server_module, affiliation)
+
+    asyncio.run(affiliation._confirmer_versement_envoye({**VERSEMENT, "reference": ""}))
+
+    assert "Reference de la transaction" not in envois[0]["html"]
+
+
+def test_annonce_et_confirmation_coexistent_pour_le_meme_mois(server_module, affiliation):
+    # C'est tout l'objet de `kind` : la cle (affilie, periode) bloquait le
+    # second avis, donc l'affilie apprenait qu'il serait paye, jamais qu'il
+    # l'avait ete.
+    avis = _Avis()
+
+    class Affilies:
+        async def find_one(self, filtre, projection=None):
+            return AFFILIE
+
+    envois = []
+
+    async def _send_email(destinataire, sujet, html):
+        envois.append(sujet)
+
+    server_module.db = SimpleNamespace(
+        affiliate_payout_notices=avis, affiliates=Affilies())
+    server_module._send_email = _send_email
+
+    asyncio.run(affiliation._annoncer_versement_du_cycle(AFFILIE, "2026-08", 412.5, 7))
+    asyncio.run(affiliation._confirmer_versement_envoye(VERSEMENT))
+
+    assert len(envois) == 2
+    types = [d.get("kind") for d in avis.inserts]
+    assert types == ["annonce", "confirmation"]
+
+
+def test_une_confirmation_ne_part_qu_une_fois(server_module, affiliation):
+    avis, envois = _brancher_confirmation(server_module, affiliation)
+
+    premier = asyncio.run(affiliation._confirmer_versement_envoye(VERSEMENT))
+    second = asyncio.run(affiliation._confirmer_versement_envoye(VERSEMENT))
+
+    assert (premier, second) == (True, False)
+    assert len(envois) == 1
+
+
+def test_l_interrupteur_coupe_aussi_la_confirmation(server_module, affiliation, monkeypatch):
+    avis, envois = _brancher_confirmation(server_module, affiliation)
+    monkeypatch.setattr(server_module, "AFFILIATE_PAYOUT_NOTICE_ENABLED", False)
+
+    assert asyncio.run(affiliation._confirmer_versement_envoye(VERSEMENT)) is False
+    assert envois == []
+
+
+def test_un_affilie_disparu_ne_fait_pas_tomber_le_versement(server_module, affiliation):
+    avis, envois = _brancher_confirmation(server_module, affiliation, affilie=None)
+
+    assert asyncio.run(affiliation._confirmer_versement_envoye(VERSEMENT)) is False
+    assert envois == []
+
+
+def test_les_avis_expirent_au_bout_de_deux_ans(server_module, affiliation):
+    # Un avis est une trace, pas un registre : deux ans suffisent a repondre
+    # « est-ce que je l'ai prevenu ».
+    from datetime import datetime, timezone
+    avis, _ = _brancher_confirmation(server_module, affiliation)
+    asyncio.run(affiliation._confirmer_versement_envoye(VERSEMENT))
+
+    peremption = avis.inserts[0]["expires_at"]
+    jours = (peremption - datetime.now(timezone.utc)).days
+    assert 729 <= jours <= 731
+
+
+def test_les_deux_chemins_de_paiement_confirment(server_module):
+    # Un affilie paye par le fournisseur n'a aucune raison d'etre moins
+    # informe que celui paye a la main — et c'est justement le chemin ou
+    # personne ne le fera a sa place.
+    import inspect
+    manuel = inspect.getsource(server_module.admin_affiliate_mark_paid)
+    synchro = inspect.getsource(server_module.admin_payout_status)
+
+    assert "_confirmer_versement_envoye" in manuel
+    assert "_confirmer_versement_envoye" in synchro
