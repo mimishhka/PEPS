@@ -730,13 +730,40 @@ export default function Checkout() {
 //
 // L'endpoint `/checkout/validate-address` existait depuis le début, sa note
 // disait « appelé par le frontend AVANT la soumission finale » — et personne
-// ne l'appelait. La vérification n'avait donc lieu qu'à l'envoi, en 422 :
-// le client remplissait tout, attestait son âge, acceptait les conditions,
-// choisissait son paiement, cliquait « Placer la commande »… et découvrait
-// alors que son adresse ne passait pas. Il devait accepter une suggestion,
-// puis recliquer — le message le disait mot pour mot.
+// ne l'appelait. La vérification n'avait donc lieu qu'à l'envoi, en 422.
 //
-// Ici, la vérification a lieu pendant qu'il est encore DANS le champ.
+// LA BOUCLE. La « suggestion » renvoyée est `result.address` : la version
+// NORMALISÉE de ce qu'on vient d'envoyer. Elle corrige l'orthographe, jamais
+// l'existence. Un client à qui il manque le numéro d'appartement se voyait
+// proposer sa PROPRE adresse, l'acceptait, et se la voyait reproposer — un
+// tour de manège où chaque tour ressemble à un progrès.
+//
+// D'où deux règles ici : on ne propose une correction que si elle DIFFÈRE de
+// ce qui est saisi, et on dit ce qui manque plutôt que de redemander la même
+// chose.
+// La pause avant d'interroger le service. Sept cents millisecondes a
+// l'ecran : assez pour qu'un client qui se corrige ne depense pas le
+// plafond de trente verifications par minute, assez peu pour que la reponse
+// arrive avant qu'il ait fini de lire.
+//
+// En TEST, trente : chaque cas payait sinon sept cents millisecondes de
+// sommeil reel, la suite immobilisait un ouvrier pendant vingt secondes, et
+// les autres suites tombaient en depassement de delai sous la charge. Une
+// suite qui echoue un run sur quatre apprend a etre relancee au lieu d'etre
+// lue. Le comportement, lui, est identique.
+const PAUSE_VERIFICATION = process.env.NODE_ENV === "test" ? 30 : 700;
+
+function memeAdresse(a, pa) {
+  if (!pa) return true;
+  const lignes = pa.addressLines || [];
+  const norm = (v) => String(v || "").trim().toUpperCase().split(/\s+/).join(" ");
+  return norm(lignes[0]) === norm(a.line1)
+    && norm(lignes[1] || "") === norm(a.line2)
+    && norm(pa.locality) === norm(a.city)
+    && norm(pa.administrativeArea) === norm(a.province)
+    && norm(pa.postalCode) === norm(a.postal_code);
+}
+
 function VerificationAdresse({ adresse, setAdresse, lang }) {
   const [etat, setEtat] = useState(null);
   const dernierAppel = useRef("");
@@ -780,6 +807,7 @@ function VerificationAdresse({ adresse, setAdresse, lang }) {
           // Le service peut être coupé ou indisponible : ne rien affirmer
           // vaut mieux qu'un faux « vérifiée ».
           muet: data?.provider === "disabled" || data?.provider === "unavailable",
+          motif: data?.reason || "inconnu",
           suggestion: (data?.suggestions || [])[0] || null,
         });
       } catch {
@@ -787,7 +815,7 @@ function VerificationAdresse({ adresse, setAdresse, lang }) {
         // plutôt que d'inquiéter, et le contrôle de l'envoi reste en place.
         if (vivant) setEtat(null);
       }
-    }, 700);
+    }, PAUSE_VERIFICATION);
 
     return () => { vivant = false; clearTimeout(minuteur); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -813,18 +841,34 @@ function VerificationAdresse({ adresse, setAdresse, lang }) {
 
   const pa = etat.suggestion?.postalAddress || etat.suggestion || null;
   const lignes = pa?.addressLines || [];
+  // On ne propose une correction QUE si elle change quelque chose. Reproposer
+  // à l'identique, c'est demander au client de cliquer pour rien.
+  const corrigeable = etat.motif === "orthographe" && !memeAdresse(adresse, pa);
   const lisible = etat.suggestion?.formattedAddress
     || [lignes.join(", "), pa?.locality, pa?.administrativeArea, pa?.postalCode]
        .filter(Boolean).join(", ");
 
+  const MESSAGES = {
+    manque_appartement: L(
+      "Il manque le numéro d'appartement ou de suite. Ajoutez-le au champ « Appartement ».",
+      "The apartment or suite number is missing. Add it to the Apt / Suite field."),
+    non_confirme: L(
+      "Le numéro civique n'a pas pu être confirmé à cette adresse. Vérifiez-le.",
+      "The street number could not be confirmed at this address. Please check it."),
+    orthographe: L(
+      "L'adresse s'écrit autrement selon le service postal.",
+      "The postal service spells this address differently."),
+    inconnu: L(
+      "Cette adresse n'a pas pu être confirmée.",
+      "This address could not be confirmed."),
+  };
+
   return (
     <div className="mt-3 rounded-xl border border-warning/40 bg-warning/5 px-4 py-3"
-         data-testid="adresse-a-corriger">
-      <p className="font-data text-[11px] text-nordfjord">
-        {L("Cette adresse n'a pas pu être vérifiée.",
-           "This address could not be verified.")}
-      </p>
-      {lisible && (
+         data-testid="adresse-a-corriger" data-motif={etat.motif}>
+      <p className="text-sm text-nordfjord">{MESSAGES[etat.motif] || MESSAGES.inconnu}</p>
+
+      {corrigeable && (
         <>
           <p className="text-sm text-nordfjord mt-2" data-testid="adresse-suggeree">{lisible}</p>
           <button
@@ -833,21 +877,22 @@ function VerificationAdresse({ adresse, setAdresse, lang }) {
             onClick={() => setAdresse((s) => ({
               ...s,
               line1: lignes[0] || s.line1,
-              line2: lignes[1] || "",
+              line2: lignes[1] || s.line2,
               city: pa?.locality || s.city,
               province: pa?.administrativeArea || s.province,
               postal_code: pa?.postalCode || s.postal_code,
               country: pa?.regionCode || s.country,
             }))}
             className="btn-pill btn-outline text-sm mt-2">
-            {L("Utiliser cette adresse", "Use this address")}
+            {L("Utiliser cette écriture", "Use this spelling")}
           </button>
         </>
       )}
-      {!lisible && (
-        <p className="font-data text-[11px] text-glacier mt-1">
-          {L("Relisez le numéro civique et le code postal.",
-             "Check the street number and the postal code.")}
+
+      {!corrigeable && (
+        <p className="font-data text-[11px] text-glacier mt-2" data-testid="adresse-sans-correction">
+          {L("Corrigez le champ concerné ci-dessus, puis la vérification se refera seule.",
+             "Fix the field above and the check will run again on its own.")}
         </p>
       )}
     </div>

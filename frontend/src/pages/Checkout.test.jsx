@@ -51,7 +51,7 @@ const remplirAdresse = async () => {
 // CRA : chaque frappe attend un avancement qui ne vient jamais, et le test
 // expire a 5 s sans rien dire de plus. La pause avant verification est de
 // 700 ms, donc les attentes portent un delai explicite.
-const ATTENTE = { timeout: 4000 };
+const ATTENTE = { timeout: 3000 };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -66,7 +66,7 @@ beforeEach(() => {
   api.post.mockResolvedValue({ data: { valid: true, suggestions: [], provider: "google_maps" } });
 });
 
-jest.setTimeout(20000);
+jest.setTimeout(15000);
 
 it("le code postal remplit la province tout seul", async () => {
   render(<Checkout />);
@@ -106,21 +106,6 @@ it("vérifie l adresse sans attendre le bouton de commande", async () => {
   await waitFor(() => expect(screen.getByTestId("adresse-verifiee")).toBeInTheDocument(), ATTENTE);
 });
 
-it("propose la correction dans le formulaire, pas après le paiement", async () => {
-  api.post.mockResolvedValue({ data: { valid: false, provider: "google_maps",
-    suggestions: [{ formattedAddress: "123 Rue Saint-Denis, Montréal, QC H2X 1Y4",
-      postalAddress: { addressLines: ["123 Rue Saint-Denis"], locality: "Montréal",
-                       administrativeArea: "QC", postalCode: "H2X 1Y4", regionCode: "CA" } }] } });
-  render(<Checkout />);
-  await remplirAdresse();
-
-  await screen.findByTestId("adresse-a-corriger", {}, ATTENTE);
-  await userEvent.click(screen.getByTestId("adresse-appliquer"));
-
-  expect(screen.getByTestId("shipping-city")).toHaveValue("Montréal");
-  expect(screen.getByTestId("shipping-line1")).toHaveValue("123 Rue Saint-Denis");
-});
-
 it("ne dit rien quand le service est coupé", async () => {
   // Sans clé, le serveur répond « disabled » et laisse tout passer. Afficher
   // « adresse vérifiée » serait un mensonge.
@@ -149,6 +134,68 @@ it("n interroge pas le service sur une adresse incomplète", async () => {
   render(<Checkout />);
   await userEvent.type(screen.getByTestId("shipping-line1"), "123 rue Saint-Denis");
 
-  await new Promise((r) => setTimeout(r, 900));
+  await new Promise((r) => setTimeout(r, 200));
   expect(api.post).not.toHaveBeenCalledWith("/checkout/validate-address", expect.anything());
+});
+
+// LA BOUCLE. La « suggestion » renvoyée est l'adresse NORMALISÉE de ce qu'on
+// vient d'envoyer : elle corrige l'orthographe, jamais l'existence. Un client
+// à qui il manque le numéro d'appartement se voyait proposer sa propre
+// adresse, l'acceptait, et se la voyait reproposer.
+const SUGGESTION_IDENTIQUE = {
+  formattedAddress: "123 rue Saint-Denis, Montreal, QC H2X 1Y4",
+  postalAddress: { addressLines: ["123 rue Saint-Denis"], locality: "Montreal",
+                   administrativeArea: "QC", postalCode: "H2X 1Y4", regionCode: "CA" },
+};
+
+it("demande l appartement au lieu de reproposer la meme adresse", async () => {
+  api.post.mockResolvedValue({ data: { valid: false, provider: "google_maps",
+    reason: "manque_appartement", suggestions: [SUGGESTION_IDENTIQUE] } });
+  render(<Checkout />);
+  await remplirAdresse();
+
+  const bloc = await screen.findByTestId("adresse-a-corriger", {}, ATTENTE);
+  expect(bloc).toHaveTextContent("numéro d'appartement");
+  // Le bouton disparait : cliquer n'aurait rien change.
+  expect(screen.queryByTestId("adresse-appliquer")).not.toBeInTheDocument();
+});
+
+it("dit que le numero civique n est pas confirme", async () => {
+  api.post.mockResolvedValue({ data: { valid: false, provider: "google_maps",
+    reason: "non_confirme", suggestions: [SUGGESTION_IDENTIQUE] } });
+  render(<Checkout />);
+  await remplirAdresse();
+
+  const bloc = await screen.findByTestId("adresse-a-corriger", {}, ATTENTE);
+  expect(bloc).toHaveTextContent("numéro civique");
+  expect(screen.queryByTestId("adresse-appliquer")).not.toBeInTheDocument();
+});
+
+it("ne propose pas une correction identique a ce qui est saisi", async () => {
+  // Meme motif « orthographe » : si la suggestion ne change rien, le bouton
+  // ne sert a rien.
+  api.post.mockResolvedValue({ data: { valid: false, provider: "google_maps",
+    reason: "orthographe", suggestions: [SUGGESTION_IDENTIQUE] } });
+  render(<Checkout />);
+  await remplirAdresse();
+
+  await screen.findByTestId("adresse-a-corriger", {}, ATTENTE);
+  expect(screen.queryByTestId("adresse-appliquer")).not.toBeInTheDocument();
+  expect(screen.getByTestId("adresse-sans-correction")).toBeInTheDocument();
+});
+
+it("propose la correction quand elle change vraiment l adresse", async () => {
+  api.post.mockResolvedValue({ data: { valid: false, provider: "google_maps",
+    reason: "orthographe", suggestions: [{
+      formattedAddress: "123 Rue Saint-Denis, Montréal, QC H2X 1Y4",
+      postalAddress: { addressLines: ["123 Rue Saint-Denis"], locality: "Montréal",
+                       administrativeArea: "QC", postalCode: "H2X 1Y4", regionCode: "CA" },
+    }] } });
+  render(<Checkout />);
+  await remplirAdresse();
+
+  await screen.findByTestId("adresse-a-corriger", {}, ATTENTE);
+  await userEvent.click(screen.getByTestId("adresse-appliquer"));
+
+  expect(screen.getByTestId("shipping-city")).toHaveValue("Montréal");
 });

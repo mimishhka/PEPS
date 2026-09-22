@@ -139,4 +139,7 @@ async def checkout_validate_address(payload: s.ShippingAddress, request: Request
         "valid": result["valid"],
         "suggestions": result["suggestions"],
         "provider": result["provider"],
+        # Sans le motif, l'ecran ne peut que repeter « adresse invalide »
+        # et reproposer la meme correction indefiniment.
+        "reason": result.get("reason"),
     }

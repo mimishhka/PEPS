@@ -3415,6 +3415,34 @@ def _address_cache_key(addr: dict) -> str:
     return hashlib.sha256(json.dumps(canonical, sort_keys=True).encode()).hexdigest()
 
 
+def _motif_adresse(verdict: dict, normalized: Optional[dict]) -> str:
+    """Pourquoi l'adresse est refusee, en un mot que l'ecran sait traduire.
+
+    Google distingue trois situations que « adresse invalide » confondait :
+
+      manque_appartement — l'immeuble existe, l'unite n'est pas precisee.
+                           Proposer « utilisez cette adresse » ne changera
+                           rien : il faut DEMANDER le numero d'appartement.
+      non_confirme       — le numero civique ou la rue n'existent pas a
+                           cette adresse. Aucune normalisation ne repare ca.
+      orthographe        — la rue ou la ville s'ecrivent autrement. La,
+                           et la seulement, accepter la suggestion aide.
+    """
+    manquants = set((normalized or {}).get("missingComponentTypes") or [])
+    non_confirmes = set((normalized or {}).get("unconfirmedComponentTypes") or [])
+    suite = {"subpremise"}
+
+    if manquants & suite or verdict.get("possibleNextAction") == "CONFIRM_ADD_SUBPREMISES":
+        return "manque_appartement"
+    if non_confirmes & {"street_number", "route", "premise"}:
+        return "non_confirme"
+    if verdict.get("hasUnconfirmedComponents"):
+        return "non_confirme"
+    if verdict.get("hasReplacedComponents") or verdict.get("hasInferredComponents"):
+        return "orthographe"
+    return "inconnu"
+
+
 async def _validate_shipping_address_google(addr: dict) -> dict:
     """Appelle Google Maps Address Validation API. Retourne un dict :
       {
@@ -3495,6 +3523,17 @@ async def _validate_shipping_address_google(addr: dict) -> dict:
         "suggestions": [] if is_ok or not normalized else [normalized],
         "verdict": verdict,
         "normalized": normalized,
+        # LE MOTIF, ET PAS SEULEMENT LE REFUS.
+        #
+        # La « suggestion » renvoyee est `result.address` : la version
+        # NORMALISEE de ce qu'on vient d'envoyer. Elle corrige
+        # l'orthographe et la ponctuation, jamais l'existence. Un client
+        # a qui il manque le numero d'appartement se voyait donc proposer
+        # sa propre adresse, l'acceptait, et se la voyait reproposer :
+        # une boucle ou chaque tour ressemble a un progres.
+        #
+        # Nommer la cause permet de demander la BONNE chose.
+        "reason": _motif_adresse(verdict, normalized) if not is_ok else None,
         "provider": "google_maps",
         "response_id": data.get("responseId"),
     }
