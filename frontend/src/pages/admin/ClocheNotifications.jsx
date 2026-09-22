@@ -49,6 +49,9 @@ export function ClocheNotifications({ pouls, signaux, basePath, L, argent, surAc
             ? L(`${argent(v.amount)} · échéance dépassée`, `${argent(v.amount)} · deadline passed`)
             : L(`${argent(v.amount)} · ${v.days_left} jour(s)`, `${argent(v.amount)} · ${v.days_left} day(s)`))
         : "" },
+    { cle: "labels", n: pouls?.ops?.labels_failed || 0, vers: "dispatch", ton: "urgent",
+      texte: L("etiquette(s) refusee(s) par Postes Canada", "label(s) refused by Canada Post"),
+      detail: L("commande payee, non expediee", "paid order, not shipped") },
     { cle: "manifest", n: signaux?.pending_manifest || 0, vers: "dispatch", ton: "urgent",
       texte: L("étiquette(s) non transmise(s)", "label(s) not transmitted"),
       détail: L("surcharge de 2 $/article", "$2/item surcharge") },

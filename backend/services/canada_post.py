@@ -1283,6 +1283,28 @@ async def _auto_create_dispatch_label(order_id: str, service_code: Optional[str]
         asyncio.create_task(s.send_shipping_notification(fresh))
         return shipping_info
     except Exception as ex:
+        # L'ECHEC S'ECRIT SUR LA COMMANDE, plus seulement dans le journal.
+        #
+        # Une etiquette refusee ne laissait AUCUNE trace lisible : la
+        # commande restait « payee », son bloc d'expedition vide, et le
+        # veilleur la reprenait toutes les quinze secondes — indefiniment,
+        # contre une API payante, sans que rien a l'ecran ne le dise. Une
+        # adresse que Postes Canada refuse produisait donc une boucle
+        # silencieuse et une commande encaissee qu'on n'expedie pas.
+        #
+        # Le message est tronque : il porte parfois l'adresse entiere, et
+        # une note de commande n'est pas un journal.
+        motif = str(ex).strip().replace("\n", " ")[:300]
+        maintenant = datetime.now(timezone.utc).isoformat()
+        try:
+            await s.db.orders.update_one(
+                {"id": order["id"]},
+                {"$set": {"shipping_info.label_error": motif,
+                          "shipping_info.label_error_at": maintenant},
+                 "$inc": {"shipping_info.label_attempts": 1}},
+            )
+        except Exception:  # pragma: no cover
+            pass
         logging.error("auto label failed for %s: %s", order["order_number"], ex)
         return None
 
@@ -1294,6 +1316,17 @@ async def _auto_label_paid_orders_once() -> int:
             "fulfillment_status": {"$in": ["processing", "pending"]},
             "shipping_info.label_url": {"$in": [None, ""]},
             "shipping_info.tracking_number": {"$in": [None, ""]},
+            # LE VEILLEUR CESSE D'INSISTER apres quelques refus.
+            #
+            # Il reprenait la meme commande toutes les quinze secondes,
+            # pour toujours. Une adresse que Postes Canada refuse ne
+            # deviendra pas valide en la redemandant : au bout de
+            # CANADA_POST_LABEL_MAX_ATTEMPTS, la commande sort de la file
+            # et remonte dans « a traiter », ou un humain la corrige.
+            "$or": [
+                {"shipping_info.label_attempts": {"$exists": False}},
+                {"shipping_info.label_attempts": {"$lt": s.CANADA_POST_LABEL_MAX_ATTEMPTS}},
+            ],
         },
         {"_id": 0, "id": 1},
     ).sort("paid_at", 1)

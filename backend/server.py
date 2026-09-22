@@ -165,6 +165,11 @@ AFFILIATE_PAYOUT_NOTICE_ENABLED = os.environ.get(
 # a trois reprises n'est pas passagere : insister masquerait la vraie cause
 # derriere un compteur qui monte.
 AFFILIATE_NOTICE_MAX_ATTEMPTS = int(os.environ.get("AFFILIATE_NOTICE_MAX_ATTEMPTS", "3"))
+# Combien de fois redemander une etiquette a Postes Canada avant de
+# renoncer. Une adresse refusee ne deviendra pas valide en insistant :
+# passe ce compte, la commande sort de la file et remonte a l'ecran.
+CANADA_POST_LABEL_MAX_ATTEMPTS = int(
+    os.environ.get("CANADA_POST_LABEL_MAX_ATTEMPTS", "5"))
 PREORDER_RELEASE_INTERVAL_SECONDS = int(os.environ.get("PREORDER_RELEASE_INTERVAL_SECONDS", "300"))
 # Rabais % du coupon auto-lié à chaque affilié (0 = pas de coupon auto).
 AFFILIATE_COUPON_PERCENT = float(os.environ.get("AFFILIATE_COUPON_PERCENT", "10"))
@@ -7820,7 +7825,7 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
     # depasses — sans le moindre message.
     attente_lignes, recon_lignes, payes_lignes, to_ship, low_stock_rows, \
         late_payments, emails_failed, tickets_open, remboursements, \
-        cycle_affilie, avis_bloques = await asyncio.gather(
+        cycle_affilie, etiquettes_refusees, avis_bloques = await asyncio.gather(
         db.orders.aggregate([
             {"$match": {"payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto"]},
                         **SANS_CORBEILLE}},
@@ -7880,6 +7885,15 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
         # attend. Lance avec les autres lectures : le pouls est releve toutes
         # les minutes, il n'a pas les moyens d'un aller-retour de plus.
         _commissions_par_cycle(),
+        # Les commandes payees dont l'etiquette a ete refusee assez de
+        # fois pour que le veilleur renonce. Elles sont encaissees et
+        # non expediees : c'est la file la plus couteuse du systeme.
+        db.orders.count_documents({
+            "payment_status": "paid",
+            "fulfillment_status": {"$in": ["processing", "pending"]},
+            "shipping_info.label_attempts": {"$gte": CANADA_POST_LABEL_MAX_ATTEMPTS},
+            **SANS_CORBEILLE,
+        }),
         # Les avis d'affilies restes en echec au-dela de toute reprise.
         # Un affilie sans nouvelle ne se plaint qu'une fois — et jamais
         # au bon moment.
@@ -7951,6 +7965,7 @@ async def admin_dashboard_pulse(_admin: dict = Depends(require_area("dashboard",
                            and cycle_affilie.get("due_now", 0.0) > 0,
                 "due_by": cycle_affilie.get("due_by"),
             },
+            "labels_failed": etiquettes_refusees,
             "affiliate_notices_stuck": avis_bloques,
         },
     }
