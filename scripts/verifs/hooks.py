@@ -37,6 +37,12 @@ CROCHET = re.compile(
 SORTIE_IF = re.compile(r"^\s{2}if\s*\(")
 SORTIE_DIRECTE = re.compile(r"^\s{2}return\s+(?!\()")
 RETOUR_IMBRIQUE = re.compile(r"^\s{4}return\b")
+# Ouvre une portee : `function X`, mais aussi `const X = ...` de premier
+# niveau (forwardRef, memo, fleche). Voir composants().
+PORTEE = re.compile(
+    r"^(?:export\s+)?(?:default\s+)?function\s+((?:[A-Z]|use[A-Z])\w*)"
+    r"|^(?:export\s+)?(?:const|let|var)\s+((?:[A-Z]|use[A-Z])\w*)\s*="
+)
 
 
 def composants(lignes: list[str]) -> list[tuple[str, int, int]]:
@@ -50,11 +56,19 @@ def composants(lignes: list[str]) -> list[tuple[str, int, int]]:
     personnalise ecrit apres un composant portant une sortie anticipee voyait
     donc SES crochets attribues a ce composant, et la sonde refusait un
     fichier correct. Corrige apres l'avoir constate sur Checkout.jsx.
+
+    Un composant s'ecrit aussi `const X = React.forwardRef(...)` ou
+    `const X = () => {...}`, que `function X` ne couvre pas. Dans carousel.jsx,
+    seul `function useCarousel` etait reconnu : sa portee courait donc jusqu'a
+    la fin du fichier, son `return context` final passait pour une sortie
+    anticipee, et les crochets des CINQ composants suivants etaient signales.
+    Toute declaration de premier niveau ouvre donc une portee — le corps d'un
+    composant est indente, rien a la colonne 0 ne peut lui appartenir.
     """
     bornes = [
-        (m.group(1), i)
+        (m.group(1) or m.group(2), i)
         for i, l in enumerate(lignes)
-        if (m := re.match(r"^(?:export default )?function ((?:[A-Z]|use[A-Z])\w*)", l))
+        if (m := re.match(PORTEE, l))
     ]
     out = []
     for k, (nom, debut) in enumerate(bornes):
