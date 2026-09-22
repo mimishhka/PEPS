@@ -5,6 +5,7 @@ import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import { useConfirm } from "../components/ConfirmDialog";
 import useDocumentHead from "../hooks/useDocumentHead";
+import { delaiLisible, resteLisible } from "../lib/delais";
 
 const guestRequestConfig = (token) => token
   ? { headers: { "X-Order-Access-Token": token } }
@@ -46,17 +47,30 @@ export default function OrderConfirmation() {
     }
   }, [id, order, guestToken]);
 
-  // Countdown uses backend-stored deadline; falls back to 24h if absent.
+  // LE COMPTE À REBOURS SUIT L'ÉCHÉANCE DU SERVEUR, ET RIEN D'AUTRE.
+  //
+  // Il se repliait sur « created_at + 24 h » quand l'échéance manquait : un
+  // quatrième chiffre inventé, affiché avec le même aplomb que les autres.
+  // Sans échéance, on ne compte rien — un client sans compte à rebours pose
+  // la question ; un client avec un faux compte à rebours rate son paiement.
   useEffect(() => {
-    if (!order || !["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status)) return;
-    const deadline = order.payment_deadline
-      ? new Date(order.payment_deadline).getTime()
-      : new Date(order.created_at).getTime() + 24 * 3600 * 1000;
+    if (!order || !["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status)) return undefined;
+    if (!order.payment_deadline) { setRemainingMs(null); return undefined; }
+    const deadline = new Date(order.payment_deadline).getTime();
+    if (Number.isNaN(deadline)) { setRemainingMs(null); return undefined; }
     const tick = () => setRemainingMs(deadline - Date.now());
     tick();
-    const iv = setInterval(tick, 30000);
+    // Quinze secondes, pas trente : avec un délai de trente minutes, un
+    // rafraîchissement par demi-minute laisse l'affichage en retard sur la
+    // réalité au moment où elle compte le plus.
+    const iv = setInterval(tick, 15000);
     return () => clearInterval(iv);
   }, [order]);
+
+  // Le delai REEL de cette commande, tel que le serveur l'a fige a
+  // l'achat. Une commande d'hier garde le delai d'hier, meme si le
+  // reglage a change depuis : c'est ce qu'on a promis a ce client-la.
+  const delai = delaiLisible(order?.payment_ttl_hours, lang);
 
   // NOWPayments live status polling
   useEffect(() => {
@@ -257,19 +271,25 @@ export default function OrderConfirmation() {
           <span className="font-display font-bold text-xl leading-none" style={{ color: "#0B2E4F" }}>!</span>
           <div>
             <div className="font-mono text-[11px] uppercase tracking-[0.25em]" style={{ color: "#0B2E4F" }}>
-              {lang === "fr" ? "Paiement requis sous 12 heures" : "Payment required within 12 hours"}
+              {delai
+                ? (lang === "fr" ? `Paiement requis sous ${delai}` : `Payment required within ${delai}`)
+                : (lang === "fr" ? "Paiement requis" : "Payment required")}
             </div>
             <p className="mt-2 text-sm text-foreground/80 leading-relaxed">
-              {lang === "fr"
-                ? "Votre commande sera automatiquement annulée si le paiement n'est pas reçu dans les 12 heures."
-                : "Your order will be automatically cancelled if payment is not received within 12 hours."}
+              {delai
+                ? (lang === "fr"
+                    ? `Votre commande sera automatiquement annulée si le paiement n'est pas reçu dans un délai de ${delai}.`
+                    : `Your order will be automatically cancelled if payment is not received within ${delai}.`)
+                : (lang === "fr"
+                    ? "Votre commande sera automatiquement annulée si le paiement n'est pas reçu avant l'échéance ci-dessous."
+                    : "Your order will be automatically cancelled if payment is not received before the deadline below.")}
             </p>
             {remainingMs !== null && (
               <div className="mt-3 font-mono text-sm font-bold tracking-[0.1em]" data-testid="payment-countdown">
                 {remainingMs > 0
                   ? (lang === "fr"
-                      ? `⏳ Il vous reste ${Math.floor(remainingMs / 3600000)} h ${Math.floor((remainingMs % 3600000) / 60000)} min pour payer`
-                      : `⏳ You have ${Math.floor(remainingMs / 3600000)}h ${Math.floor((remainingMs % 3600000) / 60000)}min left to pay`)
+                      ? `⏳ Il vous reste ${resteLisible(remainingMs, "fr")} pour payer`
+                      : `⏳ You have ${resteLisible(remainingMs, "en")} left to pay`)
                   : (lang === "fr" ? "⚠ Délai expiré — la commande sera annulée." : "⚠ Deadline expired — the order will be cancelled.")}
               </div>
             )}
