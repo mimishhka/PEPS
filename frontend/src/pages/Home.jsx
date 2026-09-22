@@ -112,8 +112,28 @@ export default function Home() {
   // Reste l'intitule. Les produits se lisent tout seuls.
   const featTitle = lang === "fr" ? "Composés en vedette" : "Featured compounds";
   const featAll = lang === "fr" ? "Voir tout le catalogue" : "View full catalog";
+  // L'en-tete etait ecrit EN DUR en anglais : « Newsletter » s'affichait tel
+  // quel sur la version francaise, sur un commerce quebecois bilingue.
+  const newsEyebrow = lang === "fr" ? "INFOLETTRE" : "NEWSLETTER";
   const newsTitle = lang === "fr" ? "Sorties de lots & notes de recherche" : "Lot releases & research notes";
-  const newsLede = lang === "fr" ? "Un courriel précis par mois. Nouveaux lots, rapports de lots, réassorts. Conforme à la LCAP, désabonnement en tout temps." : "One precise email per month. New lots, lot reports, restocks. CASL-compliant, unsubscribe anytime.";
+  // AUCUNE FREQUENCE N'EST PROMISE.
+  //
+  // Le texte annoncait « un courriel precis par mois ». C'est la phrase qui
+  // rassure le plus — et celle qu'on regrette le plus tot : le mois ou il y a
+  // trois lots a annoncer, ou le mois ou il n'y a rien, la promesse est
+  // rompue. Une promesse tenue au hasard vaut moins que pas de promesse.
+  //
+  // « Conforme a la LCAP » est parti aussi : la case de consentement porte
+  // deja toute l'obligation legale, et l'acronyme rassure un juriste, pas une
+  // acheteuse.
+  //
+  // « rapports de lots » devient « certificats d'analyse » : c'est le mot que
+  // le reste du site emploie. Deux mots pour la meme chose sur une page, c'en
+  // est un de trop.
+  const newsLede = lang === "fr"
+    ? "Nouveaux lots, certificats d'analyse, r\u00e9assorts. D\u00e9sabonnez-vous \u00e0 tout moment."
+    : "New lots, certificates of analysis, restocks. Unsubscribe at any time.";
+  const newsLabel = lang === "fr" ? "Adresse courriel" : "Email address";
   const newsDone = lang === "fr" ? "Confirmé — vous êtes inscrit." : "Confirmed — you're on the list.";
 
   return (
@@ -225,21 +245,26 @@ export default function Home() {
             <div className="rounded-xl bg-nordfjord px-8 lg:px-16 py-16 relative overflow-hidden">
               <div className="absolute -right-16 -top-16 opacity-25"><FnMark size={260} frame="#00B8D4" spark="#00B8D4" /></div>
               <div className="relative max-w-2xl">
-                <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">Newsletter</p>
+                <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">{newsEyebrow}</p>
                 <h2 className="font-display text-[32px] font-semibold text-white mb-4">{newsTitle}</h2>
                 <p className="text-[#B7CADD] mb-9 leading-relaxed">{newsLede}</p>
                 {done ? (
                   <p className="inline-flex items-center gap-2.5 text-nova font-semibold"><Check size={18} /> {newsDone}</p>
                 ) : (
                   <form onSubmit={subscribe} className="space-y-4" data-testid="newsletter-form">
-                    <div className="flex flex-col sm:flex-row gap-3 bg-clinical rounded-full p-2">
-                      <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                        placeholder={t("home.newsletterPlaceholder")}
-                        className="flex-1 bg-transparent px-5 py-3 text-nordfjord outline-none text-[15px]"
-                        data-testid="newsletter-input" />
-                      <button type="submit" disabled={subBusy}
-                        className="btn-pill btn-nova disabled:opacity-40 disabled:pointer-events-none"
-                        data-testid="newsletter-submit">{t("home.subscribe")}</button>
+                    <div>
+                      <label htmlFor="newsletter-email" className="block text-[13px] font-semibold text-white mb-2">
+                        {newsLabel}
+                      </label>
+                      <div className="flex flex-col sm:flex-row gap-3 bg-clinical rounded-full p-2">
+                        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                          placeholder={t("home.newsletterPlaceholder")}
+                          className="flex-1 bg-transparent px-5 py-3 text-nordfjord outline-none text-[15px]"
+                          id="newsletter-email" data-testid="newsletter-input" />
+                        <button type="submit" disabled={subBusy}
+                          className="btn-pill btn-nova disabled:opacity-40 disabled:pointer-events-none"
+                          data-testid="newsletter-submit">{t("home.subscribe")}</button>
+                      </div>
                     </div>
                     <label className="flex items-start gap-3 text-[12px] text-[#8FB3C9] cursor-pointer select-none">
                       <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
