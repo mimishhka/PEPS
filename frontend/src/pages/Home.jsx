@@ -90,9 +90,27 @@ export default function Home() {
   const ctaSecondary = lang === "fr" ? "Nos standards" : "Our standards";
   const chip = lang === "fr" ? { lot: "LOT", purity: "PURETÉ", license: "LICENCE" } : { lot: "LOT", purity: "PURITY", license: "LICENSE" };
 
-  const featEyebrow = lang === "fr" ? "01 — COMPOSÉS EN VEDETTE" : "01 — FEATURED COMPOUNDS";
-  const featTitle = lang === "fr" ? "Une pureté documentée" : "Documented purity";
-  const featLede = lang === "fr" ? "Un catalogue restreint et rigoureux. Aucun bruit — chaque composé gagne sa place par une vérification indépendante." : "A tight, curated catalog. No noise — each compound earns its place with third-party verification.";
+  // CINQ CHOSES EMPILEES, RETIREES ENSEMBLE le 2026-09-22.
+  //
+  // « 01 — » numerotait une liste d'UN SEUL element : il n'y avait ni 02
+  // ni 03. De la structure decorative, qui imite un sommaire sans en etre
+  // un.
+  //
+  // « Une purete documentee » ne titrait pas ce qu'il surplombait : une
+  // GRILLE DE PRODUITS. Quelqu'un qui balaie la page veut savoir ce qu'il
+  // regarde, et lisait une qualite abstraite.
+  //
+  // « Aucun bruit » est du vocabulaire de design — pas de bruit VISUEL.
+  // Dans un catalogue de peptides, quel bruit ? Et « chaque compose gagne
+  // sa place » personnifie ce qui ne gagne rien.
+  //
+  // Surtout : la section REPETAIT le hero, qui annonce deja HPLC,
+  // laboratoire independant et certificat par lot. La meme affirmation
+  // deux fois dans le meme ecran de defilement n'ajoute pas, elle affaiblit
+  // la premiere — on comprend que c'est du remplissage.
+  //
+  // Reste l'intitule. Les produits se lisent tout seuls.
+  const featTitle = lang === "fr" ? "Composés en vedette" : "Featured compounds";
   const featAll = lang === "fr" ? "Voir tout le catalogue" : "View full catalog";
   const newsTitle = lang === "fr" ? "Sorties de lots & notes de recherche" : "Lot releases & research notes";
   const newsLede = lang === "fr" ? "Un courriel précis par mois. Nouveaux lots, rapports de lots, réassorts. Conforme à la LCAP, désabonnement en tout temps." : "One precise email per month. New lots, lot reports, restocks. CASL-compliant, unsubscribe anytime.";
@@ -181,11 +199,9 @@ export default function Home() {
       {/* FEATURED PRODUCTS */}
       <section className="py-24 lg:py-32" data-testid="featured-products">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <Reveal><p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">{featEyebrow}</p></Reveal>
           <div className="flex flex-wrap items-end justify-between gap-6 mb-14">
             <Reveal delay={60}>
               <h2 className="font-display text-[42px] font-semibold text-nordfjord leading-tight">{featTitle}</h2>
-              <p className="text-lg text-glacier max-w-xl mt-3">{featLede}</p>
             </Reveal>
             <Reveal delay={120}>
               <Link to="/catalog" data-testid="view-all-catalog" className="btn-pill btn-outline group">
