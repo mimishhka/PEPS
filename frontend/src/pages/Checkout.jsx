@@ -487,6 +487,10 @@ export default function Checkout() {
               </div>
             )}
             <AddressForm value={ship} setValue={setShip} lang={lang} prefix="shipping" />
+            {/* La verification a lieu ICI, pendant la saisie, et non a
+                l'envoi. Le controle serveur du checkout reste en place :
+                c'est lui la source de verite, celui-ci evite d'y arriver. */}
+            <VerificationAdresse adresse={ship} setAdresse={setShip} lang={lang} />
           </div>
 
           <div className="rounded-xl border border-ash bg-white p-5">
@@ -718,6 +722,134 @@ export default function Checkout() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// VÉRIFICATION DE L'ADRESSE PENDANT LA SAISIE.
+//
+// L'endpoint `/checkout/validate-address` existait depuis le début, sa note
+// disait « appelé par le frontend AVANT la soumission finale » — et personne
+// ne l'appelait. La vérification n'avait donc lieu qu'à l'envoi, en 422 :
+// le client remplissait tout, attestait son âge, acceptait les conditions,
+// choisissait son paiement, cliquait « Placer la commande »… et découvrait
+// alors que son adresse ne passait pas. Il devait accepter une suggestion,
+// puis recliquer — le message le disait mot pour mot.
+//
+// Ici, la vérification a lieu pendant qu'il est encore DANS le champ.
+function VerificationAdresse({ adresse, setAdresse, lang }) {
+  const [etat, setEtat] = useState(null);
+  const dernierAppel = useRef("");
+  const L = (fr, en) => (lang === "fr" ? fr : en);
+
+  // Inutile d'interroger un service pour une adresse dont on sait déjà
+  // qu'elle est incomplète. Le service ne juge que le Canada.
+  const prete = !!(
+    String(adresse.line1 || "").trim() &&
+    String(adresse.city || "").trim() &&
+    String(adresse.province || "").trim() &&
+    codePostalComplet(adresse.country, adresse.postal_code) &&
+    String(adresse.country || "").toUpperCase() === "CA"
+  );
+  const empreinte = prete
+    ? [adresse.line1, adresse.line2, adresse.city, adresse.province,
+       adresse.postal_code, adresse.country].join("|").toUpperCase()
+    : "";
+
+  useEffect(() => {
+    if (!empreinte) { setEtat(null); return undefined; }
+    if (dernierAppel.current === empreinte) return undefined;
+
+    // Une pause avant d'appeler : sans elle, chaque frappe du code postal
+    // partirait, et le plafond de 30 vérifications par minute tomberait sur
+    // un client qui se corrige.
+    let vivant = true;
+    const minuteur = setTimeout(async () => {
+      dernierAppel.current = empreinte;
+      setEtat({ enCours: true });
+      try {
+        const { data } = await api.post("/checkout/validate-address", {
+          full_name: adresse.full_name || "—",
+          address1: adresse.line1, address2: adresse.line2 || "",
+          city: adresse.city, province: adresse.province,
+          postal_code: adresse.postal_code, country: adresse.country,
+        });
+        if (!vivant) return;
+        setEtat({
+          valide: !!data?.valid,
+          // Le service peut être coupé ou indisponible : ne rien affirmer
+          // vaut mieux qu'un faux « vérifiée ».
+          muet: data?.provider === "disabled" || data?.provider === "unavailable",
+          suggestion: (data?.suggestions || [])[0] || null,
+        });
+      } catch {
+        // Un échec de vérification n'est pas une adresse invalide. On se tait
+        // plutôt que d'inquiéter, et le contrôle de l'envoi reste en place.
+        if (vivant) setEtat(null);
+      }
+    }, 700);
+
+    return () => { vivant = false; clearTimeout(minuteur); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empreinte]);
+
+  if (!etat || etat.muet) return null;
+
+  if (etat.enCours) {
+    return (
+      <p className="font-data text-[11px] text-glacier mt-2" data-testid="adresse-verification">
+        {L("Vérification de l'adresse…", "Checking the address…")}
+      </p>
+    );
+  }
+
+  if (etat.valide) {
+    return (
+      <p className="font-data text-[11px] text-success mt-2" data-testid="adresse-verifiee">
+        {L("Adresse vérifiée.", "Address verified.")}
+      </p>
+    );
+  }
+
+  const pa = etat.suggestion?.postalAddress || etat.suggestion || null;
+  const lignes = pa?.addressLines || [];
+  const lisible = etat.suggestion?.formattedAddress
+    || [lignes.join(", "), pa?.locality, pa?.administrativeArea, pa?.postalCode]
+       .filter(Boolean).join(", ");
+
+  return (
+    <div className="mt-3 rounded-xl border border-warning/40 bg-warning/5 px-4 py-3"
+         data-testid="adresse-a-corriger">
+      <p className="font-data text-[11px] text-nordfjord">
+        {L("Cette adresse n'a pas pu être vérifiée.",
+           "This address could not be verified.")}
+      </p>
+      {lisible && (
+        <>
+          <p className="text-sm text-nordfjord mt-2" data-testid="adresse-suggeree">{lisible}</p>
+          <button
+            type="button"
+            data-testid="adresse-appliquer"
+            onClick={() => setAdresse((s) => ({
+              ...s,
+              line1: lignes[0] || s.line1,
+              line2: lignes[1] || "",
+              city: pa?.locality || s.city,
+              province: pa?.administrativeArea || s.province,
+              postal_code: pa?.postalCode || s.postal_code,
+              country: pa?.regionCode || s.country,
+            }))}
+            className="btn-pill btn-outline text-sm mt-2">
+            {L("Utiliser cette adresse", "Use this address")}
+          </button>
+        </>
+      )}
+      {!lisible && (
+        <p className="font-data text-[11px] text-glacier mt-1">
+          {L("Relisez le numéro civique et le code postal.",
+             "Check the street number and the postal code.")}
+        </p>
+      )}
     </div>
   );
 }

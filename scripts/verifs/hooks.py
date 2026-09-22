@@ -40,11 +40,21 @@ RETOUR_IMBRIQUE = re.compile(r"^\s{4}return\b")
 
 
 def composants(lignes: list[str]) -> list[tuple[str, int, int]]:
-    """(nom, debut, fin) de chaque composant de premier niveau."""
+    """(nom, debut, fin) de chaque portee a crochets de premier niveau.
+
+    Un CROCHET PERSONNALISE (`function useQuelqueChose`) en est une au meme
+    titre qu'un composant : React y applique exactement la meme regle, et son
+    corps n'a rien a voir avec le composant qui le precede dans le fichier.
+
+    La sonde ne reconnaissait que les noms capitalises. Un crochet
+    personnalise ecrit apres un composant portant une sortie anticipee voyait
+    donc SES crochets attribues a ce composant, et la sonde refusait un
+    fichier correct. Corrige apres l'avoir constate sur Checkout.jsx.
+    """
     bornes = [
         (m.group(1), i)
         for i, l in enumerate(lignes)
-        if (m := re.match(r"^(?:export default )?function ([A-Z]\w*)", l))
+        if (m := re.match(r"^(?:export default )?function ((?:[A-Z]|use[A-Z])\w*)", l))
     ]
     out = []
     for k, (nom, debut) in enumerate(bornes):
