@@ -73,9 +73,19 @@ export default function Home() {
     ? { a: "Peptides de précision", b: "pour la recherche." }
     : { a: "Precision peptides", b: "for research." };
   const heroEyebrow = lang === "fr" ? "PEPTIDES DE RECHERCHE CANADIENS" : "CANADIAN RESEARCH PEPTIDES";
+  // La phrase « Sobriete nordique, conformite bilingue complete » a ete
+  // retiree le 2026-09-22. « Sobriete nordique » est un mot de CHARTE
+  // GRAPHIQUE — la palette s'appelle nordfjord, glacier, nova — et il
+  // decrivait donc a quoi ressemble le site, a quelqu'un qui est deja en
+  // train de le regarder. Il ne disait rien du produit.
+  //
+  // « Conformite bilingue » est une obligation legale au Quebec : tous les
+  // concurrents y sont tenus, ce n'est pas une raison d'acheter ici.
+  //
+  // Restent deux affirmations verifiables, que la troisieme diluait.
   const heroLede = lang === "fr"
-    ? "Testés par HPLC en laboratoire indépendant. Certificat d'analyse fourni pour les lots documentés. Sobriété nordique, conformité bilingue complète."
-    : "HPLC-tested by an independent lab. Certificate of analysis provided for documented lots. Nordic restraint, full bilingual compliance.";
+    ? "Testés par HPLC en laboratoire indépendant. Certificat d'analyse fourni pour les lots documentés."
+    : "HPLC-tested by an independent lab. Certificate of analysis provided for documented lots.";
   const ctaPrimary = lang === "fr" ? "Voir le catalogue" : "Browse the catalog";
   const ctaSecondary = lang === "fr" ? "Nos standards" : "Our standards";
   const chip = lang === "fr" ? { lot: "LOT", purity: "PURETÉ", license: "LICENCE" } : { lot: "LOT", purity: "PURITY", license: "LICENSE" };

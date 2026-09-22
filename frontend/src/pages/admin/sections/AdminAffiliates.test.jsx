@@ -457,12 +457,21 @@ describe("AdminAffiliates — conciliation des commissions", () => {
 
     // +40 % sur le CA, −10 % sur les commissions — la fleche et le nombre
     // vivent dans le meme element, le texte exact peut varier d'un espace.
-    // Le chargement passe par une Promise.all : laisser le temps aux etats
-    // de se poser avant de lire les KPI.
-    await new Promise((r) => setTimeout(r, 500));
+    // ATTENDRE LA CONDITION, PAS UNE DUREE.
+    //
+    // Il y avait ici `setTimeout(r, 500)`. Le chargement passe par une
+    // Promise.all de trois appels : sous charge, quand Jest fait tourner
+    // plusieurs suites en parallele, cinq cents millisecondes ne suffisent
+    // pas et la lecture arrive avant le rendu. La suite echouait ainsi un
+    // run sur trois, sur une assertion pourtant juste.
+    //
+    // `findAllByText` reessaie jusqu'a ce que l'element existe. Une pause
+    // fixe parie sur la vitesse de la machine ; une attente de condition
+    // n'a rien a parier.
+    //
     // La fleche et le nombre vivent dans la meme ligne d'ecart : on les lit
     // ensemble, dans l'element qui porte « vs mois precedent ».
-    const ecarts = screen.getAllByText("vs mois précédent");
+    const ecarts = await screen.findAllByText("vs mois précédent");
     expect(ecarts.length).toBeGreaterThanOrEqual(2);
     expect(ecarts[0].parentElement).toHaveTextContent("▲");
     expect(ecarts[1].parentElement).toHaveTextContent("▼");
