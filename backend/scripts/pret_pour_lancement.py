@@ -151,6 +151,34 @@ def principal():
         bloquants += 1
     ligne(etat, "Délai de paiement annoncé = délai appliqué", detail)
 
+    print("\n─── SECRETS QUI SE DÉSACTIVENT EN SILENCE ───\n")
+    # Deux variables dont l'ABSENCE ne provoque aucune erreur : le code se
+    # replie sur un comportement degrade, sans rien dire. C'est exactement ce
+    # qui ne se voit pas a l'oeil au moment du lancement.
+    if (env.get("ADMIN_GATE_CODE") or "").strip():
+        ligne(VERT, "ADMIN_GATE_CODE : present")
+    else:
+        # PAS bloquant : ne pas avoir de porte devant le login admin est un
+        # choix defendable. Mais il doit etre CHOISI, pas subi.
+        ligne(JAUNE, "ADMIN_GATE_CODE : absent",
+              "La porte de l'administration s'ouvre alors SANS code.\n"
+              "`admin_gate_verify` renvoie {ok: true} des que la variable est vide.\n"
+              "Le login reste exige — c'est la porte d'avant qui disparait.")
+
+    crypto_actif = bool((env.get("NOWPAYMENTS_API_KEY") or "").strip())
+    if (env.get("NOWPAYMENTS_IPN_SECRET") or "").strip():
+        ligne(VERT, "NOWPAYMENTS_IPN_SECRET : present")
+    elif not crypto_actif:
+        ligne(VERT, "NOWPAYMENTS_IPN_SECRET : absent, mais le paiement crypto l'est aussi")
+    else:
+        # Bloquant, lui : aucune lecture valable. Vendre en crypto sans secret
+        # IPN, c'est encaisser sans jamais le savoir.
+        bloquants += 1
+        ligne(ROUGE, "NOWPAYMENTS_IPN_SECRET : absent alors que la crypto est active",
+              "Le webhook repond 503 a chaque appel : AUCUN paiement crypto ne\n"
+              "sera jamais confirme. Le client paie, la commande reste en attente,\n"
+              "puis s'annule au delai.")
+
     print("\n─── ENVIRONNEMENT ───\n")
     app_env = (env.get("APP_ENV") or "").strip().lower()
     if app_env in ("prod", "production"):

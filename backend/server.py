@@ -10535,6 +10535,19 @@ async def affiliate_join(payload: AffiliateJoinIn, request: Request,
         prénom (ou entreprise si fournie) + suffixe 10 (rabais par défaut) ;
       - pose la session (cookie + JWT retourné dans le body).
     Token d'invitation consommé atomiquement."""
+    # LE SEUL ENDPOINT NON AUTHENTIFIE QUI POSE UNE SESSION.
+    #
+    # Un jeton correct cree un compte et depose un cookie. Les jetons font
+    # aujourd'hui 256 bits (`secrets.token_urlsafe(32)`), donc le brute-force
+    # est hors de portee — la limite protege contre un futur ou la generation
+    # changerait sans que personne y repense. La porte admin est limitee pour
+    # exactement ce raisonnement.
+    #
+    # Dix par heure et par IP : un affilie qui recharge sa page d'activation
+    # trois fois n'en approche pas. Le cout, assume : plusieurs affilies
+    # derriere la meme IP — un bureau — partagent le quota.
+    await _rate_limit("affiliate_join", _client_ip(request), 10, 3600,
+                      "Trop de tentatives d'activation. Réessayez dans une heure.")
     token_hash = _affiliate_hash_token(payload.token.strip())
     now = datetime.now(timezone.utc)
     invite = await db.affiliates.find_one(
