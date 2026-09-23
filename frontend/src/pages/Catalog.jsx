@@ -95,7 +95,7 @@ export default function Catalog() {
           </div>
 
           {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="catalog-loading">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-5 lg:gap-6" data-testid="catalog-loading">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="rounded-xl border border-ash bg-white overflow-hidden animate-pulse">
                   <div className="aspect-square bg-clinical" />
@@ -137,7 +137,7 @@ export default function Catalog() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-5 lg:gap-6">
               {sorted.map((p, i) => <ProductCard product={p} key={p.id} index={i} />)}
             </div>
           )}

@@ -143,7 +143,7 @@ export default function Home() {
         <MolecularMesh opacity={0.28} />
         <div className="absolute -top-40 -right-40 w-[560px] h-[560px] rounded-full pointer-events-none"
           style={{ background: "radial-gradient(circle, rgba(0,184,212,.16), transparent 65%)" }} />
-        <div className="relative max-w-7xl mx-auto px-6 lg:px-8 pt-20 pb-24 grid lg:grid-cols-[1.05fr_.95fr] gap-16 items-center min-h-[78vh]">
+        <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 pt-12 pb-16 lg:pt-20 lg:pb-24 grid lg:grid-cols-[1.05fr_.95fr] gap-10 lg:gap-16 items-center lg:min-h-[78vh]">
           <div>
             <Reveal>
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.22em] text-nova mb-7 flex items-center gap-2">
@@ -152,13 +152,13 @@ export default function Home() {
               </p>
             </Reveal>
             <Reveal delay={90}>
-              <h1 className="font-display font-bold leading-[1.02] tracking-[-0.02em] mb-7" style={{ fontSize: "clamp(40px,5.6vw,76px)" }} data-testid="hero-title">
+              <h1 className="font-display font-bold leading-[1.02] tracking-[-0.02em] mb-6 lg:mb-7" style={{ fontSize: "clamp(32px,9.5vw,76px)" }} data-testid="hero-title">
                 {heroTitle.a}{" "}
                 <span className="text-nova">{heroTitle.b}</span>
               </h1>
             </Reveal>
             <Reveal delay={180}>
-              <p className="text-lg text-[#B7CADD] max-w-[52ch] leading-relaxed mb-10">{heroLede}</p>
+              <p className="text-base lg:text-lg text-[#B7CADD] max-w-[52ch] leading-relaxed mb-8 lg:mb-10">{heroLede}</p>
             </Reveal>
             <Reveal delay={260}>
               <div className="flex flex-wrap items-center gap-4 mb-12">
@@ -217,7 +217,7 @@ export default function Home() {
       </section>
 
       {/* FEATURED PRODUCTS */}
-      <section className="py-24 lg:py-32" data-testid="featured-products">
+      <section className="py-16 lg:py-32" data-testid="featured-products">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="flex flex-wrap items-end justify-between gap-6 mb-14">
             <Reveal delay={60}>
@@ -229,7 +229,7 @@ export default function Home() {
               </Link>
             </Reveal>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-5 lg:gap-6">
             {products.map((p, i) => (
               <Reveal key={p.id} delay={i * 90}><ProductCard product={p} index={i} /></Reveal>
             ))}
@@ -239,7 +239,7 @@ export default function Home() {
 
 
       {/* NEWSLETTER */}
-      <section className="py-24" data-testid="newsletter-section">
+      <section className="py-16 lg:py-24" data-testid="newsletter-section">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <Reveal>
             <div className="rounded-xl bg-nordfjord px-8 lg:px-16 py-16 relative overflow-hidden">
