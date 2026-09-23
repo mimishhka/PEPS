@@ -15640,6 +15640,41 @@ async def _csrf_origin_guard(request: Request, call_next):
 
 
 @app.middleware("http")
+async def _refuser_televersement_surdimensionne(request: Request, call_next):
+    """413 avant de tout lire : un corps multipart ne doit pas entrer en RAM.
+
+    Les quatre points de téléversement font `await file.read()` EN ENTIER puis
+    vérifient la taille après coup : un corps de deux gigaoctets serait donc
+    tamponné en mémoire avant le moindre refus. C'est précisément la classe de
+    défaut que les avis sur starlette 0.37 décrivent (bornes multipart
+    absentes), et que les versions récentes corrigent nativement avec
+    `max_part_size`.
+
+    En attendant le saut de FastAPI qui apportera cette correction dans le
+    framework, la taille est refusée ICI, sur le Content-Length, avant toute
+    lecture — le même remède, posé à l'extérieur.
+
+    Le plafond suit les réglages : le plus haut des plafonds déclarés, plus un
+    mégaoctet pour les champs du formulaire qui accompagnent le fichier. Un
+    en-tête Content-Length absent passe : le garde-fou est la ceinture, pas
+    les bretelles, et un refus injustifié couperait un téléversement légitime.
+    """
+    if request.method in ("POST", "PUT", "PATCH"):
+        if (request.headers.get("content-type") or "").lower().startswith("multipart/form-data"):
+            brut = request.headers.get("content-length") or ""
+            try:
+                octets = int(brut)
+            except ValueError:
+                octets = 0
+            plafond = int((max(MAX_IMAGE_UPLOAD_MB, MAX_COA_UPLOAD_MB) + 1) * 1024 * 1024)
+            if octets > plafond:
+                return JSONResponse(status_code=413, content={
+                    "detail": "File too large for this form."})
+    return await call_next(request)
+
+
+
+@app.middleware("http")
 async def _security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
