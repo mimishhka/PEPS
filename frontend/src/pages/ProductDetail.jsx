@@ -352,7 +352,7 @@ export default function ProductDetail() {
                       <input type="email" value={notifyEmail} onChange={(e) => setNotifyEmail(e.target.value)}
                         placeholder={lang === "fr" ? "votre@courriel.com" : "you@email.com"}
                         data-testid="notify-stock-email"
-                        className="flex-1 rounded-full border border-ash px-4 py-2 text-sm bg-white outline-none focus:border-nova" />
+                        className="flex-1 border border-ash px-4 py-2 text-sm bg-white outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
                       <button onClick={submitNotify} disabled={notifySubmitting} data-testid="notify-stock-submit"
                         className="btn-pill btn-outline disabled:opacity-40">
                         {notifySubmitting ? "…" : lang === "fr" ? "M'avertir" : "Notify me"}

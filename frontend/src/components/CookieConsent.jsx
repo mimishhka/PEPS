@@ -21,7 +21,7 @@ export default function CookieConsent() {
 
   return (
     <div
-      className="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:max-w-md z-[90]"
+      className="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:right-4 sm:bottom-4 sm:max-w-md" style={{ zIndex: "var(--z-overlay)" }}
       data-testid="cookie-consent"
     >
       <div className="rounded-xl border border-ash bg-white shadow-2xl p-5">

@@ -53,7 +53,7 @@ export default function TermsModal({ L, lang, onClose }) {
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[10050] flex items-center justify-center px-4 py-6"
+    <div className="fixed inset-0 flex items-center justify-center px-4 py-6" style={{ zIndex: "var(--z-modal)" }}
          style={{ background: "rgba(11,46,79,.72)" }}
          onClick={() => onClose(false)}
          data-testid="terms-modal">

@@ -103,7 +103,7 @@ export default function ResetPassword() {
                     onChange={(e) => setPassword(e.target.value)}
                     autoFocus
                     data-testid="reset-password"
-                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova"
+                    className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }}
                   />
                 </div>
                 <div>
@@ -116,7 +116,7 @@ export default function ResetPassword() {
                     value={confirm}
                     onChange={(e) => setConfirm(e.target.value)}
                     data-testid="reset-password-confirm"
-                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova"
+                    className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }}
                   />
                 </div>
                 <p className="font-data text-[11px] text-glacier leading-relaxed">

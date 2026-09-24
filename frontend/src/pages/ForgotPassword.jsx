@@ -77,7 +77,7 @@ export default function ForgotPassword() {
                     onChange={(e) => setEmail(e.target.value)}
                     autoFocus
                     data-testid="forgot-email"
-                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova"
+                    className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }}
                   />
                 </div>
                 <button

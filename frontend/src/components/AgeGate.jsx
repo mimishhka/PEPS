@@ -46,7 +46,7 @@ export default function AgeGate() {
   if (refuse) {
     return (
       <div
-        className="fixed inset-0 z-[100] flex items-center justify-center bg-nordfjord px-4"
+        className="fixed inset-0 flex items-center justify-center bg-nordfjord px-4" style={{ zIndex: "var(--z-modal)" }}
         data-testid="age-gate-denied"
         role="alertdialog"
         aria-modal="true"
@@ -69,7 +69,7 @@ export default function AgeGate() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-nordfjord/80 backdrop-blur-xl px-4"
+      className="fixed inset-0 flex items-center justify-center bg-nordfjord/80 backdrop-blur-xl px-4" style={{ zIndex: "var(--z-modal)" }}
       data-testid="age-gate-modal"
     >
       {/* Mesh accent */}
