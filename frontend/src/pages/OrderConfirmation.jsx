@@ -230,7 +230,7 @@ export default function OrderConfirmation() {
   return (
     <div className="max-w-4xl mx-auto px-6 py-16" data-testid="confirmation-page">
       <div className="border border-nordfjord/20 rounded-xl overflow-hidden">
-        <div className="bg-nordfjord text-white px-6 py-4 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.25em]">
+        <div className="px-6 py-4 flex items-center justify-between font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord border-b border-ash">
           <span>
             {etatPaiement.bandeau}
           </span>
@@ -238,7 +238,7 @@ export default function OrderConfirmation() {
         </div>
         <div className="p-8">
           <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50">{t("confirmation.orderNumber")}</div>
-          <div className="font-display text-4xl sm:text-5xl font-bold tracking-tight mt-2" data-testid="order-number">
+          <div className="font-data text-[24px] sm:text-[28px] font-medium mt-2" data-testid="order-number">
             {order.order_number}
           </div>
           <h1 className="font-display text-2xl uppercase tracking-tight mt-8">
@@ -299,7 +299,7 @@ export default function OrderConfirmation() {
 
       {interac && (
         <div className="mt-8 border border-nordfjord/20 rounded-xl overflow-hidden" data-testid="interac-instructions">
-          <div className="bg-nordfjord text-white px-6 py-3 font-mono text-[11px] uppercase tracking-[0.25em]" style={{ background: "#0B2E4F" }}>
+          <div className="px-6 py-3 font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord border-b border-ash">
             ⚡ {t("confirmation.interacHeading")}
           </div>
           <div className="p-8 space-y-5 font-mono text-sm">
@@ -317,7 +317,7 @@ export default function OrderConfirmation() {
 
       {np && (
         <div className="mt-8 border border-nordfjord/20 rounded-xl overflow-hidden" data-testid="crypto-instructions">
-          <div className="bg-nordfjord text-white px-6 py-3 font-mono text-[11px] uppercase tracking-[0.25em]">
+          <div className="px-6 py-3 font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord border-b border-ash">
             ₿ {t("confirmation.cryptoHeading")}
           </div>
           {np.invoice_id ? (
@@ -564,7 +564,7 @@ export default function OrderConfirmation() {
             Une commande passée en invité n'a pas de tableau de bord : elle
             garde l'accueil, qui reste la seule destination qui ait un sens. */}
         <Link to={order.user_id ? "/account" : "/"}
-          className="border border-nordfjord rounded-full font-mono text-xs uppercase tracking-[0.25em] px-6 py-4 hover:bg-nordfjord hover:text-white transition-colors"
+          className="border border-nordfjord font-mono text-xs uppercase tracking-[0.25em] px-6 py-4 hover:bg-nordfjord hover:text-white transition-colors" style={{ borderRadius: "var(--r-m)" }}
           data-testid="back-home-btn">
           ← {order.user_id
             ? (lang === "fr" ? "Mes commandes" : "My orders")
