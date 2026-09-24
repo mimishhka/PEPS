@@ -35,6 +35,12 @@ export function useAddressComplete({ champs, lang, actif = true }) {
     let controle = null;
     try {
       controle = new pca.Address(cibles, {
+        // La cle est EXIGEE dans les options en v2.50 — l'URL du script
+        // n'est qu'un raccourci de chargement. Publique cote navigateur par
+        // conception, comme une cle Google Maps. Sans elle, le controle ne
+        // fait aucune requete : pas d'erreur, pas de proposition, et notre
+        // garde-fou se taisait — le pire des modes de panne.
+        key: "ex96-ex22-cm99-pa91",
         language: lang === "fr" ? "fr" : "en",
         // Boutique canadienne : pas d'adresse hors Canada.
         countries: { codesList: "CA" },

@@ -1035,7 +1035,6 @@ function AddressForm({ value, setValue, lang, prefix }) {
           autoComplete="country"
           className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova bg-white">
           <option value="CA">Canada</option>
-          <option value="US">United States</option>
         </select>
       </label>
     </div>
