@@ -121,13 +121,13 @@ export default function Register() {
         <h1 className="font-display text-[40px] font-bold text-nordfjord mb-8">{t("auth.signup")}</h1>
 
         <div className="max-w-md">
-          <div className="inline-flex rounded-full border border-ash bg-white p-1 mb-8" role="tablist">
+          <div className="inline-flex border border-ash bg-white p-1 mb-8" role="tablist" style={{ borderRadius: "var(--r-m)" }}>
             <button type="button" onClick={() => { setMode("magic"); setMagicSent(false); }} data-testid="register-tab-magic"
-              className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "magic" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}>
+              className={`px-5 py-2 text-sm font-semibold transition ${mode === "magic" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`} style={{ borderRadius: "var(--r-m)" }}>
               {t("auth.magicTab") || "Lien magique"}
             </button>
             <button type="button" onClick={() => setMode("password")} data-testid="register-tab-password"
-              className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "password" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}>
+              className={`px-5 py-2 text-sm font-semibold transition ${mode === "password" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`} style={{ borderRadius: "var(--r-m)" }}>
               {t("auth.passwordTab") || "Mot de passe"}
             </button>
           </div>
@@ -172,7 +172,7 @@ export default function Register() {
                   <input required autoComplete="given-name" value={form.first_name}
                     onChange={(e) => setForm({ ...form, first_name: e.target.value })}
                     data-testid="register-magic-first-name"
-                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                    className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
                 </div>
                 <div>
                   <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
@@ -181,13 +181,13 @@ export default function Register() {
                   <input required autoComplete="family-name" value={form.last_name}
                     onChange={(e) => setForm({ ...form, last_name: e.target.value })}
                     data-testid="register-magic-last-name"
-                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                    className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
                 </div>
               </div>
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
                 <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-magic-email"
-                  className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                  className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
               </div>
               {consent}
               <button type="submit" disabled={busy} data-testid="register-magic-submit" className="w-full btn-pill btn-nova disabled:opacity-50">
@@ -205,7 +205,7 @@ export default function Register() {
                   <input required autoComplete="given-name" value={form.first_name}
                     onChange={(e) => setForm({ ...form, first_name: e.target.value })}
                     data-testid="register-first-name"
-                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                    className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
                 </div>
                 <div>
                   <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
@@ -214,18 +214,18 @@ export default function Register() {
                   <input required autoComplete="family-name" value={form.last_name}
                     onChange={(e) => setForm({ ...form, last_name: e.target.value })}
                     data-testid="register-last-name"
-                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                    className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
                 </div>
               </div>
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
                 <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-email"
-                  className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                  className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
               </div>
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.password")} (≥ 8)</label>
                 <input type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="register-password"
-                  className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                  className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
               </div>
               {consent}
               <button type="submit" disabled={busy} data-testid="register-submit" className="w-full btn-pill btn-nova disabled:opacity-50">

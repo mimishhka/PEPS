@@ -100,7 +100,7 @@ export default function Login() {
 
         <div className="max-w-md">
           {!isAdminLogin && (
-            <div className="inline-flex rounded-full border border-ash bg-white p-1 mb-8" role="tablist" aria-label="Sign in method">
+            <div className="inline-flex border border-ash bg-white p-1 mb-8" role="tablist" style={{ borderRadius: "var(--r-m)" }} aria-label="Sign in method">
               <button
                 type="button"
                 role="tab"
@@ -108,7 +108,7 @@ export default function Login() {
                 aria-controls="login-panel-magic"
                 onClick={() => { setMode("magic"); setMagicSent(false); }}
                 data-testid="login-tab-magic"
-                className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "magic" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}
+                className={`px-5 py-2 text-sm font-semibold transition ${mode === "magic" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`} style={{ borderRadius: "var(--r-m)" }}
               >
                 {t("auth.magicTab") || "Lien magique"}
               </button>
@@ -119,7 +119,7 @@ export default function Login() {
                 aria-controls="login-panel-password"
                 onClick={() => setMode("password")}
                 data-testid="login-tab-password"
-                className={`px-5 py-2 rounded-full text-sm font-semibold transition ${mode === "password" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`}
+                className={`px-5 py-2 text-sm font-semibold transition ${mode === "password" ? "bg-nordfjord text-clinical" : "text-compliance hover:text-nordfjord"}`} style={{ borderRadius: "var(--r-m)" }}
               >
                 {t("auth.passwordTab") || "Mot de passe"}
               </button>
@@ -149,7 +149,7 @@ export default function Login() {
                 <div>
                   <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
                   <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-magic-email"
-                    className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                    className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
                 </div>
                 <button type="submit" disabled={busy} data-testid="login-magic-submit" className="w-full btn-pill btn-nova disabled:opacity-50">
                   {busy ? t("common.loading") : `${t("auth.magicSend") || "Envoyer le lien"} →`}
@@ -168,12 +168,12 @@ export default function Login() {
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
                 <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-email"
-                  className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                  className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
               </div>
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.password")}</label>
                 <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} data-testid="login-password"
-                  className="w-full rounded-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" />
+                  className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
                 {!isAdminLogin && (
                   <div className="text-right mt-2">
                     <Link to="/forgot-password" data-testid="login-forgot-password-link"
