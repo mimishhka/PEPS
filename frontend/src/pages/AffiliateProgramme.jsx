@@ -92,7 +92,7 @@ export default function AffiliateProgramme() {
 
             {state === "error" && (
               <div className="text-center py-6" data-testid="affiliate-programme-error">
-                <div className="w-14 h-14 rounded-full bg-error/15 text-error flex items-center justify-center text-2xl font-bold mx-auto mb-6">!</div>
+                <p className="font-data text-[11px] uppercase tracking-[0.2em] text-error mb-2">!</p>
                 <h1 className="font-display text-[24px] font-bold text-nordfjord mb-2">
                   {L("Page inaccessible", "Page unavailable")}
                 </h1>

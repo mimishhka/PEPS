@@ -362,7 +362,7 @@ export default function AffiliateTerms() {
           <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
             FIRONOVA
           </p>
-          <h1 className="font-display text-[42px] sm:text-[52px] font-bold text-nordfjord tracking-[-0.01em]">
+          <h1 className="font-display text-[28px] sm:text-[34px] font-semibold text-nordfjord tracking-[-0.01em]">
             {isFr ? "Conditions du programme d'affiliation" : "Affiliate Program Terms"}
           </h1>
           <p className="mt-4 text-sm text-glacier">

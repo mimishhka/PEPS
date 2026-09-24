@@ -278,7 +278,7 @@ export default function AffiliateFaq() {
           <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
             {L("PROGRAMME D'AFFILIATION", "AFFILIATE PROGRAM")}
           </p>
-          <h1 className="font-display text-[36px] sm:text-[44px] font-bold text-nordfjord tracking-[-0.01em] leading-tight">
+          <h1 className="font-display text-[28px] sm:text-[34px] font-semibold text-nordfjord tracking-[-0.01em] leading-tight">
             {L("Questions fréquentes", "Frequently asked questions")}
           </h1>
           <p className="mt-4 text-sm text-glacier">
@@ -336,7 +336,7 @@ export default function AffiliateFaq() {
               navigate("/affiliate");
             }}
             data-testid="faq-restart-tour"
-            className="font-data text-[11px] font-bold uppercase tracking-wider text-glacier hover:text-nordfjord border border-ash hover:border-glacier rounded-full px-4 py-2 transition">
+            className="font-data text-[11px] font-bold uppercase tracking-wider text-glacier hover:text-nordfjord border border-ash hover:border-glacier px-4 py-2 transition" style={{ borderRadius: "var(--r-m)" }}>
             {L("Revoir la visite guidée", "Replay the guided tour")}
           </button>
         </div>

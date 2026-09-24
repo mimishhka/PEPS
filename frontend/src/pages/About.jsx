@@ -15,21 +15,21 @@ export default function About() {
 
   return (
     <div data-testid="about-page" className="bg-clinical min-h-screen">
-      <section className="relative bg-nordfjord text-clinical overflow-hidden">
+      <section className="relative border-b border-ash">
         <MolecularMesh opacity={0.26} />
         <div className="relative max-w-7xl mx-auto px-6 lg:px-8 py-24 lg:py-32">
           <Reveal>
             <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5 flex items-center gap-2">
-              <span className="inline-block w-8 h-px bg-nova" /> {isFr ? "01 · À PROPOS" : "01 · ABOUT"}
+              <span className="inline-block w-8 h-px bg-nova" /> {isFr ? "À PROPOS" : "ABOUT"}
             </p>
           </Reveal>
           <Reveal delay={90}>
-            <h1 className="font-display text-[44px] sm:text-[64px] font-bold leading-[1.02] tracking-[-0.02em] max-w-3xl">
+            <h1 className="font-display text-[28px] sm:text-[34px] font-semibold leading-[1.1] tracking-[-0.01em] max-w-3xl text-nordfjord">
               {isFr ? "Du nord. " : "From the north. "}<span className="text-nova">{isFr ? "Pour la recherche." : "For research."}</span>
             </h1>
           </Reveal>
           <Reveal delay={180}>
-            <p className="mt-8 text-lg text-[#B7CADD] max-w-2xl leading-relaxed">
+            <p className="mt-8 text-base text-glacier max-w-2xl leading-relaxed">
               {isFr
                 ? "FIRONOVA est un fournisseur canadien indépendant de peptides de référence de pureté laboratoire. Chaque lot est analysé par un laboratoire tiers (HPLC, spectrométrie de masse) avant expédition depuis nos installations à Montréal."
                 : "FIRONOVA is an independent Canadian supplier of laboratory-grade reference peptides. Every batch is third-party lab tested (HPLC, mass spectrometry) before shipping from our Montréal facility."}

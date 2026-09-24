@@ -72,7 +72,7 @@ export default function AffiliateJoin() {
 
           {status === "success" && (
             <div className="text-center">
-              <div className="w-14 h-14 rounded-full bg-nova/15 text-nova flex items-center justify-center text-3xl font-bold mx-auto mb-6">✓</div>
+              <p className="font-data text-[11px] uppercase tracking-[0.2em] text-nova mb-2">✓</p>
               <h1 className="font-display text-[24px] font-bold text-nordfjord mb-2">
                 {L("Bienvenue chez Fironova", "Welcome to Fironova")}
               </h1>
@@ -84,7 +84,7 @@ export default function AffiliateJoin() {
 
           {status === "error" && (
             <div className="text-center" data-testid="affiliate-join-error">
-              <div className="w-14 h-14 rounded-full bg-error/15 text-error flex items-center justify-center text-2xl font-bold mx-auto mb-6">!</div>
+              <p className="font-data text-[11px] uppercase tracking-[0.2em] text-error mb-2">!</p>
               <h1 className="font-display text-[24px] font-bold text-nordfjord mb-2">
                 {L("Activation impossible", "Activation failed")}
               </h1>

@@ -69,7 +69,7 @@ export default function Lab() {
         <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4 flex items-center gap-2">
           <span className="inline-block w-8 h-px bg-nova" /> {isFr ? "LABO · LAB" : "LAB · LABO"}
         </p>
-        <h1 className="font-display text-[44px] sm:text-[52px] font-semibold text-nordfjord leading-tight mb-4">
+        <h1 className="font-display text-[28px] sm:text-[34px] font-semibold text-nordfjord leading-tight mb-4">
           {isFr ? "Vérification de certificat" : "Certificate verification"}
         </h1>
         <p className="text-lg text-glacier max-w-xl mb-8">
@@ -85,7 +85,7 @@ export default function Lab() {
             onKeyDown={(e) => e.key === "Enter" && verify()}
             placeholder="FN-26008"
             data-testid="lab-lot-input"
-            className="flex-1 rounded-full bg-white border border-ash px-6 py-4 text-nordfjord text-[15px] outline-none focus:border-nova placeholder:text-glacier font-data"
+            className="flex-1 bg-white border border-ash px-6 py-4 text-nordfjord text-[15px] outline-none focus:border-nova placeholder:text-glacier font-data" style={{ borderRadius: "var(--r-m)" }}
           />
           <button onClick={verify} disabled={verifying} data-testid="lab-verify-btn" className="btn-pill btn-nova disabled:opacity-40">
             {verifying ? "…" : isFr ? "Vérifier" : "Verify"}
@@ -126,14 +126,14 @@ export default function Lab() {
             onChange={(e) => setOrderId(e.target.value)}
             placeholder="FN-2026-000121"
             data-testid="lab-order-input"
-            className="flex-1 rounded-full bg-white border border-ash px-6 py-4 text-nordfjord text-[15px] outline-none focus:border-nova placeholder:text-glacier font-data"
+            className="flex-1 bg-white border border-ash px-6 py-4 text-nordfjord text-[15px] outline-none focus:border-nova placeholder:text-glacier font-data" style={{ borderRadius: "var(--r-m)" }}
           />
           <input
             value={trackEmail}
             onChange={(e) => setTrackEmail(e.target.value)}
             placeholder="research@lab.ca"
             data-testid="lab-track-email"
-            className="flex-1 rounded-full bg-white border border-ash px-6 py-4 text-nordfjord text-[15px] outline-none focus:border-nova placeholder:text-glacier font-data"
+            className="flex-1 bg-white border border-ash px-6 py-4 text-nordfjord text-[15px] outline-none focus:border-nova placeholder:text-glacier font-data" style={{ borderRadius: "var(--r-m)" }}
           />
         </div>
         <button onClick={doTrack} disabled={tracking} data-testid="lab-track-btn" className="btn-pill bg-nordfjord text-white hover:bg-glacier disabled:opacity-40">
