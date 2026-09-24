@@ -32,7 +32,7 @@ export default function ProductCard({ product, index = 0 }) {
 
   return (
     <div
-      className="group bg-white border border-ash rounded-xl overflow-hidden flex flex-col card-hover"
+      className="group bg-white border border-ash overflow-hidden flex flex-col card-hover" style={{ borderRadius: "var(--r-m)" }}
       data-testid={`product-card-${product.slug}`}
     >
       <Link to={`/product/${product.slug}`} className="block relative aspect-[4/3] overflow-hidden">

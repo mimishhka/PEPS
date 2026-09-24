@@ -175,7 +175,7 @@ export default function Home() {
             </Reveal>
           </div>
           <Reveal delay={300} className="relative hidden lg:block">
-            <div className="relative bg-[#0D3560]/80 backdrop-blur border border-[#1E4A73] rounded-xl p-8 shadow-[0_40px_80px_-30px_rgba(0,0,0,.5)]">
+            <div className="relative bg-[#0D3560]/80 border border-[#1E4A73] p-8" style={{ borderRadius: "var(--r-l)" }}>
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <p className="font-data text-[10px] uppercase tracking-[0.22em] text-nova mb-1.5">Certificate of Analysis</p>
@@ -242,7 +242,7 @@ export default function Home() {
       <section className="py-16 lg:py-24" data-testid="newsletter-section">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <Reveal>
-            <div className="rounded-xl bg-nordfjord px-8 lg:px-16 py-16 relative overflow-hidden">
+            <div className="bg-nordfjord px-8 lg:px-16 py-16 relative overflow-hidden" style={{ borderRadius: "var(--r-l)" }}>
               <div className="absolute -right-16 -top-16 opacity-25"><FnMark size={260} frame="#00B8D4" spark="#00B8D4" /></div>
               <div className="relative max-w-2xl">
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">{newsEyebrow}</p>

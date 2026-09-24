@@ -44,6 +44,23 @@
   --compliance:rgb(var(--fn-compliance));
 
   --sp: 8px;
+
+  /* ECHELLE DE RAYON — « Fiche de laboratoire » (2026-09-23).
+     Fini le coin arrondi uniforme : un rayon serre sur les petites pieces,
+     un seul cran plus doux pour les grands conteneurs, jamais de pilule. */
+  --r-s: 2px;    /* pastilles d'etat, coins interieurs */
+  --r-m: 4px;    /* boutons, champs, cartes */
+  --r-l: 6px;    /* grands conteneurs uniquement */
+
+  /* ECHELLE DE PROFONDEUR — une seule ombre, teintee de la marque, avec
+     decalage et flou doux (jamais de halo colore sans decalage). */
+  --ombre: 0 1px 2px rgb(11 46 79 / 0.05), 0 16px 40px -24px rgb(11 46 79 / 0.22);
+
+  /* ECHELLE Z — plus de z-[10050] arbitraires dans les composants. */
+  --z-sticky: 30;
+  --z-overlay: 90;
+  --z-modal: 100;
+  --z-toast: 110;
   --display: 'Space Grotesk', sans-serif;
   --body: 'Inter', sans-serif;
   --data: 'JetBrains Mono', monospace;
@@ -157,7 +174,19 @@
     font-family: var(--display);
     line-height: 1.12;
     letter-spacing: -0.01em;
+    /* Les titres ne finissent plus sur un mot orphelin. */
+    text-wrap: balance;
   }
+
+  /* LES SURFACES QUE L'ON NE DESSINE PAS PORTENT AUSSI LE DESIGN :
+     la selection, le focus clavier, la barre de defilement. */
+  ::selection { background: rgb(var(--fn-nova) / 0.25); color: var(--nordfjord); }
+  :focus-visible {
+    outline: 2px solid var(--nova);
+    outline-offset: 2px;
+  }
+  * { scrollbar-width: thin; scrollbar-color: var(--ash) transparent; }
+  button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 }
 
 @layer components {
@@ -171,17 +200,14 @@
     letter-spacing: 0.18em;
     color: var(--nova);
   }
-  .eyebrow::before {
-    content: "";
-    width: 28px;
-    height: 1.5px;
-    background: var(--nova);
-    display: inline-block;
-  }
 
-  /* pill buttons */
+  /* Boutons — rectangles francs a 4 px, pas de pilule. La forme vient du
+     monde « fiche de laboratoire » : un bouton s'aligne sur un formulaire,
+     pas sur une capsule marketing. L'etat presse existe, le lancer au
+     survol disparait (la profondeur n'est plus un jeu d'ombre). */
   .btn-pill {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg font-semibold uppercase transition-all duration-200 cursor-pointer;
+    @apply inline-flex items-center justify-center gap-2 font-semibold uppercase transition-colors duration-150 cursor-pointer;
+    border-radius: var(--r-m);
     letter-spacing: 0.04em;
     font-size: 14px;
     padding: 13px 22px;
@@ -190,17 +216,20 @@
     background: var(--nova);
     color: var(--nordfjord);
   }
-  .btn-nova:hover { background: #00A3BC; transform: translateY(-1px); }
+  .btn-nova:hover { background: #00A3BC; }
+  .btn-nova:active { transform: scale(0.99); }
   .btn-outline {
     background: transparent;
     color: var(--nordfjord);
-    border: 1.5px solid var(--ash);
+    border: 1px solid var(--ash);
   }
   .btn-outline:hover { border-color: var(--nova); color: var(--nova); }
+  .btn-outline:active { transform: scale(0.99); }
 
   /* RUO / compliance badge */
   .cbadge {
-    @apply inline-flex items-center gap-2 rounded-lg font-semibold;
+    @apply inline-flex items-center gap-2 font-semibold;
+    border-radius: var(--r-m);
     align-self: flex-start;
     border: 1.5px solid var(--compliance);
     color: var(--compliance);
@@ -209,12 +238,10 @@
     letter-spacing: 0.03em;
   }
 
-  /* card hover lift */
-  .card-hover { transition: transform .2s ease, box-shadow .2s ease; }
-  .card-hover:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 28px -12px rgba(11, 46, 79, 0.25);
-  }
+  /* La carte ne « leve » plus au survol : le monde est aux filets, pas aux
+     ombres. Le survol change la teinte du cadre — un geste calme, un seul. */
+  .card-hover { transition: border-color .15s ease, background-color .15s ease; }
+  .card-hover:hover { border-color: var(--nova); }
 
   /* scroll reveal */
   .reveal {

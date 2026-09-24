@@ -97,7 +97,7 @@ export default function Catalog() {
           {loading ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-5 lg:gap-6" data-testid="catalog-loading">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="rounded-xl border border-ash bg-white overflow-hidden animate-pulse">
+                <div key={i} className="border border-ash bg-white overflow-hidden animate-pulse" style={{ borderRadius: "var(--r-m)" }}>
                   <div className="aspect-square bg-clinical" />
                   <div className="p-5 space-y-3">
                     <div className="h-4 bg-clinical rounded w-3/4" />
