@@ -241,7 +241,7 @@ export default function Faq() {
       <div className="max-w-4xl mx-auto px-6 py-16 space-y-16" data-testid="faq-page">
         <header className="border-b border-ash pb-6">
           <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">FIRONOVA</p>
-          <h1 className="font-display text-[42px] sm:text-[52px] font-bold text-nordfjord tracking-[-0.01em]">FAQ</h1>
+          <h1 className="font-display text-[30px] sm:text-[36px] font-semibold text-nordfjord tracking-[-0.01em]">FAQ</h1>
           <p className="mt-4 text-sm text-glacier">
             {isFr
               ? "Les réponses ci-dessous reflètent nos Conditions Générales, notre Politique d'expédition et notre Politique de confidentialité. En cas de divergence, ces documents prévalent."

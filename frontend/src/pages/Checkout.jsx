@@ -461,7 +461,7 @@ export default function Checkout() {
             <p className="font-data text-[11px] uppercase tracking-[0.22em] text-compliance mb-2">
               {lang === "fr" ? "PAIEMENT SÉCURISÉ" : "SECURE CHECKOUT"}
             </p>
-            <h1 className="font-display text-4xl font-bold text-nordfjord">
+            <h1 className="font-display text-[26px] sm:text-[30px] font-semibold text-nordfjord tracking-[-0.01em]">
               {lang === "fr" ? "Finaliser la commande" : "Complete your order"}
             </h1>
           </div>

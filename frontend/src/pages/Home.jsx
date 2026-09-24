@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import ProductCard from "../components/ProductCard.jsx";
-import { MolecularMesh, NovaSpark, Reveal, FnMark } from "../components/brand";
+import { MolecularMesh, NovaSpark, Reveal } from "../components/brand";
 import ProductImage from "../components/ProductImage";
 
 
@@ -192,7 +192,7 @@ export default function Home() {
       <section className="py-20 lg:py-32" data-testid="featured-products">
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-end justify-between gap-6 mb-12">
-            <h2 className="font-display text-[36px] sm:text-[48px] font-bold text-nordfjord leading-[1.05] tracking-[-0.02em]">{featTitle}</h2>
+            <h2 className="font-display text-[22px] sm:text-[26px] font-semibold text-nordfjord leading-[1.1] tracking-[-0.01em]">{featTitle}</h2>
             <Link to="/catalog" data-testid="view-all-catalog" className="btn-pill btn-outline group">
               {featAll} <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
             </Link>
@@ -205,44 +205,41 @@ export default function Home() {
         </div>
       </section>
 
-      {/* INFOLETTRE — le libelle devient une marque de coin, le titre porte
-          seul. Le bandeau sombre est une signature de la marque, pas un
-          accident de page. */}
-      <section className="py-20 lg:py-28" data-testid="newsletter-section">
+      {/* INFOLETTRE : section claire a filet — une page, un theme. Le
+          bandeau sombre isole etait une rupture de theme que le skill
+          interdit ; le contenu, lui, ne change pas. */}
+      <section className="py-20 lg:py-28 border-t border-ash" data-testid="newsletter-section">
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
-          <div className="relative bg-nordfjord text-clinical px-8 lg:px-16 py-16 overflow-hidden" style={{ borderRadius: "var(--r-l)" }}>
-            <div className="absolute -right-16 -top-16 opacity-25"><FnMark size={260} frame="#00B8D4" spark="#00B8D4" /></div>
-            <p className="absolute top-8 right-8 font-data text-[10px] uppercase tracking-[0.24em] text-nova">{newsEyebrow}</p>
-            <div className="relative max-w-2xl">
-              <h2 className="font-display text-[32px] sm:text-[40px] font-bold text-white mb-4 tracking-[-0.02em]">{newsTitle}</h2>
-              <p className="text-mist mb-9 leading-relaxed">{newsLede}</p>
-              {done ? (
-                <p className="inline-flex items-center gap-2.5 text-nova font-semibold"><Check size={18} /> {newsDone}</p>
-              ) : (
-                <form onSubmit={subscribe} className="space-y-4" data-testid="newsletter-form">
-                  <div>
-                    <label htmlFor="newsletter-email" className="block text-[13px] font-semibold text-white mb-2">
-                      {newsLabel}
-                    </label>
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                        placeholder={t("home.newsletterPlaceholder")}
-                        className="flex-1 bg-clinical text-nordfjord px-5 py-3.5 outline-none text-[15px]"
-                        style={{ borderRadius: "var(--r-m)" }}
-                        id="newsletter-email" data-testid="newsletter-input" />
-                      <button type="submit" disabled={subBusy}
-                        className="btn-pill btn-nova disabled:opacity-40 disabled:pointer-events-none"
-                        data-testid="newsletter-submit">{t("home.subscribe")}</button>
-                    </div>
-                  </div>
-                  <label className="flex items-start gap-3 text-[12px] text-mist cursor-pointer select-none">
-                    <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
-                      className="mt-0.5 accent-[#00B8D4] w-4 h-4" data-testid="newsletter-consent" />
-                    {t("home.newsletterConsent")}
+          <div className="relative max-w-2xl">
+            <p className="absolute top-0 right-0 font-data text-[10px] uppercase tracking-[0.24em] text-nova">{newsEyebrow}</p>
+            <h2 className="font-display text-[22px] sm:text-[26px] font-semibold text-nordfjord mb-3 tracking-[-0.01em]">{newsTitle}</h2>
+            <p className="text-glacier text-[14px] mb-8 max-w-[52ch]">{newsLede}</p>
+            {done ? (
+              <p className="inline-flex items-center gap-2.5 text-nova font-semibold"><Check size={18} /> {newsDone}</p>
+            ) : (
+              <form onSubmit={subscribe} className="space-y-4" data-testid="newsletter-form">
+                <div>
+                  <label htmlFor="newsletter-email" className="block text-[13px] font-semibold text-nordfjord mb-2">
+                    {newsLabel}
                   </label>
-                </form>
-              )}
-            </div>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                      placeholder={t("home.newsletterPlaceholder")}
+                      className="flex-1 bg-white border border-ash text-nordfjord px-5 py-3 outline-none text-[15px]"
+                      style={{ borderRadius: "var(--r-m)" }}
+                      id="newsletter-email" data-testid="newsletter-input" />
+                    <button type="submit" disabled={subBusy}
+                      className="btn-pill btn-nova disabled:opacity-40 disabled:pointer-events-none"
+                      data-testid="newsletter-submit">{t("home.subscribe")}</button>
+                  </div>
+                </div>
+                <label className="flex items-start gap-3 text-[12px] text-glacier cursor-pointer select-none">
+                  <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
+                    className="mt-0.5 accent-[#00B8D4] w-4 h-4" data-testid="newsletter-consent" />
+                  {t("home.newsletterConsent")}
+                </label>
+              </form>
+            )}
           </div>
         </div>
       </section>

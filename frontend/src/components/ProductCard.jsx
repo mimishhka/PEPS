@@ -35,7 +35,7 @@ export default function ProductCard({ product, index = 0 }) {
       className="group flex flex-col card-hover" data-testid-carte=""
       data-testid={`product-card-${product.slug}`}
     >
-      <Link to={`/product/${product.slug}`} className="block relative aspect-[4/5] overflow-hidden bg-white" style={{ borderRadius: "var(--r-m)" }}>
+      <Link to={`/product/${product.slug}`} className="block relative aspect-square overflow-hidden bg-white" style={{ borderRadius: "var(--r-m)" }}>
         <ProductImage
           src={product.image_url}
           slug={product.slug}
@@ -46,27 +46,27 @@ export default function ProductCard({ product, index = 0 }) {
           className="w-full h-full"
           imgClassName="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
         />
-        <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
-          {anySale && (
-            <span className="font-data text-[10px] font-semibold uppercase tracking-[0.18em] bg-clinical border border-nova text-nova px-2.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`sale-badge-${product.slug}`}>
-              {lang === "fr" ? "PROMO" : "SALE"}
-            </span>
-          )}
-          {anyPreorder && (
-            <span className="font-data text-[10px] font-semibold uppercase tracking-[0.18em] bg-white/90 backdrop-blur border border-nova text-nova px-2.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`preorder-badge-${product.slug}`}>
-              {lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"}
-            </span>
-          )}
-        </div>
       </Link>
 
       <div className="pt-3 px-0.5 flex flex-col gap-1 sm:gap-1.5 flex-1">
         <div className="font-data text-[10px] uppercase tracking-[0.12em] sm:tracking-[0.2em] text-compliance">
           {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT" : "FOR RESEARCH USE ONLY"}
         </div>
-        <Link to={`/product/${product.slug}`} className="font-display text-[15px] sm:text-base font-medium text-nordfjord hover:text-nova transition-colors leading-snug">
-          {name}
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link to={`/product/${product.slug}`} className="font-display text-[13.5px] font-medium text-nordfjord hover:text-nova transition-colors leading-snug">
+            {name}
+          </Link>
+          {anySale && (
+            <span className="font-data text-[9.5px] font-semibold uppercase tracking-[0.14em] border border-nova text-nova px-1.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`sale-badge-${product.slug}`}>
+              {lang === "fr" ? "PROMO" : "SALE"}
+            </span>
+          )}
+          {anyPreorder && (
+            <span className="font-data text-[9.5px] font-semibold uppercase tracking-[0.14em] border border-nova text-nova px-1.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`preorder-badge-${product.slug}`}>
+              {lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"}
+            </span>
+          )}
+        </div>
         <div className="font-data text-[11px] text-glacier">{specLine}</div>
 
         <div className="flex items-center justify-between pt-3 mt-auto">
@@ -76,7 +76,7 @@ export default function ProductCard({ product, index = 0 }) {
                 ${displayOriginal.toFixed(2)}
               </span>
             )}
-            <span className={`font-data text-[15px] sm:text-base font-medium tabular-nums ${displayOriginal ? "text-nova" : "text-nordfjord"}`} data-testid={`card-price-${product.slug}`}>
+            <span className={`font-data text-[13.5px] font-medium tabular-nums ${displayOriginal ? "text-nova" : "text-nordfjord"}`} data-testid={`card-price-${product.slug}`}>
               ${(displayPrice ?? 0).toFixed(2)}
             </span>
             {variants.length > 1 && (
@@ -96,7 +96,7 @@ export default function ProductCard({ product, index = 0 }) {
         <button
           data-testid={`add-to-cart-${product.slug}`}
           onClick={() => add(product)}
-          className="w-full btn-pill btn-nova !py-2 sm:!py-2 !text-[12px] !tracking-[0.06em]"
+          className="w-full btn-pill btn-nova !py-1.5 !text-[11px] !tracking-[0.06em]"
         >
           {lang === "fr" ? "Ajouter à la commande" : "Add to order"}
         </button>

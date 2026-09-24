@@ -51,7 +51,7 @@ export default function Catalog() {
         {/* Le titre porte seul ; l'etiquette devient une marque de coin,
             comme sur le bandeau d'infolettre — le meme geste partout. */}
         <div className="relative">
-          <h1 className="font-display text-[40px] sm:text-[56px] font-bold text-nordfjord leading-[1.02] tracking-[-0.03em]">
+          <h1 className="font-display text-[26px] sm:text-[32px] font-semibold text-nordfjord leading-[1.1] tracking-[-0.01em]">
             {lang === "fr" ? "La bibliothèque complète" : "The full library"}
           </h1>
           <p className="absolute top-0 right-0 font-data text-[10px] uppercase tracking-[0.24em] text-nova">
