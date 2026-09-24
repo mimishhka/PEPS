@@ -34,8 +34,8 @@ const GROUPS = [
         id: "when-ship",
         q: { en: "When will my order ship?", fr: "Quand ma commande sera-t-elle expédiée ?" },
         a: {
-          en: "Orders paid Monday to Friday before 2:00 p.m. Eastern time are shipped the same day. Orders paid after 2:00 p.m., on weekends or on holidays leave the next business day. An order paid after 2:00 p.m. on a Friday ships the following Monday (holidays excluded).",
-          fr: "Les commandes payées du lundi au vendredi avant 14 h (heure de l'Est) sont expédiées le jour même. Celles payées après 14 h, la fin de semaine ou un jour férié partent le jour ouvrable suivant. Une commande payée après 14 h un vendredi est expédiée le lundi suivant (jours fériés exclus).",
+          en: "Orders paid Monday to Friday before 1:00 p.m. Eastern time are shipped the same day. Orders paid after 1:00 p.m., on weekends or on holidays leave the next business day. An order paid after 1:00 p.m. on a Friday ships the following Monday (holidays excluded).",
+          fr: "Les commandes payées du lundi au vendredi avant 13 h (heure de l'Est) sont expédiées le jour même. Celles payées après 13 h, la fin de semaine ou un jour férié partent le jour ouvrable suivant. Une commande payée après 13 h un vendredi est expédiée le lundi suivant (jours fériés exclus).",
         },
       },
       {

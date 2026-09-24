@@ -281,8 +281,8 @@ const SHIPPING = [
     fr: { title: "Expédition des commandes" },
     paras: [
       {
-        en: "Orders leave our facility Monday through Friday, excluding statutory holidays, as carriers only accept new shipments on business days. Orders placed and paid before 2:00 p.m. Eastern time are dispatched the same day; orders received after 2:00 p.m. leave the next business day. An order paid after 2:00 p.m. on a Friday will be shipped the following Monday (holidays excluded).",
-        fr: "Les commandes quittent nos installations du lundi au vendredi, à l'exception des jours fériés, car les transporteurs n'acceptent de nouveaux envois que les jours ouvrables. Les commandes passées et payées avant 14 h (heure de l'Est) sont expédiées le jour même ; celles reçues après 14 h partent le jour ouvrable suivant. Une commande payée après 14 h un vendredi sera expédiée le lundi suivant (jours fériés exclus).",
+        en: "Orders leave our facility Monday through Friday, excluding statutory holidays, as carriers only accept new shipments on business days. Orders placed and paid before 1:00 p.m. Eastern time are dispatched the same day; orders received after 1:00 p.m. leave the next business day. An order paid after 1:00 p.m. on a Friday will be shipped the following Monday (holidays excluded).",
+        fr: "Les commandes quittent nos installations du lundi au vendredi, à l'exception des jours fériés, car les transporteurs n'acceptent de nouveaux envois que les jours ouvrables. Les commandes passées et payées avant 13 h (heure de l'Est) sont expédiées le jour même ; celles reçues après 13 h partent le jour ouvrable suivant. Une commande payée après 13 h un vendredi sera expédiée le lundi suivant (jours fériés exclus).",
       },
     ],
   },
