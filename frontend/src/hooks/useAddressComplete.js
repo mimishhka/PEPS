@@ -46,7 +46,7 @@ export function useAddressComplete({ champs, lang, actif = true, onPopulate }) {
         // conception, comme une cle Google Maps. Sans elle, le controle ne
         // fait aucune requete : pas d'erreur, pas de proposition, et notre
         // garde-fou se taisait — le pire des modes de panne.
-        key: "ex96-ex22-cm99-pa91",
+        key: "uf19-gr92-kt82-dn96",
         language: lang === "fr" ? "fr" : "en",
         // Boutique canadienne : pas d'adresse hors Canada.
         countries: { codesList: "CA" },
