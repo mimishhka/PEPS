@@ -101,7 +101,7 @@ export default function Header() {
             <button
               data-testid="admin-quick-access"
               onClick={enterAdmin}
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-full font-data text-[11px] font-semibold uppercase tracking-[0.2em] bg-nordfjord text-white px-3.5 py-1.5 hover:bg-glacier transition-colors"
+              className="hidden sm:inline-flex items-center gap-1.5 font-data text-[11px] font-semibold uppercase tracking-[0.2em] bg-nordfjord text-white px-3.5 py-1.5 hover:bg-glacier transition-colors" style={{ borderRadius: "var(--r-m)" }}
               aria-label="Ops"
             >
               <Lock size={11} strokeWidth={2} />
@@ -110,7 +110,7 @@ export default function Header() {
             <button
               data-testid="lang-toggle"
               onClick={toggle}
-              className="rounded-full font-data text-xs font-semibold uppercase tracking-[0.18em] border-[1.5px] border-ash px-3 py-1.5 hover:border-nova transition-colors inline-flex items-center gap-1.5"
+              className="font-data text-xs font-semibold uppercase tracking-[0.18em] border border-ash px-3 py-1.5 hover:border-nova transition-colors inline-flex items-center gap-1.5" style={{ borderRadius: "var(--r-m)" }}
               aria-label="Toggle language"
               title={lang === "fr" ? "Passer à l'anglais" : "Switch to French"}
             >
@@ -184,7 +184,7 @@ export default function Header() {
               <button
                 onClick={() => { setMobileOpen(false); enterAdmin(); }}
                 data-testid="admin-quick-access-mobile"
-                className="rounded-full font-data text-xs font-semibold uppercase tracking-[0.18em] py-2 text-left bg-nordfjord text-white px-4 inline-flex items-center gap-2 w-fit"
+                className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-2 text-left bg-nordfjord text-white px-4 inline-flex items-center gap-2 w-fit" style={{ borderRadius: "var(--r-m)" }}
               >
                 <Lock size={11} strokeWidth={2} /> OPS
               </button>

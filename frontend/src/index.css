@@ -31,6 +31,7 @@
   --fn-mist:        183 202 221;   /* texte secondaire sur surface nordfjord (hero) */
   --fn-abyss:       13 53 96;      /* panneau et filet du hero (carte certificat) */
   --fn-nova-hover:  0 163 188;     /* l'etat survole de l'accent */
+  --fn-fog:         143 163 184;   /* texte sur ink : l'ink est CONSTANT d'un mode a l'autre, son texte doit l'etre aussi */
 
   /* Anciennes variables hexadécimales, conservées : plusieurs feuilles de
    * style et styles en ligne les utilisent encore directement. Elles suivent
