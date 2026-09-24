@@ -65,15 +65,15 @@ export default function CartDrawer() {
                       <div className="flex items-center gap-2 mt-2">
                         <button
                           onClick={() => setQty(it.product_id, it.variant_id, Math.max(1, it.qty - 1))}
-                          className="w-6 h-6 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova"
+                          className="w-8 h-8 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova"
                           data-testid={`cart-qty-dec-${it.slug}`}
                         >
                           <Minus size={12} />
                         </button>
-                        <span className="font-data text-xs w-6 text-center text-nordfjord" data-testid={`cart-qty-${it.slug}`}>{it.qty}</span>
+                        <span className="font-data text-sm w-8 text-center text-nordfjord" data-testid={`cart-qty-${it.slug}`}>{it.qty}</span>
                         <button
                           onClick={() => setQty(it.product_id, it.variant_id, it.qty + 1)}
-                          className="w-6 h-6 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova"
+                          className="w-8 h-8 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova"
                           data-testid={`cart-qty-inc-${it.slug}`}
                         >
                           <Plus size={12} />

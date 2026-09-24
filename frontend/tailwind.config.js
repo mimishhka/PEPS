@@ -25,6 +25,8 @@ module.exports = {
         warning: "rgb(var(--fn-warning) / <alpha-value>)",
         error: "rgb(var(--fn-error) / <alpha-value>)",
         compliance: "rgb(var(--fn-compliance) / <alpha-value>)", // RUO / regulatory
+        mist: "rgb(var(--fn-mist) / <alpha-value>)",               // secondary text on nordfjord surfaces
+        abyss: "rgb(var(--fn-abyss) / <alpha-value>)",             // hero panel and hairline
 
         /* ---- Jetons shadcn/ui, branches sur l'identite ----
          *

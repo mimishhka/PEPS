@@ -158,7 +158,7 @@ export default function Home() {
               </h1>
             </Reveal>
             <Reveal delay={180}>
-              <p className="text-base lg:text-lg text-[#B7CADD] max-w-[52ch] leading-relaxed mb-8 lg:mb-10">{heroLede}</p>
+              <p className="text-base lg:text-lg text-mist max-w-[52ch] leading-relaxed mb-8 lg:mb-10">{heroLede}</p>
             </Reveal>
             <Reveal delay={260}>
               <div className="flex flex-wrap items-center gap-4 mb-12">
@@ -167,7 +167,7 @@ export default function Home() {
               </div>
             </Reveal>
             <Reveal delay={340}>
-              <div className="flex flex-wrap gap-x-10 gap-y-4 font-data text-[12px] uppercase tracking-[0.16em] text-[#8FB3C9]">
+              <div className="flex flex-wrap gap-x-10 gap-y-4 font-data text-[12px] uppercase tracking-[0.16em] text-mist">
                 <span><span className="text-nova">{chip.lot}</span> FN-26005</span>
                 <span><span className="text-nova">{chip.purity}</span> 99.42%</span>
                 <span><span className="text-nova">{chip.license}</span> RUO</span>
@@ -175,7 +175,7 @@ export default function Home() {
             </Reveal>
           </div>
           <Reveal delay={300} className="relative hidden lg:block">
-            <div className="relative bg-[#0D3560]/80 border border-[#1E4A73] p-8" style={{ borderRadius: "var(--r-l)" }}>
+            <div className="relative bg-abyss/80 border border-abyss p-8" style={{ borderRadius: "var(--r-l)" }}>
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <p className="font-data text-[10px] uppercase tracking-[0.22em] text-nova mb-1.5">Certificate of Analysis</p>
@@ -184,7 +184,7 @@ export default function Home() {
                 <NovaSpark size={26} />
               </div>
               <PurityTrace />
-              <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-[#1E4A73] font-data text-center">
+              <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-abyss font-data text-center">
                 {[["LOT", "FN-26005"], ["PURITY", "99.42%"], ["EXP", "2028-06"]].map(([k, v]) => (
                   <div key={k}>
                     <p className="text-[10px] uppercase tracking-[0.2em] text-[#5B7A9E] mb-1">{k}</p>
@@ -247,7 +247,7 @@ export default function Home() {
               <div className="relative max-w-2xl">
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">{newsEyebrow}</p>
                 <h2 className="font-display text-[32px] font-semibold text-white mb-4">{newsTitle}</h2>
-                <p className="text-[#B7CADD] mb-9 leading-relaxed">{newsLede}</p>
+                <p className="text-mist mb-9 leading-relaxed">{newsLede}</p>
                 {done ? (
                   <p className="inline-flex items-center gap-2.5 text-nova font-semibold"><Check size={18} /> {newsDone}</p>
                 ) : (
@@ -266,7 +266,7 @@ export default function Home() {
                           data-testid="newsletter-submit">{t("home.subscribe")}</button>
                       </div>
                     </div>
-                    <label className="flex items-start gap-3 text-[12px] text-[#8FB3C9] cursor-pointer select-none">
+                    <label className="flex items-start gap-3 text-[12px] text-mist cursor-pointer select-none">
                       <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
                         className="mt-0.5 accent-[#00B8D4] w-4 h-4" data-testid="newsletter-consent" />
                       {t("home.newsletterConsent")}

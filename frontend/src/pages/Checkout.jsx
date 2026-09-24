@@ -426,7 +426,7 @@ export default function Checkout() {
       type="button"
       onClick={() => setPaymentMethod(id)}
       data-testid={testid}
-      className={`p-5 text-left rounded-xl border-[1.5px] transition-colors ${paymentMethod === id ? "border-nova bg-nova/5" : "border-ash hover:border-nova"}`}
+      className={`p-5 text-left border transition-colors ${paymentMethod === id ? "border-nova bg-nova/5" : "border-ash hover:border-nova"}`}
     >
       <div className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-1">
         {paymentMethod === id ? (lang === "fr" ? "✓ CHOISI" : "✓ SELECTED") : (lang === "fr" ? "CHOISIR" : "SELECT")}

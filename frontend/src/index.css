@@ -26,8 +26,11 @@
   --fn-success:     46 158 107;    /* #2E9E6B */
   --fn-warning:     232 163 61;    /* #E8A33D */
   --fn-error:       214 69 69;     /* #D64545 */
-  --fn-compliance:  91 122 158;    /* #5B7A9E */
+  --fn-compliance:  80 108 142;    /* #506C8E — assombri le 2026-09-23 : l'ancien 5B7A9E tombait a 4,45:1 sur blanc, sous le seuil AA de 4,5. Le nouveau donne 5,42:1.
   --fn-card:        255 255 255;   /* surface de carte, distincte du fond */
+  --fn-mist:        183 202 221;   /* texte secondaire sur surface nordfjord (hero) */
+  --fn-abyss:       13 53 96;      /* panneau et filet du hero (carte certificat) */
+  --fn-nova-hover:  0 163 188;     /* l'etat survole de l'accent */
 
   /* Anciennes variables hexadécimales, conservées : plusieurs feuilles de
    * style et styles en ligne les utilisent encore directement. Elles suivent
@@ -99,6 +102,11 @@
   --fn-warning:     240 184 96;    /* #F0B860 */
   --fn-error:       240 122 122;   /* #F07A7A */
   --fn-compliance:  143 175 201;   /* #8FAFC9 */
+  /* En mode nuit, le hero devient blanc (les roles s'echangent) : le texte
+     secondaire y reprend une ardoise moyenne lisible, le panneau devient
+     clair — jamais de bloc sombre isole sur page claire. */
+  --fn-mist:        80 108 142;
+  --fn-abyss:       226 234 241;
   --fn-card:        11 46 79;      /* #0B2E4F — Nordfjord, la surface de la marque */
 
   color-scheme: dark;
@@ -216,7 +224,7 @@
     background: var(--nova);
     color: var(--nordfjord);
   }
-  .btn-nova:hover { background: #00A3BC; }
+  .btn-nova:hover { background: rgb(var(--fn-nova-hover)); }
   .btn-nova:active { transform: scale(0.99); }
   .btn-outline {
     background: transparent;
