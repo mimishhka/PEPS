@@ -904,6 +904,51 @@ function AddressForm({ value, setValue, lang, prefix }) {
   const lbl = (en, fr) => lang === "fr" ? fr : en;
   const regions = regionsDuPays(value.country);
 
+  // ADDRESSCOMPLETE DE POSTES CANADA (essai 14 jours).
+  //
+  // La saisie assistee remplit l'adresse ENTIERE depuis le champ « Adresse » :
+  // Postes Canada propose, on choisit, et rue, ville, province et code postal
+  // arrivent ensemble — la source est le fichier d'adresses du transporteur
+  // lui-meme, pas un referentiel tiers.
+  //
+  // La cle vit dans le script de index.html : elle est publique cote
+  // navigateur par conception, comme une cle Google Maps.
+  //
+  // LE GARDE-FOU : si le script n'est plus servi (fin de l'essai, blocage
+  // reseau), window.pca est absent et le formulaire fonctionne exactement
+  // comme avant — saisie libre, formatage, province deduite du code postal.
+  const refs = {
+    ligne1: useRef(null), ligne2: useRef(null), ville: useRef(null),
+    province: useRef(null), codePostal: useRef(null),
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.pca) return undefined;
+    const pca = window.pca;
+    const cibles = [
+      { element: refs.ligne1.current, field: "Line1", mode: pca.fieldMode?.POPULATE },
+      { element: refs.ligne2.current, field: "Line2", mode: pca.fieldMode?.POPULATE },
+      { element: refs.ville.current, field: "City", mode: pca.fieldMode?.POPULATE },
+      // La province est un <select> de codes (QC, ON...) : AddressComplete
+      // remplit la valeur du code, qui correspond aux options.
+      { element: refs.province.current, field: "ProvinceCode", mode: pca.fieldMode?.POPULATE },
+      { element: refs.codePostal.current, field: "PostalCode", mode: pca.fieldMode?.POPULATE },
+    ].filter((c) => c.element);
+    if (cibles.length === 0) return undefined;
+    let controle = null;
+    try {
+      controle = new pca.Address(cibles, {
+        language: lang === "fr" ? "fr" : "en",
+        // Pas d'adresse hors Canada ici : la boutique est canadienne.
+        countries: { codesList: "CA" },
+      });
+    } catch {
+      return undefined; // echec d'initialisation : la saisie libre reste
+    }
+    return () => { try { if (controle && controle.destroy) controle.destroy(); } catch { /* fin de vie */ } };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang, prefix]);
+
   // LE CODE POSTAL REMPLIT LA PROVINCE.
   //
   // C'est la seule chose qu'on puisse déduire d'une adresse sans interroger
@@ -943,14 +988,14 @@ function AddressForm({ value, setValue, lang, prefix }) {
         lang={lang} prefix={prefix} />
       <label className="sm:col-span-2 flex flex-col gap-1">
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Address", "Adresse")}</span>
-        <input value={value.line1} onChange={(e) => set("line1", e.target.value)}
+        <input ref={refs.ligne1} value={value.line1} onChange={(e) => set("line1", e.target.value)}
           placeholder={lbl("Address line 1", "Adresse")} data-testid={`${prefix}-line1`}
           autoComplete="address-line1"
           className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
       </label>
       <label className="sm:col-span-2 flex flex-col gap-1">
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Apt / Suite (optional)", "Appartement (optionnel)")}</span>
-        <input value={value.line2} onChange={(e) => set("line2", e.target.value)}
+        <input ref={refs.ligne2} value={value.line2} onChange={(e) => set("line2", e.target.value)}
           placeholder={lbl("Address line 2 (optional)", "Appartement, suite (optionnel)")} data-testid={`${prefix}-line2`}
           autoComplete="address-line2"
           className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
@@ -960,7 +1005,7 @@ function AddressForm({ value, setValue, lang, prefix }) {
           les renseigne, il doit donc se saisir en premier. */}
       <label className="flex flex-col gap-1">
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Postal / ZIP code", "Code postal")}</span>
-        <input value={value.postal_code} onChange={(e) => majCodePostal(e.target.value)}
+        <input ref={refs.codePostal} value={value.postal_code} onChange={(e) => majCodePostal(e.target.value)}
           placeholder={value.country === "CA" ? "A1A 1A1" : "12345"} data-testid={`${prefix}-postal`}
           autoComplete="postal-code" inputMode={value.country === "CA" ? "text" : "numeric"}
           className={`rounded-xl border px-4 py-3 outline-none focus:border-nova ${cpMalForme ? "border-error" : "border-ash"}`} />
@@ -975,7 +1020,7 @@ function AddressForm({ value, setValue, lang, prefix }) {
 
       <label className="flex flex-col gap-1">
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("City", "Ville")}</span>
-        <input value={value.city} onChange={(e) => set("city", e.target.value)}
+        <input ref={refs.ville} value={value.city} onChange={(e) => set("city", e.target.value)}
           placeholder={lbl("City", "Ville")} data-testid={`${prefix}-city`}
           autoComplete="address-level2"
           className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
@@ -986,7 +1031,7 @@ function AddressForm({ value, setValue, lang, prefix }) {
           corrigeaient, et l'étiquette était refusée des jours plus tard. */}
       <label className="flex flex-col gap-1">
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Province / State", "Province / État")}</span>
-        <select value={value.province} onChange={(e) => set("province", e.target.value)}
+        <select ref={refs.province} value={value.province} onChange={(e) => set("province", e.target.value)}
           data-testid={`${prefix}-province`} autoComplete="address-level1"
           className={`rounded-xl border px-4 py-3 outline-none focus:border-nova bg-white ${desaccord ? "border-error" : "border-ash"}`}>
           <option value="">{lbl("Select…", "Choisir…")}</option>

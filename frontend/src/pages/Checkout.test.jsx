@@ -199,3 +199,34 @@ it("propose la correction quand elle change vraiment l adresse", async () => {
 
   expect(screen.getByTestId("shipping-city")).toHaveValue("Montréal");
 });
+// AddressComplete de Postes Canada : la saisie assistee, si le script est
+// servi, et rien du tout sinon.
+it("initialise AddressComplete sur les champs de livraison quand le script est la", async () => {
+  const destroy = jest.fn();
+  const Adresse = jest.fn(() => ({ destroy }));
+  window.pca = { fieldMode: { POPULATE: 3 }, Address: Adresse };
+  try {
+    render(<Checkout />);
+
+    await waitFor(() => expect(Adresse).toHaveBeenCalled(), ATTENTE);
+    const cibles = Adresse.mock.calls[0][0];
+    expect(cibles.some((c) => c.field === "Line1")).toBe(true);
+    expect(cibles.some((c) => c.field === "PostalCode")).toBe(true);
+    expect(cibles.some((c) => c.field === "ProvinceCode")).toBe(true);
+    expect(Adresse.mock.calls[0][1].language).toBe("fr");
+  } finally {
+    delete window.pca;
+  }
+});
+
+it("laisse le formulaire intact quand le script AddressComplete est absent", async () => {
+  // Fin de l'essai ou blocage reseau : window.pca n'existe pas, et rien ne
+  // doit casser — la saisie libre reste le chemin nominal.
+  delete window.pca;
+  render(<Checkout />);
+  await screen.findByTestId("checkout-page");
+
+  expect(screen.getByTestId("shipping-line1")).toBeInTheDocument();
+  await userEvent.type(screen.getByTestId("shipping-postal"), "H2X1Y4");
+  expect(screen.getByTestId("shipping-province")).toHaveValue("QC");
+});
