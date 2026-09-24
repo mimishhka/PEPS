@@ -5,25 +5,9 @@ import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import ProductCard from "../components/ProductCard.jsx";
-import { MolecularMesh, Seal, NovaSpark, Reveal, FnMark } from "../components/brand";
+import { MolecularMesh, NovaSpark, Reveal, FnMark } from "../components/brand";
+import ProductImage from "../components/ProductImage";
 
-function PurityTrace() {
-  return (
-    <svg viewBox="0 0 520 180" className="w-full" aria-hidden="true">
-      <g stroke="#1B4A73" strokeWidth="1">
-        {[36, 72, 108, 144].map((y) => <line key={y} x1="0" y1={y} x2="520" y2={y} opacity=".5" />)}
-      </g>
-      <path
-        d="M0 150 L60 150 L78 148 L92 150 L150 150 L166 142 L178 150 L250 150 L262 146 L272 150 L340 150 L352 96 L362 34 L372 20 L382 34 L392 96 L402 150 L520 150"
-        fill="none" stroke="#00B8D4" strokeWidth="2.5" strokeLinecap="round"
-      />
-      <circle cx="372" cy="20" r="4" fill="#00B8D4" />
-      <text x="404" y="30" fill="#00B8D4" fontSize="12" fontFamily="'JetBrains Mono', monospace" letterSpacing="1">99%</text>
-      <text x="12" y="172" fill="#5B7A9E" fontSize="10" fontFamily="'JetBrains Mono', monospace" letterSpacing="1.5">RETENTION TIME →</text>
-      <text x="420" y="60" fill="#5B7A9E" fontSize="10" fontFamily="'JetBrains Mono', monospace" letterSpacing="1.5">HPLC · λ 214nm</text>
-    </svg>
-  );
-}
 
 export default function Home() {
   const { t, lang } = useLang();
@@ -137,51 +121,51 @@ export default function Home() {
 
   return (
     <div data-testid="home-page">
-      {/* HERO — un seul moment. Regles du brief : quatre elements texte au
-          plus, deux lignes de titre, sous-texte de vingt mots au plus, le
-          hero tient dans le premier ecran, pas de halo deco. La carte du
-          certificat porte les donnees de lot : les trois puces qui les
-          dupliquaient sous les boutons disparaissent. */}
-      <section className="relative bg-nordfjord text-clinical overflow-hidden texture-bruit" data-testid="hero-section">
-        <MolecularMesh opacity={0.18} />
-        <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 pt-14 lg:pt-20 pb-16 lg:pb-24 grid lg:grid-cols-[1.05fr_.95fr] gap-12 lg:gap-16 items-center lg:min-h-[82svh]">
-          <div>
+      {/* HERO — « image d'abord » : la photo du produit vedette porte la
+          page, le texte est pose dessus, discret. Sans image disponible, la
+          maille moleculaire de la marque prend le relais. */}
+      <section className="relative overflow-hidden texture-bruit" data-testid="hero-section" style={{ minHeight: "min(78vh, 640px)" }}>
+        <div className="absolute inset-0">
+          {products[0] ? (
+            <ProductImage
+              src={products[0].image_url}
+              slug={products[0].slug}
+              alt={products[0].name_fr || "FIRONOVA"}
+              className="w-full h-full"
+              imgClassName="w-full h-full object-cover"
+              loading="eager"
+              fetchPriority="high"
+            />
+          ) : (
+            <MolecularMesh opacity={0.4} />
+          )}
+          <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(11,46,79,.38) 0%, rgba(11,46,79,.08) 45%, rgba(11,46,79,.72) 100%)" }} />
+        </div>
+        <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 flex flex-col justify-end" style={{ minHeight: "inherit" }}>
+          <div className="pt-14 lg:pt-20 pb-16 lg:pb-24">
             <Reveal>
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.22em] text-nova mb-7">
+              <p className="font-data text-[10.5px] uppercase tracking-[0.26em] text-nova mb-4">
                 {heroEyebrow}
               </p>
-              <h1 className="font-display font-bold leading-[0.98] tracking-[-0.035em] mb-7 text-clinical" style={{ fontSize: "clamp(40px,7.5vw,92px)", maxWidth: "12ch" }} data-testid="hero-title">
+              <h1 className="font-display font-medium leading-[1.2] tracking-[-0.01em] text-white max-w-[26ch]" style={{ fontSize: "clamp(24px,3.4vw,34px)" }} data-testid="hero-title">
                 {heroTitle.a}{" "}
                 <span className="text-nova">{heroTitle.b}</span>
               </h1>
-              <p className="text-base lg:text-lg text-mist max-w-[52ch] leading-relaxed mb-10">{heroLede}</p>
-              <div className="flex flex-wrap items-center gap-4">
-                <Link to="/catalog" data-testid="hero-cta-catalog" className="btn-pill btn-nova">{ctaPrimary}</Link>
-                <Link to="/about" data-testid="hero-cta-lab" className="btn-pill btn-outline border-mist text-mist hover:border-nova hover:text-nova">{ctaSecondary}</Link>
+              <p className="text-sm text-white/80 max-w-[44ch] leading-relaxed mt-3">{heroLede}</p>
+              <div className="mt-5 flex items-center gap-5">
+                <Link to="/catalog" data-testid="hero-cta-catalog"
+                  className="inline-block bg-white text-nordfjord text-[13px] font-medium tracking-[0.04em] px-6 py-3 hover:bg-nova hover:text-white transition-colors" style={{ borderRadius: "var(--r-m)" }}>
+                  {ctaPrimary}
+                </Link>
+                {/* Le second geste reste, mais comme un lien discret : le hero
+                    n'a qu'un bouton, le texte porte le reste. */}
+                <Link to="/about" data-testid="hero-cta-lab"
+                  className="text-white/70 text-[13px] hover:text-nova transition-colors">
+                  {ctaSecondary}
+                </Link>
               </div>
             </Reveal>
           </div>
-          <Reveal delay={220} className="relative hidden lg:block">
-            <div className="relative bg-abyss/80 border border-abyss p-8" style={{ borderRadius: "var(--r-l)" }}>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <p className="font-data text-[10px] uppercase tracking-[0.22em] text-nova mb-1.5">Certificate of Analysis</p>
-                  <p className="font-display text-lg font-semibold text-white">BPC-157 · 5 mg</p>
-                </div>
-                <NovaSpark size={26} />
-              </div>
-              <PurityTrace />
-              <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-abyss font-data text-center">
-                {[["LOT", "FN-26005"], ["PURITY", "99.42%"], ["EXP", "2028-06"]].map(([k, v]) => (
-                  <div key={k}>
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-mist mb-1">{k}</p>
-                    <p className="text-sm text-nova font-semibold">{v}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="absolute -bottom-14 -left-16"><Seal size={120} /></div>
-          </Reveal>
         </div>
       </section>
 

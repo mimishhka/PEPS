@@ -48,18 +48,22 @@ export default function Catalog() {
   return (
     <div data-testid="catalog-page" className="bg-clinical min-h-screen">
       <div className="max-w-7xl mx-auto px-6 lg:px-8 pt-16 pb-10">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4 flex items-center gap-2">
-          <span className="inline-block w-8 h-px bg-nova" /> {lang === "fr" ? "CATALOGUE" : "CATALOG"}
-        </p>
-        <h1 className="font-display text-[42px] sm:text-[52px] font-semibold text-nordfjord leading-tight">
-          {lang === "fr" ? "La bibliothèque complète" : "The full library"}
-        </h1>
+        {/* Le titre porte seul ; l'etiquette devient une marque de coin,
+            comme sur le bandeau d'infolettre — le meme geste partout. */}
+        <div className="relative">
+          <h1 className="font-display text-[40px] sm:text-[56px] font-bold text-nordfjord leading-[1.02] tracking-[-0.03em]">
+            {lang === "fr" ? "La bibliothèque complète" : "The full library"}
+          </h1>
+          <p className="absolute top-0 right-0 font-data text-[10px] uppercase tracking-[0.24em] text-nova">
+            {lang === "fr" ? "CATALOGUE" : "CATALOG"}
+          </p>
+        </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-6 lg:px-8 pb-24">
         <section>
           <div className="flex flex-col sm:flex-row gap-3 mb-8">
-            <div className="flex-1 flex items-center gap-2.5 bg-white border border-ash rounded-full px-5 py-3">
+            <div className="flex-1 flex items-center gap-2.5 bg-white border border-ash px-5 py-3" style={{ borderRadius: "var(--r-m)" }}>
               <Search size={16} className="text-glacier shrink-0" />
               <input
                 value={query}
@@ -73,21 +77,21 @@ export default function Catalog() {
               <button
                 onClick={() => setSort("price-asc")}
                 data-testid="catalog-sort-price-asc"
-                className={`rounded-full font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border-[1.5px] transition-colors ${sort === "price-asc" ? "border-nova text-nova" : "border-ash text-glacier hover:border-nova hover:text-nova"}`}
+                className={`font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border transition-colors ${sort === "price-asc" ? "border-nova text-nova" : "border-ash text-glacier hover:border-nova hover:text-nova"}`} style={{ borderRadius: "var(--r-m)" }}
               >
                 {lang === "fr" ? "Prix ↑" : "Price ↑"}
               </button>
               <button
                 onClick={() => setSort("price-desc")}
                 data-testid="catalog-sort-price-desc"
-                className={`rounded-full font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border-[1.5px] transition-colors ${sort === "price-desc" ? "border-nova text-nova" : "border-ash text-glacier hover:border-nova hover:text-nova"}`}
+                className={`font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border transition-colors ${sort === "price-desc" ? "border-nova text-nova" : "border-ash text-glacier hover:border-nova hover:text-nova"}`} style={{ borderRadius: "var(--r-m)" }}
               >
                 {lang === "fr" ? "Prix ↓" : "Price ↓"}
               </button>
               <button
                 onClick={() => setSort("name")}
                 data-testid="catalog-sort-name"
-                className={`rounded-full font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border-[1.5px] transition-colors ${sort === "name" ? "border-nova text-nova" : "border-ash text-glacier hover:border-nova hover:text-nova"}`}
+                className={`font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border transition-colors ${sort === "name" ? "border-nova text-nova" : "border-ash text-glacier hover:border-nova hover:text-nova"}`} style={{ borderRadius: "var(--r-m)" }}
               >
                 {lang === "fr" ? "Nom" : "Name"}
               </button>

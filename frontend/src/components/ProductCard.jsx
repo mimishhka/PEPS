@@ -32,10 +32,10 @@ export default function ProductCard({ product, index = 0 }) {
 
   return (
     <div
-      className="group bg-white border border-ash overflow-hidden flex flex-col card-hover" style={{ borderRadius: "var(--r-m)" }}
+      className="group flex flex-col card-hover" data-testid-carte=""
       data-testid={`product-card-${product.slug}`}
     >
-      <Link to={`/product/${product.slug}`} className="block relative aspect-[4/3] overflow-hidden">
+      <Link to={`/product/${product.slug}`} className="block relative aspect-[4/5] overflow-hidden bg-white" style={{ borderRadius: "var(--r-m)" }}>
         <ProductImage
           src={product.image_url}
           slug={product.slug}
@@ -48,23 +48,23 @@ export default function ProductCard({ product, index = 0 }) {
         />
         <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
           {anySale && (
-            <span className="rounded-full font-data text-[10px] font-semibold uppercase tracking-[0.18em] bg-nova text-nordfjord px-3 py-1" data-testid={`sale-badge-${product.slug}`}>
+            <span className="font-data text-[10px] font-semibold uppercase tracking-[0.18em] bg-clinical border border-nova text-nova px-2.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`sale-badge-${product.slug}`}>
               {lang === "fr" ? "PROMO" : "SALE"}
             </span>
           )}
           {anyPreorder && (
-            <span className="rounded-full font-data text-[10px] font-semibold uppercase tracking-[0.18em] bg-white/90 backdrop-blur border border-nova text-nova px-3 py-1" data-testid={`preorder-badge-${product.slug}`}>
+            <span className="font-data text-[10px] font-semibold uppercase tracking-[0.18em] bg-white/90 backdrop-blur border border-nova text-nova px-2.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`preorder-badge-${product.slug}`}>
               {lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"}
             </span>
           )}
         </div>
       </Link>
 
-      <div className="p-3 sm:p-4 lg:p-5 flex flex-col gap-1 sm:gap-1.5 flex-1">
+      <div className="pt-3 px-0.5 flex flex-col gap-1 sm:gap-1.5 flex-1">
         <div className="font-data text-[10px] uppercase tracking-[0.12em] sm:tracking-[0.2em] text-compliance">
           {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT" : "FOR RESEARCH USE ONLY"}
         </div>
-        <Link to={`/product/${product.slug}`} className="font-display text-[15px] sm:text-lg font-bold text-nordfjord hover:text-nova transition-colors leading-snug">
+        <Link to={`/product/${product.slug}`} className="font-display text-[15px] sm:text-base font-medium text-nordfjord hover:text-nova transition-colors leading-snug">
           {name}
         </Link>
         <div className="font-data text-[11px] text-glacier">{specLine}</div>
@@ -76,7 +76,7 @@ export default function ProductCard({ product, index = 0 }) {
                 ${displayOriginal.toFixed(2)}
               </span>
             )}
-            <span className={`font-data text-base sm:text-lg lg:text-xl font-bold tabular-nums ${displayOriginal ? "text-nova" : "text-nordfjord"}`} data-testid={`card-price-${product.slug}`}>
+            <span className={`font-data text-[15px] sm:text-base font-medium tabular-nums ${displayOriginal ? "text-nova" : "text-nordfjord"}`} data-testid={`card-price-${product.slug}`}>
               ${(displayPrice ?? 0).toFixed(2)}
             </span>
             {variants.length > 1 && (
@@ -92,11 +92,11 @@ export default function ProductCard({ product, index = 0 }) {
         </div>
       </div>
 
-      <div className="p-3 pt-0 sm:p-4 sm:pt-0">
+      <div className="pt-3 px-0.5">
         <button
           data-testid={`add-to-cart-${product.slug}`}
           onClick={() => add(product)}
-          className="w-full btn-pill btn-nova !py-2 sm:!py-2.5 !text-[12px] !tracking-[0.06em]"
+          className="w-full btn-pill btn-nova !py-2 sm:!py-2 !text-[12px] !tracking-[0.06em]"
         >
           {lang === "fr" ? "Ajouter à la commande" : "Add to order"}
         </button>
