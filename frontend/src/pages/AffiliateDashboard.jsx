@@ -815,8 +815,8 @@ export default function AffiliateDashboard() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-data
-                             text-[11px] font-semibold uppercase tracking-wider"
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5  font-data
+                             text-[11px] font-semibold uppercase tracking-wider" style={{ borderRadius: "var(--r-m)" }}
                   data-testid="affiliate-tier-badge"
                   style={{ background: `${tierColor}1a`, color: tierColor }}>
               <TierMark tier={data?.tier} color={tierColor} size={16} />
@@ -1251,8 +1251,8 @@ export default function AffiliateDashboard() {
                 </code>
                 {refCode && (
                   <button onClick={copyCode} data-testid="affiliate-copy-code"
-                    className="px-4 py-2 rounded-full border border-ash text-nordfjord font-data
-                               text-xs font-bold uppercase tracking-wider hover:border-nova transition">
+                    className="px-4 py-2  border border-ash text-nordfjord font-data
+                               text-xs font-bold uppercase tracking-wider hover:border-nova transition" style={{ borderRadius: "var(--r-m)" }}>
                     {codeCopie ? L("Copié ✓", "Copied ✓") : L("Copier le code", "Copy code")}
                   </button>
                 )}
@@ -1264,7 +1264,7 @@ export default function AffiliateDashboard() {
                       {refLink}
                     </code>
                     <button onClick={copyLink} data-testid="affiliate-copy-link"
-                            className="px-5 py-3 rounded-full bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition">
+                            className="px-5 py-3  bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition" style={{ borderRadius: "var(--r-m)" }}>
                       {copied ? L("Copié ✓", "Copied ✓") : L("Copier", "Copy")}
                     </button>
                   </div>
@@ -1465,7 +1465,7 @@ export default function AffiliateDashboard() {
                     )}
                   </p>
                 </div>
-                <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-clinical text-nordfjord text-xs font-medium" data-testid="attached-customers-count">
+                <span className="inline-flex items-center px-2.5 py-1  bg-clinical text-nordfjord text-xs font-medium" style={{ borderRadius: "var(--r-m)" }} data-testid="attached-customers-count">
                   {customers.length}
                 </span>
               </div>
@@ -1514,7 +1514,7 @@ export default function AffiliateDashboard() {
                             {c.bound_at ? new Date(c.bound_at).toLocaleDateString(lang) : "—"}
                           </td>
                           <td className="px-4 py-3">
-                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-data uppercase tracking-wider bg-clinical text-nordfjord">
+                            <span className="inline-block px-2 py-0.5  text-[10px] font-data uppercase tracking-wider bg-clinical text-nordfjord" style={{ borderRadius: "var(--r-m)" }}>
                               {c.source === "click" ? L("lien", "link")
                                 : c.source === "code" ? L("code", "code")
                                 : c.source === "binding" ? L("récurrent", "returning")
@@ -1819,7 +1819,7 @@ export default function AffiliateDashboard() {
               </label>
               <button onClick={savePayout} disabled={savingPay}
                 data-testid="affiliate-save-payout"
-                className="px-6 py-3 rounded-full bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50">
+                className="px-6 py-3  bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50" style={{ borderRadius: "var(--r-m)" }}>
                 {savingPay ? L("Enregistrement…", "Saving…") : L("Enregistrer", "Save")}
               </button>
               {/* Tron RETIRE de la liste des reseaux interdits : le backend
@@ -1893,7 +1893,7 @@ export default function AffiliateDashboard() {
               </label>
               <button onClick={savePassword} disabled={savingPw}
                 data-testid="affiliate-save-password"
-                className="px-6 py-3 rounded-full bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50">
+                className="px-6 py-3  bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50" style={{ borderRadius: "var(--r-m)" }}>
                 {savingPw ? L("Enregistrement…", "Saving…") : L("Enregistrer", "Save")}
               </button>
             </div>
@@ -2039,11 +2039,11 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
 
         <div className="flex gap-3 pt-2">
           <Link to="/" data-testid="terms-decline"
-                className="flex-1 text-center px-5 py-3 rounded-full border border-ash font-data text-xs font-bold uppercase tracking-wider text-glacier hover:border-glacier transition">
+                className="flex-1 text-center px-5 py-3  border border-ash font-data text-xs font-bold uppercase tracking-wider text-glacier hover:border-glacier transition" style={{ borderRadius: "var(--r-m)" }}>
             {L("Refuser", "Decline")}
           </Link>
           <button onClick={accepter} disabled={!complet || busy} data-testid="terms-submit"
-                  className="flex-[2] px-5 py-3 rounded-full bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider disabled:opacity-40 transition">
+                  className="flex-[2] px-5 py-3  bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider disabled:opacity-40 transition" style={{ borderRadius: "var(--r-m)" }}>
             {busy ? L("Enregistrement…", "Saving…") : L("Accepter et continuer", "Accept and continue")}
           </button>
         </div>
