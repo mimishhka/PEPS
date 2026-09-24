@@ -125,10 +125,27 @@ export default function Checkout() {
       if (typeof draft.billSame === "boolean") setBillSame(draft.billSame);
 
       if (draft.ship && typeof draft.ship === "object") {
-        setShip((curr) => (hasAddressData(curr) ? curr : { ...curr, ...draft.ship }));
+        // LE BROUILLON PEUT DATER D'AVANT LA SUPPRESSION DES ETATS-UNIS :
+        // il portait country=US, et la liste des provinces affichait alors
+        // les etats americains alors meme que le select de pays montrait
+        // « Canada » — une valeur orpheline. On reforce le Canada et on
+        // vide une province qui n'y existe pas.
+        setShip((curr) => {
+          if (hasAddressData(curr)) return curr;
+          const rest = { ...curr, ...draft.ship };
+          rest.country = "CA";
+          if (!regionsDuPays("CA").some((r) => r.code === rest.province)) rest.province = "";
+          return rest;
+        });
       }
       if (draft.bill && typeof draft.bill === "object") {
-        setBill((curr) => (hasAddressData(curr) ? curr : { ...curr, ...draft.bill }));
+        setBill((curr) => {
+          if (hasAddressData(curr)) return curr;
+          const rest = { ...curr, ...draft.bill };
+          rest.country = "CA";
+          if (!regionsDuPays("CA").some((r) => r.code === rest.province)) rest.province = "";
+          return rest;
+        });
       }
       if (typeof draft.couponInput === "string") setCouponInput(draft.couponInput);
       if (draft.coupon && typeof draft.coupon === "object") setCoupon(draft.coupon);
@@ -903,7 +920,7 @@ function VerificationAdresse({ adresse, setAdresse, lang }) {
 function AddressForm({ value, setValue, lang, prefix }) {
   const set = (k, v) => setValue((s) => ({ ...s, [k]: v }));
   const lbl = (en, fr) => lang === "fr" ? fr : en;
-  const regions = regionsDuPays(value.country);
+  const regions = regionsDuPays("CA"); // boutique canadienne : une seule liste, toujours
 
   // ADDRESSCOMPLETE DE POSTES CANADA (essai 14 jours).
   //
@@ -1031,7 +1048,7 @@ function AddressForm({ value, setValue, lang, prefix }) {
 
       <label className="flex flex-col gap-1 sm:col-span-2">
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Country", "Pays")}</span>
-        <select value={value.country} onChange={(e) => majPays(e.target.value)} data-testid={`${prefix}-country`}
+        <select value="CA" onChange={(e) => majPays(e.target.value)} data-testid={`${prefix}-country`}
           autoComplete="country"
           className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova bg-white">
           <option value="CA">Canada</option>
