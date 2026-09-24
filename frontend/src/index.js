@@ -42,14 +42,29 @@ window.addEventListener("unhandledrejection", (event) => {
     return;
   }
 
-  console.error("[rejet non attrapé]", {
+  const details = {
     url: url || null,
     statut: status ?? null,
-    message: reason?.message ?? String(reason),
+    message: reason?.message || formatUnhandledRejection(reason),
     estError: reason instanceof Error,
     origine: reason,
-  });
+  };
+  console.error("[rejet non attrapé]", details);
+
+  // Axios rejects with plain objects in a few legacy paths. The CRA overlay
+  // stringifies those objects as "[object Object]" and hides the useful
+  // response detail. Keep the rejection visible in the console, but prevent
+  // the development overlay from replacing the application with that opaque
+  // message.
+  if (!(reason instanceof Error)) event.preventDefault();
 });
+
+function formatUnhandledRejection(value) {
+  if (value == null) return "Unknown promise rejection";
+  if (typeof value === "string") return value;
+  try { return JSON.stringify(value); }
+  catch { return Object.prototype.toString.call(value); }
+}
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(

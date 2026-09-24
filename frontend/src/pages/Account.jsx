@@ -1,6 +1,5 @@
 // frontend/src/pages/Account.jsx — Mon Compte étendu (identité Fironova).
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useAddressComplete } from "../hooks/useAddressComplete";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
@@ -307,27 +306,6 @@ function AddressesTab({ t, lang }) {
   const [addresses, setAddresses] = useState([]);
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
-  // AddressComplete : les memes cinq champs que le checkout, branches au
-  // crochet partage. Le formulaire n'est monte que pendant l'edition —
-  // `actif` rearme l'effet quand il s'ouvre.
-  const refsAdresse = {
-    ligne1: useRef(null), ligne2: useRef(null), ville: useRef(null),
-    province: useRef(null), codePostal: useRef(null),
-  };
-  useAddressComplete({
-    champs: refsAdresse,
-    lang,
-    actif: !!editing,
-    onPopulate: (address) => setEditing((current) => current ? ({
-      ...current,
-      address1: address?.Line1 || current.address1,
-      address2: address?.Line2 || current.address2,
-      city: address?.City || current.city,
-      province: address?.ProvinceCode || current.province,
-      postal_code: address?.PostalCode || current.postal_code,
-      country: "CA",
-    }) : current),
-  });
 
   const load = useCallback(() => {
     api.get("/account/addresses").then((r) => setAddresses(r.data)).catch(() => setAddresses([]));
@@ -391,18 +369,18 @@ function AddressesTab({ t, lang }) {
             lang={lang} prefix="address"
             classeChamp="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova"
             classeEtiquette="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-1" />
-          <Field inputRef={refsAdresse.ligne1} label={t("checkout.address1")} value={editing.address1} required className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address1: v })} testid="address-address1" />
-          <Field inputRef={refsAdresse.ligne2} label={t("checkout.address2")} value={editing.address2} className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address2: v })} testid="address-address2" />
-          <Field inputRef={refsAdresse.ville} label={t("checkout.city")} value={editing.city} required onChange={(v) => setEditing({ ...editing, city: v })} testid="address-city" />
+          <Field label={t("checkout.address1")} value={editing.address1} required className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address1: v })} testid="address-address1" />
+          <Field label={t("checkout.address2")} value={editing.address2} className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address2: v })} testid="address-address2" />
+          <Field label={t("checkout.city")} value={editing.city} required onChange={(v) => setEditing({ ...editing, city: v })} testid="address-city" />
           <div>
             <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("checkout.province")}</label>
-            <select ref={refsAdresse.province} value={editing.province} data-testid="address-province"
+            <select value={editing.province} data-testid="address-province"
               onChange={(e) => setEditing({ ...editing, province: e.target.value })}
               className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord focus:outline-none focus:border-nova">
               {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
-          <Field inputRef={refsAdresse.codePostal} label={t("checkout.postal")} value={editing.postal_code} required onChange={(v) => setEditing({ ...editing, postal_code: v })} testid="address-postal" />
+          <Field label={t("checkout.postal")} value={editing.postal_code} required onChange={(v) => setEditing({ ...editing, postal_code: v })} testid="address-postal" />
           <Field label={t("checkout.phone")} value={editing.phone} onChange={(v) => setEditing({ ...editing, phone: v })} testid="address-phone" />
           <label className="flex items-center gap-2 font-data text-xs uppercase tracking-[0.14em] text-nordfjord sm:col-span-2">
             <input type="checkbox" checked={editing.is_default} data-testid="address-default"
@@ -461,11 +439,11 @@ function AddressesTab({ t, lang }) {
   );
 }
 
-function Field({ label, value, onChange, required = false, className = "", testid, inputRef }) {
+function Field({ label, value, onChange, required = false, className = "", testid }) {
   return (
     <div className={className}>
       <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{label}</label>
-      <input ref={inputRef} required={required} value={value || ""} onChange={(e) => onChange(e.target.value)} data-testid={testid}
+      <input required={required} value={value || ""} onChange={(e) => onChange(e.target.value)} data-testid={testid}
         className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
     </div>
   );

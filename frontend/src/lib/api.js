@@ -70,7 +70,8 @@ export function formatApiError(detail) {
       .filter(Boolean)
       .join(" ");
   if (detail && typeof detail.msg === "string") return detail.msg;
-  return String(detail);
+  try { return JSON.stringify(detail); }
+  catch { return Object.prototype.toString.call(detail); }
 }
 
 export function resolveAssetUrl(value) {
