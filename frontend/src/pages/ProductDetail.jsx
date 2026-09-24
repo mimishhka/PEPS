@@ -181,7 +181,7 @@ export default function ProductDetail() {
 
         <div className="grid lg:grid-cols-2 gap-12">
           <div className="relative">
-            <div className="rounded-xl overflow-hidden aspect-square relative">
+            <div className="overflow-hidden aspect-square relative" style={{ borderRadius: "var(--r-l)" }}>
               <ProductImage
                 src={product.image_url}
                 slug={product.slug}
@@ -221,7 +221,7 @@ export default function ProductDetail() {
                       <button key={v.id} type="button" onClick={() => setVariantId(v.id)}
                         disabled={(v.badge_coming_soon && !v.preorder_enabled) || outNoPre}
                         data-testid={`variant-${v.name}`}
-                        className={`rounded-xl border-[1.5px] px-4 py-2.5 text-left transition-colors ${isActive ? "border-nova bg-nova/5" : "border-ash hover:border-nova"} disabled:opacity-40 disabled:cursor-not-allowed`}>
+                        className={`border-[1px] px-4 py-2.5 text-left transition-colors ${isActive ? "border-nova bg-nova/5" : "border-ash hover:border-nova"} disabled:opacity-40 disabled:cursor-not-allowed`} style={{ borderRadius: "var(--r-m)" }}>
                         <span className="font-display font-bold text-nordfjord">{v.name}</span>
                         <span className="font-data text-[11px] text-glacier ml-2">${vPrice?.toFixed(2)}</span>
                         {v.coa_status === "pending" && (
@@ -235,13 +235,13 @@ export default function ProductDetail() {
             )}
 
             {product.sequence && (
-              <div className="rounded-xl border border-ash bg-white px-5 py-4 mb-4">
+              <div className="border border-ash bg-white px-5 py-4 mb-4" style={{ borderRadius: "var(--r-m)" }}>
                 <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-1.5">{lang === "fr" ? "SÉQUENCE" : "SEQUENCE"}</div>
                 <div className="font-data text-sm text-nordfjord break-all">{product.sequence}</div>
               </div>
             )}
 
-            <div className="rounded-xl border border-ash bg-white overflow-hidden grid grid-cols-2 sm:grid-cols-3 divide-x divide-y divide-ash mb-8">
+            <div className="border border-ash bg-white overflow-hidden grid grid-cols-2 sm:grid-cols-3 divide-x divide-y divide-ash mb-8" style={{ borderRadius: "var(--r-m)" }}>
               {specs.map((s) => (
                 <div key={s.k} className="p-4">
                   <div className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance mb-1">{s.k}</div>
@@ -300,7 +300,7 @@ export default function ProductDetail() {
               </button>
             </div>
 
-            <div className="rounded-xl bg-nordfjord text-clinical px-5 py-4 font-data text-[11px] uppercase tracking-[0.16em] leading-relaxed" data-testid="research-only-banner">
+            <div className="bg-nordfjord text-clinical px-5 py-4 font-data text-[11px] uppercase tracking-[0.16em] leading-relaxed" data-testid="research-only-banner" style={{ borderRadius: "var(--r-m)" }}>
               {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT — NON DESTINÉ À LA CONSOMMATION HUMAINE" : "FOR RESEARCH USE ONLY — NOT INTENDED FOR HUMAN CONSUMPTION"}
             </div>
 
@@ -308,7 +308,7 @@ export default function ProductDetail() {
               <button
                 onClick={copyAffiliateLink}
                 data-testid="copy-affiliate-link"
-                className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl border-2 border-nova bg-nova/5 hover:bg-nova/10 px-4 py-3 font-data text-[11px] uppercase tracking-[0.18em] text-nova transition-colors"
+                className="mt-4 w-full flex items-center justify-center gap-2 border border-nova bg-nova/5 hover:bg-nova/10 px-4 py-3 font-data text-[11px] uppercase tracking-[0.18em] text-nova transition-colors" style={{ borderRadius: "var(--r-m)" }}
                 title={lang === "fr"
                   ? `Copie l'URL avec votre code ${affiliate.code}`
                   : `Copies the URL with your code ${affiliate.code}`}
@@ -320,7 +320,7 @@ export default function ProductDetail() {
             )}
 
             {coaPending && (
-              <div data-testid="coa-pending-warning" className="mt-4 flex items-start gap-2.5 rounded-xl border border-warning/40 bg-warning/5 px-4 py-3">
+              <div data-testid="coa-pending-warning" className="mt-4 flex items-start gap-2.5 border border-warning/40 bg-warning/5 px-4 py-3" style={{ borderRadius: "var(--r-m)" }}>
                 <FileText size={15} className="text-warning mt-0.5 shrink-0" />
                 <p className="font-data text-[11px] uppercase tracking-[0.14em] text-nordfjord leading-relaxed">
                   {lang === "fr"
@@ -338,7 +338,7 @@ export default function ProductDetail() {
             )}
 
             {isOutOfStock && (
-              <div className="mt-6 rounded-xl border border-ash bg-white p-4" data-testid="notify-stock-block">
+              <div className="mt-6 border border-ash bg-white p-4" data-testid="notify-stock-block" style={{ borderRadius: "var(--r-m)" }}>
                 {notifyDone ? (
                   <div className="flex items-center gap-2 font-data text-xs uppercase tracking-[0.16em] text-success">
                     <Check size={14} /> {lang === "fr" ? "Nous vous écrirons dès le retour en stock." : "We'll email you when it's back."}
@@ -377,8 +377,8 @@ export default function ProductDetail() {
                 const rstock = rvars.some((v) => Number(v.stock) > 0) || Number(p.stock) > 0;
                 return (
                   <Link key={p.id} to={`/product/${p.slug}`} data-testid="related-card"
-                    className="group rounded-xl border border-ash bg-white p-4 hover:border-nova transition">
-                    <div className="aspect-square rounded-xl mb-3 flex items-center justify-center overflow-hidden"
+                    className="group border border-ash bg-white p-4 hover:border-nova transition" style={{ borderRadius: "var(--r-m)" }}>
+                    <div className="aspect-square mb-3 flex items-center justify-center overflow-hidden" style={{ borderRadius: "var(--r-m)" }}
                       style={{ background: `hsl(${hueFor(p.slug)} 70% 96%)` }}>
                       <ProductImage
                         src={p.image_url}

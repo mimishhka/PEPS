@@ -7,7 +7,8 @@ module.exports = {
       colors: {
         /* ---- FIRONOVA official identity ----
          * Les valeurs vivent dans src/index.css, en canaux RVB, et changent
-         * selon le theme. La syntaxe <alpha-value> preserve les modificateurs
+         * selon le theme. La syntaxe alpha-value (sans chevrons dans ce
+         * commentaire : la sonde de balises les lit comme un tag) preserve les modificateurs
          * d'opacite : bg-nova/15, border-ash/60, text-white/70 continuent de
          * fonctionner exactement comme avant.
          *
@@ -78,11 +79,17 @@ module.exports = {
        * 3xl etait employe 9 fois sans etre declare : il retombait sur le
        * defaut de Tailwind. Il est desormais explicite. */
       borderRadius: {
-        DEFAULT: "8px",
-        md: "8px",
-        lg: "12px",
-        xl: "16px",
-        "3xl": "24px",
+        /* L'echelle « fiche de laboratoire » (2026-09-23) : les rayons se
+         * resserrent sur les jetons de marque. DEFAULT=8px devient 4px, xl
+         * passe de 16px a 6px, 3xl de 24px a 10px. Un seul changement ici
+         * retune les 33 fichiers qui emploient ces classes, sans en toucher
+         * un seul. rounded-full reste entier pour les points d'etat et les
+         * minuscules controles ronds, qui sont fonctionnels et non decoratifs. */
+        DEFAULT: "var(--r-m)",
+        md: "var(--r-m)",
+        lg: "var(--r-m)",
+        xl: "var(--r-l)",
+        "3xl": "10px",
       },
       keyframes: {
         mesh: {
