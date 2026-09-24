@@ -88,7 +88,6 @@ export default function Home() {
     : "HPLC-tested by an independent lab. Certificate of analysis provided for documented lots.";
   const ctaPrimary = lang === "fr" ? "Voir le catalogue" : "Browse the catalog";
   const ctaSecondary = lang === "fr" ? "Nos standards" : "Our standards";
-  const chip = lang === "fr" ? { lot: "LOT", purity: "PURETÉ", license: "LICENCE" } : { lot: "LOT", purity: "PURITY", license: "LICENSE" };
 
   // CINQ CHOSES EMPILEES, RETIREES ENSEMBLE le 2026-09-22.
   //
@@ -138,43 +137,31 @@ export default function Home() {
 
   return (
     <div data-testid="home-page">
-      {/* HERO */}
-      <section className="relative bg-nordfjord text-clinical overflow-hidden" data-testid="hero-section">
-        <MolecularMesh opacity={0.28} />
-        <div className="absolute -top-40 -right-40 w-[560px] h-[560px] rounded-full pointer-events-none"
-          style={{ background: "radial-gradient(circle, rgba(0,184,212,.16), transparent 65%)" }} />
-        <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 pt-12 pb-16 lg:pt-20 lg:pb-24 grid lg:grid-cols-[1.05fr_.95fr] gap-10 lg:gap-16 items-center lg:min-h-[78vh]">
+      {/* HERO — un seul moment. Regles du brief : quatre elements texte au
+          plus, deux lignes de titre, sous-texte de vingt mots au plus, le
+          hero tient dans le premier ecran, pas de halo deco. La carte du
+          certificat porte les donnees de lot : les trois puces qui les
+          dupliquaient sous les boutons disparaissent. */}
+      <section className="relative bg-nordfjord text-clinical overflow-hidden texture-bruit" data-testid="hero-section">
+        <MolecularMesh opacity={0.18} />
+        <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 pt-14 lg:pt-20 pb-16 lg:pb-24 grid lg:grid-cols-[1.05fr_.95fr] gap-12 lg:gap-16 items-center lg:min-h-[82svh]">
           <div>
             <Reveal>
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.22em] text-nova mb-7 flex items-center gap-2">
-                <span className="inline-block w-2 h-2 rounded-full bg-nova" />
+              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.22em] text-nova mb-7">
                 {heroEyebrow}
               </p>
-            </Reveal>
-            <Reveal delay={90}>
-              <h1 className="font-display font-bold leading-[1.02] tracking-[-0.02em] mb-6 lg:mb-7" style={{ fontSize: "clamp(32px,9.5vw,76px)" }} data-testid="hero-title">
+              <h1 className="font-display font-bold leading-[0.98] tracking-[-0.035em] mb-7 text-clinical" style={{ fontSize: "clamp(40px,7.5vw,92px)", maxWidth: "12ch" }} data-testid="hero-title">
                 {heroTitle.a}{" "}
                 <span className="text-nova">{heroTitle.b}</span>
               </h1>
-            </Reveal>
-            <Reveal delay={180}>
-              <p className="text-base lg:text-lg text-mist max-w-[52ch] leading-relaxed mb-8 lg:mb-10">{heroLede}</p>
-            </Reveal>
-            <Reveal delay={260}>
-              <div className="flex flex-wrap items-center gap-4 mb-12">
+              <p className="text-base lg:text-lg text-mist max-w-[52ch] leading-relaxed mb-10">{heroLede}</p>
+              <div className="flex flex-wrap items-center gap-4">
                 <Link to="/catalog" data-testid="hero-cta-catalog" className="btn-pill btn-nova">{ctaPrimary}</Link>
-                <Link to="/about" data-testid="hero-cta-lab" className="btn-pill border-[1.5px] border-[#3E5C76] text-clinical hover:border-nova hover:text-nova">{ctaSecondary}</Link>
-              </div>
-            </Reveal>
-            <Reveal delay={340}>
-              <div className="flex flex-wrap gap-x-10 gap-y-4 font-data text-[12px] uppercase tracking-[0.16em] text-mist">
-                <span><span className="text-nova">{chip.lot}</span> FN-26005</span>
-                <span><span className="text-nova">{chip.purity}</span> 99.42%</span>
-                <span><span className="text-nova">{chip.license}</span> RUO</span>
+                <Link to="/about" data-testid="hero-cta-lab" className="btn-pill btn-outline border-mist text-mist hover:border-nova hover:text-nova">{ctaSecondary}</Link>
               </div>
             </Reveal>
           </div>
-          <Reveal delay={300} className="relative hidden lg:block">
+          <Reveal delay={220} className="relative hidden lg:block">
             <div className="relative bg-abyss/80 border border-abyss p-8" style={{ borderRadius: "var(--r-l)" }}>
               <div className="flex items-center justify-between mb-6">
                 <div>
@@ -187,7 +174,7 @@ export default function Home() {
               <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-abyss font-data text-center">
                 {[["LOT", "FN-26005"], ["PURITY", "99.42%"], ["EXP", "2028-06"]].map(([k, v]) => (
                   <div key={k}>
-                    <p className="text-[10px] uppercase tracking-[0.2em] text-[#5B7A9E] mb-1">{k}</p>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-mist mb-1">{k}</p>
                     <p className="text-sm text-nova font-semibold">{v}</p>
                   </div>
                 ))}
@@ -198,16 +185,17 @@ export default function Home() {
         </div>
       </section>
 
-      {/* TRUST TICKER */}
-      <section className="max-w-7xl mx-auto px-6 lg:px-8 -mt-10 relative z-10" data-testid="trust-marquee">
-        <div className="rounded-xl bg-nordfjord py-5 overflow-hidden shadow-[0_24px_48px_-24px_rgba(11,46,79,.5)]">
+      {/* BANDE DE CONFIANCE — sous le hero, jamais dedans. Un defilement
+          lent, seul mouvement de la page en dehors de l entree du hero. */}
+      <section className="border-y border-ash" data-testid="trust-marquee">
+        <div className="max-w-7xl mx-auto overflow-hidden py-5">
           <div style={{
             display: "flex",
             width: "max-content",
             animation: "trust-scroll 22s linear infinite",
           }}>
             {[...trustItems, ...trustItems, ...trustItems, ...trustItems, ...trustItems, ...trustItems].map((it, i) => (
-              <span key={i} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "0 40px", fontSize: "12px", fontWeight: 600, letterSpacing: "0.18em", textTransform: "uppercase", color: "#F7FAFC", whiteSpace: "nowrap" }}>
+              <span key={i} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "0 40px", fontSize: "12px", fontWeight: 600, letterSpacing: "0.18em", textTransform: "uppercase", color: "#3E5C76", whiteSpace: "nowrap" }}>
                 <NovaSpark size={13} /> {it}
               </span>
             ))}
@@ -216,66 +204,62 @@ export default function Home() {
         </div>
       </section>
 
-      {/* FEATURED PRODUCTS */}
-      <section className="py-16 lg:py-32" data-testid="featured-products">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="flex flex-wrap items-end justify-between gap-6 mb-14">
-            <Reveal delay={60}>
-              <h2 className="font-display text-[42px] font-semibold text-nordfjord leading-tight">{featTitle}</h2>
-            </Reveal>
-            <Reveal delay={120}>
-              <Link to="/catalog" data-testid="view-all-catalog" className="btn-pill btn-outline group">
-                {featAll} <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
-              </Link>
-            </Reveal>
+      {/* PRODUITS EN VEDETTE — un seul message, pas d etiquette au-dessus. */}
+      <section className="py-20 lg:py-32" data-testid="featured-products">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
+          <div className="flex flex-wrap items-end justify-between gap-6 mb-12">
+            <h2 className="font-display text-[36px] sm:text-[48px] font-bold text-nordfjord leading-[1.05] tracking-[-0.02em]">{featTitle}</h2>
+            <Link to="/catalog" data-testid="view-all-catalog" className="btn-pill btn-outline group">
+              {featAll} <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
+            </Link>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-5 lg:gap-6">
             {products.map((p, i) => (
-              <Reveal key={p.id} delay={i * 90}><ProductCard product={p} index={i} /></Reveal>
+              <ProductCard key={p.id} product={p} index={i} />
             ))}
           </div>
         </div>
       </section>
 
-
-      {/* NEWSLETTER */}
-      <section className="py-16 lg:py-24" data-testid="newsletter-section">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <Reveal>
-            <div className="bg-nordfjord px-8 lg:px-16 py-16 relative overflow-hidden" style={{ borderRadius: "var(--r-l)" }}>
-              <div className="absolute -right-16 -top-16 opacity-25"><FnMark size={260} frame="#00B8D4" spark="#00B8D4" /></div>
-              <div className="relative max-w-2xl">
-                <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">{newsEyebrow}</p>
-                <h2 className="font-display text-[32px] font-semibold text-white mb-4">{newsTitle}</h2>
-                <p className="text-mist mb-9 leading-relaxed">{newsLede}</p>
-                {done ? (
-                  <p className="inline-flex items-center gap-2.5 text-nova font-semibold"><Check size={18} /> {newsDone}</p>
-                ) : (
-                  <form onSubmit={subscribe} className="space-y-4" data-testid="newsletter-form">
-                    <div>
-                      <label htmlFor="newsletter-email" className="block text-[13px] font-semibold text-white mb-2">
-                        {newsLabel}
-                      </label>
-                      <div className="flex flex-col sm:flex-row gap-3 bg-clinical rounded-full p-2">
-                        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                          placeholder={t("home.newsletterPlaceholder")}
-                          className="flex-1 bg-transparent px-5 py-3 text-nordfjord outline-none text-[15px]"
-                          id="newsletter-email" data-testid="newsletter-input" />
-                        <button type="submit" disabled={subBusy}
-                          className="btn-pill btn-nova disabled:opacity-40 disabled:pointer-events-none"
-                          data-testid="newsletter-submit">{t("home.subscribe")}</button>
-                      </div>
-                    </div>
-                    <label className="flex items-start gap-3 text-[12px] text-mist cursor-pointer select-none">
-                      <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
-                        className="mt-0.5 accent-[#00B8D4] w-4 h-4" data-testid="newsletter-consent" />
-                      {t("home.newsletterConsent")}
+      {/* INFOLETTRE — le libelle devient une marque de coin, le titre porte
+          seul. Le bandeau sombre est une signature de la marque, pas un
+          accident de page. */}
+      <section className="py-20 lg:py-28" data-testid="newsletter-section">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
+          <div className="relative bg-nordfjord text-clinical px-8 lg:px-16 py-16 overflow-hidden" style={{ borderRadius: "var(--r-l)" }}>
+            <div className="absolute -right-16 -top-16 opacity-25"><FnMark size={260} frame="#00B8D4" spark="#00B8D4" /></div>
+            <p className="absolute top-8 right-8 font-data text-[10px] uppercase tracking-[0.24em] text-nova">{newsEyebrow}</p>
+            <div className="relative max-w-2xl">
+              <h2 className="font-display text-[32px] sm:text-[40px] font-bold text-white mb-4 tracking-[-0.02em]">{newsTitle}</h2>
+              <p className="text-mist mb-9 leading-relaxed">{newsLede}</p>
+              {done ? (
+                <p className="inline-flex items-center gap-2.5 text-nova font-semibold"><Check size={18} /> {newsDone}</p>
+              ) : (
+                <form onSubmit={subscribe} className="space-y-4" data-testid="newsletter-form">
+                  <div>
+                    <label htmlFor="newsletter-email" className="block text-[13px] font-semibold text-white mb-2">
+                      {newsLabel}
                     </label>
-                  </form>
-                )}
-              </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                        placeholder={t("home.newsletterPlaceholder")}
+                        className="flex-1 bg-clinical text-nordfjord px-5 py-3.5 outline-none text-[15px]"
+                        style={{ borderRadius: "var(--r-m)" }}
+                        id="newsletter-email" data-testid="newsletter-input" />
+                      <button type="submit" disabled={subBusy}
+                        className="btn-pill btn-nova disabled:opacity-40 disabled:pointer-events-none"
+                        data-testid="newsletter-submit">{t("home.subscribe")}</button>
+                    </div>
+                  </div>
+                  <label className="flex items-start gap-3 text-[12px] text-mist cursor-pointer select-none">
+                    <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
+                      className="mt-0.5 accent-[#00B8D4] w-4 h-4" data-testid="newsletter-consent" />
+                    {t("home.newsletterConsent")}
+                  </label>
+                </form>
+              )}
             </div>
-          </Reveal>
+          </div>
         </div>
       </section>
     </div>
