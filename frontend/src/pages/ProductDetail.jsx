@@ -241,11 +241,14 @@ export default function ProductDetail() {
               </div>
             )}
 
-            <div className="border border-ash bg-white overflow-hidden grid grid-cols-2 sm:grid-cols-3 divide-x divide-y divide-ash mb-8" style={{ borderRadius: "var(--r-m)" }}>
+            {/* La fiche : les specifications en lignes fines, comme un rapport
+                de laboratoire calme — etiquette a gauche, valeur en mono a
+                droite, un filet sous chaque ligne. */}
+            <div className="border-t border-ash mb-8">
               {specs.map((s) => (
-                <div key={s.k} className="p-4">
-                  <div className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance mb-1">{s.k}</div>
-                  <div className="font-data text-sm text-nordfjord break-all">{s.v}</div>
+                <div key={s.k} className="flex items-baseline justify-between gap-6 py-3 border-b border-ash">
+                  <span className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">{s.k}</span>
+                  <span className="font-data text-[13px] text-nordfjord break-all text-right font-medium">{s.v}</span>
                 </div>
               ))}
             </div>
@@ -258,7 +261,7 @@ export default function ProductDetail() {
                       ${selectedVariant.price.toFixed(2)}
                     </span>
                   )}
-                  <span className={`font-display text-[40px] font-bold leading-none ${showOriginal ? "text-nova" : "text-nordfjord"}`} data-testid="product-price">
+                  <span className={`font-data text-[28px] font-medium leading-none ${showOriginal ? "text-nova" : "text-nordfjord"}`} data-testid="product-price">
                     ${effectivePrice.toFixed(2)}
                   </span>
                   <span className="font-data text-sm text-glacier">CAD</span>
@@ -291,7 +294,7 @@ export default function ProductDetail() {
                 onClick={() => add(product, qty, selectedVariant)}
                 data-testid="product-add-to-cart"
                 disabled={isOutOfStock || isComingSoon}
-                className="flex-1 btn-pill btn-nova disabled:opacity-40 disabled:pointer-events-none"
+                className="flex-1 inline-flex items-center justify-center gap-2 font-semibold uppercase transition-colors duration-150 cursor-pointer text-[14px] tracking-[0.04em] bg-nordfjord text-white hover:bg-nova hover:text-white disabled:opacity-40 disabled:pointer-events-none" style={{ borderRadius: "var(--r-m)", padding: "13px 22px" }}
               >
                 {isComingSoon ? (lang === "fr" ? "À VENIR" : "COMING SOON")
                   : isVariantPreorder ? `${lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"} · $${(effectivePrice * qty).toFixed(2)}`
