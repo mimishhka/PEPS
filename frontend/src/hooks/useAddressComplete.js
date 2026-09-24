@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 // AddressComplete de Postes Canada : l'initialisation, partagée.
 //
@@ -15,7 +15,13 @@ import { useEffect } from "react";
 // n'est pas rendu, et l'effet ne se réarme que quand `actif` change — c'est
 // ce qui permet d'appeler ce crochet au sommet d'un composant dont le
 // formulaire d'adresse n'apparaît qu'à l'ouverture.
-export function useAddressComplete({ champs, lang, actif = true }) {
+export function useAddressComplete({ champs, lang, actif = true, onPopulate }) {
+  const onPopulateRef = useRef(onPopulate);
+
+  useEffect(() => {
+    onPopulateRef.current = onPopulate;
+  }, [onPopulate]);
+
   useEffect(() => {
     if (!actif) return undefined;
     if (typeof window === "undefined" || !window.pca) return undefined;
@@ -45,6 +51,9 @@ export function useAddressComplete({ champs, lang, actif = true }) {
         // Boutique canadienne : pas d'adresse hors Canada.
         countries: { codesList: "CA" },
       });
+      if (typeof controle.listen === "function" && typeof onPopulateRef.current === "function") {
+        controle.listen("populate", (address) => onPopulateRef.current?.(address));
+      }
     } catch {
       return undefined; // échec d'initialisation : la saisie libre reste
     }

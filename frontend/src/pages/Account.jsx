@@ -304,6 +304,9 @@ function ProfileTab({ t, user, refresh }) {
 /* Addresses */
 function AddressesTab({ t, lang }) {
   const confirm = useConfirm();
+  const [addresses, setAddresses] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [busy, setBusy] = useState(false);
   // AddressComplete : les memes cinq champs que le checkout, branches au
   // crochet partage. Le formulaire n'est monte que pendant l'edition —
   // `actif` rearme l'effet quand il s'ouvre.
@@ -311,10 +314,20 @@ function AddressesTab({ t, lang }) {
     ligne1: useRef(null), ligne2: useRef(null), ville: useRef(null),
     province: useRef(null), codePostal: useRef(null),
   };
-  useAddressComplete({ champs: refsAdresse, lang, actif: !!editing });
-  const [addresses, setAddresses] = useState([]);
-  const [editing, setEditing] = useState(null);
-  const [busy, setBusy] = useState(false);
+  useAddressComplete({
+    champs: refsAdresse,
+    lang,
+    actif: !!editing,
+    onPopulate: (address) => setEditing((current) => current ? ({
+      ...current,
+      address1: address?.Line1 || current.address1,
+      address2: address?.Line2 || current.address2,
+      city: address?.City || current.city,
+      province: address?.ProvinceCode || current.province,
+      postal_code: address?.PostalCode || current.postal_code,
+      country: "CA",
+    }) : current),
+  });
 
   const load = useCallback(() => {
     api.get("/account/addresses").then((r) => setAddresses(r.data)).catch(() => setAddresses([]));

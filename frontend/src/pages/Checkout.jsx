@@ -947,7 +947,20 @@ function AddressForm({ value, setValue, lang, prefix }) {
   // arrivent ensemble — la source est le fichier d'adresses du transporteur
   // lui-meme, pas un referentiel tiers. Le branchement vit dans le crochet
   // partage useAddressComplete ; la cle publique vit dans index.html.
-  useAddressComplete({ champs: refs, lang, actif: true });
+  useAddressComplete({
+    champs: refs,
+    lang,
+    actif: true,
+    onPopulate: (address) => setValue((s) => ({
+      ...s,
+      line1: address?.Line1 || s.line1,
+      line2: address?.Line2 || s.line2,
+      city: address?.City || s.city,
+      province: address?.ProvinceCode || s.province,
+      postal_code: address?.PostalCode || s.postal_code,
+      country: "CA",
+    })),
+  });
 
   // LE CODE POSTAL REMPLIT LA PROVINCE.
   //
