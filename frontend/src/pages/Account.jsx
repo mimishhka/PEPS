@@ -1,5 +1,6 @@
 // frontend/src/pages/Account.jsx — Mon Compte étendu (identité Fironova).
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useAddressComplete } from "../hooks/useAddressComplete";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
@@ -259,7 +260,7 @@ function ProfileTab({ t, user, refresh }) {
         <div>
           <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.fullName")}</label>
           <input required value={name} onChange={(e) => setName(e.target.value)} data-testid="profile-name"
-            className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
+            className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
         </div>
         <button type="submit" disabled={busy} data-testid="profile-save" className="btn-pill btn-nova disabled:opacity-50">
           {busy ? "…" : t("common.save")}
@@ -279,14 +280,14 @@ function ProfileTab({ t, user, refresh }) {
               <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.newEmail")}</label>
               <input type="email" required value={emailForm.new_email}
                 onChange={(e) => setEmailForm({ ...emailForm, new_email: e.target.value })} data-testid="email-change-new"
-                className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
+                className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
             </div>
             {!pwLess && (
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
                 <input type="password" required value={emailForm.current_password}
                   onChange={(e) => setEmailForm({ ...emailForm, current_password: e.target.value })} data-testid="email-change-password"
-                  className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
+                  className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
               </div>
             )}
             <button type="submit" disabled={emailBusy} data-testid="email-change-submit" className="btn-pill btn-outline disabled:opacity-50">
@@ -303,6 +304,14 @@ function ProfileTab({ t, user, refresh }) {
 /* Addresses */
 function AddressesTab({ t, lang }) {
   const confirm = useConfirm();
+  // AddressComplete : les memes cinq champs que le checkout, branches au
+  // crochet partage. Le formulaire n'est monte que pendant l'edition —
+  // `actif` rearme l'effet quand il s'ouvre.
+  const refsAdresse = {
+    ligne1: useRef(null), ligne2: useRef(null), ville: useRef(null),
+    province: useRef(null), codePostal: useRef(null),
+  };
+  useAddressComplete({ champs: refsAdresse, lang, actif: !!editing });
   const [addresses, setAddresses] = useState([]);
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -367,20 +376,20 @@ function AddressesTab({ t, lang }) {
           <Field label={t("account.addressLabel")} value={editing.label} onChange={(v) => setEditing({ ...editing, label: v })} testid="address-label" />
           <NomEnDeux valeur={editing.full_name} onChange={(v) => setEditing({ ...editing, full_name: v })}
             lang={lang} prefix="address"
-            classeChamp="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova"
+            classeChamp="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova"
             classeEtiquette="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-1" />
-          <Field label={t("checkout.address1")} value={editing.address1} required className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address1: v })} testid="address-address1" />
-          <Field label={t("checkout.address2")} value={editing.address2} className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address2: v })} testid="address-address2" />
-          <Field label={t("checkout.city")} value={editing.city} required onChange={(v) => setEditing({ ...editing, city: v })} testid="address-city" />
+          <Field inputRef={refsAdresse.ligne1} label={t("checkout.address1")} value={editing.address1} required className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address1: v })} testid="address-address1" />
+          <Field inputRef={refsAdresse.ligne2} label={t("checkout.address2")} value={editing.address2} className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address2: v })} testid="address-address2" />
+          <Field inputRef={refsAdresse.ville} label={t("checkout.city")} value={editing.city} required onChange={(v) => setEditing({ ...editing, city: v })} testid="address-city" />
           <div>
             <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("checkout.province")}</label>
-            <select value={editing.province} data-testid="address-province"
+            <select ref={refsAdresse.province} value={editing.province} data-testid="address-province"
               onChange={(e) => setEditing({ ...editing, province: e.target.value })}
               className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord focus:outline-none focus:border-nova">
               {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
-          <Field label={t("checkout.postal")} value={editing.postal_code} required onChange={(v) => setEditing({ ...editing, postal_code: v })} testid="address-postal" />
+          <Field inputRef={refsAdresse.codePostal} label={t("checkout.postal")} value={editing.postal_code} required onChange={(v) => setEditing({ ...editing, postal_code: v })} testid="address-postal" />
           <Field label={t("checkout.phone")} value={editing.phone} onChange={(v) => setEditing({ ...editing, phone: v })} testid="address-phone" />
           <label className="flex items-center gap-2 font-data text-xs uppercase tracking-[0.14em] text-nordfjord sm:col-span-2">
             <input type="checkbox" checked={editing.is_default} data-testid="address-default"
@@ -439,12 +448,12 @@ function AddressesTab({ t, lang }) {
   );
 }
 
-function Field({ label, value, onChange, required = false, className = "", testid }) {
+function Field({ label, value, onChange, required = false, className = "", testid, inputRef }) {
   return (
     <div className={className}>
       <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{label}</label>
-      <input required={required} value={value || ""} onChange={(e) => onChange(e.target.value)} data-testid={testid}
-        className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
+      <input ref={inputRef} required={required} value={value || ""} onChange={(e) => onChange(e.target.value)} data-testid={testid}
+        className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
     </div>
   );
 }
@@ -520,20 +529,20 @@ function SecurityTab({ t, user, logout, navigate }) {
             <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
             <input type="password" required value={pw.current_password} data-testid="password-current"
               onChange={(e) => setPw({ ...pw, current_password: e.target.value })}
-              className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
+              className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
           </div>
         )}
         <div>
           <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.newPassword")}</label>
           <input type="password" required minLength={8} value={pw.new_password} data-testid="password-new"
             onChange={(e) => setPw({ ...pw, new_password: e.target.value })}
-            className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
+            className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
         </div>
         <div>
           <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.confirmPassword")}</label>
           <input type="password" required minLength={8} value={pw.confirm} data-testid="password-confirm"
             onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
-            className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" />
+            className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
         </div>
         <button type="submit" disabled={pwBusy} data-testid="password-save" className="btn-pill btn-nova disabled:opacity-50">
           {pwBusy ? "…" : (pwLess ? (t("account.setPassword") || "Définir / Set") : t("account.changePassword"))}

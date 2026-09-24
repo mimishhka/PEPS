@@ -4,6 +4,7 @@ import { useCart } from "../contexts/CartContext";
 import NomEnDeux from "../components/NomEnDeux";
 import { regionsDuPays, provinceDepuisCodePostal, formaterCodePostal,
          codePostalComplet, provinceCoherente } from "../lib/adresse";
+import { useAddressComplete } from "../hooks/useAddressComplete";
 import { useLang } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useSiteConfig } from "../contexts/SiteConfigContext";
@@ -922,32 +923,14 @@ function AddressForm({ value, setValue, lang, prefix }) {
     province: useRef(null), codePostal: useRef(null),
   };
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.pca) return undefined;
-    const pca = window.pca;
-    const cibles = [
-      { element: refs.ligne1.current, field: "Line1", mode: pca.fieldMode?.POPULATE },
-      { element: refs.ligne2.current, field: "Line2", mode: pca.fieldMode?.POPULATE },
-      { element: refs.ville.current, field: "City", mode: pca.fieldMode?.POPULATE },
-      // La province est un <select> de codes (QC, ON...) : AddressComplete
-      // remplit la valeur du code, qui correspond aux options.
-      { element: refs.province.current, field: "ProvinceCode", mode: pca.fieldMode?.POPULATE },
-      { element: refs.codePostal.current, field: "PostalCode", mode: pca.fieldMode?.POPULATE },
-    ].filter((c) => c.element);
-    if (cibles.length === 0) return undefined;
-    let controle = null;
-    try {
-      controle = new pca.Address(cibles, {
-        language: lang === "fr" ? "fr" : "en",
-        // Pas d'adresse hors Canada ici : la boutique est canadienne.
-        countries: { codesList: "CA" },
-      });
-    } catch {
-      return undefined; // echec d'initialisation : la saisie libre reste
-    }
-    return () => { try { if (controle && controle.destroy) controle.destroy(); } catch { /* fin de vie */ } };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lang, prefix]);
+  // ADDRESSCOMPLETE DE POSTES CANADA (essai 14 jours).
+  //
+  // La saisie assistee remplit l'adresse ENTIERE depuis le champ « Adresse » :
+  // Postes Canada propose, on choisit, et rue, ville, province et code postal
+  // arrivent ensemble — la source est le fichier d'adresses du transporteur
+  // lui-meme, pas un referentiel tiers. Le branchement vit dans le crochet
+  // partage useAddressComplete ; la cle publique vit dans index.html.
+  useAddressComplete({ champs: refs, lang, actif: true });
 
   // LE CODE POSTAL REMPLIT LA PROVINCE.
   //
