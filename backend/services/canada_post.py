@@ -294,6 +294,9 @@ def _cp_lire_tarifs_json(donnees) -> list:
     return devis
 
 
+# La variante de requete qui a cote, retenue pour la duree du processus.
+_CP_VARIANTE_TARIFS = None
+
 _CP_CODE_POSTAL_CA = re.compile(r"^[A-Z][0-9][A-Z][0-9][A-Z][0-9]$")
 _CP_ZIP_US = re.compile(r"^[0-9]{5}(-[0-9]{4})?$")
 
@@ -323,39 +326,96 @@ async def _canada_post_get_rates_openapi(destination_postal_code: str, destinati
     else:
         return []
 
-    corps = {
+    base = {
         "parcelCharacteristics": {"weight": min(99.999, max(0.001, round(float(weight_kg), 3)))},
         "originPostalCode": origine,
         "destination": destination,
     }
     client = (s.CANADA_POST_CUSTOMER_NUMBER or "").strip()
-    if client:
-        # Avec le numero client (et le contrat), Postes Canada renvoie le
-        # tarif COMMERCIAL, celui que la boutique paiera vraiment.
-        corps["customerNumber"] = client
-        corps["quoteType"] = "commercial"
-        if s.CANADA_POST_CONTRACT_ID:
-            corps["contractId"] = s.CANADA_POST_CONTRACT_ID.strip()
-    else:
-        # La specification exige d'omettre le numero client pour le prix
-        # au comptoir.
-        corps["quoteType"] = "counter"
+    contrat = (s.CANADA_POST_CONTRACT_ID or "").strip()
+    mailed_by, mobo = _cp_path_customers()
+    racine = s.CANADA_POST_OPENAPI_RATING_URL
 
-    try:
-        r = await s._cp_openapi_call("POST", f"{s.CANADA_POST_OPENAPI_RATING_URL}/prices", json_body=corps)
-    except Exception as e:
-        logging.error("Canada Post OpenAPI rating failed: %s", type(e).__name__)
-        return []
-    if r.status_code >= 400:
-        logging.error("Canada Post OpenAPI rating status=%s response_ref=%s",
-                      r.status_code, s._private_ref(r.text))
-        return []
-    # _cp_safe_json ne garde que les objets : la reponse est un TABLEAU.
-    try:
-        donnees = r.json()
-    except Exception:
-        return []
-    return _cp_lire_tarifs_json(donnees)
+    # PLUSIEURS VARIANTES SONT ESSAYEES, ET CELLE QUI MARCHE EST RETENUE.
+    #
+    # La cotation echouait sans jamais dire pourquoi, et une seule forme de
+    # requete etait tentee. Or deux inconnues s'additionnaient :
+    #
+    #   1. LE CHEMIN. Les envois s'adressent a
+    #      .../shipping/v1/{mailedBy}/{mobo}/shipments — les numeros de client
+    #      sont DANS le chemin. La cotation appelait .../rating/v1/prices, sans
+    #      eux. Si l'API de tarification suit la meme convention que celle des
+    #      envois, ce chemin est incomplet.
+    #   2. LE TYPE DE DEVIS. « commercial » exige une habilitation, et souvent
+    #      un contrat. Le code le demandait des qu'un numero de client existait,
+    #      meme sans contrat configure : un refus probable, et muet.
+    #
+    # On essaie donc les combinaisons, de la plus desirable (le tarif
+    # commercial, celui que la boutique paie vraiment) a la plus permissive.
+    # La premiere qui repond est MEMORISEE pour la duree du processus : les
+    # appels suivants vont droit au but.
+    variantes = []
+    if client:
+        commercial = dict(base, customerNumber=client, quoteType="commercial")
+        if contrat:
+            commercial["contractId"] = contrat
+        variantes.append(("commercial, chemin simple", f"{racine}/prices", commercial))
+        if mailed_by and mobo:
+            variantes.append(("commercial, chemin avec numeros de client",
+                              f"{racine}/{mailed_by}/{mobo}/prices", commercial))
+        if contrat:
+            # Le contrat peut etre la cause du refus : on retente sans lui.
+            sans_contrat = {k: v for k, v in commercial.items() if k != "contractId"}
+            variantes.append(("commercial sans contrat", f"{racine}/prices", sans_contrat))
+    comptoir = dict(base, quoteType="counter")
+    variantes.append(("comptoir, chemin simple", f"{racine}/prices", comptoir))
+    if mailed_by and mobo:
+        variantes.append(("comptoir, chemin avec numeros de client",
+                          f"{racine}/{mailed_by}/{mobo}/prices", comptoir))
+
+    global _CP_VARIANTE_TARIFS
+    if _CP_VARIANTE_TARIFS is not None:
+        # La variante retenue d'abord ; les autres restent en secours au cas ou
+        # elle cesserait de repondre.
+        variantes.sort(key=lambda v: 0 if v[0] == _CP_VARIANTE_TARIFS else 1)
+
+    echecs = []
+    for nom, url, corps in variantes:
+        try:
+            r = await s._cp_openapi_call("POST", url, json_body=corps)
+        except Exception as e:
+            echecs.append(f"{nom} -> {type(e).__name__}")
+            continue
+        if r.status_code >= 400:
+            # LE MOTIF EN CLAIR, ET NON UN HACHAGE.
+            #
+            # L'erreur etait journalisee via _private_ref, qui la remplace par
+            # une empreinte : impossible de savoir ce que Postes Canada
+            # repondait. Or le corps d'une erreur de tarification decrit le
+            # refus — ce n'est pas une donnee de cliente. Le taire rendait le
+            # defaut indiagnosticable, ce qui est le contraire du but.
+            motif = _cp_error_detail(r) or (r.text or "")[:200]
+            echecs.append(f"{nom} -> HTTP {r.status_code} : {motif}")
+            continue
+        try:
+            donnees = r.json()
+        except Exception:
+            echecs.append(f"{nom} -> reponse illisible (pas du JSON)")
+            continue
+        devis = _cp_lire_tarifs_json(donnees)
+        if devis:
+            if _CP_VARIANTE_TARIFS != nom:
+                niveau = logging.warning if "comptoir" in nom else logging.info
+                niveau("Canada Post rating: variante retenue = %s (%d tarif(s)).%s",
+                       nom, len(devis),
+                       " ATTENTION : tarif COMPTOIR, pas le tarif commercial de la boutique."
+                       if "comptoir" in nom else "")
+                _CP_VARIANTE_TARIFS = nom
+            return devis
+        echecs.append(f"{nom} -> HTTP 200 mais aucun tarif lisible")
+
+    logging.error("Canada Post rating: aucune variante n'a cote. Detail : %s", " | ".join(echecs))
+    return []
 
 
 def _cp_legacy_cotation_possible() -> bool:

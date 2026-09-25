@@ -6575,24 +6575,12 @@ async def admin_dispatch_today(date: Optional[str] = None,
                         if chosen_code == selected_service
                         else "estimated_cp_alt"
                     )
-            # LE COUT ESTIME S'AFFICHE TOUJOURS.
-            #
-            # Quand Postes Canada ne cote pas — identifiants, habilitation,
-            # service indisponible — la ligne restait VIDE et le total tombait
-            # a zero. Une case vide ne dit rien : ni « c'est gratuit », ni
-            # « je ne sais pas ». Mireille lisait « le cout estime ne
-            # fonctionne pas », et elle avait raison de le lire ainsi.
-            #
-            # A defaut de tarif transporteur, on montre le tarif INTERNE, celui
-            # que la boutique facture deja a la cliente (SHIPPING_FLAT_CAD, ou
-            # zero au-dela du seuil de gratuite). Il est etiquete « interne »
-            # pour qu'on ne le confonde jamais avec un prix Postes Canada :
-            # c'est un ordre de grandeur, et il est honnete quant a sa source.
-            if row.get("line_label_cost") is None:
-                sous_total = float(o.get("subtotal") or o.get("total") or 0) - float(o.get("discount") or 0)
-                interne = 0.0 if sous_total >= FREE_SHIPPING_THRESHOLD_CAD else SHIPPING_FLAT_CAD
-                row["line_label_cost"] = interne
-                row["line_label_cost_source"] = "tarif_interne"
+            # PAS DE TARIF DE SUBSTITUTION. Le tarif interne de la boutique
+            # a ete essaye ici, puis retire a la demande de Mireille : un
+            # chiffre qui n'est pas celui du transporteur n'aide pas a decider
+            # d'un envoi, et le montrer dans une colonne « cout estime »
+            # invite a le confondre. Une case vide dit « je ne sais pas », ce
+            # qui est la verite. Le pourquoi vit dans le journal du serveur.
             row["box_id"] = chosen_box.get("id") if chosen_box else None
             row["box_name"] = chosen_box.get("name") if chosen_box else None
             # Une ligne d'un lot antérieur doit le dire : sans cela, une

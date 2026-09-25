@@ -178,7 +178,6 @@ export default function AdminDispatch() {
 
   const counts = data?.counts || { to_label: 0, labeled: 0, overdue: 0 };
   const totals = data?.totals;
-  const rating = data?.rating;
   const configured = data?.configured;
   const isCpDevportal = Boolean(cpConfig?.base_url?.includes("devportal-portaildesdeveloppeurs"));
 
@@ -273,63 +272,14 @@ export default function AdminDispatch() {
         </div>
       )}
 
-      {/* LE REPLI SE VOIT. Quand le nouveau portail ne cote pas et que
-          l ancienne API prend le relais, tout fonctionne — mais une cle OAuth
-          non habilitee a la cotation est un probleme a regler avant qu elle
-          soit la seule voie. Le taire serait cacher une dette. */}
-      {rating?.source_reelle === "legacy-repli" && (
-        <div className="mt-3 flex items-start gap-2 bg-yellow-50 border border-yellow-300 text-yellow-900 px-4 py-3 font-mono text-[11px] leading-relaxed"
-          data-testid="dispatch-rating-repli">
-          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-          <div>
-            <strong>Les tarifs viennent de l&apos;ancienne API.</strong> Le nouveau
-            portail Postes Canada n&apos;a renvoyé aucun tarif ; l&apos;ancienne clé a
-            pris le relais, et les coûts affichés sont justes. À régler quand même :
-            vérifiez que vos clés OAuth sont habilitées à la cotation, sinon le jour
-            où l&apos;ancienne clé expirera, l&apos;estimation s&apos;arrêtera.
-          </div>
-        </div>
-      )}
-
-      {rating?.reason && (
-        <div className="mt-3 flex items-start gap-2 bg-yellow-50 border border-yellow-300 text-yellow-900 px-4 py-3 font-mono text-[11px] leading-relaxed"
-          data-testid="dispatch-rating-reason">
-          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-          <div>
-            {rating.reason === "no_rating_source" && (
-              <>
-                <strong>Le coût estimé ne peut pas être calculé.</strong> Postes Canada
-                n&apos;a aucune source de cotation : il manque le code postal d&apos;origine,
-                ou bien les identifiants (OAuth, ou clé + numéro de client) dans le .env
-                du serveur. Ce verrou est distinct de celui des étiquettes — la cotation
-                peut manquer alors que la config des étiquettes est complète.
-              </>
-            )}
-            {rating.reason === "rates_empty" && (
-              <>
-                <strong>Les coûts affichés sont le tarif interne de la boutique</strong>{" "}
-                ({rating.to_quote} commande(s)), pas un tarif Postes Canada : le
-                transporteur n&apos;a rien coté. Les montants sont ceux que vous facturez
-                déjà aux clientes — utilisables comme ordre de grandeur, mais le coût
-                réel de l&apos;étiquette sera celui de Postes Canada.
-              </>
-            )}
-            {rating.reason === "rates_partial" && (
-              <>
-                <strong>{rating.quoted} commande(s) cotée(s) par Postes Canada sur {rating.to_quote}.</strong>{" "}
-                {rating.internal > 0 && (
-                  <>Les {rating.internal} autre(s) affichent le tarif interne : souvent un
-                  code postal de destination absent ou mal formé. </>
-                )}
-                Le total mélange donc deux sources.
-              </>
-            )}
-            <div className="mt-1.5 text-yellow-800/80">
-              Diagnostic complet : <code>cd /app/backend &amp;&amp; python scripts/diagnostic_cout_estime.py</code>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* AUCUN BANDEAU D'EXPLICATION ICI.
+          Deux messages ont vecu a cet endroit : l'un nommait la cause d'un
+          cout absent, l'autre prevenait d'un repli sur l'ancienne API. Tous
+          deux disaient vrai, et tous deux encombraient l'ecran d'une
+          explication au lieu d'un chiffre. Mireille les a refuses, et elle a
+          raison : le diagnostic appartient au journal du serveur, pas a
+          l'ecran de travail. Le champ « rating » de la reponse porte encore
+          tout ce qu'il faut pour les remettre si un jour ils servent. */}
 
       <div className="mt-6 flex flex-wrap items-center gap-3 bg-white border border-ink/10 p-4">
         <label className="font-mono text-xs text-foreground/60">Service</label>
@@ -420,10 +370,9 @@ export default function AdminDispatch() {
                 </div>
                 {o.line_label_cost_source === "estimated_cp" ? <span className="block text-[10px] text-foreground/40">estimé CP {o.estimated_eta_days ? `· ${o.estimated_eta_days} j` : ""}</span> : null}
                 {o.line_label_cost_source === "estimated_cp_alt" ? <span className="block text-[10px] text-foreground/40">estimé CP</span> : null}
-                {/* Chaque ligne dit d ou vient son chiffre. Un montant sans
-                    provenance se confond avec un prix Postes Canada, et une
-                    case vide ne disait rien du tout. */}
-                {o.line_label_cost_source === "tarif_interne" ? <span className="block text-[10px] text-yellow-700">tarif interne</span> : null}
+                {/* Plus de mention « tarif interne » : ce tarif n'est plus
+                    affiche. Une ligne sans cout montre « - », ce qui dit
+                    « je ne sais pas » sans pretendre autre chose. */}
                 {(o.packaged_weight_kg || o.box_name) ? (
                   <span className="block text-[10px] text-foreground/40">
                     {o.packaged_weight_kg ? `${o.packaged_weight_kg} kg` : ""}{o.packaged_weight_kg && o.box_name ? " · " : ""}{o.box_name || ""}
