@@ -6450,7 +6450,30 @@ async def admin_dispatch_today(date: Optional[str] = None,
                 {
                     # File de travail : ce qui reste à traiter pour ce lot.
                     "dispatch_batch": day,
-                    "fulfillment_status": {"$in": ["processing", "pending", "packed", "shipped"]},
+                    "fulfillment_status": {"$in": ["processing", "pending", "packing",
+                                                   "packed", "shipped"]},
+                },
+                {
+                    # LE TRAVAIL EN RETARD, QUI DISPARAISSAIT.
+                    #
+                    # La file ne lisait QUE dispatch_batch == aujourd'hui. Une
+                    # commande empaquetée un jour précédent et jamais étiquetée
+                    # tombait alors dans un trou : absente de « à étiqueter »
+                    # (mauvais lot), absente de « étiquetées » (pas
+                    # d'étiquette), et absente du compteur « en retard » (il ne
+                    # comptait que processing et pending). Invisible, donc
+                    # jamais expédiée — et rien à estimer, ce qui faisait lire
+                    # le coût estimé comme « en panne ».
+                    #
+                    # Une commande empaquetée en retard est le travail le PLUS
+                    # urgent d'un bureau d'expédition : elle appartient à la
+                    # file du jour, pas aux archives.
+                    "dispatch_batch": {"$lt": day},
+                    "fulfillment_status": {"$in": ["processing", "pending", "packing", "packed"]},
+                    "$or": [
+                        {"shipping_info.label_url": {"$in": [None, ""]}},
+                        {"shipping_info.label_url": {"$exists": False}},
+                    ],
                 },
                 {
                     # HISTORIQUE : étiquettes réellement émises ce jour-là.
@@ -6554,12 +6577,26 @@ async def admin_dispatch_today(date: Optional[str] = None,
                     )
             row["box_id"] = chosen_box.get("id") if chosen_box else None
             row["box_name"] = chosen_box.get("name") if chosen_box else None
+            # Une ligne d'un lot antérieur doit le dire : sans cela, une
+            # commande d'avant-hier apparaît dans la file du jour sans qu'on
+            # sache pourquoi.
+            lot = o.get("dispatch_batch") or ""
+            row["dispatch_batch"] = lot
+            row["en_retard"] = bool(lot and lot < day)
             to_label.append(row)
 
+    # LE COMPTEUR COMPTE TOUT CE QUI EST EN RETARD, pas seulement le début du
+    # flux. Il ignorait « packing » et « packed » : une commande empaquetée et
+    # en retard — le cas le plus grave, puisqu'elle est prête à partir — ne
+    # comptait pour rien.
     overdue = await db.orders.count_documents({
         "payment_status": "paid",
         "dispatch_batch": {"$lt": day},
-        "fulfillment_status": {"$in": ["processing", "pending"]},
+        "fulfillment_status": {"$in": ["processing", "pending", "packing", "packed"]},
+        "$or": [
+            {"shipping_info.label_url": {"$in": [None, ""]}},
+            {"shipping_info.label_url": {"$exists": False}},
+        ],
     })
     # Bilan financier du jour (règle métier Dispatch) :
     # - estimated_labels_total: somme des coûts par ligne de commande affichée

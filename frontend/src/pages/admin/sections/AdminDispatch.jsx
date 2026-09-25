@@ -357,7 +357,17 @@ export default function AdminDispatch() {
           const currentBoxId = (o.id in boxOverrides) ? boxOverrides[o.id] : o.box_id;
           return (
             <tr key={o.id} className="border-t border-ink/10" data-testid={`dispatch-row-${o.order_number}`}>
-              <td className="px-4 py-3 font-mono text-xs font-bold">{o.order_number}</td>
+              <td className="px-4 py-3 font-mono text-xs font-bold">
+                {o.order_number}
+                {/* Une commande d un lot anterieur apparait desormais dans la
+                    file du jour — avant, elle disparaissait. Elle doit dire
+                    d ou elle vient, sinon sa presence est inexplicable. */}
+                {o.en_retard && (
+                  <span className="block mt-0.5 font-mono text-[10px] font-normal text-red-600" data-testid={`dispatch-late-${o.order_number}`}>
+                    en retard · lot {o.dispatch_batch}
+                  </span>
+                )}
+              </td>
               <td className="px-4 py-3 text-sm">{o.city}, {o.province}</td>
               <td className="px-4 py-3 font-mono text-xs">{o.items} art.</td>
               <td className="px-4 py-2">
