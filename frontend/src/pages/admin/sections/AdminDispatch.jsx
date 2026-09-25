@@ -283,10 +283,10 @@ export default function AdminDispatch() {
           <AlertTriangle size={14} className="mt-0.5 shrink-0" />
           <div>
             <strong>Les tarifs viennent de l&apos;ancienne API.</strong> Le nouveau
-            portail Postes Canada n&apos;a renvoye aucun tarif ; l&apos;ancienne cle a
-            pris le relais, et les couts affiches sont justes. A regler quand meme :
-            verifiez que vos cles OAuth sont habilitees a la cotation, sinon le jour
-            ou l&apos;ancienne cle expirera, l&apos;estimation s&apos;arretera.
+            portail Postes Canada n&apos;a renvoyé aucun tarif ; l&apos;ancienne clé a
+            pris le relais, et les coûts affichés sont justes. À régler quand même :
+            vérifiez que vos clés OAuth sont habilitées à la cotation, sinon le jour
+            où l&apos;ancienne clé expirera, l&apos;estimation s&apos;arrêtera.
           </div>
         </div>
       )}
@@ -307,17 +307,21 @@ export default function AdminDispatch() {
             )}
             {rating.reason === "rates_empty" && (
               <>
-                <strong>Postes Canada n&apos;a renvoyé aucun tarif</strong> pour
-                les {rating.to_quote} commande(s) à étiqueter. Source : {rating.source || "aucune"}.
-                L&apos;erreur exacte est dans le journal du serveur (identifiants refusés,
-                numéro de client non habilité à la cotation, ou code postal mal formé).
+                <strong>Les coûts affichés sont le tarif interne de la boutique</strong>{" "}
+                ({rating.to_quote} commande(s)), pas un tarif Postes Canada : le
+                transporteur n&apos;a rien coté. Les montants sont ceux que vous facturez
+                déjà aux clientes — utilisables comme ordre de grandeur, mais le coût
+                réel de l&apos;étiquette sera celui de Postes Canada.
               </>
             )}
             {rating.reason === "rates_partial" && (
               <>
-                <strong>{rating.quoted} commande(s) estimée(s) sur {rating.to_quote}.</strong>{" "}
-                Les autres n&apos;ont pas reçu de tarif — souvent un code postal de
-                destination absent ou mal formé. Le coût affiché est donc partiel.
+                <strong>{rating.quoted} commande(s) cotée(s) par Postes Canada sur {rating.to_quote}.</strong>{" "}
+                {rating.internal > 0 && (
+                  <>Les {rating.internal} autre(s) affichent le tarif interne : souvent un
+                  code postal de destination absent ou mal formé. </>
+                )}
+                Le total mélange donc deux sources.
               </>
             )}
             <div className="mt-1.5 text-yellow-800/80">
@@ -416,6 +420,10 @@ export default function AdminDispatch() {
                 </div>
                 {o.line_label_cost_source === "estimated_cp" ? <span className="block text-[10px] text-foreground/40">estimé CP {o.estimated_eta_days ? `· ${o.estimated_eta_days} j` : ""}</span> : null}
                 {o.line_label_cost_source === "estimated_cp_alt" ? <span className="block text-[10px] text-foreground/40">estimé CP</span> : null}
+                {/* Chaque ligne dit d ou vient son chiffre. Un montant sans
+                    provenance se confond avec un prix Postes Canada, et une
+                    case vide ne disait rien du tout. */}
+                {o.line_label_cost_source === "tarif_interne" ? <span className="block text-[10px] text-yellow-700">tarif interne</span> : null}
                 {(o.packaged_weight_kg || o.box_name) ? (
                   <span className="block text-[10px] text-foreground/40">
                     {o.packaged_weight_kg ? `${o.packaged_weight_kg} kg` : ""}{o.packaged_weight_kg && o.box_name ? " · " : ""}{o.box_name || ""}

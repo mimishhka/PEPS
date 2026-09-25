@@ -60,20 +60,24 @@ it("dit qu'aucune source de cotation n'est disponible", async () => {
   expect(motif).toHaveTextContent(/distinct de celui des étiquettes/i);
 });
 
-it("dit que Postes Canada n'a renvoyé aucun tarif, et combien de commandes attendent", async () => {
-  afficher(REPONSE({ available: true, source: "openapi", reason: "rates_empty", quoted: 0, to_quote: 3 }));
+it("nomme la provenance quand Postes Canada ne cote pas", async () => {
+  // Le message ne parle plus d'absence : un cout S'AFFICHE desormais dans
+  // tous les cas, et ce qui compte est de savoir d'ou il vient.
+  afficher(REPONSE({ available: true, source: "openapi", reason: "rates_empty",
+                     quoted: 0, to_quote: 3, internal: 3 }));
 
   const motif = await waitFor(() => screen.getByTestId("dispatch-rating-reason"), ATTENTE);
-  expect(motif).toHaveTextContent(/aucun tarif/i);
+  expect(motif).toHaveTextContent(/tarif interne de la boutique/i);
   expect(motif).toHaveTextContent(/3 commande/);
-  expect(motif).toHaveTextContent(/openapi/);
+  expect(motif).not.toHaveTextContent(/aucun tarif/i);
 });
 
-it("dit combien de commandes sont estimées quand le total est partiel", async () => {
-  afficher(REPONSE({ available: true, source: "openapi", reason: "rates_partial", quoted: 1, to_quote: 4 }));
+it("dit combien de commandes le transporteur a cotees quand le total est mixte", async () => {
+  afficher(REPONSE({ available: true, source: "openapi", reason: "rates_partial",
+                     quoted: 1, to_quote: 4, internal: 3 }));
 
   const motif = await waitFor(() => screen.getByTestId("dispatch-rating-reason"), ATTENTE);
-  expect(motif).toHaveTextContent(/1 commande\(s\) estimée\(s\) sur 4/);
+  expect(motif).toHaveTextContent(/1 commande\(s\) cotée\(s\) par Postes Canada sur 4/);
 });
 
 it("ne dit rien quand la cotation fonctionne", async () => {
@@ -93,4 +97,46 @@ it("affiche le bandeau financier même à zéro, au lieu de le cacher", async ()
   afficher(REPONSE({ available: false, source: null, reason: "no_rating_source", quoted: 0, to_quote: 2 }));
 
   await waitFor(() => expect(screen.getByTestId("dispatch-financials")).toBeInTheDocument(), ATTENTE);
+});
+
+// LE COEUR DE LA DEMANDE : « l'estimé du cout ne s'affiche toujours pas ».
+// Un cout doit s'afficher dans TOUS les cas. A defaut de tarif transporteur,
+// c'est le tarif interne de la boutique — etiquete comme tel, jamais confondu
+// avec un prix Postes Canada.
+it("affiche un cout meme quand Postes Canada ne cote rien", async () => {
+  afficher(
+    REPONSE({ available: true, source: "openapi", reason: "rates_empty",
+              quoted: 0, to_quote: 2, internal: 2 },
+      { labels_cost: 40 })
+  );
+
+  const bandeau = await waitFor(() => screen.getByTestId("dispatch-financials"), ATTENTE);
+  expect(bandeau).toHaveTextContent("$40.00");
+  // Et le message ne parle plus d'absence : il nomme la provenance.
+  const motif = screen.getByTestId("dispatch-rating-reason");
+  expect(motif).toHaveTextContent(/tarif interne de la boutique/i);
+  expect(motif).not.toHaveTextContent(/aucun tarif/i);
+});
+
+it("distingue les commandes cotees des commandes au tarif interne", async () => {
+  afficher(
+    REPONSE({ available: true, source: "openapi", reason: "rates_partial",
+              quoted: 3, to_quote: 5, internal: 2 })
+  );
+
+  const motif = await waitFor(() => screen.getByTestId("dispatch-rating-reason"), ATTENTE);
+  expect(motif).toHaveTextContent(/3 commande\(s\) cotée\(s\) par Postes Canada sur 5/);
+  expect(motif).toHaveTextContent(/2 autre\(s\) affichent le tarif interne/);
+});
+
+it("previent quand les tarifs viennent du repli sur l'ancienne API", async () => {
+  afficher(
+    REPONSE({ available: true, source: "openapi", source_reelle: "legacy-repli",
+              reason: null, quoted: 2, to_quote: 2, internal: 0 },
+      { labels_cost: 28.44 })
+  );
+
+  const repli = await waitFor(() => screen.getByTestId("dispatch-rating-repli"), ATTENTE);
+  expect(repli).toHaveTextContent(/ancienne API/i);
+  expect(repli).toHaveTextContent(/habilitées à la cotation/i);
 });

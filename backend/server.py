@@ -6575,6 +6575,24 @@ async def admin_dispatch_today(date: Optional[str] = None,
                         if chosen_code == selected_service
                         else "estimated_cp_alt"
                     )
+            # LE COUT ESTIME S'AFFICHE TOUJOURS.
+            #
+            # Quand Postes Canada ne cote pas — identifiants, habilitation,
+            # service indisponible — la ligne restait VIDE et le total tombait
+            # a zero. Une case vide ne dit rien : ni « c'est gratuit », ni
+            # « je ne sais pas ». Mireille lisait « le cout estime ne
+            # fonctionne pas », et elle avait raison de le lire ainsi.
+            #
+            # A defaut de tarif transporteur, on montre le tarif INTERNE, celui
+            # que la boutique facture deja a la cliente (SHIPPING_FLAT_CAD, ou
+            # zero au-dela du seuil de gratuite). Il est etiquete « interne »
+            # pour qu'on ne le confonde jamais avec un prix Postes Canada :
+            # c'est un ordre de grandeur, et il est honnete quant a sa source.
+            if row.get("line_label_cost") is None:
+                sous_total = float(o.get("subtotal") or o.get("total") or 0) - float(o.get("discount") or 0)
+                interne = 0.0 if sous_total >= FREE_SHIPPING_THRESHOLD_CAD else SHIPPING_FLAT_CAD
+                row["line_label_cost"] = interne
+                row["line_label_cost_source"] = "tarif_interne"
             row["box_id"] = chosen_box.get("id") if chosen_box else None
             row["box_name"] = chosen_box.get("name") if chosen_box else None
             # Une ligne d'un lot antérieur doit le dire : sans cela, une
@@ -6620,12 +6638,17 @@ async def admin_dispatch_today(date: Optional[str] = None,
     # verrou, independant du mode test. Les deux peuvent diverger : on les
     # rapporte separement.
     lignes_a_estimer = [r for r in to_label]
-    lignes_estimees = [r for r in lignes_a_estimer if r.get("line_label_cost") is not None]
+    # Combien de lignes portent un tarif du TRANSPORTEUR, et non le tarif
+    # interne de secours : c'est cette distinction qui doit se lire a l'ecran.
+    lignes_transporteur = [r for r in lignes_a_estimer
+                           if str(r.get("line_label_cost_source") or "").startswith("estimated_cp")]
+    lignes_internes = [r for r in lignes_a_estimer
+                       if r.get("line_label_cost_source") == "tarif_interne"]
     if not _cp_tarifs_disponibles():
         motif_estimation = "no_rating_source"
-    elif lignes_a_estimer and not lignes_estimees:
+    elif lignes_a_estimer and not lignes_transporteur:
         motif_estimation = "rates_empty"
-    elif len(lignes_estimees) < len(lignes_a_estimer):
+    elif lignes_internes:
         motif_estimation = "rates_partial"
     else:
         motif_estimation = None
@@ -6650,8 +6673,11 @@ async def admin_dispatch_today(date: Optional[str] = None,
             # a traiter, pas un detail technique.
             "source_reelle": _cp_derniere_source_tarifs(),
             "reason": motif_estimation,
-            "quoted": len(lignes_estimees),
+            "quoted": len(lignes_transporteur),
             "to_quote": len(lignes_a_estimer),
+            # Les lignes qui affichent le tarif interne faute de mieux : le
+            # total est complet, mais il n'est pas entierement du transporteur.
+            "internal": len(lignes_internes),
         },
         "totals": {
             "labels_cost": estimated_labels_total,

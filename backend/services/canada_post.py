@@ -205,15 +205,76 @@ def _cp_lire_tarifs_json(donnees) -> list:
     TABLEAU de {serviceCode, serviceName, priceDetails{base, taxes, due},
     serviceStandard{expectedTransitTime, expectedDeliveryDate}}. « due » est
     le cout total, options, surcharges, rabais et taxes compris."""
-    devis = []
-    for q in donnees if isinstance(donnees, list) else []:
-        if not isinstance(q, dict):
-            continue
+    # LE LECTEUR NE JETTE PLUS RIEN EN SILENCE.
+    #
+    # Trois suppositions vivaient ici, et chacune renvoyait une liste vide
+    # sans un mot au journal :
+    #
+    #   1. la reponse est un TABLEAU. Si Postes Canada l'enveloppe dans un
+    #      objet, tout etait jete ;
+    #   2. le prix vit sous priceDetails.due. Sous un autre nom, chaque devis
+    #      etait ignore un par un ;
+    #   3. zero devis d'une reponse 200 ne produisait AUCUNE trace.
+    #
+    # Resultat : l'ecran Dispatch affichait « aucun tarif » et le journal ne
+    # disait pas pourquoi. C'est ce silence qui rendait le defaut introuvable.
+    #
+    # Les formes alternatives ci-dessous sont PLAUSIBLES, pas confirmees : le
+    # journal dit laquelle a fonctionne, pour qu'on puisse resserrer ensuite.
+    liste = None
+    if isinstance(donnees, list):
+        liste = donnees
+    elif isinstance(donnees, dict):
+        for cle in ("prices", "priceQuotes", "quotes", "rates", "data", "items"):
+            if isinstance(donnees.get(cle), list):
+                liste = donnees[cle]
+                logging.info("Canada Post rating: reponse enveloppee sous « %s »", cle)
+                break
+        if liste is None:
+            logging.error(
+                "Canada Post rating: reponse 200 d'une forme inattendue — "
+                "objet dont les cles sont %s. Aucun tarif n'a pu etre lu.",
+                sorted(donnees.keys())[:12])
+            return []
+    if liste is None:
+        logging.error("Canada Post rating: reponse 200 de type %s, ni tableau ni objet.",
+                      type(donnees).__name__)
+        return []
+
+    def _prix(q):
+        """Le montant du, sous les noms que la specification et ses variantes
+        emploient. On prend le premier qui donne un nombre."""
         prix = q.get("priceDetails") if isinstance(q.get("priceDetails"), dict) else {}
+        for source, cle in ((prix, "due"), (prix, "dueAmount"), (prix, "total"),
+                            (q, "due"), (q, "dueAmount"), (q, "price"), (q, "totalPrice")):
+            valeur = source.get(cle)
+            if isinstance(valeur, dict):
+                valeur = valeur.get("amount", valeur.get("value"))
+            try:
+                return float(valeur)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    devis = []
+    ignores = 0
+    for q in liste:
+        if not isinstance(q, dict):
+            ignores += 1
+            continue
         norme = q.get("serviceStandard") if isinstance(q.get("serviceStandard"), dict) else {}
-        try:
-            due = float(prix.get("due"))
-        except (TypeError, ValueError):
+        due = _prix(q)
+        if due is None:
+            ignores += 1
+            if ignores == 1:
+                # Une seule fois : le journal doit rester lisible, mais la
+                # premiere occurrence doit livrer les cles reellement recues.
+                logging.error(
+                    "Canada Post rating: devis sans montant lisible — cles recues %s, "
+                    "cles de priceDetails %s",
+                    sorted(q.keys())[:12],
+                    sorted((q.get("priceDetails") or {}).keys())[:12]
+                    if isinstance(q.get("priceDetails"), dict) else "(absent)")
             continue
         transit = norme.get("expectedTransitTime")
         devis.append({
@@ -226,6 +287,10 @@ def _cp_lire_tarifs_json(donnees) -> list:
             # Meme piege que le suivi : une DATE portee par un minuit UTC.
             "expected_delivery": str(norme.get("expectedDeliveryDate") or "")[:10],
         })
+    if not devis:
+        logging.error("Canada Post rating: %d devis recu(s), aucun lisible.", len(liste))
+    elif ignores:
+        logging.warning("Canada Post rating: %d devis lu(s), %d ignore(s).", len(devis), ignores)
     return devis
 
 
