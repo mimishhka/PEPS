@@ -205,7 +205,7 @@ export default function Home() {
       <section className="py-20 lg:py-28 border-t border-ash" data-testid="newsletter-section">
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
           <div className="relative max-w-2xl">
-            <p className="absolute top-0 right-0 font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte">{newsEyebrow}</p>
+            <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte mb-2 lg:absolute lg:top-0 lg:right-0 lg:mb-0">{newsEyebrow}</p>
             <h2 className="font-display text-[22px] sm:text-[26px] font-semibold text-nordfjord mb-3 tracking-[-0.01em]">{newsTitle}</h2>
             <p className="text-glacier text-[14px] mb-8 max-w-[52ch]">{newsLede}</p>
             {done ? (

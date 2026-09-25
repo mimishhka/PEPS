@@ -792,7 +792,7 @@ export default function AffiliateDashboard() {
                 publipostage. Le prénom vient de la fiche affilié, saisie à
                 l'invitation ; on retombe sur le nom complet pour les comptes
                 antérieurs, qui n'ont pas de prénom séparé. */}
-            <h1 className="font-display text-[40px] font-bold text-nordfjord leading-none">
+            <h1 className="font-display text-[28px] sm:text-[34px] font-semibold text-nordfjord leading-[1.1]">
               {L("Bonjour", "Welcome")}, {data?.first_name || user?.name}
             </h1>
             {/* L'entreprise, quand elle existe, se met SOUS le prénom et non à
@@ -848,7 +848,7 @@ export default function AffiliateDashboard() {
             {/* Bandeau. Tant que rien n'a ete gagne, un « 0,00 $ » en gros
                 caracteres n'enseigne rien : on montre ce qu'une vente vaut. Des
                 qu'il y a des gains, le montant reel est plus utile. */}
-            <div className="rounded-xl bg-nordfjord p-6 flex flex-wrap items-center justify-between gap-4">
+            <div className="border border-ash p-6 flex flex-wrap items-center justify-between gap-4" style={{ borderRadius: "var(--r-m)" }}>
               {Number(data?.cumulative_revenue || 0) === 0 ? (
                 <div>
                   <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
@@ -868,7 +868,7 @@ export default function AffiliateDashboard() {
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
                   {L("GAINS DU MOIS EN COURS", "THIS MONTH'S EARNINGS")}
                 </p>
-                <p className="font-display text-4xl font-bold text-white tabular-nums">
+                <p className="font-display text-[28px] font-semibold text-nordfjord tabular-nums">
                   {money(insights?.current_month?.commission)}
                 </p>
                 <p className="font-data text-xs text-white/60 mt-1">
@@ -2138,7 +2138,7 @@ function CycleVersement({ cycle, seuil, L, lang }) {
       </p>
 
       <div className="flex items-baseline justify-between gap-6 flex-wrap">
-        <p className="font-display text-4xl font-bold text-nordfjord tabular-nums"
+        <p className="font-display text-[28px] font-semibold text-nordfjord tabular-nums"
            data-testid="cycle-du">
           {money(du)}
         </p>

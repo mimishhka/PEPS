@@ -54,7 +54,7 @@ export default function Catalog() {
           <h1 className="font-display text-[26px] sm:text-[32px] font-semibold text-nordfjord leading-[1.1] tracking-[-0.01em]">
             {lang === "fr" ? "La bibliothèque complète" : "The full library"}
           </h1>
-          <p className="absolute top-0 right-0 font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte">
+          <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte mb-2 lg:absolute lg:top-0 lg:right-0 lg:mb-0">
             {lang === "fr" ? "CATALOGUE" : "CATALOG"}
           </p>
         </div>

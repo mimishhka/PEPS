@@ -99,7 +99,7 @@
   --fn-nova:        0 184 212;     /* #00B8D4 — INCHANGÉ, l'accent unique */
   --fn-nova-texte:  0 184 212;     /* en sombre, le fond est l'ink : nova lui-meme donne 8:1 */
   --fn-clinical:    10 15 20;      /* #0A0F14 — Ink, le fond d'ancrage */
-  --fn-ash:         30 60 88;      /* #1E3C58 — le rgba(255,255,255,.1) aplati */
+  --fn-ash:         55 90 122;     /* le filet sombre, remonte au-dessus du 3:1 sur l'ink */
   --fn-ink:         10 15 20;      /* #0A0F14 — reste l'ancre la plus sombre */
   --fn-success:     95 196 141;    /* #5FC48D — signalisation, lisibilité */
   --fn-warning:     240 184 96;    /* #F0B860 */
