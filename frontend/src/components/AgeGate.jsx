@@ -102,7 +102,7 @@ export default function AgeGate() {
             <button
               data-testid="age-gate-confirm"
               onClick={confirm}
-              className="flex-1 rounded-full bg-nordfjord text-white font-data text-xs uppercase tracking-[0.2em] py-4 hover:bg-nordfjord/90 shadow-lg shadow-nordfjord/20 transition inline-flex items-center justify-center gap-2"
+              className="flex-1 bg-nordfjord text-white font-data text-xs uppercase tracking-[0.2em] py-4 hover:bg-nordfjord/90 transition inline-flex items-center justify-center gap-2" style={{ borderRadius: "var(--r-m)" }}
             >
               {t("age.confirm")}
               <span className="text-nova-texte" aria-hidden="true">→</span>
@@ -110,7 +110,7 @@ export default function AgeGate() {
             <button
               data-testid="age-gate-exit"
               onClick={exit}
-              className="flex-1 rounded-full border border-ash text-nordfjord font-data text-xs uppercase tracking-[0.2em] py-4 hover:border-nova hover:text-nova-texte transition inline-flex items-center justify-center gap-2"
+              className="flex-1 border border-ash text-nordfjord font-data text-xs uppercase tracking-[0.2em] py-4 hover:border-nova hover:text-nova-texte transition inline-flex items-center justify-center gap-2" style={{ borderRadius: "var(--r-m)" }}
             >
               <LogOut size={12} />
               {t("age.exit")}

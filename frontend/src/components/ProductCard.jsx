@@ -44,7 +44,7 @@ export default function ProductCard({ product, index = 0 }) {
           height={600}
           loading="lazy"
           className="w-full h-full"
-          imgClassName="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+          imgClassName="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
         />
       </Link>
 

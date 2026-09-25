@@ -554,7 +554,7 @@ function SecurityTab({ t, user, logout, navigate }) {
         <p className="text-sm text-glacier mb-4">{t("account.deleteHint")}</p>
         {!showDelete ? (
           <button onClick={() => setShowDelete(true)} data-testid="delete-account-reveal"
-            className="rounded-full border-[1.5px] border-error text-error font-data text-xs uppercase tracking-[0.2em] px-6 py-3 hover:bg-error hover:text-white transition-colors">
+            className="border border-error text-error font-data text-xs uppercase tracking-[0.2em] px-6 py-3 hover:bg-error hover:text-white transition-colors" style={{ borderRadius: "var(--r-m)" }}>
             {t("account.deleteAccount")}
           </button>
         ) : (
@@ -564,12 +564,12 @@ function SecurityTab({ t, user, logout, navigate }) {
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
                 <input type="password" required value={delPassword} data-testid="delete-account-password"
                   onChange={(e) => setDelPassword(e.target.value)}
-                  className="w-full rounded-full border border-error px-5 py-3 bg-white text-nordfjord outline-none" />
+                  className="w-full border border-error px-5 py-3 bg-white text-nordfjord outline-none" style={{ borderRadius: "var(--r-m)" }} />
               </div>
             )}
             <div className="flex gap-3">
               <button type="submit" disabled={delBusy} data-testid="delete-account-confirm"
-                className="rounded-full bg-error text-white font-data text-xs uppercase tracking-[0.2em] px-6 py-3 disabled:opacity-50">
+                className="bg-error text-white font-data text-xs uppercase tracking-[0.2em] px-6 py-3 disabled:opacity-50" style={{ borderRadius: "var(--r-m)" }}>
                 {delBusy ? "…" : t("account.deleteForever")}
               </button>
               <button type="button" onClick={() => { setShowDelete(false); setDelPassword(""); }} className="btn-pill btn-outline">
