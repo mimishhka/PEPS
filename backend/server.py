@@ -6571,6 +6571,27 @@ async def admin_dispatch_today(date: Optional[str] = None,
         sum(float(r.get("line_label_cost") or 0) for r in dispatch_lines if r.get("line_label_cost") is not None),
         2,
     )
+    # POURQUOI LE COUT ESTIME EST VIDE.
+    #
+    # La cotation renvoie une liste vide sur TOUTE erreur — identifiants
+    # refuses, numero de client non habilite, code postal mal forme. Le total
+    # tombait alors a 0, et le bandeau financier ne s'affichait meme pas : un
+    # ecran muet, ou l'absence de chiffre ne se distingue pas d'un montant
+    # nul. L'ecran doit nommer la cause, pas la taire.
+    #
+    # « configured » plus haut regit les ETIQUETTES ; la cotation a son propre
+    # verrou, independant du mode test. Les deux peuvent diverger : on les
+    # rapporte separement.
+    lignes_a_estimer = [r for r in to_label]
+    lignes_estimees = [r for r in lignes_a_estimer if r.get("line_label_cost") is not None]
+    if not _cp_tarifs_disponibles():
+        motif_estimation = "no_rating_source"
+    elif lignes_a_estimer and not lignes_estimees:
+        motif_estimation = "rates_empty"
+    elif len(lignes_estimees) < len(lignes_a_estimer):
+        motif_estimation = "rates_partial"
+    else:
+        motif_estimation = None
     customer_charged_total = round(sum(float(r.get("shipping_charged") or 0) for r in labeled), 2)
     manifest_doc = await db.manifests.find_one({"dispatch_date": day}, {"_id": 0}, sort=[("created_at", -1)])
     manifest_total_due = None
@@ -6583,6 +6604,13 @@ async def admin_dispatch_today(date: Optional[str] = None,
     return {
         "date": day,
         "configured": is_canada_post_configured(),
+        "rating": {
+            "available": _cp_tarifs_disponibles(),
+            "source": _cp_source_tarifs(),
+            "reason": motif_estimation,
+            "quoted": len(lignes_estimees),
+            "to_quote": len(lignes_a_estimer),
+        },
         "totals": {
             "labels_cost": estimated_labels_total,
             "shipping_charged": round(sum(float(r.get("cost_due") or 0) for r in labeled), 2),

@@ -178,6 +178,7 @@ export default function AdminDispatch() {
 
   const counts = data?.counts || { to_label: 0, labeled: 0, overdue: 0 };
   const totals = data?.totals;
+  const rating = data?.rating;
   const configured = data?.configured;
   const isCpDevportal = Boolean(cpConfig?.base_url?.includes("devportal-portaildesdeveloppeurs"));
 
@@ -258,16 +259,53 @@ export default function AdminDispatch() {
         <Stat label="En retard" value={counts.overdue} accent={counts.overdue > 0} testid="stat-overdue" />
       </div>
 
-      {totals && (
-        (Number(totals.labels_cost || 0) > 0) ||
-        (Number(totals.customer_shipping_charged || 0) > 0) ||
-        (Number(totals?.manifest?.total_due || 0) > 0)
-      ) && (
+      {/* LE BANDEAU NE SE CACHE PLUS QUAND LE COUT EST NUL.
+          Il ne s'affichait qu'au-dessus de zero : une cotation en echec
+          donnait 0, le bandeau disparaissait, et l'absence de chiffre etait
+          indistinguable d'un montant nul. On l'affiche des qu'il y a une
+          ligne, et la cause de l'echec est nommee juste dessous. */}
+      {(counts.to_label > 0 || counts.labeled > 0) && totals && (
         <div className="mt-4 grid grid-cols-2 lg:grid-cols-5 gap-4" data-testid="dispatch-financials">
           <Money label="Coût estimé étiquettes" value={totals.labels_cost} />
           <Money label="Facturé aux clients" value={totals.customer_shipping_charged} />
           <Money label="Manifeste (total dû)" value={totals.manifest?.total_due} muted />
           <Money label="Écart" value={totals.margin} accent={totals.margin != null && totals.margin > 0} />
+        </div>
+      )}
+
+      {rating?.reason && (
+        <div className="mt-3 flex items-start gap-2 bg-yellow-50 border border-yellow-300 text-yellow-900 px-4 py-3 font-mono text-[11px] leading-relaxed"
+          data-testid="dispatch-rating-reason">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          <div>
+            {rating.reason === "no_rating_source" && (
+              <>
+                <strong>Le coût estimé ne peut pas être calculé.</strong> Postes Canada
+                n&apos;a aucune source de cotation : il manque le code postal d&apos;origine,
+                ou bien les identifiants (OAuth, ou clé + numéro de client) dans le .env
+                du serveur. Ce verrou est distinct de celui des étiquettes — la cotation
+                peut manquer alors que la config des étiquettes est complète.
+              </>
+            )}
+            {rating.reason === "rates_empty" && (
+              <>
+                <strong>Postes Canada n&apos;a renvoyé aucun tarif</strong> pour
+                les {rating.to_quote} commande(s) à étiqueter. Source : {rating.source || "aucune"}.
+                L&apos;erreur exacte est dans le journal du serveur (identifiants refusés,
+                numéro de client non habilité à la cotation, ou code postal mal formé).
+              </>
+            )}
+            {rating.reason === "rates_partial" && (
+              <>
+                <strong>{rating.quoted} commande(s) estimée(s) sur {rating.to_quote}.</strong>{" "}
+                Les autres n&apos;ont pas reçu de tarif — souvent un code postal de
+                destination absent ou mal formé. Le coût affiché est donc partiel.
+              </>
+            )}
+            <div className="mt-1.5 text-yellow-800/80">
+              Diagnostic complet : <code>cd /app/backend &amp;&amp; python scripts/diagnostic_cout_estime.py</code>
+            </div>
+          </div>
         </div>
       )}
 
