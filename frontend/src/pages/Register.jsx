@@ -88,9 +88,9 @@ export default function Register() {
         className="mt-0.5 h-5 w-5 shrink-0 rounded-md border border-ash accent-nova" />
       <span>
         {t("auth.agreePrefix") || "J'accepte les"}{" "}
-        <Link to="/compliance" className="font-semibold text-nordfjord hover:text-nova">{t("auth.terms") || "conditions d'utilisation"}</Link>
+        <Link to="/compliance" className="font-semibold text-nordfjord hover:text-nova-texte">{t("auth.terms") || "conditions d'utilisation"}</Link>
         {" "}{t("auth.and") || "et la"}{" "}
-        <Link to="/privacy" className="font-semibold text-nordfjord hover:text-nova">{t("auth.privacy") || "politique de confidentialité"}</Link>.
+        <Link to="/privacy" className="font-semibold text-nordfjord hover:text-nova-texte">{t("auth.privacy") || "politique de confidentialité"}</Link>.
         {" "}<span className="text-compliance">{t("auth.ruoConsent") || "Je confirme avoir 19 ans et plus. Produits pour la recherche uniquement (RUO)."}</span>
       </span>
     </label>
@@ -106,7 +106,7 @@ export default function Register() {
             <Wordmark size={17} color="#F7FAFC" />
           </div>
           <div>
-            <h2 className="font-display text-[44px] font-bold tracking-[-0.02em] leading-[1.05]">
+            <h2 className="font-display text-[28px] sm:text-[34px] font-semibold tracking-[-0.01em] leading-[1.1]">
               {t("auth.signup") || "Join the network."}
             </h2>
             <p className="mt-4 text-[#B7CADD] max-w-md">{t("auth.registerSub")}</p>
@@ -115,10 +115,10 @@ export default function Register() {
       </div>
 
       <div className="p-8 lg:p-16 flex flex-col justify-center">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
+        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-4">
           02 · {t("auth.signup")}
         </p>
-        <h1 className="font-display text-[40px] font-bold text-nordfjord mb-8">{t("auth.signup")}</h1>
+        <h1 className="font-display text-[30px] font-bold text-nordfjord mb-8">{t("auth.signup")}</h1>
 
         <div className="max-w-md">
           <div className="inline-flex border border-ash bg-white p-1 mb-8" role="tablist" style={{ borderRadius: "var(--r-m)" }}>
@@ -134,27 +134,27 @@ export default function Register() {
 
           {mode === "password" && verifyPending ? (
             <div className="rounded-3xl border border-nova/40 bg-nova/5 p-6" data-testid="register-verify-pending">
-              <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-2">Fironova · Activation</p>
+              <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova-texte mb-2">Fironova · Activation</p>
               <h3 className="font-display text-[20px] font-bold text-nordfjord mb-2">
                 {t("auth.magicCheckTitle") || "Vérifiez votre boîte mail"}
               </h3>
               <p className="text-sm text-glacier mb-4">
                 {(t("auth.magicCheckSubSignup") || "Un lien d'activation a été envoyé à {email}.").replace("{email}", form.email)}
               </p>
-              <button type="button" onClick={() => setVerifyPending(false)} className="text-sm font-semibold text-nordfjord hover:text-nova">
+              <button type="button" onClick={() => setVerifyPending(false)} className="text-sm font-semibold text-nordfjord hover:text-nova-texte">
                 {t("auth.magicResend") || "Renvoyer ou changer d'email"}
               </button>
             </div>
           ) : mode === "magic" && magicSent ? (
             <div className="rounded-3xl border border-nova/40 bg-nova/5 p-6" data-testid="register-magic-sent">
-              <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-2">Fironova · Magic Link</p>
+              <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova-texte mb-2">Fironova · Magic Link</p>
               <h3 className="font-display text-[20px] font-bold text-nordfjord mb-2">
                 {t("auth.magicCheckTitle") || "Vérifiez votre boîte mail"}
               </h3>
               <p className="text-sm text-glacier mb-4">
                 {(t("auth.magicCheckSubSignup") || "Un lien d'activation a été envoyé à {email}.").replace("{email}", form.email)}
               </p>
-              <button type="button" onClick={() => setMagicSent(false)} className="text-sm font-semibold text-nordfjord hover:text-nova">
+              <button type="button" onClick={() => setMagicSent(false)} className="text-sm font-semibold text-nordfjord hover:text-nova-texte">
                 {t("auth.magicResend") || "Renvoyer ou changer d'email"}
               </button>
             </div>
@@ -236,7 +236,7 @@ export default function Register() {
 
           <p className="text-sm text-glacier pt-6 mt-6 border-t border-ash">
             {t("auth.hasAccount")}{" "}
-            <Link to="/login" className="font-semibold text-nordfjord hover:text-nova" data-testid="link-login">
+            <Link to="/login" className="font-semibold text-nordfjord hover:text-nova-texte" data-testid="link-login">
               {t("auth.signin")} →
             </Link>
           </p>

@@ -445,7 +445,7 @@ export default function Checkout() {
       data-testid={testid}
       className={`p-5 text-left border transition-colors ${paymentMethod === id ? "border-nova bg-nova/5" : "border-ash hover:border-nova"}`}
     >
-      <div className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-1">
+      <div className="font-data text-[10px] uppercase tracking-[0.2em] text-nova-texte mb-1">
         {paymentMethod === id ? (lang === "fr" ? "✓ CHOISI" : "✓ SELECTED") : (lang === "fr" ? "CHOISIR" : "SELECT")}
       </div>
       <div className="font-display font-bold text-nordfjord">{title}</div>
@@ -596,7 +596,7 @@ export default function Checkout() {
             <div className="mt-4">
               {coupon ? (
                 <div className="flex items-center justify-between rounded-xl bg-nova/5 border border-nova/20 px-3 py-2 text-sm">
-                  <span className="font-data text-nova uppercase tracking-wide">{coupon.code}</span>
+                  <span className="font-data text-nova-texte uppercase tracking-wide">{coupon.code}</span>
                   <button onClick={removeCoupon} className="text-xs text-glacier hover:text-compliance" data-testid="coupon-remove">
                     {lang === "fr" ? "Retirer" : "Remove"}
                   </button>
@@ -624,7 +624,7 @@ export default function Checkout() {
                 <span data-testid="summary-subtotal">${Number(subtotal).toFixed(2)}</span>
               </div>
               {discount > 0 && (
-                <div className="flex justify-between text-nova">
+                <div className="flex justify-between text-nova-texte">
                   <span>{lang === "fr" ? "Rabais" : "Discount"}</span>
                   <span data-testid="summary-discount">−${discount.toFixed(2)}</span>
                 </div>
@@ -643,7 +643,7 @@ export default function Checkout() {
                 </div>
               )}
               {coupon?.free_shipping && shippingEst === 0 && (
-                <div className="font-data text-[10px] uppercase tracking-[0.14em] text-nova" data-testid="coupon-free-shipping">
+                <div className="font-data text-[10px] uppercase tracking-[0.14em] text-nova-texte" data-testid="coupon-free-shipping">
                   {lang === "fr" ? "Livraison gratuite incluse dans le code promo" : "Free shipping included in your promo code"}
                 </div>
               )}
@@ -653,6 +653,20 @@ export default function Checkout() {
               </div>
             </div>
 
+            {/* UN BOUTON DESACTIVE NE DOIT PAS ETRE MUET : le skill exige des
+                etats d'erreur qui nomment le probleme. On liste ce qui manque,
+                en une ligne, sous le bouton. */}
+            {!canSubmit && (
+              <p className="mt-3 text-[12px] text-warning" data-testid="checkout-manque">
+                {[
+                  !items?.length ? (lang === "fr" ? "Votre panier est vide." : "Your cart is empty.") : null,
+                  !email.trim() ? (lang === "fr" ? "Ajoutez votre courriel." : "Add your email.") : null,
+                  !confirmAge ? (lang === "fr" ? "Confirmez votre âge." : "Confirm your age.") : null,
+                  !acceptRuO ? (lang === "fr" ? "Acceptez l'usage recherche." : "Accept research use.") : null,
+                  !acceptPolicy ? (lang === "fr" ? "Acceptez la politique." : "Accept the policy.") : null,
+                ].filter(Boolean).join(" ") || (lang === "fr" ? "Vérifiez le formulaire." : "Check the form.")}
+              </p>
+            )}
             <button
               onClick={submit}
               disabled={!canSubmit || submitting}

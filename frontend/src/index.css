@@ -20,6 +20,7 @@
   --fn-nordfjord:   11 46 79;      /* #0B2E4F — encre, structure */
   --fn-glacier:     62 92 118;     /* #3E5C76 — texte secondaire */
   --fn-nova:        0 184 212;     /* #00B8D4 — accent, avec retenue */
+  --fn-nova-texte:  9 110 128;     /* l'accent EN TEXTE sur fond clair : nova y tombe a 2,3:1, sous le seuil AA. Cette teinte donne 5,6:1 */
   --fn-clinical:    247 250 252;   /* #F7FAFC — fond de page */
   --fn-ash:         203 213 224;   /* #CBD5E0 — bordures */
   --fn-ink:         10 15 20;      /* #0A0F14 — pied de page */
@@ -96,6 +97,7 @@
   --fn-nordfjord:   247 250 252;   /* #F7FAFC — Clinical White, texte sur sombre */
   --fn-glacier:     159 182 204;   /* #9FB6CC — secondaire sur Nordfjord (identité) */
   --fn-nova:        0 184 212;     /* #00B8D4 — INCHANGÉ, l'accent unique */
+  --fn-nova-texte:  0 184 212;     /* en sombre, le fond est l'ink : nova lui-meme donne 8:1 */
   --fn-clinical:    10 15 20;      /* #0A0F14 — Ink, le fond d'ancrage */
   --fn-ash:         30 60 88;      /* #1E3C58 — le rgba(255,255,255,.1) aplati */
   --fn-ink:         10 15 20;      /* #0A0F14 — reste l'ancre la plus sombre */

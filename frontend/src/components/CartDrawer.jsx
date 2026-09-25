@@ -24,7 +24,7 @@ export default function CartDrawer() {
       >
         <div className="flex items-center justify-between px-6 h-16 border-b border-ash">
           <h3 className="font-display text-lg font-bold text-nordfjord">{t("cart.title")}</h3>
-          <button onClick={() => setOpen(false)} data-testid="cart-close" aria-label="Close cart" className="text-nordfjord hover:text-nova transition-colors">
+          <button onClick={() => setOpen(false)} data-testid="cart-close" aria-label="Close cart" className="text-nordfjord hover:text-nova-texte transition-colors">
             <X size={20} strokeWidth={1.5} />
           </button>
         </div>
@@ -65,7 +65,7 @@ export default function CartDrawer() {
                       <div className="flex items-center gap-2 mt-2">
                         <button
                           onClick={() => setQty(it.product_id, it.variant_id, Math.max(1, it.qty - 1))}
-                          className="w-8 h-8 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova"
+                          className="w-8 h-8 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova-texte"
                           data-testid={`cart-qty-dec-${it.slug}`}
                         >
                           <Minus size={12} />
@@ -73,7 +73,7 @@ export default function CartDrawer() {
                         <span className="font-data text-sm w-8 text-center text-nordfjord" data-testid={`cart-qty-${it.slug}`}>{it.qty}</span>
                         <button
                           onClick={() => setQty(it.product_id, it.variant_id, it.qty + 1)}
-                          className="w-8 h-8 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova"
+                          className="w-8 h-8 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova-texte"
                           data-testid={`cart-qty-inc-${it.slug}`}
                         >
                           <Plus size={12} />

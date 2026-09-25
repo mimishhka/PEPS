@@ -33,7 +33,7 @@ export default function CookieConsent() {
           <button
             data-testid="cookie-consent-accept"
             onClick={accept}
-            className="rounded-full bg-nova text-nordfjord font-mono text-xs uppercase tracking-[0.2em] px-5 py-2.5 transition-colors hover:bg-[#00A3BC]"
+            className="bg-nova text-nordfjord font-mono text-xs uppercase tracking-[0.2em] px-5 py-2.5 transition-colors hover:bg-[#00A3BC]" style={{ borderRadius: "var(--r-m)" }}
           >
             {t("cookies.accept")}
           </button>

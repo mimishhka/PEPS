@@ -106,7 +106,7 @@ export default function Footer() {
           </p>
           <div className="relative mt-8 flex flex-wrap gap-3">
             {badges.map((b) => (
-              <span key={b} className="cbadge !border-nova/50 !text-nova"><NovaSpark size={11} /> {b}</span>
+              <span key={b} className="cbadge !border-nova/50 !text-nova-texte"><NovaSpark size={11} /> {b}</span>
             ))}
           </div>
         </div>
@@ -123,7 +123,7 @@ export default function Footer() {
         </div>
         {columns.map((col) => (
           <div key={col.key} data-testid={`footer-col-${col.key}`}>
-            <div className="font-data text-[11px] uppercase tracking-[0.24em] mb-5 text-nova">{col.title}</div>
+            <div className="font-data text-[11px] uppercase tracking-[0.24em] mb-5 text-nova-texte">{col.title}</div>
             <ul className="space-y-2.5 text-sm">
               {col.links.map((l) => (
                 <li key={l.to + l.label}>

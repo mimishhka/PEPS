@@ -19,13 +19,13 @@ export default function About() {
         <MolecularMesh opacity={0.26} />
         <div className="relative max-w-7xl mx-auto px-6 lg:px-8 py-24 lg:py-32">
           <Reveal>
-            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5 flex items-center gap-2">
+            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-5 flex items-center gap-2">
               <span className="inline-block w-8 h-px bg-nova" /> {isFr ? "À PROPOS" : "ABOUT"}
             </p>
           </Reveal>
           <Reveal delay={90}>
             <h1 className="font-display text-[28px] sm:text-[34px] font-semibold leading-[1.1] tracking-[-0.01em] max-w-3xl text-nordfjord">
-              {isFr ? "Du nord. " : "From the north. "}<span className="text-nova">{isFr ? "Pour la recherche." : "For research."}</span>
+              {isFr ? "Du nord. " : "From the north. "}<span className="text-nova-texte">{isFr ? "Pour la recherche." : "For research."}</span>
             </h1>
           </Reveal>
           <Reveal delay={180}>
@@ -44,7 +44,7 @@ export default function About() {
             <Reveal key={s.n} delay={i * 90}>
               <div className="rounded-xl border border-ash bg-white p-8 h-full">
                 <div className="flex items-center justify-between mb-5">
-                  <span className="font-data text-sm font-semibold text-nova">{s.n}</span>
+                  <span className="font-data text-sm font-semibold text-nova-texte">{s.n}</span>
                   <NovaSpark size={18} />
                 </div>
                 <h3 className="font-display text-xl font-bold text-nordfjord mb-3">{s.t}</h3>

@@ -12,6 +12,7 @@
 import { render, screen } from "@testing-library/react";
 
 import Compliance from "./Compliance";
+import { useLang } from "../contexts/LanguageContext";
 
 jest.mock("../contexts/LanguageContext", () => ({
   useLang: jest.fn(() => ({ lang: "fr" })),
@@ -19,7 +20,6 @@ jest.mock("../contexts/LanguageContext", () => ({
 
 jest.mock("../hooks/useDocumentHead", () => ({ __esModule: true, default: () => {} }));
 
-const { useLang } = require("../contexts/LanguageContext");
 
 // CRA règle Jest sur resetMocks: true : l'implémentation du mock est vidée
 // avant CHAQUE test. La langue doit donc être posée à l'intérieur de chacun.

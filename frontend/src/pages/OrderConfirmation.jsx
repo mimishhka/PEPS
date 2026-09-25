@@ -400,7 +400,7 @@ export default function OrderConfirmation() {
             <span data-testid="confirm-subtotal">${Number(order.subtotal ?? order.total).toFixed(2)}</span>
           </div>
           {Number(order.discount) > 0 && (
-            <div className="flex justify-between text-nova">
+            <div className="flex justify-between text-nova-texte">
               <span>{lang === "fr" ? "Rabais" : "Discount"}</span>
               <span data-testid="confirm-discount">−${Number(order.discount).toFixed(2)}</span>
             </div>

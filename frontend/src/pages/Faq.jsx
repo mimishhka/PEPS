@@ -240,7 +240,7 @@ export default function Faq() {
     <div className="bg-clinical min-h-screen">
       <div className="max-w-4xl mx-auto px-6 py-16 space-y-16" data-testid="faq-page">
         <header className="border-b border-ash pb-6">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">FIRONOVA</p>
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-3">FIRONOVA</p>
           <h1 className="font-display text-[30px] sm:text-[36px] font-semibold text-nordfjord tracking-[-0.01em]">FAQ</h1>
           <p className="mt-4 text-sm text-glacier">
             {isFr
@@ -265,7 +265,7 @@ export default function Faq() {
                     {item.termsLink && (
                       <>
                         {" "}
-                        <Link to="/compliance" className="text-nova underline font-medium" data-testid={`faq-terms-link-${item.id}`}>
+                        <Link to="/compliance" className="text-nova-texte underline font-medium" data-testid={`faq-terms-link-${item.id}`}>
                           {isFr ? "Voir les Conditions Générales →" : "See the Terms & Conditions →"}
                         </Link>
                       </>

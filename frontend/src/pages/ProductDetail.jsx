@@ -7,7 +7,6 @@ import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import useAffiliate from "../hooks/useAffiliate";
 import { useCart } from "../contexts/CartContext";
-import { Seal } from "../components/brand";
 import ProductImage from "../components/ProductImage";
 import { ProductDetailSkeleton } from "../components/LoadingSkeletons";
 
@@ -167,7 +166,7 @@ export default function ProductDetail() {
     { k: lang === "fr" ? "PURETÉ (HPLC)" : "PURITY (HPLC)", v: product.purity },
     { k: lang === "fr" ? "LOT ACTUEL" : "CURRENT LOT", v: selectedVariant?.coa_lot || product.coa_lot || "—" },
     { k: lang === "fr" ? "MASSE MOLAIRE" : "MOLAR MASS", v: product.molecular_weight ? `${product.molecular_weight} g/mol` : "—" },
-    { k: "SKU", v: selectedVariant?.sku || product.slug.toUpperCase() },
+    { k: "SKU", v: selectedVariant?.sku || "—" },
     { k: lang === "fr" ? "FORME" : "FORM", v: lang === "fr" ? "Lyophilisé" : "Lyophilized" },
     { k: "CAS", v: product.cas_number || "—" },
   ];
@@ -193,7 +192,6 @@ export default function ProductDetail() {
                 className="w-full h-full"
                 imgClassName="w-full h-full object-cover"
               />
-              <div className="absolute bottom-5 right-5"><Seal size={92} /></div>
             </div>
             {/* Rien sous la photo : l'image se suffit. L'etat du certificat se dit
                 dans la colonne de droite, la ou on decide d'acheter — encadre
@@ -204,7 +202,7 @@ export default function ProductDetail() {
             <p className="font-data text-[11px] uppercase tracking-[0.22em] text-compliance mb-3">
               {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT" : "FOR RESEARCH USE ONLY"}
             </p>
-            <h1 className="font-display text-[44px] font-bold text-nordfjord leading-none mb-7" data-testid="product-name">{name}</h1>
+            <h1 className="font-display text-[28px] sm:text-[34px] font-semibold text-nordfjord leading-[1.1] mb-7" data-testid="product-name">{name}</h1>
 
             {variants.length > 1 && (
               <div data-testid="variant-selector" className="mb-6">
@@ -261,7 +259,7 @@ export default function ProductDetail() {
                       ${selectedVariant.price.toFixed(2)}
                     </span>
                   )}
-                  <span className={`font-data text-[28px] font-medium leading-none ${showOriginal ? "text-nova" : "text-nordfjord"}`} data-testid="product-price">
+                  <span className={`font-data text-[28px] font-medium leading-none ${showOriginal ? "text-nova-texte" : "text-nordfjord"}`} data-testid="product-price">
                     ${effectivePrice.toFixed(2)}
                   </span>
                   <span className="font-data text-sm text-glacier">CAD</span>
@@ -285,10 +283,10 @@ export default function ProductDetail() {
             </div>
 
             <div className="flex items-stretch gap-3 mb-4">
-              <div className="flex items-center gap-1 rounded-full border border-ash bg-white px-2">
-                <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="w-9 h-9 flex items-center justify-center text-nordfjord hover:text-nova" data-testid="product-qty-dec"><Minus size={15} /></button>
+              <div className="flex items-center gap-1 border border-ash bg-white px-2" style={{ borderRadius: "var(--r-m)" }}>
+                <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="w-9 h-9 flex items-center justify-center text-nordfjord hover:text-nova-texte" data-testid="product-qty-dec"><Minus size={15} /></button>
                 <span className="font-data font-semibold w-8 text-center text-nordfjord" data-testid="product-qty">{qty}</span>
-                <button onClick={() => setQty((q) => q + 1)} className="w-9 h-9 flex items-center justify-center text-nordfjord hover:text-nova" data-testid="product-qty-inc"><Plus size={15} /></button>
+                <button onClick={() => setQty((q) => q + 1)} className="w-9 h-9 flex items-center justify-center text-nordfjord hover:text-nova-texte" data-testid="product-qty-inc"><Plus size={15} /></button>
               </div>
               <button
                 onClick={() => add(product, qty, selectedVariant)}
@@ -311,14 +309,14 @@ export default function ProductDetail() {
               <button
                 onClick={copyAffiliateLink}
                 data-testid="copy-affiliate-link"
-                className="mt-4 w-full flex items-center justify-center gap-2 border border-nova bg-nova/5 hover:bg-nova/10 px-4 py-3 font-data text-[11px] uppercase tracking-[0.18em] text-nova transition-colors" style={{ borderRadius: "var(--r-m)" }}
+                className="mt-4 w-full flex items-center justify-center gap-2 border border-nova bg-nova/5 hover:bg-nova/10 px-4 py-3 font-data text-[11px] uppercase tracking-[0.18em] text-nova-texte transition-colors" style={{ borderRadius: "var(--r-m)" }}
                 title={lang === "fr"
                   ? `Copie l'URL avec votre code ${affiliate.code}`
                   : `Copies the URL with your code ${affiliate.code}`}
               >
                 <Share2 size={14} strokeWidth={2} />
                 {lang === "fr" ? "Copier mon lien affilié" : "Copy my affiliate link"}
-                <span className="font-mono text-[10px] text-nova/70 ml-1">?ref={affiliate.code}</span>
+                <span className="font-mono text-[10px] text-nova-texte/70 ml-1">?ref={affiliate.code}</span>
               </button>
             )}
 
@@ -394,7 +392,7 @@ export default function ProductDetail() {
                         imgClassName="w-full h-full object-cover"
                       />
                     </div>
-                    <div className="font-display font-bold text-sm text-nordfjord leading-tight group-hover:text-nova transition">
+                    <div className="font-display font-bold text-sm text-nordfjord leading-tight group-hover:text-nova-texte transition">
                       {lang === "fr" ? p.name_fr : p.name_en}
                     </div>
                     <div className="flex items-center justify-between mt-2">

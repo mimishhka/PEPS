@@ -97,7 +97,7 @@ export default function ForgotPassword() {
                   : "No password? Your account may have been activated by magic link. Sign in from the \"Magic link\" tab on the sign-in page."}
               </p>
               <p className="text-sm text-glacier pt-4 mt-5 border-t border-ash text-center">
-                <Link to="/login" className="text-nova hover:text-nordfjord transition" data-testid="forgot-back-link">
+                <Link to="/login" className="text-nova-texte hover:text-nordfjord transition" data-testid="forgot-back-link">
                   {lang === "fr" ? "← Retour à la connexion" : "← Back to sign in"}
                 </Link>
               </p>

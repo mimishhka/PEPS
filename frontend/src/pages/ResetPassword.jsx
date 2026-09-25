@@ -136,7 +136,7 @@ export default function ResetPassword() {
                 </button>
               </form>
               <p className="text-sm text-glacier pt-6 mt-6 border-t border-ash text-center">
-                <Link to="/login" className="text-nova hover:text-nordfjord transition" data-testid="reset-back-link">
+                <Link to="/login" className="text-nova-texte hover:text-nordfjord transition" data-testid="reset-back-link">
                   {lang === "fr" ? "← Retour à la connexion" : "← Back to sign in"}
                 </Link>
               </p>

@@ -72,7 +72,7 @@ export default function AffiliateJoin() {
 
           {status === "success" && (
             <div className="text-center">
-              <p className="font-data text-[11px] uppercase tracking-[0.2em] text-nova mb-2">✓</p>
+              <p className="font-data text-[11px] uppercase tracking-[0.2em] text-nova-texte mb-2">✓</p>
               <h1 className="font-display text-[24px] font-bold text-nordfjord mb-2">
                 {L("Bienvenue chez Fironova", "Welcome to Fironova")}
               </h1>

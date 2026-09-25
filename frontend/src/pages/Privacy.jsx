@@ -208,8 +208,8 @@ export default function Privacy() {
     <div className="bg-clinical min-h-screen">
       <div className="max-w-4xl mx-auto px-6 py-16 space-y-16" data-testid="privacy-page">
         <header className="border-b border-ash pb-6">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">FIRONOVA</p>
-          <h1 className="font-display text-[42px] sm:text-[52px] font-bold text-nordfjord tracking-[-0.01em]">
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-3">FIRONOVA</p>
+          <h1 className="font-display text-[30px] sm:text-[34px] font-bold text-nordfjord tracking-[-0.01em]">
             {isFr ? "Politique de confidentialité" : "Privacy Policy"}
           </h1>
           <p className="mt-4 text-sm text-glacier">
@@ -223,7 +223,7 @@ export default function Privacy() {
           {SECTIONS.map((s, i) => (
             <div key={s.id} id={s.id} data-testid={`privacy-section-${s.id}`}>
               <h2 className="font-display text-2xl sm:text-3xl font-bold text-nordfjord">
-                <span className="font-data text-sm text-nova mr-3">{String(i + 1).padStart(2, "0")}</span>
+                <span className="font-data text-sm text-nova-texte mr-3">{String(i + 1).padStart(2, "0")}</span>
                 {isFr ? s.fr.title : s.en.title}
               </h2>
               <div className="mt-4 space-y-4 text-glacier leading-relaxed">

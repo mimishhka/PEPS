@@ -121,7 +121,7 @@ export function CartProvider({ children }) {
         {
           product_id: product.id,
           variant_id,
-          variant_name: v?.name || "",
+          variant_name: (v?.name && v.name !== "Default") ? v.name : "",
           slug: product.slug,
           name_en: product.name_en,
           name_fr: product.name_fr,

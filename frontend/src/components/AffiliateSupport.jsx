@@ -22,7 +22,7 @@ import api, { formatApiError } from "../lib/api";
 const ETATS = {
   open: {
     fr: "En attente de réponse", en: "Awaiting reply",
-    cls: "bg-nova/15 text-nova",
+    cls: "bg-nova/15 text-nova-texte",
   },
   pending: {
     fr: "Réponse reçue", en: "Replied",
@@ -120,7 +120,7 @@ export default function AffiliateSupport({
   return (
     <div className="space-y-6" data-testid={testid}>
       <div className="bg-white rounded-xl border border-ash p-6">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-1">
           {L("POSER UNE QUESTION", "ASK A QUESTION")}
         </p>
         <p className="text-sm text-glacier mb-4 leading-relaxed">
@@ -158,14 +158,14 @@ export default function AffiliateSupport({
               )}
           </div>
           <button type="submit" disabled={busy} data-testid="ticket-submit"
-            className="px-6 py-2.5 rounded-full bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider disabled:opacity-40">
+            className="px-6 py-2.5 bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider disabled:opacity-40" style={{ borderRadius: "var(--r-m)" }}>
             {busy ? L("Envoi…", "Sending…") : L("Envoyer", "Send")}
           </button>
         </form>
       </div>
 
       <div className="bg-white rounded-xl border border-ash p-6">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
+        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-4">
           {L("VOS DEMANDES", "YOUR REQUESTS")}
         </p>
 

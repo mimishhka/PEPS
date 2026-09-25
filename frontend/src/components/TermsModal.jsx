@@ -63,7 +63,7 @@ export default function TermsModal({ L, lang, onClose }) {
            onClick={(e) => e.stopPropagation()}>
 
         <div className="px-6 pt-5 pb-3 border-b border-ash">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte">
             {L("VERSION", "VERSION")} {AFFILIATE_TERMS_VERSION}
           </p>
           <h2 className="font-display text-xl font-bold text-nordfjord mt-1">
@@ -77,7 +77,7 @@ export default function TermsModal({ L, lang, onClose }) {
           {SECTIONS.map((s, i) => (
             <div key={s.id}>
               <h3 className="font-display text-base font-bold text-nordfjord">
-                <span className="font-data text-xs text-nova mr-2">
+                <span className="font-data text-xs text-nova-texte mr-2">
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 {isFr ? s.fr.title : s.en.title}
@@ -104,9 +104,7 @@ export default function TermsModal({ L, lang, onClose }) {
             disabled={!bas}
             data-testid="terms-modal-close"
             title={bas ? undefined : L("Déroulez le texte jusqu'au bas.", "Scroll the text to the bottom.")}
-            className="px-5 py-2.5 rounded-full bg-nova text-nordfjord font-data text-xs font-bold
-                       uppercase tracking-wider disabled:opacity-35 disabled:cursor-not-allowed
-                       whitespace-nowrap">
+            className="px-5 py-2.5 bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider disabled:opacity-35 disabled:cursor-not-allowed whitespace-nowrap" style={{ borderRadius: "var(--r-m)" }}>
             {L("J'ai lu", "I have read")}
           </button>
         </div>

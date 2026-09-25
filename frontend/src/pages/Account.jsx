@@ -1,5 +1,5 @@
 // frontend/src/pages/Account.jsx — Mon Compte étendu (identité Fironova).
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
@@ -17,7 +17,7 @@ const PAYMENT_STATUS = {
   awaiting_etransfer: { cls: "bg-warning/15 text-warning border border-warning/30", fr: "En attente · Interac", en: "Awaiting · Interac" },
   awaiting_crypto:    { cls: "bg-warning/15 text-warning border border-warning/30", fr: "En attente · crypto", en: "Awaiting · crypto" },
   pending:            { cls: "bg-ash/40 text-nordfjord border border-ash", fr: "En attente", en: "Pending" },
-  paid:               { cls: "bg-nova/15 text-nova border border-nova/30", fr: "Payée", en: "Paid" },
+  paid:               { cls: "bg-nova/15 text-nova-texte border border-nova/30", fr: "Payée", en: "Paid" },
   refunded:           { cls: "bg-glacier/15 text-glacier border border-glacier/30", fr: "Remboursée", en: "Refunded" },
   cancelled:          { cls: "bg-error/10 text-error border border-error/25", fr: "Annulée", en: "Cancelled" },
   expired:            { cls: "bg-error/10 text-error border border-error/25", fr: "Expirée", en: "Expired" },
@@ -73,7 +73,7 @@ export default function Account() {
               {(user?.name || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="font-data text-[10px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+              <p className="font-data text-[10px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-1">
                 {lang === "fr" ? "MON COMPTE" : "MY ACCOUNT"}
               </p>
               <h1 className="font-display text-2xl sm:text-3xl font-bold text-nordfjord leading-tight truncate" data-testid="account-name">{user?.name}</h1>
@@ -98,7 +98,7 @@ export default function Account() {
               ★
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-data text-[10px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+              <p className="font-data text-[10px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-1">
                 {lang === "fr" ? "PROGRAMME AFFILIÉ · ACTIF" : "AFFILIATE PROGRAM · ACTIVE"}
               </p>
               <p className="font-display text-lg font-bold text-nordfjord leading-tight">
@@ -110,7 +110,7 @@ export default function Account() {
                   : <>Code: <span className="text-nordfjord font-bold">{affiliate.code}</span> · Track your earnings, clicks and best-selling products</>}
               </p>
             </div>
-            <span className="font-data text-xs font-semibold uppercase tracking-[0.18em] text-nordfjord group-hover:text-nova transition-colors shrink-0">
+            <span className="font-data text-xs font-semibold uppercase tracking-[0.18em] text-nordfjord group-hover:text-nova-texte transition-colors shrink-0">
               {lang === "fr" ? "Ouvrir le tableau de bord" : "Open dashboard"} →
             </span>
           </Link>
@@ -169,7 +169,7 @@ function OrderCard({ o, t, lang }) {
           {pin ? (
             <> · <a href={`https://www.canadapost-postescanada.ca/track-reperage/${lang === "fr" ? "fr" : "en"}#/resultList?searchFor=${pin}`}
               target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
-              className="text-nova underline" data-testid={`order-tracking-${o.order_number}`}>{lang === "fr" ? "suivi" : "track"}</a></>
+              className="text-nova-texte underline" data-testid={`order-tracking-${o.order_number}`}>{lang === "fr" ? "suivi" : "track"}</a></>
           ) : fl ? <> · {lang === "fr" ? fl.fr : fl.en}</> : null}
         </div>
       </div>
@@ -376,7 +376,7 @@ function AddressesTab({ t, lang }) {
             <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("checkout.province")}</label>
             <select value={editing.province} data-testid="address-province"
               onChange={(e) => setEditing({ ...editing, province: e.target.value })}
-              className="w-full rounded-full border border-ash px-5 py-3 bg-white text-nordfjord focus:outline-none focus:border-nova">
+              className="w-full border border-ash px-5 py-3 bg-white text-nordfjord focus:outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }}>
               {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>

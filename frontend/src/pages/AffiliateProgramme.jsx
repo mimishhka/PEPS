@@ -106,7 +106,7 @@ export default function AffiliateProgramme() {
 
             {state === "ready" && data && (
               <div>
-                <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova text-center">
+                <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte text-center">
                   {L("PROGRAMME D'AFFILIATION", "AFFILIATE PROGRAM")}
                 </p>
                 <h1 className="font-display text-[24px] sm:text-[32px] font-bold text-nordfjord text-center mt-2 mb-3 leading-tight">
@@ -122,7 +122,7 @@ export default function AffiliateProgramme() {
 
                 {data.agreed_rate != null && (
                   <div className="rounded-xl border border-nova bg-nova/10 p-5 mb-8 text-center">
-                    <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-1.5">
+                    <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova-texte mb-1.5">
                       {L("VOTRE TAUX CONVENU", "YOUR AGREED RATE")}
                     </p>
                     <p className="font-display text-[32px] font-bold text-nordfjord leading-none">
@@ -187,7 +187,7 @@ export default function AffiliateProgramme() {
                               <td className="px-4 py-2 text-right font-data text-nordfjord tabular-nums">
                                 {bornes(t)}
                               </td>
-                              <td className="px-4 py-2 text-right font-data font-bold text-nova tabular-nums">
+                              <td className="px-4 py-2 text-right font-data font-bold text-nova-texte tabular-nums">
                                 {Math.round(t.rate * 100)} %
                               </td>
                             </tr>
@@ -209,7 +209,7 @@ export default function AffiliateProgramme() {
                 </p>
                 <p className="text-center mt-5">
                   <Link to="/affiliate/terms"
-                        className="font-data text-[11px] text-nova hover:underline">
+                        className="font-data text-[11px] text-nova-texte hover:underline">
                     {L("Lire les conditions du programme", "Read the program terms")}
                   </Link>
                 </p>

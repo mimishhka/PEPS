@@ -52,7 +52,7 @@ export default function AgeGate() {
         aria-modal="true"
       >
         <div className="w-full max-w-md text-center">
-          <ShieldCheck size={28} className="text-nova mx-auto" aria-hidden="true" />
+          <ShieldCheck size={28} className="text-nova-texte mx-auto" aria-hidden="true" />
           <h2 className="mt-6 font-display text-2xl sm:text-3xl font-bold tracking-[-0.01em] text-white">
             {t("age.deniedTitle")}
           </h2>
@@ -84,10 +84,10 @@ export default function AgeGate() {
         {/* Top bar — Fironova nordfjord + nova accent */}
         <div className="bg-nordfjord px-6 py-3 font-data text-[11px] uppercase tracking-[0.25em] text-white flex items-center justify-between">
           <span className="inline-flex items-center gap-2" data-testid="age-gate-tag">
-            <ShieldCheck size={14} className="text-nova" />
+            <ShieldCheck size={14} className="text-nova-texte" />
             RESTRICTED · FIRONOVA
           </span>
-          <span className="text-nova font-bold">19+</span>
+          <span className="text-nova-texte font-bold">19+</span>
         </div>
 
         <div className="p-8">
@@ -105,12 +105,12 @@ export default function AgeGate() {
               className="flex-1 rounded-full bg-nordfjord text-white font-data text-xs uppercase tracking-[0.2em] py-4 hover:bg-nordfjord/90 shadow-lg shadow-nordfjord/20 transition inline-flex items-center justify-center gap-2"
             >
               {t("age.confirm")}
-              <span className="text-nova" aria-hidden="true">→</span>
+              <span className="text-nova-texte" aria-hidden="true">→</span>
             </button>
             <button
               data-testid="age-gate-exit"
               onClick={exit}
-              className="flex-1 rounded-full border border-ash text-nordfjord font-data text-xs uppercase tracking-[0.2em] py-4 hover:border-nova hover:text-nova transition inline-flex items-center justify-center gap-2"
+              className="flex-1 rounded-full border border-ash text-nordfjord font-data text-xs uppercase tracking-[0.2em] py-4 hover:border-nova hover:text-nova-texte transition inline-flex items-center justify-center gap-2"
             >
               <LogOut size={12} />
               {t("age.exit")}

@@ -17,6 +17,7 @@ module.exports = {
         nordfjord: "rgb(var(--fn-nordfjord) / <alpha-value>)",   // structure / ink
         glacier: "rgb(var(--fn-glacier) / <alpha-value>)",       // secondary text
         nova: "rgb(var(--fn-nova) / <alpha-value>)",             // accent, used with restraint
+        "nova-texte": "rgb(var(--fn-nova-texte) / <alpha-value>)",  // accent as TEXT on light surfaces
         clinical: "rgb(var(--fn-clinical) / <alpha-value>)",     // page ground
         ash: "rgb(var(--fn-ash) / <alpha-value>)",               // borders / hairlines
         ink: "rgb(var(--fn-ink) / <alpha-value>)",               // deep footer ground

@@ -77,7 +77,7 @@ export default function Login() {
             <Wordmark size={17} color="#F7FAFC" />
           </div>
           <div>
-            <h2 className="font-display text-[44px] font-bold tracking-[-0.02em] leading-[1.05]">
+            <h2 className="font-display text-[28px] sm:text-[34px] font-semibold tracking-[-0.01em] leading-[1.1]">
               {isAdminLogin ? (lang === "fr" ? "Espace OPS." : "OPS access.") : (t("auth.welcome") || "Welcome back.")}
             </h2>
             <p className="mt-4 text-[#B7CADD] max-w-md">
@@ -90,11 +90,11 @@ export default function Login() {
       </div>
 
       <div className="p-8 lg:p-16 flex flex-col justify-center">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4 flex items-center gap-2">
+        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-4 flex items-center gap-2">
           {isAdminLogin && <Lock size={12} strokeWidth={2.2} />}
           {isAdminLogin ? (lang === "fr" ? "ACCÈS OPS" : "OPS ACCESS") : `01 · ${t("auth.signin")}`}
         </p>
-        <h1 className="font-display text-[40px] font-bold text-nordfjord mb-8">
+        <h1 className="font-display text-[30px] font-bold text-nordfjord mb-8">
           {isAdminLogin ? "FIRONOVA OPS" : t("auth.welcome")}
         </h1>
 
@@ -129,14 +129,14 @@ export default function Login() {
           {!isAdminLogin && mode === "magic" ? (
             magicSent ? (
               <div className="rounded-3xl border border-nova/40 bg-nova/5 p-6" data-testid="magic-sent">
-                <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-2">Fironova · Magic Link</p>
+                <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova-texte mb-2">Fironova · Magic Link</p>
                 <h3 className="font-display text-[20px] font-bold text-nordfjord mb-2">
                   {t("auth.magicCheckTitle") || "Vérifiez votre boîte mail"}
                 </h3>
                 <p className="text-sm text-glacier mb-4">
                   {(t("auth.magicCheckSub") || "Un lien de connexion a été envoyé à {email}.").replace("{email}", email)}
                 </p>
-                <button type="button" onClick={() => setMagicSent(false)} className="text-sm font-semibold text-nordfjord hover:text-nova">
+                <button type="button" onClick={() => setMagicSent(false)} className="text-sm font-semibold text-nordfjord hover:text-nova-texte">
                   {t("auth.magicResend") || "Renvoyer ou changer d'email"}
                 </button>
               </div>
@@ -177,7 +177,7 @@ export default function Login() {
                 {!isAdminLogin && (
                   <div className="text-right mt-2">
                     <Link to="/forgot-password" data-testid="login-forgot-password-link"
-                      className="font-data text-[12px] text-nova hover:text-nordfjord transition">
+                      className="font-data text-[12px] text-nova-texte hover:text-nordfjord transition">
                       {lang === "fr" ? "Mot de passe oublié ?" : "Forgot password?"}
                     </Link>
                   </div>
@@ -192,7 +192,7 @@ export default function Login() {
           {!isAdminLogin && (
             <p className="text-sm text-glacier pt-6 mt-6 border-t border-ash">
               {t("auth.noAccount")}{" "}
-              <Link to="/register" className="font-semibold text-nordfjord hover:text-nova" data-testid="link-register">
+              <Link to="/register" className="font-semibold text-nordfjord hover:text-nova-texte" data-testid="link-register">
                 {t("auth.signup")} →
               </Link>
             </p>

@@ -147,11 +147,11 @@ export default function Home() {
               <p className="font-data text-[10.5px] uppercase tracking-[0.26em] text-nova mb-4">
                 {heroEyebrow}
               </p>
-              <h1 className="font-display font-medium leading-[1.2] tracking-[-0.01em] text-white max-w-[26ch]" style={{ fontSize: "clamp(24px,3.4vw,34px)" }} data-testid="hero-title">
+              <h1 className="font-display font-medium leading-[1.2] tracking-[-0.01em] max-w-[26ch]" style={{ fontSize: "clamp(24px,3.4vw,34px)", color: "#F7FAFC" }} data-testid="hero-title">
                 {heroTitle.a}{" "}
                 <span className="text-nova">{heroTitle.b}</span>
               </h1>
-              <p className="text-sm text-white/80 max-w-[44ch] leading-relaxed mt-3">{heroLede}</p>
+              <p className="text-sm max-w-[44ch] leading-relaxed mt-3" style={{ color: "rgba(247,250,252,.8)" }}>{heroLede}</p>
               <div className="mt-5 flex items-center gap-5">
                 <Link to="/catalog" data-testid="hero-cta-catalog"
                   className="inline-block bg-white text-nordfjord text-[13px] font-medium tracking-[0.04em] px-6 py-3 hover:bg-nova hover:text-white transition-colors" style={{ borderRadius: "var(--r-m)" }}>
@@ -169,22 +169,16 @@ export default function Home() {
         </div>
       </section>
 
-      {/* BANDE DE CONFIANCE — sous le hero, jamais dedans. Un defilement
-          lent, seul mouvement de la page en dehors de l entree du hero. */}
+      {/* BANDE DE CONFIANCE : statique, chaque affirmation une fois. Le
+          defilement perpetuel de 24 items violait WCAG 2.2.2 (mouvement non
+          controlable) et le monde (un seul geste de mouvement par page). */}
       <section className="border-y border-ash" data-testid="trust-marquee">
-        <div className="max-w-7xl mx-auto overflow-hidden py-5">
-          <div style={{
-            display: "flex",
-            width: "max-content",
-            animation: "trust-scroll 22s linear infinite",
-          }}>
-            {[...trustItems, ...trustItems, ...trustItems, ...trustItems, ...trustItems, ...trustItems].map((it, i) => (
-              <span key={i} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "0 40px", fontSize: "12px", fontWeight: 600, letterSpacing: "0.18em", textTransform: "uppercase", color: "#3E5C76", whiteSpace: "nowrap" }}>
-                <NovaSpark size={13} /> {it}
-              </span>
-            ))}
-          </div>
-          <style>{`@keyframes trust-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
+        <div className="max-w-7xl mx-auto py-4 flex flex-wrap gap-x-10 gap-y-2">
+          {trustItems.map((it, i) => (
+            <span key={i} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "12px", fontWeight: 500, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--glacier)", whiteSpace: "nowrap" }}>
+              <NovaSpark size={13} /> {it}
+            </span>
+          ))}
         </div>
       </section>
 
@@ -211,11 +205,11 @@ export default function Home() {
       <section className="py-20 lg:py-28 border-t border-ash" data-testid="newsletter-section">
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
           <div className="relative max-w-2xl">
-            <p className="absolute top-0 right-0 font-data text-[10px] uppercase tracking-[0.24em] text-nova">{newsEyebrow}</p>
+            <p className="absolute top-0 right-0 font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte">{newsEyebrow}</p>
             <h2 className="font-display text-[22px] sm:text-[26px] font-semibold text-nordfjord mb-3 tracking-[-0.01em]">{newsTitle}</h2>
             <p className="text-glacier text-[14px] mb-8 max-w-[52ch]">{newsLede}</p>
             {done ? (
-              <p className="inline-flex items-center gap-2.5 text-nova font-semibold"><Check size={18} /> {newsDone}</p>
+              <p className="inline-flex items-center gap-2.5 text-nova-texte font-semibold"><Check size={18} /> {newsDone}</p>
             ) : (
               <form onSubmit={subscribe} className="space-y-4" data-testid="newsletter-form">
                 <div>

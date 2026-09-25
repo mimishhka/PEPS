@@ -279,14 +279,14 @@ export default function GuidedTour({ steps, onClose, onTab, L }) {
               </button>
               {i > 0 && (
                 <button onClick={() => setI(i - 1)} data-testid="tour-prev"
-                        className="px-3 py-1.5 rounded-full border border-clinical/30 font-data text-[11px] font-bold uppercase tracking-wider">
+                        className="px-3 py-1.5 border border-clinical/30 font-data text-[11px] font-bold uppercase tracking-wider" style={{ borderRadius: "var(--r-m)" }}>
                   {L("Précédent", "Back")}
                 </button>
               )}
               <button
                 onClick={() => (dernier ? fermer() : setI(i + 1))}
                 data-testid="tour-next"
-                className="px-3.5 py-1.5 rounded-full bg-nova text-nordfjord font-data text-[11px] font-bold uppercase tracking-wider">
+                className="px-3.5 py-1.5 bg-nova text-nordfjord font-data text-[11px] font-bold uppercase tracking-wider" style={{ borderRadius: "var(--r-m)" }}>
                 {dernier ? L("Terminer", "Done") : L("Suivant", "Next")}
               </button>
             </div>

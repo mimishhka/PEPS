@@ -39,7 +39,7 @@ export default function NewsletterConfirm() {
 
   const content = {
     loading: {
-      icon: <Clock size={40} className="text-nova animate-pulse" />,
+      icon: <Clock size={40} className="text-nova-texte animate-pulse" />,
       title: L("Confirmation en cours…", "Confirming…"),
       body: L("Merci de patienter quelques instants.", "Please wait a moment."),
     },

@@ -228,7 +228,7 @@ export default function AffiliateFaq() {
     return (
       <div className="bg-clinical min-h-screen grid place-items-center px-6">
         <div className="max-w-md text-center space-y-3" data-testid="faq-unavailable">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte">
             {L("INDISPONIBLE", "UNAVAILABLE")}
           </p>
           <h1 className="font-display text-2xl font-bold text-nordfjord">
@@ -238,7 +238,7 @@ export default function AffiliateFaq() {
             {L("Votre compte n'est pas en cause. Réessayez dans un instant.",
                "Your account is not at fault. Try again in a moment.")}
           </p>
-          <Link to="/affiliate" className="inline-block mt-2 text-nova underline text-sm">
+          <Link to="/affiliate" className="inline-block mt-2 text-nova-texte underline text-sm">
             {L("Retour au tableau de bord", "Back to dashboard")}
           </Link>
         </div>
@@ -253,7 +253,7 @@ export default function AffiliateFaq() {
     return (
       <div className="bg-clinical min-h-screen grid place-items-center px-6">
         <div className="max-w-md text-center space-y-3">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte">
             {L("RÉSERVÉ", "RESTRICTED")}
           </p>
           <h1 className="font-display text-2xl font-bold text-nordfjord">
@@ -263,7 +263,7 @@ export default function AffiliateFaq() {
             {L("Le programme d'affiliation de FIRONOVA se fait sur invitation.",
                "The FIRONOVA affiliate program is by invitation.")}
           </p>
-          <Link to="/" className="inline-block mt-2 text-nova underline text-sm">
+          <Link to="/" className="inline-block mt-2 text-nova-texte underline text-sm">
             {L("Retour à l'accueil", "Back home")}
           </Link>
         </div>
@@ -275,7 +275,7 @@ export default function AffiliateFaq() {
     <div className="bg-clinical min-h-screen">
       <div className="max-w-3xl mx-auto px-6 py-16 space-y-10" data-testid="affiliate-faq-page">
         <header className="border-b border-ash pb-6">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-3">
             {L("PROGRAMME D'AFFILIATION", "AFFILIATE PROGRAM")}
           </p>
           <h1 className="font-display text-[28px] sm:text-[34px] font-semibold text-nordfjord tracking-[-0.01em] leading-tight">
@@ -283,7 +283,7 @@ export default function AffiliateFaq() {
           </h1>
           <p className="mt-4 text-sm text-glacier">
             {L("Les règles complètes figurent dans les ", "The full rules are in the ")}
-            <Link to="/affiliate/terms" className="text-nova underline">
+            <Link to="/affiliate/terms" className="text-nova-texte underline">
               {L("conditions du programme", "program terms")}
             </Link>.
           </p>
@@ -314,7 +314,7 @@ export default function AffiliateFaq() {
         </div>
 
         <div className="border-t border-ash pt-6 flex flex-wrap items-center justify-between gap-4">
-          <Link to="/affiliate" className="text-nova underline text-sm">
+          <Link to="/affiliate" className="text-nova-texte underline text-sm">
             {L("← Retour au tableau de bord", "← Back to dashboard")}
           </Link>
           {/* Relance de la visite. La dernière bulle l'annonce ; sans ce

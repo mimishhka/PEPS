@@ -32,7 +32,7 @@ export default function ComingSoon() {
     <div className="min-h-screen bg-white grain flex items-center justify-center px-6 py-16" data-testid="coming-soon-page">
       <div className="w-full max-w-xl text-center">
         <div className="font-display font-bold text-3xl tracking-[-0.01em] text-ink">
-          FIRONOVA<span className="text-nova">.</span>
+          FIRONOVA<span className="text-nova-texte">.</span>
         </div>
 
         <svg viewBox="0 0 520 120" className="w-full h-24 mt-10" role="img" aria-label="HPLC chromatogram">
@@ -44,7 +44,7 @@ export default function ComingSoon() {
           />
         </svg>
 
-        <h1 className="font-display text-4xl sm:text-5xl font-bold tracking-[-0.02em] text-ink mt-8">
+        <h1 className="font-display text-[26px] sm:text-[30px] font-bold tracking-[-0.02em] text-ink mt-8">
           {t("prelaunch.title")}
         </h1>
         <div className="mx-auto mt-6 w-24 h-px bg-nova" />
@@ -69,13 +69,13 @@ export default function ComingSoon() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder={t("home.newsletterPlaceholder")}
-                className="flex-1 px-5 py-3 bg-transparent font-mono text-sm text-ink focus:outline-none min-w-0 rounded-full"
+                className="flex-1 px-5 py-3 bg-transparent font-mono text-sm text-ink focus:outline-none min-w-0" style={{ borderRadius: "var(--r-m)" }}
                 data-testid="coming-soon-input"
               />
               <button
                 type="submit"
                 disabled={busy}
-                className="rounded-full bg-nordfjord text-white font-mono text-xs uppercase tracking-[0.25em] px-6 py-3 disabled:opacity-60 whitespace-nowrap"
+                className="bg-nordfjord text-white font-mono text-xs uppercase tracking-[0.25em] px-6 py-3 disabled:opacity-60 whitespace-nowrap" style={{ borderRadius: "var(--r-m)" }}
                 data-testid="coming-soon-submit"
               >
                 {t("prelaunch.cta")} →

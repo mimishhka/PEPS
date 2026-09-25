@@ -36,7 +36,7 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
   return (
     <div className="bg-white rounded-xl border border-ash p-6" data-testid="tier-ladder">
       <div className="flex items-baseline justify-between flex-wrap gap-2 mb-4">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte">
           {L("CE QU'UNE VENTE RAPPORTE", "WHAT A SALE EARNS")}
         </p>
         <p className="font-data text-[10px] text-glacier">

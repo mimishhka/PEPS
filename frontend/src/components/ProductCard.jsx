@@ -27,7 +27,7 @@ export default function ProductCard({ product, index = 0 }) {
 
   const specLine = [
     product.dosage_mg ? `${product.dosage_mg} mg` : null,
-    "Lyophilized",
+    lang === "fr" ? "Lyophilisé" : "Lyophilized",
   ].filter(Boolean).join(" · ");
 
   return (
@@ -53,16 +53,16 @@ export default function ProductCard({ product, index = 0 }) {
           {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT" : "FOR RESEARCH USE ONLY"}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Link to={`/product/${product.slug}`} className="font-display text-[13.5px] font-medium text-nordfjord hover:text-nova transition-colors leading-snug">
+          <Link to={`/product/${product.slug}`} className="font-display text-[13.5px] font-medium text-nordfjord hover:text-nova-texte transition-colors leading-snug">
             {name}
           </Link>
           {anySale && (
-            <span className="font-data text-[9.5px] font-semibold uppercase tracking-[0.14em] border border-nova text-nova px-1.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`sale-badge-${product.slug}`}>
+            <span className="font-data text-[9.5px] font-semibold uppercase tracking-[0.14em] border border-nova text-nova-texte px-1.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`sale-badge-${product.slug}`}>
               {lang === "fr" ? "PROMO" : "SALE"}
             </span>
           )}
           {anyPreorder && (
-            <span className="font-data text-[9.5px] font-semibold uppercase tracking-[0.14em] border border-nova text-nova px-1.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`preorder-badge-${product.slug}`}>
+            <span className="font-data text-[9.5px] font-semibold uppercase tracking-[0.14em] border border-nova text-nova-texte px-1.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`preorder-badge-${product.slug}`}>
               {lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"}
             </span>
           )}
@@ -76,7 +76,7 @@ export default function ProductCard({ product, index = 0 }) {
                 ${displayOriginal.toFixed(2)}
               </span>
             )}
-            <span className={`font-data text-[13.5px] font-medium tabular-nums ${displayOriginal ? "text-nova" : "text-nordfjord"}`} data-testid={`card-price-${product.slug}`}>
+            <span className={`font-data text-[13.5px] font-medium tabular-nums ${displayOriginal ? "text-nova-texte" : "text-nordfjord"}`} data-testid={`card-price-${product.slug}`}>
               ${(displayPrice ?? 0).toFixed(2)}
             </span>
             {variants.length > 1 && (
@@ -95,7 +95,7 @@ export default function ProductCard({ product, index = 0 }) {
       <div className="pt-3 px-0.5">
         <button
           data-testid={`add-to-cart-${product.slug}`}
-          onClick={() => add(product)}
+          onClick={() => add(product, 1, cheapest)}
           className="w-full btn-pill btn-nova !py-1.5 !text-[11px] !tracking-[0.06em]"
         >
           {lang === "fr" ? "Ajouter à la commande" : "Add to order"}

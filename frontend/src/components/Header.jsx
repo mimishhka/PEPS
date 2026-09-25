@@ -121,7 +121,7 @@ export default function Header() {
             <button
               data-testid="cart-button"
               onClick={() => setOpen(true)}
-              className="relative font-data text-xs font-semibold uppercase tracking-[0.18em] flex items-center gap-2 text-nordfjord hover:text-nova transition-colors"
+              className="relative font-data text-xs font-semibold uppercase tracking-[0.18em] flex items-center gap-2 text-nordfjord hover:text-nova-texte transition-colors"
             >
               <span className="relative inline-flex">
                 <ShoppingBag size={18} strokeWidth={1.5} />
@@ -138,7 +138,7 @@ export default function Header() {
             </button>
             {user ? (
               <div className="hidden md:flex items-center gap-3">
-                <Link to="/account" data-testid="nav-account" className="font-data text-xs font-semibold uppercase tracking-[0.18em] flex items-center gap-1.5 text-nordfjord hover:text-nova transition-colors">
+                <Link to="/account" data-testid="nav-account" className="font-data text-xs font-semibold uppercase tracking-[0.18em] flex items-center gap-1.5 text-nordfjord hover:text-nova-texte transition-colors">
                   <User size={16} strokeWidth={1.5} /> {user.name?.split(" ")[0] || t("nav.account")}
                 </Link>
                 <button
@@ -153,7 +153,7 @@ export default function Header() {
               <Link
                 to={loginHref}
                 data-testid="nav-login"
-                className="hidden md:inline-flex items-center gap-1.5 font-data text-xs font-semibold uppercase tracking-[0.18em] text-nordfjord hover:text-nova transition-colors"
+                className="hidden md:inline-flex items-center gap-1.5 font-data text-xs font-semibold uppercase tracking-[0.18em] text-nordfjord hover:text-nova-texte transition-colors"
               >
                 <User size={16} strokeWidth={1.5} />
               </Link>

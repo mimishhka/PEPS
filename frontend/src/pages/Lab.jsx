@@ -66,7 +66,7 @@ export default function Lab() {
   return (
     <div data-testid="lab-page" className="bg-clinical min-h-screen">
       <div className="max-w-3xl mx-auto px-6 lg:px-8 py-20">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4 flex items-center gap-2">
+        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-4 flex items-center gap-2">
           <span className="inline-block w-8 h-px bg-nova" /> {isFr ? "LABO · LAB" : "LAB · LABO"}
         </p>
         <h1 className="font-display text-[28px] sm:text-[34px] font-semibold text-nordfjord leading-tight mb-4">
