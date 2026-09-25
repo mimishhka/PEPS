@@ -2981,7 +2981,7 @@ try:
         _cp_marquer_livree, _cp_evenement_livraison, _cp_horodatage, _cp_lire_suivi_xml,
         _cp_lire_suivi_json, _canada_post_track_openapi, _cp_suivi_disponible,
         _cp_lire_tarifs_json, _canada_post_get_rates_openapi, _cp_tarifs_disponibles,
-        _cp_source_tarifs, _cp_choisir_tarif,
+        _cp_source_tarifs, _cp_choisir_tarif, _cp_derniere_source_tarifs,
         UNTRANSMITTED_MATCH, pending_manifest_state,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
@@ -2999,7 +2999,7 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
         _cp_marquer_livree, _cp_evenement_livraison, _cp_horodatage, _cp_lire_suivi_xml,
         _cp_lire_suivi_json, _canada_post_track_openapi, _cp_suivi_disponible,
         _cp_lire_tarifs_json, _canada_post_get_rates_openapi, _cp_tarifs_disponibles,
-        _cp_source_tarifs, _cp_choisir_tarif,
+        _cp_source_tarifs, _cp_choisir_tarif, _cp_derniere_source_tarifs,
         UNTRANSMITTED_MATCH, pending_manifest_state,
     )
 
@@ -6644,6 +6644,11 @@ async def admin_dispatch_today(date: Optional[str] = None,
         "rating": {
             "available": _cp_tarifs_disponibles(),
             "source": _cp_source_tarifs(),
+            # La source PREVUE et celle qui a REELLEMENT repondu peuvent
+            # differer : « legacy-repli » veut dire que le nouveau portail n a
+            # rien cote et que l ancienne API a sauve la mise. C est un signal
+            # a traiter, pas un detail technique.
+            "source_reelle": _cp_derniere_source_tarifs(),
             "reason": motif_estimation,
             "quoted": len(lignes_estimees),
             "to_quote": len(lignes_a_estimer),

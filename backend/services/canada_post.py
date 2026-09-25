@@ -293,16 +293,70 @@ async def _canada_post_get_rates_openapi(destination_postal_code: str, destinati
     return _cp_lire_tarifs_json(donnees)
 
 
-async def _canada_post_get_rates(destination_postal_code: str, destination_country: str, weight_kg: float) -> list:
-    """Cotation des envois de la boutique. Returns [] if not configured or on any error.
+def _cp_legacy_cotation_possible() -> bool:
+    """L'ancienne API peut coter : cle, numero de client et code postal presents."""
+    return bool(s.CANADA_POST_API_KEY and s.CANADA_POST_CUSTOMER_NUMBER
+                and s.CANADA_POST_ORIGIN_POSTAL_CODE)
 
-    Le NOUVEAU portail des que ses identifiants OAuth sont la (cles de l'app
-    Fironova) ; l'ancienne API seulement si elle est seule configuree. Pas de
-    repli silencieux de l'un vers l'autre : une erreur se lit dans le journal."""
+
+async def _canada_post_get_rates(destination_postal_code: str, destination_country: str, weight_kg: float) -> list:
+    """Cotation des envois de la boutique. [] si rien n'est configure.
+
+    LE NOUVEAU PORTAIL D'ABORD, L'ANCIENNE API EN SECOURS.
+
+    Le 2026-09-19, la cotation est passee au nouveau portail des que des cles
+    OAuth existent, avec une regle explicite : « pas de repli silencieux de
+    l'un vers l'autre ». L'intention etait juste — une erreur ne doit pas se
+    cacher. La consequence ne l'etait pas : des cles OAuth presentes mais NON
+    HABILITEES a la cotation faisaient abandonner l'ancienne API, qui
+    fonctionnait. Le cout estime de Dispatch est tombe a zero sans un mot.
+
+    Le repli est donc rendu, mais il n'est PAS silencieux : il s'ecrit dans le
+    journal a chaque fois qu'il sert, et la source qui a repondu est exposee
+    par _cp_derniere_source_tarifs() pour que l'ecran puisse le dire."""
+    global _DERNIERE_SOURCE_TARIFS
     source = _cp_source_tarifs()
     if source == "openapi":
-        return await _canada_post_get_rates_openapi(destination_postal_code, destination_country, weight_kg)
+        devis = await _canada_post_get_rates_openapi(
+            destination_postal_code, destination_country, weight_kg)
+        if devis:
+            _DERNIERE_SOURCE_TARIFS = "openapi"
+            return devis
+        if not _cp_legacy_cotation_possible():
+            _DERNIERE_SOURCE_TARIFS = "openapi-vide"
+            return []
+        logging.warning(
+            "Canada Post rating: le nouveau portail n'a renvoye aucun tarif ; "
+            "repli sur l'ancienne API (rate-v4). Verifiez que les cles OAuth "
+            "sont habilitees a la cotation.")
+        devis = await _canada_post_get_rates_legacy(
+            destination_postal_code, destination_country, weight_kg)
+        _DERNIERE_SOURCE_TARIFS = "legacy-repli" if devis else "aucune"
+        return devis
     if source != "legacy":
+        _DERNIERE_SOURCE_TARIFS = None
+        return []
+    devis = await _canada_post_get_rates_legacy(
+        destination_postal_code, destination_country, weight_kg)
+    _DERNIERE_SOURCE_TARIFS = "legacy" if devis else "aucune"
+    return devis
+
+
+# Quelle source a REELLEMENT repondu au dernier appel. « openapi-vide » et
+# « legacy-repli » sont les deux etats que l'ecran doit pouvoir nommer : le
+# premier dit que le nouveau portail ne cote pas, le second qu'il ne cote pas
+# mais que l'ancienne API a sauve la mise.
+_DERNIERE_SOURCE_TARIFS = None
+
+
+def _cp_derniere_source_tarifs():
+    return _DERNIERE_SOURCE_TARIFS
+
+
+async def _canada_post_get_rates_legacy(destination_postal_code: str, destination_country: str,
+                                        weight_kg: float) -> list:
+    """Get Rates par l'ancienne API (rate-v4, XML, cle + numero de client)."""
+    if not _cp_legacy_cotation_possible():
         return []
 
     origin_pc = s.CANADA_POST_ORIGIN_POSTAL_CODE.replace(" ", "").upper()

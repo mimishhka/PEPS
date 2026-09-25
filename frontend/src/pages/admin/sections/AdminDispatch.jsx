@@ -273,6 +273,24 @@ export default function AdminDispatch() {
         </div>
       )}
 
+      {/* LE REPLI SE VOIT. Quand le nouveau portail ne cote pas et que
+          l ancienne API prend le relais, tout fonctionne — mais une cle OAuth
+          non habilitee a la cotation est un probleme a regler avant qu elle
+          soit la seule voie. Le taire serait cacher une dette. */}
+      {rating?.source_reelle === "legacy-repli" && (
+        <div className="mt-3 flex items-start gap-2 bg-yellow-50 border border-yellow-300 text-yellow-900 px-4 py-3 font-mono text-[11px] leading-relaxed"
+          data-testid="dispatch-rating-repli">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          <div>
+            <strong>Les tarifs viennent de l&apos;ancienne API.</strong> Le nouveau
+            portail Postes Canada n&apos;a renvoye aucun tarif ; l&apos;ancienne cle a
+            pris le relais, et les couts affiches sont justes. A regler quand meme :
+            verifiez que vos cles OAuth sont habilitees a la cotation, sinon le jour
+            ou l&apos;ancienne cle expirera, l&apos;estimation s&apos;arretera.
+          </div>
+        </div>
+      )}
+
       {rating?.reason && (
         <div className="mt-3 flex items-start gap-2 bg-yellow-50 border border-yellow-300 text-yellow-900 px-4 py-3 font-mono text-[11px] leading-relaxed"
           data-testid="dispatch-rating-reason">
