@@ -2,32 +2,140 @@
 
 L'écran Dispatch affiche « Coût estimé étiquettes » en sommant une cotation
 Postes Canada par commande à étiqueter. Quand cette cotation échoue, elle
-renvoie une liste vide : le total tombe à 0, et le bandeau financier ne
-s'affiche même pas — l'écran ne montre rien plutôt que d'expliquer. Ce script
-dit lequel des maillons casse.
+renvoie une liste vide : le total tombe à 0, et l'écran ne montre rien plutôt
+que d'expliquer. Ce script dit lequel des maillons casse.
 
 Il est EN LECTURE SEULE. Il ne crée aucun envoi, aucune étiquette, aucune
 commande : coter un colis chez Postes Canada ne réserve rien.
 
     cd /app/backend && python scripts/diagnostic_cout_estime.py
+
+Si l'import échoue sur une dépendance manquante (dotenv, httpx, motor), c'est
+que le `python` du shell n'est pas celui du serveur. Le script le détecte et
+dit comment trouver le bon.
 """
-import asyncio
 import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, "/app/backend")
-from dotenv import load_dotenv
-load_dotenv(Path("/app/backend/.env"))
+# Le dossier du serveur se deduit de l emplacement de ce script, au lieu
+# d etre suppose : le meme fichier sert sur le serveur (/app/backend) et sur
+# une copie locale.
+# Un diagnostic ne doit jamais echouer sur un terminal qui ne fait pas UTF-8 :
+# le message compte plus que ses accents.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
-from services import canada_post as cp
-from motor.motor_asyncio import AsyncIOMotorClient
+RACINE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RACINE))
+# server.py a un import de repli en « backend.services… » pour le cas ou il est
+# lance depuis la racine du depot. Elle doit donc etre joignable aussi, sinon ce
+# repli echoue et l erreur ressemble a une dependance manquante.
+sys.path.insert(1, str(RACINE.parent))
+
+
+def charger_env(chemin=None):
+    """Les réglages viennent du .env. python-dotenv quand il est là, sinon une
+    lecture directe : ce script doit pouvoir tourner avec n'importe quel
+    interpréteur. Le format utile ici est simple — CLE=valeur par ligne."""
+    chemin = chemin or str(RACINE / ".env")
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(Path(chemin))
+        return "python-dotenv"
+    except ImportError:
+        pass
+    try:
+        with open(chemin, encoding="utf-8") as f:
+            for ligne in f:
+                ligne = ligne.strip()
+                if not ligne or ligne.startswith("#") or "=" not in ligne:
+                    continue
+                cle, _, valeur = ligne.partition("=")
+                valeur = valeur.strip()
+                for guillemet in ('"', "'"):
+                    if len(valeur) >= 2 and valeur[0] == guillemet and valeur[-1] == guillemet:
+                        valeur = valeur[1:-1]
+                        break
+                os.environ.setdefault(cle.strip(), valeur)
+        return "lecture directe du .env"
+    except FileNotFoundError:
+        return None
+
+
+SOURCE_ENV = charger_env()
+
+
+def interpreteurs_possibles():
+    """Le serveur tourne sous un interpréteur qui a ses dépendances. Le shell
+    n'est pas forcément le même. On propose les emplacements habituels qui
+    existent vraiment sur cette machine."""
+    candidats = [
+        "/root/.venv/bin/python",
+        "/app/backend/.venv/bin/python",
+        "/app/backend/venv/bin/python",
+        "/app/.venv/bin/python",
+        "/usr/local/bin/python3",
+        "/usr/bin/python3",
+    ]
+    return [c for c in candidats if os.path.exists(c)]
+
+
+def expliquer_dependance_manquante(manquant):
+    print("=" * 74)
+    print("L'INTERPRÉTEUR N'EST PAS CELUI DU SERVEUR")
+    print("=" * 74)
+    print(f"\n  Module absent : {manquant}")
+    print(f"  Interpréteur utilisé : {sys.executable}")
+    print("\n  Le serveur FastAPI tourne avec ses propres dépendances. Relancez")
+    print("  ce script avec SON interpréteur. Candidats trouvés ici :\n")
+    trouves = interpreteurs_possibles()
+    if trouves:
+        for c in trouves:
+            print(f"    {c} scripts/diagnostic_cout_estime.py")
+    else:
+        print("    (aucun emplacement habituel trouvé)")
+    print("\n  Pour lire celui que le serveur emploie vraiment :")
+    print("    grep -rhi command /etc/supervisor/conf.d/*.conf 2>/dev/null | head")
+    print("    ps -o args= -C uvicorn 2>/dev/null | head -2")
+    print("\n" + "=" * 74)
+
+
+try:
+    from services import canada_post as cp
+except ModuleNotFoundError as manque:
+    expliquer_dependance_manquante(manque.name)
+    sys.exit(1)
+except (KeyError, RuntimeError) as absent:
+    # Le serveur exige certains réglages dès son import, et il les réclame de
+    # deux façons : un KeyError sur os.environ pour les uns, un RuntimeError
+    # explicite pour les autres. Les deux disent la même chose — le .env n'a
+    # pas été trouvé, ou il est incomplet — et ni l'une ni l'autre ne signifie
+    # que le code est cassé. Un traceback nu le laisserait croire.
+    print("=" * 74)
+    print("LES RÉGLAGES DU SERVEUR NE SONT PAS CHARGÉS")
+    print("=" * 74)
+    print()
+    print(f"  Réglage manquant : {absent}")
+    print(f"  Fichier .env cherché : {RACINE / '.env'}")
+    print(f"  Chargé par : {SOURCE_ENV or 'AUCUNE SOURCE — le fichier est introuvable'}")
+    print()
+    print("  Vérifiez que le .env existe et contient ce réglage :")
+    print(f"    ls -l {RACINE / '.env'}")
+    print(f"    grep -c . {RACINE / '.env'}")
+    print()
+    print("=" * 74)
+    sys.exit(1)
+
+import asyncio  # noqa: E402  (après le garde-fou d'import)
 
 s = cp.s
 
 
 def puce(ok, texte, detail=""):
-    print(("  OK     " if ok else "  MANQUE ") + texte + (f" — {detail}" if detail else ""))
+    print(("  OK      " if ok else "  MANQUE  ") + texte + (f" — {detail}" if detail else ""))
     return ok
 
 
@@ -35,6 +143,8 @@ async def executer():
     print("=" * 74)
     print("DIAGNOSTIC — le coût estimé de l'écran Dispatch")
     print("=" * 74)
+    print(f"\n  Réglages chargés par : {SOURCE_ENV or 'AUCUNE SOURCE (.env introuvable)'}")
+    print(f"  Interpréteur : {sys.executable}")
 
     # ------------------------------------------------------------------ 1
     print("\n1. CE QUE LA COTATION EXIGE")
@@ -63,9 +173,9 @@ async def executer():
     if not cp._cp_tarifs_disponibles():
         print("\n   >>> VOILÀ LA CAUSE : aucune source de cotation n'est disponible.")
         print("       Sans elle, le programme n'appelle même pas Postes Canada : le")
-        print("       total reste à 0 et le bandeau financier ne s'affiche pas.")
+        print("       total reste à 0.")
         if not origine:
-            print("       À corriger : CANADA_POST_ORIGIN_POSTAL_CODE dans /app/backend/.env")
+            print(f"       À corriger : CANADA_POST_ORIGIN_POSTAL_CODE dans {RACINE / '.env'}")
         elif not (voie_oauth or voie_legacy):
             print("       À corriger : les identifiants OAuth, OU la clé + le numéro client")
         return
@@ -94,13 +204,13 @@ async def executer():
     for code in ("DOM.XP", "DOM.EP", "DOM.RP"):
         choisi = cp._cp_choisir_tarif(devis, code)
         if choisi is None:
-            puce(False, f"{code}", "aucun tarif, et aucun repli")
+            puce(False, code, "aucun tarif, et aucun repli")
             continue
         exact = str(choisi.get("service_code") or "").upper() == code
         detail = f"{choisi.get('cost_cad')} $"
         if not exact:
             detail += f"  (repli sur {choisi.get('service_code')} — affiché « estimé CP » sans le délai)"
-        puce(True, f"{code}", detail)
+        puce(True, code, detail)
 
     # ------------------------------------------------------------------ 4
     print("\n4. LES COMMANDES QUE DISPATCH ESTIME")
@@ -113,6 +223,7 @@ async def executer():
         print("   (base non joignable : MONGO_URL ou DB_NAME absent de l'environnement)")
         return
     try:
+        from motor.motor_asyncio import AsyncIOMotorClient
         db = AsyncIOMotorClient(url)[nom]
         total_packed = 0
         for etat in ("packed", "processing", "pending"):
