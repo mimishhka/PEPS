@@ -142,7 +142,7 @@ export default function AdminReconciliation() {
               {items.map((it) => {
                 const pending = it.status === "pending";
                 const busy = busyId === it.id;
-                const amount = typeof it.amount_cad === "number" ? `$${it.amount_cad.toFixed(2)} CAD` : "—";
+                const amount = typeof it.amount_cad === "number" ? `$${it.amount_cad.toFixed(2)} CAD` : "-";
                 return (
                   <tr key={it.id} className="border-t border-ink/5 align-top" data-testid={`reconcile-row-${it.id}`}>
                     <td className="px-4 py-3">
@@ -152,10 +152,10 @@ export default function AdminReconciliation() {
                     <td className="px-4 py-3 font-mono text-xs uppercase">{it.provider || "interac"}</td>
                     <td className="px-4 py-3 font-semibold">{amount}</td>
                     <td className="px-4 py-3">
-                      <div className="text-sm">{it.from_email || "—"}</div>
+                      <div className="text-sm">{it.from_email || "-"}</div>
                     </td>
                     <td className="px-4 py-3 max-w-[360px]">
-                      <div className="truncate" title={it.subject || ""}>{it.subject || "—"}</div>
+                      <div className="truncate" title={it.subject || ""}>{it.subject || "-"}</div>
                     </td>
                     <td className="px-4 py-3 min-w-[260px]">
                       {pending ? (
@@ -188,7 +188,7 @@ export default function AdminReconciliation() {
                         </>
                       ) : (
                         <div className="font-mono text-[11px] text-foreground/60">
-                          {it.matched_order_number || it.dismiss_note || "—"}
+                          {it.matched_order_number || it.dismiss_note || "-"}
                         </div>
                       )}
                     </td>

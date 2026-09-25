@@ -34,7 +34,7 @@ const CLOSES = ["cancelled", "failed"];
 // L'état d'un dossier de remboursement, dans les mots de l'écran Remboursements.
 const ETAT_DOSSIER = {
   requested: { fr: "à examiner", en: "to review" },
-  approved: { fr: "approuvé — l'argent reste à envoyer", en: "approved — the money still has to be sent" },
+  approved: { fr: "approuvé : l'argent reste à envoyer", en: "approved : the money still has to be sent" },
   processed: { fr: "remboursé", en: "refunded" },
   denied: { fr: "refusé", en: "denied" },
 };
@@ -61,7 +61,7 @@ const dateLongue = (iso, lang) => {
  * et les vraies notes disparaissaient dessous. Rien n'est supprimé : les
  * notes restent en base, seul l'affichage les regroupe. Une note humaine
  * entre deux reports coupe le groupe, pour garder l'ordre des événements. */
-const REPORT = /^Reportée au lot (\S+) — étiquette non imprimée\.$/;
+const REPORT = /^Reportée au lot (\S+) : étiquette non imprimée\.$/;
 function regrouperReports(notes) {
   const sortie = [];
   for (const n of notes) {
@@ -76,7 +76,7 @@ function regrouperReports(notes) {
   return sortie;
 }
 
-// Paramètres d'URL d'une vue — partagés par la liste ET les exports.
+// Paramètres d'URL d'une vue : partagés par la liste ET les exports.
 const enQuery = (params) => {
   const q = new URLSearchParams(
     Object.entries(params).map(([cle, valeur]) => [cle, String(valeur)])).toString();
@@ -115,7 +115,7 @@ export default function AdminOrders() {
     setTxBusy(true);
     try {
       const { data } = await api.post("/admin/shipping/transmit");
-      toast.success(`Manifest transmitted — ${data.orders_marked} shipment(s) closed.`);
+      toast.success(`Manifest transmitted : ${data.orders_marked} shipment(s) closed.`);
       if (data.manifests?.length) {
         toast.info(`${data.manifests.length} manifest document(s) available from Canada Post.`);
       }
@@ -134,7 +134,7 @@ export default function AdminOrders() {
     if (!await confirm({
       title: `Void ${manifest?.pending_count ?? 0} untransmitted label(s)?`,
       description: "Cancels the shipments with Canada Post and returns the orders to processing. "
-        + "Use this for labels created by mistake — not for parcels you are actually sending.",
+        + "Use this for labels created by mistake : not for parcels you are actually sending.",
       destructive: true,
     })) return;
     setTxBusy(true);
@@ -157,7 +157,7 @@ export default function AdminOrders() {
   };
 
   // Les filtres de la vue, une seule fois : la liste ET les exports les
-  // lisent. Les exports ne recevaient que l'onglet — une recherche ou un
+  // lisent. Les exports ne recevaient que l'onglet : une recherche ou un
   // filtre à l'écran étaient ignorés dans le fichier téléchargé.
   const filtresVue = useMemo(() => ({
     ...(tab === "all" ? {} : { status_group: tab }),
@@ -183,7 +183,7 @@ export default function AdminOrders() {
   }, [filtresVue, page]);
 
   // Les compteurs d'onglets ne dépendent d'AUCUN filtre. Ils étaient pourtant
-  // redemandés à chaque frappe dans la recherche — cinq requêtes de comptage
+  // redemandés à chaque frappe dans la recherche : cinq requêtes de comptage
   // par caractère tapé. Chargés à l'ouverture, puis après chaque action.
   const loadCounts = useCallback(() => {
     api.get("/admin/orders/counts")
@@ -210,8 +210,8 @@ export default function AdminOrders() {
   useEffect(() => {
     if (!routeOrderId || selected?.id === routeOrderId) return undefined;
     let alive = true;
-    // La commande seule, par son id. Le lien chargeait la liste entière —
-    // plafonnée à 500 — pour la chercher côté navigateur : au-delà de 500
+    // La commande seule, par son id. Le lien chargeait la liste entière -
+    // plafonnée à 500 : pour la chercher côté navigateur : au-delà de 500
     // commandes, un lien vers une commande ancienne aurait répondu « Order
     // not found » alors qu'elle existe. L'endpoint dédié existait déjà.
     api.get(`/admin/orders/${routeOrderId}`)
@@ -248,11 +248,11 @@ export default function AdminOrders() {
               <div className="text-sm text-red-800 mt-1">
                 Transmit the manifest before end of day. Canada Post bills untransmitted shipments
                 with a <strong>$2 surcharge per item</strong> and removes the automation discount.
-                {" "}The manifest does not exist until you transmit — transmitting is what creates it.
+                {" "}The manifest does not exist until you transmit : transmitting is what creates it.
               </div>
               {manifest.orphan_count > 0 && (
                 <div className="text-sm text-red-800 mt-2" data-testid="manifest-orphans">
-                  <strong>{manifest.orphan_count} of these cannot be transmitted</strong> — they have
+                  <strong>{manifest.orphan_count} of these cannot be transmitted</strong> : they have
                   a label but no Canada Post group, so "Transmit manifest" will not clear them. Void
                   and recreate those labels: {manifest.orphans?.join(", ")}
                 </div>
@@ -394,7 +394,7 @@ export default function AdminOrders() {
                   )}
                 </td>
                 <td className="px-6 py-3">
-                  <div className="text-sm">{o.shipping_address?.full_name || "—"}</div>
+                  <div className="text-sm">{o.shipping_address?.full_name || "-"}</div>
                   <div className="font-mono text-[10px] text-foreground/50">{o.email || "guest"}</div>
                 </td>
                 <td className="px-6 py-3 font-mono text-xs uppercase">{o.payment_method}</td>
@@ -460,12 +460,12 @@ function OrderDetail({ order, onClose, onUpdate }) {
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
   // Sans cette ligne, `confirm(...)` ne designait pas le dialogue stylé du
-  // projet mais le window.confirm DU NAVIGATEUR — un global, donc aucune
+  // projet mais le window.confirm DU NAVIGATEUR : un global, donc aucune
   // erreur. Or ce composant lui passe un OBJET { title, description }, la ou
   // le natif attend une chaine : la boite affichait « [object Object] ».
   //
-  // Trois actions destructrices etaient concernees — mise a la corbeille,
-  // annulation d'etiquette, et une troisieme — c'est-a-dire precisement
+  // Trois actions destructrices etaient concernees : mise a la corbeille,
+  // annulation d'etiquette, et une troisieme : c'est-a-dire precisement
   // celles ou la personne doit comprendre ce qu'elle valide.
   const confirm = useConfirm();
   const [reopenBusy, setReopenBusy] = useState(false);
@@ -503,8 +503,8 @@ function OrderDetail({ order, onClose, onUpdate }) {
 
   const reopenOrder = async () => {
     const note = window.prompt(
-      L("Motif de réouverture (optionnel — conservé dans l'historique) :",
-        "Reason for reopening (optional — kept in the history):"), "") || "";
+      L("Motif de réouverture (optionnel : conservé dans l'historique) :",
+        "Reason for reopening (optional : kept in the history):"), "") || "";
     if (!await confirm({
       title: L("Rouvrir cette commande annulée ?", "Reopen this cancelled order?"),
       description: L(
@@ -527,8 +527,8 @@ function OrderDetail({ order, onClose, onUpdate }) {
     if (!await confirm({
       title: L(`Mettre la commande ${order.order_number} à la corbeille ?`,
                `Move order ${order.order_number} to trash?`),
-      description: L("Elle reste récupérable dans la corbeille — rien n'est perdu.",
-                     "It stays recoverable there — nothing is lost."),
+      description: L("Elle reste récupérable dans la corbeille : rien n'est perdu.",
+                     "It stays recoverable there : nothing is lost."),
       destructive: true,
     })) return;
     try {
@@ -561,7 +561,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
   const confirmPayment = async () => {
     try {
       await api.post(`/admin/orders/${order.id}/confirm-payment`);
-      toast.success(L("Paiement confirmé — commande en préparation", "Payment confirmed — moved to Processing"));
+      toast.success(L("Paiement confirmé : commande en préparation", "Payment confirmed : moved to Processing"));
       onUpdate();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
@@ -581,7 +581,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
     try {
       const { data } = await api.put(`/admin/orders/${order.id}/shipping`, { carrier, tracking_number: tracking });
       toast.success(data?.fulfillment_status === "shipped" && order.fulfillment_status !== "shipped"
-        ? L("Suivi enregistré — commande marquée expédiée", "Tracking saved — order marked as shipped")
+        ? L("Suivi enregistré : commande marquée expédiée", "Tracking saved : order marked as shipped")
         : L("Suivi enregistré", "Tracking saved"));
       onUpdate();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
@@ -596,7 +596,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
         return;
       }
       if (data?.updated) {
-        toast.success(L("Livraison confirmée — statut passé à livré.", "Delivery confirmed — status set to delivered."));
+        toast.success(L("Livraison confirmée : statut passé à livré.", "Delivery confirmed : status set to delivered."));
       } else if (data?.delivered) {
         toast.success(L("Commande déjà marquée livrée.", "Order already marked delivered."));
       } else {
@@ -614,7 +614,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
     if (!noteText.trim()) return;
     try {
       await api.post(`/admin/orders/${order.id}/notes`, { text: noteText, visible_to_customer: noteVisible });
-      if (noteVisible) toast.success(L("Note ajoutée — courriel envoyé au client", "Note added — email sent to customer"));
+      if (noteVisible) toast.success(L("Note ajoutée : courriel envoyé au client", "Note added : email sent to customer"));
       setNoteText(""); setNoteVisible(false); onUpdate();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
   };
@@ -629,7 +629,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
   const addr = order.shipping_address || {};
   const aUneAdresse = !!(addr.address1 || addr.city || addr.postal_code);
   const articles = order.items || [];
-  const nomArticle = (it) => (lang === "fr" ? (it.name_fr || it.name_en) : it.name_en) || "—";
+  const nomArticle = (it) => (lang === "fr" ? (it.name_fr || it.name_en) : it.name_en) || "-";
 
   // Le lot d'expédition n'a de sens que pour une commande qui ATTEND de
   // partir. Il restait affiché sur les commandes expédiées, livrées,
@@ -690,7 +690,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
               {!order.user_id && (
                 <span data-testid="order-guest"
                   className="inline-flex items-center rounded-full border border-ink/20 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-foreground/60">
-                  {L("Invité — sans compte", "Guest — no account")}
+                  {L("Invité : sans compte", "Guest : no account")}
                 </span>
               )}
             </div>
@@ -714,7 +714,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                   </button>
                 )}
                 {/* Seulement si le paiement est encore ATTENDU. Sur une commande
-                    annulée, échouée ou remboursée, le serveur ne faisait rien —
+                    annulée, échouée ou remboursée, le serveur ne faisait rien -
                     mais l'écran annonçait « Payment confirmed ». */}
                 {peutConfirmer && (
                   <button onClick={confirmPayment} data-testid="confirm-payment-btn"
@@ -745,8 +745,8 @@ function OrderDetail({ order, onClose, onUpdate }) {
           <div className="grid sm:grid-cols-3 gap-4">
             <div className={carte}>
               <div className={titre}>{L("Client", "Customer")}</div>
-              <div className="font-bold mt-1">{addr.full_name || "—"}</div>
-              <div className="text-sm text-foreground/70 break-all">{order.email || "—"}</div>
+              <div className="font-bold mt-1">{addr.full_name || "-"}</div>
+              <div className="text-sm text-foreground/70 break-all">{order.email || "-"}</div>
               {addr.phone && <div className="text-sm text-foreground/70">{addr.phone}</div>}
             </div>
             <div className={carte}>
@@ -763,7 +763,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
             </div>
             <div className={carte} data-testid="order-detail-payment">
               <div className={titre}>{L("Paiement", "Payment")}</div>
-              <div className="text-sm mt-1">{METHODES[order.payment_method] || order.payment_method || "—"}</div>
+              <div className="text-sm mt-1">{METHODES[order.payment_method] || order.payment_method || "-"}</div>
               <div className="text-sm text-foreground/70">
                 {payee ? L(`Payée le ${payee}`, `Paid ${payee}`) : L("Pas encore payée", "Not paid yet")}
               </div>
@@ -778,7 +778,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
               <tbody>
                 {/* `order.items` peut manquer : FN-AUTO-B3AD4F n'a pas ce champ.
                     L'appel direct à .map() faisait tomber TOUT l'écran
-                    d'administration — « Something went wrong ». */}
+                    d'administration : « Something went wrong ». */}
                 {articles.map((it) => (
                   <tr key={it.product_id} className="border-t border-ink/5">
                     <td className="px-4 py-3">
@@ -793,8 +793,8 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 ))}
                 {!articles.length && (
                   <tr><td colSpan={2} className="px-4 py-3 text-sm text-amber-700" data-testid="order-no-items">
-                    {L("Aucun article sur cette commande — enregistrement incomplet.",
-                       "No items on this order — incomplete record.")}
+                    {L("Aucun article sur cette commande : enregistrement incomplet.",
+                       "No items on this order : incomplete record.")}
                   </td></tr>
                 )}
               </tbody>
@@ -815,7 +815,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
             </div>
           </div>
 
-          {/* Expédition — le formulaire seulement pour une commande PAYÉE : le
+          {/* Expédition : le formulaire seulement pour une commande PAYÉE : le
               serveur refuse tout suivi sur une commande impayée (409). Une
               commande close déjà expédiée garde ses informations, en lecture
               seule. */}
@@ -824,7 +824,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
             <div className={`${titre} mb-3 flex items-center gap-2`}><Truck size={12} /> {L("Expédition et suivi", "Shipping & tracking")}</div>
             {order.payment_status !== "paid" ? (
               <div className="text-sm text-foreground/70" data-testid="order-shipping-readonly">
-                {shipInfo.carrier || "—"} · {shipInfo.tracking_number || L("pas de numéro de suivi", "no tracking number")}
+                {shipInfo.carrier || "-"} · {shipInfo.tracking_number || L("pas de numéro de suivi", "no tracking number")}
               </div>
             ) : (<>
             <div className="grid sm:grid-cols-2 gap-3">
@@ -856,7 +856,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 {L("Expédiée le", "Shipped")} {dateLongue(order.shipping_info.shipped_at, lang) || order.shipping_info.shipped_at}
               </div>
             )}
-            {/* L'heure donnée par Postes Canada quand elle existe — telle
+            {/* L'heure donnée par Postes Canada quand elle existe : telle
                 quelle, fuseau compris. */}
             {order.shipping_info?.delivered_at && (
               <div className="font-mono text-[10px] text-foreground/50 mt-1" data-testid="order-delivered-at">
@@ -865,7 +865,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
               </div>
             )}
 
-            {/* Postes Canada — l'étiquette se génère depuis l'écran Dispatch.
+            {/* Postes Canada : l'étiquette se génère depuis l'écran Dispatch.
                 Ici, lecture seule : télécharger l'étiquette / le manifeste. */}
             {shipInfo?.label_url && (
               <div className="mt-4 pt-4 border-t border-ink/10 flex flex-wrap items-center gap-3">
@@ -906,7 +906,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
             </div>
           )}
 
-          {/* Remboursement — LECTURE SEULE. La fiche ouvrait aussi des
+          {/* Remboursement : LECTURE SEULE. La fiche ouvrait aussi des
               dossiers : un doublon de l'écran Remboursements, qui sait
               désormais ouvrir un dossier pour n'importe quelle commande,
               invités compris. Un seul endroit pour créer ; ici on lit. */}
@@ -917,7 +917,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 {L("Dossier", "Case")} : {ETAT_DOSSIER[order.refund_status]
                   ? L(ETAT_DOSSIER[order.refund_status].fr, ETAT_DOSSIER[order.refund_status].en)
                   : order.refund_status}
-                {order.refund_reason ? ` — ${order.refund_reason}` : ""}
+                {order.refund_reason ? ` : ${order.refund_reason}` : ""}
                 {order.refunded_amount > 0 ? L(` · Remboursé : $${order.refunded_amount.toFixed(2)}`,
                                                ` · Refunded: $${order.refunded_amount.toFixed(2)}`) : ""}
               </div>
@@ -936,7 +936,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
             </div>
           )}
 
-          {/* Notes — la liste suit le défilement de la fiche. Elle avait sa
+          {/* Notes : la liste suit le défilement de la fiche. Elle avait sa
               propre barre de défilement, dans une fiche qui défile déjà. */}
           <div className={carte}>
             <div className={`${titre} mb-3 flex items-center gap-2`}><MessageSquarePlus size={12} /> {L("Notes", "Notes")}</div>
@@ -945,8 +945,8 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 <div key={i} className={`text-sm border-l-2 pl-3 py-1 ${n.visible_to_customer ? "border-emerald-500" : "border-ink/30"}`} data-testid={`note-${i}`}>
                   <div className="text-foreground/85">
                     {n.report && n.report.n > 1
-                      ? L(`Reportée ${n.report.n} fois — du lot ${n.report.depuis} au lot ${n.report.jusqua} (étiquette non imprimée).`,
-                          `Rolled over ${n.report.n} times — from batch ${n.report.depuis} to ${n.report.jusqua} (label not printed).`)
+                      ? L(`Reportée ${n.report.n} fois : du lot ${n.report.depuis} au lot ${n.report.jusqua} (étiquette non imprimée).`,
+                          `Rolled over ${n.report.n} times : from batch ${n.report.depuis} to ${n.report.jusqua} (label not printed).`)
                       : n.text}
                   </div>
                   <div className="font-mono text-[10px] text-foreground/50 mt-1">

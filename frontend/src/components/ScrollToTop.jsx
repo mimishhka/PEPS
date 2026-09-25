@@ -1,5 +1,5 @@
 // frontend/src/components/ScrollToTop.jsx
-// Remet le défilement en haut à chaque changement de route — sinon en cliquant
+// Remet le défilement en haut à chaque changement de route : sinon en cliquant
 // un produit depuis le bas du catalogue, on arrive au milieu de la fiche.
 // Respecte les ancres (#section) : ne scrolle pas en haut si un hash est présent.
 import { useEffect } from "react";

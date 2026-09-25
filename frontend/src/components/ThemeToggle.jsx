@@ -1,9 +1,9 @@
-// frontend/src/components/ThemeToggle.jsx — NOUVEAU fichier.
+// frontend/src/components/ThemeToggle.jsx : NOUVEAU fichier.
 //
 // Bascule à TROIS positions, et non deux : clair, sombre, système.
 //
 // Un interrupteur binaire oblige à choisir, et fait perdre le suivi du réglage
-// de l'appareil. La troisième position est le défaut — celle qui convient à
+// de l'appareil. La troisième position est le défaut : celle qui convient à
 // qui n'a jamais eu à y penser.
 import { Sun, Moon, Monitor } from "lucide-react";
 import { useTheme } from "../contexts/ThemeContext";

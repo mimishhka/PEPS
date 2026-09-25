@@ -1,7 +1,7 @@
 // Primitives visuelles partagées par les écrans d'administration.
 //
 // Elles existent parce que le même défaut se répétait sur 26 tableaux : tout
-// était traité au même poids — en-têtes en majuscules espacées, zéros aussi
+// était traité au même poids : en-têtes en majuscules espacées, zéros aussi
 // visibles que les vrais montants, aucune couleur porteuse de sens. Corriger
 // chaque tableau séparément aurait recréé la divergence dès le tableau suivant.
 //
@@ -17,7 +17,7 @@ const TIER_TONE = {
 };
 
 /** En-tête de colonne. Casse normale : les majuscules espacées conviennent à
- *  une étiquette isolée, pas à neuf en rang — au-delà, elles cessent d'être un
+ *  une étiquette isolée, pas à neuf en rang : au-delà, elles cessent d'être un
  *  accent et deviennent du bruit. */
 export function Th({ children, align = "left", className = "" }) {
   // Un en-tête doit être aligné comme sa colonne : décalé, il fait lire la
@@ -40,7 +40,7 @@ export function Th({ children, align = "left", className = "" }) {
  *  qu'un vrai montant, alors qu'il ne dit rien. */
 export function Num({ value, format, className = "" }) {
   const empty = value == null || Number(value) === 0;
-  const text = value == null ? "—" : (format ? format(value) : value);
+  const text = value == null ? "-" : (format ? format(value) : value);
   return (
     <span
       className={`font-data tabular-nums whitespace-nowrap ${
@@ -81,7 +81,7 @@ export function Identity({ name, email, tone }) {
     <div className="flex items-center gap-2.5 min-w-0">
       <Avatar name={name} email={email} tone={tone} />
       <span className="min-w-0">
-        <span className="block font-semibold text-nordfjord truncate leading-tight">{name || "—"}</span>
+        <span className="block font-semibold text-nordfjord truncate leading-tight">{name || "-"}</span>
         {email && (
           <span className="block text-[12px] text-glacier truncate" title={email}>{email}</span>
         )}
@@ -93,7 +93,7 @@ export function Identity({ name, email, tone }) {
 /** Palier avec sa couleur métal : Diamond ne peut pas être du même gris que
  *  Standard, c'est la seule hiérarchie réelle de cet écran. */
 export function TierBadge({ tier, rate, label }) {
-  if (!tier) return <span className="text-glacier/45">—</span>;
+  if (!tier) return <span className="text-glacier/45">-</span>;
   const tone = TIER_TONE[tier] || TIER_TONE.standard;
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">

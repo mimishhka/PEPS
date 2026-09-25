@@ -3,7 +3,7 @@ import { ClipboardList, Package, PackageCheck, Printer, RefreshCw, ChevronRight,
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
 
-// Écran « Journée » — poste d'expédition Fironova.
+// Écran « Journée » : poste d'expédition Fironova.
 const STEP_ORDER = ["processing", "packing", "packed"];
 const STEP_ICON = { processing: ClipboardList, packing: Package, packed: PackageCheck, shipped: Printer };
 const NEXT = { processing: "packing", packing: "packed" };
@@ -56,7 +56,7 @@ export default function AdminFulfillment() {
             <Package size={26} /> Journée
           </h1>
           <p className="font-mono text-xs text-foreground/60 mt-1">
-            Poste d'expédition — préparer, empaqueter, étiqueter, envoyer. Cutoff 13 h (HE).
+            Poste d'expédition : préparer, empaqueter, étiqueter, envoyer. Cutoff 13 h (HE).
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -74,7 +74,7 @@ export default function AdminFulfillment() {
 
       {counts.overdue > 0 && (
         <div className="mt-6 flex items-center gap-2 bg-red-50 border border-red-300 text-red-900 px-4 py-3 font-mono text-xs" data-testid="fulfil-overdue-banner">
-          <AlertTriangle size={15} /> {counts.overdue} commande(s) en retard — lot antérieur non expédié. Traiter en priorité.
+          <AlertTriangle size={15} /> {counts.overdue} commande(s) en retard : lot antérieur non expédié. Traiter en priorité.
         </div>
       )}
 
@@ -129,7 +129,7 @@ export default function AdminFulfillment() {
                         {o.is_overdue && <span className="font-mono text-[10px] uppercase text-red-600 flex items-center gap-1"><AlertTriangle size={10} /> retard</span>}
                       </div>
                       <div className="font-mono text-[11px] text-foreground/50 mt-1 flex items-center gap-1">
-                        <MapPin size={10} /> {o.city || "—"}, {o.province || ""} · {o.units} u. · {o.items} art.
+                        <MapPin size={10} /> {o.city || "-"}, {o.province || ""} · {o.units} u. · {o.items} art.
                       </div>
                       <div className="font-mono text-[10px] uppercase tracking-wider text-ink/60 mt-2">
                         {openId === o.id ? "Masquer" : "Voir les produits"}

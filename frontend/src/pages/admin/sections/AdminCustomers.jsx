@@ -74,7 +74,7 @@ export default function AdminCustomers() {
   }, [rows, seg, q, sort]);
 
   const money = (n) => `$${Number(n || 0).toFixed(2)}`;
-  const dateShort = (iso) => (iso ? iso.slice(0, 10) : "—");
+  const dateShort = (iso) => (iso ? iso.slice(0, 10) : "-");
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -137,7 +137,7 @@ export default function AdminCustomers() {
                   <tr key={c.id} className="border-t border-ash/50 hover:bg-clinical/50 cursor-pointer"
                     onClick={() => openDetail(c.id)} data-testid={`customer-${c.id}`}>
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-nordfjord">{c.name || "—"}</div>
+                      <div className="font-semibold text-nordfjord">{c.name || "-"}</div>
                       <div className="font-data text-[11px] text-glacier">{c.email}</div>
                     </td>
                     <td className="px-4 py-3">
@@ -197,7 +197,7 @@ export default function AdminCustomers() {
             ) : detail.customer ? (
               <div className="p-5 space-y-5">
                 <div>
-                  <div className="font-display text-xl font-bold text-nordfjord">{detail.customer.name || "—"}</div>
+                  <div className="font-display text-xl font-bold text-nordfjord">{detail.customer.name || "-"}</div>
                   <div className="font-data text-xs text-glacier">{detail.customer.email}</div>
                   <div className="font-data text-[11px] text-glacier/70 mt-1">
                     {L("Inscrit le", "Joined")} {dateShort(detail.customer.created_at)}

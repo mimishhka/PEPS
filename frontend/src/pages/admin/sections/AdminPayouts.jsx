@@ -1,5 +1,5 @@
 // frontend/src/pages/admin/sections/AdminPayouts.jsx
-// Gestion dédiée des paiements affiliés (payouts) — flux NOWPayments semi-auto.
+// Gestion dédiée des paiements affiliés (payouts) : flux NOWPayments semi-auto.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DollarSign, Zap, ShieldCheck, RefreshCw, CheckCircle2, X, Send, Download, Search, FileText } from "lucide-react";
 import { toast } from "sonner";
@@ -16,11 +16,11 @@ const money = (n) => `$${Number(n || 0).toFixed(2)}`;
 // Illisible, et surtout inutilisable : deux generations du meme mois a une
 // minute d'intervalle ne se distinguent qu'a la seconde pres, qu'il faut donc
 // aller chercher au milieu de la chaine. La date ET l'heure sont necessaires
-// ici — la date seule ne separerait pas ces deux lignes.
+// ici : la date seule ne separerait pas ces deux lignes.
 const dateHeure = (iso) => {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = new Date(iso);
-  if (isNaN(d)) return "—";
+  if (isNaN(d)) return "-";
   return d.toLocaleString(undefined, {
     year: "numeric", month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit",
@@ -29,7 +29,7 @@ const dateHeure = (iso) => {
 
 /* Les NEUF statuts que le serveur produit, pas cinq.
  *
- * Il en manquait quatre, et le repli etait `STATUS.ready` — donc un versement
+ * Il en manquait quatre, et le repli etait `STATUS.ready` : donc un versement
  * en `review`, `paid_manual`, `dispatching` ou `queued_manual` s'affichait
  * « Pret ». Le cas le plus grave est `review` : ce statut existe justement
  * parce que le montant du versement ne correspond plus a ce qu'il couvre, et
@@ -65,7 +65,7 @@ const RUN_TYPE = {
 // d'emprunter l'apparence d'un autre. Un libelle brut se remarque et se
 // signale ; « Pret » sur un versement qui ne l'est pas ne se remarque jamais.
 const statutInconnu = (s) => ({
-  fr: s || "—", en: s || "—",
+  fr: s || "-", en: s || "-",
   cls: "bg-glacier/10 text-glacier border border-glacier/25",
 });
 
@@ -80,7 +80,7 @@ export default function AdminPayouts() {
   const [ref, setRef] = useState("");
   // Rapatries depuis l'onglet PAYOUTS d'Affiliates : envoi en lot, export CSV
   // et historique des executions. Deux entrees nommees « Payouts » portaient
-  // chacune la moitie des actions, et celle du menu — l'endroit evident —
+  // chacune la moitie des actions, et celle du menu : l'endroit evident -
   // n'avait ni le lot ni l'export. Deux ecrans sur le meme sujet finissent
   // toujours par diverger : « Marquer paye » existait deja en double, avec
   // deux boites de dialogue differentes.
@@ -127,7 +127,7 @@ export default function AdminPayouts() {
 
   const load = useCallback(async (filters = {}) => {
     try {
-      // Pilier A — recherche serveur : q (code/adresse/référence), status,
+      // Pilier A : recherche serveur : q (code/adresse/référence), status,
       // period. Sans filtres, comportement identique à avant (liste plate).
       const params = {};
       if (filters.q) params.q = filters.q;
@@ -329,8 +329,8 @@ export default function AdminPayouts() {
       });
       const ignorees = (data?.skipped || []).length;
       toast.success(ignorees
-        ? L(`${data.confirmed} confirmée(s) — ${ignorees} ignorée(s) : l'adresse a changé depuis l'export`,
-            `${data.confirmed} confirmed — ${ignorees} skipped: address changed since export`)
+        ? L(`${data.confirmed} confirmée(s) : ${ignorees} ignorée(s) : l'adresse a changé depuis l'export`,
+            `${data.confirmed} confirmed : ${ignorees} skipped: address changed since export`)
         : L(`${data?.confirmed ?? 0} adresse(s) confirmée(s)`, `${data?.confirmed ?? 0} address(es) confirmed`));
       loadListeBlanche();
     } catch (e) {
@@ -352,7 +352,7 @@ export default function AdminPayouts() {
     setBusy(p.id);
     try {
       const { data } = await api.post(`/admin/affiliates/payouts/${p.id}/execute`);
-      toast.success(L("Payout cree — saisissez le code 2FA recu par courriel.", "Payout created — enter the 2FA code from your email."));
+      toast.success(L("Payout cree : saisissez le code 2FA recu par courriel.", "Payout created : enter the 2FA code from your email."));
       setVerifyFor({ ...p, np_batch_id: data.np_batch_id });
       await load();
       await loadPaymentRuns();
@@ -410,11 +410,11 @@ export default function AdminPayouts() {
     };
   }, [payouts]);
 
-  // MODE SIMPLE — l'ecran ne montre que ce que vous utilisez vraiment.
+  // MODE SIMPLE : l'ecran ne montre que ce que vous utilisez vraiment.
   //
   // Neuf statuts, trois boutons, deux tableaux d'historique : tout cela existe
   // pour le versement automatique par NOWPayments. Vos donnees disent qu'il n'a
-  // jamais servi — aucun run d'envoi, aucun versement passe par `processing`
+  // jamais servi : aucun run d'envoi, aucun versement passe par `processing`
   // ou `paid`. Quatre des neuf statuts ne PEUVENT donc pas apparaitre, et
   // l'envoi en lot regroupe des versements qu'on n'envoie pas.
   //
@@ -456,7 +456,7 @@ export default function AdminPayouts() {
               Ils se lisaient « Envoyer · Exporter · Générer », soit l'inverse
               de l'ordre dans lequel on s'en sert. Et « Générer » portait la
               couleur d'action principale en permanence, y compris quand des
-              relevés attendaient déjà d'être envoyés — l'écran poussait donc à
+              relevés attendaient déjà d'être envoyés : l'écran poussait donc à
               regénérer plutôt qu'à payer.
               L'action principale est maintenant CELLE DE L'ÉTAPE EN COURS. */}
           <button onClick={runPayouts} disabled={busy === "run"} data-testid="run-payouts"
@@ -484,7 +484,7 @@ export default function AdminPayouts() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Stat label={L("Prêts à payer", "Ready to pay")}
-          value={totals.ready ? `${money(totals.readyCad)} CAD` : "—"}
+          value={totals.ready ? `${money(totals.readyCad)} CAD` : "-"}
           sub={totals.ready
             ? `${totals.ready} ${L("relevé(s)", "payout(s)")}`
             : L("rien à verser", "nothing to pay")}
@@ -507,7 +507,7 @@ export default function AdminPayouts() {
                 {L(`${listeBlanche.length} adresse(s) à ajouter à la liste blanche NOWPayments`,
                    `${listeBlanche.length} address(es) to add to the NOWPayments whitelist`)}
               </span>
-              {" — "}
+              {" : "}
               {L("NOWPayments refuse tout versement vers une adresse absente de sa liste blanche. Importez ce fichier dans votre compte, puis confirmez ici.",
                  "NOWPayments refuses any payout to an address missing from its whitelist. Import this file into your account, then confirm here.")}
             </p>
@@ -543,7 +543,7 @@ export default function AdminPayouts() {
             <span className="font-semibold text-nordfjord">
               {L("Mode simple", "Simple mode")}
             </span>
-            {" — "}
+            {" : "}
             {L("vous générez les relevés, puis vous marquez chacun payé une fois le virement fait. Tout ce qui concerne le versement automatique par NOWPayments est masqué : envoi en lot, 2FA, statuts intermédiaires. Il réapparaîtra tout seul au premier versement automatique.",
                "you generate the payouts, then mark each one paid once you have sent the transfer. Everything about automatic NOWPayments sending is hidden: batches, 2FA, intermediate statuses. It comes back on its own with the first automatic payout.")}
           </p>
@@ -554,7 +554,7 @@ export default function AdminPayouts() {
         </div>
       )}
 
-      {/* Barre de recherche / filtres (Pilier A) — recherche SERVEUR (code
+      {/* Barre de recherche / filtres (Pilier A) : recherche SERVEUR (code
           affilié, adresse de versement, référence) + statut + période. */}
       <div className="flex items-center gap-2 flex-wrap bg-white rounded-xl border border-ash p-3">
         <div className="relative flex-1 min-w-[220px]">
@@ -594,7 +594,7 @@ export default function AdminPayouts() {
           <p className="text-[12px] text-nordfjord">
             {L("Contenu du lot ", "Contents of batch ")}
             <span className="font-data font-bold">{qDebounced}</span>
-            {L(" — les autres versements sont masqués.", " — other payouts are hidden.")}
+            {L(" : les autres versements sont masqués.", " : other payouts are hidden.")}
           </p>
           <button onClick={() => { setQ(""); setQDebounced(""); }}
             data-testid="payouts-filtre-lot-effacer"
@@ -618,8 +618,8 @@ export default function AdminPayouts() {
                   && selection.size === payouts.filter((p) => p.status === "ready").length}
                 onChange={basculerTout}
                 data-testid="select-all" />
-              {L("Tout sélectionner — y compris les lignes hors écran",
-                 "Select all — including rows off screen")}
+              {L("Tout sélectionner : y compris les lignes hors écran",
+                 "Select all : including rows off screen")}
             </label>
           )}
           {payouts.map((p) => {
@@ -640,7 +640,7 @@ export default function AdminPayouts() {
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-display font-bold text-nordfjord">{p.affiliate_code || "—"}</span>
+                    <span className="font-display font-bold text-nordfjord">{p.affiliate_code || "-"}</span>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold font-data uppercase tracking-[0.08em] ${st.cls}`}>{L(st.fr, st.en)}</span>
                   </div>
                   <div className="font-data text-[11px] text-glacier mt-0.5">
@@ -651,19 +651,19 @@ export default function AdminPayouts() {
                   {/* SANS ADRESSE, RIEN NE PARTIRA.
                       Un relevé est créé même quand l'affilié n'a jamais renseigné
                       d'adresse de versement : il s'affiche « prêt », l'envoi
-                      échoue, et la seule issue est de le marquer payé à la main —
+                      échoue, et la seule issue est de le marquer payé à la main -
                       sans que l'écran ait jamais dit pourquoi. C'est exactement
                       ce qui s'est passé sur FITNES70. */}
                   {!String(p.payout_address || "").trim() && (
                     <p className="mt-1 inline-flex items-center gap-1.5 rounded-md bg-warning/10 border border-warning/30 px-2 py-0.5 text-[10.5px] text-warning"
                        data-testid={`payout-no-address-${p.id}`}>
-                      {L("Aucune adresse de versement — envoi automatique impossible",
-                         "No payout address — automatic sending impossible")}
+                      {L("Aucune adresse de versement : envoi automatique impossible",
+                         "No payout address : automatic sending impossible")}
                     </p>
                   )}
                   {/* Adresse presente mais pas encore confirmee en liste blanche :
                       NOWPayments refusera le versement. Un avertissement, pas un
-                      blocage — l'adresse a pu etre ajoutee a la main avant que
+                      blocage : l'adresse a pu etre ajoutee a la main avant que
                       cet ecran ne sache le suivre. */}
                   {String(p.payout_address || "").trim()
                     && listeBlanche.some((e) => e.address === String(p.payout_address).trim()) && (
@@ -678,7 +678,7 @@ export default function AdminPayouts() {
                     versement crypto : l'afficher via money() donnait « $180.00 »
                     sans qualification, lu naturellement comme des dollars
                     canadiens. Le montant envoye porte donc sa devise, et la base
-                    CAD — celle qui correspond a vos livres — apparait dessous
+                    CAD : celle qui correspond a vos livres : apparait dessous
                     avec le taux applique. */}
                 <div className="text-right shrink-0">
                   <div className="font-display font-bold text-nordfjord tabular-nums whitespace-nowrap">
@@ -745,8 +745,8 @@ export default function AdminPayouts() {
           « aucun cycle termine » ; un vide ne dit rien. */}
       <div className="rounded-xl border border-ash bg-white overflow-hidden" data-testid="cycles-passes">
           <p className="px-5 py-3 font-data text-[11px] uppercase tracking-[0.2em] text-nova border-b border-ash">
-            {L(`Cycles passés — délai de ${joursCycle} jours`,
-               `Past cycles — ${joursCycle}-day deadline`)}
+            {L(`Cycles passés : délai de ${joursCycle} jours`,
+               `Past cycles : ${joursCycle}-day deadline`)}
           </p>
           {tenue && (
             <p className="px-5 py-2.5 text-sm border-b border-ash/60" data-testid="cycles-tenue">
@@ -808,7 +808,7 @@ export default function AdminPayouts() {
                       {/* Deux nombres, pas un : l'annonce et la confirmation
                           n'informent pas de la meme chose. Compares au nombre
                           d'affilies du cycle, ils disent si quelqu'un est
-                          reste sans nouvelle — un courriel qui echoue le fait
+                          reste sans nouvelle : un courriel qui echoue le fait
                           en silence. */}
                       <span className={(c.notices_announced ?? 0) < c.affiliates ? "text-warning" : "text-glacier"}>
                         {L(`${c.notices_announced ?? 0}/${c.affiliates} annoncé`,
@@ -832,13 +832,13 @@ export default function AdminPayouts() {
       {/* Historique des generations. Il repond a une question precise, posee
           chaque mois : « est-ce que le planificateur a bien tourne ? ». Sans
           lui, une periode ratee ne se decouvre qu'en constatant l'absence de
-          versements — c'est-a-dire trop tard. */}
+          versements : c'est-a-dire trop tard. */}
       {runs.length > 0 && (
         <div className="rounded-xl border border-ash bg-white overflow-hidden" data-testid="payout-runs">
           <p className="px-5 py-3 font-data text-[11px] uppercase tracking-[0.2em] text-nova border-b border-ash">
             {/* « Générations récentes » et « Runs de paiement » : deux titres
                 qui ne disaient pas ce qu'ils contenaient. L'ecran employait
-                quatre mots — generation, releve, lot, run — pour deux idees :
+                quatre mots : generation, releve, lot, run : pour deux idees :
                 ce qu'on CALCULE, et ce qu'on ENVOIE. */}
             {L("Historique des calculs", "Calculation history")}
           </p>
@@ -876,7 +876,7 @@ export default function AdminPayouts() {
         </div>
       )}
 
-      {/* Historique des RUNS DE PAIEMENT — la traçabilité des ENVOIS, distincte
+      {/* Historique des RUNS DE PAIEMENT : la traçabilité des ENVOIS, distincte
           des générations ci-dessus. Chaque envoi groupé, unitaire ou
           régularisation manuelle reçoit un numéro NP-… ; ce panneau liste ces
           runs avec le nombre de versements et le total payé. */}
@@ -889,7 +889,7 @@ export default function AdminPayouts() {
             <table className="w-full text-sm">
               <tbody>
                 {paymentRuns.map((r) => {
-                  const rt = RUN_TYPE[r.type] || { fr: r.type || "—", en: r.type || "—" };
+                  const rt = RUN_TYPE[r.type] || { fr: r.type || "-", en: r.type || "-" };
                   return (
                     // UN LOT DOIT POUVOIR S'OUVRIR.
                     // La ligne annoncait « 3 versements » sans aucun moyen de
@@ -951,7 +951,7 @@ export default function AdminPayouts() {
         </Modal>
       )}
 
-      {/* Fiche de reconstitution (Pilier B) — la pièce de preuve : un versement
+      {/* Fiche de reconstitution (Pilier B) : la pièce de preuve : un versement
           n'est pas un montant isolé mais la somme de commissions approuvées.
           L'écart éventuel entre la somme des lignes et le montant du payout est
           affiché, pas caché. */}
@@ -965,7 +965,7 @@ export default function AdminPayouts() {
               <div className="flex justify-between gap-4">
                 <div>
                   <p className="font-data text-[11px] uppercase tracking-wider text-glacier">{L("Affilié", "Affiliate")}</p>
-                  <p className="font-display font-bold text-nordfjord">{detail.affiliate?.code || detail.payout?.affiliate_code || "—"}</p>
+                  <p className="font-display font-bold text-nordfjord">{detail.affiliate?.code || detail.payout?.affiliate_code || "-"}</p>
                   <p className="text-xs text-glacier">{detail.affiliate?.email || ""}</p>
                 </div>
                 <div className="text-right">
@@ -988,8 +988,8 @@ export default function AdminPayouts() {
 
               {detail.difference !== 0 && (
                 <div className={`rounded-lg border p-3 text-sm ${detail.difference < 0 ? "border-error/30 bg-error/5 text-error" : "border-warning/30 bg-warning/5 text-warning"}`}>
-                  {L(`Écart de ${money(Math.abs(detail.difference))} CAD entre les lignes et le montant du versement. Vérifiez la référence (${detail.payout?.reference || "—"}).`,
-                     `Difference of ${money(Math.abs(detail.difference))} CAD between lines and payout amount. Check the reference (${detail.payout?.reference || "—"}).`)}
+                  {L(`Écart de ${money(Math.abs(detail.difference))} CAD entre les lignes et le montant du versement. Vérifiez la référence (${detail.payout?.reference || "-"}).`,
+                     `Difference of ${money(Math.abs(detail.difference))} CAD between lines and payout amount. Check the reference (${detail.payout?.reference || "-"}).`)}
                 </div>
               )}
 
@@ -1005,8 +1005,8 @@ export default function AdminPayouts() {
 
               {detail.lines.length === 0 ? (
                 <p className="text-sm text-glacier py-4 text-center">
-                  {L("Aucune ligne rattachée — versement sans commissions détaillées (peut précéder la migration).",
-                     "No attached lines — payout without detailed commissions (may predate data migration).")}
+                  {L("Aucune ligne rattachée : versement sans commissions détaillées (peut précéder la migration).",
+                     "No attached lines : payout without detailed commissions (may predate data migration).")}
                 </p>
               ) : (
                 <div className="overflow-x-auto rounded-lg border border-ash">
@@ -1023,7 +1023,7 @@ export default function AdminPayouts() {
                     <tbody>
                       {detail.lines.map((r) => (
                         <tr key={r.id} className="border-b border-ash/50 last:border-0">
-                          <td className="px-3 py-2 font-data text-nordfjord">{r.order_number || "—"}</td>
+                          <td className="px-3 py-2 font-data text-nordfjord">{r.order_number || "-"}</td>
                           <td className="px-3 py-2 text-right tabular-nums">{money(r.base_amount)}</td>
                           <td className="px-3 py-2 text-right font-semibold tabular-nums">{money(r.commission_amount)}</td>
                           <td className="px-3 py-2">
@@ -1049,7 +1049,7 @@ export default function AdminPayouts() {
 function Stat({ label, value, sub, calme = false }) {
   // « 0 · $0.00 CAD » melangeait un compte et un montant dans une seule valeur,
   // et repetait un zero deja evident. Le montant devient la valeur, le compte
-  // passe en complement — et quand il n'y a rien a payer, la tuile s'efface au
+  // passe en complement : et quand il n'y a rien a payer, la tuile s'efface au
   // lieu d'annoncer deux zeros en gras.
   return (
     <div className="rounded-xl border border-ash bg-white px-4 py-3">

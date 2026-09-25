@@ -9,12 +9,12 @@ import { Entonnoir } from "./dashboard/Entonnoir";
 import { Affluence, Aire, Proportion } from "./dashboard/Graphes";
 
 // ---------------------------------------------------------------------------
-// Parti pris, après trois versions rejetées — et il tient en trois règles.
+// Parti pris, après trois versions rejetées : et il tient en trois règles.
 //
 // 1. UN SEUL CHIFFRE règne (Plausible, Mercury). Le revenu de la période
 //    occupe le haut de page ; tout le reste est secondaire, ou replié.
-// 2. Presque MONOCHROME (Vercel). La couleur signifie — rouge : ça urge,
-//    ambre : ça attend — elle ne décore jamais. Pas de pastilles partout, pas
+// 2. Presque MONOCHROME (Vercel). La couleur signifie : rouge : ça urge,
+//    ambre : ça attend : elle ne décore jamais. Pas de pastilles partout, pas
 //    de médaillons d'icônes, pas d'emoji.
 // 3. La hiérarchie passe par la TAILLE et l'ESPACE, pas par des boîtes. Des
 //    filets d'un pixel remplacent les cartes flottantes.
@@ -112,8 +112,8 @@ export default function AdminDashboard() {
         note: L("commandes à rouvrir", "orders to reopen") },
       { cle: "labels", urgent: true, vers: "dispatch", n: pulse.ops?.labels_failed || 0,
         titre: L("etiquettes refusees par Postes Canada", "labels refused by Canada Post"),
-        note: L("encaissees, non expediees — l'adresse est a corriger",
-                "paid, not shipped — the address needs fixing") },
+        note: L("encaissees, non expediees : l'adresse est a corriger",
+                "paid, not shipped : the address needs fixing") },
       { cle: "ship", urgent: false, vers: "dispatch", n: pulse.ops?.to_ship || 0,
         titre: L("commandes à expédier", "orders to ship"),
         note: L("payées, pas encore parties", "paid, not shipped") },
@@ -137,8 +137,8 @@ export default function AdminDashboard() {
           : `${argent(affiliate?.alerts?.payouts_ready_amount)} · ${L("exécution + 2FA", "execute + 2FA")}` },
       { cle: "notices", urgent: false, vers: "payouts", n: pulse.ops?.affiliate_notices_stuck || 0,
         titre: L("avis d'affiliés restés en échec", "affiliate notices stuck"),
-        note: L("au-delà de toute reprise — l'affilié n'a rien reçu",
-                "beyond any retry — the affiliate got nothing") },
+        note: L("au-delà de toute reprise : l'affilié n'a rien reçu",
+                "beyond any retry : the affiliate got nothing") },
       { cle: "emails", urgent: false, vers: "emails/outbox", n: pulse.ops?.emails_failed || 0,
         titre: L("courriels non délivrés", "undelivered emails"),
         note: L("après 5 tentatives", "after 5 attempts") },
@@ -237,7 +237,7 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* Trois chiffres secondaires, séparés par des filets — pas par des
+      {/* Trois chiffres secondaires, séparés par des filets : pas par des
           cartes : ce sont des compléments, ils ne doivent pas peser autant
           que le chiffre du haut. */}
       {enhanced && (
@@ -247,7 +247,7 @@ export default function AdminDashboard() {
               v: argent(enhanced.current.aov), d: enhanced.changes.aov,
               s: L("par commande payée", "per paid order") },
             { id: "kpi-conversion", l: L("Conversion", "Conversion"),
-              v: enhanced.conversion.conversion_rate != null ? `${enhanced.conversion.conversion_rate} %` : "—",
+              v: enhanced.conversion.conversion_rate != null ? `${enhanced.conversion.conversion_rate} %` : "-",
               s: L(`${enhanced.conversion.orders_paid} payées / ${enhanced.conversion.orders_created} créées`,
                    `${enhanced.conversion.orders_paid} paid / ${enhanced.conversion.orders_created} created`) },
             { id: "kpi-customers", l: L("Clients", "Customers"),
@@ -389,7 +389,7 @@ export default function AdminDashboard() {
                 </td>
                 <td className={cellule}>
                   <div className="truncate max-w-[16rem]">
-                    {o.shipping_address?.full_name || o.email || "—"}
+                    {o.shipping_address?.full_name || o.email || "-"}
                   </div>
                   {!compact && (
                     <div className="font-data text-[10px] text-glacier/70 truncate max-w-[16rem]">
@@ -400,7 +400,7 @@ export default function AdminDashboard() {
                 <td className={cellule}><StatusBadge status={o.payment_status} lang={lang} /></td>
                 <td className={cellule}><StatusBadge status={o.fulfillment_status} lang={lang} /></td>
                 <td className={`${cellule} text-right font-data tabular-nums`}>
-                  {o.total != null ? argent(o.total) : "—"}
+                  {o.total != null ? argent(o.total) : "-"}
                 </td>
                 <td className={`${cellule} text-right`}>
                   {/* L'action n'apparaît qu'au survol : une table dense ne doit
@@ -535,7 +535,7 @@ function Intitule({ children, compte }) {
 }
 
 // Un bloc replié. Ce qui ne se décide pas chaque matin ne doit pas occuper le
-// premier écran — mais doit rester à un clic.
+// premier écran : mais doit rester à un clic.
 function Repli({ titre, sous, testid, children }) {
   return (
     <details className="border-b border-ash/60 group" data-testid={testid}>

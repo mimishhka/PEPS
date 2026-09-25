@@ -1,14 +1,14 @@
-// frontend/src/components/TierLadder.jsx — NOUVEAU fichier.
+// frontend/src/components/TierLadder.jsx : NOUVEAU fichier.
 //
 // Échelle des paliers et simulateur de commission, portés depuis le document
 // du programme où ils existaient en maquette sans jamais avoir été construits.
 //
 // Deux choses que le tableau de bord ne disait pas :
 //
-//   — CE QUI VIENT ENSUITE. L'affilié voyait son palier et le montant restant,
+//   : CE QUI VIENT ENSUITE. L'affilié voyait son palier et le montant restant,
 //     jamais l'échelle entière. On ne se projette pas dans une progression
 //     dont on ignore la forme.
-//   — CE QU'UNE VENTE RAPPORTE VRAIMENT. Un taux en pourcentage ne parle pas ;
+//   : CE QU'UNE VENTE RAPPORTE VRAIMENT. Un taux en pourcentage ne parle pas ;
 //     un montant en dollars, oui. Le curseur transforme l'un en l'autre.
 //
 // Le barème vient du SERVEUR, jamais d'une copie locale : une échelle écrite
@@ -46,7 +46,7 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
       </div>
 
       {/* Dire ce que le tableau EST. Sans cette phrase, six montants alignés se
-          lisent comme six promesses simultanées, alors qu'un seul s'applique —
+          lisent comme six promesses simultanées, alors qu'un seul s'applique -
           celui du palier courant. Les autres montrent ce que la même vente
           rapporterait plus tard. */}
       <p className="text-[12px] text-glacier leading-relaxed mb-4">

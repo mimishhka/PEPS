@@ -152,7 +152,7 @@ export default function ProductDetail() {
     }
   };
 
-  // COA strictement au niveau variante — source de vérité unique : coa_status.
+  // COA strictement au niveau variante : source de vérité unique : coa_status.
   const coaStatus = selectedVariant?.coa_status || "none";
   // Les COA sont stockés en chemin relatif (/uploads/coa/…) : sans resolveAssetUrl
   // le lien viserait l'origine du frontend et renverrait 404 hors reverse proxy.
@@ -164,11 +164,11 @@ export default function ProductDetail() {
 
   const specs = [
     { k: lang === "fr" ? "PURETÉ (HPLC)" : "PURITY (HPLC)", v: product.purity },
-    { k: lang === "fr" ? "LOT ACTUEL" : "CURRENT LOT", v: selectedVariant?.coa_lot || product.coa_lot || "—" },
-    { k: lang === "fr" ? "MASSE MOLAIRE" : "MOLAR MASS", v: product.molecular_weight ? `${product.molecular_weight} g/mol` : "—" },
-    { k: "SKU", v: selectedVariant?.sku || "—" },
+    { k: lang === "fr" ? "LOT ACTUEL" : "CURRENT LOT", v: selectedVariant?.coa_lot || product.coa_lot || "-" },
+    { k: lang === "fr" ? "MASSE MOLAIRE" : "MOLAR MASS", v: product.molecular_weight ? `${product.molecular_weight} g/mol` : "-" },
+    { k: "SKU", v: selectedVariant?.sku || "-" },
     { k: lang === "fr" ? "FORME" : "FORM", v: lang === "fr" ? "Lyophilisé" : "Lyophilized" },
-    { k: "CAS", v: product.cas_number || "—" },
+    { k: "CAS", v: product.cas_number || "-" },
   ];
 
   return (
@@ -194,7 +194,7 @@ export default function ProductDetail() {
               />
             </div>
             {/* Rien sous la photo : l'image se suffit. L'etat du certificat se dit
-                dans la colonne de droite, la ou on decide d'acheter — encadre
+                dans la colonne de droite, la ou on decide d'acheter : encadre
                 « COA a venir », ou bouton de telechargement quand il existe. */}
           </div>
 
@@ -240,7 +240,7 @@ export default function ProductDetail() {
             )}
 
             {/* La fiche : les specifications en lignes fines, comme un rapport
-                de laboratoire calme — etiquette a gauche, valeur en mono a
+                de laboratoire calme : etiquette a gauche, valeur en mono a
                 droite, un filet sous chaque ligne. */}
             <div className="border-t border-ash mb-8">
               {specs.map((s) => (
@@ -302,7 +302,7 @@ export default function ProductDetail() {
             </div>
 
             <div className="bg-nordfjord text-clinical px-5 py-4 font-data text-[11px] uppercase tracking-[0.16em] leading-relaxed" data-testid="research-only-banner" style={{ borderRadius: "var(--r-m)" }}>
-              {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT — NON DESTINÉ À LA CONSOMMATION HUMAINE" : "FOR RESEARCH USE ONLY — NOT INTENDED FOR HUMAN CONSUMPTION"}
+              {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT : NON DESTINÉ À LA CONSOMMATION HUMAINE" : "FOR RESEARCH USE ONLY : NOT INTENDED FOR HUMAN CONSUMPTION"}
             </div>
 
             {affiliate?.code && (
@@ -325,8 +325,8 @@ export default function ProductDetail() {
                 <FileText size={15} className="text-warning mt-0.5 shrink-0" />
                 <p className="font-data text-[11px] uppercase tracking-[0.14em] text-nordfjord leading-relaxed">
                   {lang === "fr"
-                    ? "Le certificat d'analyse de ce lot est à venir. Vous pouvez commander dès maintenant — le COA sera publié dès sa réception."
-                    : "The certificate of analysis for this lot is coming. You can order now — the COA will be published as soon as it's received."}
+                    ? "Le certificat d'analyse de ce lot est à venir. Vous pouvez commander dès maintenant : le COA sera publié dès sa réception."
+                    : "The certificate of analysis for this lot is coming. You can order now : the COA will be published as soon as it's received."}
                 </p>
               </div>
             )}
@@ -397,7 +397,7 @@ export default function ProductDetail() {
                     </div>
                     <div className="flex items-center justify-between mt-2">
                       <span className="font-data text-[12px] text-nordfjord">
-                        {rprice ? `$${rprice.toFixed(2)}` : "—"}
+                        {rprice ? `$${rprice.toFixed(2)}` : "-"}
                       </span>
                       <span className={`w-2 h-2 rounded-full ${rstock ? "bg-success" : "bg-warning"}`} />
                     </div>

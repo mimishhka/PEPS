@@ -4,7 +4,7 @@
 // naît : un billet client (« mon flacon est arrivé cassé »), et l'écran
 // Remboursements (où l'on vient justement pour ça).
 //
-// Un seul composant, une seule requête d'ouverture — POST
+// Un seul composant, une seule requête d'ouverture : POST
 // /admin/orders/{id}/refund-case, le même appel que la fiche commande. Ce qui
 // change entre les deux usages, c'est uniquement D'OÙ viennent les commandes
 // proposées : la liste figée du client qui a écrit, ou une recherche libre.
@@ -70,8 +70,8 @@ export default function OuvrirDossier({
     setBusy(true);
     try {
       await api.post(`/admin/orders/${choisie}/refund-case`, { reason: motif.trim() });
-      toast.success(L("Dossier ouvert — à décider dans Remboursements",
-                      "Case opened — decide it in Refunds"));
+      toast.success(L("Dossier ouvert : à décider dans Remboursements",
+                      "Case opened : decide it in Refunds"));
       fermer();
       if (onDone) onDone();
     } catch (e) {
@@ -133,12 +133,12 @@ export default function OuvrirDossier({
           {/* Une commande qui ne peut pas recevoir de dossier reste VISIBLE
               mais non sélectionnable, avec la raison : la masquer ferait
               croire qu'elle n'existe pas. Le libellé est assemblé hors du
-              JSX — une <option> ne peut contenir que du texte. */}
+              JSX : une <option> ne peut contenir que du texte. */}
           {commandes.map((c) => {
             const parts = [c.order_number, argent(c.total), (c.created_at || "").slice(0, 10)];
             if (avecRecherche && c.email) parts.push(c.email);
             const libelleLigne = parts.join(" · ")
-              + (c.refund_blocked_reason ? ` — ${c.refund_blocked_reason}` : "");
+              + (c.refund_blocked_reason ? ` : ${c.refund_blocked_reason}` : "");
             return (
               <option key={c.id} value={c.id} disabled={!!c.refund_blocked_reason}>{libelleLigne}</option>
             );

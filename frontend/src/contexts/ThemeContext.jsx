@@ -1,8 +1,8 @@
-// frontend/src/contexts/ThemeContext.jsx — NOUVEAU fichier.
+// frontend/src/contexts/ThemeContext.jsx : NOUVEAU fichier.
 //
 // Mode jour / nuit.
 //
-// Trois états, pas deux : « clair », « sombre », et SYSTÈME — le défaut.
+// Trois états, pas deux : « clair », « sombre », et SYSTÈME : le défaut.
 // Quelqu'un dont le téléphone est en mode sombre retrouve le mode sombre sans
 // rien demander, et si ce réglage change en cours de route, la page suit. Un
 // simple booléen aurait perdu cette troisième possibilité, et forcé un choix
@@ -12,13 +12,13 @@
 // leur propre fond de page, et une classe sur <body> laisserait des bandes
 // claires au-delà du contenu lors du défilement.
 //
-// PORTÉE RESTREINTE. Le mode nuit ne vaut QUE pour les espaces personnels —
+// PORTÉE RESTREINTE. Le mode nuit ne vaut QUE pour les espaces personnels -
 // compte client, espace affilié, administration. La boutique publique garde
 // son apparence en toutes circonstances.
 //
 // Ce n'était pas le cas au départ : la classe suivait le réglage du système,
 // donc quelqu'un dont le téléphone est en mode sombre voyait la boutique
-// basculer sans l'avoir demandé — et le bandeau devenait illisible. Une
+// basculer sans l'avoir demandé : et le bandeau devenait illisible. Une
 // vitrine ne change pas d'aspect selon le réglage de qui la regarde.
 //
 // La décision de portée vit dans <PorteeDuTheme>, et non ici : elle a besoin
@@ -52,7 +52,7 @@ export function ThemeProvider({ children }) {
   const [choix, setChoix] = useState(lireChoix);
   const [sombreSysteme, setSombreSysteme] = useState(systemeSombre);
 
-  // Le réglage du système peut changer pendant la visite — coucher du soleil
+  // Le réglage du système peut changer pendant la visite : coucher du soleil
   // sur un téléphone, bascule manuelle sur un portable. On écoute plutôt que
   // de lire une fois au chargement.
   useEffect(() => {
@@ -96,8 +96,8 @@ export function useTheme() {
   return ctx;
 }
 
-// Les espaces où le mode nuit s'applique. Tout le reste — vitrine, catalogue,
-// panier, pages légales — reste en mode jour quoi qu'il arrive.
+// Les espaces où le mode nuit s'applique. Tout le reste : vitrine, catalogue,
+// panier, pages légales : reste en mode jour quoi qu'il arrive.
 const ESPACES_PERSONNELS = ["/account", "/affiliate"];
 
 export function estEspacePersonnel(chemin, cheminAdmin = "") {
@@ -109,7 +109,7 @@ export function estEspacePersonnel(chemin, cheminAdmin = "") {
   return bases.some((b) => p === b || p.startsWith(`${b}/`));
 }
 
-/* Applique — ou retire — la classe de thème selon la page courante.
+/* Applique : ou retire : la classe de thème selon la page courante.
  *
  * À monter DANS le routeur. Séparée du fournisseur parce qu'elle a besoin de
  * useLocation(), tandis que l'état du choix doit vivre au-dessus du routeur
@@ -118,8 +118,8 @@ export function PorteeDuTheme({ cheminAdmin = "" }) {
   const { sombre } = useTheme();
   const { pathname } = useLocation();
   // `cheminAdmin` vient d'App.js, qui détient la constante. Le déduire ici
-  // d'une variable d'environnement aurait renvoyé undefined — le préfixe de
-  // l'administration est écrit en dur, pas configuré — et l'administration
+  // d'une variable d'environnement aurait renvoyé undefined : le préfixe de
+  // l'administration est écrit en dur, pas configuré : et l'administration
   // aurait perdu le thème sans que rien ne le signale.
   const actif = sombre && estEspacePersonnel(pathname, cheminAdmin);
 

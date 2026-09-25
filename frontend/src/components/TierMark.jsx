@@ -1,11 +1,11 @@
-// frontend/src/components/TierMark.jsx — NOUVEAU fichier.
+// frontend/src/components/TierMark.jsx : NOUVEAU fichier.
 //
 // Symbole de palier, dessiné et non téléchargé.
 //
 // Aller chercher des images libres aurait coûté trois choses : une dépendance
 // à un service extérieur, une question de licence à porter indéfiniment, et
 // six pictogrammes sans rapport avec la marque. Ces marques-ci viennent du
-// logo FIRONOVA — l'hexagone et ses six sommets — et se colorent au palier.
+// logo FIRONOVA : l'hexagone et ses six sommets : et se colorent au palier.
 //
 // Le RANG SE LIT SANS LIRE LE NOM : un sommet allumé pour Standard, six pour
 // Diamant. C'est la seule information qu'un symbole de palier doit porter, et

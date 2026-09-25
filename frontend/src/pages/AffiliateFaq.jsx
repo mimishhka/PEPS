@@ -1,9 +1,9 @@
-// frontend/src/pages/AffiliateFaq.jsx — NOUVEAU fichier.
+// frontend/src/pages/AffiliateFaq.jsx : NOUVEAU fichier.
 //
 // Questions fréquentes du programme, RÉSERVÉES aux affiliés. Contrairement aux
 // conditions (/affiliate/terms), qui doivent rester publiques pour être
-// opposables, cette page répond à des questions d'exploitation — seuils,
-// délais, mécanique d'attribution — qui n'ont d'intérêt que pour un partenaire
+// opposables, cette page répond à des questions d'exploitation : seuils,
+// délais, mécanique d'attribution : qui n'ont d'intérêt que pour un partenaire
 // et n'ont pas à être indexées.
 //
 // Les réponses sont volontairement longues. Une réponse d'une ligne sur
@@ -28,7 +28,7 @@ const QA = [
       a: [
         "Ni l'un ni l'autre : votre code vaut tant que votre compte est actif, et votre lien de même.",
         "Mais la commission se gagne commande par commande : il faut que votre lien ait été cliqué, votre code QR scanné, ou votre code saisi, POUR CETTE COMMANDE-LÀ. Le clic ou le scan vaut pour la visite en cours ; ensuite, rien n'est retenu et votre contact doit saisir votre code.",
-        "Concrètement : un client arrivé par votre lien il y a deux ans, qui revient aujourd'hui directement sur le site et commande sans code, ne vous rapporte rien. Il figure toujours dans vos « clients apportés », mais cette liste est un historique — elle n'ouvre droit à aucune commission.",
+        "Concrètement : un client arrivé par votre lien il y a deux ans, qui revient aujourd'hui directement sur le site et commande sans code, ne vous rapporte rien. Il figure toujours dans vos « clients apportés », mais cette liste est un historique : elle n'ouvre droit à aucune commission.",
       ],
     },
     en: {
@@ -36,7 +36,7 @@ const QA = [
       a: [
         "Neither: your code is valid as long as your account is active, and so is your link.",
         "But a commission is earned order by order: your link must have been clicked, your QR code scanned, or your code entered, FOR THAT PARTICULAR ORDER. The click or scan counts for the current visit; after that nothing is remembered and your contact must enter your code.",
-        "In practice: a customer who arrived through your link two years ago, returning today straight to the site and ordering without a code, earns you nothing. They still appear in your “customers you brought in”, but that list is a record — it grants no commission.",
+        "In practice: a customer who arrived through your link two years ago, returning today straight to the site and ordering without a code, earns you nothing. They still appear in your “customers you brought in”, but that list is a record : it grants no commission.",
       ],
     },
   },
@@ -46,16 +46,16 @@ const QA = [
       q: "Un autre affilié peut-il me prendre mon client ?",
       a: [
         "Chaque commande se gagne séparément : personne ne « possède » un client.",
-        "Si votre client passe une fois par le lien ou le code d'un autre affilié, cette commande-là lui revient — il a déclenché cette vente, et il serait injuste qu'il travaille pour rien.",
-        "Il n'y a pas de rattachement durable : une commande passée sans lien ni code ne rapporte à personne. C'est la contrepartie de la règle — vous ne perdez jamais un client acquis, parce qu'aucun client n'est acquis d'avance.",
+        "Si votre client passe une fois par le lien ou le code d'un autre affilié, cette commande-là lui revient : il a déclenché cette vente, et il serait injuste qu'il travaille pour rien.",
+        "Il n'y a pas de rattachement durable : une commande passée sans lien ni code ne rapporte à personne. C'est la contrepartie de la règle : vous ne perdez jamais un client acquis, parce qu'aucun client n'est acquis d'avance.",
       ],
     },
     en: {
       q: "Can another affiliate take my customer?",
       a: [
         "Each order is earned separately: nobody “owns” a customer.",
-        "If your customer goes once through another affiliate's link or code, that order goes to them — they triggered that sale, and it would be unfair for them to work for nothing.",
-        "There is no permanent attachment: an order placed with no link and no code earns nobody anything. That is the other side of the rule — you never lose a customer you had won, because no customer is won in advance.",
+        "If your customer goes once through another affiliate's link or code, that order goes to them : they triggered that sale, and it would be unfair for them to work for nothing.",
+        "There is no permanent attachment: an order placed with no link and no code earns nobody anything. That is the other side of the rule : you never lose a customer you had won, because no customer is won in advance.",
       ],
     },
   },
@@ -65,16 +65,16 @@ const QA = [
       q: "Sur quel montant ma commission est-elle calculée ?",
       a: [
         "Sur le sous-total des produits après le rabais accordé à votre contact. La livraison et les taxes n'entrent jamais dans le calcul.",
-        "Exemple au palier Standard, à 10 % : une commande de 150 $ de produits, moins le rabais de 10 % de votre contact, donne une base de 135 $ — soit 13,50 $ de commission.",
-        "C'est cette base, et non le total payé par le client, qui apparaît partout dans votre tableau de bord. À noter : une commande passée sans votre code ni votre lien n'ouvre droit à aucune commission — il n'y a donc pas de base à calculer.",
+        "Exemple au palier Standard, à 10 % : une commande de 150 $ de produits, moins le rabais de 10 % de votre contact, donne une base de 135 $ : soit 13,50 $ de commission.",
+        "C'est cette base, et non le total payé par le client, qui apparaît partout dans votre tableau de bord. À noter : une commande passée sans votre code ni votre lien n'ouvre droit à aucune commission : il n'y a donc pas de base à calculer.",
       ],
     },
     en: {
       q: "What amount is my commission calculated on?",
       a: [
         "On the product subtotal after the discount granted to your contact. Shipping and taxes never enter the calculation.",
-        "Example at the Standard tier, 10%: a $150 product order, less your contact's 10% discount, gives a base of $135 — so $13.50 in commission.",
-        "It is this base, not the total paid by the customer, that appears throughout your dashboard. Note: an order placed without your code or link earns no commission at all — so there is no base to calculate.",
+        "Example at the Standard tier, 10%: a $150 product order, less your contact's 10% discount, gives a base of $135 : so $13.50 in commission.",
+        "It is this base, not the total paid by the customer, that appears throughout your dashboard. Note: an order placed without your code or link earns no commission at all : so there is no base to calculate.",
       ],
     },
   },
@@ -83,7 +83,7 @@ const QA = [
     fr: {
       q: "Comment mon palier est-il déterminé ?",
       a: [
-        "Par votre chiffre d'affaires validé des douze derniers mois glissants — une fenêtre qui avance avec vous, pas un total remis à zéro en janvier.",
+        "Par votre chiffre d'affaires validé des douze derniers mois glissants : une fenêtre qui avance avec vous, pas un total remis à zéro en janvier.",
         "Les paliers : Standard 10 % jusqu'à 2 000 $, Bronze 12 % à partir de 2 001 $, Silver 14 % à partir de 5 001 $, Gold 16 % à partir de 10 001 $, Platinum 18 % à partir de 20 001 $, Diamond 20 % à partir de 35 001 $.",
         "Le palier monte dès le seuil franchi, et le nouveau taux s'applique aux commandes suivantes. Les commissions déjà acquises ne sont pas recalculées.",
         // Réservé aux comptes SOUS ENTENTE. Une entente est confidentielle :
@@ -96,7 +96,7 @@ const QA = [
     en: {
       q: "How is my tier determined?",
       a: [
-        "By your validated revenue over the last twelve rolling months — a window that moves with you, not a total reset every January.",
+        "By your validated revenue over the last twelve rolling months : a window that moves with you, not a total reset every January.",
         "The tiers: Standard 10% up to $2,000, Bronze 12% from $2,001, Silver 14% from $5,001, Gold 16% from $10,001, Platinum 18% from $20,001, Diamond 20% from $35,001.",
         "The tier rises as soon as the threshold is crossed, and the new rate applies to subsequent orders. Commissions already earned are not recalculated.",
         { entente: true, texte: "Your rate resulting from an agreement, it does not follow this rule: it does not vary with your sales volume and never decreases automatically." },
@@ -108,7 +108,7 @@ const QA = [
     fr: {
       q: "Que veulent dire « en attente » et « validé » ?",
       a: [
-        "En attente : la commande est payée, mais les sept jours suivant la commande ne sont pas écoulés — ou une réclamation est en cours d'examen. La commission existe, elle n'est pas encore acquise.",
+        "En attente : la commande est payée, mais les sept jours suivant la commande ne sont pas écoulés : ou une réclamation est en cours d'examen. La commission existe, elle n'est pas encore acquise.",
         "Validé : le délai est passé, la commission vous est acquise et compte pour votre palier. C'est ce montant qui part au prochain versement.",
         "Ce délai correspond à la période durant laquelle une commande peut encore être annulée ou remboursée. Une commande remboursée après validation est reprise sur le solde suivant.",
       ],
@@ -116,7 +116,7 @@ const QA = [
     en: {
       q: "What do \"pending\" and \"validated\" mean?",
       a: [
-        "Pending: the order is paid, but the seven days following the order have not elapsed — or a claim is under review. The commission exists, it is not yet earned.",
+        "Pending: the order is paid, but the seven days following the order have not elapsed : or a claim is under review. The commission exists, it is not yet earned.",
         "Validated: the period has passed, the commission is yours and counts toward your tier. This is the amount that goes out at the next payout.",
         "That period matches the window during which an order can still be cancelled or refunded. An order refunded after validation is reversed against the next balance.",
       ],
@@ -130,7 +130,7 @@ const QA = [
         "Une fois par mois, pour les commissions validées, sous réserve d'un solde atteignant 25 $ CAD.",
         "En dessous de ce seuil, rien n'est perdu : votre solde reste à votre crédit et s'ajoute au mois suivant jusqu'à l'atteindre.",
         "Le versement part en USDT ou USDC, selon votre choix, converti depuis le dollar canadien au taux officiel de la Banque du Canada le jour du paiement. Les frais de réseau sont déduits du montant versé.",
-        "Votre commission est due en dollars canadiens, et c'est ce montant que vous recevez. Si le jeton s'écarte du dollar américain — c'est arrivé à l'USDC en 2023, tombé à 0,87 $ — la quantité envoyée est ajustée en conséquence, pour que la valeur reçue reste proche de celle due. En cas d'écart trop important pour être fiable, le versement est reporté et votre solde conservé.",
+        "Votre commission est due en dollars canadiens, et c'est ce montant que vous recevez. Si le jeton s'écarte du dollar américain : c'est arrivé à l'USDC en 2023, tombé à 0,87 $ : la quantité envoyée est ajustée en conséquence, pour que la valeur reçue reste proche de celle due. En cas d'écart trop important pour être fiable, le versement est reporté et votre solde conservé.",
       ],
     },
     en: {
@@ -139,7 +139,7 @@ const QA = [
         "Once a month, for validated commissions, subject to a balance reaching CAD $25.",
         "Below that threshold nothing is lost: your balance stays to your credit and carries over month to month until it is reached.",
         "The payout goes out in USDT or USDC, at your choice, converted from Canadian dollars at the official Bank of Canada rate on the day of payment. Network fees are deducted from the amount paid.",
-        "Your commission is owed in Canadian dollars, and that is the amount you receive. If the token drifts from the US dollar — as USDC did in 2023, falling to $0.87 — the quantity sent is adjusted accordingly, so the value received stays close to what is owed. Where the gap is too large to be trusted, the payout is deferred and your balance kept.",
+        "Your commission is owed in Canadian dollars, and that is the amount you receive. If the token drifts from the US dollar : as USDC did in 2023, falling to $0.87 : the quantity sent is adjusted accordingly, so the value received stays close to what is owed. Where the gap is too large to be trusted, the payout is deferred and your balance kept.",
       ],
     },
   },
@@ -149,7 +149,7 @@ const QA = [
       q: "Quelle adresse de portefeuille dois-je fournir ?",
       a: [
         "Une adresse Ethereum, qui commence par 0x, ou une adresse Tron, qui commence par T. Le réseau est déduit de l'adresse : vous n'avez rien à choisir.",
-        "Les frais de réseau sont nettement plus faibles sur Tron — un point qui compte si vos versements sont proches du seuil minimum.",
+        "Les frais de réseau sont nettement plus faibles sur Tron : un point qui compte si vos versements sont proches du seuil minimum.",
         "Vérifiez que votre portefeuille accepte bien le réseau correspondant. Une adresse valide sur un autre réseau entraîne une perte définitive des fonds : une transaction en chaîne de blocs ne peut pas être annulée.",
       ],
     },
@@ -157,7 +157,7 @@ const QA = [
       q: "Which wallet address should I provide?",
       a: [
         "An Ethereum address, starting with 0x, or a Tron address, starting with T. The network is derived from the address: you have nothing to choose.",
-        "Network fees are markedly lower on Tron — which matters if your payouts sit close to the minimum threshold.",
+        "Network fees are markedly lower on Tron : which matters if your payouts sit close to the minimum threshold.",
         "Check that your wallet accepts the corresponding network. A valid address on another network results in permanent loss of funds: a blockchain transaction cannot be reversed.",
       ],
     },
@@ -168,7 +168,7 @@ const QA = [
       q: "Puis-je commander avec mon propre code ?",
       a: [
         "Oui. Votre code vous donne le même rabais qu'à vos contacts, et la commande vous rapporte votre commission au taux de votre palier, comme n'importe quelle autre.",
-        "Vous cumulez donc les deux sur vos propres achats : le rabais au moment de payer, la commission ensuite. Rien à demander, rien de particulier à faire — saisissez votre code au paiement.",
+        "Vous cumulez donc les deux sur vos propres achats : le rabais au moment de payer, la commission ensuite. Rien à demander, rien de particulier à faire : saisissez votre code au paiement.",
         "Ces commandes comptent aussi dans votre chiffre d'affaires, donc elles font progresser votre palier.",
       ],
     },
@@ -176,7 +176,7 @@ const QA = [
       q: "Can I order using my own code?",
       a: [
         "Yes. Your code gives you the same discount as your contacts, and the order earns you your commission at your tier rate, like any other.",
-        "So you get both on your own purchases: the discount when you pay, the commission afterwards. Nothing to request, nothing special to do — just enter your code at checkout.",
+        "So you get both on your own purchases: the discount when you pay, the commission afterwards. Nothing to request, nothing special to do : just enter your code at checkout.",
         "These orders also count towards your revenue, so they move you up the tiers.",
       ],
     },
@@ -219,7 +219,7 @@ export default function AffiliateFaq() {
   // La condition disait `403 || !affiliate` : elle se déclenchait donc aussi
   // sur un 500, un délai dépassé ou une coupure de dix secondes. Un affilié
   // actif qui cliquait « Questions fréquentes » depuis son tableau de bord
-  // pendant un incident lisait « Cette page est réservée aux affiliés — le
+  // pendant un incident lisait « Cette page est réservée aux affiliés : le
   // programme se fait sur invitation », avec un lien de retour à l'accueil. Il
   // pouvait raisonnablement en conclure que son compte avait été fermé.
   //
@@ -298,7 +298,7 @@ export default function AffiliateFaq() {
                   {t.q}
                 </h2>
                 <div className="mt-2 space-y-3 text-sm text-glacier leading-relaxed">
-                  {/* Un paragraphe peut être une chaîne — visible par tous —
+                  {/* Un paragraphe peut être une chaîne : visible par tous -
                       ou un objet { entente: true }, réservé aux comptes sous
                       entente. Une entente est confidentielle : son existence
                       même ne se divulgue pas, et un affilié au barème ne doit

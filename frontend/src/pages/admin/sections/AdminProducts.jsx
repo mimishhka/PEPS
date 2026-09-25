@@ -10,7 +10,7 @@ const CATEGORIES = ["healing", "gh-secretagogues", "weight-loss", "cognitive", "
 
 // L'etat d'un produit, calcule a un SEUL endroit : le badge de la ligne et le
 // filtre le lisent tous les deux. Definis deux fois, ils auraient fini par se
-// contredire — un produit affiche « actif » mais absent du filtre « actif ».
+// contredire : un produit affiche « actif » mais absent du filtre « actif ».
 //   masque  : retire de la boutique
 //   rupture : plus rien a vendre
 //   partiel : se vend, mais pas dans tous ses formats
@@ -45,7 +45,7 @@ export default function AdminProducts() {
     .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message));
   useEffect(() => { load(); }, []);
 
-  // Demandes de réapprovisionnement — l'endpoint collectait ces inscriptions
+  // Demandes de réapprovisionnement : l'endpoint collectait ces inscriptions
   // depuis le début sans qu'aucun écran ne les montre. Des clients demandaient
   // à être prévenus du retour d'un produit, et personne ne le voyait.
   useEffect(() => {
@@ -55,7 +55,7 @@ export default function AdminProducts() {
   }, []);
 
   // Regroupées par produit : la liste brute est une inscription par personne,
-  // ce qui noierait l'information utile — quel produit fait attendre, et
+  // ce qui noierait l'information utile : quel produit fait attendre, et
   // combien de monde.
   const attentesParProduit = attentes.reduce((acc, a) => {
     acc[a.product_id] = (acc[a.product_id] || 0) + 1;
@@ -122,7 +122,7 @@ export default function AdminProducts() {
             <div className="mt-3 border border-nova/40 bg-nova/5 px-4 py-3" data-testid="restock-requests">
               <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-nova">
                 {L("Demandes de réapprovisionnement", "Back-in-stock requests")}
-                {" — "}{attentes.length} {L("inscription(s)", "subscriber(s)")}
+                {" : "}{attentes.length} {L("inscription(s)", "subscriber(s)")}
               </div>
               <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
                 {Object.entries(attentesParProduit)
@@ -304,7 +304,7 @@ export default function AdminProducts() {
   );
 }
 
-// Poids d'une unite quand rien n'est saisi — la meme valeur que le backend
+// Poids d'une unite quand rien n'est saisi : la meme valeur que le backend
 // (POIDS_PRODUIT_DEFAUT_G). Toujours modifiable produit par produit.
 const POIDS_DEFAUT_G = 0.3;
 
@@ -368,14 +368,14 @@ function ProductEditor({ product, setProduct, onSave, onCancel }) {
                 <VariantRow key={i} index={i} variant={v} onChange={(patch) => setVariant(i, patch)} onRemove={() => removeVariant(i)} />
               ))}
               {!product.variants?.length && (
-                <div className="px-4 py-6 text-center font-mono text-xs text-foreground/50">No variants yet — at least one is required.</div>
+                <div className="px-4 py-6 text-center font-mono text-xs text-foreground/50">No variants yet : at least one is required.</div>
               )}
             </div>
           </div>
 
           <Section title="Lab">
             <Toggle checked={product.lab_tested} onChange={(c) => setProduct({ ...product, lab_tested: c })} label="Mark as Lab Tested" test="f-lab-tested" />
-            <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-foreground/50 mt-2">COA files are managed per variant below — each dosage carries its own certificate.</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-foreground/50 mt-2">COA files are managed per variant below : each dosage carries its own certificate.</p>
           </Section>
 
           <Section title="Visibility & Stock">
@@ -453,7 +453,7 @@ function VariantRow({ index, variant, onChange, onRemove }) {
             <div className="font-mono text-[10px] text-foreground/60 uppercase tracking-[0.15em]">
               Applies when stock is 0 OR the variant is marked COA Pending / Coming Soon.
             </div>
-            <F label="Estimated delay message" placeholder="Ships in 3–4 weeks"
+            <F label="Estimated delay message" placeholder="Ships in 3-4 weeks"
                value={variant.preorder_delay_message} onChange={(v) => onChange({ preorder_delay_message: v })}
                test={`v-preorder-delay-${index}`} />
             <Grid2>
@@ -631,7 +631,7 @@ function CoaStatusField({ value, hasFile, onChange, test }) {
   const L = useL();
   const opts = [
     { v: "none", label: "No COA / not shown" },
-    { v: "pending", label: "COA pending — coming soon (still purchasable)" },
+    { v: "pending", label: "COA pending : coming soon (still purchasable)" },
     { v: "available", label: "COA available (file required)" },
   ];
   const warnNoFile = value === "available" && !hasFile;
@@ -682,7 +682,7 @@ function Toggle({ checked, onChange, label, test, compact = false }) {
 
 
 // ---------------------------------------------------------------------------
-// Quick Restock modal — atomic per-variant delta with audit history.
+// Quick Restock modal : atomic per-variant delta with audit history.
 // Backend: POST /admin/products/{id}/restock, GET /admin/products/{id}/stock-history
 // ---------------------------------------------------------------------------
 function RestockModal({ product, onClose, onDone }) {
@@ -885,7 +885,7 @@ function RestockModal({ product, onClose, onDone }) {
                         <td className="py-3 text-right font-mono text-sm font-bold" data-testid={`restock-new-total-${key}`}>
                           {delta > 0 ? (
                             insufficient
-                              ? <span className="text-red-600">— </span>
+                              ? <span className="text-red-600">- </span>
                               : <span className={accentClasses.text}>{next}</span>
                           ) : <span className="text-foreground/40">{next}</span>}
                         </td>
@@ -960,11 +960,11 @@ function RestockModal({ product, onClose, onDone }) {
                               {m.source === "csv_bulk" ? "csv" : (isRestock ? "restock" : "adjust")}
                             </span>
                           </td>
-                          <td className="py-2">{m.variant_name || <span className="text-foreground/40">—</span>}</td>
+                          <td className="py-2">{m.variant_name || <span className="text-foreground/40">-</span>}</td>
                           <td className={`py-2 text-right font-mono font-bold ${m.delta > 0 ? "text-emerald-700" : "text-amber-700"}`}>{m.delta > 0 ? "+" : ""}{m.delta}</td>
                           <td className="py-2 text-right font-mono text-foreground/60">{m.stock_before} → {m.stock_after}</td>
-                          <td className="py-2 font-mono text-foreground/60">{m.admin_email || "—"}</td>
-                          <td className="py-2 text-foreground/70">{m.reason || <span className="text-foreground/40">—</span>}</td>
+                          <td className="py-2 font-mono text-foreground/60">{m.admin_email || "-"}</td>
+                          <td className="py-2 text-foreground/70">{m.reason || <span className="text-foreground/40">-</span>}</td>
                         </tr>
                       );
                     })}
@@ -999,7 +999,7 @@ function RestockModal({ product, onClose, onDone }) {
 }
 
 // ---------------------------------------------------------------------------
-// Bulk Restock CSV modal — client-side parse + POST /admin/products/bulk-restock
+// Bulk Restock CSV modal : client-side parse + POST /admin/products/bulk-restock
 // CSV format: sku,quantity[,reason]  OR  product_slug,variant_name,quantity[,reason]
 // ---------------------------------------------------------------------------
 function BulkRestockCSVModal({ onClose, onDone }) {
@@ -1146,11 +1146,11 @@ tb-500-5mg,5.0mg,25
                       {rows.slice(0, 50).map((r) => (
                         <tr key={r.line} className="border-b border-ink/5">
                           <td className="py-2 font-mono text-foreground/60">{r.line}</td>
-                          <td className="py-2 font-mono">{r.sku || <span className="text-foreground/40">—</span>}</td>
-                          <td className="py-2 font-mono">{r.product_slug || <span className="text-foreground/40">—</span>}</td>
-                          <td className="py-2 font-mono">{r.variant_name || <span className="text-foreground/40">—</span>}</td>
+                          <td className="py-2 font-mono">{r.sku || <span className="text-foreground/40">-</span>}</td>
+                          <td className="py-2 font-mono">{r.product_slug || <span className="text-foreground/40">-</span>}</td>
+                          <td className="py-2 font-mono">{r.variant_name || <span className="text-foreground/40">-</span>}</td>
                           <td className={`py-2 text-right font-mono font-bold ${r.quantity > 0 ? "text-emerald-700" : "text-amber-700"}`}>{r.quantity > 0 ? "+" : ""}{r.quantity}</td>
-                          <td className="py-2 text-foreground/70">{r.note || <span className="text-foreground/40">—</span>}</td>
+                          <td className="py-2 text-foreground/70">{r.note || <span className="text-foreground/40">-</span>}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1199,7 +1199,7 @@ tb-500-5mg,5.0mg,25
                       {result.failed.map((f, i) => (
                         <tr key={i} className="border-b border-ink/5">
                           <td className="py-2 font-mono">{f.line}</td>
-                          <td className="py-2 font-mono">{f.sku || f.product_slug || "—"}</td>
+                          <td className="py-2 font-mono">{f.sku || f.product_slug || "-"}</td>
                           <td className="py-2 text-red-700">{f.reason}{f.current != null && ` (stock=${f.current}, req=${f.requested})`}</td>
                         </tr>
                       ))}

@@ -18,8 +18,8 @@ const GROUPS = [
         id: "free-shipping",
         q: { en: "Do you offer free shipping?", fr: "Offrez-vous la livraison gratuite ?" },
         a: {
-          en: "Yes — shipping is free on all orders of $200 or more within Canada. Below that amount, a flat rate of $20 applies, calculated automatically at checkout.",
-          fr: "Oui — la livraison est gratuite pour toute commande de 200 $ et plus au Canada. En dessous de ce montant, un tarif fixe de 20 $ s'applique, calculé automatiquement au moment du paiement.",
+          en: "Yes : shipping is free on all orders of $200 or more within Canada. Below that amount, a flat rate of $20 applies, calculated automatically at checkout.",
+          fr: "Oui : la livraison est gratuite pour toute commande de 200 $ et plus au Canada. En dessous de ce montant, un tarif fixe de 20 $ s'applique, calculé automatiquement au moment du paiement.",
         },
       },
       {
@@ -136,8 +136,8 @@ const GROUPS = [
         id: "crypto",
         q: { en: "Do you accept crypto?", fr: "Acceptez-vous les cryptomonnaies ?" },
         a: {
-          en: "Yes — via NOWPayments. BTC, ETH, USDT, LTC, SOL and 100+ other cryptocurrencies are supported, with instant on-chain confirmations.",
-          fr: "Oui — via NOWPayments. BTC, ETH, USDT, LTC, SOL et plus de 100 autres cryptomonnaies sont supportées, avec confirmations instantanées sur la chaîne.",
+          en: "Yes : via NOWPayments. BTC, ETH, USDT, LTC, SOL and 100+ other cryptocurrencies are supported, with instant on-chain confirmations.",
+          fr: "Oui : via NOWPayments. BTC, ETH, USDT, LTC, SOL et plus de 100 autres cryptomonnaies sont supportées, avec confirmations instantanées sur la chaîne.",
         },
       },
       {
@@ -159,8 +159,8 @@ const GROUPS = [
         id: "cancel",
         q: { en: "Can I cancel my order?", fr: "Puis-je annuler ma commande ?" },
         a: {
-          en: "Yes — as long as your order has not shipped yet, contact us and we will cancel it and process your refund once confirmed.",
-          fr: "Oui — tant que votre commande n'a pas encore été expédiée, contactez-nous et nous l'annulerons puis traiterons votre remboursement une fois la confirmation faite.",
+          en: "Yes : as long as your order has not shipped yet, contact us and we will cancel it and process your refund once confirmed.",
+          fr: "Oui : tant que votre commande n'a pas encore été expédiée, contactez-nous et nous l'annulerons puis traiterons votre remboursement une fois la confirmation faite.",
         },
       },
       {
@@ -191,8 +191,8 @@ const GROUPS = [
         id: "bulk",
         q: { en: "What about bulk or special orders?", fr: "Et pour les commandes en gros ou spéciales ?" },
         a: {
-          en: "For bulk or special orders, contact us directly — our team will be glad to help with any specific request.",
-          fr: "Pour les commandes en gros ou spéciales, contactez-nous directement — notre équipe se fera un plaisir de répondre à toute demande particulière.",
+          en: "For bulk or special orders, contact us directly : our team will be glad to help with any specific request.",
+          fr: "Pour les commandes en gros ou spéciales, contactez-nous directement : notre équipe se fera un plaisir de répondre à toute demande particulière.",
         },
       },
     ],

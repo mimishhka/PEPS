@@ -1,7 +1,7 @@
 // frontend/src/components/ErrorBoundary.jsx
 // Capture toute erreur de rendu React et affiche une page propre au lieu d'un
 // écran blanc. Bilingue FR/EN, identité NOVA. Composant de classe (obligatoire
-// pour componentDidCatch — les hooks ne peuvent pas capturer les erreurs enfant).
+// pour componentDidCatch : les hooks ne peuvent pas capturer les erreurs enfant).
 import React from "react";
 
 export default class ErrorBoundary extends React.Component {
@@ -16,7 +16,7 @@ export default class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     // Journalisation locale. En prod, on pourrait relayer vers un service
-    // (Sentry, etc.) ici — mais jamais exposer la stack à l'utilisateur.
+    // (Sentry, etc.) ici : mais jamais exposer la stack à l'utilisateur.
     // eslint-disable-next-line no-console
     console.error("[ErrorBoundary]", error, info?.componentStack);
   }

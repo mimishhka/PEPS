@@ -1,4 +1,4 @@
-// frontend/src/pages/Account.jsx — Mon Compte étendu (identité Fironova).
+// frontend/src/pages/Account.jsx : Mon Compte étendu (identité Fironova).
 import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -48,7 +48,7 @@ export default function Account() {
   const { user, logout, refresh } = useAuth();
   const { t, lang } = useLang();
   const navigate = useNavigate();
-  // L'onglet peut s'ouvrir par l'adresse — ?tab=support — pour que le lien
+  // L'onglet peut s'ouvrir par l'adresse : ?tab=support : pour que le lien
   // du courriel « nous avons répondu à votre demande » mène droit au fil.
   const [tab, setTab] = useState(() => {
     try {

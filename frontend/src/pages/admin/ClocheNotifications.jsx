@@ -16,7 +16,7 @@ export function ClocheNotifications({ pouls, signaux, basePath, L, argent, surAc
   const boite = useRef(null);
 
   // Un panneau qui ne se ferme pas au clic à côté oblige à revenir chercher
-  // sa petite croix — on le referme donc comme tout le monde s'y attend.
+  // sa petite croix : on le referme donc comme tout le monde s'y attend.
   useEffect(() => {
     if (!ouvert) return undefined;
     const dehors = (e) => { if (boite.current && !boite.current.contains(e.target)) setOuvert(false); };

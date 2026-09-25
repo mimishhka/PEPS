@@ -9,7 +9,7 @@ function hueFor(slug = "") {
 }
 
 /**
- * ProductImage — renders the product's stored image, falling back to the
+ * ProductImage : renders the product's stored image, falling back to the
  * brand VialArt SVG on load error or missing URL. Keeps every product tile
  * looking good even when an uploaded file has gone missing on disk.
  */

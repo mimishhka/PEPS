@@ -104,7 +104,7 @@ export default function AdminSubscribers() {
               <tr key={r.id} className="border-b border-ash last:border-0" data-testid={`subscriber-row-${r.id}`}>
                 <td className="px-4 py-3 font-mono text-xs text-ink">{r.email}</td>
                 <td className="px-4 py-3 font-mono text-xs uppercase text-glacier">{r.lang}</td>
-                <td className="px-4 py-3 font-mono text-xs text-glacier">{r.source || "—"}</td>
+                <td className="px-4 py-3 font-mono text-xs text-glacier">{r.source || "-"}</td>
                 <td className="px-4 py-3">
                   <span className={`rounded-full font-mono text-[10px] uppercase tracking-[0.2em] px-2.5 py-1 border ${
                     r.status === "subscribed" ? "bg-nordfjord text-white border-nordfjord" : "border-ash text-glacier"}`}>
@@ -114,11 +114,11 @@ export default function AdminSubscribers() {
                 <td className="px-4 py-3">
                   {r.converted
                     ? <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#2E9E6B]">Registered</span>
-                    : <span className="font-mono text-[10px] text-glacier">—</span>}
+                    : <span className="font-mono text-[10px] text-glacier">-</span>}
                 </td>
                 {/* consent_at + consent_ip = la preuve exigée en cas de plainte CASL */}
                 <td className="px-4 py-3 font-mono text-[10px] text-glacier">
-                  {r.consent_at ? `${String(r.consent_at).slice(0, 10)} · ${r.consent_ip || "—"}` : "—"}
+                  {r.consent_at ? `${String(r.consent_at).slice(0, 10)} · ${r.consent_ip || "-"}` : "-"}
                 </td>
               </tr>
             ))}

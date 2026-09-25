@@ -44,7 +44,7 @@ export function AuthProvider({ children }) {
    *
    * Mesure faite dans le navigateur : SIX requetes par seconde vers
    * /api/auth/me, par onglet ouvert, sans fin. Invisible du lint, du build et
-   * des tests — le code est parfaitement valide, c'est son comportement qui
+   * des tests : le code est parfaitement valide, c'est son comportement qui
    * s'emballe. Cote serveur, cela n'apparaissait que comme un flot de
    * « GET /api/auth/me 200 » dans les journaux, facile a prendre pour du
    * trafic normal.
@@ -103,7 +103,7 @@ export function AuthProvider({ children }) {
     }
   }, [emitSessionRestored]);
 
-  // `identite` porte { first_name, last_name } — separes depuis que le
+  // `identite` porte { first_name, last_name } : separes depuis que le
   // formulaire les demande distinctement, pour pouvoir s'adresser aux gens par
   // leur prenom sans deviner ou couper un nom complet.
   const register = useCallback(async (identite, email, password) => {
@@ -117,7 +117,7 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // Magic link — envoie l'email (create=true pour l'inscription passwordless).
+  // Magic link : envoie l'email (create=true pour l'inscription passwordless).
   const requestMagic = useCallback(async ({ email, first_name, last_name, create, lang }) => {
     try {
       const { data } = await api.post("/auth/magic/request", {
@@ -125,7 +125,7 @@ export function AuthProvider({ children }) {
         create: !!create, lang: lang || "fr", website: "",
       });
       // `existing` : inscription demandée sur une adresse déjà inscrite. Aucun
-      // courriel n'est parti — l'écran doit donc orienter vers la connexion
+      // courriel n'est parti : l'écran doit donc orienter vers la connexion
       // plutôt qu'annoncer un envoi qui n'a pas eu lieu.
       return { ok: true, existing: Boolean(data?.existing) };
     } catch (e) {
@@ -133,7 +133,7 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // Magic link — échange le token du lien contre une session (cookie posé côté backend).
+  // Magic link : échange le token du lien contre une session (cookie posé côté backend).
   const verifyMagic = useCallback(async (token) => {
     try {
       const { data } = await api.post("/auth/magic/verify", { token });

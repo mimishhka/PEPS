@@ -1,6 +1,6 @@
 // frontend/src/components/AffiliateSupport.jsx
 //
-// Billets d'assistance — côté affilié, et désormais côté client aussi
+// Billets d'assistance : côté affilié, et désormais côté client aussi
 // (voir CustomerSupport.jsx, qui ne fait que régler les props).
 //
 // Le parti pris est la transparence : quelqu'un qui écrit doit savoir sous
@@ -8,8 +8,8 @@
 // l'état inquiète davantage qu'un courriel resté sans réponse, parce qu'on le
 // voit et qu'on ne peut rien en faire.
 //
-// Les statuts disent donc ce qu'ils SIGNIFIENT — « en attente de réponse »
-// plutôt que « open » — et le délai annoncé est en jours OUVRABLES. Un billet
+// Les statuts disent donc ce qu'ils SIGNIFIENT : « en attente de réponse »
+// plutôt que « open » : et le délai annoncé est en jours OUVRABLES. Un billet
 // déposé vendredi soir échoirait dimanche en heures, ce que personne ne tient,
 // et une promesse écrite non tenue vaut moins que pas de promesse.
 //
@@ -35,7 +35,7 @@ const ETATS = {
 };
 
 function quand(iso, lang) {
-  if (!iso) return "—";
+  if (!iso) return "-";
   return new Date(iso).toLocaleString(lang === "fr" ? "fr-CA" : "en-CA", {
     day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
   });
@@ -44,7 +44,7 @@ function quand(iso, lang) {
 export default function AffiliateSupport({
   L, lang,
   base = "/affiliate/tickets",
-  // L'affilié joint la page d'où il écrit ; un client, non — son billet n'est
+  // L'affilié joint la page d'où il écrit ; un client, non : son billet n'est
   // rattaché ni à une page ni à une commande.
   withContext = true,
   intro,
@@ -82,7 +82,7 @@ export default function AffiliateSupport({
     setBusy(true);
     try {
       // Multipart pour les deux espaces : une photo ne passe pas en JSON.
-      // Un seul chemin d'envoi — il y en avait deux, dont un n'aurait plus
+      // Un seul chemin d'envoi : il y en avait deux, dont un n'aurait plus
       // servi à personne. La page d'origine suit l'affilié comme avant.
       const fd = new FormData();
       fd.append("subject", sujet.trim());
@@ -124,8 +124,8 @@ export default function AffiliateSupport({
           {L("POSER UNE QUESTION", "ASK A QUESTION")}
         </p>
         <p className="text-sm text-glacier mb-4 leading-relaxed">
-          {intro ?? L("Nous répondons sous 1 à 2 jours ouvrables. Votre code, votre palier et votre configuration de versement sont joints automatiquement — inutile de les recopier.",
-             "We reply within 1 to 2 business days. Your code, tier and payout settings are attached automatically — no need to repeat them.")}
+          {intro ?? L("Nous répondons sous 1 à 2 jours ouvrables. Votre code, votre palier et votre configuration de versement sont joints automatiquement : inutile de les recopier.",
+             "We reply within 1 to 2 business days. Your code, tier and payout settings are attached automatically : no need to repeat them.")}
         </p>
         <form onSubmit={creer} className="space-y-3">
           <div>
@@ -219,7 +219,7 @@ export default function AffiliateSupport({
                       </div>
                     ))}
 
-                    {/* Répondre rouvre un billet résolu — le serveur applique
+                    {/* Répondre rouvre un billet résolu : le serveur applique
                         la même règle. Quelqu'un qui écrit encore n'a pas eu
                         satisfaction, et le laisser parler dans le vide serait
                         pire que de ne rien lui offrir. */}

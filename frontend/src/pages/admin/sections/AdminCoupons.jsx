@@ -6,7 +6,7 @@ import { useConfirm } from "../../../components/ConfirmDialog";
 import { useLang } from "../../../contexts/LanguageContext";
 import { Th } from "../ui";
 
-// Le jour courant en heure locale, au format AAAA-MM-JJ — le meme que les
+// Le jour courant en heure locale, au format AAAA-MM-JJ : le meme que les
 // dates stockees. Passer par toISOString() aurait compare une date locale a
 // une date UTC : un coupon aurait expire quelques heures trop tot le soir.
 function aujourdHui() {
@@ -37,7 +37,7 @@ const ETATS = {
 // Un code d'affilie n'accorde son rabais que si le COMPTE est actif : le
 // paiement relit le statut de l'affilie avant d'appliquer la remise (voir
 // _is_affiliate_coupon cote serveur). Un code allume dont l'affilie est
-// suspendu est donc refuse au panier — l'afficher « utilisable » serait faux.
+// suspendu est donc refuse au panier : l'afficher « utilisable » serait faux.
 export function etatCodeAffilie(c, jour) {
   const statut = String(c.affiliate_status || "").toLowerCase();
   if (statut && statut !== "active") return statut === "invited" ? "affilie_invite" : "affilie_suspendu";
@@ -57,8 +57,8 @@ export default function AdminCoupons() {
   const [coupons, setCoupons] = useState([]);
   const [editing, setEditing] = useState(null);
   // Codes d'affiliés : liste SÉPARÉE et en lecture seule. Ils partagent la
-  // collection des coupons — le paiement n'a ainsi qu'un endroit où résoudre
-  // un code — mais les mêler ici permettait d'en modifier la valeur ou de les
+  // collection des coupons : le paiement n'a ainsi qu'un endroit où résoudre
+  // un code : mais les mêler ici permettait d'en modifier la valeur ou de les
   // supprimer, ce qui coupait le rabais d'un partenaire sans prévenir personne.
   const [codesAffilies, setCodesAffilies] = useState([]);
 
@@ -140,7 +140,7 @@ export default function AdminCoupons() {
   const del = async (id) => {
     if (!await confirm({ title: L("Supprimer ce coupon ?", "Delete this coupon?"), destructive: true })) return;
     // `save()` est enveloppe, `del` ne l'etait pas : tout refus du serveur
-    // produisait une promesse rejetee non traitee — ni message d'erreur, ni
+    // produisait une promesse rejetee non traitee : ni message d'erreur, ni
     // retour visuel. Un membre du personnel ayant `coupons:view` mais pas
     // `coupons:manage` confirmait la suppression et ne voyait RIEN se passer.
     // Il recommencait, concluait a un bug de l'interface, ou pire : croyait la
@@ -228,8 +228,8 @@ export default function AdminCoupons() {
                     <span className="font-data font-bold">{c.code}</span>
                   </div>
                   {/* Un code d'affilié n'est PAS un coupon promotionnel.
-                      Il vit dans la même table — le paiement n'interroge
-                      qu'un seul endroit — mais le supprimer romprait le
+                      Il vit dans la même table : le paiement n'interroge
+                      qu'un seul endroit : mais le supprimer romprait le
                       rabais d'une personne réelle, sans la prévenir.
                       Le serveur refuse désormais cette suppression ; ce
                       marqueur évite d'aller jusqu'au refus. */}
@@ -255,12 +255,12 @@ export default function AdminCoupons() {
                 <td className="px-6 py-3 font-data text-xs text-glacier">
                   {c.start_at || c.expires_at
                     ? `${(c.start_at || "").slice(0, 10) || "…"} → ${(c.expires_at || "").slice(0, 10) || "∞"}`
-                    : "—"}
+                    : "-"}
                 </td>
                 <td className="px-6 py-3">
                   {/* ON/OFF ne disait que l'interrupteur. Un code allume mais
                       expire ou epuise s'affichait « ON » alors qu'aucun client
-                      ne pouvait s'en servir — et personne ne voyait pourquoi. */}
+                      ne pouvait s'en servir : et personne ne voyait pourquoi. */}
                   {(() => {
                     const e = ETATS[etatCoupon(c)];
                     return (
@@ -313,7 +313,7 @@ export default function AdminCoupons() {
         </div>
       </div>
 
-      {/* Codes d'affiliés — SÉPARÉS, et sans aucune action.
+      {/* Codes d'affiliés : SÉPARÉS, et sans aucune action.
           Pas de bouton modifier, pas de bouton supprimer : ce n'est pas un
           oubli. Un code d'affilié se gère depuis sa fiche, seul endroit qui
           renomme le code ET archive l'ancien en alias, de sorte que les liens
@@ -329,7 +329,7 @@ export default function AdminCoupons() {
             </span>
           </div>
           <p className="text-sm text-glacier mt-1 max-w-2xl">
-            {L("Ces codes appartiennent à des affiliés. Ils se modifient depuis la fiche de l'affilié, qui renomme le code et conserve l'ancien en alias — les liens déjà distribués restent valides.",
+            {L("Ces codes appartiennent à des affiliés. Ils se modifient depuis la fiche de l'affilié, qui renomme le code et conserve l'ancien en alias : les liens déjà distribués restent valides.",
                "These codes belong to affiliates. Change them from the affiliate's record, which renames the code and keeps the old one as an alias, so links already handed out keep working.")}
           </p>
           <div className="flex flex-wrap items-center gap-3 mt-4" data-testid="affiliate-codes-filters">
@@ -378,7 +378,7 @@ export default function AdminCoupons() {
                     <tr key={c.code} className="border-t border-ash" data-testid={`affiliate-code-row-${c.code}`}>
                       <td className="px-4 py-3 font-data text-nordfjord">{c.code}</td>
                       <td className="px-4 py-3 text-nordfjord">
-                        {c.affiliate_name || <span className="text-glacier">—</span>}
+                        {c.affiliate_name || <span className="text-glacier">-</span>}
                         {c.affiliate_email && (
                           <span className="block font-data text-[11px] text-glacier">{c.affiliate_email}</span>
                         )}

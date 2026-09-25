@@ -62,16 +62,16 @@ const SECTIONS = [
         fr: "Les témoins sont de petits fichiers de données, contenant parfois un identifiant unique anonyme, qu'un site web transmet à votre navigateur et enregistre sur votre appareil. Nous les utilisons pour recueillir des informations qui nous aident à améliorer votre expérience.",
       },
       {
-        en: "When you arrive on our site through an affiliate link (a URL ending in ?ref=CODE) or after entering an affiliate code, we set a first-party, session-only cookie called \"fn_ref\" on our own domain. It is used solely to credit that visit to the relevant affiliate. It is httpOnly (it cannot be read by scripts or pushed to third parties), disappears when you close your browser, and contains only the affiliate's public code — no personal information.",
-        fr: "Lorsque vous arrivez sur notre site par un lien d'affiliation (une adresse se terminant par ?ref=CODE) ou après avoir saisi un code d'affilié, nous posons un témoin first-party, limité à la session, nommé « fn_ref », sur notre propre domaine. Il sert uniquement à créditer cette visite à l'affilié concerné. Il est httpOnly (il ne peut être lu par des scripts ni transmis à des tiers), disparaît à la fermeture de votre navigateur et ne contient que le code public de l'affilié — aucune donnée personnelle.",
+        en: "When you arrive on our site through an affiliate link (a URL ending in ?ref=CODE) or after entering an affiliate code, we set a first-party, session-only cookie called \"fn_ref\" on our own domain. It is used solely to credit that visit to the relevant affiliate. It is httpOnly (it cannot be read by scripts or pushed to third parties), disappears when you close your browser, and contains only the affiliate's public code : no personal information.",
+        fr: "Lorsque vous arrivez sur notre site par un lien d'affiliation (une adresse se terminant par ?ref=CODE) ou après avoir saisi un code d'affilié, nous posons un témoin first-party, limité à la session, nommé « fn_ref », sur notre propre domaine. Il sert uniquement à créditer cette visite à l'affilié concerné. Il est httpOnly (il ne peut être lu par des scripts ni transmis à des tiers), disparaît à la fermeture de votre navigateur et ne contient que le code public de l'affilié : aucune donnée personnelle.",
       },
       {
         en: "The affiliate program is one of the rare places where a limited amount of customer data is shared with a third party. Affiliates see, in their dashboard, the masked email (e.g. m***@domain.com), the order total and the number of orders attributed to them. They never see a full email address, phone number, address or payment information. This limited disclosure is necessary to let affiliates recognise their own referrals.",
         fr: "Le programme d'affiliation est l'un des rares endroits où une quantité limitée de données clients est partagée avec un tiers. Les affiliés voient, dans leur tableau de bord, le courriel masqué (p. ex. m***@domaine.com), le montant et le nombre de commandes qui leur sont attribués. Ils ne voient jamais d'adresse courriel complète, de numéro de téléphone, d'adresse postale ni de données de paiement. Cette divulgation limitée est nécessaire pour permettre aux affiliés de reconnaître leurs propres références.",
       },
       {
-        en: "You can configure your browser to refuse all cookies or to alert you whenever one is sent — your browser's Help section explains how. Note that disabling cookies may prevent certain features of the site from working properly, so we recommend leaving them enabled.",
-        fr: "Vous pouvez configurer votre navigateur pour refuser tous les témoins ou pour vous avertir lorsqu'un témoin est envoyé — la section Aide de votre navigateur explique comment procéder. Notez que la désactivation des témoins peut empêcher certaines fonctionnalités du site de fonctionner correctement ; nous recommandons donc de les laisser activés.",
+        en: "You can configure your browser to refuse all cookies or to alert you whenever one is sent : your browser's Help section explains how. Note that disabling cookies may prevent certain features of the site from working properly, so we recommend leaving them enabled.",
+        fr: "Vous pouvez configurer votre navigateur pour refuser tous les témoins ou pour vous avertir lorsqu'un témoin est envoyé : la section Aide de votre navigateur explique comment procéder. Notez que la désactivation des témoins peut empêcher certaines fonctionnalités du site de fonctionner correctement ; nous recommandons donc de les laisser activés.",
       },
     ],
   },
@@ -92,8 +92,8 @@ const SECTIONS = [
     fr: { title: "Fournisseurs de services" },
     paras: [
       {
-        en: "We may engage third-party companies or individuals to support our operations — for example to process payments, deliver parcels or analyze how the website is used. These providers can access your Personal Information only to carry out specific tasks on our behalf and are bound not to disclose it or use it for any other purpose.",
-        fr: "Nous pouvons faire appel à des entreprises ou personnes tierces pour soutenir nos opérations — par exemple pour traiter les paiements, livrer les colis ou analyser l'utilisation du site. Ces fournisseurs n'ont accès à vos Renseignements personnels que pour accomplir des tâches précises en notre nom et sont tenus de ne pas les divulguer ni les utiliser à d'autres fins.",
+        en: "We may engage third-party companies or individuals to support our operations : for example to process payments, deliver parcels or analyze how the website is used. These providers can access your Personal Information only to carry out specific tasks on our behalf and are bound not to disclose it or use it for any other purpose.",
+        fr: "Nous pouvons faire appel à des entreprises ou personnes tierces pour soutenir nos opérations : par exemple pour traiter les paiements, livrer les colis ou analyser l'utilisation du site. Ces fournisseurs n'ont accès à vos Renseignements personnels que pour accomplir des tâches précises en notre nom et sont tenus de ne pas les divulguer ni les utiliser à d'autres fins.",
       },
     ],
   },
@@ -103,8 +103,8 @@ const SECTIONS = [
     fr: { title: "Prévention de la fraude d'affiliation" },
     paras: [
       {
-        en: "If you take part in our affiliate program, we use automated monitoring to detect and prevent abuse of the program, including rate-limiting of tracking requests and analysis of click and conversion volumes. We also monitor for behaviour that breaches the program rules — for example prohibited promotional practices or attempts to manipulate attribution.",
-        fr: "Si vous participez à notre programme d'affiliation, nous utilisons une surveillance automatisée pour détecter et prévenir les abus du programme, notamment une limitation du débit des requêtes de suivi et une analyse des volumes de clics et de conversions. Nous surveillons également les comportements qui enfreignent les règles du programme — par exemple les pratiques promotionnelles interdites ou les tentatives de manipuler l'attribution.",
+        en: "If you take part in our affiliate program, we use automated monitoring to detect and prevent abuse of the program, including rate-limiting of tracking requests and analysis of click and conversion volumes. We also monitor for behaviour that breaches the program rules : for example prohibited promotional practices or attempts to manipulate attribution.",
+        fr: "Si vous participez à notre programme d'affiliation, nous utilisons une surveillance automatisée pour détecter et prévenir les abus du programme, notamment une limitation du débit des requêtes de suivi et une analyse des volumes de clics et de conversions. Nous surveillons également les comportements qui enfreignent les règles du programme : par exemple les pratiques promotionnelles interdites ou les tentatives de manipuler l'attribution.",
       },
       {
         en: "This processing is carried out on the basis of our legitimate interest in protecting the integrity of the program, in accordance with PIPEDA and, for Québec residents, Law 25. Where abuse is confirmed, the affiliate's commission may be cancelled or the affiliate suspended, in accordance with the program terms.",
@@ -112,7 +112,7 @@ const SECTIONS = [
       },
       // Exception explicite au paragraphe precedent. Sans elle, la politique
       // promettait de ne JAMAIS conserver d'adresse IP lisible, alors que
-      // l'acceptation des conditions en enregistre une — une empreinte ne
+      // l'acceptation des conditions en enregistre une : une empreinte ne
       // prouverait pas d'ou vient l'engagement, seulement qu'il a eu lieu.
       {
         en: "One exception applies. When you accept the affiliate program terms, we record the date, the version of the text accepted and the IP address used, in readable form. This is not fraud prevention but proof of a contractual commitment: a fingerprint would establish that an acceptance occurred, not where it came from. This record is kept for as long as your participation in the program lasts, and for the retention period required afterward.",

@@ -47,7 +47,7 @@ function setCanonical(path) {
 export default function useDocumentHead({ title, description, path, noindex } = {}) {
   useEffect(() => {
     const cleanups = [];
-    const fullTitle = title ? `${title} — ${SITE}` : SITE;
+    const fullTitle = title ? `${title} : ${SITE}` : SITE;
     const prevTitle = document.title;
     document.title = fullTitle;
     cleanups.push(() => {

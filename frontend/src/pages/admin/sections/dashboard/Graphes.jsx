@@ -1,4 +1,4 @@
-// Les graphiques du tableau de bord — SVG pur, aucune bibliothèque.
+// Les graphiques du tableau de bord : SVG pur, aucune bibliothèque.
 //
 // Deux raisons. Les couleurs vivent en variables CSS et changent au mode
 // nuit ; or une couleur posée en attribut SVG (`fill="rgb(var(--x))"`) n'est
@@ -7,7 +7,7 @@
 //
 // Parti pris, repris de Plausible et de Vercel : grilles presque invisibles,
 // aucune légende quand il n'y a qu'une série, une seule couleur. Chaque
-// pixel doit aider à décider — sinon il sort.
+// pixel doit aider à décider : sinon il sort.
 import { useState } from "react";
 
 // ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ export function Affluence({ grille, argent, L, lang }) {
             <span className="font-data text-[10px] text-glacier/70 w-7 shrink-0">{jours[j]}</span>
             <div className="flex-1 flex gap-[2px]">
               {ligne.map((v, h) => (
-                <span key={h} title={`${jours[j]} ${h} h — ${argent(v)}`}
+                <span key={h} title={`${jours[j]} ${h} h : ${argent(v)}`}
                       className="flex-1 h-3.5 bg-nordfjord"
                       style={{ opacity: v ? 0.12 + (v / max) * 0.88 : 0.05 }} />
               ))}

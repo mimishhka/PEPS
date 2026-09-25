@@ -22,7 +22,7 @@ export default function AuthCallback() {
     if (!token) { setStatus("error"); return; }
     // Cette ligne passait "/account" en valeur ET en repli : elle ne pouvait
     // renvoyer que "/account". Toute destination demandée avant la connexion
-    // était perdue — un affilié allant sur /affiliate se connectait pour
+    // était perdue : un affilié allant sur /affiliate se connectait pour
     // atterrir sur son compte client, sans que rien ne le signale.
     //
     // Trois sources, dans l'ordre : le paramètre `next` de l'URL s'il existe

@@ -16,7 +16,7 @@ import {
 
 /* Le prix de livraison et le seuil de gratuite NE SONT PLUS ecrits ici.
  *
- * Ils l'etaient — 20 et 200 — alors que le serveur les tient dans
+ * Ils l'etaient : 20 et 200 : alors que le serveur les tient dans
  * SHIPPING_FLAT_CAD et FREE_SHIPPING_THRESHOLD_CAD, reglables par variable
  * d'environnement, et les EXPOSE deja par /meta. Deux sources pour un meme
  * chiffre, dont une figee.
@@ -27,7 +27,7 @@ import {
  * qu'on ne lui avait jamais montre.
  *
  * Les valeurs de repli ci-dessous ne servent qu'entre le premier rendu et la
- * reponse de /meta, ou si celle-ci echoue — jamais comme reference. */
+ * reponse de /meta, ou si celle-ci echoue : jamais comme reference. */
 const LIVRAISON_REPLI = 20.0;
 const SEUIL_GRATUIT_REPLI = 200.0;
 const CHECKOUT_DRAFT_KEY = "fironova_checkout_draft_v1";
@@ -97,7 +97,7 @@ export default function Checkout() {
 
   const [idempotencyKey] = useState(() => `chk_${Date.now()}_${Math.random().toString(36).slice(2)}`);
 
-  // Dialog "adresse suggérée par Google Maps AVS" — s'affiche si le serveur
+  // Dialog "adresse suggérée par Google Maps AVS" : s'affiche si le serveur
   // bloque le checkout avec detail.code === 'invalid_shipping_address'.
   const [addrSuggestion, setAddrSuggestion] = useState(null);
 
@@ -127,7 +127,7 @@ export default function Checkout() {
         // LE BROUILLON PEUT DATER D'AVANT LA SUPPRESSION DES ETATS-UNIS :
         // il portait country=US, et la liste des provinces affichait alors
         // les etats americains alors meme que le select de pays montrait
-        // « Canada » — une valeur orpheline. On reforce le Canada et on
+        // « Canada » : une valeur orpheline. On reforce le Canada et on
         // vide une province qui n'y existe pas.
         setShip((curr) => {
           if (hasAddressData(curr)) return curr;
@@ -178,7 +178,7 @@ export default function Checkout() {
     }
   }, [email, paymentMethod, confirmAge, acceptRuO, acceptPolicy, billSame, ship, bill, couponInput, coupon]);
 
-  // A2 — adresses sauvegardées : préremplir email + charger la liste si connecté.
+  // A2 : adresses sauvegardées : préremplir email + charger la liste si connecté.
   useEffect(() => {
     if (!user) return;
     if (user.email) setEmail((e) => e || user.email);
@@ -270,13 +270,13 @@ export default function Checkout() {
   /* Où en est l'application automatique du code porté par le lien.
    *
    * Déclaré AVANT removeCoupon, qui l'utilise. Il vivait après : le code
-   * fonctionnait — le gestionnaire ne s'exécute qu'une fois le rendu terminé —
+   * fonctionnait : le gestionnaire ne s'exécute qu'une fois le rendu terminé -
    * mais toute reprise qui appellerait removeCoupon pendant le rendu aurait
    * levé un ReferenceError, et rien ne l'aurait signalé avant l'exécution.
    *
-   *   "jamais"     — rien tenté
-   *   "sans-email" — tenté alors que le champ courriel était encore vide
-   *   "fait"       — terminé, avec ou sans succès : on ne retente plus
+   *   "jamais"     : rien tenté
+   *   "sans-email" : tenté alors que le champ courriel était encore vide
+   *   "fait"       : terminé, avec ou sans succès : on ne retente plus
    */
   const etatCodeLien = useRef("jamais");
 
@@ -316,16 +316,16 @@ export default function Checkout() {
    * saisi à la main l'aurait fait économiser.
    *
    * Quatre précautions :
-   *  — on ne touche à rien si un coupon est déjà appliqué ou si le champ
+   *  : on ne touche à rien si un coupon est déjà appliqué ou si le champ
    *    contient une saisie, y compris restaurée du brouillon ;
-   *  — DEUX tentatives au plus, et la seconde seulement si la première a eu
+   *  : DEUX tentatives au plus, et la seconde seulement si la première a eu
    *    lieu avant que le courriel soit saisi. Le serveur exige une identité
    *    pour certains coupons (usage par client, première commande) : une
    *    tentative unique, faite champ vide, échouait alors définitivement et
    *    le client ne voyait jamais son rabais. Sans ce compteur, l'autre excès
-   *    guette — `email` étant dans les dépendances, une relance libre
+   *    guette : `email` étant dans les dépendances, une relance libre
    *    enverrait une requête à chaque frappe ;
-   *  — l'échec est SILENCIEUX. Le client n'a rien demandé : lui afficher
+   *  : l'échec est SILENCIEUX. Le client n'a rien demandé : lui afficher
    *    « Code invalide » pour un code qu'il n'a pas tapé n'aurait aucun sens.
    *    C'est le cas d'un affilié suspendu depuis le clic.
    */
@@ -353,7 +353,7 @@ export default function Checkout() {
         toast.success(lang === "fr" ? "Code de parrainage appliqué" : "Referral code applied",
                       { description: data.code });
       } catch {
-        /* silencieux — voir ci-dessus */
+        /* silencieux : voir ci-dessus */
       }
     })();
   }, [items, subtotal, email, coupon, couponInput, lang]);
@@ -405,7 +405,7 @@ export default function Checkout() {
       } catch { /* ignore */ }
       // Interac ET crypto : page de confirmation interne.
       // Le paiement crypto s'affiche via le widget NOWPayments intégré
-      // (iframe) directement sur /order/{id} — aucune redirection externe.
+      // (iframe) directement sur /order/{id} : aucune redirection externe.
       nav(`/order/${data.id}`, { state: { order: data } });
     } catch (err) {
       const detail = err?.response?.data?.detail;
@@ -550,7 +550,7 @@ export default function Checkout() {
               <input type="checkbox" checked={confirmAge} onChange={(e) => setConfirmAge(e.target.checked)} data-testid="checkout-confirm-age" className="mt-1" />
               {/* L'âge vient de la configuration du serveur, il n'est plus
                   écrit en dur. Cette case attestait 18 ans alors que tout le
-                  reste du site annonce 19 — or c'est ICI que le client
+                  reste du site annonce 19 : or c'est ICI que le client
                   s'engage. L'attestation la plus faible était celle qui
                   compte. */}
               <span>{lang === "fr"
@@ -638,8 +638,8 @@ export default function Checkout() {
               {shippingEst > 0 && (
                 <div className="font-data text-[10px] uppercase tracking-[0.14em] text-compliance" data-testid="free-shipping-hint">
                   {lang === "fr"
-                    ? `Livraison gratuite dès ${seuilGratuit.toFixed(0)}$ — plus que ${(seuilGratuit - Math.max(0, subtotal - discount)).toFixed(2)}$`
-                    : `Free shipping at $${seuilGratuit.toFixed(0)} — only $${(seuilGratuit - Math.max(0, subtotal - discount)).toFixed(2)} to go`}
+                    ? `Livraison gratuite dès ${seuilGratuit.toFixed(0)}$ : plus que ${(seuilGratuit - Math.max(0, subtotal - discount)).toFixed(2)}$`
+                    : `Free shipping at $${seuilGratuit.toFixed(0)} : only $${(seuilGratuit - Math.max(0, subtotal - discount)).toFixed(2)} to go`}
                 </div>
               )}
               {coupon?.free_shipping && shippingEst === 0 && (
@@ -691,7 +691,7 @@ export default function Checkout() {
         </aside>
       </div>
 
-      {/* Modal de suggestion d'adresse — s'affiche uniquement si Google Maps
+      {/* Modal de suggestion d'adresse : s'affiche uniquement si Google Maps
           AVS a bloqué le checkout avec une suggestion normalisée. */}
       <Dialog open={!!addrSuggestion} onOpenChange={(open) => !open && setAddrSuggestion(null)}>
         <DialogContent data-testid="address-suggestion-dialog">
@@ -760,13 +760,13 @@ export default function Checkout() {
 // VÉRIFICATION DE L'ADRESSE PENDANT LA SAISIE.
 //
 // L'endpoint `/checkout/validate-address` existait depuis le début, sa note
-// disait « appelé par le frontend AVANT la soumission finale » — et personne
+// disait « appelé par le frontend AVANT la soumission finale » : et personne
 // ne l'appelait. La vérification n'avait donc lieu qu'à l'envoi, en 422.
 //
 // LA BOUCLE. La « suggestion » renvoyée est `result.address` : la version
 // NORMALISÉE de ce qu'on vient d'envoyer. Elle corrige l'orthographe, jamais
 // l'existence. Un client à qui il manque le numéro d'appartement se voyait
-// proposer sa PROPRE adresse, l'acceptait, et se la voyait reproposer — un
+// proposer sa PROPRE adresse, l'acceptait, et se la voyait reproposer : un
 // tour de manège où chaque tour ressemble à un progrès.
 //
 // D'où deux règles ici : on ne propose une correction que si elle DIFFÈRE de
@@ -827,7 +827,7 @@ function VerificationAdresse({ adresse, setAdresse, lang }) {
       setEtat({ enCours: true });
       try {
         const { data } = await api.post("/checkout/validate-address", {
-          full_name: adresse.full_name || "—",
+          full_name: adresse.full_name || "-",
           address1: adresse.line1, address2: adresse.line2 || "",
           city: adresse.city, province: adresse.province,
           postal_code: adresse.postal_code, country: adresse.country,
@@ -940,7 +940,7 @@ function AddressForm({ value, setValue, lang, prefix }) {
   //
   // C'est la seule chose qu'on puisse déduire d'une adresse sans interroger
   // personne : la première lettre d'un code postal canadien DÉSIGNE sa
-  // province. On ne remplit que si le champ est vide — écraser une saisie
+  // province. On ne remplit que si le champ est vide : écraser une saisie
   // volontaire serait pire que de ne rien faire.
   const majCodePostal = (saisie) => {
     const formate = formaterCodePostal(value.country, saisie);
@@ -1023,7 +1023,7 @@ function AddressForm({ value, setValue, lang, prefix }) {
           className={`rounded-xl border px-4 py-3 outline-none focus:border-nova bg-white ${desaccord ? "border-error" : "border-ash"}`}>
           <option value="">{lbl("Select…", "Choisir…")}</option>
           {regions.map((r) => (
-            <option key={r.code} value={r.code}>{r.code} — {lang === "fr" ? r.fr : r.en}</option>
+            <option key={r.code} value={r.code}>{r.code} : {lang === "fr" ? r.fr : r.en}</option>
           ))}
         </select>
         {desaccord && attendue && (

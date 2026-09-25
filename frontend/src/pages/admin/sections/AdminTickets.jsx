@@ -1,6 +1,6 @@
 // frontend/src/pages/admin/sections/AdminTickets.jsx
 //
-// Billets d'assistance, côté administration — affiliés ET clients. Le même
+// Billets d'assistance, côté administration : affiliés ET clients. Le même
 // écran sert les deux files ; seules changent l'adresse de l'API, le titre et
 // la façon de dire QUI écrit. Les valeurs par défaut sont celles des affiliés :
 // la route existante s'en sert sans rien passer, et ne change pas.
@@ -11,7 +11,7 @@
 // laisserait un billet ancien glisser sous les nouveaux.
 //
 // Chaque billet affiche depuis combien de temps il attend. Au-delà du délai
-// annoncé — 1 à 2 jours ouvrables — la mention passe en ambre. Ce n'est pas
+// annoncé : 1 à 2 jours ouvrables : la mention passe en ambre. Ce n'est pas
 // décoratif : c'est le seul endroit où la promesse faite devient visible pour
 // celui qui doit la tenir.
 import { useCallback, useEffect, useState } from "react";
@@ -31,7 +31,7 @@ const ETATS = {
 };
 
 const IDENTITE_AFFILIE = (t) => ({
-  name: t.affiliate_name, email: t.affiliate_email, code: t.affiliate_code || "—",
+  name: t.affiliate_name, email: t.affiliate_email, code: t.affiliate_code || "-",
 });
 
 /** Ancienneté en heures depuis le dernier message. On mesure depuis
@@ -104,7 +104,7 @@ export default function AdminTickets({
   };
 
   // Les billets en attente remontent, quel que soit leur âge : c'est l'état
-  // qui décide, pas la date. À état égal, le plus ancien passe devant — celui
+  // qui décide, pas la date. À état égal, le plus ancien passe devant : celui
   // qui attend depuis le plus longtemps est celui qu'on risque d'oublier.
   const ordonnes = [...(tickets || [])].sort((a, b) => {
     const rang = { open: 0, pending: 1, resolved: 2 };
@@ -237,7 +237,7 @@ export default function AdminTickets({
 
                   {/* Le remboursement se demande presque toujours par un
                       message. Ouvrir le dossier ICI évite d'aller chercher le
-                      numéro de commande dans un autre écran — et d'en prendre
+                      numéro de commande dans un autre écran : et d'en prendre
                       un autre par mégarde. Le dossier reste le MÊME objet,
                       décidé dans Remboursements comme tous les autres. */}
                   {remboursement && (

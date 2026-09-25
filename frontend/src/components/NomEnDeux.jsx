@@ -1,9 +1,9 @@
-// Prénom et nom, en deux champs — mais un seul champ stocké.
+// Prénom et nom, en deux champs : mais un seul champ stocké.
 //
 // L'adresse conserve `full_name`, et c'est volontaire : c'est ce que lisent
 // l'étiquette de Postes Canada, la recherche de commandes et l'affichage des
 // dossiers. Scinder le stockage aurait demandé de migrer toutes les commandes
-// existantes et de toucher à la création d'étiquettes — beaucoup de risque
+// existantes et de toucher à la création d'étiquettes : beaucoup de risque
 // pour un gain nul, puisque le transporteur veut de toute façon une seule
 // ligne de nom.
 //

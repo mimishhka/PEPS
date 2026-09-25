@@ -1,7 +1,7 @@
-// frontend/src/pages/AffiliateProgramme.jsx — Le programme, lu AVANT activation.
+// frontend/src/pages/AffiliateProgramme.jsx : Le programme, lu AVANT activation.
 //
 // Le programme d'affiliation est privé : rien n'en est exposé publiquement.
-// Cette page n'est donc pas publique non plus — elle exige le jeton
+// Cette page n'est donc pas publique non plus : elle exige le jeton
 // d'invitation, qui sert ici de clé de lecture.
 //
 // Ce qu'elle ne fait PAS : activer le compte. Lire et s'engager sont deux
@@ -64,7 +64,7 @@ export default function AffiliateProgramme() {
 
   const bornes = (t) => {
     if (t.ceil == null) return L(`${argent(t.floor)} et plus`, `${argent(t.floor)} and up`);
-    return `${argent(t.floor)} – ${argent(t.ceil)}`;
+    return `${argent(t.floor)} - ${argent(t.ceil)}`;
   };
 
   return (
@@ -137,12 +137,12 @@ export default function AffiliateProgramme() {
 
                 <div className="space-y-5 mb-8">
                   <Bloc titre={L("Comment vous gagnez", "How you earn")}>
-                    {L("Vos contacts obtiennent un rabais avec votre code ou votre lien. Chaque commande payée vous verse une commission, calculée sur le sous-total des produits après ce rabais — la livraison et les taxes n'entrent pas dans le calcul.",
-                       "Your contacts get a discount with your code or link. Every paid order earns you a commission, computed on the product subtotal after that discount — shipping and taxes are excluded.")}
+                    {L("Vos contacts obtiennent un rabais avec votre code ou votre lien. Chaque commande payée vous verse une commission, calculée sur le sous-total des produits après ce rabais : la livraison et les taxes n'entrent pas dans le calcul.",
+                       "Your contacts get a discount with your code or link. Every paid order earns you a commission, computed on the product subtotal after that discount : shipping and taxes are excluded.")}
                   </Bloc>
                   <Bloc titre={L("Ce qui déclenche votre commission", "What earns you a commission")}>
-                    {L("Votre lien cliqué, votre code QR scanné, ou votre code saisi au paiement — pour la commande concernée. Le clic ou le scan applique le rabais et vous crédite pour la visite en cours, sans que votre contact ait à saisir quoi que ce soit. S'il revient plus tard sans repasser par vous, il lui suffit de saisir votre code : il n'expire pas. Une commande passée sans lien, sans code QR ni code n'ouvre droit à aucune commission.",
-                       "Your link clicked, your QR code scanned, or your code entered at checkout — for that particular order. The click or scan applies the discount and credits you for the current visit, with nothing for your contact to type. If they come back later without going through you, they need only enter your code: it does not expire. An order placed with no link, no QR code and no code earns no commission.")}
+                    {L("Votre lien cliqué, votre code QR scanné, ou votre code saisi au paiement : pour la commande concernée. Le clic ou le scan applique le rabais et vous crédite pour la visite en cours, sans que votre contact ait à saisir quoi que ce soit. S'il revient plus tard sans repasser par vous, il lui suffit de saisir votre code : il n'expire pas. Une commande passée sans lien, sans code QR ni code n'ouvre droit à aucune commission.",
+                       "Your link clicked, your QR code scanned, or your code entered at checkout : for that particular order. The click or scan applies the discount and credits you for the current visit, with nothing for your contact to type. If they come back later without going through you, they need only enter your code: it does not expire. An order placed with no link, no QR code and no code earns no commission.")}
                   </Bloc>
                   <Bloc titre={L("Quand vous êtes payé", "When you get paid")}>
                     {L(`Une commission est validée sept jours après la commande, quel que soit le mode de paiement. Les versements partent le 1er de chaque mois, en cryptomonnaie stable (USDT ou USDC, réseau de votre choix), dès que le total atteint ${argent(data.payout_min_cad)}.`,

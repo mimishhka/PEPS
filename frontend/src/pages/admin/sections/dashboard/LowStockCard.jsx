@@ -1,6 +1,6 @@
 // Widget dashboard : variantes dont le stock est retombé sous son seuil.
 // Alimenté par /admin/low-stock-alerts, que le backend enrichit déjà des noms
-// produit/variante — une seule requête, aucun N+1 côté client.
+// produit/variante : une seule requête, aucun N+1 côté client.
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ExternalLink, RefreshCw } from "lucide-react";
@@ -13,7 +13,7 @@ const MAX_ROWS = 8;
 // Les liens sont relatifs : le dashboard est monté sous un basePath variable
 // (/admin en dev, /ops-portal-fn7k2q en prod) et les resolve donc tout seul.
 // `nu` : sans cadre ni en-tête. Le tableau de bord place ce panneau dans un
-// bloc repliable qui porte déjà son titre — une carte dans une carte doublerait
+// bloc repliable qui porte déjà son titre : une carte dans une carte doublerait
 // les bordures et les intitulés.
 export function LowStockCard({ nu = false }) {
   const { lang } = useLang();
@@ -118,7 +118,7 @@ export function LowStockCard({ nu = false }) {
                   {/* Le dosage est l'information qui distingue deux lignes du
                       même composé : on le met en avant plutôt qu'en gris. */}
                   <div className="font-data text-[10px] truncate">
-                    <span className="text-nordfjord font-semibold">{a.variant_name || "—"}</span>
+                    <span className="text-nordfjord font-semibold">{a.variant_name || "-"}</span>
                     {a.variant_sku && <span className="text-glacier opacity-70"> · {a.variant_sku}</span>}
                   </div>
                 </div>

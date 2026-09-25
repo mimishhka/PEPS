@@ -59,7 +59,7 @@ export default function Home() {
   const heroEyebrow = lang === "fr" ? "PEPTIDES DE RECHERCHE CANADIENS" : "CANADIAN RESEARCH PEPTIDES";
   // La phrase « Sobriete nordique, conformite bilingue complete » a ete
   // retiree le 2026-09-22. « Sobriete nordique » est un mot de CHARTE
-  // GRAPHIQUE — la palette s'appelle nordfjord, glacier, nova — et il
+  // GRAPHIQUE : la palette s'appelle nordfjord, glacier, nova : et il
   // decrivait donc a quoi ressemble le site, a quelqu'un qui est deja en
   // train de le regarder. Il ne disait rien du produit.
   //
@@ -75,7 +75,7 @@ export default function Home() {
 
   // CINQ CHOSES EMPILEES, RETIREES ENSEMBLE le 2026-09-22.
   //
-  // « 01 — » numerotait une liste d'UN SEUL element : il n'y avait ni 02
+  // « 01 : » numerotait une liste d'UN SEUL element : il n'y avait ni 02
   // ni 03. De la structure decorative, qui imite un sommaire sans en etre
   // un.
   //
@@ -83,14 +83,14 @@ export default function Home() {
   // GRILLE DE PRODUITS. Quelqu'un qui balaie la page veut savoir ce qu'il
   // regarde, et lisait une qualite abstraite.
   //
-  // « Aucun bruit » est du vocabulaire de design — pas de bruit VISUEL.
+  // « Aucun bruit » est du vocabulaire de design : pas de bruit VISUEL.
   // Dans un catalogue de peptides, quel bruit ? Et « chaque compose gagne
   // sa place » personnifie ce qui ne gagne rien.
   //
   // Surtout : la section REPETAIT le hero, qui annonce deja HPLC,
   // laboratoire independant et certificat par lot. La meme affirmation
   // deux fois dans le meme ecran de defilement n'ajoute pas, elle affaiblit
-  // la premiere — on comprend que c'est du remplissage.
+  // la premiere : on comprend que c'est du remplissage.
   //
   // Reste l'intitule. Les produits se lisent tout seuls.
   const featTitle = lang === "fr" ? "Composés en vedette" : "Featured compounds";
@@ -102,7 +102,7 @@ export default function Home() {
   // AUCUNE FREQUENCE N'EST PROMISE.
   //
   // Le texte annoncait « un courriel precis par mois ». C'est la phrase qui
-  // rassure le plus — et celle qu'on regrette le plus tot : le mois ou il y a
+  // rassure le plus : et celle qu'on regrette le plus tot : le mois ou il y a
   // trois lots a annoncer, ou le mois ou il n'y a rien, la promesse est
   // rompue. Une promesse tenue au hasard vaut moins que pas de promesse.
   //
@@ -117,11 +117,11 @@ export default function Home() {
     ? "Nouveaux lots, certificats d'analyse, r\u00e9assorts. D\u00e9sabonnez-vous \u00e0 tout moment."
     : "New lots, certificates of analysis, restocks. Unsubscribe at any time.";
   const newsLabel = lang === "fr" ? "Adresse courriel" : "Email address";
-  const newsDone = lang === "fr" ? "Confirmé — vous êtes inscrit." : "Confirmed — you're on the list.";
+  const newsDone = lang === "fr" ? "Confirmé : vous êtes inscrit." : "Confirmed : you're on the list.";
 
   return (
     <div data-testid="home-page">
-      {/* HERO — « image d'abord » : la photo du produit vedette porte la
+      {/* HERO : « image d'abord » : la photo du produit vedette porte la
           page, le texte est pose dessus, discret. Sans image disponible, la
           maille moleculaire de la marque prend le relais. */}
       <section className="relative overflow-hidden texture-bruit" data-testid="hero-section" style={{ minHeight: "min(78vh, 640px)" }}>
@@ -182,7 +182,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* PRODUITS EN VEDETTE — un seul message, pas d etiquette au-dessus. */}
+      {/* PRODUITS EN VEDETTE : un seul message, pas d etiquette au-dessus. */}
       <section className="py-20 lg:py-32" data-testid="featured-products">
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-end justify-between gap-6 mb-12">
@@ -199,7 +199,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* INFOLETTRE : section claire a filet — une page, un theme. Le
+      {/* INFOLETTRE : section claire a filet : une page, un theme. Le
           bandeau sombre isole etait une rupture de theme que le skill
           interdit ; le contenu, lui, ne change pas. */}
       <section className="py-20 lg:py-28 border-t border-ash" data-testid="newsletter-section">

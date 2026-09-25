@@ -180,7 +180,7 @@ export function CartProvider({ children }) {
     setItems((curr) => curr.map((i) => (i.product_id === productId && (i.variant_id || null) === (variantId || null) ? { ...i, qty: Math.max(1, qty) } : i)));
   }, []);
 
-  // Vider le panier — ou terminer une commande, qui appelle ceci — doit aussi
+  // Vider le panier : ou terminer une commande, qui appelle ceci : doit aussi
   // emporter la sauvegarde. Sans cela, l'article revenait APRÈS le paiement :
   // le panier repartait vide, puis le rechargement suivant le remplissait de
   // nouveau avec l'ancien contenu.

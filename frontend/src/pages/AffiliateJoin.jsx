@@ -1,4 +1,4 @@
-// frontend/src/pages/AffiliateJoin.jsx — Activation MAGIC-LINK 1-CLIC.
+// frontend/src/pages/AffiliateJoin.jsx : Activation MAGIC-LINK 1-CLIC.
 // Le clic sur le lien d'invitation active le compte (passwordless),
 // pose la session dans un cookie httpOnly et redirige sur /affiliate.
 // Aucun gate connexion, aucun mot de passe.

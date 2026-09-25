@@ -1,6 +1,6 @@
-// frontend/src/pages/StaffAccept.jsx — NOUVEAU fichier, route publique.
+// frontend/src/pages/StaffAccept.jsx : NOUVEAU fichier, route publique.
 // Page ouverte depuis le lien d'invitation reçu par email. Le token à usage
-// unique + TTL (72h côté backend) sert de preuve — pas besoin d'être connecté.
+// unique + TTL (72h côté backend) sert de preuve : pas besoin d'être connecté.
 import { useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";

@@ -201,7 +201,7 @@ it("dit qu'un client n'a pas de compte", async () => {
 
 it("regroupe les reports de lot consecutifs sans perdre les notes humaines", async () => {
   // Cas réel : FN-260824-4182B7 portait un report par jour depuis le 27 août.
-  const report = (lot) => ({ author: "system", text: `Reportée au lot ${lot} — étiquette non imprimée.`,
+  const report = (lot) => ({ author: "system", text: `Reportée au lot ${lot} : étiquette non imprimée.`,
                              created_at: `${lot}T10:00:00Z` });
   await ouvrir({ notes: [
     { author: "admin@fironova.com", text: "Client prévenu du retard", created_at: "2026-08-26T10:00:00Z" },
@@ -210,7 +210,7 @@ it("regroupe les reports de lot consecutifs sans perdre les notes humaines", asy
   ] });
   expect(screen.getByTestId("note-0")).toHaveTextContent("Client prévenu du retard");
   expect(screen.getByTestId("note-1"))
-    .toHaveTextContent("Reportée 5 fois — du lot 2026-08-27 au lot 2026-08-31");
+    .toHaveTextContent("Reportée 5 fois : du lot 2026-08-27 au lot 2026-08-31");
   absent("note-2");
 });
 

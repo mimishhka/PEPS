@@ -1,4 +1,4 @@
-// Recherche globale de l'administration — la loupe de la barre du haut.
+// Recherche globale de l'administration : la loupe de la barre du haut.
 //
 // Elle répond à deux questions, les seules qu'on se pose en arrivant :
 // « où est l'écran X ? » et « où est la commande de cette personne ? ».

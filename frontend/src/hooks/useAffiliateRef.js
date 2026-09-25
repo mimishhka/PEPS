@@ -6,7 +6,7 @@
 // Appele depuis GatedApp, avant toute route et sans condition : la capture
 // vaut donc pour N'IMPORTE QUEL chemin. Un lien produit
 // (/product/xxx?ref=CODE), le code QR ou le lien d'accueil suivent le meme
-// chemin — il n'y a pas de traitement particulier a la page d'accueil, et il
+// chemin : il n'y a pas de traitement particulier a la page d'accueil, et il
 // ne doit pas y en avoir.
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
@@ -19,18 +19,18 @@ const SESSION_KEY = "fn_ref_captured";
  * Pourquoi il faut le porter du tout : le témoin d'attribution posé par le
  * backend est `httpOnly`, donc le paiement ne peut pas le lire. Sans cette
  * copie, cliquer sur le lien créditait l'affilié mais n'accordait aucun
- * rabais — le contact payait plein tarif.
+ * rabais : le contact payait plein tarif.
  *
  * POURQUOI `sessionStorage` ET NON `localStorage`. Une première version gardait
  * le code 365 jours. Conséquence : un client venu une fois par un lien obtenait
  * le rabais à CHAQUE commande de l'année suivante, sans jamais recliquer. Ce
- * n'est pas la règle voulue — le rabais se mérite par un geste : taper le code,
+ * n'est pas la règle voulue : le rabais se mérite par un geste : taper le code,
  * cliquer sur le lien, scanner le code QR. `sessionStorage` disparaît avec
  * l'onglet : le code vaut pour la visite pendant laquelle il a été utilisé, et
  * pour elle seule.
  *
  * Cette copie ne décide de RIEN : le rabais reste accordé par le serveur, qui
- * revalide le coupon au paiement — un code d'affilié suspendu sera refusé là,
+ * revalide le coupon au paiement : un code d'affilié suspendu sera refusé là,
  * quoi qu'il y ait ici.
  */
 const CLE_CODE = "fn_ref_code";
@@ -70,7 +70,7 @@ export default function useAffiliateRef() {
   useEffect(() => {
     // Nettoyage de la version precedente, deployee brievement, qui gardait le
     // code 365 jours dans localStorage. Sans cette ligne, l'entree resterait
-    // indefiniment dans le navigateur des clients concernes — inerte, mais
+    // indefiniment dans le navigateur des clients concernes : inerte, mais
     // c'est une donnee qu'on n'a plus aucune raison de detenir.
     try { window.localStorage.removeItem("fn_ref_code"); } catch { /* noop */ }
 

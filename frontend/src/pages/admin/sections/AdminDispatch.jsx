@@ -95,14 +95,14 @@ export default function AdminDispatch() {
 
   const voidLabel = async (o) => {
     if (o.cp_transmitted) {
-      toast.error("Étiquette déjà transmise — utilisez le remboursement.");
+      toast.error("Étiquette déjà transmise : utilisez le remboursement.");
       return;
     }
     if (!await confirm({ title: `Annuler l'étiquette de ${o.order_number} ?`, description: "La commande retourne « à étiqueter ».", destructive: true })) return;
     setVoidBusy(o.id);
     try {
       await api.post(`/admin/orders/${o.id}/void-label`);
-      toast.success(`Étiquette annulée — ${o.order_number}`);
+      toast.success(`Étiquette annulée : ${o.order_number}`);
       load();
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
@@ -159,7 +159,7 @@ export default function AdminDispatch() {
       if (res.pdf_source === "cp") {
         toast.success("Manifeste Postes Canada officiel récupéré !");
       } else {
-        toast.success("Manifeste généré (récapitulatif interne — PDF CP non disponible en devportal).");
+        toast.success("Manifeste généré (récapitulatif interne : PDF CP non disponible en devportal).");
       }
       load();
       // Ouvrir le PDF (CP officiel ou fallback interne)
@@ -189,7 +189,7 @@ export default function AdminDispatch() {
             <Package size={26} /> Dispatch
           </h1>
           <p className="font-mono text-xs text-foreground/60 mt-1">
-            Lot d'expédition — cutoff 13 h (HE). Payé avant 13 h un jour ouvrable = expédié le jour même.
+            Lot d'expédition : cutoff 13 h (HE). Payé avant 13 h un jour ouvrable = expédié le jour même.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -234,7 +234,7 @@ export default function AdminDispatch() {
         <div className="mt-6 flex items-center justify-between bg-red-50 border border-red-300 text-red-900 px-4 py-3" data-testid="dispatch-manifest-banner">
           <div className="font-mono text-xs flex items-center gap-2">
             <AlertTriangle size={15} />
-            {manifest.pending_count} étiquette(s) non transmise(s) — surcharge de 2 $/article tant que le manifeste n'est pas envoyé.
+            {manifest.pending_count} étiquette(s) non transmise(s) : surcharge de 2 $/article tant que le manifeste n'est pas envoyé.
           </div>
           <button onClick={transmit} disabled={txBusy} data-testid="dispatch-transmit"
             className="bg-red-600 text-white font-mono text-xs uppercase tracking-wider px-4 py-2 hover:bg-red-700 disabled:opacity-50 flex items-center gap-2">
@@ -275,10 +275,10 @@ export default function AdminDispatch() {
         <label className="font-mono text-xs text-foreground/60">Service</label>
         <select value={serviceCode} onChange={(e) => setServiceCode(e.target.value)} data-testid="dispatch-service"
           className="border border-ink/20 px-3 py-2 font-mono text-sm">
-          <option value="DOM.XP">DOM.XP — Xpresspost</option>
-          <option value="DOM.EP">DOM.EP — Expedited Parcel</option>
-          <option value="DOM.RP">DOM.RP — Regular Parcel</option>
-          <option value="DOM.PC">DOM.PC — Priority</option>
+          <option value="DOM.XP">DOM.XP : Xpresspost</option>
+          <option value="DOM.EP">DOM.EP : Expedited Parcel</option>
+          <option value="DOM.RP">DOM.RP : Regular Parcel</option>
+          <option value="DOM.PC">DOM.PC : Priority</option>
         </select>
         <button onClick={generateLabels} disabled={labelBusy || !configured || counts.to_label === 0}
           data-testid="dispatch-generate"
@@ -329,7 +329,7 @@ export default function AdminDispatch() {
                   className="border border-ink/20 px-2 py-1 font-mono text-[11px] bg-white w-full max-w-[180px]"
                   title="Changer l'emballage pour cette commande"
                 >
-                  <option value="">— auto —</option>
+                  <option value="">- auto -</option>
                   {(data?.available_boxes || []).map((b) => (
                     <option key={b.id} value={b.id}>{b.name} (max {b.max_units})</option>
                   ))}
@@ -337,7 +337,7 @@ export default function AdminDispatch() {
               </td>
               <td className="px-4 py-3 font-mono text-xs text-right">
                 <div className="inline-flex items-center gap-2">
-                  <span>{o.line_label_cost != null ? `$${Number(o.line_label_cost).toFixed(2)}` : "—"}</span>
+                  <span>{o.line_label_cost != null ? `$${Number(o.line_label_cost).toFixed(2)}` : "-"}</span>
                   <button
                     onClick={() => refreshLinePrice(o.id)}
                     disabled={priceBusy[o.id] || !configured}
@@ -362,14 +362,14 @@ export default function AdminDispatch() {
         }}
       />
 
-      <Section title="Étiquetées — prêtes à imprimer" empty="Aucune étiquette générée pour ce lot." rows={data?.labeled} testid="table-labeled"
+      <Section title="Étiquetées : prêtes à imprimer" empty="Aucune étiquette générée pour ce lot." rows={data?.labeled} testid="table-labeled"
         render={(o) => (
           <tr key={o.id} className="border-t border-ink/10" data-testid={`dispatch-labeled-${o.order_number}`}>
             <td className="px-4 py-3 font-mono text-xs font-bold">{o.order_number}</td>
             <td className="px-4 py-3 text-sm">{o.city}, {o.province}</td>
             <td className="px-4 py-3 font-mono text-xs">{o.tracking_number}</td>
             <td className="px-4 py-3 font-mono text-xs text-right">
-              {o.line_label_cost != null ? `$${Number(o.line_label_cost).toFixed(2)}` : "—"}
+              {o.line_label_cost != null ? `$${Number(o.line_label_cost).toFixed(2)}` : "-"}
               {o.line_label_cost_source === "actual_cp" ? <span className="block text-[10px] text-foreground/40">réel CP</span> : null}
               {o.rated_weight_kg ? <span className="block text-[10px] text-foreground/40">{o.rated_weight_kg} kg</span> : null}
             </td>
@@ -406,7 +406,7 @@ function Money({ label, value, accent, muted }) {
     <div className={`bg-white border p-4 ${accent ? "border-red-300" : "border-ink/10"}`}>
       <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">{label}</div>
       <div className={`font-display text-2xl font-bold mt-1 ${accent ? "text-red-600" : muted ? "text-foreground/50" : ""}`}>
-        {v == null ? "—" : `$${v.toFixed(2)}`}
+        {v == null ? "-" : `$${v.toFixed(2)}`}
       </div>
     </div>
   );

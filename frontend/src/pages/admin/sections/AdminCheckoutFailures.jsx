@@ -5,7 +5,7 @@ import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
 
 /**
- * Item 1.2 B4 SMART — Reconciliation des compensations checkout qui ont
+ * Item 1.2 B4 SMART : Reconciliation des compensations checkout qui ont
  * échoué. L'admin y voit chaque entrée, peut la marquer "retry_attempted"
  * (audit) ou "resolved" avec une note, et gère l'état du circuit breaker.
  */
@@ -125,13 +125,13 @@ export default function AdminCheckoutFailures() {
             <div>
               <div className="font-semibold text-sm">
                 {breaker.is_open
-                  ? L("Circuit breaker OUVERT — /checkout bloqué", "Circuit breaker OPEN — /checkout blocked")
-                  : L("Circuit breaker fermé — /checkout opérationnel", "Circuit breaker closed — /checkout operational")}
+                  ? L("Circuit breaker OUVERT : /checkout bloqué", "Circuit breaker OPEN : /checkout blocked")
+                  : L("Circuit breaker fermé : /checkout opérationnel", "Circuit breaker closed : /checkout operational")}
               </div>
               <div className="text-xs opacity-80 mt-0.5">
                 {L(
-                  `${breaker.failures_in_window} échec(s) dans la dernière heure — seuil : ${breaker.threshold}`,
-                  `${breaker.failures_in_window} failure(s) in the last hour — threshold: ${breaker.threshold}`
+                  `${breaker.failures_in_window} échec(s) dans la dernière heure : seuil : ${breaker.threshold}`,
+                  `${breaker.failures_in_window} failure(s) in the last hour : threshold: ${breaker.threshold}`
                 )}
               </div>
             </div>
@@ -194,7 +194,7 @@ export default function AdminCheckoutFailures() {
                     <div className="mt-2 space-y-1">
                       <div className="text-xs text-compliance">
                         <strong>{L("Collections écrites : ", "Collections written: ")}</strong>
-                        {(f.collections_written || []).join(", ") || "—"}
+                        {(f.collections_written || []).join(", ") || "-"}
                       </div>
                       {(f.failed_compensations || []).map((c, i) => (
                         <div key={i} className="text-xs text-red-800 font-mono ml-3">

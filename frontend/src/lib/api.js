@@ -52,7 +52,7 @@ api.interceptors.response.use(
       await refreshRequest;
     } catch {
       // Session expirée : c'est une reponse attendue, pas un incident. On
-      // renvoie l'erreur d'ORIGINE et non celle du rafraichissement — sinon
+      // renvoie l'erreur d'ORIGINE et non celle du rafraichissement : sinon
       // l'appelant recoit un 401 sur /auth/refresh, une route qu'il n'a
       // jamais appelee, et ne peut plus rien en dire d'utile.
       return Promise.reject(error);

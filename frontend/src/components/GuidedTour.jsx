@@ -1,4 +1,4 @@
-// frontend/src/components/GuidedTour.jsx — NOUVEAU fichier.
+// frontend/src/components/GuidedTour.jsx : NOUVEAU fichier.
 //
 // Visite guidée en bulles. Écrite à la main plutôt qu'ajoutée en dépendance :
 // le besoin tient en une centaine de lignes, et une bibliothèque de visite
@@ -7,12 +7,12 @@
 // Trois règles de conduite, qui viennent de ce que ces visites font mal en
 // général :
 //
-//   — « Quitter » est visible dès la première bulle, jamais réduit à une croix
+//   : « Quitter » est visible dès la première bulle, jamais réduit à une croix
 //     minuscule. Une visite dont on ne voit pas la sortie est une prison.
-//   — Une étape dont la cible est absente est SAUTÉE, pas affichée dans le
+//   : Une étape dont la cible est absente est SAUTÉE, pas affichée dans le
 //     vide. La mise en page change avec les données ; pointer une zone qui
 //     n'existe pas ferait douter du reste.
-//   — La visite ne se rejoue jamais d'elle-même une fois terminée ou quittée.
+//   : La visite ne se rejoue jamais d'elle-même une fois terminée ou quittée.
 //     Elle reste relançable à la demande.
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 
@@ -22,7 +22,7 @@ const HAUTEUR = 200;  // hauteur estimée d'une bulle, pour décider haut ou bas
 
 // Couleurs FONCTIONNELLES du système d'identité, pas des teintes décoratives.
 // Le système pose une règle : un seul accent décisif, Nova Cyan. Ces trois-là
-// ne le concurrencent pas, elles qualifient — vert pour l'argent acquis, ambre
+// ne le concurrencent pas, elles qualifient : vert pour l'argent acquis, ambre
 // pour ce qui attend, bleu conformité pour une règle. La couleur informe.
 const TONS = {
   acquis:      { c: "#2E9E6B", fr: "Acquis",     en: "Earned" },
@@ -32,7 +32,7 @@ const TONS = {
 };
 
 /** L'étincelle nova du système d'identité. Déjà marqueur de liste et sceau de
- *  confiance ailleurs sur le site — elle ne sort donc pas de nulle part. */
+ *  confiance ailleurs sur le site : elle ne sort donc pas de nulle part. */
 function Spark({ size = 12, className = "", style }) {
   return (
     <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true"
@@ -42,18 +42,18 @@ function Spark({ size = 12, className = "", style }) {
   );
 }
 
-/* Filet local, en complément du marqueur serveur — pas à sa place.
+/* Filet local, en complément du marqueur serveur : pas à sa place.
  *
  * La fiche affilié reste la source de vérité : c'est elle qui empêche la
  * visite de rejouer sur un autre appareil. Mais l'enregistrement tient à un
  * seul POST dont l'échec était avalé sans trace. Quand il rate, le serveur
  * ignore que la visite a été donnée et la resert à la connexion suivante ;
- * celle-là réussit, et le défaut ne se reproduit plus — d'où un retour unique,
+ * celle-là réussit, et le défaut ne se reproduit plus : d'où un retour unique,
  * juste après la première connexion, impossible à reproduire ensuite.
  *
  * Ce marqueur ne corrige pas l'écriture serveur, il en amortit l'échec sur CE
  * navigateur. La contrepartie est assumée : si le serveur n'a jamais reçu la
- * fin, la visite ne rejouera pas non plus ici — mieux vaut la manquer que la
+ * fin, la visite ne rejouera pas non plus ici : mieux vaut la manquer que la
  * resservir à quelqu'un qui l'a déjà suivie, et « revoir la visite » reste
  * offert depuis la FAQ.
  *
@@ -102,7 +102,7 @@ export default function GuidedTour({ steps, onClose, onTab, L }) {
   // Les étapes ne sont PLUS filtrées à l'ouverture. Elles l'étaient tant que
   // la visite se limitait à un seul onglet ; maintenant qu'elle en traverse
   // plusieurs, une cible absente du DOM signifie seulement que son onglet
-  // n'est pas encore affiché — la filtrer d'emblée supprimerait justement les
+  // n'est pas encore affiché : la filtrer d'emblée supprimerait justement les
   // étapes qui parlent d'ailleurs.
   const utiles = steps;
   const etape = utiles[i];
@@ -165,7 +165,7 @@ export default function GuidedTour({ steps, onClose, onTab, L }) {
       // finissait à côté de ce qu'elle désignait, voire au-dessus d'un autre
       // élément.
       //
-      // On remesurait bien après le `scrollIntoView` initial, pendant 700 ms —
+      // On remesurait bien après le `scrollIntoView` initial, pendant 700 ms -
       // ce qui couvrait le défilement AUTOMATIQUE et masquait le défaut. Le
       // défilement de l'utilisateur, lui, n'était écouté nulle part.
       //

@@ -1,17 +1,17 @@
-// frontend/src/components/TermsModal.jsx — NOUVEAU fichier.
+// frontend/src/components/TermsModal.jsx : NOUVEAU fichier.
 //
 // Fenêtre de lecture des conditions du programme, ouverte PAR-DESSUS l'écran
 // d'acceptation. Un nouvel onglet faisait quitter la page : sur mobile il
 // désoriente, et au retour on ne sait plus où on en était.
 //
 // Le bouton de fermeture reste grisé tant que la personne n'a pas déroulé
-// jusqu'au bas. On ne peut évidemment pas prouver la lecture — mais un
+// jusqu'au bas. On ne peut évidemment pas prouver la lecture : mais un
 // défilement complet est autrement plus sérieux qu'un lien ouvert et refermé
 // dans la seconde, et c'est cette trace-là qui a une valeur le jour où
 // quelqu'un conteste avoir accepté.
 //
 // Échap ferme TOUJOURS, même sans défilement : on n'enferme personne dans une
-// fenêtre. Mais fermer ainsi ne débloque pas la case — la sortie est libre,
+// fenêtre. Mais fermer ainsi ne débloque pas la case : la sortie est libre,
 // le crédit ne l'est pas.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SECTIONS, AFFILIATE_TERMS_VERSION } from "../pages/AffiliateTerms";
@@ -21,7 +21,7 @@ export default function TermsModal({ L, lang, onClose }) {
   const zone = useRef(null);
   const [bas, setBas] = useState(false);
 
-  // `bas` passe à vrai quand on atteint le bas — ou d'emblée si le texte tient
+  // `bas` passe à vrai quand on atteint le bas : ou d'emblée si le texte tient
   // sans défilement. Sans cette seconde branche, un grand écran rendrait le
   // bouton définitivement grisé : une porte qu'on ne peut plus franchir.
   const mesurer = useCallback(() => {

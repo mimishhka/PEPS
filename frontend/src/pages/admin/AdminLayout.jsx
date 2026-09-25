@@ -106,7 +106,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
 
   // L'administration vit SOUS l'en-tete de la boutique, qui est lui-meme
   // fige (sticky, 65 px, z-40). Une barre collee a top:0 se plaçait donc
-  // DERRIERE lui : elle etait bien figee, mais invisible — ce qui revient au
+  // DERRIERE lui : elle etait bien figee, mais invisible : ce qui revient au
   // meme pour qui regarde l'ecran.
   //
   // La hauteur est MESUREE, pas ecrite en dur : cet en-tete change de taille
@@ -132,7 +132,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
 
   // La palette de recherche : Ctrl+K (ou Cmd+K), et « / » comme sur la
   // maquette. « / » ne doit PAS voler la frappe de quelqu'un en train
-  // d'ecrire dans un champ — d'ou le test sur l'element actif.
+  // d'ecrire dans un champ : d'ou le test sur l'element actif.
   const [paletteOuverte, setPaletteOuverte] = useState(false);
   useEffect(() => {
     const auClavier = (e) => {
@@ -152,7 +152,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
   }, []);
 
   // Pastille "stock faible" sur Produits. Endpoint distinct de ops/signals car
-  // il est protégé par products:view — un 403 laisse simplement la pastille à 0.
+  // il est protégé par products:view : un 403 laisse simplement la pastille à 0.
   const [lowStock, setLowStock] = useState(0);
   const canSeeProducts = hasAccess(user, "products");
   useEffect(() => {
@@ -435,7 +435,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
               </span>
 
               {/* L'avatar : les initiales, et le courriel au survol. Pas de
-                  menu de plus — deconnexion et theme vivent au pied du menu de
+                  menu de plus : deconnexion et theme vivent au pied du menu de
                   gauche, un seul endroit ou les chercher. */}
               <span
                 data-testid="admin-avatar"
@@ -452,8 +452,8 @@ export default function AdminLayout({ basePath = "/admin" }) {
               <span className="flex items-center gap-2">
                 <AlertCircle size={14} />
                 {L(
-                  `${signals.pending_manifest} étiquette(s) non transmise(s) — surcharge de 2 $/article tant que le manifeste n'est pas envoyé.`,
-                  `${signals.pending_manifest} label(s) not transmitted — $2/item surcharge until the manifest is sent.`
+                  `${signals.pending_manifest} étiquette(s) non transmise(s) : surcharge de 2 $/article tant que le manifeste n'est pas envoyé.`,
+                  `${signals.pending_manifest} label(s) not transmitted : $2/item surcharge until the manifest is sent.`
                 )}
               </span>
               <NavLink to={`${basePath}/dispatch`} className="underline whitespace-nowrap hover:opacity-70">

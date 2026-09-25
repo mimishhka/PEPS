@@ -46,7 +46,7 @@ export function regionsDuPays(pays) {
 // pas une heuristique : c'est la façon dont Postes Canada découpe le pays.
 //
 // `X` est la seule exception, partagée entre les Territoires du Nord-Ouest et
-// le Nunavut. On ne devine donc PAS pour X — remplir un champ avec une valeur
+// le Nunavut. On ne devine donc PAS pour X : remplir un champ avec une valeur
 // fausse est pire que le laisser vide : personne ne relit ce qui est déjà
 // rempli.
 const PROVINCE_PAR_LETTRE = {
@@ -82,7 +82,7 @@ export function codePostalComplet(pays, valeur) {
 }
 
 // Le code postal et la province se contredisent-ils ? Un code de Montréal
-// avec « ON » est une adresse que Postes Canada refusera — mais seulement au
+// avec « ON » est une adresse que Postes Canada refusera : mais seulement au
 // moment d'imprimer l'étiquette, c'est-à-dire après l'encaissement.
 export function provinceCoherente(pays, codePostal, province) {
   if (String(pays || "CA").toUpperCase() !== "CA") return true;

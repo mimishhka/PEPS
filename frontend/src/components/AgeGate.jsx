@@ -13,7 +13,7 @@ export default function AgeGate() {
   // que de s'en aller.
   //
   // Le refus reste donc chez nous : un écran terminal, sans lien de retour et
-  // sans destination. Il n'est pas mémorisé — un rechargement ramène la
+  // sans destination. Il n'est pas mémorisé : un rechargement ramène la
   // question, ce qui est le comportement attendu d'une vérification d'âge et
   // évite d'enfermer quelqu'un sur un refus mal cliqué.
   const [refuse, setRefuse] = useState(false);
@@ -26,7 +26,7 @@ export default function AgeGate() {
   // Le voile couvrait l'écran sans empêcher la page de défiler dessous : on
   // pouvait parcourir le catalogue à la molette sans jamais répondre. Le
   // défilement est donc bloqué tant que la question est posée, et rendu dès
-  // qu'elle ne l'est plus — y compris si le composant disparaît entre-temps.
+  // qu'elle ne l'est plus : y compris si le composant disparaît entre-temps.
   useEffect(() => {
     if (!open) return undefined;
     const precedent = document.body.style.overflow;
@@ -81,7 +81,7 @@ export default function AgeGate() {
            }} />
 
       <div className="relative w-full max-w-lg rounded-xl overflow-hidden bg-white border border-ash shadow-2xl">
-        {/* Top bar — Fironova nordfjord + nova accent */}
+        {/* Top bar : Fironova nordfjord + nova accent */}
         <div className="bg-nordfjord px-6 py-3 font-data text-[11px] uppercase tracking-[0.25em] text-white flex items-center justify-between">
           <span className="inline-flex items-center gap-2" data-testid="age-gate-tag">
             <ShieldCheck size={14} className="text-nova-texte" />

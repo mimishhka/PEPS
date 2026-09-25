@@ -6,7 +6,7 @@ import { useLang } from "../../../contexts/LanguageContext";
 import OuvrirDossier from "./OuvrirDossier";
 
 /**
- * Item 5 — Refunds admin dashboard.
+ * Item 5 : Refunds admin dashboard.
  * List + approve/deny + mark processed (D2 manual crypto tx reference).
  */
 
@@ -31,7 +31,7 @@ const ETAPES = [
  * Hors du composant : une fonction recréée à chaque rendu ne sert à rien ici,
  * et la garder pure la rend vérifiable.
  *
- * Seules « requested » et « approved » comptent — une demande refusée ou déjà
+ * Seules « requested » et « approved » comptent : une demande refusée ou déjà
  * versée n'attend plus rien de personne, et la faire figurer au décompte
  * transformerait l'indicateur en bruit permanent. */
 function compterEnRetard(items, maintenant = Date.now()) {
@@ -57,7 +57,7 @@ export default function AdminRefunds() {
   const [types, setTypes] = useState({});
   const [methods, setMethods] = useState({});
   // Où renvoyer l'argent. Pré-rempli avec ce que porte le dossier ; modifiable
-  // ici parce que pour un paiement crypto, l'adresse arrive souvent APRÈS —
+  // ici parce que pour un paiement crypto, l'adresse arrive souvent APRÈS -
   // dans la conversation avec le client, faute de la connaître au départ.
   const [dests, setDests] = useState({});
   // Compteurs de TOUTES les étapes, renvoyés par le serveur même quand on en
@@ -66,7 +66,7 @@ export default function AdminRefunds() {
   const [counts, setCounts] = useState({ requested: 0, approved: 0, processed: 0, denied: 0 });
 
   const enRetard = compterEnRetard(items);
-  // Ce qui attend AILLEURS que sur l'étape affichée — la seule chose qui
+  // Ce qui attend AILLEURS que sur l'étape affichée : la seule chose qui
   // distingue « rien à faire » de « rien à faire ICI ».
   const resteAFaire = ETAPES.filter((e) => e.travail && e.cle !== filter)
     .reduce((somme, e) => somme + (counts[e.cle] ?? 0), 0);
@@ -97,8 +97,8 @@ export default function AdminRefunds() {
       // La demande quittait la liste et la page devenait vide : on croyait
       // avoir terminé. On suit donc le dossier jusqu'à l'étape qui reste.
       if (action === "approve") {
-        toast.success(L("Approuvé — il reste à envoyer l'argent",
-                        "Approved — the money still has to be sent"));
+        toast.success(L("Approuvé : il reste à envoyer l'argent",
+                        "Approved : the money still has to be sent"));
         setFilter("approved");
       } else {
         toast.success(L("Décision enregistrée", "Decision saved"));
@@ -107,7 +107,7 @@ export default function AdminRefunds() {
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
       // 409 : le client a retiré sa demande pendant que vous décidiez. Rien
-      // n'a été écrit, mais la liste est périmée — on la recharge pour que
+      // n'a été écrit, mais la liste est périmée : on la recharge pour que
       // le dossier disparaisse au lieu de rester cliquable.
       if (e.response?.status === 409) await load();
     } finally { setBusy(""); }
@@ -150,22 +150,22 @@ export default function AdminRefunds() {
             <DollarSign size={22} />{L("Remboursements", "Refunds")}
           </h1>
           <p className="text-sm text-compliance mt-1">
-            {/* Ce qu'il faut savoir pour décider — rien de plus. La version
+            {/* Ce qu'il faut savoir pour décider : rien de plus. La version
                 précédente disait « une demande tardive n'est PLUS refusée » :
                 une note de version, qui n'avait de sens que pour qui
                 connaissait l'ancien comportement. */}
-            {L("Délai annoncé aux clients : 48 h après la livraison — une demande tardive est signalée, c'est vous qui décidez. Engagement : statuer en 2 jours. Les remboursements crypto s'envoient depuis votre portefeuille : collez ensuite la référence de la transaction.",
-               "Customers are asked to report issues within 48 h of delivery — a late request is flagged, and you decide. Commitment: decide within 2 days. Crypto refunds are sent from your wallet: then paste the transaction reference.")}
+            {L("Délai annoncé aux clients : 48 h après la livraison : une demande tardive est signalée, c'est vous qui décidez. Engagement : statuer en 2 jours. Les remboursements crypto s'envoient depuis votre portefeuille : collez ensuite la référence de la transaction.",
+               "Customers are asked to report issues within 48 h of delivery : a late request is flagged, and you decide. Commitment: decide within 2 days. Crypto refunds are sent from your wallet: then paste the transaction reference.")}
           </p>
           {/* Chaque demande gèle la commission de l'affilié jusqu'à la
               décision. Une demande oubliée immobilise donc l'argent de
-              quelqu'un d'autre — d'où ce décompte, absent jusqu'ici : l'écran
+              quelqu'un d'autre : d'où ce décompte, absent jusqu'ici : l'écran
               n'affichait qu'une date, sur laquelle il fallait calculer
               mentalement. L'écran des billets porte déjà le même bandeau. */}
           {enRetard > 0 && (
             <p className="text-sm text-warning font-semibold mt-1" data-testid="refunds-late">
-              {L(`${enRetard} demande(s) au-delà de ${SLA_JOURS} jours — la commission affiliée reste gelée.`,
-                 `${enRetard} request(s) past ${SLA_JOURS} days — the affiliate commission stays frozen.`)}
+              {L(`${enRetard} demande(s) au-delà de ${SLA_JOURS} jours : la commission affiliée reste gelée.`,
+                 `${enRetard} request(s) past ${SLA_JOURS} days : the affiliate commission stays frozen.`)}
             </p>
           )}
         </div>
@@ -176,7 +176,7 @@ export default function AdminRefunds() {
       </header>
 
       {/* Ouvrir un dossier depuis ICI, pour n'importe quelle commande.
-          Jusqu'ici il fallait passer par un billet — donc par un compte — ou
+          Jusqu'ici il fallait passer par un billet : donc par un compte : ou
           par la fiche de la commande. Une commande passée en INVITÉ n'avait
           aucun chemin. Même appel que partout ailleurs. */}
       <div className="flex flex-wrap items-start gap-3">
@@ -263,15 +263,15 @@ export default function AdminRefunds() {
                     {r.refund_requested_at && new Date(r.refund_requested_at).toLocaleString(lang==="fr"?"fr-CA":"en-CA")}
                   </div>
                   <div className="font-semibold text-nordfjord mt-1">
-                    #{r.order_number} — {r.email} — {r.total?.toFixed(2)} CAD
+                    #{r.order_number} : {r.email} : {r.total?.toFixed(2)} CAD
                   </div>
                   <div className="text-xs text-compliance mt-1">
                     {L("Type demandé", "Requested type")} : <b>{r.refund_type_requested}</b>
-                    {r.refund_amount_requested && ` — ${r.refund_amount_requested} CAD`}
+                    {r.refund_amount_requested && ` : ${r.refund_amount_requested} CAD`}
                   </div>
                   {/* Ce qu'il faut savoir pour décider, calculé par le serveur à
                       l'ouverture : une annulation se traite en minutes, un
-                      signalement tardif demande un jugement — c'est vous qui
+                      signalement tardif demande un jugement : c'est vous qui
                       tranchez, le code ne refuse plus à votre place. */}
                   {(r.refund_before_shipping || r.refund_late) && (
                     <div className="flex flex-wrap gap-1.5 mt-1.5">
@@ -296,7 +296,7 @@ export default function AdminRefunds() {
                       adresse fournie, la case est vide et le dit : il faut la
                       demander au client avant d'envoyer quoi que ce soit. */}
                   {/* La LIVRAISON, pour décider : le délai de 48 h part de cette
-                      date — celle donnée par Postes Canada, pas celle où le
+                      date : celle donnée par Postes Canada, pas celle où le
                       serveur s'en est aperçu. */}
                   {r.shipping_info?.delivered_at && (
                     <div className="text-xs text-compliance mt-1" data-testid={`refund-delivered-${r.id}`}>

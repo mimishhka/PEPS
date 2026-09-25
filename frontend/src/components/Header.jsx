@@ -64,7 +64,7 @@ export default function Header() {
     <>
       {/* Le fond `bg-nordfjord` s'inverse la nuit et devient clair. Le cyan
           pâle écrit dessus, parfait sur bleu marine, disparaissait alors sur
-          fond blanc. La nuit, le texte passe donc à l'encre sombre — c'est la
+          fond blanc. La nuit, le texte passe donc à l'encre sombre : c'est la
           paire fond/texte qui porte le contraste, pas la valeur. */}
       <div className="bg-nordfjord text-center py-2 px-4 font-data text-[11px] font-semibold uppercase tracking-[0.22em] text-[#9FD9E8] dark:text-clinical">
         <span data-testid="header-compliance-band">{t("footer.compliance")}</span>
@@ -73,7 +73,7 @@ export default function Header() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8 flex items-center justify-between h-16">
           {/* Le symbole et le mot étaient peints en Nordfjord codé en dur. Sur
               les pages de compte en mode nuit, le fond passe au sombre et le
-              logo devenait un bleu marine sur du presque noir — pratiquement
+              logo devenait un bleu marine sur du presque noir : pratiquement
               invisible. currentColor le fait suivre `text-nordfjord`, dont la
               valeur s'inverse. L'étoile garde son Nova Cyan : c'est l'accent
               unique, et il tient sur les deux fonds. */}

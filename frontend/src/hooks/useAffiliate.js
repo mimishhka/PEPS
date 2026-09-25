@@ -3,7 +3,7 @@ import api from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 
 /**
- * useAffiliate — retourne l'objet affilié courant si l'utilisateur connecté
+ * useAffiliate : retourne l'objet affilié courant si l'utilisateur connecté
  * est un affilié actif, sinon null. Silencieux sur les 403 (utilisateurs non
  * affiliés) pour éviter la pollution du log.
  */

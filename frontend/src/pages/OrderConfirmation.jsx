@@ -51,7 +51,7 @@ export default function OrderConfirmation() {
   //
   // Il se repliait sur « created_at + 24 h » quand l'échéance manquait : un
   // quatrième chiffre inventé, affiché avec le même aplomb que les autres.
-  // Sans échéance, on ne compte rien — un client sans compte à rebours pose
+  // Sans échéance, on ne compte rien : un client sans compte à rebours pose
   // la question ; un client avec un faux compte à rebours rate son paiement.
   useEffect(() => {
     if (!order || !["awaiting_etransfer", "awaiting_crypto"].includes(order.payment_status)) return undefined;
@@ -93,7 +93,7 @@ export default function OrderConfirmation() {
     return () => clearInterval(iv);
   }, [order, guestToken]);
 
-  // Interac (Autodeposit) live status polling — confirmed automatically by backend watchdog
+  // Interac (Autodeposit) live status polling : confirmed automatically by backend watchdog
   useEffect(() => {
     if (!order) return;
     if (order.payment_status !== "awaiting_etransfer") return;
@@ -185,7 +185,7 @@ export default function OrderConfirmation() {
   // La page ne connaissait que « payée » ou « pas payée ». Or une commande
   // REMBOURSÉE porte payment_status = "refunded" (écrit au règlement), et une
   // commande annulée "cancelled" : toutes deux tombaient donc dans « pas
-  // payée » et réclamaient au client de compléter un paiement — à quelqu'un
+  // payée » et réclamaient au client de compléter un paiement : à quelqu'un
   // qu'on venait de rembourser. Chaque état dit maintenant ce qu'il est ;
   // seul l'inconnu retombe sur l'attente de paiement, qui reste le cas
   // normal d'une commande fraîche.
@@ -220,11 +220,11 @@ export default function OrderConfirmation() {
     },
   };
   const etatPaiement = ETATS_PAIEMENT[order.payment_status] || {
-    bandeau: lang === "fr" ? "// COMMANDE REÇUE — PAIEMENT EN ATTENTE" : "// ORDER RECEIVED — AWAITING PAYMENT",
+    bandeau: lang === "fr" ? "// COMMANDE REÇUE : PAIEMENT EN ATTENTE" : "// ORDER RECEIVED : AWAITING PAYMENT",
     titre: lang === "fr" ? "Commande reçue" : "Order received",
     phrase: lang === "fr"
-      ? "Conservez votre numéro de commande — il vous sera nécessaire pour compléter le paiement."
-      : "Save your order number — you'll need it to complete the payment.",
+      ? "Conservez votre numéro de commande : il vous sera nécessaire pour compléter le paiement."
+      : "Save your order number : you'll need it to complete the payment.",
   };
 
   return (
@@ -290,7 +290,7 @@ export default function OrderConfirmation() {
                   ? (lang === "fr"
                       ? `⏳ Il vous reste ${resteLisible(remainingMs, "fr")} pour payer`
                       : `⏳ You have ${resteLisible(remainingMs, "en")} left to pay`)
-                  : (lang === "fr" ? "⚠ Délai expiré — la commande sera annulée." : "⚠ Deadline expired — the order will be cancelled.")}
+                  : (lang === "fr" ? "⚠ Délai expiré : la commande sera annulée." : "⚠ Deadline expired : the order will be cancelled.")}
               </div>
             )}
           </div>
@@ -324,8 +324,8 @@ export default function OrderConfirmation() {
             <div className="p-6 flex flex-col items-center gap-4" data-testid="crypto-widget-container">
               <p className="text-sm text-foreground/70 leading-relaxed text-center max-w-md">
                 {lang === "fr"
-                  ? `Payez ${order.total.toFixed(2)} $ CAD en crypto via le module sécurisé NOWPayments ci-dessous — le montant exact est déjà pré-rempli. La confirmation de votre commande est automatique dès réception du paiement.`
-                  : `Pay $${order.total.toFixed(2)} CAD in crypto through the secure NOWPayments module below — the exact amount is pre-filled. Your order is confirmed automatically once payment is received.`}
+                  ? `Payez ${order.total.toFixed(2)} $ CAD en crypto via le module sécurisé NOWPayments ci-dessous : le montant exact est déjà pré-rempli. La confirmation de votre commande est automatique dès réception du paiement.`
+                  : `Pay $${order.total.toFixed(2)} CAD in crypto through the secure NOWPayments module below : the exact amount is pre-filled. Your order is confirmed automatically once payment is received.`}
               </p>
               <iframe
                 title="NOWPayments"
@@ -423,7 +423,7 @@ export default function OrderConfirmation() {
         </div>
       </div>
 
-      {/* ANNULER OU SIGNALER UN PROBLÈME — sur la commande, là où la question
+      {/* ANNULER OU SIGNALER UN PROBLÈME : sur la commande, là où la question
           se pose. Le serveur savait recevoir cette demande depuis longtemps ;
           aucune page ne la proposait. Avant expédition, c'est une annulation ;
           après, un signalement (produit endommagé, erreur de commande). Le
@@ -431,14 +431,14 @@ export default function OrderConfirmation() {
           signalée à l'équipe, et examinée. */}
       {/* La carte reste visible tant qu'un dossier existe. Conditionnée au
           seul « paid », elle disparaissait au moment exact où le
-          remboursement aboutissait — payment_status devient "refunded" — et
+          remboursement aboutissait : payment_status devient "refunded" : et
           le client ne voyait jamais « Remboursement effectué ». */}
       {(order.payment_status === "paid" || order.refund_status) && (() => {
         const fr = lang === "fr";
         const expediee = ["shipped", "delivered"].includes(order.fulfillment_status);
         const ETAT = {
-          requested: ["Demande reçue — nous l'examinons sous 2 jours ouvrables.", "Request received — we review it within 2 business days."],
-          approved: ["Demande approuvée — le remboursement est en préparation.", "Request approved — your refund is being prepared."],
+          requested: ["Demande reçue : nous l'examinons sous 2 jours ouvrables.", "Request received : we review it within 2 business days."],
+          approved: ["Demande approuvée : le remboursement est en préparation.", "Request approved : your refund is being prepared."],
           processed: ["Remboursement effectué.", "Refund completed."],
           denied: ["Demande non retenue.", "Request declined."],
         };
@@ -460,9 +460,9 @@ export default function OrderConfirmation() {
               <>
                 <p className="text-sm" data-testid="refund-status">
                   {fr ? etat[0] : etat[1]}
-                  {order.refund_status === "denied" && order.refund_admin_note ? ` — ${order.refund_admin_note}` : ""}
+                  {order.refund_status === "denied" && order.refund_admin_note ? ` : ${order.refund_admin_note}` : ""}
                 </p>
-                {/* Une demande posée PAR ERREUR se retire d'un clic — la sienne
+                {/* Une demande posée PAR ERREUR se retire d'un clic : la sienne
                     seulement, tant qu'elle n'est pas examinée. Une fois
                     approuvée, de l'argent est en jeu : c'est à l'équipe. */}
                 {order.refund_status === "requested" && order.refund_source === "client" && (
@@ -484,20 +484,20 @@ export default function OrderConfirmation() {
               </>
             ) : expediee ? (
               /* APRES EXPEDITION : PAS DE SECOND FORMULAIRE.
-                 Un produit endommage se montre — la conversation ci-dessous
+                 Un produit endommage se montre : la conversation ci-dessous
                  accepte les photos, un champ de texte non. Deux entrees qui
                  font la meme chose obligeaient a choisir sans savoir laquelle
                  mene quelque part. */
               <>
                 <p className="text-sm text-foreground/70 leading-relaxed">
                   {fr
-                    ? "Toutes les ventes sont finales, sauf produit endommagé ou erreur de commande. Signalez-le idéalement dans les 48 heures suivant la livraison, avec une photo — nous ouvrons le dossier depuis votre message."
-                    : "All sales are final, except for a damaged product or an order error. Ideally report it within 48 hours of delivery, with a photo — we open the case from your message."}
+                    ? "Toutes les ventes sont finales, sauf produit endommagé ou erreur de commande. Signalez-le idéalement dans les 48 heures suivant la livraison, avec une photo : nous ouvrons le dossier depuis votre message."
+                    : "All sales are final, except for a damaged product or an order error. Ideally report it within 48 hours of delivery, with a photo : we open the case from your message."}
                 </p>
                 {/* Le signalement part maintenant par un billet, qui accepte
                     la photo. Une commande passée en INVITÉ n'a pas de compte,
                     donc pas de billet : elle garde le courriel, avec son
-                    numéro déjà rempli — sans quoi ces clients-là n'auraient
+                    numéro déjà rempli : sans quoi ces clients-là n'auraient
                     plus aucun moyen de signaler quoi que ce soit. */}
                 {order.user_id ? (
                   <Link to="/account?tab=support" data-testid="refund-open-help"
@@ -507,7 +507,7 @@ export default function OrderConfirmation() {
                 ) : (
                   <a data-testid="refund-open-help"
                     href={`mailto:info@fironova.com?subject=${encodeURIComponent(
-                      (fr ? "Problème — commande " : "Issue — order ") + order.order_number)}`}
+                      (fr ? "Problème : commande " : "Issue : order ") + order.order_number)}`}
                     className="inline-block bg-nordfjord text-white rounded font-mono text-xs uppercase tracking-[0.2em] px-4 py-2">
                     {fr ? "Signaler un problème par courriel" : "Report an issue by email"}
                   </a>
@@ -526,7 +526,7 @@ export default function OrderConfirmation() {
                   className="w-full border border-nordfjord/30 rounded px-3 py-2 text-sm" />
                 {/* OU RENVOYER L'ARGENT. Interac : l'adresse qui a servi a
                     payer, que nous connaissons. Crypto : nous ne savons pas
-                    d'ou vient le depot — seule la personne qui a paye le
+                    d'ou vient le depot : seule la personne qui a paye le
                     sait. */}
                 {order.payment_method === "nowpayments" ? (
                   <input value={refundDest} onChange={(e) => setRefundDest(e.target.value)}
@@ -559,7 +559,7 @@ export default function OrderConfirmation() {
       })()}
 
       <div className="mt-10 flex gap-4">
-        {/* Après une commande, on veut revoir SES commandes — pas la vitrine.
+        {/* Après une commande, on veut revoir SES commandes : pas la vitrine.
             Le renvoi à l'accueil obligeait à retrouver son compte à la main.
             Une commande passée en invité n'a pas de tableau de bord : elle
             garde l'accueil, qui reste la seule destination qui ait un sens. */}

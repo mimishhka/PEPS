@@ -1,7 +1,7 @@
 // Les durées, dites comme on les dit.
 //
-// Le délai de paiement a longtemps été écrit en dur dans la page — « 12
-// heures » — alors que la règle publiée aux clients dit trente minutes et que
+// Le délai de paiement a longtemps été écrit en dur dans la page : « 12
+// heures » : alors que la règle publiée aux clients dit trente minutes et que
 // le serveur applique ce que son `.env` porte. Trois chiffres, trois sources,
 // sur un même écran. Ces deux fonctions ne connaissent qu'une source : la
 // commande elle-même.

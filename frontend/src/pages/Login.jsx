@@ -18,7 +18,7 @@ export default function Login() {
   const nextParam = new URLSearchParams(location.search).get("next") || "";
   const isAdminLogin = nextParam.includes("ops-portal");
   // Le lien magique est proposé en premier : c'est le mode d'accès du site,
-  // et un client passwordless — comme tout affilié activé par invitation —
+  // et un client passwordless : comme tout affilié activé par invitation -
   // n'a tout simplement PAS de mot de passe. Lui présenter ce champ d'abord
   // l'envoie sur « mot de passe oublié » pour un mot de passe qui n'a jamais
   // existé.
@@ -69,9 +69,9 @@ export default function Login() {
 
   return (
     <div className="min-h-[85vh] grid lg:grid-cols-2 bg-clinical" data-testid="login-page">
-      <div className="hidden lg:block relative bg-nordfjord overflow-hidden">
+      <div className="hidden lg:block relative border-l border-ash bg-clinical overflow-hidden">
         <MolecularMesh opacity={0.3} />
-        <div className="relative h-full p-12 flex flex-col justify-between text-clinical">
+        <div className="relative h-full p-12 flex flex-col justify-between text-nordfjord">
           <div className="flex items-center gap-3">
             <FnMark size={28} frame="#00B8D4" spark="#00B8D4" />
             <Wordmark size={17} color="#F7FAFC" />
@@ -80,7 +80,7 @@ export default function Login() {
             <h2 className="font-display text-[28px] sm:text-[34px] font-semibold tracking-[-0.01em] leading-[1.1]">
               {isAdminLogin ? (lang === "fr" ? "Espace OPS." : "OPS access.") : (t("auth.welcome") || "Welcome back.")}
             </h2>
-            <p className="mt-4 text-[#B7CADD] max-w-md">
+            <p className="mt-4 text-glacier max-w-md">
               {isAdminLogin
                 ? (lang === "fr" ? "Console d'administration réservée au personnel Fironova." : "Fironova staff administration console.")
                 : t("auth.welcomeSub")}

@@ -53,7 +53,7 @@ export function ConfirmProvider({ children }) {
             <AlertDialogTitle>{options?.title || DEFAULT_TITLE.en}</AlertDialogTitle>
             {/* whitespace-pre-line : un appelant qui enumere plusieurs
                 consequences les separe par des sauts de ligne. Sans cette
-                regle, le HTML les recolle en un seul bloc — et une boite de
+                regle, le HTML les recolle en un seul bloc : et une boite de
                 confirmation qu'on ne relit pas ne confirme rien. Les espaces
                 ordinaires restent collapses, donc aucun appelant existant ne
                 change d'apparence. */}

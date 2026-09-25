@@ -1,4 +1,4 @@
-// frontend/src/pages/AffiliateTerms.jsx — NOUVEAU fichier.
+// frontend/src/pages/AffiliateTerms.jsx : NOUVEAU fichier.
 //
 // Conditions du programme d'affiliation. Page PUBLIQUE, et volontairement :
 // quelqu'un doit pouvoir lire ce qu'il s'apprête à accepter avant d'y être
@@ -13,15 +13,15 @@ import useDocumentHead from "../hooks/useDocumentHead";
 import { useLang } from "../contexts/LanguageContext";
 
 // 2026-08-22 : l'article sur les versements gagne l'ajustement au prix réel du
-// jeton. Changement SUBSTANTIEL — il décrit comment une somme due est convertie
-// — donc la version bouge et l'acceptation est redemandée. Une révision qui
+// jeton. Changement SUBSTANTIEL : il décrit comment une somme due est convertie
+// : donc la version bouge et l'acceptation est redemandée. Une révision qui
 // modifie ce que l'affilié touche sans redemander son accord le laisserait
 // engagé par un texte qu'il n'a jamais lu.
 export const AFFILIATE_TERMS_VERSION = "2026-08-25b";
 
 // Exporté pour que la fenêtre d'acceptation affiche EXACTEMENT ce texte, sans
 // le recopier. Deux exemplaires du même contrat divergeraient à la première
-// révision, et c'est la version lue au moment du clic qui engage — pas celle
+// révision, et c'est la version lue au moment du clic qui engage : pas celle
 // d'une page que personne n'a ouverte.
 export const SECTIONS = [
   {
@@ -89,8 +89,8 @@ export const SECTIONS = [
       },
       {
         strong: true,
-        fr: "La promotion se fait en communication privée. Le lien et le code de l'Affilié sont destinés à ses échanges directs — messages, courriels, conversations. Ils ne doivent pas être publiés sur un forum, un réseau social ouvert, une vidéo publique, un site de codes de rabais ou tout autre support accessible à un public indéterminé.",
-        en: "Promotion is by private communication. The Affiliate's link and code are intended for direct exchanges — messages, email, conversations. They must not be published on a forum, an open social network, a public video, a discount-code site or any other medium accessible to an undetermined audience.",
+        fr: "La promotion se fait en communication privée. Le lien et le code de l'Affilié sont destinés à ses échanges directs : messages, courriels, conversations. Ils ne doivent pas être publiés sur un forum, un réseau social ouvert, une vidéo publique, un site de codes de rabais ou tout autre support accessible à un public indéterminé.",
+        en: "Promotion is by private communication. The Affiliate's link and code are intended for direct exchanges : messages, email, conversations. They must not be published on a forum, an open social network, a public video, a discount-code site or any other medium accessible to an undetermined audience.",
       },
       {
         fr: "Cette règle tient à la nature des produits : une affirmation faite devant un public indéterminé engage FIRONOVA bien au-delà de la même phrase adressée à une personne. Elle pourra évoluer. Un Affilié qui souhaite promouvoir publiquement peut en faire la demande ; une autorisation écrite préalable est alors requise et peut porter sur un contenu déterminé.",
@@ -137,7 +137,7 @@ export const SECTIONS = [
       },
       {
         fr: "Le taux dépend du palier, déterminé par le chiffre d'affaires validé de l'Affilié sur les douze derniers mois glissants : Standard 10 % (0 $ à 2 000 $), Bronze 12 % (2 001 $ à 5 000 $), Silver 14 % (5 001 $ à 10 000 $), Gold 16 % (10 001 $ à 20 000 $), Platinum 18 % (20 001 $ à 35 000 $), Diamond 20 % (35 001 $ et plus).",
-        en: "The rate depends on the tier, determined by the Affiliate's validated revenue over the last twelve rolling months: Standard 10% ($0–$2,000), Bronze 12% ($2,001–$5,000), Silver 14% ($5,001–$10,000), Gold 16% ($10,001–$20,000), Platinum 18% ($20,001–$35,000), Diamond 20% ($35,001 and above).",
+        en: "The rate depends on the tier, determined by the Affiliate's validated revenue over the last twelve rolling months: Standard 10% ($0-$2,000), Bronze 12% ($2,001-$5,000), Silver 14% ($5,001-$10,000), Gold 16% ($10,001-$20,000), Platinum 18% ($20,001-$35,000), Diamond 20% ($35,001 and above).",
       },
       {
         fr: "Le palier progresse dès le seuil franchi. Le nouveau taux s'applique aux commandes suivantes ; les commissions déjà acquises ne sont pas recalculées.",
@@ -335,12 +335,12 @@ export const SECTIONS = [
     en: { title: "Miscellaneous" },
     paras: [
       {
-        fr: "Intégralité — Les présentes conditions, avec la politique de confidentialité, constituent l'entente complète entre les parties relativement au programme et remplacent toute entente antérieure, sous réserve de toute convention écrite distincte conclue entre elles. Divisibilité — La nullité d'une disposition n'affecte pas la validité des autres. Renonciation — Le fait de ne pas se prévaloir d'une disposition ne vaut pas renonciation à s'en prévaloir ultérieurement. Cession — L'Affilié ne peut céder sa participation sans l'accord écrit préalable de FIRONOVA.",
-        en: "Entire agreement — These terms, together with the privacy policy, constitute the entire agreement between the parties in respect of the program and supersede any prior agreement, subject to any separate written agreement entered into between them. Severability — The invalidity of one provision does not affect the validity of the others. Waiver — Failure to rely on a provision is not a waiver of the right to rely on it later. Assignment — The Affiliate may not assign their participation without FIRONOVA's prior written consent.",
+        fr: "Intégralité : Les présentes conditions, avec la politique de confidentialité, constituent l'entente complète entre les parties relativement au programme et remplacent toute entente antérieure, sous réserve de toute convention écrite distincte conclue entre elles. Divisibilité : La nullité d'une disposition n'affecte pas la validité des autres. Renonciation : Le fait de ne pas se prévaloir d'une disposition ne vaut pas renonciation à s'en prévaloir ultérieurement. Cession : L'Affilié ne peut céder sa participation sans l'accord écrit préalable de FIRONOVA.",
+        en: "Entire agreement : These terms, together with the privacy policy, constitute the entire agreement between the parties in respect of the program and supersede any prior agreement, subject to any separate written agreement entered into between them. Severability : The invalidity of one provision does not affect the validity of the others. Waiver : Failure to rely on a provision is not a waiver of the right to rely on it later. Assignment : The Affiliate may not assign their participation without FIRONOVA's prior written consent.",
       },
       {
-        fr: "Langue — Les parties ont exigé que les présentes soient rédigées en français.",
-        en: "Language — The parties have required that these terms be drawn up in French.",
+        fr: "Langue : Les parties ont exigé que les présentes soient rédigées en français.",
+        en: "Language : The parties have required that these terms be drawn up in French.",
       },
     ],
   },

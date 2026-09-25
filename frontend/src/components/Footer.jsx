@@ -89,7 +89,7 @@ export default function Footer() {
   return (
     <footer className="mt-28" data-testid="footer">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
-        <div className="bg-nordfjord text-clinical px-8 lg:px-14 py-14 relative overflow-hidden" style={{ borderRadius: "var(--r-l)" }}>
+        <div className="border-t border-ash px-8 lg:px-14 py-14 relative overflow-hidden">
           <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 w-full h-full opacity-[.12]" aria-hidden="true">
             <g stroke="#00B8D4" strokeWidth="1" fill="none">
               <line x1="30" y1="50" x2="140" y2="110" /><line x1="140" y1="110" x2="250" y2="60" /><line x1="250" y1="60" x2="370" y2="130" />
@@ -101,7 +101,7 @@ export default function Footer() {
           <p className="relative font-display text-2xl sm:text-3xl font-bold tracking-[-0.01em] leading-[1.2] max-w-4xl" data-testid="footer-disclaimer">
             {t("footer.compliance")}
           </p>
-          <p className="relative mt-6 font-data text-[11px] uppercase tracking-[0.18em] text-[#8FB3C9] max-w-3xl leading-relaxed">
+          <p className="relative mt-6 font-data text-[11px] uppercase tracking-[0.18em] text-glacier max-w-3xl leading-relaxed">
             {confirmText}
           </p>
           <div className="relative mt-8 flex flex-wrap gap-3">

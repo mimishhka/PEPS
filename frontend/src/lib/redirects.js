@@ -9,7 +9,7 @@
  * On passe par localStorage et non sessionStorage : le lien du courriel
  * s'ouvre souvent dans un ONGLET neuf, où sessionStorage est vide.
  *
- * Durée de vie alignée sur celle du lien magique — quinze minutes. Au-delà, la
+ * Durée de vie alignée sur celle du lien magique : quinze minutes. Au-delà, la
  * destination est périmée : mieux vaut le repli que d'expédier quelqu'un vers
  * une page demandée la veille.
  */

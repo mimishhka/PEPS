@@ -44,7 +44,7 @@ export default function AdminCategories() {
         // Renommer un slug déplace les produits : on le dit, sinon l'admin
         // ne saura jamais que 8 fiches viennent de changer de catégorie.
         if (data.products_migrated > 0) {
-          toast.success(`Category updated — ${data.products_migrated} product(s) moved to "${body.slug}".`);
+          toast.success(`Category updated : ${data.products_migrated} product(s) moved to "${body.slug}".`);
         } else {
           toast.success("Category updated.");
         }
@@ -165,7 +165,7 @@ export default function AdminCategories() {
               {[
                 { k: "name_en", label: "Name (EN)" },
                 { k: "name_fr", label: "Nom (FR)" },
-                { k: "slug", label: "Slug — lowercase, digits, hyphens only" },
+                { k: "slug", label: "Slug : lowercase, digits, hyphens only" },
               ].map((f) => (
                 <div key={f.k}>
                   <label className="font-mono text-[10px] uppercase tracking-[0.2em] text-glacier">{f.label}</label>

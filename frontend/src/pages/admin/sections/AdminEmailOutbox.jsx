@@ -26,7 +26,7 @@ const STATUS_TONE = {
 };
 
 function humanAge(seconds, L) {
-  if (seconds == null) return "—";
+  if (seconds == null) return "-";
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   return h > 0 ? L(`${h} h ${m} min`, `${h}h ${m}min`) : L(`${m} min`, `${m}min`);
@@ -153,7 +153,7 @@ export default function AdminEmailOutbox() {
   const staleQueue = (stats?.oldest_active_age_seconds ?? 0) > 1800;
   const floodOfFailures = (counts.failed ?? 0) > 100;
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const recipients = (to) => (Array.isArray(to) ? to.join(", ") : to || "—");
+  const recipients = (to) => (Array.isArray(to) ? to.join(", ") : to || "-");
 
   const kpis = useMemo(() => ([
     { key: "sent", label: L("Envoyés", "Sent"), tone: "text-success" },
@@ -199,7 +199,7 @@ export default function AdminEmailOutbox() {
         <p className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-4">
           {L("Plus ancien actif", "Oldest active")}: {humanAge(stats.oldest_active_age_seconds, L)}
           {" · "}
-          {L("tentatives moy. sur échecs", "avg attempts on failed")}: {stats.avg_attempts_on_failed ?? "—"}
+          {L("tentatives moy. sur échecs", "avg attempts on failed")}: {stats.avg_attempts_on_failed ?? "-"}
           {" · "}
           {L("balayage janitor", "janitor sweep")}: {Math.round((stats.janitor_interval_s || 0) / 60)} min
         </p>
@@ -210,8 +210,8 @@ export default function AdminEmailOutbox() {
              data-testid="admin-emails-alert-stale">
           <AlertTriangle size={16} className="text-warning" />
           <span className="text-sm text-nordfjord">
-            {L("La file traîne depuis plus de 30 minutes — vérifiez la clé Resend ou le worker.",
-               "The queue has been backed up for over 30 minutes — check the Resend key or the worker.")}
+            {L("La file traîne depuis plus de 30 minutes : vérifiez la clé Resend ou le worker.",
+               "The queue has been backed up for over 30 minutes : check the Resend key or the worker.")}
           </span>
         </div>
       )}
@@ -220,8 +220,8 @@ export default function AdminEmailOutbox() {
              data-testid="admin-emails-alert-failures">
           <Unplug size={16} className="text-error" />
           <span className="text-sm text-nordfjord">
-            {L(`${counts.failed} échecs en file — incident fournisseur probable.`,
-               `${counts.failed} failures queued — likely a provider incident.`)}
+            {L(`${counts.failed} échecs en file : incident fournisseur probable.`,
+               `${counts.failed} failures queued : likely a provider incident.`)}
           </span>
         </div>
       )}

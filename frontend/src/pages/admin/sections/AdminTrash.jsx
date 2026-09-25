@@ -1,5 +1,5 @@
-// frontend/src/pages/admin/sections/AdminTrash.jsx — NOUVEAU fichier.
-// Corbeille générique — un onglet par type de donnée, restauration ou purge
+// frontend/src/pages/admin/sections/AdminTrash.jsx : NOUVEAU fichier.
+// Corbeille générique : un onglet par type de donnée, restauration ou purge
 // définitive. Réservé aux "admin" (owner) : la restauration/purge est une
 // action à fort impact, volontairement non déléguée à un staff même avec
 // accès "manage" sur la zone correspondante.
@@ -88,7 +88,7 @@ export default function AdminTrash() {
         <h1 className="font-display text-4xl font-bold uppercase tracking-tight mt-2">Trash</h1>
         <p className="font-mono text-xs text-foreground/60 mt-1">
           Deleted items are recoverable here for 30 days, then permanently purged automatically
-          {" "}— except orders, which are kept until you purge them manually.
+          {" "}- except orders, which are kept until you purge them manually.
         </p>
       </div>
 
@@ -106,7 +106,7 @@ export default function AdminTrash() {
       {activeResource?.noAutoPurge && (
         <div className="flex items-start gap-2 border border-ash/40 bg-glacier/5 px-4 py-3 mb-5 text-xs text-foreground/70">
           <AlertTriangle size={14} className="text-glacier mt-0.5 shrink-0" />
-          Orders are never purged automatically — they stay in trash until you purge them yourself.
+          Orders are never purged automatically : they stay in trash until you purge them yourself.
           A paid order is an accounting record; restore it if it was deleted by mistake.
         </div>
       )}

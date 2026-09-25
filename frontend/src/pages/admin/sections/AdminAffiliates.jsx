@@ -36,11 +36,11 @@ const moisLisible = (cle, lang) => (
   /^\d{4}-\d{2}$/.test(cle || "")
     ? new Date(Number(cle.slice(0, 4)), Number(cle.slice(5, 7)) - 1, 1)
         .toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { month: "long", year: "numeric" })
-    : (cle || "—")
+    : (cle || "-")
 );
 const jourLisible = (iso, lang) => {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—"
+  return Number.isNaN(d.getTime()) ? "-"
     : d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { day: "numeric", month: "long" });
 };
 
@@ -59,9 +59,9 @@ const downloadCsv = (filename, headers, rows) => {
 };
 
 const fmtDate = (iso) => {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = new Date(iso);
-  return isNaN(d) ? "—" : d.toLocaleDateString();
+  return isNaN(d) ? "-" : d.toLocaleDateString();
 };
 
 function AdminPagination({ page, total, onChange, L }) {
@@ -143,7 +143,7 @@ export default function AdminAffiliates() {
       const [o, list, rk] = await Promise.all([
         api.get("/admin/affiliates/overview"),
         // Les dossiers fermes sont exclus par le serveur. On ne les redemande
-        // que si le filtre les designe explicitement — sinon ils reviendraient
+        // que si le filtre les designe explicitement : sinon ils reviendraient
         // dans « Statut : tous », ce qui est exactement ce qu'on voulait eviter.
         api.get("/admin/affiliates",
                 fStatus === "closed" ? { params: { include_closed: true } } : undefined),
@@ -159,7 +159,7 @@ export default function AdminAffiliates() {
     }
     // fStatus, et RIEN d'autre : `load` ne doit se recreer que quand le filtre
     // change de camp. Une dependance de trop ici, et l'ecran se recharge en
-    // boucle — c'est deja arrive dans AuthContext.
+    // boucle : c'est deja arrive dans AuthContext.
   }, [fStatus]);
 
   const loadClicks = useCallback(async () => {
@@ -237,7 +237,7 @@ export default function AdminAffiliates() {
         <div className="flex gap-2">
           {/* Tout ce qui concerne l'argent vit désormais sur la page Paiements :
               génération, envoi à l'unité, envoi groupé, export CSV, historique
-              des exécutions. Cette page garde ce qui la concerne — la liste des
+              des exécutions. Cette page garde ce qui la concerne : la liste des
               affiliés, leurs fiches, les invitations et l'attribution. */}
           <button onClick={() => setShowBulk(true)} data-testid="affiliate-bulk-open"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-ash text-sm font-medium text-nordfjord hover:bg-clinical transition">
@@ -253,8 +253,8 @@ export default function AdminAffiliates() {
       {/* Tabs */}
       <div className="flex gap-2 mb-6 flex-wrap">
         {/* L'onglet « Paiements » a ete RETIRE d'ici.
-            Deux entrees du meme nom coexistaient — celle-ci et l'ecran
-            Paiements du menu — chacune portant la moitie des actions. Celle du
+            Deux entrees du meme nom coexistaient : celle-ci et l'ecran
+            Paiements du menu : chacune portant la moitie des actions. Celle du
             menu, l'endroit evident, n'avait ni l'envoi en lot ni l'export ;
             celle-ci n'avait ni l'envoi unitaire ni la resynchronisation. Et
             « Marquer paye » existait dans les deux, avec deux boites de
@@ -276,12 +276,12 @@ export default function AdminAffiliates() {
       ) : (
         <>
           {tab === "overview" && (<>
-          {/* PANNEAU À AUDITER (signaux de risque — décision manuelle) */}
+          {/* PANNEAU À AUDITER (signaux de risque : décision manuelle) */}
           {risk?.flagged_count > 0 && (
             <RiskPanel risk={risk} L={L} lang={lang} onOpen={setDetail} />
           )}
 
-          {/* À TRAITER — toujours visible, y compris au calme.
+          {/* À TRAITER : toujours visible, y compris au calme.
               Le bloc disparaissait entierement quand tout etait a zero : on ne
               savait alors pas si rien n'attendait, ou si le chargement avait
               echoue. Une carte calme dit « rien a faire », un vide ne dit rien. */}
@@ -291,12 +291,12 @@ export default function AdminAffiliates() {
               « rien a faire ». Un ecran qui s'appelle « a traiter » doit montrer
               ce qu'il y a a traiter : les postes calmes tiennent sur une ligne,
               et le seul qui compte se voit du premier coup d'oeil.
-              Ils restent NOMMES — c'est ce qui distingue « rien a faire » d'un
+              Ils restent NOMMES : c'est ce qui distingue « rien a faire » d'un
               chargement rate. */}
           {(() => {
             // LES CINQ COMPTEURS RESTENT AFFICHES.
             //
-            // Je les avais replies sur une ligne — « rien a traiter du cote de :
+            // Je les avais replies sur une ligne : « rien a traiter du cote de :
             // paiements, commissions… ». A l'usage, c'est moins bon : on lit
             // « tout est a zero » plus vite sur cinq chiffres que dans une
             // phrase, et il faut relire pour verifier qu'aucun poste ne manque.
@@ -304,7 +304,7 @@ export default function AdminAffiliates() {
             // Ce qui change, c'est le POIDS, pas la presence : les postes a zero
             // passent en retrait (fond neutre, chiffre gris), celui qui demande
             // une action garde sa couleur. Et les tuiles sont nettement plus
-            // basses qu'avant — cinq tiennent sur une ligne au lieu de deux.
+            // basses qu'avant : cinq tiennent sur une ligne au lieu de deux.
             const postes = [
               { cle: "payouts", icon: Wallet, ton: "cyan", n: al.payouts_ready,
                 titre: L("Paiements à envoyer", "Payouts to send"),
@@ -331,7 +331,7 @@ export default function AdminAffiliates() {
                 titre: L("Sans adresse de paiement", "No payout address"),
                 valeur: int(al.no_payout_address),
                 // Le versement se calcule, la commission reste due, et le run
-                // bute sur une adresse vide — en silence, le 1er du mois.
+                // bute sur une adresse vide : en silence, le 1er du mois.
                 // Ca se voit le jour ou l'affilie ecrit, des semaines apres.
                 action: Number(al.no_payout_address) > 0
                   ? L("ne seront pas payés", "will not be paid")
@@ -372,7 +372,7 @@ export default function AdminAffiliates() {
             );
           })()}
 
-          {/* PERFORMANCE — trois indicateurs qui pilotent, pas quatre dont un
+          {/* PERFORMANCE : trois indicateurs qui pilotent, pas quatre dont un
               historique. « Versé à vie » descend en ligne de référence. */}
           <SectionRule>{L("PERFORMANCE", "PERFORMANCE")}</SectionRule>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
@@ -395,7 +395,7 @@ export default function AdminAffiliates() {
           </div>
 
           {/* Totaux historiques : consultables, ils ne declenchent aucune
-              decision quotidienne — une ligne suffit. */}
+              decision quotidienne : une ligne suffit. */}
           <div className="bg-white border border-ash rounded-xl px-5 py-3 mb-6 flex flex-wrap gap-x-8 gap-y-1.5"
                data-testid="affiliate-reference">
             <span className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier self-center">
@@ -422,13 +422,13 @@ export default function AdminAffiliates() {
               declenche une action. Seuls, ils occupaient une carte pleine
               largeur pour deux caracteres. */}
 
-          {/* GRAPHE + TOP AFFILIÉS — items-start : sans lui, le panneau le plus
+          {/* GRAPHE + TOP AFFILIÉS : items-start : sans lui, le panneau le plus
               court s'étire à la hauteur de l'autre et se remplit de vide. Même
               correction que sur le tableau de bord principal. */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 items-start">
             <div className="lg:col-span-2 bg-white border border-ash rounded-xl p-5">
               <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier mb-4">
-                {L("CA & COMMISSIONS — 12 MOIS", "REVENUE & COMMISSIONS — 12 MONTHS")}
+                {L("CA & COMMISSIONS : 12 MOIS", "REVENUE & COMMISSIONS : 12 MONTHS")}
               </p>
               {/* Sans ce garde, Recharts dessinait une boite d'axes vide : ni
                   courbe, ni message. Un cadre desert se lit comme une panne. */}
@@ -543,7 +543,7 @@ export default function AdminAffiliates() {
                 <option value="suspended">{L("Suspendus", "Suspended")}</option>
                 {/* Les dossiers fermes ne sont PAS dans « tous » : ils sont
                     exclus par le serveur. Ce choix les demande explicitement,
-                    ce qui est le comportement voulu — on les consulte, on ne
+                    ce qui est le comportement voulu : on les consulte, on ne
                     les croise pas. */}
                 <option value="closed">{L("Fermés", "Closed")}</option>
               </select>
@@ -606,13 +606,13 @@ export default function AdminAffiliates() {
                           </td>
                           <td className="px-4 py-2 font-data text-[12px]">
                             {a.code ? <span className="text-nordfjord">{a.code}</span>
-                                    : <span className="text-glacier/45">—</span>}
+                                    : <span className="text-glacier/45">-</span>}
                           </td>
                           <td className="px-4 py-2">
                             <span className="inline-flex items-center gap-1.5">
                               <StatusPill status={a.status} L={L} />
                               {/* La conformite ne s'affiche QUE si elle pose
-                                  probleme — une coche verte partout ne dit rien. */}
+                                  probleme : une coche verte partout ne dit rien. */}
                               {flagged && (
                                 <span title={L("Conformité à vérifier", "Compliance to review")}
                                       className="text-warning text-xs font-bold">!</span>
@@ -641,11 +641,11 @@ export default function AdminAffiliates() {
                               <span className="block mt-0.5 text-[10px] font-data text-glacier"
                                     title={L(
                                       `${a.tier_agreement
-                                          ? "Entente négociée — palier figé, l'affilié lit que son taux ne baisse jamais automatiquement."
-                                          : "Ajustement manuel, sans entente — le palier sert de plancher : si le chiffre d'affaires en mérite un meilleur, c'est celui-là qui s'applique."} Palier calculé sur 12 mois : ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`,
+                                          ? "Entente négociée : palier figé, l'affilié lit que son taux ne baisse jamais automatiquement."
+                                          : "Ajustement manuel, sans entente : le palier sert de plancher : si le chiffre d'affaires en mérite un meilleur, c'est celui-là qui s'applique."} Palier calculé sur 12 mois : ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "-"}.`,
                                       `${a.tier_agreement
-                                          ? "Negotiated agreement — tier frozen, the affiliate reads that their rate never decreases automatically."
-                                          : "Manual adjustment, no agreement — the tier acts as a floor: if revenue earns a higher one, that one applies."} Tier computed over 12 months: ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "—"}.`)}>
+                                          ? "Negotiated agreement : tier frozen, the affiliate reads that their rate never decreases automatically."
+                                          : "Manual adjustment, no agreement : the tier acts as a floor: if revenue earns a higher one, that one applies."} Tier computed over 12 months: ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical || "-"}.`)}>
                                 {a.tier_agreement ? L("entente", "agreement") : L("manuel", "manual")}
                                 {a.tier_theoretical && a.tier_theoretical !== a.tier
                                   ? ` · ${L("calculé", "computed")} ${TIER_LABEL[a.tier_theoretical]?.[lang] || a.tier_theoretical}`
@@ -662,7 +662,7 @@ export default function AdminAffiliates() {
                           <td className="px-4 py-2 text-right"><Num value={a.pending_commission} format={money} /></td>
                           <td className="px-4 py-2 text-right">
                             <div className="flex gap-1 justify-end min-w-[9.5rem]">
-                              {/* `pending` couvre « invité » ET « suspendu » —
+                              {/* `pending` couvre « invité » ET « suspendu » -
                                   bon pour griser la rangée, faux pour ce
                                   bouton : il reapparaissait des qu'on
                                   suspendait quelqu'un, proposant de renvoyer
@@ -701,23 +701,23 @@ export default function AdminAffiliates() {
                     sub={`${int(clicks.active_affiliates)} ${L("affiliés actifs", "active affiliates")}`} />
                   <Kpi icon={Smartphone} accent="#2E9E6B"
                     label={L("Taux de conversion", "Conversion rate")}
-                    value={attr.conversion_rate != null ? `${(attr.conversion_rate * 100).toFixed(1)}%` : "—"}
+                    value={attr.conversion_rate != null ? `${(attr.conversion_rate * 100).toFixed(1)}%` : "-"}
                     sub={L("commandes / clics", "orders / clicks")} />
                   <Kpi icon={Globe} accent="#E8A33D"
                     label={L("Meilleure page", "Top page")}
-                    value={clicks.top_pages?.[0]?.source === "direct" ? L("Accès direct", "Direct") : clicks.top_pages?.[0]?.source || "—"}
+                    value={clicks.top_pages?.[0]?.source === "direct" ? L("Accès direct", "Direct") : clicks.top_pages?.[0]?.source || "-"}
                     sub={clicks.top_pages?.[0] ? int(clicks.top_pages[0].clicks) : ""} />
                   <Kpi icon={Users} accent="#00B8D4"
                     label={L("Conversions (30 j)", "Conversions (30d)")}
                     value={int(clicks.conversions_30d)}
                     sub={clicks.total_clicks && clicks.conversions_30d
                       ? `${((clicks.conversions_30d / clicks.total_clicks) * 100).toFixed(1)}% ${L("taux", "rate")}`
-                      : "—"} />
+                      : "-"} />
                 </div>
 
                 <div className="bg-white border border-ash rounded-xl p-5">
                   <p className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier mb-4">
-                    {L("CLICS — 30 DERNIERS JOURS", "CLICKS — LAST 30 DAYS")}
+                    {L("CLICS : 30 DERNIERS JOURS", "CLICKS : LAST 30 DAYS")}
                   </p>
                   <div style={{ width: "100%", height: 240 }}>
                     <ResponsiveContainer>
@@ -759,7 +759,7 @@ export default function AdminAffiliates() {
                             </td>
                             <td className="px-5 py-3">
                               <p className="font-medium text-nordfjord">{t.name}</p>
-                              <p className="text-[11px] text-glacier font-mono">{t.code || "—"}</p>
+                              <p className="text-[11px] text-glacier font-mono">{t.code || "-"}</p>
                             </td>
                             <td className="px-5 py-3 text-right">
                               <button onClick={() => setDetail(t.id)}
@@ -802,7 +802,7 @@ function RiskPanel({ risk, L, lang, onOpen }) {
       <div className="px-5 py-3 border-b border-error/20 flex items-center gap-2">
         <ShieldAlert size={16} className="text-error" />
         <p className="font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord">
-          {L("À auditer — signaux de risque", "To audit — risk signals")}
+          {L("À auditer : signaux de risque", "To audit : risk signals")}
         </p>
         <span className="ml-auto text-xs font-semibold text-error tabular-nums">{risk?.flagged_count ?? items.length}</span>
       </div>
@@ -854,8 +854,8 @@ function RiskPanel({ risk, L, lang, onOpen }) {
         })}
       </div>
       <p className="px-5 py-2.5 text-[11px] text-glacier bg-white/40 border-t border-error/10">
-        {L("Ces signaux aident à repérer qui examiner — ils ne suspendent personne automatiquement. La décision reste manuelle.",
-          "These signals help you spot who to review — nobody is suspended automatically. The decision stays manual.")}
+        {L("Ces signaux aident à repérer qui examiner : ils ne suspendent personne automatiquement. La décision reste manuelle.",
+          "These signals help you spot who to review : nobody is suspended automatically. The decision stays manual.")}
       </p>
     </div>
   );
@@ -863,7 +863,7 @@ function RiskPanel({ risk, L, lang, onOpen }) {
 
 function Kpi({ label, value, sub, delta, deltaSub }) {
   // Plus de medaillon d'icone colore : sur le tableau de bord principal, ce
-  // marqueur decoratif a ete rejete — la hierarchie passe par la taille, la
+  // marqueur decoratif a ete rejete : la hierarchie passe par la taille, la
   // couleur est reservee au sens. L'ecart contre le mois precedent est, lui,
   // la troisieme chose qu'un KPI doit porter (valeur, direction, reference).
   return (
@@ -957,7 +957,7 @@ function SectionRule({ children }) {
 function AlertCard({ icon: Icon, tone, title, value, action, calme = false }) {
   // Deux poids, une seule taille.
   //
-  // Les cinq compteurs restent visibles — on lit « tout est a zero » plus vite
+  // Les cinq compteurs restent visibles : on lit « tout est a zero » plus vite
   // sur cinq chiffres que dans une phrase. Mais ceux a zero passent au second
   // plan : fond neutre, chiffre gris et leger, icone eteinte. Seul ce qui
   // demande une action garde sa couleur et son chiffre en gras.
@@ -992,7 +992,7 @@ function StatusPill({ status, L }) {
     active: { fr: "Actif", en: "Active", cls: "bg-success/15 text-success" },
     suspended: { fr: "Suspendu", en: "Suspended", cls: "bg-error/15 text-error" },
     // Sans cette entree, le repli sur `invited` affichait « Invité » sur un
-    // dossier ferme — le contraire de ce qu'il faut lire.
+    // dossier ferme : le contraire de ce qu'il faut lire.
     closed: { fr: "Fermé", en: "Closed", cls: "bg-glacier/15 text-glacier" },
   };
   const m = map[status] || map.invited;
@@ -1031,7 +1031,7 @@ function InviteModal({ L, onClose, onDone }) {
   const [lang, setLangSel] = useState("fr");
   const [busy, setBusy] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
-  // Entente négociée — décidée ICI, à l'invitation, parce que c'est le moment
+  // Entente négociée : décidée ICI, à l'invitation, parce que c'est le moment
   // où on la connaît. Cochée après coup sur la fiche, elle arrivait toujours
   // trop tard : la personne avait déjà reçu le courriel qui lui présentait
   // une progression par paliers ne la concernant pas.
@@ -1101,8 +1101,8 @@ function InviteModal({ L, onClose, onDone }) {
                 className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova" />
             </Field>
           </div>
-          <Field label={L("Entreprise (optionnel — prioritaire pour le code)",
-                         "Company (optional — takes priority for code)")}>
+          <Field label={L("Entreprise (optionnel : prioritaire pour le code)",
+                         "Company (optional : takes priority for code)")}>
             <input value={company} onChange={(e) => setCompany(e.target.value)} data-testid="invite-company"
               placeholder={L("Fitness Studio", "Fitness Studio")}
               className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova" />
@@ -1141,7 +1141,7 @@ function InviteModal({ L, onClose, onDone }) {
                     className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova">
                     {["standard", "bronze", "silver", "gold", "platinum", "diamond"].map((t) => (
                       <option key={t} value={t}>
-                        {`${TIER_LABEL[t]?.[lang] || t} — ${TIER_RATE[t]} %`}
+                        {`${TIER_LABEL[t]?.[lang] || t} : ${TIER_RATE[t]} %`}
                       </option>
                     ))}
                   </select>
@@ -1185,7 +1185,7 @@ function InviteModal({ L, onClose, onDone }) {
 // et aux variantes FR/EN). Ignore les guillemets et gère les virgules ou points-virgules.
 // Parse un CSV avec le NOUVEAU schéma 5 colonnes :
 //   first_name, last_name, company, email, discount_percent
-// Rétrocompat : accepte encore l'ancien schéma { email, name } — auto-split.
+// Rétrocompat : accepte encore l'ancien schéma { email, name } : auto-split.
 // Détection insensible à la casse + variantes FR/EN, séparateur `,` ou `;`.
 function parseCsv(text) {
   const raw = String(text || "").replace(/^\uFEFF/, "").trim();
@@ -1410,12 +1410,12 @@ function BulkInviteModal({ L, onClose, onDone }) {
                     <tbody>
                       {rows.slice(0, 100).map((r, i) => (
                         <tr key={i} className="border-b border-ash/40">
-                          <td className="px-3 py-1.5 text-nordfjord truncate">{r.first_name || "—"}</td>
-                          <td className="px-3 py-1.5 text-nordfjord truncate">{r.last_name || "—"}</td>
-                          <td className="px-3 py-1.5 text-glacier truncate">{r.company || "—"}</td>
+                          <td className="px-3 py-1.5 text-nordfjord truncate">{r.first_name || "-"}</td>
+                          <td className="px-3 py-1.5 text-nordfjord truncate">{r.last_name || "-"}</td>
+                          <td className="px-3 py-1.5 text-glacier truncate">{r.company || "-"}</td>
                           <td className="px-3 py-1.5 text-nordfjord truncate">{r.email}</td>
                           <td className="px-3 py-1.5 text-right font-data text-nova">
-                            {r.discount_percent != null ? `${r.discount_percent}%` : "—"}
+                            {r.discount_percent != null ? `${r.discount_percent}%` : "-"}
                           </td>
                         </tr>
                       ))}
@@ -1519,7 +1519,7 @@ function BulkInviteModal({ L, onClose, onDone }) {
                 <ul className="px-4 py-2 space-y-1">
                   {result.skipped.map((s, i) => (
                     <li key={i} className="text-xs text-glacier">
-                      <span className="text-nordfjord">{s.email}</span> — {s.reason}
+                      <span className="text-nordfjord">{s.email}</span> : {s.reason}
                     </li>
                   ))}
                 </ul>
@@ -1534,7 +1534,7 @@ function BulkInviteModal({ L, onClose, onDone }) {
                 <ul className="px-4 py-2 space-y-1">
                   {result.failed.map((f, i) => (
                     <li key={i} className="text-xs text-glacier">
-                      <span className="text-nordfjord">{f.email}</span> — {f.error}
+                      <span className="text-nordfjord">{f.email}</span> : {f.error}
                     </li>
                   ))}
                 </ul>
@@ -1575,7 +1575,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   // INDISPENSABLE, et pas seulement pratique : sans ce crochet, `confirm` dans
   // ce composant designerait le `window.confirm` du navigateur. Il recevrait
   // notre objet d'options, l'afficherait « [object Object] », et aucun controle
-  // statique ne le signalerait — `confirm` est une variable globale, donc
+  // statique ne le signalerait : `confirm` est une variable globale, donc
   // `no-undef` la juge valide. Ce projet a deja perdu du temps sur ce piege.
   const confirm = useConfirm();
 
@@ -1596,7 +1596,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
     }
   };
 
-  // FERMER UN DOSSIER — sans aucun courriel.
+  // FERMER UN DOSSIER : sans aucun courriel.
   //
   // Une invitation qui ne sera jamais acceptee restait « invited » pour
   // toujours : elle comptait dans les effectifs, gonflait « invitations
@@ -1615,8 +1615,8 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
     if (!ok) return;
     try {
       await api.post(`/admin/affiliates/${affiliateId}/close`, { reason: "" });
-      toast.success(L("Dossier fermé — aucun courriel envoyé",
-                      "File closed — no email sent"));
+      toast.success(L("Dossier fermé : aucun courriel envoyé",
+                      "File closed : no email sent"));
       load();
       onChange();
     } catch (e) {
@@ -1650,7 +1650,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
         commission_note: a.commission_note || "",
         admin_notes: a.admin_notes || "",
       });
-      // Charge la liste des clients apportés en parallèle — endpoint dédié.
+      // Charge la liste des clients apportés en parallèle : endpoint dédié.
       // Historique seulement : ces clients ne rapportent une commission
       // que si le lien ou le code est utilisé sur la commande.
       setCustomersLoading(true);
@@ -1698,7 +1698,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
      * Trois reglages de ce formulaire ne touchent pas que l'admin : le palier
      * et l'entente changent ce que l'affilie GAGNE et ce qu'il LIT sur son
      * ecran, et le pourcentage de rabais RENOMME son code. Les autres (nom,
-     * adresse, notes) se corrigent sans dommage — les confirmer a chaque fois
+     * adresse, notes) se corrigent sans dommage : les confirmer a chaque fois
      * aurait rendu la boite banale, donc ignoree.
      *
      * On enonce la valeur d'arrivee, pas « etes-vous sur ? » : c'est la seule
@@ -1790,13 +1790,13 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="bg-white rounded-xl border border-ash w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()} data-testid="affiliate-detail-modal">
-        {/* EN-TETE : qui, dans quel etat, a quel taux — en une ligne.
+        {/* EN-TETE : qui, dans quel etat, a quel taux : en une ligne.
             Le nom et le courriel etaient seuls ; statut, code et palier se
             trouvaient plus bas, noyes parmi douze champs de meme apparence. */}
         <div className="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-ash">
           <div className="min-w-0">
             <h3 className="font-display text-xl font-bold text-nordfjord leading-tight truncate">
-              {a?.name || "—"}
+              {a?.name || "-"}
             </h3>
             {a?.email && <p className="text-[12px] text-glacier mt-0.5 truncate">{a.email}</p>}
             {a && (
@@ -1829,7 +1829,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
         ) : (
           <div className="space-y-6">
             {/* DECISIONS D'ABORD : elles etaient noyees sous les chiffres et
-                l'etat civil. Suspendre, rouvrir, marquer conforme — c'est ce
+                l'etat civil. Suspendre, rouvrir, marquer conforme : c'est ce
                 qu'on vient faire ici, cela passe devant l'argent. */}
             {/* Status actions */}
             <div className="flex flex-wrap gap-2">
@@ -1838,7 +1838,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                   {resending ? L("Envoi…", "Sending…") : L("Renvoyer l'invitation", "Resend invite")}
                 </ActBtn>
               )}
-              {/* La suspension DEMANDE confirmation — elle ne le faisait pas.
+              {/* La suspension DEMANDE confirmation : elle ne le faisait pas.
                   C'est l'action la plus lourde de cet écran : le statut est lu
                   à chaque validation de coupon ET au paiement, donc le code de
                   l'affilié cesse instantanément d'accorder son rabais, codes
@@ -1846,7 +1846,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                   attribuée. Il n'en est averti par rien ; il constate l'arrêt
                   de ses ventes.
                   Le formulaire d'édition confirmait déjà un changement de
-                  palier — un réglage bien moins grave. La suspension avait été
+                  palier : un réglage bien moins grave. La suspension avait été
                   oubliée de cette liste, et son bouton est voisin de
                   « Marquer en révision », de même apparence. */}
               {a.status === "active" && (
@@ -1868,7 +1868,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
               {a.status === "suspended" && <ActBtn onClick={() => setPatch({ status: "active" })}>{L("Réactiver", "Reactivate")}</ActBtn>}
               {/* Fermeture : proposee pour un invite qui ne repondra jamais, et
                   pour un suspendu dont on solde le dossier. Jamais pour un
-                  actif — son code est en circulation, il faut le suspendre
+                  actif : son code est en circulation, il faut le suspendre
                   d'abord, et le serveur le refuse de toute facon. */}
               {(a.status === "invited" || a.status === "suspended") && (
                 <ActBtn onClick={fermerDossier} data-testid="affiliate-close">
@@ -1898,8 +1898,8 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 L'ancien bloc melangeait CA et commissions, et ignorait
                 l'argent retire : comprendre le dossier imposait de descendre
                 lire les lignes une a une. Ce pipeline montre chaque somme que
-                porte un statut — en attente, a verser, payee, recuperee,
-                exclue — et rien n'est oublie. */}
+                porte un statut : en attente, a verser, payee, recuperee,
+                exclue : et rien n'est oublie. */}
             {m && (
               <div data-testid="affiliate-figures">
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-ash border border-ash rounded-xl overflow-hidden">
@@ -1965,7 +1965,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 )}
 
                 {/* VUE MENSUELLE : le retour en arriere demande. Trois sommes
-                    par mois — ce que le mois a valide, ce qu'il doit, et ce
+                    par mois : ce que le mois a valide, ce qu'il doit, et ce
                     qu'il a VRAIMENT verse. La ligne du haut en est la somme,
                     mais c'est ici qu'on voit QUAND. */}
                 {Array.isArray(data.series) && data.series.length > 0 && (
@@ -2044,14 +2044,14 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
               {[
                 [L("Créé le", "Created"), fmtDate(a.created_at)],
                 [L("Activé le", "Activated"), fmtDate(a.activated_at)],
-                [L("Conformité", "Compliance"), a.compliance_status || "—"],
+                [L("Conformité", "Compliance"), a.compliance_status || "-"],
                 [L("Invitations envoyées", "Invites sent"), a.invite_sent_count || 0],
                 ...(m ? [[L("CA du trimestre", "Quarter revenue"), money(m.quarter_revenue)]] : []),
                 ...(a.coupon_percent != null
                   ? [[L("Rabais public", "Public discount"), `${a.coupon_percent} %`]] : []),
                 ...(a.closed_at
                   ? [[L("Fermé le", "Closed"), fmtDate(a.closed_at)],
-                     [L("Motif", "Reason"), a.closed_reason || "—"]] : []),
+                     [L("Motif", "Reason"), a.closed_reason || "-"]] : []),
               ].map(([libelle, valeur]) => (
                 <div key={libelle}>
                   <dt className="text-[9.5px] uppercase tracking-[0.12em] text-glacier/70">{libelle}</dt>
@@ -2105,10 +2105,10 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                             : "bg-glacier/15 text-glacier hover:bg-glacier/25"
                         }`}
                         title={al.active
-                          ? L("Désactiver — les liens ?ref=<alias> ne créditeront plus l'affilié",
-                              "Deactivate — ?ref=<alias> links will no longer credit the affiliate")
-                          : L("Réactiver — l'attribution reprend pour les liens ?ref=<alias>",
-                              "Reactivate — ?ref=<alias> links resume crediting")}
+                          ? L("Désactiver : les liens ?ref=<alias> ne créditeront plus l'affilié",
+                              "Deactivate : ?ref=<alias> links will no longer credit the affiliate")
+                          : L("Réactiver : l'attribution reprend pour les liens ?ref=<alias>",
+                              "Reactivate : ?ref=<alias> links resume crediting")}
                       >
                         {aliasBusy === al.code
                           ? "…"
@@ -2154,7 +2154,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     hint={L("Renseignée par l'affilié lui-même. 0x… pour ERC-20, T… pour TRC-20.",
                             "Set by the affiliate. 0x… for ERC-20, T… for TRC-20.")} />
                   {/* Les aides annonçaient « Interac email, IBAN » et « CAD /
-                      BTC » — vestiges d'un ancien design multi-méthodes. Le
+                      BTC » : vestiges d'un ancien design multi-méthodes. Le
                       code n'accepte que USDT/USDC : suivre l'aide menait au
                       rejet. La devise est une liste, il n'y a que deux
                       valeurs valides. */}
@@ -2162,8 +2162,8 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     value={form.payout_currency} onChange={(v) => setForm({ ...form, payout_currency: v })}
                     test="edit-payout-currency"
                     options={[{ value: "usdt", label: "USDT" }, { value: "usdc", label: "USDC" }]}
-                    hint={L("Deux stablecoins seulement — rien d'autre n'est accepté.",
-                            "Two stablecoins only — nothing else is accepted.")} />
+                    hint={L("Deux stablecoins seulement : rien d'autre n'est accepté.",
+                            "Two stablecoins only : nothing else is accepted.")} />
                 </EditGroupe>
 
                 {/* Le palier a SA PROPRE section, et ce n'est pas décoratif.
@@ -2179,13 +2179,13 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     value={form.manual_tier} onChange={(v) => setForm({ ...form, manual_tier: v })}
                     test="edit-manual-tier"
                     options={[
-                      { value: "", label: L("Automatique — suit le chiffre d'affaires", "Automatic — follows revenue") },
-                      { value: "standard", label: "Standard — 10 %" },
-                      { value: "bronze", label: "Bronze — 12 %" },
-                      { value: "silver", label: L("Argent — 14 %", "Silver — 14%") },
-                      { value: "gold", label: L("Or — 16 %", "Gold — 16%") },
-                      { value: "platinum", label: L("Platine — 18 %", "Platinum — 18%") },
-                      { value: "diamond", label: L("Diamant — 20 %", "Diamond — 20%") },
+                      { value: "", label: L("Automatique : suit le chiffre d'affaires", "Automatic : follows revenue") },
+                      { value: "standard", label: "Standard : 10 %" },
+                      { value: "bronze", label: "Bronze : 12 %" },
+                      { value: "silver", label: L("Argent : 14 %", "Silver : 14%") },
+                      { value: "gold", label: L("Or : 16 %", "Gold : 16%") },
+                      { value: "platinum", label: L("Platine : 18 %", "Platinum : 18%") },
+                      { value: "diamond", label: L("Diamant : 20 %", "Diamond : 20%") },
                     ]}
                     hint={L("« Automatique » recalcule le palier sur les douze derniers mois. Tout autre choix garantit au minimum ce palier.",
                             "“Automatic” recalculates the tier over the last twelve months. Any other choice guarantees at least that tier.")} />
@@ -2217,7 +2217,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                       className="w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white text-nordfjord outline-none focus:border-nova transition"
                       rows={3} />
                     <span className="text-[12px] text-glacier mt-1 block leading-snug">
-                      {L("Privées — l'affilié ne les voit jamais.", "Private — the affiliate never sees these.")}
+                      {L("Privées : l'affilié ne les voit jamais.", "Private : the affiliate never sees these.")}
                     </span>
                   </label>
                 </EditGroupe>
@@ -2242,8 +2242,8 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                   {L("Paramètres de paiement affilié", "Affiliate payout settings")}
                 </p>
                 <div className="grid sm:grid-cols-2 gap-3 text-sm">
-                  <Info label={L("Adresse / destinataire", "Address / recipient")} value={a.payout_address || "—"} mono />
-                  <Info label={L("Devise / méthode", "Currency / method")} value={a.payout_currency || "—"} />
+                  <Info label={L("Adresse / destinataire", "Address / recipient")} value={a.payout_address || "-"} mono />
+                  <Info label={L("Devise / méthode", "Currency / method")} value={a.payout_currency || "-"} />
                 </div>
                 {a.commission_note && (
                   <p className="text-xs text-glacier mt-3 italic">"{a.commission_note}"</p>
@@ -2290,7 +2290,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 {/* « à vie » retiré : le rattachement n'attribue plus rien.
                     Une commande n'ouvre droit à commission que si le lien ou
                     le code est utilisé POUR ELLE. Cette liste reste un
-                    historique de qui a été amené par qui — utile, mais elle
+                    historique de qui a été amené par qui : utile, mais elle
                     ne promet aucun revenu futur. Même formulation que dans le
                     tableau de bord de l'affilié, pour que les deux écrans
                     disent la même chose. */}
@@ -2324,18 +2324,18 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                             {c.has_account && <span className="ml-1.5 text-[9px] uppercase tracking-wider text-nova">· acc</span>}
                           </td>
                           <td className="px-3 py-2 font-data text-glacier">
-                            {c.bound_at ? new Date(c.bound_at).toLocaleDateString(lang) : "—"}
+                            {c.bound_at ? new Date(c.bound_at).toLocaleDateString(lang) : "-"}
                           </td>
                           <td className="px-3 py-2">
                             <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-data uppercase tracking-wider bg-clinical text-nordfjord">
-                              {c.source || "—"}
+                              {c.source || "-"}
                             </span>
                           </td>
                           <td className="px-3 py-2 font-semibold">{c.orders_count || 0}</td>
                           <td className="px-3 py-2">{money(c.revenue_validated || 0)}</td>
                           <td className="px-3 py-2 font-semibold text-nova">{money(c.commission_validated || 0)}</td>
                           <td className="px-3 py-2 font-data text-glacier">
-                            {c.last_order_at ? new Date(c.last_order_at).toLocaleDateString(lang) : "—"}
+                            {c.last_order_at ? new Date(c.last_order_at).toLocaleDateString(lang) : "-"}
                           </td>
                         </tr>
                       ))}
@@ -2381,8 +2381,8 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     <tbody>
                       {data.referrals.map((r) => (
                         <tr key={r.id} className="border-b border-ash/60">
-                          <td className="px-3 py-2 text-glacier tabular-nums">{(r.created_at || "").slice(0, 10) || "—"}</td>
-                          <td className="px-3 py-2 text-nordfjord">{r.order_number || "—"}</td>
+                          <td className="px-3 py-2 text-glacier tabular-nums">{(r.created_at || "").slice(0, 10) || "-"}</td>
+                          <td className="px-3 py-2 text-nordfjord">{r.order_number || "-"}</td>
                           <td className="px-3 py-2">{money(r.base_amount)}</td>
                           <td className="px-3 py-2">{money(r.commission_amount)}</td>
                           <td className="px-3 py-2"><StatutCommission statut={r.status} L={L} lang={lang} />
@@ -2403,7 +2403,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   );
 }
 
-/* Titre de section de la fiche : la meme grammaire que le reste du site —
+/* Titre de section de la fiche : la meme grammaire que le reste du site -
  * un libelle en capitales espacees et un filet. La fiche enchainait dix blocs
  * sans aucune structure : l'oeil ne savait plus ou commencait quoi, et les
  * decisions se trouvaient sous les chiffres. Trois sections nommees, et les
@@ -2434,12 +2434,12 @@ function StatutCommission({ statut, L, lang }) {
   return <span className={`font-medium ${e.classe}`}>{lang === "fr" ? e.fr : e.en}</span>;
 }
 
-/* Champ de formulaire — refait pour être lisible.
+/* Champ de formulaire : refait pour être lisible.
  *
  * Ce qui ne fonctionnait pas : libellé en 11 px, majuscules et gris pâle, sur
  * un champ en 12 px. Sept réglages se suivaient dans une grille plate, sans
  * regroupement ni explication. Un testeur a cherché le palier manuel et ne
- * l'a pas trouvé — il était pourtant là, cinquième d'affilée.
+ * l'a pas trouvé : il était pourtant là, cinquième d'affilée.
  *
  * Trois changements : le libellé passe en casse normale et en 13 px, le champ
  * en 14 px, et une AIDE d'une ligne peut accompagner chaque réglage. Cette
@@ -2454,7 +2454,7 @@ function EditField({ label, value, onChange, type = "text", test, placeholder,
                     select, options, min, max, step, hint }) {
   const champ = "w-full rounded-lg border border-ash px-3 py-2 text-sm bg-white " +
                 "text-nordfjord outline-none focus:border-nova transition";
-  const liste = options || (select ? select.map((o) => ({ value: o, label: o || "—" })) : null);
+  const liste = options || (select ? select.map((o) => ({ value: o, label: o || "-" })) : null);
   return (
     <label className="block">
       <span className="text-[13px] font-medium text-nordfjord mb-1 block">{label}</span>
@@ -2474,7 +2474,7 @@ function EditField({ label, value, onChange, type = "text", test, placeholder,
 }
 
 /* Regroupe les réglages par sujet. Sans cela, « Devise de versement » et
- * « Palier manuel » se touchent alors qu'ils n'ont rien à voir — et l'œil ne
+ * « Palier manuel » se touchent alors qu'ils n'ont rien à voir : et l'œil ne
  * sait plus où s'arrêter. */
 function EditGroupe({ titre, children, apres }) {
   return (
@@ -2496,7 +2496,7 @@ function EditGroupe({ titre, children, apres }) {
  * Sans ce bloc, la section n'affichait qu'une liste sur « Automatique » et
  * rien d'autre : tout le dispositif des ententes negociees restait invisible,
  * conditionne a `form.manual_tier`. Une fonction qui n'apparait qu'apres avoir
- * devine le geste qui la revele n'existe pas pour qui ne l'a pas ecrite —
+ * devine le geste qui la revele n'existe pas pour qui ne l'a pas ecrite -
  * c'est ce qui a fait echouer A-34, et ce qui a fait croire a une regression.
  *
  * On ne deverrouille rien : on annonce simplement ou se trouve la suite.
@@ -2504,8 +2504,8 @@ function EditGroupe({ titre, children, apres }) {
 function EntenteAbsente({ L }) {
   return (
     <p className="text-[12px] text-glacier leading-relaxed" data-testid="tier-agreement-hint">
-      {L("Le palier suit le chiffre d'affaires sur douze mois glissants. Pour fixer un palier vous-même — ou enregistrer une entente négociée avec cet affilié — choisissez un palier dans la liste ci-dessus.",
-         "The tier follows revenue over a rolling twelve months. To set a tier yourself — or record a negotiated agreement with this affiliate — pick a tier in the list above.")}
+      {L("Le palier suit le chiffre d'affaires sur douze mois glissants. Pour fixer un palier vous-même : ou enregistrer une entente négociée avec cet affilié : choisissez un palier dans la liste ci-dessus.",
+         "The tier follows revenue over a rolling twelve months. To set a tier yourself : or record a negotiated agreement with this affiliate : pick a tier in the list above.")}
     </p>
   );
 }
@@ -2513,13 +2513,13 @@ function EntenteAbsente({ L }) {
 /* Consequence explicite du palier manuel.
  *
  * Ce reglage ne fige pas seulement un taux : il change ce que l'affilie LIT
- * sur son ecran, avec un engagement — « accorde par entente », « ne peut pas
+ * sur son ecran, avec un engagement : « accorde par entente », « ne peut pas
  * redescendre ». Une erreur de manipulation promet donc quelque chose qu'on
  * ne voulait pas promettre. On cite la phrase exacte plutot que de la resumer.
  *
  * Defini au niveau module, et non dans le rendu de DetailModal : un composant
  * recree a chaque rendu est un type neuf pour React, qui demonte et remonte
- * son sous-arbre — la case a cocher perdrait le focus a chaque frappe.
+ * son sous-arbre : la case a cocher perdrait le focus a chaque frappe.
  */
 function PalierConsequence({ form, setForm, L }) {
   return (
@@ -2529,7 +2529,7 @@ function PalierConsequence({ form, setForm, L }) {
           dans les deux cas. C'est faux sans entente : _palier_effectif()
           retient alors le MEILLEUR des deux, si bien qu'un palier manuel agit
           en PLANCHER et laisse la progression se faire. L'encadre promettait
-          un gel qui n'a lieu que sous entente — il decrivait a l'admin un
+          un gel qui n'a lieu que sous entente : il decrivait a l'admin un
           comportement que le serveur n'applique pas. */}
       <p className="text-[13px] text-nordfjord leading-relaxed">
         {form.tier_agreement
@@ -2547,7 +2547,7 @@ function PalierConsequence({ form, setForm, L }) {
           case change ce que l'affilie LIT : sans elle, on lui dit que son taux
           est fixe ; avec elle, on lui promet l'absence de baisse automatique
           et un avis en cas de changement. Une erreur de manipulation sur le
-          palier ne doit pas emporter cette promesse — d'ou la case distincte. */}
+          palier ne doit pas emporter cette promesse : d'ou la case distincte. */}
       <label className="mt-3 flex items-start gap-2.5 cursor-pointer rounded-lg
                         border border-ash bg-white px-3 py-2.5 hover:border-nova transition">
         <input type="checkbox" className="mt-0.5 h-4 w-4 accent-nordfjord"
@@ -2561,8 +2561,8 @@ function PalierConsequence({ form, setForm, L }) {
 
       <p className="mt-2 text-[12px] text-glacier italic leading-relaxed">
         {form.tier_agreement
-          ? L("L'affilié lira : « Ce taux vous est accordé par entente. Il ne varie pas avec votre volume de ventes et ne baisse jamais automatiquement. Toute modification ferait l'objet d'un avis de notre part. » — vous restez libre de le modifier, à charge de l'en aviser.",
-              "The affiliate will read: “This rate is set by agreement. It does not vary with your sales volume and never decreases automatically. Any change would be communicated to you.” — you remain free to change it, provided you notify them.")
+          ? L("L'affilié lira : « Ce taux vous est accordé par entente. Il ne varie pas avec votre volume de ventes et ne baisse jamais automatiquement. Toute modification ferait l'objet d'un avis de notre part. » : vous restez libre de le modifier, à charge de l'en aviser.",
+              "The affiliate will read: “This rate is set by agreement. It does not vary with your sales volume and never decreases automatically. Any change would be communicated to you.” : you remain free to change it, provided you notify them.")
           : L("L'affilié lira : « Ce taux est fixé par l'administration et ne suit pas votre volume de ventes. » Aucun engagement de permanence.",
               "The affiliate will read: “This rate is set by the administration and does not follow your sales volume.” No commitment of permanence.")}
       </p>

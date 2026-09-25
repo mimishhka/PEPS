@@ -49,7 +49,7 @@ export default function Catalog() {
     <div data-testid="catalog-page" className="bg-clinical min-h-screen">
       <div className="max-w-7xl mx-auto px-6 lg:px-8 pt-16 pb-10">
         {/* Le titre porte seul ; l'etiquette devient une marque de coin,
-            comme sur le bandeau d'infolettre — le meme geste partout. */}
+            comme sur le bandeau d'infolettre : le meme geste partout. */}
         <div className="relative">
           <h1 className="font-display text-[26px] sm:text-[32px] font-semibold text-nordfjord leading-[1.1] tracking-[-0.01em]">
             {lang === "fr" ? "La bibliothèque complète" : "The full library"}

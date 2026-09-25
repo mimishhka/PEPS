@@ -16,7 +16,7 @@ export default function Register() {
   const [mode, setMode] = useState("magic"); // magic | password
   // Prénom et nom séparés, comme sur l'invitation affiliée. Un champ unique
   // « nom complet » oblige à deviner où couper pour s'adresser à quelqu'un par
-  // son prénom — et se trompe dès qu'il y a un prénom composé ou deux noms.
+  // son prénom : et se trompe dès qu'il y a un prénom composé ou deux noms.
   const [form, setForm] = useState({ first_name: "", last_name: "", email: "", password: "" });
 
   // Les deux sont obligatoires. Le `required` du navigateur ne suffit pas :
@@ -98,9 +98,9 @@ export default function Register() {
 
   return (
     <div className="min-h-[85vh] grid lg:grid-cols-2 bg-clinical" data-testid="register-page">
-      <div className="hidden lg:block relative bg-nordfjord overflow-hidden">
+      <div className="hidden lg:block relative border-l border-ash bg-clinical overflow-hidden">
         <MolecularMesh opacity={0.3} />
-        <div className="relative h-full p-12 flex flex-col justify-between text-clinical">
+        <div className="relative h-full p-12 flex flex-col justify-between text-nordfjord">
           <div className="flex items-center gap-3">
             <FnMark size={28} frame="#00B8D4" spark="#00B8D4" />
             <Wordmark size={17} color="#F7FAFC" />
@@ -109,7 +109,7 @@ export default function Register() {
             <h2 className="font-display text-[28px] sm:text-[34px] font-semibold tracking-[-0.01em] leading-[1.1]">
               {t("auth.signup") || "Join the network."}
             </h2>
-            <p className="mt-4 text-[#B7CADD] max-w-md">{t("auth.registerSub")}</p>
+            <p className="mt-4 text-glacier max-w-md">{t("auth.registerSub")}</p>
           </div>
         </div>
       </div>
@@ -162,7 +162,7 @@ export default function Register() {
             <form onSubmit={onMagicSubmit} className="space-y-5">
               <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" data-testid="honeypot" />
               <p className="text-sm text-glacier">
-                {t("auth.magicSignupSub") || "Créez votre compte sans mot de passe — on vous envoie un lien d'activation."}
+                {t("auth.magicSignupSub") || "Créez votre compte sans mot de passe : on vous envoie un lien d'activation."}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

@@ -133,9 +133,9 @@ export default function AdminSeo() {
               {/* Aperçu Google */}
               <div className="mt-4 rounded-lg border border-ash bg-clinical p-4">
                 <p className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-2">{L("Aperçu Google", "Google preview")}</p>
-                <p className="text-[#1a0dab] text-lg leading-tight truncate">{(lang === "fr" ? settings.site_title_fr : settings.site_title_en) || "—"}</p>
+                <p className="text-[#1a0dab] text-lg leading-tight truncate">{(lang === "fr" ? settings.site_title_fr : settings.site_title_en) || "-"}</p>
                 <p className="text-[#006621] text-xs">https://fironova.com</p>
-                <p className="text-[#545454] text-sm mt-0.5 line-clamp-2">{(lang === "fr" ? settings.site_description_fr : settings.site_description_en) || "—"}</p>
+                <p className="text-[#545454] text-sm mt-0.5 line-clamp-2">{(lang === "fr" ? settings.site_description_fr : settings.site_description_en) || "-"}</p>
               </div>
               <button
                 onClick={saveSettings}

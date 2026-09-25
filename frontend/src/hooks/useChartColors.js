@@ -1,4 +1,4 @@
-// frontend/src/hooks/useChartColors.js — couleurs de graphique suivant le thème.
+// frontend/src/hooks/useChartColors.js : couleurs de graphique suivant le thème.
 //
 // Recharts reçoit ses couleurs en PROPRIÉTÉS (stroke, fill), pas en classes
 // Tailwind. Elles échappent donc entièrement au thème : la grille #E2E8F0 et
@@ -9,8 +9,8 @@
 // résout pas dans un attribut de présentation SVG. Il faut donc lire le thème
 // en JavaScript et fournir la valeur finale.
 //
-// Les valeurs sombres viennent de la palette de nuit d'index.css — Ash de nuit
-// pour la grille, Glacier de nuit pour les axes — et non de teintes choisies
+// Les valeurs sombres viennent de la palette de nuit d'index.css : Ash de nuit
+// pour la grille, Glacier de nuit pour les axes : et non de teintes choisies
 // au jugé.
 import { useTheme } from "../contexts/ThemeContext";
 

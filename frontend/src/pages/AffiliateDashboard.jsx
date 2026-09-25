@@ -1,4 +1,4 @@
-// frontend/src/pages/AffiliateDashboard.jsx — Tableau de bord affilié Fironova.
+// frontend/src/pages/AffiliateDashboard.jsx : Tableau de bord affilié Fironova.
 // Bilingue FR/EN, identité NOVA. Derrière l'auth existante (ProtectedRoute).
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
@@ -26,13 +26,13 @@ import useChartColors from "../hooks/useChartColors";
 // Couleurs métal de l'échelle des paliers. Deux corrections par rapport à la
 // version précédente :
 //
-//   — Standard et Argent portaient LE MÊME gris (#64748B). Deux paliers
+//   : Standard et Argent portaient LE MÊME gris (#64748B). Deux paliers
 //     distincts, une seule couleur : l'échelle ne se lisait pas.
-//   — Diamant portait #00B8D4, l'accent de la marque. Le système d'identité
+//   : Diamant portait #00B8D4, l'accent de la marque. Le système d'identité
 //     réserve cette couleur aux appels à l'action ; l'utiliser pour un palier
 //     la banalisait partout ailleurs.
 //
-// La progression va du turquoise au violet, en passant par les métaux — on
+// La progression va du turquoise au violet, en passant par les métaux : on
 // suit l'échelle du regard sans lire les noms.
 const TIER_META = {
   standard: { fr: "Standard", en: "Standard", color: "#2DBFB0" },
@@ -53,7 +53,7 @@ const money = (n) => `$${Number(n || 0).toLocaleString("en-CA", { minimumFractio
 
 // maskEmail() vivait ici. Le masquage se fait DÉSORMAIS CÔTÉ SERVEUR
 // (_masquer_courriel dans server.py) : la garder aurait laissé croire que la
-// protection est affaire d'affichage, ce qui était exactement le défaut —
+// protection est affaire d'affichage, ce qui était exactement le défaut -
 // l'adresse complète voyageait dans la réponse JSON et se lisait dans les
 // outils de développement, masque ou pas.
 
@@ -73,16 +73,16 @@ const downloadCsv = (filename, headers, rows) => {
 
 const PAGE_SIZE = 10;
 const fmtDate = (iso, lang) => {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = new Date(iso);
-  if (isNaN(d)) return "—";
+  if (isNaN(d)) return "-";
   return d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
     { year: "numeric", month: "short", day: "numeric" });
 };
 const fmtDateTime = (iso, lang) => {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = new Date(iso);
-  if (isNaN(d)) return "—";
+  if (isNaN(d)) return "-";
   return d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
     { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 };
@@ -172,7 +172,7 @@ export default function AffiliateDashboard() {
   const [payCur, setPayCur] = useState("btc");
   const [savingPay, setSavingPay] = useState(false);
 
-  // Mot de passe : un affilié est créé passwordless — le champ « actuel »
+  // Mot de passe : un affilié est créé passwordless : le champ « actuel »
   // n'apparaît que s'il en a déjà défini un.
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [savingPw, setSavingPw] = useState(false);
@@ -183,7 +183,7 @@ export default function AffiliateDashboard() {
     try {
       // Un seul aller-retour : `/affiliate/dashboard` agrège toutes les
       // sections. Le serveur est résilient (une section en échec est
-      // remplacée par un repli sûr) — c'est le Promise.allSettled d'avant,
+      // remplacée par un repli sûr) : c'est le Promise.allSettled d'avant,
       // mais côté serveur, donc sans les 8 round-trips.
       setRefPage(1); setPayPage(1);
       const { data } = await api.get("/affiliate/dashboard", {
@@ -233,7 +233,7 @@ export default function AffiliateDashboard() {
     }
   }, [affiliateError]);
 
-  // Top products: prioritise l'affilié (produits qu'IL a vendus) —
+  // Top products: prioritise l'affilié (produits qu'IL a vendus) -
   // fallback vers featured/catalog s'il n'a aucune vente encore.
   const [topProducts, setTopProducts] = useState([]);
   const [personalTop, setPersonalTop] = useState(false);
@@ -395,7 +395,7 @@ export default function AffiliateDashboard() {
   const payPageRows = payouts;
 
   // Changement de page : re-fetch serveur de cette SEULE section. La pagination
-  // vit côté serveur (items+total) — le dashboard ne transporte plus la liste
+  // vit côté serveur (items+total) : le dashboard ne transporte plus la liste
   // entière, seulement la page affichée.
   const goRefPage = useCallback(async (p) => {
     setRefLoading(true);
@@ -482,7 +482,7 @@ export default function AffiliateDashboard() {
   const [tourOuvert, setTourOuvert] = useState(false);
   useEffect(() => {
     // Trois conditions, toutes nécessaires : la fiche est chargée, les
-    // conditions sont acceptées — la visite n'a aucun sens avant —, et le
+    // conditions sont acceptées : la visite n'a aucun sens avant -, et le
     // SERVEUR dit qu'elle n'a pas déjà été donnée. Ce dernier point vient de
     // la fiche affilié et non du navigateur : autrement la visite rejouait
     // entièrement sur un autre appareil ou après un nettoyage.
@@ -500,7 +500,7 @@ export default function AffiliateDashboard() {
 
   // Terminer ET quitter marquent la visite comme donnée : quelqu'un qui sort à
   // la deuxième bulle a décidé qu'il n'en voulait pas. L'échec de l'appel est
-  // volontairement silencieux — le pire qui puisse arriver est qu'elle soit
+  // volontairement silencieux : le pire qui puisse arriver est qu'elle soit
   // proposée une fois de plus, ce qui ne justifie pas d'alarmer l'affilié.
   const fermerTour = useCallback(async () => {
     setTourOuvert(false);
@@ -524,8 +524,8 @@ export default function AffiliateDashboard() {
         enregistre = true;
       } catch (e) {
         if (essai === 1) {
-          // Silencieux pour l'affilié — le pire est que la visite soit
-          // reproposée sur un AUTRE appareil — mais tracé pour nous : c'est
+          // Silencieux pour l'affilié : le pire est que la visite soit
+          // reproposée sur un AUTRE appareil : mais tracé pour nous : c'est
           // par cette porte que le défaut était sorti sans laisser d'indice.
           console.warn("[affiliate] fin de visite non enregistrée", e);
         }
@@ -550,7 +550,7 @@ export default function AffiliateDashboard() {
   if (affiliateError?.response?.status === 403) {
     // Un seul statut HTTP (403) pour deux réalités : « pas affilié » et
     // « affilié suspendu ». Le backend porte un code dans la réponse pour les
-    // distinguer — sinon un compte suspendu lirait « programme privé » comme
+    // distinguer : sinon un compte suspendu lirait « programme privé » comme
     // s'il n'avait jamais rejoint, ce qui masquerait la raison réelle.
     const detail403 = affiliateError.response.data?.detail;
     const suspendu = detail403 && (typeof detail403 === "object" ? detail403.code : detail403) === "suspended";
@@ -617,12 +617,12 @@ export default function AffiliateDashboard() {
    * coupure réseau, `data` vaut null, les deux gardes ci-dessus sont franchies
    * et tout le rendu part avec `data?.x` partout. Un affilié Diamant à 20 %
    * lisait alors : palier vide, « · 0 % », « une commande de 100 $ vous
-   * rapporte 0,00 $ », et — parce que `next_tier` est absent — « 🏆 Palier
+   * rapporte 0,00 $ », et : parce que `next_tier` est absent : « 🏆 Palier
    * maximal atteint ». Le panneau de versement disparaissait, et le bouton
    * « Copier » du lien restait actif : il copiait une chaîne vide en affichant
    * « Copié ✓ ». La personne partageait un lien mort.
    *
-   * Aucune de ces valeurs n'est fausse au sens du code — elles sont toutes le
+   * Aucune de ces valeurs n'est fausse au sens du code : elles sont toutes le
    * repli d'un champ absent. C'est précisément le problème : rien ne distingue
    * « zéro » de « je ne sais pas ».
    */
@@ -656,14 +656,14 @@ export default function AffiliateDashboard() {
 
   // Ce qu'une vente rapporte. L'exemple est ancre sur la BASE COMMISSIONNABLE,
   // pas sur le prix affiche avant rabais : ainsi le taux du palier s'applique
-  // tel quel — 100 $ de base a 10 % donnent 10 $ — et la phrase ne melange pas
+  // tel quel : 100 $ de base a 10 % donnent 10 $ : et la phrase ne melange pas
   // deux montants differents. Annoncer « une vente de 100 $ rapporte 9 $ »
   // etait exact mais illisible : le lecteur ne sait pas lequel des deux
   // chiffres est le sien.
   const exampleBase = 100;
   const exampleEarn = exampleBase * Number(data?.commission_rate || 0);
 
-  // Jalons de demarrage, deduits des donnees reelles — jamais d'etape declaree
+  // Jalons de demarrage, deduits des donnees reelles : jamais d'etape declaree
   // franchie sans preuve. Le bloc disparait quand les trois sont acquises :
   // un chemin d'accueil qui reste affiche pour toujours devient du decor.
   const steps = [
@@ -684,10 +684,10 @@ export default function AffiliateDashboard() {
   const nextStep = steps.findIndex((x) => !x.done);
 
   // `ton` choisit la couleur fonctionnelle du liseré et l'étiquette de zone.
-  // Il qualifie ce dont la bulle parle — argent acquis, argent en attente,
-  // règle à respecter — au lieu de colorer pour colorer.
+  // Il qualifie ce dont la bulle parle : argent acquis, argent en attente,
+  // règle à respecter : au lieu de colorer pour colorer.
   const TOUR = [
-    // Cible le panneau lien+code, TOUJOURS présent — et non le bloc des
+    // Cible le panneau lien+code, TOUJOURS présent : et non le bloc des
     // produits à promouvoir, qui n'apparaît qu'une fois des ventes réalisées.
     // La première bulle pointait donc dans le vide pour un nouvel affilié,
     // c'est-à-dire pour la seule personne à qui la visite s'adresse.
@@ -718,7 +718,7 @@ export default function AffiliateDashboard() {
 
     // Les étapes qui suivent changent d'ONGLET. La visite ne parlait que de la
     // vue globale : cinq onglets sur six n'étaient jamais mentionnés, dont
-    // celui où se saisit l'adresse de versement — sans laquelle un solde
+    // celui où se saisit l'adresse de versement : sans laquelle un solde
     // s'accumule et ne peut jamais être envoyé.
     { cible: "affiliate-performance", ton: "nova", onglet: "performance",
       titre: L("D'où viennent vos ventes", "Where your sales come from"),
@@ -730,8 +730,8 @@ export default function AffiliateDashboard() {
                "Every payout with its amount, currency, the exchange rate used and its reference. Exportable to CSV for your bookkeeping.") },
     { cible: "affiliate-compliance", ton: "regle", onglet: "compliance",
       titre: L("Ce qui peut suspendre votre compte", "What can suspend your account"),
-      texte: L("Communication privée uniquement, et aucune allégation de santé — ni posologie, ni effet thérapeutique. C'est le seul manquement qui suspend sans préavis, parce qu'il nous engage tous les deux.",
-               "Private communication only, and no health claims — no dosage, no therapeutic effect. It is the one breach that suspends without notice, because it commits us both.") },
+      texte: L("Communication privée uniquement, et aucune allégation de santé : ni posologie, ni effet thérapeutique. C'est le seul manquement qui suspend sans préavis, parce qu'il nous engage tous les deux.",
+               "Private communication only, and no health claims : no dosage, no therapeutic effect. It is the one breach that suspends without notice, because it commits us both.") },
     { cible: "affiliate-payout-address", ton: "attente", onglet: "settings",
       titre: L("À faire avant votre premier versement", "Do this before your first payout"),
       texte: L("Sans adresse de portefeuille, vos commissions s'accumulent sans pouvoir vous être envoyées. Renseignez-la dès maintenant : une adresse Ethereum (0x…) ou Tron (T…).",
@@ -765,7 +765,7 @@ export default function AffiliateDashboard() {
   ];
 
   // Conditions non acceptées pour la version courante : on rend UNIQUEMENT
-  // l'écran d'acceptation. Pas une surcouche par-dessus le tableau de bord —
+  // l'écran d'acceptation. Pas une surcouche par-dessus le tableau de bord -
   // un affilié verrait ses chiffres derrière et pourrait fermer la fenêtre,
   // et rien ne prouverait plus qu'il a lu quoi que ce soit.
   if (data && data.terms_ok === false) {
@@ -859,8 +859,8 @@ export default function AffiliateDashboard() {
                     <span className="text-nova tabular-nums">{money(exampleEarn)}</span>
                   </p>
                   <p className="font-data text-xs text-white/60 mt-1">
-                    {L(`${Math.round((data?.commission_rate || 0) * 100)} % du sous-total des produits après rabais — livraison et taxes exclues.`,
-                       `${Math.round((data?.commission_rate || 0) * 100)}% of the product subtotal after discount — shipping and taxes excluded.`)}
+                    {L(`${Math.round((data?.commission_rate || 0) * 100)} % du sous-total des produits après rabais : livraison et taxes exclues.`,
+                       `${Math.round((data?.commission_rate || 0) * 100)}% of the product subtotal after discount : shipping and taxes excluded.`)}
                   </p>
                 </div>
               ) : (
@@ -924,15 +924,15 @@ export default function AffiliateDashboard() {
               </div>
             )}
 
-            {/* KPI cards — la devise est explicite. Les montants sont en CAD
+            {/* KPI cards : la devise est explicite. Les montants sont en CAD
                 alors que le versement part en USDT/USDC : sans etiquette, un
                 affilie qui voit « 250 $ » et recoit 180 USDT croit a une
                 retenue. La conversion n'apparaissait qu'APRES un versement,
-                dans l'historique — donc jamais pour qui n'a pas encore ete paye. */}
+                dans l'historique : donc jamais pour qui n'a pas encore ete paye. */}
             {/* DEUX cartes, pas quatre. Ce bandeau ne porte que le chiffre
                 d'affaires : les commissions vivent dans le panneau de
-                versement, et l'activité — clics, conversion, commandes, panier
-                — dans la rangée d'indicateurs plus bas. Chacune de ces trois
+                versement, et l'activité : clics, conversion, commandes, panier
+                : dans la rangée d'indicateurs plus bas. Chacune de ces trois
                 zones répond à une question distincte, et aucune ne répète les
                 chiffres d'une autre. */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-testid="affiliate-kpis">
@@ -957,7 +957,7 @@ export default function AffiliateDashboard() {
                     </span>
                   </p>
                   {/* Jeton de conversion, TOUJOURS visible dès que le taux est
-                      connu — y compris à zéro. C'est justement avant le premier
+                      connu : y compris à zéro. C'est justement avant le premier
                       versement qu'on doit comprendre qu'on sera payé dans une
                       autre devise ; le conditionner au solde le faisait
                       disparaître exactement pour qui l'ignorait encore.
@@ -985,12 +985,12 @@ export default function AffiliateDashboard() {
 
                 {/* La regle du cycle, sans mystere : rien accumule, sous le
                     seuil (differe), ou verse a telle date. Et ce qui est
-                    encore en maturation, separement — ce n'est PAS de
+                    encore en maturation, separement : ce n'est PAS de
                     l'argent du, pas encore. */}
                 <p className="font-data text-[11px] text-glacier mt-2" data-testid="payout-cycle">
                   {dueNow <= 0
-                    ? L("Rien d'accumulé pour l'instant — vos gains du mois en cours restent visibles ci-dessus.",
-                        "Nothing accumulated yet — this month's earnings stay visible above.")
+                    ? L("Rien d'accumulé pour l'instant : vos gains du mois en cours restent visibles ci-dessus.",
+                        "Nothing accumulated yet : this month's earnings stay visible above.")
                     : dueNow < payoutMin
                     ? L(`Sous le seuil de ${money(payoutMin)} : versé au premier cycle qui l'atteint.`,
                         `Below the ${money(payoutMin)} threshold: paid in the first cycle that reaches it.`)
@@ -1038,15 +1038,15 @@ export default function AffiliateDashboard() {
 
                 <p className="font-data text-[11px] text-glacier mt-3">
                   {dueNow >= payoutMin
-                    ? L("Seuil atteint — le versement part au prochain cycle mensuel.",
-                        "Threshold met — the payout goes out at the next monthly cycle.")
+                    ? L("Seuil atteint : le versement part au prochain cycle mensuel.",
+                        "Threshold met : the payout goes out at the next monthly cycle.")
                     : L("Rien n'est perdu sous le seuil : vos commissions restent à votre crédit et s'ajoutent au mois suivant.",
                         "Nothing is lost below the threshold: your commissions stay to your credit and carry over.")}
                 </p>
                 {/* La conversion s'affiche meme a solde nul. Elle ne servait
                     d'abord qu'a chiffrer un montant ; c'est en realite une
                     information de devise, et c'est AVANT le premier versement
-                    qu'elle evite le malentendu — voir « 250 $ » puis recevoir
+                    qu'elle evite le malentendu : voir « 250 $ » puis recevoir
                     180 USDT ressemble a une retenue. La conditionner au solde
                     la faisait disparaitre pour qui n'a encore rien gagne. */}
                 {/* La DEVISE vient du choix de l'affilie (payout_currency,
@@ -1064,13 +1064,13 @@ export default function AffiliateDashboard() {
                       {dueNow > 0
                         ? <>{" · "}{money(dueNow)} CAD × {Number(data.fx_rate_cad_to_usd).toFixed(4)}</>
                         : <>{" · 1 CAD ≈ "}{Number(data.fx_rate_cad_to_usd).toFixed(4)}</>}
-                      {" — "}
+                      {" : "}
                       {L("taux de la Banque du Canada. Le taux définitif sera celui du jour du versement.",
                          "Bank of Canada rate. The final rate is the one on payout day.")}
                     </>
                   ) : (
-                    L(" — au taux officiel de la Banque du Canada le jour du versement.",
-                      " — at the official Bank of Canada rate on payout day.")
+                    L(" : au taux officiel de la Banque du Canada le jour du versement.",
+                      " : at the official Bank of Canada rate on payout day.")
                   )}
                 </p>
               </div>
@@ -1081,25 +1081,25 @@ export default function AffiliateDashboard() {
                 depuis l'ouverture du compte ; la carte « sources de vos clics »
                 plus bas compte sur 30 jours. Deux totaux de clics differents
                 sur le meme ecran, sans un mot pour les distinguer, se lisent
-                comme une erreur — et on finit par ne plus croire ni l'un ni
+                comme une erreur : et on finit par ne plus croire ni l'un ni
                 l'autre. */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <MiniInsight label={L("Clics sur votre lien", "Clicks on your link")}
                            fenetre={L("depuis le début", "all time")}
-                           value={insights?.clicks != null ? insights.clicks.toLocaleString("en-CA") : "—"} />
+                           value={insights?.clicks != null ? insights.clicks.toLocaleString("en-CA") : "-"} />
               <MiniInsight label={L("Taux de conversion", "Conversion rate")}
                            fenetre={L("depuis le début", "all time")}
-                           value={insights?.conversion_rate != null ? `${(insights.conversion_rate * 100).toFixed(1)}%` : "—"} />
+                           value={insights?.conversion_rate != null ? `${(insights.conversion_rate * 100).toFixed(1)}%` : "-"} />
               <MiniInsight label={L("Commandes validées", "Validated orders")}
                            fenetre={L("depuis le début", "all time")}
-                           value={insights?.validated_orders != null ? insights.validated_orders.toLocaleString("en-CA") : "—"} />
+                           value={insights?.validated_orders != null ? insights.validated_orders.toLocaleString("en-CA") : "-"} />
               <MiniInsight label={L("Panier moyen", "Avg order")}
                            fenetre={L("sous-total produits", "product subtotal")}
                            value={money(insights?.avg_order_value)} />
             </div>
 
             {/* Palier. La bascule se fait sur tier_agreement, PAS sur
-                l'existence d'un palier manuel — ce commentaire disait
+                l'existence d'un palier manuel : ce commentaire disait
                 l'inverse (« manual_tier l'emporte sur le palier calcule »),
                 ce qui n'est plus vrai depuis _palier_effectif() : sans
                 entente, un palier force n'est qu'un plancher et la
@@ -1145,12 +1145,12 @@ export default function AffiliateDashboard() {
                 </>
               ) : (
                 <p className="font-display text-2xl font-bold text-nordfjord">
-                  🏆 {L("Palier maximal atteint", "Top tier reached")} — {tierLabel}
+                  🏆 {L("Palier maximal atteint", "Top tier reached")} : {tierLabel}
                 </p>
               )}
             </div>
 
-            {/* Fenetre glissante de 12 mois — c'est elle qui fixe le palier.
+            {/* Fenetre glissante de 12 mois : c'est elle qui fixe le palier.
                 Remplace l'ancienne carte « securisez votre palier », qui
                 annoncait une retrogradation trimestrielle desormais supprimee. */}
             {data?.rolling12_revenue != null && (
@@ -1202,7 +1202,7 @@ export default function AffiliateDashboard() {
 
             {/* Échelle des paliers et simulateur. Masquée sous entente : le
                 barème ne s'applique pas à ces comptes, leur montrer une échelle
-                qu'ils ne gravissent pas serait une fausse promesse — et cela
+                qu'ils ne gravissent pas serait une fausse promesse : et cela
                 révélerait au passage qu'un autre régime existe. */}
             {!data?.tier_agreement && (
               <TierLadder data={data} L={L} lang={lang} money={money} TIER_META={TIER_META} />
@@ -1235,7 +1235,7 @@ export default function AffiliateDashboard() {
 
               {/* Le CODE, en premier et en grand. Il ne figurait que dans les
                   Paramètres, alors que c'est lui qu'on donne de vive voix ou
-                  dans un message — et les conditions imposent précisément la
+                  dans un message : et les conditions imposent précisément la
                   communication privée. Le lien vient après : il sert quand on
                   peut écrire une adresse cliquable, ce qui est le cas le moins
                   fréquent depuis cette règle.
@@ -1247,7 +1247,7 @@ export default function AffiliateDashboard() {
                 <code className="font-data text-lg font-bold text-nordfjord tracking-[0.08em]
                                  bg-clinical rounded-lg px-4 py-2 border border-ash"
                       data-testid="affiliate-ref-code">
-                  {refCode || "—"}
+                  {refCode || "-"}
                 </code>
                 {refCode && (
                   <button onClick={copyCode} data-testid="affiliate-copy-code"
@@ -1296,8 +1296,8 @@ export default function AffiliateDashboard() {
               </div>
               <p className="font-data text-[11px] text-glacier mt-3 leading-relaxed">
                 {L(
-                  "Communication privée uniquement — ne partagez jamais ce lien via des publications, vidéos ou forums publics.",
-                  "Private communication only — never share this link through public posts, videos, or forums."
+                  "Communication privée uniquement : ne partagez jamais ce lien via des publications, vidéos ou forums publics.",
+                  "Private communication only : never share this link through public posts, videos, or forums."
                 )}
               </p>
             </div>
@@ -1313,7 +1313,7 @@ export default function AffiliateDashboard() {
                   </p>
                   {/* « attribution automatique » sans borne laissait croire que
                       le clic suffit, pour toujours. Il vaut pour la visite en
-                      cours. Ce panneau s'affiche aux affiliés SANS vente —
+                      cours. Ce panneau s'affiche aux affiliés SANS vente -
                       donc aux moins informés, ceux qui vont bâtir leur idée du
                       programme sur cette ligne. */}
                   <p className="font-data text-[10px] text-glacier">
@@ -1387,7 +1387,7 @@ export default function AffiliateDashboard() {
                   {personalTop
                     ? L("Ces produits ont déjà convaincu votre audience. Un rappel bien placé peut relancer les ventes.",
                         "These products already resonate with your audience. A well-timed reminder can drive repeat sales.")
-                    : L("Astuce : ces liens produits atterrissent directement sur un composé précis — vos prospects voient immédiatement de quoi il s'agit.",
+                    : L("Astuce : ces liens produits atterrissent directement sur un composé précis : vos prospects voient immédiatement de quoi il s'agit.",
                         "Tip: product links land directly on a specific compound, so your prospects know right away what they are looking at.")}
                 </p>
               </div>
@@ -1400,11 +1400,11 @@ export default function AffiliateDashboard() {
           <div className="space-y-6" data-testid="affiliate-performance">
             <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
-                {L("REVENU VALIDÉ — 12 DERNIERS MOIS", "VALIDATED REVENUE — LAST 12 MONTHS")}
+                {L("REVENU VALIDÉ : 12 DERNIERS MOIS", "VALIDATED REVENUE : LAST 12 MONTHS")}
               </p>
               <p className="font-data text-[11px] text-glacier mb-4 -mt-3">
-                {L("Sous-total des produits, remise déduite — hors livraison et taxes. C'est la base qui porte votre commission.",
-                   "Product subtotal, less discount — shipping and taxes excluded. This is the base your commission is paid on.")}
+                {L("Sous-total des produits, remise déduite : hors livraison et taxes. C'est la base qui porte votre commission.",
+                   "Product subtotal, less discount : shipping and taxes excluded. This is the base your commission is paid on.")}
               </p>
               {series.length === 0 ? (
                 <p className="text-glacier text-sm py-12 text-center">
@@ -1433,8 +1433,8 @@ export default function AffiliateDashboard() {
                 {L("SOURCES DE VOS CLICS", "WHERE YOUR CLICKS COME FROM")}
               </p>
               <p className="font-data text-[11px] text-glacier mb-4">
-                {L("Derniers 30 jours — pages d'atterrissage, référents et appareils.",
-                   "Last 30 days — landing pages, referrers and devices.")}
+                {L("Derniers 30 jours : pages d'atterrissage, référents et appareils.",
+                   "Last 30 days : landing pages, referrers and devices.")}
               </p>
               {!sources || sources.total_clicks === 0 ? (
                 <p className="text-glacier text-sm py-8 text-center">
@@ -1491,7 +1491,7 @@ export default function AffiliateDashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {/* `c.id` — un identifiant dérivé — et non le courriel.
+                      {/* `c.id` : un identifiant dérivé : et non le courriel.
                           Le `data-testid` réinjectait l'adresse COMPLÈTE dans
                           le HTML de la page : le masquage à l'écran ne servait
                           à rien, il suffisait d'inspecter l'élément. L'adresse
@@ -1502,7 +1502,7 @@ export default function AffiliateDashboard() {
                             data-testid={`attached-customer-${c.id || ""}`}>
                           <td className="px-6 py-3">
                             <div className="font-medium text-nordfjord truncate max-w-[240px]">
-                              {c.email || "—"}
+                              {c.email || "-"}
                             </div>
                             {c.has_account && (
                               <span className="inline-flex items-center gap-1 text-[10px] font-data text-nova mt-0.5">
@@ -1511,7 +1511,7 @@ export default function AffiliateDashboard() {
                             )}
                           </td>
                           <td className="px-4 py-3 font-data text-xs text-glacier">
-                            {c.bound_at ? new Date(c.bound_at).toLocaleDateString(lang) : "—"}
+                            {c.bound_at ? new Date(c.bound_at).toLocaleDateString(lang) : "-"}
                           </td>
                           <td className="px-4 py-3">
                             <span className="inline-block px-2 py-0.5  text-[10px] font-data uppercase tracking-wider bg-clinical text-nordfjord" style={{ borderRadius: "var(--r-m)" }}>
@@ -1519,7 +1519,7 @@ export default function AffiliateDashboard() {
                                 : c.source === "code" ? L("code", "code")
                                 : c.source === "binding" ? L("récurrent", "returning")
                                 : c.source === "backfill" || c.source === "backfill_pass2" ? L("historique", "backfill")
-                                : (c.source || "—")}
+                                : (c.source || "-")}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right font-data font-semibold">{c.orders_count || 0}</td>
@@ -1528,7 +1528,7 @@ export default function AffiliateDashboard() {
                             {money(c.commission_validated || 0)}
                           </td>
                           <td className="px-4 py-3 font-data text-xs text-glacier">
-                            {c.last_order_at ? new Date(c.last_order_at).toLocaleDateString(lang) : "—"}
+                            {c.last_order_at ? new Date(c.last_order_at).toLocaleDateString(lang) : "-"}
                           </td>
                         </tr>
                       ))}
@@ -1579,7 +1579,7 @@ export default function AffiliateDashboard() {
               {payouts.length === 0 ? (
                 /* L'explication de la conversion vivait dans la branche « il y a
                    des versements », donc invisible tant qu'il n'y en avait
-                   aucun — precisement quand l'affilie ignore encore comment il
+                   aucun : precisement quand l'affilie ignore encore comment il
                    sera paye. Un ecran vide ne doit pas etre un ecran muet. */
                 <div className="py-10 px-6 max-w-xl mx-auto text-center">
                   <p className="text-glacier text-sm">
@@ -1589,7 +1589,7 @@ export default function AffiliateDashboard() {
                     <div className="flex justify-between gap-4 border-b border-ash/60 pb-2">
                       <dt className="text-glacier">{L("Seuil minimum", "Minimum threshold")}</dt>
                       <dd className="text-nordfjord font-semibold">
-                        {data?.payout_min_cad != null ? `${money(data.payout_min_cad)} CAD` : "—"}
+                        {data?.payout_min_cad != null ? `${money(data.payout_min_cad)} CAD` : "-"}
                       </dd>
                     </div>
                     <div className="flex justify-between gap-4 border-b border-ash/60 pb-2">
@@ -1656,11 +1656,11 @@ export default function AffiliateDashboard() {
                                           ? L("Banque du Canada", "Bank of Canada")
                                           : p.fx_source === "fallback"
                                             ? L("Estimation", "Fallback")
-                                            : p.fx_source || "—"}
+                                            : p.fx_source || "-"}
                                       </span>
                                     </>
                                   )
-                                  : <span className="text-glacier/50">—</span>}
+                                  : <span className="text-glacier/50">-</span>}
                               </td>
                               <td className="px-6 py-3 font-semibold text-nova align-top">
                                 {targetKnown && p.amount != null
@@ -1671,7 +1671,7 @@ export default function AffiliateDashboard() {
                                 <PayoutStatus status={p.status} L={L} />
                               </td>
                               <td className="px-6 py-3 font-data text-[11px] text-glacier break-all max-w-[200px] align-top">
-                                {p.reference || "—"}
+                                {p.reference || "-"}
                               </td>
                             </tr>
                           );
@@ -1685,7 +1685,7 @@ export default function AffiliateDashboard() {
                         l'hypothèse que le calcul a cessé de faire. USDC est
                         tombé à 0,87 en mars 2023. La quantité de jetons
                         s'ajuste désormais au prix réel, et le texte doit le
-                        dire — sinon un affilié qui compte ses jetons trouve un
+                        dire : sinon un affilié qui compte ses jetons trouve un
                         écart avec ce qu'on lui a écrit. */}
                     {L("Les commissions sont calculées en CAD, converties en USD au taux officiel de la Banque du Canada le jour du versement, puis payées en jetons. Si le jeton s'écarte du dollar américain, la quantité envoyée est ajustée pour que vous receviez bien le montant dû.",
                        "Commissions are computed in CAD, converted to USD at the Bank of Canada official rate on payout day, then paid in tokens. If the token drifts from the US dollar, the quantity sent is adjusted so you receive the amount owed.")}
@@ -1740,11 +1740,11 @@ export default function AffiliateDashboard() {
           <div className="space-y-6 max-w-xl" data-testid="affiliate-settings">
             <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
-                {L("PARAMÈTRES DE PAIEMENT — USDT / USDC", "PAYOUT SETTINGS — USDT / USDC")}
+                {L("PARAMÈTRES DE PAIEMENT : USDT / USDC", "PAYOUT SETTINGS : USDT / USDC")}
               </p>
               <p className="text-xs text-glacier mb-5 leading-relaxed">
-                {L("Fironova verse vos commissions en USDT ou USDC, sur Ethereum (ERC-20) ou Tron (TRC-20) selon l'adresse que vous indiquez. Le montant est converti à partir du CAD au taux officiel de la Banque du Canada le jour de l'exécution du paiement. Les frais de réseau sont déduits du versement — ils sont nettement plus faibles sur Tron.",
-                   "Fironova pays your commissions in USDT or USDC, on Ethereum (ERC-20) or Tron (TRC-20) depending on the address you provide. Amounts are converted from CAD at the official Bank of Canada rate on the payout date. Network fees are deducted from the payout — they are markedly lower on Tron.")}
+                {L("Fironova verse vos commissions en USDT ou USDC, sur Ethereum (ERC-20) ou Tron (TRC-20) selon l'adresse que vous indiquez. Le montant est converti à partir du CAD au taux officiel de la Banque du Canada le jour de l'exécution du paiement. Les frais de réseau sont déduits du versement : ils sont nettement plus faibles sur Tron.",
+                   "Fironova pays your commissions in USDT or USDC, on Ethereum (ERC-20) or Tron (TRC-20) depending on the address you provide. Amounts are converted from CAD at the official Bank of Canada rate on the payout date. Network fees are deducted from the payout : they are markedly lower on Tron.")}
               </p>
               <label className="block mb-4">
                 <span className="font-data text-xs text-glacier">{L("Adresse de versement (ERC-20 ou TRC-20)", "Payout address (ERC-20 or TRC-20)")}</span>
@@ -1785,19 +1785,19 @@ export default function AffiliateDashboard() {
                     }
                     return (
                       <p className="mt-1.5 text-[11px] text-success">
-                        {L("✓ Adresse Tron (TRC-20) — frais de réseau plus faibles.",
-                           "✓ Tron address (TRC-20) — lower network fees.")}
+                        {L("✓ Adresse Tron (TRC-20) : frais de réseau plus faibles.",
+                           "✓ Tron address (TRC-20) : lower network fees.")}
                       </p>
                     );
                   }
-                  // Preview checksum EIP-55 (approximation client — le serveur valide définitivement).
+                  // Preview checksum EIP-55 (approximation client : le serveur valide définitivement).
                   const body = raw.slice(2);
                   const isChecksummed = body !== body.toLowerCase() && body !== body.toUpperCase();
                   return (
                     <p className={`mt-1.5 text-[11px] ${isChecksummed ? "text-success" : "text-warning"}`}>
                       {isChecksummed
-                        ? L("✓ Adresse Ethereum checksummée — vérification EIP-55 à l'enregistrement.",
-                            "✓ Checksummed Ethereum address — EIP-55 verification on save.")
+                        ? L("✓ Adresse Ethereum checksummée : vérification EIP-55 à l'enregistrement.",
+                            "✓ Checksummed Ethereum address : EIP-55 verification on save.")
                         : L("Adresse en minuscules acceptée : le serveur la convertira au format EIP-55.",
                             "Lowercase address accepted: server will normalize to EIP-55.")}
                     </p>
@@ -1825,14 +1825,14 @@ export default function AffiliateDashboard() {
               {/* Tron RETIRE de la liste des reseaux interdits : le backend
                   l'accepte (_detect_payout_network renvoie 'trc20') et propage
                   le reseau au CSV NOWPayments. Le meme ecran confirmait plus
-                  haut « ✓ Adresse Tron (TRC-20) — frais plus faibles » tout en
+                  haut « ✓ Adresse Tron (TRC-20) : frais plus faibles » tout en
                   annoncant ici une perte definitive sur Tron : contradiction
                   dangereuse, susceptible de faire remplacer une adresse
                   parfaitement valide. Le reseau est deduit de l'adresse, pas
-                  choisi separement — il n'y a donc rien a accorder. */}
+                  choisi separement : il n'y a donc rien a accorder. */}
               <p className="text-[10px] text-glacier/80 mt-4 leading-relaxed">
-                {L("⚠️ Deux réseaux sont acceptés : Ethereum (adresse 0x…) et Tron (adresse T…). Envoyer sur tout autre réseau — BSC, Polygon, Solana — entraînera une perte définitive des fonds.",
-                   "⚠️ Two networks are accepted: Ethereum (0x… address) and Tron (T… address). Sending on any other network — BSC, Polygon, Solana — will result in permanent loss.")}
+                {L("⚠️ Deux réseaux sont acceptés : Ethereum (adresse 0x…) et Tron (adresse T…). Envoyer sur tout autre réseau : BSC, Polygon, Solana : entraînera une perte définitive des fonds.",
+                   "⚠️ Two networks are accepted: Ethereum (0x… address) and Tron (T… address). Sending on any other network : BSC, Polygon, Solana : will result in permanent loss.")}
               </p>
             </div>
             <div className="bg-white rounded-xl border border-ash p-6">
@@ -1941,7 +1941,7 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
   const [research, setResearch] = useState(false);
   const [busy, setBusy] = useState(false);
   // « J'ai lu » ne doit pas pouvoir être coché sans avoir ouvert le texte. On
-  // ne peut évidemment pas vérifier qu'il a été LU — mais on peut refuser
+  // ne peut évidemment pas vérifier qu'il a été LU : mais on peut refuser
   // l'affirmation à qui n'a même pas ouvert la page, et c'est déjà la
   // différence entre une case cochée par réflexe et un geste délibéré.
   const [luTermes, setLuTermes] = useState(false);
@@ -1949,7 +1949,7 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
   const complet = terms && age && research;
 
   // Fermer la fenêtre ne vaut lecture que si le bouton « J'ai lu » a été
-  // utilisé — donc après défilement complet. Échap et le clic à l'extérieur
+  // utilisé : donc après défilement complet. Échap et le clic à l'extérieur
   // ferment aussi, mais ne créditent rien : on laisse toujours sortir, on ne
   // récompense que le parcours réel.
   const fermerModale = (parcourue) => {
@@ -1980,7 +1980,7 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
       <div className="w-full max-w-lg bg-white rounded-xl border border-ash p-8 space-y-5">
         {/* Première acceptation ou RÉVISION : ce n'est pas la même situation.
             Dire « avant de commencer » à quelqu'un qui a déjà accepté il y a
-            trois jours lui fait croire que son compte s'est réinitialisé — et
+            trois jours lui fait croire que son compte s'est réinitialisé : et
             le mécanisme de version, qui redemande l'accord dès que le texte
             change, rend ce cas ordinaire plutôt qu'exceptionnel. La date
             conservée par le serveur distingue les deux. */}
@@ -2006,7 +2006,7 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
           {/* Les conditions s'ouvrent PAR-DESSUS, jamais dans un autre onglet :
               quitter la page fait perdre le fil, et sur mobile on ne retrouve
               pas où on en était. La case ne se déverrouille qu'après avoir
-              ouvert le texte ET l'avoir déroulé jusqu'au bas — le clic seul
+              ouvert le texte ET l'avoir déroulé jusqu'au bas : le clic seul
               prouvait qu'on avait vu un lien, pas qu'on l'avait lu.
 
               La politique de confidentialité garde son onglet séparé : elle
@@ -2049,7 +2049,7 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
         </div>
         <p className="font-data text-[11px] text-glacier">
           {L("Refuser vous ramène à l'accueil. Votre invitation reste valide : vous pourrez accepter plus tard.",
-             "Declining returns you home. Your invitation stays valid — you can accept later.")}
+             "Declining returns you home. Your invitation stays valid : you can accept later.")}
         </p>
       </div>
     </div>
@@ -2109,16 +2109,16 @@ function SourceBars({ rows, fmt, L }) {
 // « AAAA-MM » -> « août 2026 ». Un mois écrit en chiffres oblige a le
 // décoder ; écrit en toutes lettres, il se lit.
 function moisLisible(cle, lang) {
-  if (!cle || !/^\d{4}-\d{2}$/.test(cle)) return cle || "—";
+  if (!cle || !/^\d{4}-\d{2}$/.test(cle)) return cle || "-";
   const [a, m] = cle.split("-").map(Number);
   return new Date(a, m - 1, 1).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
     { month: "long", year: "numeric" });
 }
 
 function jourLisible(iso, lang) {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
+  if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
     { day: "numeric", month: "long" });
 }
@@ -2150,8 +2150,8 @@ function CycleVersement({ cycle, seuil, L, lang }) {
           <p className={`font-data text-xs mt-1 ${retard ? "text-error" : "text-glacier"}`}
              data-testid="cycle-echeance">
             {retard
-              ? L("En retard — l'échéance est passée",
-                   "Overdue — the deadline has passed")
+              ? L("En retard : l'échéance est passée",
+                   "Overdue : the deadline has passed")
               : L(`Avant le ${jourLisible(cycle?.due_by, lang)} · ${cycle?.days_left} jour(s)`,
                    `By ${jourLisible(cycle?.due_by, lang)} · ${cycle?.days_left} day(s)`)}
           </p>
@@ -2171,8 +2171,8 @@ function CycleVersement({ cycle, seuil, L, lang }) {
           {money(enCours)}
         </p>
         <p className="font-data text-xs uppercase tracking-[0.14em] text-glacier text-right">
-          {L(`En cours · ${moisLisible(cycle?.current_period, lang)} — versé au cycle suivant`,
-             `In progress · ${moisLisible(cycle?.current_period, lang)} — paid next cycle`)}
+          {L(`En cours · ${moisLisible(cycle?.current_period, lang)} : versé au cycle suivant`,
+             `In progress · ${moisLisible(cycle?.current_period, lang)} : paid next cycle`)}
         </p>
       </div>
     </div>
@@ -2253,7 +2253,7 @@ function ActivityRow({ e, L, lang, money, fmtDateTime }) {
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-sm text-nordfjord">
-            {L("Commande", "Order")} <span className="font-semibold">{e.label || "—"}</span>
+            {L("Commande", "Order")} <span className="font-semibold">{e.label || "-"}</span>
             {e.base != null ? <span className="text-glacier"> · {money(e.base)}</span> : null}
           </p>
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${m.cls}`}>
@@ -2274,7 +2274,7 @@ function ActivityRow({ e, L, lang, money, fmtDateTime }) {
       </span>
       <div className="flex-1 min-w-0">
         <p className="text-sm text-nordfjord">
-          {L("Paiement", "Payout")} <span className="font-semibold">{e.label || "—"}</span>
+          {L("Paiement", "Payout")} <span className="font-semibold">{e.label || "-"}</span>
         </p>
         <p className="text-[11px] text-glacier uppercase">{e.status}</p>
       </div>
@@ -2308,12 +2308,12 @@ function ReferralTable({ rows, lang, L, money, loading }) {
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} className="border-b border-ash/60">
-                <td className="px-6 py-3 font-data text-nordfjord">{r.order_number || "—"}</td>
+                <td className="px-6 py-3 font-data text-nordfjord">{r.order_number || "-"}</td>
                 <td className="px-6 py-3 text-glacier">{money(r.base_amount)}</td>
                 <td className="px-6 py-3 font-semibold text-nordfjord">{money(r.commission_amount)}</td>
                 <td className="px-6 py-3"><ReferralStatus status={r.status} lang={lang} /></td>
                 <td className="px-6 py-3 font-data text-[11px] text-glacier">
-                  {r.created_at ? new Date(r.created_at).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA") : "—"}
+                  {r.created_at ? new Date(r.created_at).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA") : "-"}
                 </td>
               </tr>
             ))}

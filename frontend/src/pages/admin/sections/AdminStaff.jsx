@@ -1,6 +1,6 @@
-// frontend/src/pages/admin/sections/AdminStaff.jsx — NOUVEAU fichier.
+// frontend/src/pages/admin/sections/AdminStaff.jsx : NOUVEAU fichier.
 // Gestion des membres de l'équipe (rôle "staff") et de leurs permissions
-// par zone. Réservé aux "admin" (owner) — la route parente dans
+// par zone. Réservé aux "admin" (owner) : la route parente dans
 // AdminLayout.jsx bloque déjà l'accès à un staff, ceci est la vue elle-même.
 import { useEffect, useState } from "react";
 import { useAuth } from "../../../contexts/AuthContext";
@@ -40,8 +40,8 @@ export default function AdminStaff() {
   const { user: me } = useAuth();
   const isOwner = me?.role === "admin";
   // L manquait ICI : il n'etait defini que dans un composant plus bas du meme
-  // fichier. Les quinze appels de cet ecran plantaient donc au rendu —
-  // « L is not defined » — alors que le code compilait parfaitement.
+  // fichier. Les quinze appels de cet ecran plantaient donc au rendu -
+  // « L is not defined » : alors que le code compilait parfaitement.
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
   const confirm = useConfirm();
@@ -197,7 +197,7 @@ export default function AdminStaff() {
               {busy ? "…" : "Save changes"}
             </button>
             <p className="font-data text-[10px] text-glacier self-center">
-              Takes effect immediately — their other sessions are also refreshed.
+              Takes effect immediately : their other sessions are also refreshed.
             </p>
           </div>
         </div>
@@ -348,8 +348,8 @@ function PermissionGrid({ permissions, onChange, testPrefix, canGrantSensitive =
         })}
       </div>
       <p className="mt-3 text-[11px] text-glacier leading-relaxed">
-        {L("Les sections « sensibles » (Équipe, Journal, Corbeille) donnent un pouvoir élevé — accordez-les avec prudence. Un membre ne peut jamais se promouvoir propriétaire ni révoquer un propriétaire.",
-          "“Sensitive” sections (Team, Audit log, Trash) grant elevated power — grant them carefully. A member can never promote themselves to owner or revoke an owner.")}
+        {L("Les sections « sensibles » (Équipe, Journal, Corbeille) donnent un pouvoir élevé : accordez-les avec prudence. Un membre ne peut jamais se promouvoir propriétaire ni révoquer un propriétaire.",
+          "“Sensitive” sections (Team, Audit log, Trash) grant elevated power : grant them carefully. A member can never promote themselves to owner or revoke an owner.")}
       </p>
     </div>
   );

@@ -1,5 +1,5 @@
-// frontend/src/pages/admin/sections/AdminAuditLog.jsx — NOUVEAU fichier.
-// Journal d'audit — owner only. Voir server.py: _log_action() + require_area()
+// frontend/src/pages/admin/sections/AdminAuditLog.jsx : NOUVEAU fichier.
+// Journal d'audit : owner only. Voir server.py: _log_action() + require_area()
 // journalisent automatiquement toute action "manage" (mutation) sur les 35+
 // endpoints admin, plus les actions explicites de gestion d'équipe.
 import { useEffect, useState } from "react";

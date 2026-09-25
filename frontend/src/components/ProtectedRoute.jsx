@@ -17,7 +17,7 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
     // navigation : `state` ne survit ni à un rechargement de la page de
     // connexion, ni au détour par le courriel du lien magique.
     //
-    // `search` et `hash` sont conservés — `pathname` seul perdait les
+    // `search` et `hash` sont conservés : `pathname` seul perdait les
     // paramètres, et une page atteinte avec un filtre revenait nue.
     const cible = `${location.pathname}${location.search}${location.hash}`;
     return (
@@ -28,7 +28,7 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
       />
     );
   }
-  // "staff" a un accès admin partiel — quelles sections il voit dépend de
+  // "staff" a un accès admin partiel : quelles sections il voit dépend de
   // ses permissions, vérifiées à l'affichage de chaque section ET, surtout,
   // par le backend sur chaque appel API (la vraie barrière de sécurité).
   if (adminOnly && user.role !== "admin" && user.role !== "staff") {

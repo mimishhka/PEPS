@@ -157,7 +157,7 @@ export default function Lab() {
             ) : (
               <div className="font-data text-sm text-glacier">
                 {track.reason === "no_tracking_number"
-                  ? (isFr ? "Commande trouvée — aucun numéro de suivi encore assigné." : "Order found — no tracking number assigned yet.")
+                  ? (isFr ? "Commande trouvée : aucun numéro de suivi encore assigné." : "Order found : no tracking number assigned yet.")
                   : track.reason === "not_found"
                   ? (isFr ? "Aucune commande trouvée pour cet identifiant." : "No order found for that ID.")
                   : (isFr ? "Suivi indisponible pour le moment." : "Tracking unavailable right now.")}
