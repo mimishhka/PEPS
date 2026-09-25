@@ -56,10 +56,10 @@ export default function AgeGate() {
           <h2 className="mt-6 font-display text-2xl sm:text-3xl font-bold tracking-[-0.01em] text-white">
             {t("age.deniedTitle")}
           </h2>
-          <p className="mt-4 text-sm leading-relaxed text-[#B7CADD]">
+          <p className="mt-4 text-sm leading-relaxed text-mist">
             {t("age.deniedBody")}
           </p>
-          <p className="mt-8 font-data text-[10px] uppercase tracking-[0.24em] text-[#6C88A5]">
+          <p className="mt-8 font-data text-[10px] uppercase tracking-[0.24em] text-compliance">
             {t("age.deniedNote")}
           </p>
         </div>

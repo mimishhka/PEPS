@@ -59,4 +59,22 @@ if [ $CODE -ne 0 ]; then
 fi
 
 echo "$RESULTAT" | tail -n 2
+
+# LA COHERENCE ENTRE LES MORCEAUX.
+#
+# Les sondes ci-dessus verifient chaque fichier. Celle-ci verifie ce qui vit
+# ENTRE les fichiers : un etat du flux oublie dans une requete, une promesse
+# de page qui contredit un reglage, une couleur qui ignore le mode nuit, un
+# domaine autorise par la politique de securite sans plus servir. Aucun test
+# unitaire ne voit cette famille — chaque cote passe le sien.
+#
+# Elle NE BLOQUE PAS le commit : son role est d'avertir au bon moment, pas
+# d'empecher de travailler. Pour bloquer, lancez-la avec --strict.
+COHERENCE=$("$PY" scripts/coherence.py 2>&1)
+if ! echo "$COHERENCE" | grep -q "AUCUN ECART"; then
+    echo ""
+    echo "$COHERENCE" | sed -n '/ECART(S) A REGLER/,$p'
+    echo "coherence : commit autorise. Rapport complet : python scripts/coherence.py"
+fi
+
 exit 0

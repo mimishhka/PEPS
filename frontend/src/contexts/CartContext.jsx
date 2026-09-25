@@ -163,7 +163,7 @@ export function CartProvider({ children }) {
           </button>
           <button
             onClick={() => { toast.dismiss(id); setOpen(true); }}
-            className="flex-1 rounded-full bg-nova px-3 py-2 font-data text-[11px] font-semibold uppercase tracking-[0.14em] text-nordfjord hover:bg-[#00A3BC] transition-colors"
+            className="flex-1 rounded-full bg-nova px-3 py-2 font-data text-[11px] font-semibold uppercase tracking-[0.14em] text-nordfjord hover:bg-nova-hover transition-colors"
           >
             {fr ? "Voir le panier" : "View cart"}
           </button>
