@@ -1,5 +1,16 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  /* LE SURVOL NE S ARME QUE SUR UN VRAI POINTEUR (2026-09-24).
+   *
+   * Sur un ecran tactile, un tap declenche :hover et l etat RESTE COLLE
+   * apres le relachement : le bouton parait selectionne, la carte parait
+   * survolee, et rien ne les eteint avant le prochain tap ailleurs. C est
+   * la regle « Touch device hover states » d Emil Kowalski.
+   *
+   * Ce drapeau enveloppe chaque classe hover: dans
+   * @media (hover: hover) and (pointer: fine). Il y en a 371 dans le
+   * projet : une ligne ici les couvre toutes, plutot que 371 retouches. */
+  future: { hoverOnlyWhenSupported: true },
   darkMode: ["class"],
   content: ["./src/**/*.{js,jsx,ts,tsx}", "./public/index.html"],
   theme: {

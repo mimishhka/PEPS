@@ -10,6 +10,7 @@ import { useSiteConfig } from "../contexts/SiteConfigContext";
 import api, { formatApiError } from "../lib/api";
 import { codeAffiliePourPaiement } from "../hooks/useAffiliateRef";
 import { toast } from "sonner";
+import { Check, ShieldCheck } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "../components/ui/dialog";
@@ -443,10 +444,17 @@ export default function Checkout() {
       type="button"
       onClick={() => setPaymentMethod(id)}
       data-testid={testid}
-      className={`p-5 text-left border transition-colors ${paymentMethod === id ? "border-nova bg-nova/5" : "border-ash hover:border-nova"}`}
+      aria-pressed={paymentMethod === id}
+      className={`p-5 text-left border bg-white transition-colors duration-150 active:scale-[0.98] ${paymentMethod === id ? "border-nova bg-nova/5" : "border-ash hover:border-nova"}`}
+      style={{ borderRadius: "var(--r-m)" }}
     >
-      <div className="font-data text-[10px] uppercase tracking-[0.2em] text-nova-texte mb-1">
-        {paymentMethod === id ? (lang === "fr" ? "✓ CHOISI" : "✓ SELECTED") : (lang === "fr" ? "CHOISIR" : "SELECT")}
+      {/* La coche etait un caractere Unicode « ✓ » : un glyphe qui imite une
+          icone, dont le trait et l'alignement n'appartiennent a aucun systeme.
+          C'est une icone dessinee, au trait des autres. Et la carte n'avait
+          aucun rayon — elle etait la seule forme a angle vif de la page. */}
+      <div className="font-data text-[10px] uppercase tracking-[0.2em] text-nova-texte mb-1 flex items-center gap-1.5">
+        {paymentMethod === id && <Check size={12} strokeWidth={2.5} aria-hidden="true" />}
+        {paymentMethod === id ? (lang === "fr" ? "CHOISI" : "SELECTED") : (lang === "fr" ? "CHOISIR" : "SELECT")}
       </div>
       <div className="font-display font-bold text-nordfjord">{title}</div>
       <div className="text-xs text-glacier mt-1">{desc}</div>
@@ -456,32 +464,29 @@ export default function Checkout() {
   return (
     <div className="bg-clinical min-h-screen" data-testid="checkout-page">
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-12 grid lg:grid-cols-[1.1fr_.9fr] gap-8">
-        <section className="space-y-6">
-          <div>
-            <p className="font-data text-[11px] uppercase tracking-[0.22em] text-compliance mb-2">
-              {lang === "fr" ? "PAIEMENT SÉCURISÉ" : "SECURE CHECKOUT"}
-            </p>
-            <h1 className="font-display text-[26px] sm:text-[30px] font-semibold text-nordfjord tracking-[-0.01em]">
-              {lang === "fr" ? "Finaliser la commande" : "Complete your order"}
-            </h1>
-          </div>
+        <section>
+          {/* Le titre porte seul. L'etiquette « PAIEMENT SECURISE » qui le
+              surmontait descend aupres du bouton : un signal de confiance
+              travaille la ou l'hesitation se produit, pas en haut de page ou
+              il n'est qu'une decoration. */}
+          <h1 className="font-display text-[28px] sm:text-[34px] font-bold text-nordfjord tracking-[-0.02em] mb-9">
+            {lang === "fr" ? "Finaliser la commande" : "Complete your order"}
+          </h1>
 
-          <div className="rounded-xl border border-ash bg-white p-5">
-            <h2 className="font-display text-xl font-bold text-nordfjord mb-4">{lang === "fr" ? "Contact" : "Contact"}</h2>
+          <div className="divide-y divide-ash">
+          <Etape numero="1" id="etape-contact" titre={lang === "fr" ? "Contact" : "Contact"}>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={lang === "fr" ? "votre@courriel.com" : "you@email.com"}
               data-testid="checkout-email"
-              className="w-full rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova"
+              className="w-full border border-ash bg-white px-4 py-3 outline-none transition-colors duration-150 focus:border-nova"
+              style={{ borderRadius: "var(--r-m)" }}
             />
-          </div>
+          </Etape>
 
-          <div className="rounded-xl border border-ash bg-white p-5">
-            <h2 className="font-display text-xl font-bold text-nordfjord mb-4">
-              {lang === "fr" ? "Adresse de livraison" : "Shipping address"}
-            </h2>
+          <Etape numero="2" id="etape-livraison" titre={lang === "fr" ? "Adresse de livraison" : "Shipping address"}>
             {savedAddresses.length > 0 && (
               <div className="mb-4">
                 <label className="block font-data text-[11px] uppercase tracking-[0.14em] text-glacier mb-1.5">
@@ -491,7 +496,7 @@ export default function Checkout() {
                   value={selectedAddressId}
                   onChange={(e) => onSelectSaved(e.target.value)}
                   data-testid="checkout-saved-address"
-                  className="w-full rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova bg-white text-nordfjord"
+                  className="w-full rounded border border-ash px-4 py-3 outline-none focus:border-nova bg-white text-nordfjord"
                 >
                   <option value="">{lang === "fr" ? "Nouvelle adresse…" : "New address…"}</option>
                   {savedAddresses.map((a) => (
@@ -508,27 +513,21 @@ export default function Checkout() {
                 l'envoi. Le controle serveur du checkout reste en place :
                 c'est lui la source de verite, celui-ci evite d'y arriver. */}
             <VerificationAdresse adresse={ship} setAdresse={setShip} lang={lang} />
-          </div>
+          </Etape>
 
-          <div className="rounded-xl border border-ash bg-white p-5">
-            <label className="flex items-center gap-2 text-sm text-nordfjord mb-4">
-              <input type="checkbox" checked={billSame} onChange={(e) => setBillSame(e.target.checked)} data-testid="checkout-bill-same" />
+          <Etape numero="3" id="etape-facturation" titre={lang === "fr" ? "Adresse de facturation" : "Billing address"}>
+            <label className="flex items-center gap-2.5 text-sm text-nordfjord cursor-pointer select-none">
+              <input type="checkbox" checked={billSame} onChange={(e) => setBillSame(e.target.checked)} data-testid="checkout-bill-same" className="accent-[#00B8D4] w-4 h-4" />
               {lang === "fr" ? "Adresse de facturation identique" : "Billing same as shipping"}
             </label>
             {!billSame && (
-              <>
-                <h2 className="font-display text-xl font-bold text-nordfjord mb-4">
-                  {lang === "fr" ? "Adresse de facturation" : "Billing address"}
-                </h2>
+              <div className="mt-5">
                 <AddressForm value={bill} setValue={setBill} lang={lang} prefix="billing" />
-              </>
+              </div>
             )}
-          </div>
+          </Etape>
 
-          <div className="rounded-xl border border-ash bg-white p-5">
-            <h2 className="font-display text-xl font-bold text-nordfjord mb-4">
-              {lang === "fr" ? "Méthode de paiement" : "Payment method"}
-            </h2>
+          <Etape numero="4" id="etape-paiement" titre={lang === "fr" ? "Méthode de paiement" : "Payment method"}>
             <div className="grid sm:grid-cols-2 gap-3">
               {payCard(
                 "interac",
@@ -543,11 +542,18 @@ export default function Checkout() {
                 "payment-crypto"
               )}
             </div>
-          </div>
+          </Etape>
 
-          <div className="rounded-xl border border-ash bg-white p-5 space-y-3">
-            <label className="flex items-start gap-2 text-sm text-nordfjord">
-              <input type="checkbox" checked={confirmAge} onChange={(e) => setConfirmAge(e.target.checked)} data-testid="checkout-confirm-age" className="mt-1" />
+          {/* L'ENCADRE DES ATTESTATIONS N'AVAIT AUCUN TITRE : trois cases
+              flottaient dans une carte identique aux autres, alors que c'est
+              le seul endroit du site ou la cliente DECLARE quelque chose. Le
+              titre est ajoute — un libelle, pas du contenu — et le groupe
+              recoit un filet de conformite : ici la forme signale
+              l'engagement. */}
+          <Etape numero="5" id="etape-attestations" titre={lang === "fr" ? "Attestations" : "Confirmations"}>
+            <div className="space-y-3.5 border-l border-compliance pl-4">
+            <label className="flex items-start gap-2.5 text-sm text-nordfjord cursor-pointer select-none">
+              <input type="checkbox" checked={confirmAge} onChange={(e) => setConfirmAge(e.target.checked)} data-testid="checkout-confirm-age" className="mt-0.5 accent-[#00B8D4] w-4 h-4 shrink-0" />
               {/* L'âge vient de la configuration du serveur, il n'est plus
                   écrit en dur. Cette case attestait 18 ans alors que tout le
                   reste du site annonce 19 : or c'est ICI que le client
@@ -557,26 +563,35 @@ export default function Checkout() {
                 ? `Je confirme avoir ${minAge} ans ou plus.`
                 : `I confirm I am ${minAge} years of age or older.`}</span>
             </label>
-            <label className="flex items-start gap-2 text-sm text-nordfjord">
-              <input type="checkbox" checked={acceptRuO} onChange={(e) => setAcceptRuO(e.target.checked)} data-testid="checkout-accept-ruo" className="mt-1" />
+            <label className="flex items-start gap-2.5 text-sm text-nordfjord cursor-pointer select-none">
+              <input type="checkbox" checked={acceptRuO} onChange={(e) => setAcceptRuO(e.target.checked)} data-testid="checkout-accept-ruo" className="mt-0.5 accent-[#00B8D4] w-4 h-4 shrink-0" />
               <span>
                 {lang === "fr"
                   ? "Je confirme que ces produits sont destinés à un usage de recherche uniquement (RUO)."
                   : "I confirm these products are for Research Use Only (RUO)."}
               </span>
             </label>
-            <label className="flex items-start gap-2 text-sm text-nordfjord">
-              <input type="checkbox" checked={acceptPolicy} onChange={(e) => setAcceptPolicy(e.target.checked)} data-testid="checkout-accept-policy" className="mt-1" />
+            <label className="flex items-start gap-2.5 text-sm text-nordfjord cursor-pointer select-none">
+              <input type="checkbox" checked={acceptPolicy} onChange={(e) => setAcceptPolicy(e.target.checked)} data-testid="checkout-accept-policy" className="mt-0.5 accent-[#00B8D4] w-4 h-4 shrink-0" />
               <span>
                 {lang === "fr" ? "J'accepte la politique de confidentialité et les conditions." : "I accept the privacy policy and terms."}
               </span>
             </label>
+            </div>
+          </Etape>
           </div>
         </section>
 
         <aside>
-          <div className="rounded-xl border border-ash bg-white p-5 sticky top-24" data-testid="checkout-summary">
-            <h2 className="font-display text-xl font-bold text-nordfjord mb-4">{lang === "fr" ? "Résumé" : "Summary"}</h2>
+          {/* LA SEULE CARTE QUI RESTE, ET LA SEULE QUI SE JUSTIFIE : elle est
+              collante, elle flotte au-dessus d'un contenu qui defile, donc son
+              elevation porte une information reelle — « ceci ne bouge pas avec
+              le reste ». Elle recoit pour cela une vraie ombre, avec decalage
+              et flou doux, la seule de la page. Les cinq autres cartes sont
+              devenues des etapes. */}
+          <div className="border border-ash bg-white p-6 sticky top-24" data-testid="checkout-summary"
+            style={{ borderRadius: "var(--r-m)", boxShadow: "var(--ombre)" }}>
+            <h2 className="font-display text-[17px] font-semibold text-nordfjord mb-5 tracking-[-0.01em]">{lang === "fr" ? "Résumé" : "Summary"}</h2>
             <div className="space-y-3 max-h-[40vh] overflow-auto pr-1">
               {(items || []).map((it) => {
                 const title = lang === "fr" ? it.name_fr : it.name_en;
@@ -587,7 +602,7 @@ export default function Checkout() {
                       <div className="font-medium text-nordfjord">{title}</div>
                       <div className="text-xs text-glacier">{it.variant_name ? `${it.variant_name} · ` : ""}x{it.qty}</div>
                     </div>
-                    <div className="font-semibold text-nordfjord">${(Number(unit) * Number(it.qty || 1)).toFixed(2)}</div>
+                    <div className="font-semibold text-nordfjord tabular-nums">${(Number(unit) * Number(it.qty || 1)).toFixed(2)}</div>
                   </div>
                 );
               })}
@@ -608,7 +623,7 @@ export default function Checkout() {
                     onChange={(e) => setCouponInput(e.target.value)}
                     placeholder={lang === "fr" ? "Code promo" : "Promo code"}
                     data-testid="coupon-input"
-                    className="flex-1 rounded-xl border border-ash px-3 py-2 text-sm outline-none focus:border-nova"
+                    className="flex-1 rounded border border-ash px-3 py-2 text-sm outline-none focus:border-nova"
                   />
                   <button onClick={applyCoupon} disabled={couponBusy || !couponInput.trim()} data-testid="coupon-apply"
                     className="btn-pill btn-outline text-sm disabled:opacity-40">
@@ -621,17 +636,17 @@ export default function Checkout() {
             <div className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between text-glacier">
                 <span>{lang === "fr" ? "Sous-total" : "Subtotal"}</span>
-                <span data-testid="summary-subtotal">${Number(subtotal).toFixed(2)}</span>
+                <span data-testid="summary-subtotal" className="tabular-nums">${Number(subtotal).toFixed(2)}</span>
               </div>
               {discount > 0 && (
                 <div className="flex justify-between text-nova-texte">
                   <span>{lang === "fr" ? "Rabais" : "Discount"}</span>
-                  <span data-testid="summary-discount">−${discount.toFixed(2)}</span>
+                  <span data-testid="summary-discount" className="tabular-nums">−${discount.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between text-glacier">
                 <span>{lang === "fr" ? "Livraison" : "Shipping"}</span>
-                <span data-testid="summary-shipping">
+                <span data-testid="summary-shipping" className="tabular-nums">
                   {shippingEst === 0 ? (lang === "fr" ? "GRATUITE" : "FREE") : `$${shippingEst.toFixed(2)}`}
                 </span>
               </div>
@@ -647,9 +662,16 @@ export default function Checkout() {
                   {lang === "fr" ? "Livraison gratuite incluse dans le code promo" : "Free shipping included in your promo code"}
                 </div>
               )}
-              <div className="flex justify-between text-nordfjord font-bold text-base pt-2 border-t border-ash">
-                <span>{lang === "fr" ? "Total" : "Total"}</span>
-                <span data-testid="summary-total">${Number(total).toFixed(2)} CAD</span>
+              {/* LE TOTAL EST LA LIGNE QUI DECIDE. Il avait le meme corps que le
+                  sous-total, a un gras pres — les trois lignes se lisaient
+                  comme une liste. Il monte d'un cran net, et la devise passe
+                  en retrait : c'est le montant qui compte, pas son unite. */}
+              <div className="flex items-baseline justify-between text-nordfjord pt-3.5 mt-1 border-t border-ash">
+                <span className="font-display font-semibold text-[15px]">{lang === "fr" ? "Total" : "Total"}</span>
+                <span data-testid="summary-total" className="font-display font-bold text-[22px] tabular-nums tracking-[-0.02em]">
+                  ${Number(total).toFixed(2)}
+                  <span className="font-data font-medium text-[11px] text-glacier ml-1.5 tracking-normal">CAD</span>
+                </span>
               </div>
             </div>
 
@@ -678,7 +700,16 @@ export default function Checkout() {
                 : (lang === "fr" ? "Procéder au paiement" : "Proceed to payment")}
             </button>
 
-            <p className="mt-3 text-[11px] text-glacier leading-relaxed">
+            {/* LE SIGNAL DE CONFIANCE DESCEND ICI. Il etait une etiquette en
+                haut de page, au-dessus du titre — la ou personne n'hesite
+                encore. Il travaille sous le bouton, a l'instant ou l'on
+                s'engage. */}
+            <p className="mt-4 flex items-center gap-2 font-data text-[10px] uppercase tracking-[0.18em] text-compliance">
+              <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" />
+              {lang === "fr" ? "Paiement sécurisé" : "Secure checkout"}
+            </p>
+
+            <p className="mt-2.5 text-[11px] text-glacier leading-relaxed">
               {paymentMethod === "interac"
                 ? (lang === "fr"
                   ? "Vous recevrez les instructions de virement Interac sur la page suivante et par courriel."
@@ -930,6 +961,34 @@ function VerificationAdresse({ adresse, setAdresse, lang }) {
   );
 }
 
+// UNE ETAPE DU TUNNEL.
+//
+// Le checkout etait six cartes blanches identiques — meme bordure, meme fond,
+// meme remplissage — surmontees de cinq titres du MEME poids exact. Rien ne
+// disait laquelle comptait, ni ou l'on en etait. Une carte est un conteneur
+// paresseux : elle groupe sans hierarchiser.
+//
+// Les cartes deviennent des etapes separees par des filets. Le numero est
+// gagne ici, contrairement a une page de presentation : un tunnel d'achat EST
+// une sequence, et savoir ou l'on en est fait partie de la tache. Il vit dans
+// la marge, et le contenu s'aligne sous le titre — le chiffre structure sans
+// occuper la colonne de lecture.
+function Etape({ numero, titre, id, children }) {
+  return (
+    <section className="py-9 first:pt-0 last:pb-0" aria-labelledby={id}>
+      <div className="flex items-baseline gap-3.5 mb-5">
+        <span className="font-data text-[12px] font-semibold text-nova-texte shrink-0 tabular-nums" aria-hidden="true">
+          {numero}
+        </span>
+        <h2 id={id} className="font-display text-[17px] font-semibold text-nordfjord tracking-[-0.01em]">
+          {titre}
+        </h2>
+      </div>
+      <div className="sm:pl-[26px]">{children}</div>
+    </section>
+  );
+}
+
 function AddressForm({ value, setValue, lang, prefix }) {
   const set = (k, v) => setValue((s) => ({ ...s, [k]: v }));
   const lbl = (en, fr) => lang === "fr" ? fr : en;
@@ -978,14 +1037,14 @@ function AddressForm({ value, setValue, lang, prefix }) {
         <input value={value.line1} onChange={(e) => set("line1", e.target.value)}
           placeholder={lbl("Address line 1", "Adresse")} data-testid={`${prefix}-line1`}
           autoComplete="address-line1"
-          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+          className="rounded border border-ash px-4 py-3 outline-none focus:border-nova" />
       </label>
       <label className="sm:col-span-2 flex flex-col gap-1">
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Apt / Suite (optional)", "Appartement (optionnel)")}</span>
         <input value={value.line2} onChange={(e) => set("line2", e.target.value)}
           placeholder={lbl("Address line 2 (optional)", "Appartement, suite (optionnel)")} data-testid={`${prefix}-line2`}
           autoComplete="address-line2"
-          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+          className="rounded border border-ash px-4 py-3 outline-none focus:border-nova" />
       </label>
 
       {/* Le code postal passe AVANT la ville et la province : c'est lui qui
@@ -995,7 +1054,7 @@ function AddressForm({ value, setValue, lang, prefix }) {
         <input value={value.postal_code} onChange={(e) => majCodePostal(e.target.value)}
           placeholder={value.country === "CA" ? "A1A 1A1" : "12345"} data-testid={`${prefix}-postal`}
           autoComplete="postal-code" inputMode={value.country === "CA" ? "text" : "numeric"}
-          className={`rounded-xl border px-4 py-3 outline-none focus:border-nova ${cpMalForme ? "border-error" : "border-ash"}`} />
+          className={`rounded border px-4 py-3 outline-none focus:border-nova ${cpMalForme ? "border-error" : "border-ash"}`} />
         {cpMalForme && (
           <span className="font-data text-[11px] text-error" data-testid={`${prefix}-postal-erreur`}>
             {value.country === "CA"
@@ -1010,7 +1069,7 @@ function AddressForm({ value, setValue, lang, prefix }) {
         <input value={value.city} onChange={(e) => set("city", e.target.value)}
           placeholder={lbl("City", "Ville")} data-testid={`${prefix}-city`}
           autoComplete="address-level2"
-          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova" />
+          className="rounded border border-ash px-4 py-3 outline-none focus:border-nova" />
       </label>
 
       {/* LISTE DÉROULANTE, plus un champ libre. « Quebec », « Qc », « PQ »
@@ -1020,7 +1079,7 @@ function AddressForm({ value, setValue, lang, prefix }) {
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Province / State", "Province / État")}</span>
         <select value={value.province} onChange={(e) => set("province", e.target.value)}
           data-testid={`${prefix}-province`} autoComplete="address-level1"
-          className={`rounded-xl border px-4 py-3 outline-none focus:border-nova bg-white ${desaccord ? "border-error" : "border-ash"}`}>
+          className={`rounded border px-4 py-3 outline-none focus:border-nova bg-white ${desaccord ? "border-error" : "border-ash"}`}>
           <option value="">{lbl("Select…", "Choisir…")}</option>
           {regions.map((r) => (
             <option key={r.code} value={r.code}>{r.code} : {lang === "fr" ? r.fr : r.en}</option>
@@ -1037,7 +1096,7 @@ function AddressForm({ value, setValue, lang, prefix }) {
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Country", "Pays")}</span>
         <select value="CA" onChange={(e) => majPays(e.target.value)} data-testid={`${prefix}-country`}
           autoComplete="country"
-          className="rounded-xl border border-ash px-4 py-3 outline-none focus:border-nova bg-white">
+          className="rounded border border-ash px-4 py-3 outline-none focus:border-nova bg-white">
           <option value="CA">Canada</option>
         </select>
       </label>

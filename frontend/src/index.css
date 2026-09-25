@@ -217,7 +217,9 @@
      pas sur une capsule marketing. L'etat presse existe, le lancer au
      survol disparait (la profondeur n'est plus un jeu d'ombre). */
   .btn-pill {
-    @apply inline-flex items-center justify-center gap-2 font-semibold uppercase transition-colors duration-150 cursor-pointer;
+    @apply inline-flex items-center justify-center gap-2 font-semibold uppercase cursor-pointer;
+    transition: background-color 150ms ease-out, border-color 150ms ease-out,
+                color 150ms ease-out, transform 160ms ease-out;
     border-radius: var(--r-m);
     letter-spacing: 0.04em;
     font-size: 14px;
@@ -227,15 +229,19 @@
     background: var(--nova);
     color: var(--nordfjord);
   }
-  .btn-nova:hover { background: rgb(var(--fn-nova-hover)); }
-  .btn-nova:active { transform: scale(0.99); }
+  @media (hover: hover) and (pointer: fine) {
+    .btn-nova:hover { background: rgb(var(--fn-nova-hover)); }
+  }
+  .btn-nova:active { transform: scale(0.97); }
   .btn-outline {
     background: transparent;
     color: var(--nordfjord);
     border: 1px solid var(--ash);
   }
-  .btn-outline:hover { border-color: var(--nova); color: var(--nova); }
-  .btn-outline:active { transform: scale(0.99); }
+  @media (hover: hover) and (pointer: fine) {
+    .btn-outline:hover { border-color: var(--nova); color: rgb(var(--fn-nova-texte)); }
+  }
+  .btn-outline:active { transform: scale(0.97); }
 
   /* RUO / compliance badge */
   .cbadge {
