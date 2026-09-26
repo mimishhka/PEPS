@@ -1,59 +1,88 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // LE MODULE DE PAIEMENT CRYPTO, À L'ÉCHELLE DE L'ÉCRAN.
 //
-// Mireille : « tout doit se faire sur mon site sans jamais quitter vers un
-// autre site, comme pour la version web ».
+// Mireille, en trois temps :
+//   1. « nowpayment page has no content » sur mobile ;
+//   2. « tout doit se faire sur mon site sans jamais quitter » ;
+//   3. « on ne peut pas réduire la taille du widget ».
 //
-// LE PROBLÈME. Le module NOWPayments est dessiné pour une largeur FIXE de
-// 410 px. Sur un téléphone de 320 px, le déclarer avec `maxWidth: 100%`
-// écrasait le cadre horizontalement pendant que sa hauteur restait entière :
-// le contenu, lui, continuait de se dessiner pour 410 px et débordait — avec
-// `scrolling="no"`, il devenait inatteignable. La page paraissait vide.
+// LE MODULE NOWPayments est dessiné pour une taille FIXE de 410 × 696 px. Ce
+// n'est pas une suggestion : son contenu se compose pour ces dimensions.
 //
-// LA SOLUTION N'EST PAS DE RÉTRÉCIR LE CADRE, C'EST DE RÉDUIRE L'ENSEMBLE.
-// L'iframe garde ses 410 px : à l'intérieur, le module croit disposer de toute
-// la place qu'il lui faut et se dessine normalement. C'est une transformation
-// CSS qui le met à l'échelle du conteneur. Rien n'est écrasé, rien n'est
-// coupé — c'est le même module, vu plus petit.
+// Le déclarer avec `maxWidth: 100%` l'écrasait horizontalement pendant que sa
+// hauteur restait entière — le contenu continuait de se dessiner pour 410 px,
+// débordait, et `scrolling="no"` le rendait inatteignable. La page paraissait
+// vide.
 //
-// Une première correction avait remplacé le module par un lien vers
-// nowpayments.io. Cela réglait le symptôme en abandonnant l'objectif : on ne
-// quitte pas la boutique pour payer.
+// LA SOLUTION N'EST PAS DE REDIMENSIONNER LE CADRE, C'EST DE RÉDUIRE
+// L'ENSEMBLE. L'iframe garde ses 410 × 696 : à l'intérieur, le module croit
+// disposer de toute la place et se dessine normalement. Une transformation CSS
+// met le tout à l'échelle. Rien n'est écrasé, rien n'est coupé.
+//
+// ET L'ÉCHELLE SUIT LES DEUX DIMENSIONS. Régler la largeur seule laissait
+// 696 px de hauteur sur un écran qui n'en offre que 500 : il fallait encore
+// défiler, sur l'écran même où l'on paie. L'échelle retenue est la plus petite
+// des deux contraintes — largeur du conteneur, hauteur visible — bornée pour
+// que le texte du formulaire reste lisible.
 const LARGEUR = 410;
 const HAUTEUR = 696;
+
+// Sous ce seuil, le texte d'un formulaire de paiement devient pénible à lire :
+// mieux vaut un peu de défilement qu'un montant qu'on déchiffre.
+const ECHELLE_MIN = 0.62;
+// L'espace à laisser sous le module : de quoi voir qu'il y a une suite.
+const MARGE_BASSE = 24;
 
 export default function ModuleCrypto({ invoiceId, titre = "NOWPayments" }) {
   const enveloppe = useRef(null);
   const [echelle, setEchelle] = useState(1);
 
+  const mesurer = useCallback(() => {
+    const el = enveloppe.current;
+    if (!el) return;
+
+    const largeurDispo = el.clientWidth;
+    const parLargeur = largeurDispo > 0 ? largeurDispo / LARGEUR : 1;
+
+    // La hauteur réellement visible sous le haut du module. `getBoundingClientRect`
+    // donne sa position dans la fenêtre : ce qui reste en dessous est ce dont
+    // on dispose sans défiler.
+    const haut = el.getBoundingClientRect().top;
+    const hauteurFenetre = typeof window !== "undefined" ? window.innerHeight : 0;
+    const hauteurDispo = hauteurFenetre - haut - MARGE_BASSE;
+    const parHauteur = hauteurDispo > 0 ? hauteurDispo / HAUTEUR : 1;
+
+    // On ne grossit JAMAIS le module au-delà de sa taille native : l'agrandir
+    // flouterait son texte sans rien apporter.
+    const voulue = Math.min(parLargeur, parHauteur, 1);
+    setEchelle(Math.max(ECHELLE_MIN, voulue));
+  }, []);
+
   useEffect(() => {
     const el = enveloppe.current;
     if (!el) return undefined;
-
-    const mesurer = () => {
-      const dispo = el.clientWidth;
-      // On ne grossit JAMAIS le module : au-delà de 410 px il garde sa taille
-      // native. L'agrandir flouterait son texte sans rien apporter.
-      setEchelle(dispo > 0 && dispo < LARGEUR ? dispo / LARGEUR : 1);
-    };
     mesurer();
 
-    // ResizeObserver suit aussi la rotation du téléphone et l'ouverture du
-    // clavier, que `window.resize` rate sur certains navigateurs mobiles.
+    // ResizeObserver suit la largeur du conteneur ; `resize` suit la fenêtre,
+    // donc la rotation du téléphone et l'ouverture du clavier. Les deux sont
+    // nécessaires : l'un ne voit pas ce que l'autre voit.
+    window.addEventListener("resize", mesurer);
     if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", mesurer);
       return () => window.removeEventListener("resize", mesurer);
     }
     const observateur = new ResizeObserver(mesurer);
     observateur.observe(el);
-    return () => observateur.disconnect();
-  }, []);
+    return () => {
+      window.removeEventListener("resize", mesurer);
+      observateur.disconnect();
+    };
+  }, [mesurer]);
 
   return (
     <div
       ref={enveloppe}
-      className="w-full max-w-[410px]"
+      className="w-full max-w-[410px] mx-auto"
       // La hauteur suit l'échelle : sans cela, le conteneur garderait les
       // 696 px d'origine et laisserait un grand vide sous un module réduit.
       style={{ height: Math.round(HAUTEUR * echelle), overflow: "hidden" }}
