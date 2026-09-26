@@ -544,32 +544,39 @@ export default function Checkout() {
             </div>
           </Etape>
 
-          {/* L'ENCADRE DES ATTESTATIONS N'AVAIT AUCUN TITRE : trois cases
-              flottaient dans une carte identique aux autres, alors que c'est
-              le seul endroit du site ou la cliente DECLARE quelque chose. Le
-              titre est ajoute — un libelle, pas du contenu — et le groupe
-              recoit un filet de conformite : ici la forme signale
-              l'engagement. */}
+          {/* TROIS CASES DEVIENNENT DEUX — MAIS TROIS ATTESTATIONS RESTENT.
+              Mireille : « il me semble qu'il y a trop de trucs a cocher ».
+              Elle a raison sur l'ecran : trois cases pour valider une
+              commande, c'est lourd. Mais chacune est enregistree sur la
+              commande avec l'heure et l'adresse IP : c'est sa preuve en cas de
+              litige, pas une formalite.
+              On fusionne donc LE CLIC, pas LE REGISTRE. Les deux declarations
+              qui portent sur la cliente elle-meme — son age, l'usage qu'elle
+              fera des produits — passent dans une seule case dont le libelle
+              enonce les DEUX faits explicitement. Le serveur continue de
+              recevoir et de conserver confirm_age et confirm_research_use
+              separement.
+              L'acceptation des conditions reste a part : au Quebec, la Loi sur
+              la protection du consommateur demande une acceptation EXPRESSE du
+              contrat. C'est celle des trois qui a la base la plus solide, et
+              la derniere qu'on voudrait diluer. */}
           <Etape numero="5" id="etape-attestations" titre={lang === "fr" ? "Attestations" : "Confirmations"}>
-            <div className="space-y-3.5 border-l border-compliance pl-4">
+            <div className="space-y-3 border-l border-compliance pl-4">
             <label className="flex items-start gap-2.5 text-sm text-nordfjord cursor-pointer select-none">
-              <input type="checkbox" checked={confirmAge} onChange={(e) => setConfirmAge(e.target.checked)} data-testid="checkout-confirm-age" className="mt-0.5 accent-[#00B8D4] w-4 h-4 shrink-0" />
-              {/* L'âge vient de la configuration du serveur, il n'est plus
-                  écrit en dur. Cette case attestait 18 ans alors que tout le
-                  reste du site annonce 19 : or c'est ICI que le client
-                  s'engage. L'attestation la plus faible était celle qui
-                  compte. */}
+              {/* L'age vient de la configuration du serveur, il n'est plus
+                  ecrit en dur : cette case attestait 18 ans alors que tout le
+                  reste du site annonce 19, et c'est ICI que la cliente
+                  s'engage. */}
+              <input
+                type="checkbox"
+                checked={confirmAge && acceptRuO}
+                onChange={(e) => { setConfirmAge(e.target.checked); setAcceptRuO(e.target.checked); }}
+                data-testid="checkout-confirm-age"
+                className="mt-0.5 accent-[#00B8D4] w-4 h-4 shrink-0"
+              />
               <span>{lang === "fr"
-                ? `Je confirme avoir ${minAge} ans ou plus.`
-                : `I confirm I am ${minAge} years of age or older.`}</span>
-            </label>
-            <label className="flex items-start gap-2.5 text-sm text-nordfjord cursor-pointer select-none">
-              <input type="checkbox" checked={acceptRuO} onChange={(e) => setAcceptRuO(e.target.checked)} data-testid="checkout-accept-ruo" className="mt-0.5 accent-[#00B8D4] w-4 h-4 shrink-0" />
-              <span>
-                {lang === "fr"
-                  ? "Je confirme que ces produits sont destinés à un usage de recherche uniquement (RUO)."
-                  : "I confirm these products are for Research Use Only (RUO)."}
-              </span>
+                ? `Je confirme avoir ${minAge} ans ou plus, et que ces produits sont destinés à un usage de recherche uniquement (RUO).`
+                : `I confirm I am ${minAge} years of age or older, and that these products are for Research Use Only (RUO).`}</span>
             </label>
             <label className="flex items-start gap-2.5 text-sm text-nordfjord cursor-pointer select-none">
               <input type="checkbox" checked={acceptPolicy} onChange={(e) => setAcceptPolicy(e.target.checked)} data-testid="checkout-accept-policy" className="mt-0.5 accent-[#00B8D4] w-4 h-4 shrink-0" />
@@ -683,8 +690,9 @@ export default function Checkout() {
                 {[
                   !items?.length ? (lang === "fr" ? "Votre panier est vide." : "Your cart is empty.") : null,
                   !email.trim() ? (lang === "fr" ? "Ajoutez votre courriel." : "Add your email.") : null,
-                  !confirmAge ? (lang === "fr" ? "Confirmez votre âge." : "Confirm your age.") : null,
-                  !acceptRuO ? (lang === "fr" ? "Acceptez l'usage recherche." : "Accept research use.") : null,
+                  (!confirmAge || !acceptRuO)
+                    ? (lang === "fr" ? "Confirmez votre âge et l'usage recherche." : "Confirm your age and research use.")
+                    : null,
                   !acceptPolicy ? (lang === "fr" ? "Acceptez la politique." : "Accept the policy.") : null,
                 ].filter(Boolean).join(" ") || (lang === "fr" ? "Vérifiez le formulaire." : "Check the form.")}
               </p>

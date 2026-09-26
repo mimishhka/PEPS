@@ -199,3 +199,66 @@ it("propose la correction quand elle change vraiment l adresse", async () => {
 
   expect(screen.getByTestId("shipping-city")).toHaveValue("Montréal");
 });
+
+// DEUX CASES A COCHER, TROIS ATTESTATIONS ENREGISTREES.
+//
+// Mireille : « il me semble qu'il y a trop de trucs a cocher ». Elle a raison
+// sur l'ecran — trois cases pour valider une commande, c'est lourd. Mais
+// chacune est conservee sur la commande avec l'heure et l'adresse IP : c'est
+// sa preuve en cas de litige, pas une formalite.
+//
+// On a donc fusionne LE CLIC, pas LE REGISTRE. Les deux declarations qui
+// portent sur la cliente — son age et l'usage qu'elle fera des produits —
+// partagent une case dont le libelle enonce les DEUX faits. Le serveur
+// continue de recevoir confirm_age et confirm_research_use separement.
+//
+// L'acceptation des conditions reste a part : au Quebec, la Loi sur la
+// protection du consommateur demande une acceptation EXPRESSE du contrat.
+describe("les attestations du checkout", () => {
+  it("n'affiche plus que deux cases", async () => {
+    render(<Checkout />);
+    await screen.findByTestId("checkout-page");
+
+    expect(screen.getByTestId("checkout-confirm-age")).toBeInTheDocument();
+    expect(screen.getByTestId("checkout-accept-policy")).toBeInTheDocument();
+    // La troisieme case n'existe plus : son attestation vit dans la premiere.
+    expect(screen.queryByTestId("checkout-accept-ruo")).not.toBeInTheDocument();
+  });
+
+  it("enonce les DEUX faits dans le libelle de la case fusionnee", async () => {
+    // Fusionner sans enoncer les deux faits perdrait l'attestation : la
+    // cliente doit declarer explicitement ce qu'on enregistre en son nom.
+    render(<Checkout />);
+    await screen.findByTestId("checkout-page");
+
+    const etiquette = screen.getByTestId("checkout-confirm-age").closest("label");
+    expect(etiquette).toHaveTextContent(/ans ou plus/i);
+    expect(etiquette).toHaveTextContent(/usage de recherche uniquement \(RUO\)/i);
+  });
+
+  it("un seul clic pose les deux attestations", async () => {
+    render(<Checkout />);
+    await screen.findByTestId("checkout-page");
+
+    const fusionnee = screen.getByTestId("checkout-confirm-age");
+    expect(fusionnee).not.toBeChecked();
+    await userEvent.click(fusionnee);
+    expect(fusionnee).toBeChecked();
+
+    // Et un second clic les retire toutes les deux : l'etat reste coherent
+    // dans les deux sens, sinon une commande partirait avec une attestation
+    // posee et l'autre non.
+    await userEvent.click(fusionnee);
+    expect(fusionnee).not.toBeChecked();
+  });
+
+  it("nomme les deux cases manquantes sous le bouton, sans en inventer une troisieme", async () => {
+    render(<Checkout />);
+    await screen.findByTestId("checkout-page");
+
+    const manque = await screen.findByTestId("checkout-manque");
+    expect(manque).toHaveTextContent(/Confirmez votre âge et l'usage recherche/i);
+    // L'ancien message demandait de cocher une case qui n'existe plus.
+    expect(manque).not.toHaveTextContent(/Acceptez l'usage recherche\./i);
+  });
+});
