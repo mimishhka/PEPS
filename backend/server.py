@@ -266,6 +266,16 @@ CANADA_POST_OPENAPI_TRACKING_URL = os.environ.get(
     "https://api.canadapost-postescanada.ca/prod/devportal-portaildesdeveloppeurs/tracking/v1",
 ).rstrip("/")
 # Tarification (Rating) : meme hote, meme jeton OAuth, perimetre « merchant ».
+# QUELLE API COTE LES ENVOIS, quand les deux sont configurees.
+#
+# Par defaut « auto » : le nouveau portail des que ses cles OAuth existent. Mais
+# une cle OAuth peut etre valide pour le suivi et les etiquettes SANS etre
+# habilitee a la tarification — et dans ce cas « auto » choisit la voie qui ne
+# cote pas, en ecrasant l'ancienne cle qui cotait. Poser « legacy » ici rend la
+# main a l'ancienne API en une ligne, sans toucher aux etiquettes ni au suivi.
+#
+# Valeurs : auto (defaut) | openapi | legacy
+CANADA_POST_RATING_SOURCE = os.environ.get("CANADA_POST_RATING_SOURCE", "auto").strip().lower()
 CANADA_POST_OPENAPI_RATING_URL = os.environ.get(
     "CANADA_POST_OPENAPI_RATING_URL",
     "https://api.canadapost-postescanada.ca/prod/devportal-portaildesdeveloppeurs/rating/v1",

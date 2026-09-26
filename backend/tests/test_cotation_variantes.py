@@ -41,6 +41,7 @@ def cp(monkeypatch):
     import server  # noqa: F401  (l'ordre compte : voir test_cotation_repli)
     from services import canada_post
     canada_post._CP_VARIANTE_TARIFS = None  # chaque test part sans memoire
+    canada_post._CP_ECHEC_TARIFS_JUSQUA = 0.0  # ni memoire d echec
     return canada_post
 
 
@@ -71,8 +72,11 @@ def coter(cp, repondre, **reglages):
     et la liste des appels tentes, dans l'ordre."""
     appels = []
 
-    async def appel(methode, url, *, json_body=None, accept="application/json"):
-        appels.append((url, json_body))
+    # La signature suit celle de _cp_openapi_call, timeout compris : un double
+    # qui refuse un argument que le vrai accepte fait echouer le test sur un
+    # TypeError, et non sur ce qu il verifie.
+    async def appel(methode, url, *, json_body=None, accept="application/json", timeout=45):
+        appels.append((url, json_body, timeout))
         return repondre(url, json_body)
 
     with patch.object(cp, "s", Reglages(**reglages)), \
@@ -86,7 +90,7 @@ def test_le_tarif_commercial_est_demande_en_premier(cp):
     devis, appels = coter(cp, lambda url, corps: Reponse(200, TARIF))
     assert len(devis) == 1 and devis[0]["cost_cad"] == 14.22
     assert len(appels) == 1, "une seule tentative devait suffire"
-    url, corps = appels[0]
+    url, corps, delai = appels[0]
     assert corps["quoteType"] == "commercial"
     assert corps["customerNumber"] == "0001306040"
 
@@ -101,7 +105,7 @@ def test_le_chemin_avec_numeros_de_client_est_essaye(cp):
 
     devis, appels = coter(cp, repondre, mailed_by="0001306040", mobo="0001306040")
     assert len(devis) == 1, "le chemin avec numeros de client n'a pas ete essaye"
-    assert any("/0001306040/0001306040/prices" in u for u, _ in appels)
+    assert any("/0001306040/0001306040/prices" in u for u, _, _t in appels)
 
 
 def test_le_contrat_est_retire_quand_il_fait_echouer(cp):
@@ -113,7 +117,7 @@ def test_le_contrat_est_retire_quand_il_fait_echouer(cp):
 
     devis, appels = coter(cp, repondre, contrat="CT-INEXISTANT")
     assert len(devis) == 1
-    assert any("contractId" not in (c or {}) for _, c in appels)
+    assert any("contractId" not in (c or {}) for _, c, _t in appels)
 
 
 def test_le_comptoir_sert_de_dernier_recours_et_previent(cp, caplog):
@@ -151,7 +155,7 @@ def test_chaque_variante_est_tentee_avant_d_abandonner(cp):
     assert devis == []
     # commercial simple, commercial avec chemin, commercial sans contrat,
     # comptoir simple, comptoir avec chemin.
-    assert len(appels) == 5, [u for u, _ in appels]
+    assert len(appels) == 5, [u for u, _, _t in appels]
 
 
 def test_la_variante_qui_marche_est_memorisee(cp):
@@ -167,3 +171,31 @@ def test_la_variante_qui_marche_est_memorisee(cp):
     devis, suivants = coter(cp, repondre)
     assert len(devis) == 1
     assert len(suivants) == 1, "la variante retenue doit passer d'abord"
+
+def test_la_cotation_n_attend_pas_45_secondes(cp):
+    """UN DEFAUT QUE J AI INTRODUIT. Les cinq variantes tournaient avec le delai
+    des etiquettes — 45 secondes chacune — et ce balayage se refaisait PAR
+    COMMANDE. Dix commandes qui echouent = des minutes d attente, et un ecran
+    Dispatch inutilisable. Un devis n est pas une etiquette : 12 secondes."""
+    _, appels = coter(cp, lambda url, corps: Reponse(200, TARIF))
+    assert appels[0][2] == 12, f"delai de {appels[0][2]} s : trop long pour un devis"
+
+
+def test_un_echec_recent_ne_relance_pas_le_balayage(cp):
+    """L autre moitie du defaut : sans memoire de l echec, chaque commande du
+    meme ecran relancait les cinq tentatives reseau."""
+    appels_total = []
+
+    def repondre(url, corps):
+        appels_total.append(url)
+        return Reponse(503, None, "indisponible")
+
+    devis, premiers = coter(cp, repondre)
+    assert devis == [] and len(premiers) >= 2, "le premier balayage doit tout essayer"
+    compte = len(appels_total)
+
+    # Deuxieme commande du meme ecran : aucune tentative reseau de plus.
+    devis, suivants = coter(cp, repondre)
+    assert devis == []
+    assert suivants == [], "l echec memorise devait court-circuiter le balayage"
+    assert len(appels_total) == compte

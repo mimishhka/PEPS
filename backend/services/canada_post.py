@@ -3,6 +3,7 @@ manifests, artifact download, voiding, and delivery tracking sync."""
 
 import asyncio
 import logging
+import time
 import os
 import re
 import uuid
@@ -123,7 +124,8 @@ async def _cp_get_oauth_token(force_refresh: bool = False) -> str:
 
 
 async def _cp_openapi_call(method: str, url_or_path: str, *, json_body: Optional[dict] = None,
-                           accept: str = "application/json") -> httpx.Response:
+                           accept: str = "application/json",
+                           timeout: float = 45) -> httpx.Response:
     token = await s._cp_get_oauth_token()
     url = url_or_path if url_or_path.startswith("http") else f"{s.CANADA_POST_OPENAPI_BASE_URL}{url_or_path}"
     headers = _cp_openapi_headers(token, accept=accept)
@@ -133,7 +135,7 @@ async def _cp_openapi_call(method: str, url_or_path: str, *, json_body: Optional
     # follow_redirects=True est INDISPENSABLE : Canada Post renvoie l'artifact
     # (le PDF de l'étiquette) via une redirection 302 vers l'URL réelle. Sans
     # suivre la redirection, on écrit la réponse 302 vide -> étiquette blanche.
-    async with httpx.AsyncClient(timeout=45, follow_redirects=True) as cx:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as cx:
         r = await cx.request(method, url, json=json_body, headers=headers)
         if r.status_code == 401:
             token = await s._cp_get_oauth_token(force_refresh=True)
@@ -171,13 +173,25 @@ def _cp_oauth_present() -> bool:
 
 def _cp_source_tarifs() -> Optional[str]:
     """Quelle API cote les envois : « openapi » (nouveau portail, cles OAuth),
-    « legacy » (ancienne cle) ou None. Independant de CANADA_POST_API_MODE,
-    qui ne regit que les etiquettes : coter un envoi ne cree rien."""
+    « legacy » (ancienne cle) ou None. Independant de CANADA_POST_API_MODE, qui
+    ne regit que les etiquettes : coter un envoi ne cree rien.
+
+    CANADA_POST_RATING_SOURCE a le dernier mot. « auto » prefere le nouveau
+    portail, ce qui est le bon defaut — mais une cle OAuth peut etre valide pour
+    le suivi et les etiquettes sans etre habilitee a la tarification, et « auto »
+    choisit alors la voie qui ne cote pas. Epingler « legacy » rend la main a
+    l'ancienne cle sans toucher au reste."""
     if not s.CANADA_POST_ORIGIN_POSTAL_CODE:
         return None
+    choix = (getattr(s, "CANADA_POST_RATING_SOURCE", "auto") or "auto").strip().lower()
+    legacy_possible = bool(s.CANADA_POST_API_KEY and s.CANADA_POST_CUSTOMER_NUMBER)
+    if choix == "legacy":
+        return "legacy" if legacy_possible else None
+    if choix == "openapi":
+        return "openapi" if _cp_oauth_present() else None
     if _cp_oauth_present():
         return "openapi"
-    if s.CANADA_POST_API_KEY and s.CANADA_POST_CUSTOMER_NUMBER:
+    if legacy_possible:
         return "legacy"
     return None
 
@@ -296,6 +310,13 @@ def _cp_lire_tarifs_json(donnees) -> list:
 
 # La variante de requete qui a cote, retenue pour la duree du processus.
 _CP_VARIANTE_TARIFS = None
+# ET L'ECHEC SE MEMORISE AUSSI. Sans cela, un ecran Dispatch de dix commandes
+# relancait cinq tentatives reseau PAR commande : l'echec coutait plus cher que
+# la reussite, et l'ecran devenait inutilisable. La memoire est courte (60 s) :
+# elle couvre un chargement d'ecran sans empecher un rechargement de retenter
+# apres une correction de configuration.
+_CP_ECHEC_TARIFS_JUSQUA = 0.0
+_CP_DUREE_MEMOIRE_ECHEC = 60.0
 
 _CP_CODE_POSTAL_CA = re.compile(r"^[A-Z][0-9][A-Z][0-9][A-Z][0-9]$")
 _CP_ZIP_US = re.compile(r"^[0-9]{5}(-[0-9]{4})?$")
@@ -373,7 +394,11 @@ async def _canada_post_get_rates_openapi(destination_postal_code: str, destinati
         variantes.append(("comptoir, chemin avec numeros de client",
                           f"{racine}/{mailed_by}/{mobo}/prices", comptoir))
 
-    global _CP_VARIANTE_TARIFS
+    global _CP_VARIANTE_TARIFS, _CP_ECHEC_TARIFS_JUSQUA
+    if time.monotonic() < _CP_ECHEC_TARIFS_JUSQUA:
+        # Un balayage complet vient d'echouer : inutile de le refaire pour
+        # chaque commande du meme ecran.
+        return []
     if _CP_VARIANTE_TARIFS is not None:
         # La variante retenue d'abord ; les autres restent en secours au cas ou
         # elle cesserait de repondre.
@@ -382,7 +407,7 @@ async def _canada_post_get_rates_openapi(destination_postal_code: str, destinati
     echecs = []
     for nom, url, corps in variantes:
         try:
-            r = await s._cp_openapi_call("POST", url, json_body=corps)
+            r = await s._cp_openapi_call("POST", url, json_body=corps, timeout=12)
         except Exception as e:
             echecs.append(f"{nom} -> {type(e).__name__}")
             continue
@@ -411,9 +436,11 @@ async def _canada_post_get_rates_openapi(destination_postal_code: str, destinati
                        " ATTENTION : tarif COMPTOIR, pas le tarif commercial de la boutique."
                        if "comptoir" in nom else "")
                 _CP_VARIANTE_TARIFS = nom
+            _CP_ECHEC_TARIFS_JUSQUA = 0.0
             return devis
         echecs.append(f"{nom} -> HTTP 200 mais aucun tarif lisible")
 
+    _CP_ECHEC_TARIFS_JUSQUA = time.monotonic() + _CP_DUREE_MEMOIRE_ECHEC
     logging.error("Canada Post rating: aucune variante n'a cote. Detail : %s", " | ".join(echecs))
     return []
 
