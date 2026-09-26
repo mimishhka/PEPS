@@ -1031,6 +1031,9 @@ function InviteModal({ L, onClose, onDone }) {
   const [lang, setLangSel] = useState("fr");
   const [busy, setBusy] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
+  // Non vide = l'invitation est PARTIE. Le panneau bascule alors en
+  // confirmation : le formulaire disparait entierement.
+  const [envoyeA, setEnvoyeA] = useState("");
   // Entente négociée : décidée ICI, à l'invitation, parce que c'est le moment
   // où on la connaît. Cochée après coup sur la fiche, elle arrivait toujours
   // trop tard : la personne avait déjà reçu le courriel qui lui présentait
@@ -1059,6 +1062,10 @@ function InviteModal({ L, onClose, onDone }) {
         manual_tier: entente ? palier : null,
       });
       setInviteLink(data.invite_link || "");
+      // Le destinataire est fige AU MOMENT DE L'ENVOI : l'ecran de
+      // confirmation doit nommer la personne qui vient de recevoir le
+      // courriel, pas ce qui resterait dans un champ.
+      setEnvoyeA(email.trim());
       toast.success(L("Invitation envoyée", "Invitation sent"));
       onDone();
     } catch (e) {
@@ -1079,15 +1086,78 @@ function InviteModal({ L, onClose, onDone }) {
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <div>
-            <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova">
-              {L("NOUVELLE INVITATION", "NEW INVITATION")}
+            <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte">
+              {envoyeA ? L("INVITATION ENVOYÉE", "INVITATION SENT") : L("NOUVELLE INVITATION", "NEW INVITATION")}
             </p>
             <h3 className="font-display text-lg font-bold text-nordfjord mt-0.5">
-              {L("Inviter un affilié", "Invite an affiliate")}
+              {envoyeA ? L("C'est parti", "All set") : L("Inviter un affilié", "Invite an affiliate")}
             </h3>
           </div>
-          <button onClick={onClose}><X size={18} className="text-glacier" /></button>
+          <button onClick={onClose} aria-label={L("Fermer", "Close")}><X size={18} className="text-glacier" /></button>
         </div>
+
+        {/* APRES L'ENVOI, LE FORMULAIRE DISPARAIT.
+            Mireille : « la fenetre reste ouverte une fois l'invitation
+            envoyee, on dirait qu'elle n'est pas partie ». Elle avait raison :
+            le formulaire restait rempli, le bouton disait encore « Envoyer
+            l'invitation », et seule une petite boite apparaissait en bas.
+            Rien ne distinguait un envoi reussi d'un envoi jamais tente — et
+            un second clic partait pour de bon.
+            Le panneau bascule desormais en confirmation : on nomme la
+            personne, on montre le lien, et le seul bouton restant ferme. */}
+        {envoyeA ? (
+          <div className="space-y-4" data-testid="invite-confirmation">
+            <div className="flex items-start gap-3 border border-success bg-success/5 px-4 py-3.5"
+              style={{ borderRadius: "var(--r-m)" }}>
+              <CheckCircle2 size={17} className="text-success shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="text-sm text-nordfjord leading-relaxed">
+                  {L("Le courriel d'invitation est parti à", "The invitation email was sent to")}{" "}
+                  <strong className="break-all">{envoyeA}</strong>.
+                </p>
+                <p className="text-[12px] text-glacier mt-1 leading-relaxed">
+                  {L("La personne apparaît dans la liste avec le statut « Invité » jusqu'à son activation.",
+                     "They appear in the list as « Invited » until they activate.")}
+                </p>
+              </div>
+            </div>
+
+            {inviteLink && (
+              <div className="border border-ash bg-clinical p-3.5" style={{ borderRadius: "var(--r-m)" }}>
+                <p className="text-[11px] uppercase tracking-wider text-glacier mb-2">
+                  {L("Lien d'invitation", "Invite link")}
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs text-nordfjord break-all" data-testid="invite-link">{inviteLink}</code>
+                  <button onClick={copy} aria-label={L("Copier le lien", "Copy link")}
+                    className="w-9 h-9 shrink-0 border border-ash bg-white flex items-center justify-center transition-colors hover:border-nova"
+                    style={{ borderRadius: "var(--r-m)" }}>
+                    <Copy size={14} className="text-glacier" />
+                  </button>
+                </div>
+                {/* OUVRIR LE LIEN SOI-MEME EST LE SEUL MOYEN DE VERIFIER QU'IL
+                    MENE QUELQUE PART. Mireille : « quand l'affilie a utilise
+                    le lien, ca l'a envoye sur une page indisponible ». Ce lien
+                    est construit a partir de PUBLIC_BASE_URL cote serveur : si
+                    ce reglage pointe ailleurs que la boutique, le courriel
+                    part avec une adresse morte et rien ne le signale. */}
+                <a href={inviteLink} target="_blank" rel="noreferrer"
+                  data-testid="invite-link-test"
+                  className="inline-block mt-2.5 text-[11px] underline underline-offset-4 text-glacier hover:text-nordfjord transition-colors">
+                  {L("Ouvrir le lien pour vérifier qu'il mène bien à la boutique",
+                     "Open the link to check it reaches the shop")}
+                </a>
+              </div>
+            )}
+
+            <button onClick={onClose} data-testid="invite-close"
+              className="w-full px-4 py-2.5 bg-nordfjord text-white text-sm font-medium transition-opacity hover:opacity-90"
+              style={{ borderRadius: "var(--r-m)" }}>
+              {L("Fermer", "Close")}
+            </button>
+          </div>
+        ) : (
+        <>
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label={L("Prénom *", "First name *")}>
@@ -1161,19 +1231,12 @@ function InviteModal({ L, onClose, onDone }) {
           {L("Le code affilié sera généré automatiquement à l'activation (base + rabais 10% par défaut). Vous pourrez le modifier depuis la fiche.",
              "Affiliate code will be auto-generated on activation (base + 10% default discount). Editable from the detail view.")}
         </p>
-        {inviteLink && (
-          <div className="mt-4 rounded-lg border border-ash bg-clinical p-3">
-            <p className="text-[11px] uppercase tracking-wider text-glacier mb-1">{L("Lien d'invitation", "Invite link")}</p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 text-xs text-nordfjord break-all">{inviteLink}</code>
-              <button onClick={copy} className="p-1.5 rounded-md hover:bg-white"><Copy size={14} className="text-glacier" /></button>
-            </div>
-          </div>
-        )}
         <button onClick={submit} disabled={busy} data-testid="invite-submit"
           className="w-full mt-6 px-4 py-2.5 rounded-lg bg-nordfjord text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 transition">
           {busy ? L("Envoi…", "Sending…") : L("Envoyer l'invitation", "Send invitation")}
         </button>
+        </>
+        )}
       </div>
     </div>
   );

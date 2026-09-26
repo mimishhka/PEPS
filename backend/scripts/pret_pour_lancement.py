@@ -196,6 +196,58 @@ def principal():
         ligne(JAUNE, f"CANADA_POST_API_MODE = {cp or 'absent'}",
               "Les étiquettes partent en mode test : elles ne sont pas livrables.")
 
+    # ──────────────────────────────────────────────────────────────────────
+    # L'ADRESSE QUI VOYAGE DANS LES COURRIELS.
+    #
+    # PUBLIC_BASE_URL construit TOUS les liens envoyés par courriel : le lien
+    # magique de connexion, la réinitialisation de mot de passe, et
+    # l'invitation d'affilié. Si elle pointe ailleurs que la boutique —
+    # l'adresse de l'API, un ancien domaine, un port oublié — le courriel part
+    # avec une adresse morte et RIEN ne le signale : l'envoi réussit, c'est le
+    # clic qui échoue, chez quelqu'un d'autre, sans retour vers nous.
+    #
+    # Mireille l'a découvert en invitant un affilié : « quand l'affilié a
+    # utilisé le lien, ça l'a envoyé sur une page indisponible ».
+    # ──────────────────────────────────────────────────────────────────────
+    print("\n─── L'ADRESSE DES LIENS ENVOYÉS PAR COURRIEL ───\n")
+    base = (env.get("PUBLIC_BASE_URL") or "").rstrip("/")
+    if not base:
+        bloquants += 1
+        ligne(ROUGE, "PUBLIC_BASE_URL est absente",
+              "Aucun lien de courriel ne peut être construit : connexion,\n"
+              "réinitialisation et invitations d'affilié échouent toutes.")
+    else:
+        ligne(VERT, f"PUBLIC_BASE_URL = {base}")
+        if base.startswith("http://"):
+            bloquants += 1
+            ligne(ROUGE, "Elle est en http, pas en https",
+                  "Un lien de connexion en clair expose son jeton en transit.")
+        if "/api" in base:
+            bloquants += 1
+            ligne(ROUGE, "Elle contient « /api »",
+                  "C'est l'adresse de la BOUTIQUE qu'il faut, pas celle de l'API :\n"
+                  "ces liens mènent à des pages du site, pas à des endpoints.")
+        # On va VOIR si la page d'invitation répond. Un lien qu'on n'a jamais
+        # ouvert est un lien qu'on suppose bon.
+        try:
+            import urllib.request
+            cible = f"{base}/affiliate/join"
+            requete = urllib.request.Request(
+                cible, method="GET", headers={"User-Agent": "fironova-preflight"})
+            with urllib.request.urlopen(requete, timeout=10) as r:
+                if r.status < 400:
+                    ligne(VERT, f"{cible} répond ({r.status})")
+                else:
+                    bloquants += 1
+                    ligne(ROUGE, f"{cible} répond {r.status}",
+                          "C'est là qu'atterrissent les invitations d'affilié.")
+        except Exception as e:
+            bloquants += 1
+            ligne(ROUGE, f"{base}/affiliate/join est injoignable ({type(e).__name__})",
+                  "C'est la page où atterrissent les invitations d'affilié.\n"
+                  "Vérifiez que PUBLIC_BASE_URL est l'adresse publique de la\n"
+                  "boutique, et que le frontend est construit et servi.")
+
     print("\n─── FICHIERS OUBLIÉS ───\n")
     sauvegardes = sorted(RACINE.glob(".env.sauvegarde-*"))
     if sauvegardes:

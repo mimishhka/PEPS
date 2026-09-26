@@ -612,3 +612,72 @@ describe("AdminAffiliates — le dernier avis envoyé", () => {
     expect(screen.queryByTestId("dernier-avis")).not.toBeInTheDocument();
   });
 });
+
+// APRES L'ENVOI, LE PANNEAU DOIT DIRE QUE C'EST PARTI.
+//
+// Mireille : « la fenetre reste ouverte une fois l'invitation envoyee, on
+// dirait qu'elle n'est pas partie ». Elle avait raison : le formulaire restait
+// rempli, le bouton disait encore « Envoyer l'invitation », et seule une
+// petite boite apparaissait en bas. Rien ne distinguait un envoi reussi d'un
+// envoi jamais tente — et un second clic partait pour de bon.
+describe("l'invitation d'un affilie", () => {
+  const remplirEtEnvoyer = async () => {
+    await userEvent.click(await screen.findByTestId("affiliate-invite-open"));
+    fireEvent.change(await screen.findByTestId("invite-first-name"), { target: { value: "Marie" } });
+    fireEvent.change(screen.getByTestId("invite-last-name"), { target: { value: "Tremblay" } });
+    fireEvent.change(screen.getByTestId("invite-email"), { target: { value: "marie@exemple.com" } });
+    await userEvent.click(screen.getByTestId("invite-submit"));
+  };
+
+  it("bascule en confirmation et retire le formulaire", async () => {
+    api.post.mockResolvedValue({
+      data: { invite_link: "https://fironova.com/affiliate/join?token=abc" },
+    });
+    render(<AdminAffiliates />);
+    await remplirEtEnvoyer();
+
+    await waitFor(() => expect(screen.getByTestId("invite-confirmation")).toBeInTheDocument());
+    // Le formulaire a disparu : impossible d'envoyer une seconde fois sans
+    // rouvrir, et impossible de croire que rien ne s'est passe.
+    expect(screen.queryByTestId("invite-submit")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("invite-email")).not.toBeInTheDocument();
+  });
+
+  it("nomme la personne qui vient de recevoir le courriel", async () => {
+    api.post.mockResolvedValue({ data: { invite_link: "https://fironova.com/affiliate/join?token=abc" } });
+    render(<AdminAffiliates />);
+    await remplirEtEnvoyer();
+
+    const confirmation = await screen.findByTestId("invite-confirmation");
+    expect(confirmation).toHaveTextContent("marie@exemple.com");
+  });
+
+  it("permet d'ouvrir le lien pour verifier qu'il mene quelque part", async () => {
+    // Mireille : « quand l'affilie a utilise le lien, ca l'a envoye sur une
+    // page indisponible ». Le lien est construit cote serveur a partir de
+    // PUBLIC_BASE_URL : si ce reglage pointe ailleurs, le courriel part avec
+    // une adresse morte et rien ne le signale. L'ouvrir soi-meme est le seul
+    // moyen de le voir avant que l'affilie le decouvre.
+    api.post.mockResolvedValue({
+      data: { invite_link: "https://fironova.com/affiliate/join?token=abc" },
+    });
+    render(<AdminAffiliates />);
+    await remplirEtEnvoyer();
+
+    const essai = await screen.findByTestId("invite-link-test");
+    expect(essai).toHaveAttribute("href", "https://fironova.com/affiliate/join?token=abc");
+    expect(essai).toHaveAttribute("target", "_blank");
+  });
+
+  it("garde le formulaire quand l'envoi echoue", async () => {
+    // Un echec ne doit pas faire croire a un succes : le formulaire reste,
+    // avec ce qui a ete saisi.
+    api.post.mockRejectedValue({ response: { data: { detail: "SMTP indisponible" } } });
+    render(<AdminAffiliates />);
+    await remplirEtEnvoyer();
+
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    expect(screen.queryByTestId("invite-confirmation")).not.toBeInTheDocument();
+    expect(screen.getByTestId("invite-submit")).toBeInTheDocument();
+  });
+});
