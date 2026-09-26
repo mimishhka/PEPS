@@ -29,6 +29,7 @@ import bcrypt
 import jwt
 import httpx
 import resend
+from starlette.concurrency import run_in_threadpool
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File, Form, Body
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -2587,7 +2588,8 @@ async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(
 
     safe_name = f"{uuid.uuid4().hex}.pdf"
     try:
-        object_storage.put_object("coa", safe_name, contents, "application/pdf")
+        await run_in_threadpool(
+            object_storage.put_object, "coa", safe_name, contents, "application/pdf")
     except Exception as e:
         logging.error("COA upload to object storage failed: %s", e)
         raise HTTPException(503, "File storage unavailable — try again in a moment")
@@ -2637,7 +2639,9 @@ async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depend
     contents = await file.read()
     if len(contents) / (1024 * 1024) > MAX_IMAGE_UPLOAD_MB:
         raise HTTPException(400, f"File too large — max {MAX_IMAGE_UPLOAD_MB:.0f} MB")
-    safe_name = _validate_and_save_image(contents, "images")
+    # La validation et le televersement sont bloquants : ils quittent la
+    # boucle d evenements ensemble, sinon le serveur se fige pendant l upload.
+    safe_name = await run_in_threadpool(_validate_and_save_image, contents, "images")
     rel_path = f"/api/uploads/images/{safe_name}"
     return {"url": rel_path, "original_filename": filename, "size_bytes": len(contents)}
 
@@ -2667,7 +2671,15 @@ async def _serve_upload(kind: str, filename: str) -> Response:
     legacy_dir = _UPLOAD_KIND_TO_LEGACY_DIR.get(kind)
     if legacy_dir is None or not _UPLOAD_FILENAME_RE.fullmatch(filename or ""):
         raise HTTPException(404, "File not found")
-    got = object_storage.load_bytes(kind, filename, legacy_dir=legacy_dir)
+    # DANS UN FIL SEPARE, ET NON DANS LA BOUCLE.
+    #
+    # object_storage emploie `requests`, qui est synchrone, avec 60 secondes
+    # d'attente. Appele tel quel depuis cette coroutine, il figeait le serveur
+    # ENTIER a chaque certificat d'analyse affiche : plus une seule requete ne
+    # passait, pour personne, le temps de l'aller-retour. run_in_threadpool
+    # rend la main a la boucle et transforme ce gel global en attente locale.
+    got = await run_in_threadpool(
+        object_storage.load_bytes, kind, filename, legacy_dir=legacy_dir)
     if got is None:
         raise HTTPException(404, "File not found")
     content, content_type = got
@@ -4343,7 +4355,7 @@ async def _post_order_message(order_id: str, sender: str, author: str, text: str
         contents = await file.read()
         if len(contents) / (1024 * 1024) > MAX_IMAGE_UPLOAD_MB:
             raise HTTPException(400, f"File too large — max {MAX_IMAGE_UPLOAD_MB:.0f} MB")
-        safe_name = _validate_and_save_image(contents, "messages")
+        safe_name = await run_in_threadpool(_validate_and_save_image, contents, "messages")
         image_url = f"/api/uploads/messages/{safe_name}"
     doc = {
         "id": str(uuid.uuid4()),
@@ -11004,7 +11016,8 @@ async def _photo_de_billet(file) -> Optional[str]:
     contenu = await file.read()
     if len(contenu) / (1024 * 1024) > MAX_IMAGE_UPLOAD_MB:
         raise HTTPException(400, f"Image trop lourde — maximum {MAX_IMAGE_UPLOAD_MB:.0f} Mo")
-    return f"/api/uploads/messages/{_validate_and_save_image(contenu, 'messages')}"
+    nom = await run_in_threadpool(_validate_and_save_image, contenu, "messages")
+    return f"/api/uploads/messages/{nom}"
 
 
 async def affiliate_ticket_create(subject: str, body: str, context_path: str, file,
