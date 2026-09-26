@@ -183,9 +183,31 @@ def verifier_couleurs():
     for chemin in SRC.rglob("*.jsx"):
         if ".test." in chemin.name:
             continue
+        # L'ECRAN D'ERREUR EST UNE EXCEPTION, ET ELLE S'INSCRIT ICI.
+        #
+        # ErrorBoundary est le dernier recours : il s'affiche quand le rendu a
+        # echoue. S'il dependait des jetons et que la feuille de style n'a pas
+        # charge, il serait illisible — une page blanche remplacee par une
+        # autre page blanche. Ses couleurs forment une paire fond/texte
+        # autonome, lisible sans aucun CSS du projet.
+        #
+        # C'est le genre d'exception qu'on contourne d'habitude en silence.
+        # L'ecrire ici la rend relisible : quelqu'un qui se demande pourquoi
+        # ce fichier echappe au controle trouve la reponse au bon endroit.
+        if chemin.name == "ErrorBoundary.jsx":
+            continue
         cible = admin if "/admin/" in chemin.as_posix() else vitrine
         contenu = lire(chemin)
-        for m in re.finditer(r'(?:bg|text|border|from|to|via)-\[#([0-9A-Fa-f]{3,8})\]', contenu):
+        # DEUX FORMES, PAS UNE. Le controle ne lisait que les CLASSES
+        # Tailwind ; les couleurs posees dans un attribut  lui
+        # echappaient entierement. C est ainsi que six couleurs de palier
+        # affilie sont restees illisibles en mode clair — entre 2,21:1 et
+        # 3,29:1 — sans qu aucune verification ne les signale.
+        motifs = [
+            r'(?:bg|text|border|from|to|via)-\[#([0-9A-Fa-f]{3,8})\]',
+            r"""(?:color|background|backgroundColor|borderColor|fill|stroke)\s*:\s*["']#([0-9A-Fa-f]{3,8})["']""",
+        ]
+        for m in re.finditer('|'.join(motifs), contenu):
             # UNE COULEUR EN DUR ACCOMPAGNEE D'UNE VARIANTE « dark: » SUR LE
             # MEME ELEMENT N'EST PAS UN DEFAUT : le mode nuit est traite
             # explicitement. Un controle qui signale ce cas apprend a
@@ -197,7 +219,8 @@ def verifier_couleurs():
             attribut = contenu[debut:fin] if debut != -1 and fin != -1 else ""
             if re.search(r'\bdark:(?:bg|text|border)-', attribut):
                 continue
-            cible.setdefault("#" + m.group(1).upper(), set()).add(chemin.relative_to(RACINE).as_posix())
+            valeur = m.group(1) or m.group(2)
+            cible.setdefault("#" + valeur.upper(), set()).add(chemin.relative_to(RACINE).as_posix())
 
     if not vitrine and not admin:
         print("   OK — aucune couleur hexadecimale en dur.")

@@ -32,7 +32,25 @@
   --fn-mist:        183 202 221;   /* texte secondaire sur surface nordfjord (hero) */
   --fn-abyss:       13 53 96;      /* panneau et filet du hero (carte certificat) */
   --fn-nova-hover:  0 163 188;     /* l'etat survole de l'accent */
-  --fn-fog:         143 163 184;   /* texte sur ink : l'ink est CONSTANT d'un mode a l'autre, son texte doit l'etre aussi */
+  --fn-fog:         143 163 184;
+
+  /* LES COULEURS DE PALIER AFFILIE.
+   *
+   * Mesurees le 2026-09-26 : les SIX etaient illisibles en mode clair, entre
+   * 2,21:1 et 3,29:1 pour un seuil de 4,5. C'est la couleur dont l'affilie est
+   * le plus fier — son rang — et elle se lisait mal sur l'ecran ou il vient
+   * la regarder.
+   *
+   * Chaque palier garde sa TEINTE : seule la luminosite bouge, juste assez
+   * pour franchir le seuil. Le mode nuit reprend les valeurs d'origine, qui
+   * y sont deja lisibles (6,5:1 a 8,7:1 sur l'ink). */
+  --fn-palier-standard: 30 129 119;    /* #1E8177 — 4,71:1 sur blanc */
+  --fn-palier-bronze:   170 101 48;    /* #AA6530 — 4,55:1 */
+  --fn-palier-argent:   96 120 136;    /* #607888 — 4,63:1 */
+  --fn-palier-or:       155 110 25;    /* #9B6E19 — 4,53:1 */
+  --fn-palier-platine:  57 122 170;    /* #397AAA — 4,63:1 */
+  --fn-palier-diamant:  120 99 213;    /* #7863D5 — 4,62:1 */
+  --fn-palier-defaut:   100 116 139;   /* #64748B — 4,76:1 */   /* texte sur ink : l'ink est CONSTANT d'un mode a l'autre, son texte doit l'etre aussi */
 
   /* Anciennes variables hexadécimales, conservées : plusieurs feuilles de
    * style et styles en ligne les utilisent encore directement. Elles suivent
@@ -110,6 +128,16 @@
      clair — jamais de bloc sombre isole sur page claire. */
   --fn-mist:        80 108 142;
   --fn-abyss:       226 234 241;
+  /* Sur l'ink, les valeurs d'origine sont deja lisibles : on les reprend
+     telles quelles plutot que d'inventer une seconde famille. Seul le palier
+     par defaut, un gris moyen, doit s'eclaircir d'un cran. */
+  --fn-palier-standard: 45 191 176;    /* #2DBFB0 — 8,42:1 sur l'ink */
+  --fn-palier-bronze:   201 123 63;    /* #C97B3F — 5,85:1 */
+  --fn-palier-argent:   143 163 176;   /* #8FA3B0 — 7,36:1 */
+  --fn-palier-or:       223 164 54;    /* #DFA436 — 8,71:1 */
+  --fn-palier-platine:  127 176 212;   /* #7FB0D4 — 8,30:1 */
+  --fn-palier-diamant:  155 139 224;   /* #9B8BE0 — 6,56:1 */
+  --fn-palier-defaut:   109 126 150;   /* #6D7E96 — 4,65:1 */
   --fn-card:        11 46 79;      /* #0B2E4F — Nordfjord, la surface de la marque */
 
   color-scheme: dark;
@@ -187,6 +215,37 @@
     letter-spacing: -0.01em;
     /* Les titres ne finissent plus sur un mot orphelin. */
     text-wrap: balance;
+  }
+
+  /* LE PLANCHER MOBILE.
+     Ces quatre declarations retirent les signaux qui trahissent un site web
+     sur un telephone. Chacune corrige un defaut precis, et aucune ne se
+     reproduit dans l'emulation d'un navigateur de bureau. */
+  html {
+    /* Le texte gonflait en paysage sur iOS, cassant les mises en page. */
+    -webkit-text-size-adjust: 100%;
+    /* Le tire-pour-rafraichir d'Android et le rebond de toute la page sur
+       iOS s'appliquaient par-dessus nos propres zones de defilement. */
+    overscroll-behavior: none;
+  }
+
+  /* Un champ sous 16 px fait ZOOMER iOS a la mise au point, et il ne
+     dezoome pas en sortant : la cliente reste devant une page recadree.
+     C'est la vraie cause du reflexe « user-scalable=no », qui est un
+     defaut d'accessibilite : on corrige la cause. */
+  input, textarea, select {
+    font-size: 16px;
+  }
+
+  /* touch-action: manipulation supprime l'attente de 300 ms que le
+     navigateur observe pour voir si un second tap arrive (double-tap =
+     zoom). Sans elle, chaque bouton parait lent meme a zero milliseconde.
+     user-select empeche le long appui de selectionner le LIBELLE d'un
+     bouton — jamais pose sur le corps de texte, qui doit rester copiable. */
+  button, a, [role="button"] {
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   /* LES SURFACES QUE L'ON NE DESSINE PAS PORTENT AUSSI LE DESIGN :
@@ -275,6 +334,19 @@
 }
 
 @layer utilities {
+  /* UNE BARRE DE DEFILEMENT QUI NE SE VOIT PAS, sur un ruban qui glisse.
+     La barre d onglets du tableau de bord affilie se fait glisser au doigt :
+     une barre de defilement visible y ajoute une ligne grise sous les
+     pastilles, et n apporte rien — le debordement se devine au contenu
+     coupe. Le defilement lui-meme reste entier, au doigt comme au clavier. */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
   .texture-bruit::after {
     content: "";
     position: absolute;

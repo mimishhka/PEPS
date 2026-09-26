@@ -1,6 +1,6 @@
 // frontend/src/pages/AffiliateDashboard.jsx : Tableau de bord affilié Fironova.
 // Bilingue FR/EN, identité NOVA. Derrière l'auth existante (ProtectedRoute).
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { LineChart, Line, XAxis, YAxis, Tooltip,
@@ -8,7 +8,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip,
 import { QRCodeSVG } from "qrcode.react";
 import {
   MousePointerClick, ShoppingBag, Wallet, Download,
-  MessageCircle, Send, Mail } from "lucide-react";
+  MessageCircle, Send, Mail, Check } from "lucide-react";
 import api, { formatApiError } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
@@ -35,12 +35,24 @@ import useChartColors from "../hooks/useChartColors";
 // La progression va du turquoise au violet, en passant par les métaux : on
 // suit l'échelle du regard sans lire les noms.
 const TIER_META = {
-  standard: { fr: "Standard", en: "Standard", color: "#2DBFB0" },
-  bronze: { fr: "Bronze", en: "Bronze", color: "#C97B3F" },
-  silver: { fr: "Argent", en: "Silver", color: "#8FA3B0" },
-  gold: { fr: "Or", en: "Gold", color: "#DFA436" },
-  platinum: { fr: "Platine", en: "Platinum", color: "#7FB0D4" },
-  diamond: { fr: "Diamant", en: "Diamond", color: "#9B8BE0" },
+  // LES COULEURS PASSENT PAR DES JETONS, plus par des valeurs en dur.
+  //
+  // Mesurees le 2026-09-26, les six etaient illisibles en mode clair — entre
+  // 2,21:1 et 3,29:1 pour un seuil de 4,5. Une valeur en dur ne peut pas
+  // suivre le theme : elle reste identique quand le fond s'inverse. Chaque
+  // palier a desormais sa variante claire et sa variante sombre, meme teinte,
+  // dans index.css.
+  // Le JETON, pas la couleur finie : l'appelant a besoin du trait PLEIN pour
+  // le texte et d'un VOILE pour le fond. Avec une couleur deja composee, le
+  // voile se fabriquait en collant « 1a » a la fin — une transparence
+  // hexadecimale qui n'a aucun sens sur un rgb(var(...)) et cassait le fond
+  // de la pastille. Les canaux permettent les deux proprement.
+  standard: { fr: "Standard", en: "Standard", jeton: "--fn-palier-standard" },
+  bronze: { fr: "Bronze", en: "Bronze", jeton: "--fn-palier-bronze" },
+  silver: { fr: "Argent", en: "Silver", jeton: "--fn-palier-argent" },
+  gold: { fr: "Or", en: "Gold", jeton: "--fn-palier-or" },
+  platinum: { fr: "Platine", en: "Platinum", jeton: "--fn-palier-platine" },
+  diamond: { fr: "Diamant", en: "Diamond", jeton: "--fn-palier-diamant" },
 };
 
 const COMPLIANCE_META = {
@@ -152,6 +164,16 @@ export default function AffiliateDashboard() {
   const [sources, setSources] = useState(null);
   const [activity, setActivity] = useState([]);
   const [tab, setTab] = useState("overview");
+  // L ONGLET ACTIF SE RAMENE EN VUE. Sur telephone, la barre glisse : revenir
+  // sur « Aide », le dernier des six, laissait la barre au debut et l onglet
+  // choisi hors ecran. On ne demande pas a quelqu un de rechercher la ou il
+  // se trouve deja.
+  const ongletActif = useRef(null);
+  useEffect(() => {
+    const el = ongletActif.current;
+    if (!el || typeof el.scrollIntoView !== "function") return;
+    el.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [tab]);
   const [copied, setCopied] = useState(false);
   // Copie du CODE, distincte de celle du lien : ce sont deux choses qu'on
   // partage dans deux situations différentes, et un seul témoin de copie
@@ -649,7 +671,11 @@ export default function AffiliateDashboard() {
     );
   }
 
-  const tierColor = TIER_META[data?.tier]?.color || "#64748B";
+  const tierJeton = TIER_META[data?.tier]?.jeton || "--fn-palier-defaut";
+  const tierColor = `rgb(var(${tierJeton}))`;
+  // Le voile du fond : les memes canaux, a douze pour cent. Il suit donc le
+  // theme comme le trait, au lieu d'etre une valeur figee.
+  const tierVoile = `rgb(var(${tierJeton}) / 0.12)`;
   const tierLabel = TIER_META[data?.tier]?.[lang] || data?.tier;
   const comp = COMPLIANCE_META[data?.compliance_status] || COMPLIANCE_META.compliant;
   const progress = data?.progress_to_next != null ? Math.round(data.progress_to_next * 100) : null;
@@ -818,7 +844,7 @@ export default function AffiliateDashboard() {
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5  font-data
                              text-[11px] font-semibold uppercase tracking-wider"
                   data-testid="affiliate-tier-badge"
-                  style={{ borderRadius: "var(--r-m)", background: `${tierColor}1a`, color: tierColor }}>
+                  style={{ borderRadius: "var(--r-m)", background: tierVoile, color: tierColor }}>
               <TierMark tier={data?.tier} color={tierColor} size={16} />
               {tierLabel} · {Math.round((data?.commission_rate || 0) * 100)}%
             </span>
@@ -829,17 +855,30 @@ export default function AffiliateDashboard() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-2 mb-8 flex-wrap">
-          {TABS.map(([k, label]) => (
-            <button key={k} onClick={() => setTab(k)}
-              data-testid={`affiliate-tab-${k}`}
-              className={`px-4 py-2 rounded-full font-data text-xs font-semibold uppercase tracking-wider transition ${
-                tab === k ? "bg-nordfjord text-white" : "bg-white text-glacier border border-ash hover:border-nova"
-              }`}>
-              {label}
-            </button>
-          ))}
+        {/* LES ONGLETS TENAIENT SUR TROIS RANGEES SUR UN TELEPHONE.
+            Six pastilles en flex-wrap, c'est trois lignes avant le moindre
+            chiffre : l'affilie devait defiler pour voir ses gains. Ils
+            glissent desormais horizontalement sur une seule ligne, avec un
+            arret magnetique sur chacun — la physique du navigateur, qui bat
+            toujours un ressort fait main.
+            L'onglet actif se ramene en vue au chargement : revenir sur
+            « Paiements » ne doit pas obliger a rechercher l'onglet. */}
+        <div className="-mx-5 px-5 sm:mx-0 sm:px-0 mb-7 overflow-x-auto sm:overflow-visible
+                        scrollbar-none snap-x snap-mandatory">
+          <div className="flex gap-2 w-max sm:w-auto sm:flex-wrap">
+            {TABS.map(([k, label]) => (
+              <button key={k} onClick={() => setTab(k)}
+                data-testid={`affiliate-tab-${k}`}
+                ref={tab === k ? ongletActif : null}
+                aria-current={tab === k ? "page" : undefined}
+                className={`snap-start shrink-0 px-4 py-2.5 rounded-full font-data text-xs font-semibold
+                            uppercase tracking-wider transition-colors active:scale-[0.97] ${
+                  tab === k ? "bg-nordfjord text-white" : "bg-white text-glacier border border-ash hover:border-nova"
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* OVERVIEW */}
@@ -914,7 +953,7 @@ export default function AffiliateDashboard() {
                           : `${L("Étape", "Step")} ${i + 1}`}
                       </p>
                       <p className="font-semibold text-nordfjord mt-1 flex items-center gap-1.5">
-                        {st.done && <span aria-hidden="true" style={{ color: "#2E9E6B" }}>✓</span>}
+                        {st.done && <Check size={14} className="text-success shrink-0" aria-hidden="true" />}
                         {st.t}
                       </p>
                       <p className="text-[12px] text-glacier mt-0.5">{st.d}</p>
@@ -935,7 +974,12 @@ export default function AffiliateDashboard() {
                 : dans la rangée d'indicateurs plus bas. Chacune de ces trois
                 zones répond à une question distincte, et aucune ne répète les
                 chiffres d'une autre. */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" data-testid="affiliate-kpis">
+            {/* DEUX COLONNES DES LE TELEPHONE. Ce sont deux nombres : les
+                empiler poussait le second sous la ligne de flottaison, alors
+                que c'est precisement la comparaison des deux qui interesse
+                l'affilie — ce qu'il a gagne en tout, et ce qui compte pour son
+                palier. */}
+            <div className="grid grid-cols-2 gap-3 sm:gap-4" data-testid="affiliate-kpis">
               <KpiCard label={L("Revenu validé cumulé", "Cumulative validated revenue")} value={money(data?.cumulative_revenue)} sub="CAD" />
               <KpiCard label={L("12 derniers mois", "Last 12 months")} value={money(data?.rolling12_revenue)} sub={L("CAD · fixe votre palier", "CAD · sets your tier")} />
             </div>
@@ -969,7 +1013,7 @@ export default function AffiliateDashboard() {
                                      border whitespace-nowrap"
                           data-testid="payout-conversion"
                           style={{
-                            color: "#7C5CD6",
+                            color: "rgb(var(--fn-palier-diamant))",
                             background: "rgba(124,92,214,.09)",
                             borderColor: "rgba(124,92,214,.28)",
                           }}>
@@ -980,7 +1024,7 @@ export default function AffiliateDashboard() {
                 </div>
                 <div className="h-3 rounded-full bg-ash overflow-hidden mt-2">
                   <div className="h-full rounded-full transition-all"
-                       style={{ width: `${payoutPct || 0}%`, background: "#00B8D4" }} />
+                       style={{ width: `${payoutPct || 0}%`, background: "rgb(var(--fn-nova))" }} />
                 </div>
 
                 {/* La regle du cycle, sans mystere : rien accumule, sous le
@@ -1139,7 +1183,7 @@ export default function AffiliateDashboard() {
                   </div>
                   <div className="h-3 rounded-full bg-ash overflow-hidden">
                     <div className="h-full rounded-full transition-all"
-                         style={{ width: `${progress || 0}%`, background: "#00B8D4" }} />
+                         style={{ width: `${progress || 0}%`, background: "rgb(var(--fn-nova))" }} />
                   </div>
                   <p className="font-data text-[11px] text-glacier mt-2">{progress || 0}%</p>
                 </>
@@ -1174,7 +1218,7 @@ export default function AffiliateDashboard() {
                   <div className="h-3 rounded-full bg-ash overflow-hidden">
                     <div className="h-full rounded-full transition-all"
                          style={{ width: `${Math.min(100, Math.round((data.progress_to_next || 0) * 100))}%`,
-                                  background: "#00B8D4" }} />
+                                  background: "rgb(var(--fn-nova))" }} />
                   </div>
                 )}
                 {!data.tier_agreement && (

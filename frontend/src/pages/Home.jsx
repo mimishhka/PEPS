@@ -147,7 +147,7 @@ export default function Home() {
               <p className="font-data text-[10.5px] uppercase tracking-[0.26em] text-nova mb-4">
                 {heroEyebrow}
               </p>
-              <h1 className="font-display font-medium leading-[1.2] tracking-[-0.01em] max-w-[26ch]" style={{ fontSize: "clamp(24px,3.4vw,34px)", color: "#F7FAFC" }} data-testid="hero-title">
+              <h1 className="font-display font-medium leading-[1.2] tracking-[-0.01em] max-w-[26ch]" style={{ fontSize: "clamp(24px,3.4vw,34px)" }} data-testid="hero-title">
                 {heroTitle.a}{" "}
                 <span className="text-nova">{heroTitle.b}</span>
               </h1>
