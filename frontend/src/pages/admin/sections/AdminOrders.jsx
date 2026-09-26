@@ -8,6 +8,7 @@ import { useConfirm } from "../../../components/ConfirmDialog";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useLang } from "../../../contexts/LanguageContext";
 import { Th } from "../ui";
+import CorrigerAdresse from "./CorrigerAdresse";
 
 const FULFILLMENT_OPTS = ["pending", "preorder", "processing", "shipped", "delivered", "cancelled", "failed", "refunded"];
 const PAYMENT_OPTS = ["awaiting_etransfer", "awaiting_crypto", "paid", "refunded", "cancelled", "failed"];
@@ -453,6 +454,10 @@ export default function AdminOrders() {
 }
 
 function OrderDetail({ order, onClose, onUpdate }) {
+  // La correction d adresse : fermee par defaut. Elle n a de sens que
+  // lorsque le transporteur refuse, et un formulaire toujours ouvert sur
+  // une adresse valide invite a la modifier sans raison.
+  const [corrigeAdresse, setCorrigeAdresse] = useState(false);
   const { user } = useAuth();
   // La fiche suit la langue de l'interface, comme les écrans Remboursements et
   // Billets. Elle mélangeait l'anglais (Customer, Items, Order Notes) et le
@@ -760,6 +765,24 @@ function OrderDetail({ order, onClose, onUpdate }) {
               ) : (
                 <div className="text-sm mt-1 text-foreground/50" data-testid="order-no-address">{L("Aucune adresse", "No address")}</div>
               )}
+              {/* SANS CE BOUTON, UNE ADRESSE REFUSEE PAR POSTES CANADA BLOQUAIT
+                  LA COMMANDE POUR TOUJOURS : l ecran l affichait sans jamais
+                  permettre de la corriger, et le seul recours etait de
+                  rembourser. Il disparait des qu une etiquette existe : le
+                  serveur refuserait de toute facon, et proposer une action
+                  impossible est pire que ne pas la proposer. */}
+              {!order.shipping_info?.label_url && (
+                <button type="button" onClick={() => setCorrigeAdresse((v) => !v)}
+                  data-testid="order-corriger-adresse"
+                  className="mt-3 font-mono text-[10px] uppercase tracking-[0.18em] text-nova-texte hover:underline">
+                  {corrigeAdresse ? L("Fermer", "Close") : L("Corriger l'adresse", "Fix address")}
+                </button>
+              )}
+              {order.shipping_address_corrected_at && (
+                <div className="mt-2 font-mono text-[10px] text-foreground/40" data-testid="order-adresse-corrigee">
+                  {L("Adresse corrigee", "Address corrected")} · {String(order.shipping_address_corrected_at).slice(0, 10)}
+                </div>
+              )}
             </div>
             <div className={carte} data-testid="order-detail-payment">
               <div className={titre}>{L("Paiement", "Payment")}</div>
@@ -769,6 +792,18 @@ function OrderDetail({ order, onClose, onUpdate }) {
               </div>
             </div>
           </div>
+
+          {/* Le formulaire de correction, pleine largeur sous les cartes : une
+              adresse se relit en entier, pas dans une colonne etroite. */}
+          {corrigeAdresse && (
+            <div className="mb-6">
+              <CorrigerAdresse
+                order={order}
+                onCancel={() => setCorrigeAdresse(false)}
+                onDone={() => { setCorrigeAdresse(false); onUpdate?.(); }}
+              />
+            </div>
+          )}
 
           {/* Articles */}
           <div className="bg-white border border-ink/10">

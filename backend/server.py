@@ -5040,6 +5040,101 @@ async def admin_update_order(
     return updated
 
 
+class CorrigerAdresseIn(BaseModel):
+    """L'adresse corrigee, plus le motif de la correction.
+
+    Le motif n'est pas decoratif : cette adresse est celle d'une commande
+    PAYEE. Changer la destination d'un colis deja vendu est une decision qui
+    doit se relire six mois plus tard, et « pourquoi » est la seule chose que
+    la trace ne peut pas deviner."""
+    address: ShippingAddress
+    motif: str = Field(min_length=3, max_length=300)
+
+
+async def admin_corriger_adresse(order_id: str, payload: CorrigerAdresseIn, admin: dict):
+    """Corriger l'adresse de livraison d'une commande payee.
+
+    POURQUOI CET ENDPOINT EXISTE.
+
+    Une adresse que Postes Canada refuse — province illisible, code postal mal
+    forme, numero civique introuvable — bloquait la commande DEFINITIVEMENT :
+    l'admin affichait l'adresse sans jamais permettre de la modifier. La
+    commande etait payee, le colis impossible a expedier, et le seul recours
+    etait de rembourser. C'etait le plus grave des trous silencieux : il coutait
+    une vente a chaque fois.
+
+    TROIS GARDE-FOUS, parce qu'il s'agit d'argent encaisse.
+
+    1. LES MEMES VALIDATIONS QUE LE CHECKOUT. Le modele ShippingAddress porte
+       son validateur de region ; on ne contourne pas ici la regle qui empeche
+       d'ecrire « Quebec » au lieu de « QC ». Corriger une adresse vers une
+       autre adresse invalide serait un progres nul.
+
+    2. PAS APRES L'ETIQUETTE. Une etiquette imprimee porte une destination ;
+       changer l'adresse de la commande sans annuler l'etiquette ferait partir
+       le colis a l'ancienne adresse avec une fiche disant le contraire. On
+       refuse, et on dit d'annuler l'etiquette d'abord — l'operation existe
+       deja.
+
+    3. LA TRACE EST OBLIGATOIRE (strict=True). Une correction d'adresse qu'on
+       ne peut pas tracer ne doit pas avoir lieu : elle deplace un bien vendu.
+       L'ancienne adresse est conservee dans la trace ET sur la commande, pour
+       qu'on puisse toujours repondre a « c'etait quoi, avant ».
+    """
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    info = order.get("shipping_info") or {}
+    if info.get("label_url") or info.get("tracking_number"):
+        raise HTTPException(
+            status_code=409,
+            detail=("Cette commande porte deja une etiquette. Annulez-la d'abord : "
+                    "changer l'adresse sans annuler l'etiquette ferait partir le colis "
+                    "a l'ancienne destination."),
+        )
+
+    ancienne = order.get("shipping_address") or {}
+    nouvelle = payload.address.model_dump()
+
+    # Une correction qui ne corrige rien n'a pas a etre tracee comme un
+    # evenement : elle encombrerait le journal sans rien apprendre.
+    champs = ("full_name", "address1", "address2", "city", "province", "postal_code",
+              "country", "phone")
+    changements = {c: (ancienne.get(c) or "", nouvelle.get(c) or "")
+                   for c in champs
+                   if str(ancienne.get(c) or "").strip() != str(nouvelle.get(c) or "").strip()}
+    if not changements:
+        return {"ok": True, "unchanged": True}
+
+    maintenant = datetime.now(timezone.utc).isoformat()
+    resume = "; ".join(f"{c} : « {a} » -> « {b} »" for c, (a, b) in changements.items())
+    await _log_action(
+        admin,
+        "order.shipping_address.corrected",
+        f"commande {order.get('order_number') or order_id} — {resume}. Motif : {payload.motif}",
+        area="orders",
+        strict=True,
+    )
+
+    historique = list(order.get("shipping_address_history") or [])
+    historique.append({
+        "at": maintenant,
+        "by": admin.get("email"),
+        "motif": payload.motif,
+        "before": ancienne,
+    })
+    await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {
+            "shipping_address": nouvelle,
+            "shipping_address_history": historique[-20:],
+            "shipping_address_corrected_at": maintenant,
+        }},
+    )
+    return {"ok": True, "changed": sorted(changements.keys())}
+
+
 async def admin_confirm_payment(order_id: str, _admin: dict = Depends(require_area("orders", "manage"))):
     """One-click 'Mark as Paid' — atomically marks order as paid + processing + sends email."""
     existing = await db.orders.find_one({"id": order_id}, {"_id": 0})

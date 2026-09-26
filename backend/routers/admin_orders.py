@@ -64,6 +64,15 @@ async def admin_update_order(
     return await s.admin_update_order(order_id, payment_status, fulfillment_status, _admin)
 
 
+@router.patch("/admin/orders/{order_id}/shipping-address")
+async def admin_corriger_adresse(order_id: str, payload: s.CorrigerAdresseIn,
+                                 admin: dict = Depends(s.require_area("orders", "manage"))):
+    """Corriger une adresse que le transporteur refuse. Sans cet endpoint, une
+    commande payee dont l'adresse est mal formee etait impossible a expedier :
+    l'admin l'affichait sans jamais permettre de la modifier."""
+    return await s.admin_corriger_adresse(order_id, payload, admin)
+
+
 @router.post("/admin/orders/{order_id}/confirm-payment")
 async def admin_confirm_payment(order_id: str, _admin: dict = Depends(s.require_area("orders", "manage"))):
     return await s.admin_confirm_payment(order_id, _admin)
