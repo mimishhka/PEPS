@@ -246,16 +246,23 @@ it("le refus du serveur s'affiche au lieu de disparaitre", async () => {
 
 // LE PAIEMENT EN CRYPTO SUR TELEPHONE.
 //
-// Mireille : « there is an issue with crypto payment on mobile, nowpayment page
-// has no content ». Le module NOWPayments etait declare a 410 px de large avec
-// scrolling="no" : sur un ecran de 320 px il etait ecrase horizontalement ET
-// son contenu decoupe, sans defilement pour l'atteindre. La page de paiement
-// paraissait vide — sur l'ecran meme ou la cliente paie.
+// Mireille, deux fois. D'abord : « nowpayment page has no content » sur
+// mobile. Puis, apres ma premiere correction : « tout doit se faire sur mon
+// site sans jamais quitter vers un autre site, comme pour la version web ».
 //
-// Le lien direct, lui, fonctionne partout : il s'ouvre dans un nouvel onglet,
-// donc la politique de securite de la boutique ne le regit pas. Il etait
-// relegue en petit soulignement sous le module ; il devient l'action
-// principale.
+// LE DEFAUT D'ORIGINE. Le module NOWPayments est dessine pour une largeur
+// FIXE de 410 px. Declare avec maxWidth: 100%, il etait ECRASE
+// horizontalement sur un telephone de 320 px pendant que sa hauteur restait
+// entiere : son contenu continuait de se dessiner pour 410 px, debordait, et
+// scrolling="no" le rendait inatteignable. La page paraissait vide.
+//
+// MA PREMIERE CORRECTION ETAIT MAUVAISE. Elle masquait le module sous 640 px
+// et promouvait un lien vers nowpayments.io : le symptome disparaissait en
+// abandonnant l'objectif. On ne quitte pas la boutique pour payer.
+//
+// LA BONNE CORRECTION ne retrecit pas le cadre, elle reduit l'ENSEMBLE. Le
+// module garde ses 410 px natifs — a l'interieur, il croit disposer de toute
+// la place — et une transformation CSS le met a l'echelle du conteneur.
 describe("le paiement en cryptomonnaie", () => {
   const AVEC_CRYPTO = {
     ...COMMANDE,
@@ -278,30 +285,41 @@ describe("le paiement en cryptomonnaie", () => {
     return render(<OrderConfirmation />);
   };
 
-  it("offre un bouton de paiement qui fonctionne sur tout ecran", async () => {
-    afficher();
-    const bouton = await screen.findByTestId("crypto-invoice-link");
-    expect(bouton).toHaveAttribute("href", "https://nowpayments.io/payment/?iid=512345678");
-    expect(bouton).toHaveAttribute("target", "_blank");
-    // C'est un bouton, plus un soulignement discret : c'est le chemin fiable.
-    expect(bouton.className).toMatch(/btn-nova/);
-  });
-
-  it("masque le module sur mobile plutot que de le montrer vide", async () => {
+  it("garde le paiement sur la boutique, sur tout ecran", async () => {
+    // Le module est present SANS condition de taille : plus de `hidden
+    // sm:block`, qui privait le telephone du paiement sur place.
     afficher();
     const module = await screen.findByTestId("nowpayments-widget");
-    // `hidden sm:block` : absent sous 640 px, present au-dela.
-    const classes = module.className.split(" ");
-    expect(classes).toContain("hidden");
-    expect(classes).toContain("sm:block");
+    expect(module).toHaveAttribute(
+      "src", expect.stringContaining("nowpayments.io/embeds/payment-widget"));
+    expect(module.className).not.toMatch(/hidden/);
   });
 
-  it("ne decoupe plus le contenu du module", async () => {
-    // scrolling="no" et overflowY:hidden rendaient inaccessible ce qui
-    // depassait. On ne decoupe jamais un formulaire de paiement.
+  it("garde la largeur native du module, pour qu'il se dessine normalement", async () => {
+    // C'est le coeur de la correction : ecraser le cadre coupait le contenu.
     afficher();
     const module = await screen.findByTestId("nowpayments-widget");
+    expect(module).toHaveAttribute("width", "410");
+    expect(module).toHaveAttribute("height", "696");
+  });
+
+  it("met l'ensemble a l'echelle au lieu de le decouper", async () => {
+    afficher();
+    const module = await screen.findByTestId("nowpayments-widget");
+    // La transformation existe, et son origine est le coin superieur gauche :
+    // sans cela le module serait reduit depuis son centre et deborderait.
+    expect(module.style.transform).toMatch(/scale\(/);
+    expect(module.style.transformOrigin).toBe("top left");
+    // Et plus aucun decoupage : on ne coupe jamais un formulaire de paiement.
     expect(module).not.toHaveAttribute("scrolling", "no");
-    expect(module.style.overflowY).not.toBe("hidden");
+  });
+
+  it("ne propose plus de quitter la boutique comme chemin principal", async () => {
+    afficher();
+    const lien = await screen.findByTestId("crypto-invoice-link");
+    // Il reste, en filet de securite si le module est bloque — mais discret,
+    // et il ne ressemble plus a un bouton de paiement.
+    expect(lien.className).not.toMatch(/btn-nova/);
+    expect(lien.textContent).toMatch(/ne s'affiche pas/i);
   });
 });
