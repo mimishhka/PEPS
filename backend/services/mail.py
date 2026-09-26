@@ -325,8 +325,20 @@ async def _process_email_outbox_job() -> bool:
     if _EMAIL_THROTTLED_UNTIL and now < _EMAIL_THROTTLED_UNTIL:
         return False
     now_iso = now.isoformat()
+    # UN COURRIEL SANS CORPS NE PEUT PAS ETRE ENVOYE.
+    #
+    # Le corps est EFFACE a l'envoi reussi ($unset html, plus bas) : c'est
+    # voulu, un courriel envoye n'a pas a garder son contenu en base. Mais la
+    # reclamation ne l'excluait pas : une tache deja envoyee, reprise par le
+    # concierge ou par une reprise manuelle, revenait ici sans corps et
+    # `job["html"]` levait un KeyError. C'est exactement ce que Mireille a vu
+    # sur son invitation d'affilie : « KeyError 'html' », aucun courriel parti.
+    #
+    # On exige donc un corps des la reclamation. Une tache qui n'en a plus est
+    # une tache deja envoyee : la reclamer ne pouvait que produire un plantage
+    # et bruler une tentative.
     job = await s.db.email_outbox.find_one_and_update(
-        {"$or": [
+        {"html": {"$exists": True, "$ne": ""}, "$or": [
             {"status": {"$in": ["pending", "retry"]}, "available_at": {"$lte": now_iso}},
             {"status": "sending", "lease_expires_at": {"$lte": now_iso}},
         ]},
@@ -340,6 +352,22 @@ async def _process_email_outbox_job() -> bool:
     )
     if not job:
         return False
+    # CEINTURE ET BRETELLES. Le filtre ci-dessus suffit en regime normal, mais
+    # une tache peut perdre son corps entre la reclamation et ici — deux
+    # travailleurs, un redemarrage. Un KeyError transformerait alors un envoi
+    # DEJA REUSSI en echec affiche a l'administratrice, avec un message qui ne
+    # dit rien de ce qui s'est passe.
+    if not job.get("html"):
+        await s.db.email_outbox.update_one(
+            {"id": job["id"]},
+            {"$set": {"status": "sent",
+                      "sent_at": job.get("sent_at") or datetime.now(timezone.utc).isoformat(),
+                      "note": "corps deja purge : l'envoi avait reussi"},
+             "$unset": {"lease_expires_at": ""}},
+        )
+        logging.info("[email] tache sans corps ignoree (deja envoyee) id=%s", job.get("id"))
+        return True
+
     try:
         corps = job["html"]
         params = {
@@ -352,8 +380,18 @@ async def _process_email_outbox_job() -> bool:
         if texte:
             params["text"] = texte
         result = await asyncio.to_thread(resend.Emails.send, params)
+        # L'ENVOI A EU LIEU : LE REGISTRE DOIT LE DIRE, QUOI QU'IL SOIT DEVENU.
+        #
+        # La condition « status: sending » faisait echouer cette ecriture quand
+        # le concierge avait remis la tache en « retry » entre-temps (bail
+        # expire pendant un envoi lent). Le courriel etait parti, mais le
+        # registre disait « a renvoyer » — et un autre travailleur l'envoyait
+        # une SECONDE fois, au meme destinataire.
+        #
+        # On ecrit donc sur l'identifiant seul : l'envoi est un fait accompli,
+        # aucun etat intermediaire ne peut le contredire.
         await s.db.email_outbox.update_one(
-            {"id": job["id"], "status": "sending"},
+            {"id": job["id"]},
             {"$set": {
                 "status": "sent",
                 "sent_at": datetime.now(timezone.utc).isoformat(),
