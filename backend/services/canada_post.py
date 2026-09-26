@@ -505,6 +505,26 @@ def _cp_derniere_source_tarifs():
     return _DERNIERE_SOURCE_TARIFS
 
 
+def _cp_reinitialiser_memoire_tarifs() -> None:
+    """Oublie la variante retenue ET l'echec memorise.
+
+    Ces deux valeurs vivent au niveau du module : c'est voulu en production —
+    elles evitent de rebalayer cinq requetes reseau pour chaque commande d'un
+    meme ecran — mais elles font dependre le comportement de l'HISTORIQUE.
+
+    Un test qui echoue laissait donc un echec memorise aux suivants, et la
+    suite entiere devenait dependante de son ordre : le meme test passait seul
+    et tombait en serie. C'est exactement ce qui est arrive a
+    test_le_recalcul_dispatch_cote_sans_creer_d_envoi.
+
+    A appeler dans les montages de test, et apres une correction de
+    configuration qu'on veut voir prendre effet sans attendre."""
+    global _DERNIERE_SOURCE_TARIFS, _CP_VARIANTE_TARIFS, _CP_ECHEC_TARIFS_JUSQUA
+    _DERNIERE_SOURCE_TARIFS = None
+    _CP_VARIANTE_TARIFS = None
+    _CP_ECHEC_TARIFS_JUSQUA = 0.0
+
+
 async def _canada_post_get_rates_legacy(destination_postal_code: str, destination_country: str,
                                         weight_kg: float) -> list:
     """Get Rates par l'ancienne API (rate-v4, XML, cle + numero de client)."""

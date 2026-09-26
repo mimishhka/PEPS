@@ -40,8 +40,9 @@ def cp(monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "admin-pass")
     import server  # noqa: F401  (l'ordre compte : voir test_cotation_repli)
     from services import canada_post
-    canada_post._CP_VARIANTE_TARIFS = None  # chaque test part sans memoire
-    canada_post._CP_ECHEC_TARIFS_JUSQUA = 0.0  # ni memoire d echec
+    # Chaque test part sans memoire : la fonction dediee evite de toucher aux
+    # variables privees une par une, et de rater celle qu on ajoute ensuite.
+    canada_post._cp_reinitialiser_memoire_tarifs()
     return canada_post
 
 

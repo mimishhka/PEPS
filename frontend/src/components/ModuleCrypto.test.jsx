@@ -18,7 +18,7 @@ import ModuleCrypto from "./ModuleCrypto";
 // l'écouteur `resize`, qui suffit ici. On le remplace quand même pour que le
 // chemin nominal soit celui qui est testé.
 beforeAll(() => {
-  global.ResizeObserver = class {
+  window.ResizeObserver = class {
     observe() {}
     disconnect() {}
   };
@@ -27,11 +27,11 @@ beforeAll(() => {
 // clientWidth et getBoundingClientRect valent 0 dans jsdom : on les pose
 // explicitement, sinon le composant mesurerait un conteneur inexistant.
 const poser = ({ largeur, hautDuModule, hauteurFenetre }) => {
-  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+  Object.defineProperty(window.HTMLElement.prototype, "clientWidth", {
     configurable: true,
     get() { return largeur; },
   });
-  HTMLElement.prototype.getBoundingClientRect = function () {
+  window.HTMLElement.prototype.getBoundingClientRect = function () {
     return { top: hautDuModule, left: 0, right: 0, bottom: 0, width: largeur, height: 0 };
   };
   window.innerHeight = hauteurFenetre;

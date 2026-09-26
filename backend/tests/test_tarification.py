@@ -29,7 +29,13 @@ def server_module(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "test-secret")
     monkeypatch.setenv("ADMIN_PASSWORD", "admin-pass")
     import server
-    return importlib.reload(server)
+    module = importlib.reload(server)
+    # La cotation garde en memoire la variante qui a repondu et l'echec
+    # recent : deux valeurs au niveau du module, donc partagees entre tests.
+    # Sans cette remise a zero, un test qui echoue fait tomber les suivants.
+    from services import canada_post
+    canada_post._cp_reinitialiser_memoire_tarifs()
+    return module
 
 
 # L'exemple de reponse de la specification officielle, tel quel.

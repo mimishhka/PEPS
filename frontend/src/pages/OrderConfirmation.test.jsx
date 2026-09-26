@@ -497,7 +497,7 @@ describe("la mise en deux colonnes", () => {
     const instructions = await screen.findByTestId("interac-instructions");
     const recap = screen.getByTestId("confirmation-recap");
     const position = instructions.compareDocumentPosition(recap);
-    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(position & window.Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("garde le total lisible et en chasse fixe", async () => {
