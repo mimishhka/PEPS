@@ -323,3 +323,70 @@ describe("le paiement en cryptomonnaie", () => {
     expect(lien.textContent).toMatch(/ne s'affiche pas/i);
   });
 });
+
+// LE VISUEL DES DEUX MOYENS DE PAIEMENT.
+//
+// Mireille : « peut-on revoir le visuel du paiement crypto et aussi Interac ».
+// Les deux blocs portaient des defauts que le craft-floor nomme explicitement.
+describe("le visuel des instructions de paiement", () => {
+  const INTERAC = {
+    ...COMMANDE,
+    payment_status: "awaiting_etransfer",
+    payment_info: {
+      type: "interac",
+      instructions: {
+        send_to: "paiements@fironova.com",
+        amount_cad: 64.99,
+        reference: "FN-1001-XK7",
+        security_question: "Nom de la boutique ?",
+        security_answer_hint: "fironova",
+      },
+    },
+  };
+
+  const afficherInterac = () => {
+    mockEtat = { order: { ...INTERAC } };
+    api.get.mockImplementation(async (url) => (url.endsWith("/messages")
+      ? { data: [] }
+      : { data: { ...INTERAC } }));
+    return render(<OrderConfirmation />);
+  };
+
+  it("dit pourquoi le numero de reference ne doit pas etre mal recopie", async () => {
+    // Les cinq champs avaient le meme poids : rien ne disait lequel relie le
+    // virement a la commande. Une reference mal recopiee, c'est un paiement
+    // que personne ne rattache a son achat.
+    afficherInterac();
+    const bloc = await screen.findByTestId("interac-instructions");
+    expect(bloc).toHaveTextContent(/relie votre virement à cette commande/i);
+  });
+
+  it("n'emploie plus de glyphes en guise d'icones", async () => {
+    // « ⚡ » et « ₿ » imitaient des icones sans appartenir a aucun systeme.
+    afficherInterac();
+    const bloc = await screen.findByTestId("interac-instructions");
+    expect(bloc.textContent).not.toMatch(/⚡|₿/);
+  });
+
+  it("montre le montant crypto comme un chiffre, pas noye dans une phrase", async () => {
+    const AVEC_CRYPTO = {
+      ...COMMANDE,
+      payment_status: "awaiting_crypto",
+      payment_info: {
+        type: "nowpayments",
+        provider_response: { invoice_id: "512345678", invoice_url: "https://nowpayments.io/x" },
+      },
+    };
+    mockEtat = { order: { ...AVEC_CRYPTO } };
+    api.get.mockImplementation(async (url) => (url.endsWith("/messages")
+      ? { data: [] }
+      : { data: { ...AVEC_CRYPTO } }));
+    render(<OrderConfirmation />);
+
+    const montant = await screen.findByTestId("crypto-amount");
+    expect(montant).toHaveTextContent("64.99");
+    // En chasse fixe : un chiffre qui saute d'un pixel en changeant de valeur
+    // est un defaut que personne ne nomme mais que tout le monde sent.
+    expect(montant.className).toMatch(/tabular-nums/);
+  });
+});

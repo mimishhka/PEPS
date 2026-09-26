@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useLocation, Link } from "react-router-dom";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Landmark, Wallet, ShieldCheck } from "lucide-react";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -238,7 +238,7 @@ export default function OrderConfirmation() {
           <span>{new Date(order.created_at).toLocaleString()}</span>
         </div>
         <div className="p-8">
-          <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50">{t("confirmation.orderNumber")}</div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-glacier">{t("confirmation.orderNumber")}</div>
           <div className="font-data text-[24px] sm:text-[28px] font-medium mt-2" data-testid="order-number">
             {order.order_number}
           </div>
@@ -299,17 +299,26 @@ export default function OrderConfirmation() {
       )}
 
       {interac && (
-        <div className="mt-8 border border-nordfjord/20 rounded-xl overflow-hidden" data-testid="interac-instructions">
-          <div className="px-6 py-3 font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord border-b border-ash">
-            ⚡ {t("confirmation.interacHeading")}
+        <div className="mt-8 border border-ash bg-white overflow-hidden" data-testid="interac-instructions" style={{ borderRadius: "var(--r-l)" }}>
+          {/* L'eclair « ⚡ » etait un caractere Unicode qui imite une icone :
+              son trait et son alignement n'appartiennent a aucun systeme. */}
+          <div className="px-6 py-4 flex items-center gap-2.5 border-b border-ash">
+            <Landmark size={15} className="text-nova-texte" aria-hidden="true" />
+            <span className="font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord">
+              {t("confirmation.interacHeading")}
+            </span>
           </div>
-          <div className="p-8 space-y-5 font-mono text-sm">
-            <Row label={t("confirmation.interacStep1")} value={interac.send_to} onCopy={() => copy(interac.send_to, "email")} copied={copied === "email"} testId="interac-email" />
-            <Row label={t("confirmation.interacStep2")} value={`$${interac.amount_cad.toFixed(2)} CAD`} onCopy={() => copy(interac.amount_cad.toFixed(2), "amount")} copied={copied === "amount"} testId="interac-amount" />
-            <Row label={t("confirmation.interacStep3")} value={interac.reference} onCopy={() => copy(interac.reference, "ref")} copied={copied === "ref"} testId="interac-ref" highlight />
-            <Row label={t("confirmation.interacStep4")} value={interac.security_question} testId="interac-question" />
-            <Row label={t("confirmation.interacStep5")} value={interac.security_answer_hint} onCopy={() => copy(interac.security_answer_hint, "ans")} copied={copied === "ans"} testId="interac-answer" />
-            <p className="text-xs text-foreground/70 pt-4 border-t border-nordfjord/15 leading-relaxed font-sans">
+          <div className="px-6 sm:px-8 py-7 space-y-6">
+            <Row numero="1" label={t("confirmation.interacStep1")} value={interac.send_to} onCopy={() => copy(interac.send_to, "email")} copied={copied === "email"} testId="interac-email" />
+            <Row numero="2" label={t("confirmation.interacStep2")} value={`$${interac.amount_cad.toFixed(2)} CAD`} onCopy={() => copy(interac.amount_cad.toFixed(2), "amount")} copied={copied === "amount"} testId="interac-amount" />
+            <Row numero="3" label={t("confirmation.interacStep3")} value={interac.reference}
+              onCopy={() => copy(interac.reference, "ref")} copied={copied === "ref"} testId="interac-ref" highlight
+              note={lang === "fr"
+                ? "C'est ce numéro qui relie votre virement à cette commande. Recopiez-le exactement."
+                : "This number links your transfer to this order. Copy it exactly."} />
+            <Row numero="4" label={t("confirmation.interacStep4")} value={interac.security_question} testId="interac-question" />
+            <Row numero="5" label={t("confirmation.interacStep5")} value={interac.security_answer_hint} onCopy={() => copy(interac.security_answer_hint, "ans")} copied={copied === "ans"} testId="interac-answer" />
+            <p className="text-[12px] text-glacier pt-5 border-t border-ash leading-relaxed">
               {t("confirmation.interacFooter")}
             </p>
           </div>
@@ -317,16 +326,32 @@ export default function OrderConfirmation() {
       )}
 
       {np && (
-        <div className="mt-8 border border-nordfjord/20 rounded-xl overflow-hidden" data-testid="crypto-instructions">
-          <div className="px-6 py-3 font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord border-b border-ash">
-            ₿ {t("confirmation.cryptoHeading")}
+        <div className="mt-8 border border-ash bg-white overflow-hidden" data-testid="crypto-instructions" style={{ borderRadius: "var(--r-l)" }}>
+          {/* Le « ₿ » etait, lui aussi, un glyphe en guise d'icone. */}
+          <div className="px-6 py-4 flex items-center gap-2.5 border-b border-ash">
+            <Wallet size={15} className="text-nova-texte" aria-hidden="true" />
+            <span className="font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord">
+              {t("confirmation.cryptoHeading")}
+            </span>
           </div>
           {np.invoice_id ? (
-            <div className="p-6 flex flex-col items-center gap-4" data-testid="crypto-widget-container">
-              <p className="text-sm text-foreground/70 leading-relaxed text-center max-w-md">
+            <div className="px-5 sm:px-6 py-7 flex flex-col items-center gap-5" data-testid="crypto-widget-container">
+              {/* LE MONTANT EST UN CHIFFRE, PAS UNE PHRASE. Il etait noye dans
+                  un paragraphe de quarante mots ou la cliente devait le
+                  chercher — sur l'ecran ou elle s'apprete a payer. */}
+              <div className="text-center">
+                <div className="font-sans text-[11px] uppercase tracking-[0.2em] text-glacier mb-1.5">
+                  {lang === "fr" ? "Montant à payer" : "Amount to pay"}
+                </div>
+                <div className="font-display text-[30px] font-bold text-nordfjord tabular-nums tracking-[-0.02em]" data-testid="crypto-amount">
+                  ${order.total.toFixed(2)}
+                  <span className="font-data font-medium text-[12px] text-glacier ml-1.5 tracking-normal">CAD</span>
+                </div>
+              </div>
+              <p className="text-[13px] text-glacier leading-relaxed text-center max-w-sm">
                 {lang === "fr"
-                  ? `Payez ${order.total.toFixed(2)} $ CAD en crypto via le module sécurisé NOWPayments ci-dessous : le montant exact est déjà pré-rempli. La confirmation de votre commande est automatique dès réception du paiement.`
-                  : `Pay $${order.total.toFixed(2)} CAD in crypto through the secure NOWPayments module below : the exact amount is pre-filled. Your order is confirmed automatically once payment is received.`}
+                  ? "Le montant est déjà pré-rempli dans le module ci-dessous. Votre commande est confirmée automatiquement dès réception du paiement."
+                  : "The amount is pre-filled in the module below. Your order is confirmed automatically once payment is received."}
               </p>
               {/* TOUT SE PASSE SUR LA BOUTIQUE, y compris sur telephone.
                   Le module garde ses 410 px natifs et c est l ENSEMBLE qui est
@@ -338,11 +363,15 @@ export default function OrderConfirmation() {
               {/* Le lien direct reste, discret : c est un filet de securite si
                   le module est bloque (extension, reseau), pas un chemin de
                   paiement propose. On ne quitte pas la boutique pour payer. */}
+              <div className="flex items-center gap-2 text-[11px] text-glacier">
+                <ShieldCheck size={13} aria-hidden="true" />
+                {lang === "fr" ? "Paiement traité par NOWPayments" : "Payment processed by NOWPayments"}
+              </div>
               <a
                 href={np.invoice_url}
                 target="_blank"
                 rel="noreferrer"
-                className="font-mono text-[11px] uppercase tracking-[0.2em] underline text-foreground/50 hover:text-foreground"
+                className="text-[11px] underline underline-offset-4 text-glacier hover:text-nordfjord transition-colors"
                 data-testid="crypto-invoice-link"
               >
                 {lang === "fr" ? "Le module ne s'affiche pas ? Ouvrir la page de paiement" : "Widget not loading? Open the payment page"}
@@ -386,7 +415,7 @@ export default function OrderConfirmation() {
       )}
 
       <div className="mt-8 border border-nordfjord/15 rounded-xl p-6 bg-clinical">
-        <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/50 mb-3">{lang === "fr" ? "ARTICLES" : "ITEMS"}</div>
+        <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-glacier mb-3">{lang === "fr" ? "ARTICLES" : "ITEMS"}</div>
         <ul className="divide-y divide-nordfjord/10">
           {order.items.map((i) => (
             <li key={i.product_id} className="py-3 flex justify-between text-sm">
@@ -576,18 +605,48 @@ export default function OrderConfirmation() {
   );
 }
 
-function Row({ label, value, onCopy, copied, testId, highlight }) {
+// UNE ETAPE DU VIREMENT INTERAC.
+//
+// Les cinq champs avaient le meme poids : rien ne disait lequel ne doit
+// surtout pas etre mal recopie. Le numero de reference, lui, est celui dont
+// depend le rapprochement du paiement avec la commande — le recopier de
+// travers, c'est un virement que personne ne relie a son achat.
+//
+// Le numero d'etape est GAGNE ici : un virement est une sequence, et savoir
+// ou l'on en est fait partie de la tache. La ligne critique ne se distingue
+// plus par un filet colore a gauche — un bandeau de couleur sur une liste est
+// une decoration, pas une hierarchie — mais par sa surface et une phrase qui
+// dit POURQUOI elle compte.
+function Row({ numero, label, value, onCopy, copied, testId, highlight, note }) {
   return (
-    <div className={`grid grid-cols-[1fr_auto] items-start gap-4 ${highlight ? "bg-clinical -mx-3 px-3 py-3 border-l-2 border-nova" : ""}`} style={highlight ? { borderLeftColor: "#00B8D4" } : {}}>
-      <div>
-        <div className="text-[10px] uppercase tracking-[0.25em] text-foreground/60 mb-1">{label}</div>
-        <div className="text-base font-bold break-all" data-testid={testId}>{value}</div>
+    <div className={highlight
+      ? "bg-clinical border border-ash px-4 py-3.5"
+      : "px-0 py-0"}
+      style={highlight ? { borderRadius: "var(--r-m)" } : undefined}>
+      <div className="grid grid-cols-[auto_1fr_auto] items-start gap-x-3.5 gap-y-1">
+        <span className="font-data text-[11px] font-semibold text-nova-texte tabular-nums pt-0.5" aria-hidden="true">
+          {numero}
+        </span>
+        <div className="min-w-0">
+          <div className="font-sans text-[11px] uppercase tracking-[0.18em] text-glacier mb-1">{label}</div>
+          <div className="font-mono text-[15px] font-semibold text-nordfjord break-all tabular-nums" data-testid={testId}>
+            {value}
+          </div>
+          {note && (
+            <p className="font-sans text-[11px] text-glacier leading-relaxed mt-1.5">{note}</p>
+          )}
+        </div>
+        {onCopy ? (
+          <button
+            onClick={onCopy}
+            className="w-10 h-10 shrink-0 border border-ash flex items-center justify-center text-nordfjord transition-colors hover:border-nova hover:text-nova-texte active:scale-[0.97]"
+            style={{ borderRadius: "var(--r-m)" }}
+            aria-label={copied ? "copié" : "copier"}
+          >
+            {copied ? <Check size={15} /> : <Copy size={15} />}
+          </button>
+        ) : <span />}
       </div>
-      {onCopy && (
-        <button onClick={onCopy} className="border border-nordfjord/40 rounded-lg p-2 hover:bg-nordfjord hover:text-white transition-colors" aria-label="copy">
-          {copied ? <Check size={14} /> : <Copy size={14} />}
-        </button>
-      )}
     </div>
   );
 }
