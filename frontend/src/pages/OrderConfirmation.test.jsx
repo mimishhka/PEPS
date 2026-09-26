@@ -390,3 +390,59 @@ describe("le visuel des instructions de paiement", () => {
     expect(montant.className).toMatch(/tabular-nums/);
   });
 });
+
+// LA PAGE NE DOIT PAS OBLIGER A DEFILER POUR SAVOIR QUOI FAIRE.
+//
+// Mireille : « le client doit scroller bas pour avoir toute l'information ».
+// Trois blocs se succedaient avant les instructions de paiement, et trois
+// phrases y disaient la meme chose : le titre annoncait le delai, un
+// paragraphe le repetait en entier, un compte a rebours le redisait. Ensemble
+// ils occupaient la hauteur d'un ecran de telephone AVANT l'essentiel.
+describe("la compacite de l'entete", () => {
+  const EN_ATTENTE = {
+    ...COMMANDE,
+    payment_status: "awaiting_etransfer",
+    payment_ttl_hours: 0.5,
+    created_at: new Date().toISOString(),
+    payment_info: {
+      type: "interac",
+      instructions: {
+        send_to: "paiements@fironova.com",
+        amount_cad: 64.99,
+        reference: "FN-1001-XK7",
+        security_question: "Nom ?",
+        security_answer_hint: "fironova",
+      },
+    },
+  };
+
+  const afficher = () => {
+    mockEtat = { order: { ...EN_ATTENTE } };
+    api.get.mockImplementation(async (url) => (url.endsWith("/messages")
+      ? { data: [] }
+      : { data: { ...EN_ATTENTE } }));
+    return render(<OrderConfirmation />);
+  };
+
+  it("ne dit le delai qu'une seule fois", async () => {
+    afficher();
+    const bandeau = await screen.findByTestId("payment-deadline-warning");
+    // Une seule mention du temps restant, plus le rappel de la consequence.
+    expect(bandeau).toHaveTextContent(/la commande est annulée automatiquement/i);
+    // Le paragraphe qui repetait le delai en entier a disparu.
+    expect(bandeau).not.toHaveTextContent(/sera automatiquement annulée si le paiement/i);
+  });
+
+  it("n'emploie plus de glyphes dans les bandeaux d'etat", async () => {
+    // « ! », « ⏳ » et « ⚠ » imitaient des icones sans en etre.
+    afficher();
+    const bandeau = await screen.findByTestId("payment-deadline-warning");
+    expect(bandeau.textContent).not.toMatch(/⏳|⚠/);
+  });
+
+  it("garde le numero de commande visible sans lui donner tout un bloc", async () => {
+    afficher();
+    // L'information reste — c'est la hauteur qui change, pas le contenu.
+    expect(await screen.findByTestId("order-number")).toHaveTextContent("FN-1");
+  });
+});

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useLocation, Link } from "react-router-dom";
-import { Copy, Check, Landmark, Wallet, ShieldCheck } from "lucide-react";
+import { Copy, Check, Landmark, Wallet, ShieldCheck, CircleCheck, TriangleAlert, Clock } from "lucide-react";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -229,7 +229,10 @@ export default function OrderConfirmation() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-16" data-testid="confirmation-page">
+    // LA PAGE COMMENCE PLUS HAUT SUR TELEPHONE. Soixante-quatre pixels de vide
+    // au-dessus d un ecran ou l on doit PAYER repoussaient les instructions
+    // sous la ligne de flottaison avant meme d avoir lu quoi que ce soit.
+    <div className="max-w-4xl mx-auto px-5 sm:px-6 py-7 sm:py-12" data-testid="confirmation-page">
       <div className="border border-nordfjord/20 rounded-xl overflow-hidden">
         <div className="px-6 py-4 flex items-center justify-between font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord border-b border-ash">
           <span>
@@ -237,28 +240,39 @@ export default function OrderConfirmation() {
           </span>
           <span>{new Date(order.created_at).toLocaleString()}</span>
         </div>
-        <div className="p-8">
-          <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-glacier">{t("confirmation.orderNumber")}</div>
-          <div className="font-data text-[24px] sm:text-[28px] font-medium mt-2" data-testid="order-number">
-            {order.order_number}
+        {/* L'EN-TETE TENAIT SUR QUATRE BLOCS EMPILES — etiquette, numero,
+            titre, phrase — avec 32 px de remplissage. Le numero et le titre
+            partagent desormais une rangee sur grand ecran : la meme
+            information, la moitie de la hauteur. */}
+        <div className="px-6 py-5 sm:flex sm:items-baseline sm:justify-between sm:gap-6">
+          <div className="min-w-0">
+            <h1 className="font-display text-xl sm:text-2xl uppercase tracking-tight text-nordfjord">
+              {etatPaiement.titre}
+            </h1>
+            <p className="text-sm text-glacier mt-1.5 leading-relaxed">
+              {etatPaiement.phrase}
+            </p>
           </div>
-          <h1 className="font-display text-2xl uppercase tracking-tight mt-8">
-            {etatPaiement.titre}
-          </h1>
-          <p className="text-foreground/70 mt-2">
-            {etatPaiement.phrase}
-          </p>
+          <div className="mt-4 sm:mt-0 sm:text-right shrink-0">
+            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-glacier">{t("confirmation.orderNumber")}</div>
+            <div className="font-data text-[19px] sm:text-[21px] font-medium text-nordfjord tabular-nums" data-testid="order-number">
+              {order.order_number}
+            </div>
+          </div>
         </div>
       </div>
 
       {order.payment_status === "paid" && (
-        <div className="mt-8 border-2 p-5 flex items-start gap-3" style={{ borderColor: "#16a34a" }} data-testid="payment-paid-banner">
-          <span className="font-display font-bold text-xl leading-none" style={{ color: "#16a34a" }}>✓</span>
-          <div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.25em]" style={{ color: "#16a34a" }}>
+        <div className="mt-5 border border-success bg-success/5 px-4 py-3.5 flex items-start gap-3"
+          style={{ borderRadius: "var(--r-m)" }} data-testid="payment-paid-banner">
+          {/* Le « ✓ » etait un glyphe en guise d'icone, et la bordure de 2 px
+              avec sa couleur en dur ignorait le mode nuit. */}
+          <CircleCheck size={17} className="text-success shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="min-w-0">
+            <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-success">
               {lang === "fr" ? "Paiement reçu" : "Payment received"}
             </div>
-            <p className="mt-2 text-sm text-foreground/80 leading-relaxed">
+            <p className="mt-1 text-sm text-glacier leading-relaxed">
               {lang === "fr"
                 ? "Merci ! Votre paiement a été confirmé et votre commande est en cours de préparation."
                 : "Thank you! Your payment has been confirmed and your order is now being prepared."}
@@ -267,39 +281,44 @@ export default function OrderConfirmation() {
         </div>
       )}
 
+      {/* TROIS PHRASES DISAIENT LA MEME CHOSE : le titre annoncait le delai,
+          le paragraphe le repetait en entier, et le compte a rebours le
+          redisait une troisieme fois. Ensemble ils occupaient la hauteur d'un
+          ecran de telephone AVANT les instructions de paiement.
+
+          Il en reste une ligne forte — le temps qui reste, la seule
+          information qui bouge — et une ligne fine pour la consequence, la
+          seule que le titre ne porte pas. */}
       {awaitingPayment && (
-        <div className="mt-8 border-2 border-warning p-5 flex items-start gap-3" style={{ borderColor: "#E8A33D" }} data-testid="payment-deadline-warning">
-          <span className="font-display font-bold text-xl leading-none" style={{ color: "#0B2E4F" }}>!</span>
-          <div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.25em]" style={{ color: "#0B2E4F" }}>
-              {delai
-                ? (lang === "fr" ? `Paiement requis sous ${delai}` : `Payment required within ${delai}`)
-                : (lang === "fr" ? "Paiement requis" : "Payment required")}
-            </div>
-            <p className="mt-2 text-sm text-foreground/80 leading-relaxed">
-              {delai
-                ? (lang === "fr"
-                    ? `Votre commande sera automatiquement annulée si le paiement n'est pas reçu dans un délai de ${delai}.`
-                    : `Your order will be automatically cancelled if payment is not received within ${delai}.`)
-                : (lang === "fr"
-                    ? "Votre commande sera automatiquement annulée si le paiement n'est pas reçu avant l'échéance ci-dessous."
-                    : "Your order will be automatically cancelled if payment is not received before the deadline below.")}
-            </p>
-            {remainingMs !== null && (
-              <div className="mt-3 font-mono text-sm font-bold tracking-[0.1em]" data-testid="payment-countdown">
-                {remainingMs > 0
+        <div className="mt-5 border border-warning bg-warning/5 px-4 py-3.5 flex items-start gap-3"
+          style={{ borderRadius: "var(--r-m)" }} data-testid="payment-deadline-warning">
+          {remainingMs !== null && remainingMs <= 0
+            ? <TriangleAlert size={17} className="text-error shrink-0 mt-0.5" aria-hidden="true" />
+            : <Clock size={17} className="text-nordfjord shrink-0 mt-0.5" aria-hidden="true" />}
+          <div className="min-w-0">
+            <div className="font-mono text-[13px] font-bold uppercase tracking-[0.1em] text-nordfjord tabular-nums"
+              data-testid="payment-countdown">
+              {remainingMs !== null && remainingMs <= 0
+                ? (lang === "fr" ? "Délai expiré" : "Deadline passed")
+                : remainingMs !== null
                   ? (lang === "fr"
-                      ? `⏳ Il vous reste ${resteLisible(remainingMs, "fr")} pour payer`
-                      : `⏳ You have ${resteLisible(remainingMs, "en")} left to pay`)
-                  : (lang === "fr" ? "⚠ Délai expiré : la commande sera annulée." : "⚠ Deadline expired : the order will be cancelled.")}
-              </div>
-            )}
+                      ? `Il vous reste ${resteLisible(remainingMs, "fr")} pour payer`
+                      : `${resteLisible(remainingMs, "en")} left to pay`)
+                  : delai
+                    ? (lang === "fr" ? `Paiement requis sous ${delai}` : `Payment required within ${delai}`)
+                    : (lang === "fr" ? "Paiement requis" : "Payment required")}
+            </div>
+            <p className="mt-1 text-[12px] text-glacier leading-relaxed">
+              {lang === "fr"
+                ? "Passé ce délai, la commande est annulée automatiquement."
+                : "After that, the order is cancelled automatically."}
+            </p>
           </div>
         </div>
       )}
 
       {interac && (
-        <div className="mt-8 border border-ash bg-white overflow-hidden" data-testid="interac-instructions" style={{ borderRadius: "var(--r-l)" }}>
+        <div className="mt-5 border border-ash bg-white overflow-hidden" data-testid="interac-instructions" style={{ borderRadius: "var(--r-l)" }}>
           {/* L'eclair « ⚡ » etait un caractere Unicode qui imite une icone :
               son trait et son alignement n'appartiennent a aucun systeme. */}
           <div className="px-6 py-4 flex items-center gap-2.5 border-b border-ash">
@@ -326,7 +345,7 @@ export default function OrderConfirmation() {
       )}
 
       {np && (
-        <div className="mt-8 border border-ash bg-white overflow-hidden" data-testid="crypto-instructions" style={{ borderRadius: "var(--r-l)" }}>
+        <div className="mt-5 border border-ash bg-white overflow-hidden" data-testid="crypto-instructions" style={{ borderRadius: "var(--r-l)" }}>
           {/* Le « ₿ » etait, lui aussi, un glyphe en guise d'icone. */}
           <div className="px-6 py-4 flex items-center gap-2.5 border-b border-ash">
             <Wallet size={15} className="text-nova-texte" aria-hidden="true" />
