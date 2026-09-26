@@ -379,14 +379,19 @@ class ImmutableStaticFiles(StaticFiles):
         return response
 
 
-# Only non-sensitive catalog assets are public. Shipping labels contain customer
-# PII and are served through an authenticated admin route below.
-app.mount("/uploads/coa", ImmutableStaticFiles(directory=str(COA_UPLOAD_DIR)), name="uploads-coa")
-app.mount("/uploads/images", ImmutableStaticFiles(directory=str(IMAGE_UPLOAD_DIR)), name="uploads-images")
-app.mount("/api/uploads/coa", ImmutableStaticFiles(directory=str(COA_UPLOAD_DIR)), name="uploads-api-coa")
-app.mount("/api/uploads/images", ImmutableStaticFiles(directory=str(IMAGE_UPLOAD_DIR)), name="uploads-api-images")
-app.mount("/uploads/messages", ImmutableStaticFiles(directory=str(MESSAGE_UPLOAD_DIR)), name="uploads-messages")
-app.mount("/api/uploads/messages", ImmutableStaticFiles(directory=str(MESSAGE_UPLOAD_DIR)), name="uploads-api-messages")
+# Uploaded catalog assets (COA PDFs, product images, order-message photos) now
+# live in Emergent Object Storage — pod-local disk is ephemeral and would lose
+# every file on redeploy. See `services/object_storage.py`.
+#
+# The read routes are registered further below on `api_router` under
+# `/api/uploads/{kind}/{filename}` so they:
+#   1) keep the exact URL scheme already stored in DB (product.coa_url,
+#      order_messages.image_url, …) — no backfill required;
+#   2) still serve legacy files that were written to disk before this
+#      migration, via a disk fallback in `object_storage.load_bytes`.
+#
+# Shipping labels stay disk-served through an authenticated admin route (they
+# contain customer PII and only need to live long enough to be printed).
 
 
 # ---------------------------------------------------------------------------
@@ -1282,6 +1287,7 @@ async def _register_webhook_event(provider: str, signature: str, raw_body: bytes
 # Implementation lives in services/nowpayments.py; re-exported so existing call
 # sites (routers/, other server helpers) keep resolving these names here.
 try:
+    from services import object_storage  # noqa: F401
     from services.nowpayments import (  # noqa: F401
         _verify_nowpayments_signature, _nowpayments_create, nowpayments_ipn, crypto_status,
         _refresh_np_jwt, NowPaymentsPayoutError, _np_auth_token, _np_create_payout,
@@ -1289,6 +1295,7 @@ try:
         _np_balance, _np_solde_suffisant, _np_valider_adresse,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
+    from backend.services import object_storage  # noqa: F401
     from backend.services.nowpayments import (  # noqa: F401
         _verify_nowpayments_signature, _nowpayments_create, nowpayments_ipn, crypto_status,
         _refresh_np_jwt, NowPaymentsPayoutError, _np_auth_token, _np_create_payout,
@@ -2579,9 +2586,11 @@ async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(
         raise HTTPException(400, "File is not a valid PDF")
 
     safe_name = f"{uuid.uuid4().hex}.pdf"
-    dest = COA_UPLOAD_DIR / safe_name
-    with open(dest, "wb") as f:
-        f.write(contents)
+    try:
+        object_storage.put_object("coa", safe_name, contents, "application/pdf")
+    except Exception as e:
+        logging.error("COA upload to object storage failed: %s", e)
+        raise HTTPException(503, "File storage unavailable — try again in a moment")
 
     rel_path = f"/api/uploads/coa/{safe_name}"
     # On stocke le chemin relatif — le client construit l'URL absolue avec son
@@ -2591,10 +2600,11 @@ async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(
     return {"url": rel_path, "original_filename": filename, "size_bytes": len(contents)}
 
 
-def _validate_and_save_image(contents: bytes, target_dir) -> str:
-    """Valide (magic bytes, pas le Content-Type) et enregistre une image.
-    Rend le nom de fichier sûr. Partagé entre les images produit et les photos
-    des échanges clients, pour ne pas dupliquer la logique de validation."""
+def _validate_and_save_image(contents: bytes, kind: str) -> str:
+    """Valide (magic bytes, pas le Content-Type) et enregistre une image dans
+    Emergent Object Storage. `kind` est « images » (catalogue) ou « messages »
+    (photos jointes aux échanges de commande). Retourne le nom de fichier
+    sûr — l'appelant reconstruit l'URL `/api/uploads/{kind}/{name}`."""
     try:
         prev_max = PILImage.MAX_IMAGE_PIXELS
         PILImage.MAX_IMAGE_PIXELS = 50_000_000  # borne anti-decompression-bomb
@@ -2610,22 +2620,77 @@ def _validate_and_save_image(contents: bytes, target_dir) -> str:
     if not ext:
         raise HTTPException(400, "Only PNG, JPEG, WebP, and GIF images are allowed")
     safe_name = f"{uuid.uuid4().hex}.{ext}"
-    with open(target_dir / safe_name, "wb") as f:
-        f.write(contents)
+    content_type = f"image/{'jpeg' if ext == 'jpg' else ext}"
+    try:
+        object_storage.put_object(kind, safe_name, contents, content_type)
+    except Exception as e:
+        logging.error("Image upload to object storage failed: %s", e)
+        raise HTTPException(503, "File storage unavailable — try again in a moment")
     return safe_name
 
 
 async def admin_upload_image(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
     """Uploads a product image (PNG, JPEG, WebP, GIF) and returns a URL to use in
-    the image_url field. Storage is local disk under UPLOAD_DIR/images, served
-    statically at /uploads/images/<file>."""
+    the image_url field. Storage is Emergent Object Storage, served through
+    `/api/uploads/images/<file>`."""
     filename = file.filename or ""
     contents = await file.read()
     if len(contents) / (1024 * 1024) > MAX_IMAGE_UPLOAD_MB:
         raise HTTPException(400, f"File too large — max {MAX_IMAGE_UPLOAD_MB:.0f} MB")
-    safe_name = _validate_and_save_image(contents, IMAGE_UPLOAD_DIR)
+    safe_name = _validate_and_save_image(contents, "images")
     rel_path = f"/api/uploads/images/{safe_name}"
     return {"url": rel_path, "original_filename": filename, "size_bytes": len(contents)}
+
+
+# ---------------------------------------------------------------------------
+# Public read proxy for Object-Storage-backed uploads
+#
+# The frontend and stored URLs (product.coa_url, order_messages.image_url, …)
+# use the paths `/api/uploads/{kind}/{filename}`. Before the storage migration
+# those were served by a `StaticFiles` mount reading from `UPLOAD_DIR`; now
+# they fetch from Emergent Object Storage, with a disk fallback so files
+# uploaded during the preview era keep resolving without a manual backfill.
+#
+# Only "coa", "images" and "messages" are exposed — anything else 404s. These
+# are non-sensitive catalog assets, hence no auth. Shipping labels use a
+# separate admin-authenticated route (they contain customer PII).
+# ---------------------------------------------------------------------------
+_UPLOAD_KIND_TO_LEGACY_DIR = {
+    "coa": COA_UPLOAD_DIR,
+    "images": IMAGE_UPLOAD_DIR,
+    "messages": MESSAGE_UPLOAD_DIR,
+}
+_UPLOAD_FILENAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+async def _serve_upload(kind: str, filename: str) -> Response:
+    legacy_dir = _UPLOAD_KIND_TO_LEGACY_DIR.get(kind)
+    if legacy_dir is None or not _UPLOAD_FILENAME_RE.fullmatch(filename or ""):
+        raise HTTPException(404, "File not found")
+    got = object_storage.load_bytes(kind, filename, legacy_dir=legacy_dir)
+    if got is None:
+        raise HTTPException(404, "File not found")
+    content, content_type = got
+    return Response(
+        content=content,
+        media_type=content_type,
+        # Uploaded assets are content-addressed (uuid-in-filename), so aggressive
+        # caching is safe and cheap — matches the previous ImmutableStaticFiles
+        # cache headers.
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
+@api.get("/uploads/{kind}/{filename}")
+async def _api_upload_proxy(kind: str, filename: str) -> Response:
+    return await _serve_upload(kind, filename)
+
+
+@app.get("/uploads/{kind}/{filename}")
+async def _root_upload_proxy(kind: str, filename: str) -> Response:
+    # Legacy stored URLs sometimes start with `/uploads/...` (no `/api`). Keep
+    # both prefixes serving so we do not have to rewrite historical DB rows.
+    return await _serve_upload(kind, filename)
 
 
 # ---------------------------------------------------------------------------
@@ -4278,7 +4343,7 @@ async def _post_order_message(order_id: str, sender: str, author: str, text: str
         contents = await file.read()
         if len(contents) / (1024 * 1024) > MAX_IMAGE_UPLOAD_MB:
             raise HTTPException(400, f"File too large — max {MAX_IMAGE_UPLOAD_MB:.0f} MB")
-        safe_name = _validate_and_save_image(contents, MESSAGE_UPLOAD_DIR)
+        safe_name = _validate_and_save_image(contents, "messages")
         image_url = f"/api/uploads/messages/{safe_name}"
     doc = {
         "id": str(uuid.uuid4()),
@@ -10138,6 +10203,13 @@ async def _backfill_affiliate_coupons() -> None:
 
 @app.on_event("startup")
 async def startup_event():
+    # Provision the Emergent Object Storage session once. `init_storage` is
+    # idempotent and swallows failures so a misconfigured EMERGENT_LLM_KEY does
+    # not break the pod — uploads will just 503 until the key is set.
+    try:
+        object_storage.init_storage()
+    except Exception as e:
+        logging.warning("[config] Object storage init raised: %s", e)
     # APP_ENV absente : la documentation est FERMEE (c'est le defaut sur), mais
     # les garde-fous de production — temoins Secure, CORS strict, refus du bac a
     # sable Canada Post — restent inactifs. L'avertissement porte desormais sur
@@ -10932,7 +11004,7 @@ async def _photo_de_billet(file) -> Optional[str]:
     contenu = await file.read()
     if len(contenu) / (1024 * 1024) > MAX_IMAGE_UPLOAD_MB:
         raise HTTPException(400, f"Image trop lourde — maximum {MAX_IMAGE_UPLOAD_MB:.0f} Mo")
-    return f"/api/uploads/messages/{_validate_and_save_image(contenu, MESSAGE_UPLOAD_DIR)}"
+    return f"/api/uploads/messages/{_validate_and_save_image(contenu, 'messages')}"
 
 
 async def affiliate_ticket_create(subject: str, body: str, context_path: str, file,
