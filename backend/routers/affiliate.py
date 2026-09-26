@@ -202,6 +202,17 @@ async def admin_affiliate_referrals_csv(affiliate_id: str, month: str = None,
     return await s.admin_affiliate_referrals_csv(affiliate_id, month, admin)
 
 
+@router.get("/admin/affiliates/cycles")
+async def admin_affiliate_cycles(admin: dict = Depends(s.get_admin_user),
+                                 limit: int = 12):
+    """Les cycles passes : montant, date d'envoi reelle, ecart avec l'echeance.
+
+    Declaree AVANT `/admin/affiliates/{affiliate_id}` : sinon FastAPI attrape
+    `cycles` comme un affiliate_id et renvoie 404.
+    """
+    return await s.admin_affiliate_cycles(admin, limit)
+
+
 @router.get("/admin/affiliates/{affiliate_id}")
 async def admin_affiliate_detail(affiliate_id: str, admin: dict = Depends(s.get_admin_user)):
     return await s.admin_affiliate_detail(affiliate_id, admin)
@@ -316,18 +327,6 @@ async def admin_affiliate_force_monthly_run(payload: s.AffiliatePayoutRunForceIn
                                              admin: dict = Depends(s.get_admin_user)):
     """Force un run manuel du scheduler mensuel pour une période donnée (test)."""
     return await s.admin_affiliate_force_monthly_run(payload, admin)
-
-
-@router.get("/admin/affiliates/cycles")
-async def admin_affiliate_cycles(admin: dict = Depends(s.get_admin_user),
-                                 limit: int = 12):
-    """Les cycles passes : montant, date d'envoi reelle, ecart avec l'echeance.
-
-    Hors de `/payouts/...` a dessein : une route freres d'un `{payout_id}`
-    finirait par etre lue comme un identifiant le jour ou quelqu'un ajoute
-    `/payouts/{payout_id}`.
-    """
-    return await s.admin_affiliate_cycles(admin, limit)
 
 
 @router.get("/admin/affiliates/payouts/runs")

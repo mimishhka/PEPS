@@ -816,9 +816,9 @@ export default function AffiliateDashboard() {
           </div>
           <div className="flex items-center gap-3">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5  font-data
-                             text-[11px] font-semibold uppercase tracking-wider" style={{ borderRadius: "var(--r-m)" }}
+                             text-[11px] font-semibold uppercase tracking-wider"
                   data-testid="affiliate-tier-badge"
-                  style={{ background: `${tierColor}1a`, color: tierColor }}>
+                  style={{ borderRadius: "var(--r-m)", background: `${tierColor}1a`, color: tierColor }}>
               <TierMark tier={data?.tier} color={tierColor} size={16} />
               {tierLabel} · {Math.round((data?.commission_rate || 0) * 100)}%
             </span>

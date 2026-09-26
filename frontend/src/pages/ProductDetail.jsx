@@ -379,8 +379,8 @@ export default function ProductDetail() {
                 return (
                   <Link key={p.id} to={`/product/${p.slug}`} data-testid="related-card"
                     className="group border border-ash bg-white p-4 hover:border-nova transition" style={{ borderRadius: "var(--r-m)" }}>
-                    <div className="aspect-square mb-3 flex items-center justify-center overflow-hidden" style={{ borderRadius: "var(--r-m)" }}
-                      style={{ background: `hsl(${hueFor(p.slug)} 70% 96%)` }}>
+                    <div className="aspect-square mb-3 flex items-center justify-center overflow-hidden"
+                      style={{ borderRadius: "var(--r-m)", background: `hsl(${hueFor(p.slug)} 70% 96%)` }}>
                       <ProductImage
                         src={p.image_url}
                         slug={p.slug}

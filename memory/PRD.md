@@ -237,3 +237,22 @@ Patch reçu contenant : scheduler mensuel avec `payout_runs` anti-double, FX BoC
 - **Env vars** ajoutables (défauts sensés) : `EMAIL_JANITOR_INTERVAL_S=300`, `EMAIL_FAILED_RETRY_AFTER_S=3600`, `EMAIL_JANITOR_MAX_PER_TICK=100`
 - **Tests E2E validés** : (1) stats retourne bien counts + oldest age + failed_last_7d ; (2) injection de 2 fake `failed` + requeue admin → 50 jobs remis en `retry` en une opération ; (3) janitor tick appelé directement → 100 jobs `failed` anciens rejoués (313 → 165). Le worker continu prendra la relève automatiquement.
 
+
+
+## Emergent Object Storage migration — Février 2026 (session fork, suite 6)
+- **Problème** : uploads (COA PDFs, images produits, photos messages) écrits sur `/app/backend/uploads/` — disque pod éphémère qui perd tout au redéploiement. Lint bloquant `[ephemeral-upload-storage]` sur les deux `open(..., "wb")`.
+- **Fix** :
+  1. `EMERGENT_LLM_KEY` ajouté à `backend/.env` (source: `emergent_integrations_manager`).
+  2. Nouveau module `services/object_storage.py` — `init_storage()` idempotent (session-scoped `storage_key`), `put_object(kind, filename, data, ct)`, `get_object`, `load_bytes(kind, filename, legacy_dir=)` (fallback disque pour fichiers legacy). Convention: `fironova/{kind}/{filename}`.
+  3. `admin_upload_coa` et `_validate_and_save_image` (utilisé par images produits + messages + tickets affiliés) écrivent maintenant dans Object Storage. 503 propre si `EMERGENT_LLM_KEY` manque.
+  4. Static mounts `/uploads/{coa,images,messages}` supprimés → remplacés par endpoints proxy `@api.get("/uploads/{kind}/{filename}")` + `@app.get("/uploads/{kind}/{filename}")` (les deux préfixes servis pour ne pas devoir rewrite les URL déjà stockées en DB). Cache-Control immutable identique à l'ancien mount.
+  5. `startup_event` appelle `object_storage.init_storage()` (log `Emergent Object Storage initialized`).
+- **Validation** :
+  - Init au startup : log OK.
+  - `curl POST /api/admin/upload/image` → 200 avec `/api/uploads/images/{uuid}.png` → écrit dans Object Storage (`ls /app/backend/uploads/images/` NE contient PAS le nouveau fichier) → `curl GET` renvoie l'image intacte.
+  - Idem pour `POST /api/admin/upload/coa` (PDF).
+  - Fichier legacy sur disque : `curl GET /api/uploads/images/{ancien.png}` → 200 (fallback disque).
+  - Kind non-autorisé (`labels`) → 404. Nom de fichier invalide → 404.
+  - Homepage frontend charge les images produit via le nouveau proxy (screenshot validé).
+  - Pytest `tests/test_object_storage_migration.py` : **6/6 pass** (préfixe app, refus sans clé, fallback disque, priorité storage sur disque, 404, content-type par extension).
+- **Non migré** (délibéré) : `LABEL_UPLOAD_DIR` (étiquettes Postes Canada, admin-only, PII — servi via route auth séparée). À faire au moment du hardening prod si besoin de persistance longue.
