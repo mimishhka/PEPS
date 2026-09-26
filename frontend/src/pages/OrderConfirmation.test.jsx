@@ -446,3 +446,64 @@ describe("la compacite de l'entete", () => {
     expect(await screen.findByTestId("order-number")).toHaveTextContent("FN-1");
   });
 });
+
+// DEUX COLONNES : L'ACTION ET LA REFERENCE.
+//
+// Mireille : « est-ce qu'on peut le mettre en deux colonnes pour que tout soit
+// visible ». Sur grand ecran, comment payer (a gauche) et ce qu'on doit (a
+// droite) tiennent cote a cote au lieu de s'empiler. Sous 1024 px la grille
+// s'effondre, et l'ordre du document prend le relais : payer d'abord,
+// verifier ensuite — on ne fait pas defiler un recapitulatif pour trouver
+// comment payer.
+describe("la mise en deux colonnes", () => {
+  const EN_ATTENTE = {
+    ...COMMANDE,
+    payment_status: "awaiting_etransfer",
+    payment_info: {
+      type: "interac",
+      instructions: {
+        send_to: "paiements@fironova.com",
+        amount_cad: 64.99,
+        reference: "FN-1001-XK7",
+        security_question: "Nom ?",
+        security_answer_hint: "fironova",
+      },
+    },
+  };
+
+  const afficher = () => {
+    mockEtat = { order: { ...EN_ATTENTE } };
+    api.get.mockImplementation(async (url) => (url.endsWith("/messages")
+      ? { data: [] }
+      : { data: { ...EN_ATTENTE } }));
+    return render(<OrderConfirmation />);
+  };
+
+  it("place les instructions et le recapitulatif dans la meme grille", async () => {
+    afficher();
+    const instructions = await screen.findByTestId("interac-instructions");
+    const recap = screen.getByTestId("confirmation-recap");
+    // Ils sont freres : c'est ce qui permet a la grille de les poser cote a
+    // cote. Imbriques, aucune colonne ne fonctionnerait.
+    expect(instructions.closest("div.grid")).not.toBeNull();
+    expect(instructions.closest("div.grid")).toBe(recap.closest("div.grid"));
+  });
+
+  it("garde le paiement AVANT le recapitulatif dans l'ordre du document", async () => {
+    // C'est cet ordre qui s'applique sur telephone, quand la grille
+    // s'effondre. L'inverser renverrait au defaut signale : defiler pour
+    // savoir quoi faire.
+    afficher();
+    const instructions = await screen.findByTestId("interac-instructions");
+    const recap = screen.getByTestId("confirmation-recap");
+    const position = instructions.compareDocumentPosition(recap);
+    expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("garde le total lisible et en chasse fixe", async () => {
+    afficher();
+    const total = await screen.findByTestId("confirm-total");
+    expect(total).toHaveTextContent("64.99");
+    expect(total.className).toMatch(/tabular-nums/);
+  });
+});

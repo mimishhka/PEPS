@@ -232,7 +232,7 @@ export default function OrderConfirmation() {
     // LA PAGE COMMENCE PLUS HAUT SUR TELEPHONE. Soixante-quatre pixels de vide
     // au-dessus d un ecran ou l on doit PAYER repoussaient les instructions
     // sous la ligne de flottaison avant meme d avoir lu quoi que ce soit.
-    <div className="max-w-4xl mx-auto px-5 sm:px-6 py-7 sm:py-12" data-testid="confirmation-page">
+    <div className="max-w-6xl mx-auto px-5 sm:px-6 py-7 sm:py-12" data-testid="confirmation-page">
       <div className="border border-nordfjord/20 rounded-xl overflow-hidden">
         <div className="px-6 py-4 flex items-center justify-between font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord border-b border-ash">
           <span>
@@ -281,6 +281,8 @@ export default function OrderConfirmation() {
         </div>
       )}
 
+      {/* LES BANDEAUX D'ETAT RESTENT PLEINE LARGEUR : une echeance de
+          paiement concerne toute la page, pas une colonne. */}
       {/* TROIS PHRASES DISAIENT LA MEME CHOSE : le titre annoncait le delai,
           le paragraphe le repetait en entier, et le compte a rebours le
           redisait une troisieme fois. Ensemble ils occupaient la hauteur d'un
@@ -317,8 +319,19 @@ export default function OrderConfirmation() {
         </div>
       )}
 
+      {/* DEUX COLONNES A PARTIR DE 1024 px.
+          L'ACTION a gauche — comment payer —, la REFERENCE a droite : ce
+          qu'on a commande, ce qu'on doit. Empilees, elles obligeaient a
+          defiler pour verifier un montant qu'on a sous les yeux deux secondes
+          plus tot.
+          Sous 1024 px, la grille s'effondre en une colonne et l'ordre du
+          document prend le relais : payer d'abord, verifier ensuite. C'est le
+          bon ordre sur telephone — on ne fait pas defiler un recapitulatif
+          pour trouver comment payer. */}
+      <div className="mt-5 grid lg:grid-cols-[1.25fr_.75fr] lg:items-start gap-5 lg:gap-6">
+        <div className="min-w-0 space-y-5">
       {interac && (
-        <div className="mt-5 border border-ash bg-white overflow-hidden" data-testid="interac-instructions" style={{ borderRadius: "var(--r-l)" }}>
+        <div className="border border-ash bg-white overflow-hidden" data-testid="interac-instructions" style={{ borderRadius: "var(--r-l)" }}>
           {/* L'eclair « ⚡ » etait un caractere Unicode qui imite une icone :
               son trait et son alignement n'appartiennent a aucun systeme. */}
           <div className="px-6 py-4 flex items-center gap-2.5 border-b border-ash">
@@ -345,7 +358,7 @@ export default function OrderConfirmation() {
       )}
 
       {np && (
-        <div className="mt-5 border border-ash bg-white overflow-hidden" data-testid="crypto-instructions" style={{ borderRadius: "var(--r-l)" }}>
+        <div className="border border-ash bg-white overflow-hidden" data-testid="crypto-instructions" style={{ borderRadius: "var(--r-l)" }}>
           {/* Le « ₿ » etait, lui aussi, un glyphe en guise d'icone. */}
           <div className="px-6 py-4 flex items-center gap-2.5 border-b border-ash">
             <Wallet size={15} className="text-nova-texte" aria-hidden="true" />
@@ -433,8 +446,15 @@ export default function OrderConfirmation() {
         </div>
       )}
 
-      <div className="mt-8 border border-nordfjord/15 rounded-xl p-6 bg-clinical">
-        <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-glacier mb-3">{lang === "fr" ? "ARTICLES" : "ITEMS"}</div>
+        </div>
+
+        {/* LA COLONNE DE REFERENCE. Collante sur grand ecran : elle accompagne
+            la lecture des instructions au lieu de disparaitre des qu'on
+            defile. C'est la seule elevation de la page — elle flotte, donc
+            son ombre porte une information reelle. */}
+        <aside className="min-w-0 lg:sticky lg:top-6 space-y-5" data-testid="confirmation-recap">
+      <div className="border border-ash bg-white p-5" style={{ borderRadius: "var(--r-m)", boxShadow: "var(--ombre)" }}>
+        <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-glacier mb-3">{lang === "fr" ? "ARTICLES" : "ITEMS"}</div>
         <ul className="divide-y divide-nordfjord/10">
           {order.items.map((i) => (
             <li key={i.product_id} className="py-3 flex justify-between text-sm">
@@ -467,9 +487,19 @@ export default function OrderConfirmation() {
             </div>
           )}
         </div>
-        <div className="border-t-2 border-nordfjord mt-3 pt-3 flex justify-between font-display font-bold text-xl">
-          <span>TOTAL</span><span data-testid="confirm-total">${order.total.toFixed(2)} CAD</span>
+        {/* Le total portait une bordure de 2 px : un trait epais n'est pas
+            une hierarchie, c'est du bruit. C'est le corps du chiffre qui dit
+            son importance. */}
+        <div className="border-t border-ash mt-3 pt-3.5 flex items-baseline justify-between">
+          <span className="font-display font-semibold text-[15px] text-nordfjord">TOTAL</span>
+          <span data-testid="confirm-total" className="font-display font-bold text-[22px] text-nordfjord tabular-nums tracking-[-0.02em]">
+            ${order.total.toFixed(2)}
+            <span className="font-data font-medium text-[11px] text-glacier ml-1.5 tracking-normal">CAD</span>
+          </span>
         </div>
+      </div>
+
+        </aside>
       </div>
 
       {/* ANNULER OU SIGNALER UN PROBLÈME : sur la commande, là où la question
