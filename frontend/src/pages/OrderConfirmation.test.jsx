@@ -243,3 +243,65 @@ it("le refus du serveur s'affiche au lieu de disparaitre", async () => {
   await userEvent.click(screen.getByTestId("refund-withdraw"));
   expect(await screen.findByTestId("refund-error")).toHaveTextContent("vient d'être traitée");
 });
+
+// LE PAIEMENT EN CRYPTO SUR TELEPHONE.
+//
+// Mireille : « there is an issue with crypto payment on mobile, nowpayment page
+// has no content ». Le module NOWPayments etait declare a 410 px de large avec
+// scrolling="no" : sur un ecran de 320 px il etait ecrase horizontalement ET
+// son contenu decoupe, sans defilement pour l'atteindre. La page de paiement
+// paraissait vide — sur l'ecran meme ou la cliente paie.
+//
+// Le lien direct, lui, fonctionne partout : il s'ouvre dans un nouvel onglet,
+// donc la politique de securite de la boutique ne le regit pas. Il etait
+// relegue en petit soulignement sous le module ; il devient l'action
+// principale.
+describe("le paiement en cryptomonnaie", () => {
+  const AVEC_CRYPTO = {
+    ...COMMANDE,
+    payment_status: "awaiting_crypto",
+    payment_method: "nowpayments",
+    payment_info: {
+      type: "nowpayments",
+      provider_response: {
+        invoice_id: "512345678",
+        invoice_url: "https://nowpayments.io/payment/?iid=512345678",
+      },
+    },
+  };
+
+  const afficher = () => {
+    mockEtat = { order: { ...AVEC_CRYPTO } };
+    api.get.mockImplementation(async (url) => (url.endsWith("/messages")
+      ? { data: [] }
+      : { data: { ...AVEC_CRYPTO } }));
+    return render(<OrderConfirmation />);
+  };
+
+  it("offre un bouton de paiement qui fonctionne sur tout ecran", async () => {
+    afficher();
+    const bouton = await screen.findByTestId("crypto-invoice-link");
+    expect(bouton).toHaveAttribute("href", "https://nowpayments.io/payment/?iid=512345678");
+    expect(bouton).toHaveAttribute("target", "_blank");
+    // C'est un bouton, plus un soulignement discret : c'est le chemin fiable.
+    expect(bouton.className).toMatch(/btn-nova/);
+  });
+
+  it("masque le module sur mobile plutot que de le montrer vide", async () => {
+    afficher();
+    const module = await screen.findByTestId("nowpayments-widget");
+    // `hidden sm:block` : absent sous 640 px, present au-dela.
+    const classes = module.className.split(" ");
+    expect(classes).toContain("hidden");
+    expect(classes).toContain("sm:block");
+  });
+
+  it("ne decoupe plus le contenu du module", async () => {
+    // scrolling="no" et overflowY:hidden rendaient inaccessible ce qui
+    // depassait. On ne decoupe jamais un formulaire de paiement.
+    afficher();
+    const module = await screen.findByTestId("nowpayments-widget");
+    expect(module).not.toHaveAttribute("scrolling", "no");
+    expect(module.style.overflowY).not.toBe("hidden");
+  });
+});

@@ -327,25 +327,43 @@ export default function OrderConfirmation() {
                   ? `Payez ${order.total.toFixed(2)} $ CAD en crypto via le module sécurisé NOWPayments ci-dessous : le montant exact est déjà pré-rempli. La confirmation de votre commande est automatique dès réception du paiement.`
                   : `Pay $${order.total.toFixed(2)} CAD in crypto through the secure NOWPayments module below : the exact amount is pre-filled. Your order is confirmed automatically once payment is received.`}
               </p>
-              <iframe
-                title="NOWPayments"
-                src={`https://nowpayments.io/embeds/payment-widget?iid=${np.invoice_id}`}
-                width="410"
-                height="696"
-                frameBorder="0"
-                scrolling="no"
-                style={{ overflowY: "hidden", maxWidth: "100%" }}
-                data-testid="nowpayments-widget"
-              />
+              {/* LE BOUTON D'ABORD, LE MODULE ENSUITE.
+                  Le module NOWPayments etait declare a 410 px de large avec
+                  scrolling="no" : sur un telephone de 320 px, il etait ecrase
+                  horizontalement ET son contenu decoupe, sans defilement pour
+                  l'atteindre. La page de paiement paraissait vide — sur l'ecran
+                  ou la cliente paie.
+                  Le lien direct, lui, fonctionne partout. Il etait relegue en
+                  petit soulignement sous le module ; il devient l'action
+                  principale. Un module qui rend mal ne doit jamais etre le seul
+                  chemin vers un paiement. */}
               <a
                 href={np.invoice_url}
                 target="_blank"
                 rel="noreferrer"
-                className="font-mono text-[11px] uppercase tracking-[0.2em] underline text-foreground/60 hover:text-foreground"
+                className="btn-pill btn-nova w-full sm:w-auto justify-center"
                 data-testid="crypto-invoice-link"
               >
-                {lang === "fr" ? "Ouvrir la page de paiement dans un nouvel onglet →" : "Open the payment page in a new tab →"}
+                {lang === "fr" ? "Payer en cryptomonnaie" : "Pay with cryptocurrency"}
               </a>
+              <p className="text-[11px] text-foreground/50 text-center">
+                {lang === "fr"
+                  ? "S'ouvre dans un nouvel onglet, sur la page sécurisée de NOWPayments."
+                  : "Opens in a new tab, on the secure NOWPayments page."}
+              </p>
+
+              {/* Le module reste, pour payer sans quitter la page quand
+                  l'ecran est assez large. Il est masque sous 640 px : mieux
+                  vaut pas de module qu'un module vide. Le defilement est
+                  autorise — on ne decoupe jamais un formulaire de paiement. */}
+              <iframe
+                title="NOWPayments"
+                src={`https://nowpayments.io/embeds/payment-widget?iid=${np.invoice_id}`}
+                height="696"
+                frameBorder="0"
+                className="hidden sm:block w-[410px] max-w-full"
+                data-testid="nowpayments-widget"
+              />
               <div className="w-full max-w-md border-t border-nordfjord/15 pt-4 mt-2" data-testid="crypto-key-notes">
                 <div className="font-mono text-[11px] uppercase tracking-[0.25em] text-foreground/60 mb-3">
                   {lang === "fr" ? "Points importants" : "Key things to note"}
