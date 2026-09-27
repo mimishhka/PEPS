@@ -697,6 +697,12 @@ export default function AffiliateDashboard() {
   // Le voile du fond : les memes canaux, a douze pour cent. Il suit donc le
   // theme comme le trait, au lieu d'etre une valeur figee.
   const tierVoile = `rgb(var(${tierJeton}) / 0.12)`;
+  // LE SYMBOLE ET LE LIBELLE N'ONT PAS LE MEME SEUIL.
+  //
+  // 4,5:1 vaut pour du TEXTE ; un objet graphique n'exige que 3:1. En durcissant
+  // les six paliers au seuil du texte, j'avais eteint les symboles sans raison.
+  // Le libelle garde `tierColor`, le symbole reprend `tierVif`.
+  const tierVif = `rgb(var(${tierJeton.replace("--fn-palier-", "--fn-vif-")}))`;
   // LE RANG COLORE LA PAGE.
   //
   // Mireille : « il n'y a aucune couleur, c'est trop blanc ». La reponse n'est
@@ -709,7 +715,16 @@ export default function AffiliateDashboard() {
   //
   // Le degrade part du haut-droit et se dissout : la lueur reste derriere le
   // chiffre sans jamais passer sous le texte, ou elle mangerait le contraste.
-  const tierLueur = `radial-gradient(120% 140% at 100% 0%, rgb(var(${tierJeton}) / 0.38) 0%, rgb(var(${tierJeton}) / 0.10) 42%, transparent 72%)`;
+  // La lueur emploie le jeton VIF : au seuil du texte elle virait au terne, et
+  // c'est precisement ce que Mireille appelait « trop blend ». Deux sources,
+  // l'une chaude au coin haut-droit, l'autre plus large et plus basse : une
+  // seule tache ronde se lit comme un projecteur, deux se lisent comme une
+  // lumiere.
+  const tierVifJeton = tierJeton.replace("--fn-palier-", "--fn-vif-");
+  const tierLueur = [
+    `radial-gradient(90% 120% at 100% 0%, rgb(var(${tierVifJeton}) / 0.55) 0%, rgb(var(${tierVifJeton}) / 0.14) 45%, transparent 72%)`,
+    `radial-gradient(70% 100% at 78% 110%, rgb(var(--fn-nova) / 0.20) 0%, transparent 60%)`,
+  ].join(", ");
   const tierLabel = TIER_META[data?.tier]?.[lang] || data?.tier;
   const comp = COMPLIANCE_META[data?.compliance_status] || COMPLIANCE_META.compliant;
   const progress = data?.progress_to_next != null ? Math.round(data.progress_to_next * 100) : null;
@@ -879,7 +894,7 @@ export default function AffiliateDashboard() {
                              text-[11px] font-semibold uppercase tracking-wider"
                   data-testid="affiliate-tier-badge"
                   style={{ borderRadius: "var(--r-m)", background: tierVoile, color: tierColor }}>
-              <TierMark tier={data?.tier} color={tierColor} size={16} />
+              <TierMark tier={data?.tier} color={tierVif} size={16} />
               {tierLabel} · {Math.round((data?.commission_rate || 0) * 100)}%
             </span>
             <span className={`px-3 py-1.5 rounded-full font-data text-[11px] font-semibold ${comp.cls}`}>
@@ -935,7 +950,8 @@ export default function AffiliateDashboard() {
                 texture de bruit le rattachent au hero de la boutique : c'est
                 la meme marque, vue de l'interieur. */}
             <div className="relative overflow-hidden bg-nordfjord text-clinical texture-bruit px-6 py-7 sm:px-8 sm:py-8"
-                 style={{ borderRadius: "var(--r-l)" }} data-testid="affiliate-hero">
+                 style={{ borderRadius: "var(--r-l)", boxShadow: "var(--ombre-flotte)" }}
+                 data-testid="affiliate-hero">
               {/* La lueur du palier, derriere le contenu. `pointer-events-none`
                   parce qu'une decoration ne doit jamais intercepter un clic. */}
               <div className="absolute inset-0 pointer-events-none"
@@ -994,15 +1010,19 @@ export default function AffiliateDashboard() {
                     qu'il explique — le taux et les gains se lisent ensemble. */}
                 <div className="flex items-end gap-6 sm:gap-8">
                   <div>
-                    <p className="font-data text-[10px] uppercase tracking-[0.2em] text-mist mb-1.5">
+                    {/* L'ECHELLE SE RESSERRE. Les tailles sautaient de 10 a 19
+                        a 52 px sans palier intermediaire : des bonds pareils se
+                        lisent comme trois objets sans rapport. Un rapport
+                        d'environ 1,25 entre les crans donne une progression
+                        qu'on suit sans y penser. */}
+                    <p className="font-data text-[10px] uppercase tracking-[0.2em] text-mist mb-2">
                       {data?.tier_agreement ? L("Taux convenu", "Agreed rate") : L("Votre palier", "Your tier")}
                     </p>
-                    <p className="font-display text-[19px] font-bold leading-none flex items-center gap-2"
-                       style={{ color: tierColor }}>
-                      <TierMark tier={data?.tier} color={tierColor} size={18} />
+                    <p className="font-display text-[21px] font-bold leading-none flex items-center gap-2.5 text-clinical">
+                      <TierMark tier={data?.tier} color={tierVif} size={22} />
                       {tierLabel}
                     </p>
-                    <p className="font-data text-[13px] font-semibold text-nova tabular-nums mt-1.5">
+                    <p className="font-data text-[15px] font-semibold text-nova tabular-nums mt-2">
                       {Math.round((data?.commission_rate || 0) * 100)} %
                     </p>
                   </div>
@@ -1012,7 +1032,7 @@ export default function AffiliateDashboard() {
                       <p className="font-data text-[10px] uppercase tracking-[0.2em] text-mist mb-1.5">
                         {L("Meilleur mois", "Best month")}
                       </p>
-                      <p className="font-display text-[19px] font-bold leading-none tabular-nums">
+                      <p className="font-display text-[21px] font-bold leading-none tabular-nums">
                         {money(insights.best_month.commission)}
                       </p>
                       <p className="font-data text-[12px] text-mist mt-1.5">{insights.best_month.month}</p>
@@ -1031,6 +1051,14 @@ export default function AffiliateDashboard() {
                               L={L} lang={lang} />
             )}
 
+            {/* LES BOITES N'ONT PAS TOUTES LE MEME RANG.
+                Mireille : « les priorites des boites ». Elles portaient toutes
+                le meme `bg-white rounded-xl border border-ash p-5` : une page
+                ou chaque bloc reclame la meme attention n'a pas de hierarchie,
+                et l'oeil ne sait pas ou se poser.
+                Trois niveaux, un par role : le bandeau FLOTTE (ce qu'on vient
+                voir), les blocs d'action sont LEVES (ce qu'on peut faire), la
+                reference reste POSEE (ce qu'on consulte). */}
             {/* Chemin de demarrage. Il ne s'affiche que tant qu'une etape reste
                 a franchir : garde en permanence, il deviendrait du decor. */}
             {onboarding && (
@@ -1041,9 +1069,10 @@ export default function AffiliateDashboard() {
                 <ol className="grid grid-cols-1 sm:grid-cols-3 gap-4 list-none p-0 m-0">
                   {steps.map((st, i) => (
                     <li key={i}
-                        className={`bg-white rounded-xl border p-5 transition-colors duration-150
-                          hover:border-nova ${
-                          i === nextStep ? "border-nova ring-1 ring-nova" : "border-ash"}`}>
+                        style={{ boxShadow: i === nextStep ? "var(--ombre-leve)" : "var(--ombre-pose)" }}
+                        className={`bg-white rounded-xl border p-5 transition-[transform,box-shadow,border-color]
+                          duration-200 ease-out hover:-translate-y-0.5 hover:border-nova ${
+                          i === nextStep ? "border-nova" : "border-ash"}`}>
                       <p className="font-data text-[10px] uppercase tracking-[0.18em] text-glacier">
                         {st.done
                           ? L("Fait", "Done")
@@ -1077,16 +1106,23 @@ export default function AffiliateDashboard() {
                 l'affilie — ce qu'il a gagne en tout, et ce qui compte pour son
                 palier. */}
             <div className="grid grid-cols-2 gap-3 sm:gap-4" data-testid="affiliate-kpis">
-              <KpiCard label={L("Revenu validé cumulé", "Cumulative validated revenue")} value={money(data?.cumulative_revenue)} sub="CAD" />
-              <KpiCard label={L("12 derniers mois", "Last 12 months")} value={money(data?.rolling12_revenue)} sub={L("CAD · fixe votre palier", "CAD · sets your tier")} />
+              <KpiCard label={L("Revenu validé cumulé", "Cumulative validated revenue")}
+                       valeurBrute={data?.cumulative_revenue} format={money} sub="CAD" teinte={tierVif} />
+              <KpiCard label={L("12 derniers mois", "Last 12 months")}
+                       valeurBrute={data?.rolling12_revenue} format={money}
+                       sub={L("CAD · fixe votre palier", "CAD · sets your tier")} teinte={tierVif} />
             </div>
 
             {/* Prochain versement. Affiche meme a zero : c'est justement quand
                 rien n'est accumule qu'un affilie doit connaitre le seuil. La
                 version precedente se cachait dans ce cas, et un solde bloque
                 sous le minimum ressemblait alors a une retenue inexpliquee. */}
+            {/* Le prochain versement est une ACTION a venir, pas une archive :
+                il se leve d'un cran au-dessus de la reference. */}
             {payoutMin > 0 && (
-              <div className="bg-white rounded-xl border border-ash p-5" data-testid="payout-estimate">
+              <div className="bg-white rounded-xl border border-ash p-5 transition-[transform,box-shadow]
+                              duration-200 ease-out hover:-translate-y-0.5"
+                   style={{ boxShadow: "var(--ombre-leve)" }} data-testid="payout-estimate">
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
                   {L("VOTRE PROCHAIN VERSEMENT", "YOUR NEXT PAYOUT")}
                 </p>
@@ -1271,7 +1307,7 @@ export default function AffiliateDashboard() {
                 <>
                   <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
                     <span className="inline-flex items-center gap-2.5">
-                      <TierMark tier={data?.tier} color={tierColor} size={28} />
+                      <TierMark tier={data?.tier} color={tierVif} size={30} />
                       <span className="font-display text-2xl font-bold text-nordfjord">{tierLabel}</span>
                     </span>
                     <span className="font-data text-xs text-glacier">
@@ -2207,17 +2243,44 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
   );
 }
 
-function KpiCard({ label, value, sub, accent }) {
+// LES DEUX CHIFFRES QUI COMPTENT, ET ILS COMPTENT VRAIMENT.
+//
+// Mireille : « aucune profondeur, aucun dynamisme, aucune vie ». Cette carte
+// posait un montant fini sur un fond plat, au meme plan que tout le reste.
+//
+// Trois choses la reveillent, et chacune DIT quelque chose :
+//   — le montant compte jusqu'a sa valeur : la progression EST la lecture ;
+//   — un filet de couleur court en haut, teinte au palier : la carte
+//     appartient visiblement au compte de cette personne ;
+//   — elle se leve de deux pixels au survol, avec son ombre : le relief
+//     repond, au lieu de rester une image.
+function KpiCard({ label, value, sub, accent, valeurBrute, format, teinte }) {
   return (
-    <div className={`rounded-xl border p-5 ${accent ? "bg-nordfjord border-nordfjord" : "bg-white border-ash"}`}>
+    <div
+      style={{ boxShadow: accent ? "var(--ombre-leve)" : "var(--ombre-pose)" }}
+      className={`relative overflow-hidden rounded-xl border p-5
+                  transition-[transform,box-shadow] duration-200 ease-out
+                  hover:-translate-y-0.5 ${
+        accent ? "bg-nordfjord border-nordfjord" : "bg-white border-ash"}`}>
+      {/* Le filet de tete : un degrade qui s'eteint vers la droite, pour que
+          la couleur signe la carte sans la souligner comme un onglet. */}
+      {teinte && (
+        <span aria-hidden="true" className="absolute inset-x-0 top-0 h-[3px]"
+              style={{ background: `linear-gradient(90deg, ${teinte} 0%, transparent 85%)` }} />
+      )}
       <p className={`font-data text-[10px] font-semibold uppercase tracking-[0.2em] mb-2 ${accent ? "text-nova" : "text-glacier"}`}>
         {label}
       </p>
-      <p className={`font-display text-2xl font-bold ${accent ? "text-white" : "text-nordfjord"}`}>{value}</p>
+      {valeurBrute != null && format ? (
+        <ChiffreAnime valeur={valeurBrute} format={format}
+          className={`block font-display text-[26px] sm:text-[30px] font-bold leading-none tracking-[-0.02em] ${accent ? "text-white" : "text-nordfjord"}`} />
+      ) : (
+        <p className={`font-display text-[26px] sm:text-[30px] font-bold leading-none tracking-[-0.02em] ${accent ? "text-white" : "text-nordfjord"}`}>{value}</p>
+      )}
       {/* Devise ou precision. Sans elle, rien ne distingue un montant en CAD
           d'un montant en USD sur un ecran ou les deux coexistent. */}
       {sub && (
-        <p className={`font-data text-[10px] uppercase tracking-[0.16em] mt-1 ${accent ? "text-white/60" : "text-glacier"}`}>
+        <p className={`font-data text-[10px] uppercase tracking-[0.16em] mt-2 ${accent ? "text-mist" : "text-glacier"}`}>
           {sub}
         </p>
       )}

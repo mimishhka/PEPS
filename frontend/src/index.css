@@ -50,7 +50,24 @@
   --fn-palier-or:       155 110 25;    /* #9B6E19 — 4,53:1 */
   --fn-palier-platine:  57 122 170;    /* #397AAA — 4,63:1 */
   --fn-palier-diamant:  120 99 213;    /* #7863D5 — 4,62:1 */
-  --fn-palier-defaut:   100 116 139;   /* #64748B — 4,76:1 */   /* texte sur ink : l'ink est CONSTANT d'un mode a l'autre, son texte doit l'etre aussi */
+  --fn-palier-defaut:   100 116 139;   /* #64748B — 4,76:1 */
+
+  /* LES ICONES GARDENT LEUR ECLAT — j'avais applique la mauvaise regle.
+   *
+   * Le seuil de 4,5:1 vaut pour du TEXTE. Un objet graphique — une icone, une
+   * barre, un trait — n'exige que 3:1. En durcissant les six paliers au seuil
+   * du texte, j'ai eteint les symboles sans aucune raison : Mireille l'a vu
+   * tout de suite, « les icones de palier avaient des couleurs ».
+   *
+   * Deux familles, donc, et chacune a son travail : le trait du LIBELLE reste
+   * au seuil du texte, le SYMBOLE reprend sa vivacite au seuil graphique. */
+  --fn-vif-standard:  39 165 152;    /* #27A598 — 3,03:1 sur blanc */
+  --fn-vif-bronze:    201 123 63;    /* #C97B3F — 3,29:1, la valeur d'origine */
+  --fn-vif-argent:    129 151 166;   /* #8197A6 — 3,04:1 */
+  --fn-vif-or:        193 136 31;    /* #C1881F — 3,08:1 */
+  --fn-vif-platine:   93 155 201;    /* #5D9BC9 — 3,00:1 */
+  --fn-vif-diamant:   152 136 223;   /* #9888DF — 3,03:1 */
+  --fn-vif-defaut:    120 136 158;   /* #78889E — 3,05:1 */   /* texte sur ink : l'ink est CONSTANT d'un mode a l'autre, son texte doit l'etre aussi */
 
   /* Anciennes variables hexadécimales, conservées : plusieurs feuilles de
    * style et styles en ligne les utilisent encore directement. Elles suivent
@@ -78,6 +95,23 @@
   /* ECHELLE DE PROFONDEUR — une seule ombre, teintee de la marque, avec
      decalage et flou doux (jamais de halo colore sans decalage). */
   --ombre: 0 1px 2px rgb(11 46 79 / 0.05), 0 16px 40px -24px rgb(11 46 79 / 0.22);
+
+  /* TROIS NIVEAUX, PAS UN SEUL.
+   *
+   * Mireille : « il n'y a aucune profondeur ». Une page ou tout est pose au
+   * meme plan n'a pas de hierarchie : l'oeil ne sait pas ou se poser, et
+   * chaque boite reclame la meme attention. Trois niveaux suffisent — au-dela
+   * on empile du brouillard.
+   *
+   * Chaque ombre porte un DECALAGE et un FLOU DOUX, et sa teinte vient de
+   * l'encre de la marque : une ombre noire pure sur un fond bleute se voit
+   * comme une salissure. */
+  --ombre-pose:  0 1px 2px rgb(11 46 79 / 0.06),
+                 0 2px 6px -2px rgb(11 46 79 / 0.08);
+  --ombre-leve:  0 2px 4px rgb(11 46 79 / 0.06),
+                 0 12px 28px -10px rgb(11 46 79 / 0.16);
+  --ombre-flotte: 0 4px 8px rgb(11 46 79 / 0.07),
+                  0 28px 56px -20px rgb(11 46 79 / 0.24);
 
   /* ECHELLE Z — plus de z-[10050] arbitraires dans les composants. */
   --z-sticky: 30;
@@ -111,7 +145,16 @@
  * et devient illisible en petit corps. Leur sens ne change pas, leur lisibilité
  * l'exige. L'identité réserve d'ailleurs les tons chauds à l'avertissement —
  * cette distinction est donc respectée, pas contournée. */
+/* EN MODE NUIT, UNE OMBRE NE SE VOIT PAS : c'est du noir sur du noir. La
+   profondeur y passe par la LUMIERE — un liseré clair sur l'arête haute, comme
+   une surface qui accroche un éclairage venu d'en haut. */
 .dark {
+  --ombre-pose:  0 1px 0 rgb(255 255 255 / 0.05) inset,
+                 0 1px 3px rgb(0 0 0 / 0.5);
+  --ombre-leve:  0 1px 0 rgb(255 255 255 / 0.07) inset,
+                 0 12px 28px -10px rgb(0 0 0 / 0.65);
+  --ombre-flotte: 0 1px 0 rgb(255 255 255 / 0.09) inset,
+                  0 28px 56px -20px rgb(0 0 0 / 0.75);
   --fn-nordfjord:   247 250 252;   /* #F7FAFC — Clinical White, texte sur sombre */
   --fn-glacier:     159 182 204;   /* #9FB6CC — secondaire sur Nordfjord (identité) */
   --fn-nova:        0 184 212;     /* #00B8D4 — INCHANGÉ, l'accent unique */
@@ -138,6 +181,15 @@
   --fn-palier-platine:  127 176 212;   /* #7FB0D4 — 8,30:1 */
   --fn-palier-diamant:  155 139 224;   /* #9B8BE0 — 6,56:1 */
   --fn-palier-defaut:   109 126 150;   /* #6D7E96 — 4,65:1 */
+  /* En mode nuit, les valeurs d'origine brillent deja sur l'ink : le symbole
+     et le libelle peuvent partager la meme famille sans rien perdre. */
+  --fn-vif-standard:  45 191 176;
+  --fn-vif-bronze:    216 140 82;
+  --fn-vif-argent:    159 179 192;
+  --fn-vif-or:        240 184 74;
+  --fn-vif-platine:   143 190 224;
+  --fn-vif-diamant:   170 155 238;
+  --fn-vif-defaut:    134 152 178;
   --fn-card:        11 46 79;      /* #0B2E4F — Nordfjord, la surface de la marque */
 
   color-scheme: dark;
