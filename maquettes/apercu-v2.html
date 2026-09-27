@@ -92,8 +92,10 @@
   .argent .droite{display:flex;align-items:center;gap:13px;padding-left:22px;
                   border-left:1px solid rgba(255,255,255,.13)}
   .argent .nom{font-family:var(--display);font-size:19px;font-weight:700}
-  .argent .taux{font-family:var(--data);font-size:13px;font-weight:600;color:var(--or);
-                margin-top:4px;letter-spacing:.06em}
+  /* Le taux n'est PAS un libelle en capitales : l'espacement large le
+     cassait. Texte mono, donc un leger .03em suffit. */
+.argent .taux{font-family:var(--data);font-size:13px;font-weight:600;color:var(--or);
+              margin-top:4px;letter-spacing:.03em}
 
   /* ---------------- la preuve ----------------
      L'ECHELLE EST ANCREE AU RYTHME DU PALIER, jamais aux donnees.
