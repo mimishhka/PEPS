@@ -79,17 +79,17 @@ export default function CarteAffilie({
 
   // ---------------------------------------------------------------- jauge
   const total = Number(data?.rolling12_revenue || 0);
-  // LE CLIQUET : le palier suit `base_vive` (mois clos + mois en cours), pas
-  // `rolling12_revenue`. Placer la jauge sur la base close montrerait
-  // l'affiliee en arriere de la ou elle est vraiment.
-  const vive = data?.base_vive != null ? Number(data.base_vive) : total;
-  const courantVentes = Number(data?.mois_courant_ventes || 0);
+  // LA REGLE EN TROIS PARTIES (Mireille). `total` = douze mois clos : le
+  // planNCHER du mois, arrete le 1er. `projection` = onze mois + mois en
+  // cours : la PREVISION du 1er prochain, qui est AUSSI la base du cliquet —
+  // un seuil franchi sur cette base paie tout de suite ET tient au 1er.
   const projection = Number(data?.projection_prochaine_periode || 0);
   const plafond = Number(suivant?.floor || 0);
   const etendue = plafond > plancher ? plafond - plancher : 0;
   const pct = (v) => (etendue > 0
     ? Math.min(100, Math.max(0, ((v - plancher) / etendue) * 100)) : 0);
-  const position = pct(vive);
+  // La barre montre la base qui compte VRAIMENT : le plus haut des deux.
+  const position = pct(Math.max(total, projection));
   const positionProjetee = pct(projection);
   const descend = projection < total;
 
@@ -261,29 +261,15 @@ export default function CarteAffilie({
         <p className="font-data text-[13px] font-semibold tracking-[0.02em] tabular-nums
                       mt-4 pt-4 border-t border-white/12"
            data-testid="affiliate-periode-total">
-          {money(vive)}
+          {money(total)}
           <em className="not-italic block font-body text-[12px] font-normal tracking-normal
                          text-mist mt-1 leading-snug">
-            {/* LA LIGNE REPOND A LA QUESTION QU'ELLE POSE.
-                « 11 240 + 410 » est exact mais ne dit pas POURQUOI le mois en
-                cours compte. La reponse, c'est le cliquet : les ventes du mois
-                peuvent faire monter le taux TOUT DE SUITE. La ligne le dit en
-                toutes lettres, pour qu'aucune question ne reste. Sans palier
-                au-dessus (Diamant), la seconde moitie change de sens. */}
-            {L(courantVentes > 0
-               ? suivant
-                 ? `${money(total)} sur les douze mois clos + ${money(courantVentes)} de ce mois-ci — vos ventes du mois peuvent faire monter votre taux tout de suite`
-                 : `${money(total)} sur les douze mois clos + ${money(courantVentes)} de ce mois-ci — vous êtes au palier le plus haut`
-               : suivant
-                 ? `${money(total)} sur les douze mois clos — une vente ce mois-ci peut déjà faire monter votre taux`
-                 : `${money(total)} sur les douze mois clos — vous êtes au palier le plus haut`,
-               courantVentes > 0
-               ? suivant
-                 ? `${money(total)} over the twelve closed months + ${money(courantVentes)} this month — this month's sales can raise your rate right away`
-                 : `${money(total)} over the twelve closed months + ${money(courantVentes)} this month — you are at the highest tier`
-               : suivant
-                 ? `${money(total)} over the twelve closed months — a sale this month can already raise your rate`
-                 : `${money(total)} over the twelve closed months — you are at the highest tier`)}
+            {/* LA REGLE DITE EN DEUX LIGNES. Le grand chiffre est la base du
+                mois en cours (douze mois clos). La prevision du 1er prochain
+                suit, sur les onze mois + le mois en cours : c'est elle qui
+                paie les montees, tout de suite ET durablement. */}
+            {L(`${money(total)} sur les douze derniers mois — c'est ce qui fixe votre taux ce mois-ci. Prévision au ${jourCourt(data?.prochaine_periode_debut)} : ${money(projection)} (les onze derniers mois + ce mois-ci).`,
+               `${money(total)} over the last twelve months — this sets your rate this month. Forecast on ${jourCourt(data?.prochaine_periode_debut)}: ${money(projection)} (the last eleven months + this month).`)}
           </em>
         </p>
 

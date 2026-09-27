@@ -248,60 +248,80 @@ def _rang(tier):
     return [p[0] for p in PALIERS].index(tier)
 
 
-def _palier_a_cliquet(base_close, mois_courant):
-    """base_close fixe le plancher du mois ; base_vive peut le faire monter."""
+def _palier_a_cliquet(base_close, sortant, mois_courant):
+    """REGLES DE MIREILLE : douze mois clos = le plancher ; la PREVISION
+    (onze mois + mois en cours) = la base qui fait monter, tout de suite et
+    durablement, puisque la prevision DEVIENT la base du 1er prochain."""
     plancher = _palier(base_close)
-    vive = _palier(base_close + mois_courant)
-    return vive if _rang(vive) >= _rang(plancher) else plancher
+    projection = max(0.0, base_close - sortant + mois_courant)
+    proj = _palier(projection)
+    return proj if _rang(proj) >= _rang(plancher) else plancher
 
 
 def test_le_palier_monte_des_le_seuil_franchi():
     """LE DEFAUT QUE MIREILLE A TROUVE.
 
     1 900 $ sur les mois clos : Standard. Une vente de 150 $ le 3 du mois
-    franchit les 2 001 $ de Bronze — le taux doit passer a 12 % sur les
-    commandes suivantes, pas au 1er du mois prochain.
+    porte la PREVISION (onze mois + mois en cours) a 2 050 $ : Bronze.
+    Le taux doit passer a 12 % sur les commandes suivantes, pas au 1er.
     """
     assert _palier(1900.0) == "standard"
-    assert _palier_a_cliquet(1900.0, 150.0) == "bronze"
+    assert _palier_a_cliquet(1900.0, 0.0, 150.0) == "bronze"
+
+
+def test_la_montee_se_mesure_sur_la_prevision_et_tient_au_1er():
+    """LA PROPRIETE QUI REND LA MONTTE DURABLE.
+
+    Pour monter, il faut combler ce que le mois sortant emporte : la montee
+    se mesure sur la PREVISION, qui est exactement la base du 1er prochain.
+    Ce qu'on monte, on le garde donc au changement de periode.
+    """
+    # Douze mois clos : 9 600 (Argent). Le mois sortant vaut 1 400.
+    assert _palier(9600.0) == "silver"
+    # Avec 1 000 de ventes ce mois-ci : prevision = 9 200 -> toujours Argent.
+    assert _palier_a_cliquet(9600.0, 1400.0, 1000.0) == "silver"
+    # Avec 1 900 : prevision = 10 100 -> Or, IMMEDIATEMENT.
+    assert _palier_a_cliquet(9600.0, 1400.0, 1900.0) == "gold"
+    # Et le 1er octobre, la base du mois est 9 600 - 1 400 + 1 900 = 10 100 :
+    # le palier Or TIENT. La prevision est devenue la base.
+    assert _palier(9600.0 - 1400.0 + 1900.0) == "gold"
 
 
 def test_le_palier_ne_descend_pas_en_cours_de_mois():
     """Une commission du mois annulee ne doit pas faire tomber le taux.
 
-    Sans le cliquet, `base_vive` baisserait et le palier avec elle, EN PLEIN
-    MOIS — exactement la penalite qu'on cherche a supprimer, dans l'autre sens.
+    Sans le max(), la prevision baisserait et le palier avec elle, EN PLEIN
+    MOIS — exactement la penalite qu'on cherche a supprimer, dans l'autre
+    sens. Le plancher (douze mois clos) tient.
     """
     # Les mois clos donnent deja Or : c'est le plancher du mois.
     assert _palier(10500.0) == "gold"
     # Meme avec un mois courant negatif (annulations), le plancher tient.
-    assert _palier_a_cliquet(10500.0, -800.0) == "gold"
+    assert _palier_a_cliquet(10500.0, 0.0, -800.0) == "gold"
 
 
 def test_le_cliquet_ne_saute_jamais_un_palier_vers_le_bas():
     for close in (0.0, 2500.0, 6000.0, 12000.0, 25000.0, 40000.0):
         plancher = _palier(close)
-        for courant in (0.0, 10.0, 5000.0, 50000.0):
-            obtenu = _palier_a_cliquet(close, courant)
-            assert _rang(obtenu) >= _rang(plancher), (close, courant)
+        for sortant in (0.0, 1000.0, 3000.0):
+            for courant in (0.0, 10.0, 5000.0, 50000.0):
+                obtenu = _palier_a_cliquet(close, sortant, courant)
+                assert _rang(obtenu) >= _rang(plancher), (close, sortant, courant)
 
 
-def test_les_deux_montants_ne_se_mesurent_pas_sur_la_meme_base():
-    """Deux questions differentes, donc deux bases. Les confondre rend l'une fausse.
+def test_les_deux_montants_se_mesurent_sur_la_meme_base():
+    """UNE base pour les deux : la prevision.
 
-      « Garder mon taux le mois prochain ? »  -> la PROJECTION (le mois
-        sortant quittera la fenetre le 1er).
-      « Monter, maintenant ? »                -> la BASE VIVE (le cliquet
-        applique le nouveau taux des le seuil franchi).
+    « Garder mon taux le mois prochain ? » et « Monter ? » repondent a la
+    meme question : ou en sera la fenetre du 1er. Mesurer la montee sur une
+    autre base ferait promettre un palier que la fenetre ne tient pas.
     """
     close, sortant, courant = 4120.0, 240.0, 615.0
-    vive = close + courant                    # 4 735 $ — ce qui compte maintenant
-    projection = close - sortant + courant    # 4 495 $ — ce qui comptera le 1er
-    assert vive == 4735.0 and projection == 4495.0
-    # Monter vers Argent, tout de suite : mesure sur la base vive.
-    assert round(max(0.0, 5001.0 - vive), 2) == 266.0
-    # Garder Bronze le mois prochain : mesure sur la projection.
+    projection = close - sortant + courant    # 4 495 $ — la base du 1er
+    assert projection == 4495.0
+    # Garder Bronze : deja atteint sur la prevision.
     assert round(max(0.0, 2001.0 - projection), 2) == 0.0
-    # Les deux chiffres different de 240 $ — le mois qui sort. Les afficher
-    # sur la meme base ferait mentir l'un des deux.
-    assert round((5001.0 - projection) - (5001.0 - vive), 2) == 240.0
+    # Monter vers Argent : 506, et cette montee TIENT au 1er, puisque la
+    # prevision devient la base du mois suivant.
+    assert round(max(0.0, 5001.0 - projection), 2) == 506.0
+    assert _palier(projection + 506.0) == "silver"

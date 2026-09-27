@@ -560,24 +560,21 @@ async def _affiliate_compute_metrics(affiliate_id: str,
                                      avec_mensuel: bool = False) -> dict:
     """Agrège les référrals validés (approved|paid) et calcule le palier.
 
-    Le palier repose sur les DOUZE MOIS CALENDAIRES CLOS précédant le mois en
-    cours, plus le mois en cours lui-même — et la règle est ASYMÉTRIQUE :
+    LA REGLE DE MIREILLE, EN TROIS PARTIES :
 
-      — VERS LE HAUT, tout de suite. Dès qu'un seuil est franchi, le taux
-        supérieur s'applique aux commandes suivantes, sans attendre le 1er.
-      — VERS LE BAS, le 1er seulement. Le palier arrêté au premier jour du
-        mois est un PLANCHER : il ne peut pas tomber en cours de mois, même
-        si une commission du mois est annulée.
-
-    Mireille : « si un affilié atteint un seuil au cours d'un mois je le
-    pénalise sur sa commission ». C'était exact : une première version ne
-    comptait que les mois clos, et un affilié qui franchissait Bronze le 3 du
-    mois continuait à toucher 10 % jusqu'au 1er suivant. Il était puni d'avoir
-    bien vendu.
-
-    Le cliquet donne les deux : la récompense est immédiate, et le taux
-    annoncé reste tenable — on promet un MINIMUM pour le mois, jamais un
-    plafond.
+      — La commission du mois en cours repose sur les ventes des DOUZE MOIS
+        CLOS. Arrêtée le 1er, elle est le PLANCHER du mois : elle ne peut pas
+        tomber avant le 1er suivant, même si une commission du mois est
+        annulée.
+      — La PRÉVISION du mois suivant repose sur les ONZE MOIS CLOS + le mois
+        en cours : c'est la fenêtre du 1er prochain, une fois le mois le plus
+        ancien sorti. C'est elle qu'on affiche — elle ne ment pas sur ce que
+        sera le palier.
+      — Si un seuil est franchi pendant le mois, la commission change
+        IMMÉDIATEMENT. Le cliquet se mesure sur la MÊME base que la prévision,
+        pour que ce qu'on monte, on le GARDE au 1er : une montée mesurée sur
+        douze mois + courant s'évaporait au changement de période, et
+        l'affilié redescendait sans rien avoir fait de mal.
 
     Voir `_affiliate_periode_palier` pour le détail de ce que remplaçait la
     fenêtre de 365 jours, et pourquoi elle était inexplicable à un affilié.
@@ -735,21 +732,24 @@ async def _affiliate_compute_metrics(affiliate_id: str,
     excluded_commission = float(t.get("excluded_commission", 0.0))
     validated_orders = int(t.get("validated_orders", 0))
 
-    # LE CLIQUET.
+    # LES TROIS BASES DE LA REGLE.
     #
-    # `base_close` ne bouge pas du mois : c'est elle qui fixe le PLANCHER du
-    # taux, annonce des le 1er. `base_vive` y ajoute le mois en cours : c'est
-    # elle qui fait MONTER le palier des qu'un seuil est franchi.
+    # `base_close` (douze mois clos) fixe le PLANCHER du mois. `projection`
+    # (onze mois + mois en cours) est a la fois la PREVISION du 1er prochain
+    # et la base du CLIQUET : un seuil franchi sur cette base paie tout de
+    # suite, et la montee tient au changement de periode puisque la prevision
+    # DEVIENT la base du mois suivant.
     #
     # Le max() n'est pas decoratif. Sans lui, une commission du mois annulee
-    # ferait baisser `base_vive` et donc le taux, EN PLEIN MOIS — exactement
-    # la penalite qu'on cherche a supprimer.
+    # ferait baisser la projection, donc le taux, EN PLEIN MOIS — exactement
+    # la penalite qu'on cherche a supprimer. Le plancher, lui, ne bouge pas.
     mois_courant_brut = float(t.get("mois_courant", 0.0))
+    mois_sortant_brut = float(t.get("mois_sortant", 0.0))
     base_close = rolling12
-    base_vive = rolling12 + mois_courant_brut
+    projection_brut = max(0.0, rolling12 - mois_sortant_brut + mois_courant_brut)
     palier_plancher_mois = _affiliate_tier_for_revenue(base_close)
     theoretical = _affiliate_palier_le_plus_haut(
-        _affiliate_tier_for_revenue(base_vive), palier_plancher_mois)
+        _affiliate_tier_for_revenue(projection_brut), palier_plancher_mois)
     effective = _palier_effectif(manual_tier, theoretical,
                                  bool((affiliate or {}).get("tier_agreement")))
 
@@ -769,27 +769,25 @@ async def _affiliate_compute_metrics(affiliate_id: str,
     #   — ce qu'il faut vendre pour reconduire le taux actuel ;
     #   — ce qu'il faut vendre pour atteindre le palier au-dessus.
     # Les deux ont la meme echeance : le dernier jour du mois en cours.
-    mois_sortant = float(t.get("mois_sortant", 0.0))
+    mois_sortant = mois_sortant_brut
     mois_courant = mois_courant_brut
-    projection = max(0.0, rolling12 - mois_sortant + mois_courant)
+    projection = projection_brut
     palier_projete = _affiliate_tier_for_revenue(projection)
 
     plancher_actuel = _affiliate_tier_bounds(effective)[0]
     # Sous entente, le palier est fige : il n'y a RIEN a reconduire, et
     # afficher un montant serait une fausse peur.
     sous_entente = bool((affiliate or {}).get("tier_agreement")) or manual_tier is not None
-    # DEUX QUESTIONS DIFFERENTES, DEUX BASES DIFFERENTES.
+    # LES DEUX MONTANTS, UNE SEULE BASE : LA PREVISION.
     #
-    #   « Combien pour garder mon taux le mois prochain ? »  -> la PROJECTION,
-    #     parce que le mois sortant quittera la fenetre le 1er.
-    #   « Combien pour monter, maintenant ? »                -> la BASE VIVE,
-    #     parce que le cliquet applique le nouveau taux des le seuil franchi.
-    #
-    # Les mesurer sur la meme base rendrait l'une des deux fausse.
+    # « Combien pour garder mon taux le mois prochain ? » et « Combien pour
+    # monter ? » repondent a la meme question : ou en sera la fenetre du
+    # 1er. Les deux se mesurent donc sur la projection — ainsi, le montant
+    # « pour monter » declenche la hausse immediate ET la tient au 1er.
     maintien = None if sous_entente else max(0.0, plancher_actuel - projection)
     atteinte = None
     if nxt and not sous_entente:
-        atteinte = max(0.0, nxt["floor"] - base_vive)
+        atteinte = max(0.0, nxt["floor"] - projection)
 
     remaining = None
     progress = None
@@ -879,10 +877,6 @@ async def _affiliate_compute_metrics(affiliate_id: str,
         "mois_courant_commission": round(float(t.get("mois_courant_commission", 0.0)), 2),
         "mois_courant_commandes": int(t.get("mois_courant_commandes", 0)),
         "projection_prochaine_periode": round(projection, 2),
-        # La base qui fait monter le palier TOUT DE SUITE : mois clos + mois
-        # en cours. L'ecran en a besoin pour placer la jauge sur la position
-        # reelle, pas sur celle du 1er.
-        "base_vive": round(base_vive, 2),
         # Le palier arrete le 1er : le plancher du mois. L'ecran s'en sert pour
         # dire « au minimum X % jusqu'au ... », une promesse tenable.
         "palier_plancher_mois": palier_plancher_mois,
@@ -924,11 +918,14 @@ async def _affiliate_compute_list_metrics(affiliates: list[dict]) -> dict[str, d
         return {}
 
     quarter_start = _affiliate_quarter_start().isoformat()
-    # 365 derniers jours : c'est CETTE fenêtre qui fixe le palier, comme dans
-    # _affiliate_compute_metrics(). Cette liste calculait encore sur le cumul à
-    # vie avec rétrogradation trimestrielle — une TROISIÈME version de la même
-    # règle, donc un palier affiché à l'admin que l'affilié n'avait pas.
-    tier_window_start = (datetime.now(timezone.utc) - timedelta(days=365)).isoformat()
+    # LA MEME REGLE QUE _affiliate_compute_metrics(), en deux sommes : douze
+    # mois clos (le plancher) et onze mois + courant (la prevision qui fait
+    # monter). Le max des deux est le palier reel — sans quoi la liste admin
+    # afficherait un palier que la fiche de l'affilie contredit.
+    maintenant = datetime.now(timezone.utc)
+    debut_mois = _affiliate_mois_debut(maintenant).isoformat()
+    start_12 = _affiliate_mois_decale(maintenant, -12).isoformat()
+    start_11 = _affiliate_mois_decale(maintenant, -11).isoformat()
     grouped = {}
     async for row in s.db.affiliate_referrals.aggregate([
         {"$match": {"affiliate_id": {"$in": [affiliate["id"] for affiliate in active]}}},
@@ -941,7 +938,15 @@ async def _affiliate_compute_list_metrics(affiliates: list[dict]) -> dict[str, d
             "rolling12_revenue": {"$sum": {"$cond": [
                 {"$and": [
                     {"$in": ["$status", ["approved", "paid"]]},
-                    {"$gte": [{"$ifNull": ["$approved_at", "$created_at"]}, tier_window_start]},
+                    {"$gte": [{"$ifNull": ["$approved_at", "$created_at"]}, start_12]},
+                    {"$lt": [{"$ifNull": ["$approved_at", "$created_at"]}, debut_mois]},
+                ]},
+                {"$ifNull": ["$base_amount", 0]}, 0,
+            ]}},
+            "projection_revenue": {"$sum": {"$cond": [
+                {"$and": [
+                    {"$in": ["$status", ["approved", "paid"]]},
+                    {"$gte": [{"$ifNull": ["$approved_at", "$created_at"]}, start_11]},
                 ]},
                 {"$ifNull": ["$base_amount", 0]}, 0,
             ]}},
@@ -972,14 +977,16 @@ async def _affiliate_compute_list_metrics(affiliates: list[dict]) -> dict[str, d
         cumulative = float(totals.get("cumulative_revenue", 0))
         quarter = float(totals.get("quarter_revenue", 0))
         rolling12 = float(totals.get("rolling12_revenue", 0))
+        projection = float(totals.get("projection_revenue", 0))
         manual_tier = str(affiliate.get("manual_tier") or "").strip().lower() or None
         if manual_tier not in valid_tiers:
             manual_tier = None
-        # Même règle que partout ailleurs, et par le MÊME code : douze mois
-        # glissants, entente prioritaire, ajustement manuel traité comme un
-        # plancher. Cette ligne recopiait la règle ; la liste admin affichait
-        # donc un palier que la fiche de l'affilié pouvait contredire.
-        theoretical = _affiliate_tier_for_revenue(rolling12)
+        # Même règle que partout ailleurs, et par le MÊME code : plancher
+        # sur douze mois clos, cliquet sur la prévision (onze mois + courant),
+        # entente prioritaire, ajustement manuel traité comme un plancher.
+        theoretical = _affiliate_palier_le_plus_haut(
+            _affiliate_tier_for_revenue(projection),
+            _affiliate_tier_for_revenue(rolling12))
         effective = _palier_effectif(manual_tier, theoretical,
                                      bool(affiliate.get("tier_agreement")))
         metrics[affiliate["id"]] = {

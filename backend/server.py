@@ -10468,6 +10468,7 @@ try:
         _affiliate_hash_token, _affiliate_referrer_domain,
         _affiliate_normalize_custom_code, _affiliate_gen_code_v2, _fetch_cad_to_usd_rate,
         _normalize_payout, _detect_payout_network, _affiliate_quarter_start, _affiliate_compute_metrics,
+        _affiliate_mois_debut, _affiliate_mois_decale, _affiliate_palier_le_plus_haut,
         _affiliate_compute_list_metrics, _affiliate_public, _affiliate_send_invite,
         _affiliate_ensure_coupon, affiliate_capture_click, affiliate_attach_to_order,
         affiliate_on_order_paid, affiliate_on_order_reversed, affiliate_maintenance_watchdog,
@@ -10484,6 +10485,7 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
         _affiliate_hash_token, _affiliate_referrer_domain,
         _affiliate_normalize_custom_code, _affiliate_gen_code_v2, _fetch_cad_to_usd_rate,
         _normalize_payout, _detect_payout_network, _affiliate_quarter_start, _affiliate_compute_metrics,
+        _affiliate_mois_debut, _affiliate_mois_decale, _affiliate_palier_le_plus_haut,
         _affiliate_compute_list_metrics, _affiliate_public, _affiliate_send_invite,
         _affiliate_ensure_coupon, affiliate_capture_click, affiliate_attach_to_order,
         affiliate_on_order_paid, affiliate_on_order_reversed, affiliate_maintenance_watchdog,
@@ -12881,7 +12883,12 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
     alertes, attribution, série mensuelle, top affiliés, distribution tiers."""
     now = datetime.now(timezone.utc)
     quarter_start = _affiliate_quarter_start()
-    tier_window_start = now - timedelta(days=365)
+    # Deux fenetres, comme partout : douze mois clos (le plancher du mois)
+    # et onze mois + mois en cours (la prevision qui fait monter). Le palier
+    # reel est le plus haut des deux.
+    tier_debut_mois = _affiliate_mois_debut(now).isoformat()
+    tier_start_12 = _affiliate_mois_decale(now, -12).isoformat()
+    tier_start_11 = _affiliate_mois_decale(now, -11).isoformat()
 
     # --- Effectifs ---
     active = await db.affiliates.count_documents({"status": "active"})
@@ -12945,15 +12952,27 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
                     # a cote d'un chiffre d'affaires non nul.
                     "orders": {"$sum": 1},
                     "cumulative": {"$sum": {"$ifNull": ["$base_amount", 0]}},
-                    # 365 derniers jours — c'est CETTE somme qui fixe le palier,
-                    # comme dans _affiliate_compute_metrics(). Sans elle, l'admin
-                    # classait sur le cumul a vie pendant que l'affilie voyait un
-                    # palier calcule sur douze mois glissants : deux reponses
-                    # differentes a la meme question.
+                    # Les deux sommes qui font le palier reel, comme dans
+                    # _affiliate_compute_metrics() : douze mois clos borne au
+                    # debut du mois (le plancher), et onze mois + mois en cours
+                    # (la prevision qui fait monter).
                     "rolling12": {"$sum": {"$cond": [
+                        {"$and": [
+                            {"$gte": [
+                                {"$ifNull": ["$approved_at", "$created_at"]},
+                                tier_start_12,
+                            ]},
+                            {"$lt": [
+                                {"$ifNull": ["$approved_at", "$created_at"]},
+                                tier_debut_mois,
+                            ]},
+                        ]},
+                        {"$ifNull": ["$base_amount", 0]}, 0,
+                    ]}},
+                    "projection": {"$sum": {"$cond": [
                         {"$gte": [
                             {"$ifNull": ["$approved_at", "$created_at"]},
-                            tier_window_start.isoformat(),
+                            tier_start_11,
                         ]},
                         {"$ifNull": ["$base_amount", 0]}, 0,
                     ]}},
@@ -13030,6 +13049,7 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
     for affiliate in active_affiliates:
         values = tier_revenue.get(affiliate.get("id"), {})
         rolling12 = float(values.get("rolling12", 0.0))
+        projection = float(values.get("projection", 0.0))
         manual_tier = str(affiliate.get("manual_tier") or "").strip().lower() or None
         if manual_tier not in valid_tiers:
             manual_tier = None
@@ -13043,7 +13063,9 @@ async def admin_affiliates_overview(admin: dict = Depends(get_admin_user)):  # n
         # commentaire se felicitait d'avoir corrige.
         tier = _palier_effectif(
             manual_tier,
-            _affiliate_tier_for_revenue(rolling12),
+            _affiliate_palier_le_plus_haut(
+                _affiliate_tier_for_revenue(projection),
+                _affiliate_tier_for_revenue(rolling12)),
             bool(affiliate.get("tier_agreement")),
         )
         tier_distribution[tier] = tier_distribution.get(tier, 0) + 1

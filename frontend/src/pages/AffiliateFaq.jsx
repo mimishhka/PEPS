@@ -83,7 +83,7 @@ const QA = [
     fr: {
       q: "Comment mon palier est-il déterminé ?",
       a: [
-        "Par votre chiffre d'affaires validé sur les douze mois calendaires clos qui précèdent le mois en cours. En octobre, la période va donc du 1er octobre de l'année précédente au 30 septembre.",
+        "Votre taux du mois repose sur vos ventes validées des douze derniers mois. La prévision affichée pour le mois suivant repose sur les onze derniers mois plus le mois en cours — c'est la fenêtre qui s'appliquera le 1er prochain.",
         "Un taux minimum est arrêté le 1er de chaque mois : il ne peut pas baisser avant le 1er suivant, quoi qu'il arrive. Vous savez donc, dès le premier jour, le taux le plus bas auquel vous vendrez ce mois-ci.",
         "Mais il peut monter en cours de mois : dès que vos ventes franchissent un seuil — le mois en cours compris —, le taux supérieur s'applique aux commandes suivantes, sans attendre le 1er.",
         "Les paliers : Standard 10 % jusqu'à 2 000 $, Bronze 12 % à partir de 2 001 $, Silver 14 % à partir de 5 001 $, Gold 16 % à partir de 10 001 $, Platinum 18 % à partir de 20 001 $, Diamond 20 % à partir de 35 001 $.",
@@ -99,7 +99,7 @@ const QA = [
     en: {
       q: "How is my tier determined?",
       a: [
-        "By your validated revenue over the twelve closed calendar months preceding the current month. In October, the period runs from 1 October of the previous year to 30 September.",
+        "Your rate this month rests on your validated sales over the last twelve months. The forecast shown for next month rests on the last eleven months plus the current month — the window that will apply on the next 1st.",
         "A minimum rate is set on the 1st of each month : it cannot go down before the next 1st, whatever happens. From day one you know the lowest rate you will be selling at this month.",
         "It can go up during the month, though : as soon as your sales cross a threshold — counting the current month —, the higher rate applies to subsequent orders, without waiting for the 1st.",
         "The tiers: Standard 10% up to $2,000, Bronze 12% from $2,001, Silver 14% from $5,001, Gold 16% from $10,001, Platinum 18% from $20,001, Diamond 20% from $35,001.",
