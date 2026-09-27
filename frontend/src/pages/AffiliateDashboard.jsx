@@ -1125,6 +1125,13 @@ export default function AffiliateDashboard() {
                     </div>
                   ))}
                 </div>
+                <p className="mt-3 text-[12px]">
+                  <Link to="/" className="text-nova underline"
+                        data-testid="share-catalogue-link">
+                    {L("Voir tout le catalogue et partager d'autres produits",
+                       "See the full catalogue and share other products")}
+                  </Link>
+                </p>
                 <p className="font-data text-[10px] text-glacier mt-3 leading-relaxed">
                   {personalTop
                     ? L("Ces produits ont déjà convaincu votre audience. Un rappel bien placé peut relancer les ventes.",

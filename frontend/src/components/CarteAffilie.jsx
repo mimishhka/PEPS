@@ -95,7 +95,7 @@ export default function CarteAffilie({
   const echeance = jourCourt(data?.taux_valide_jusqu_au);
 
   return (
-    <div className="relative overflow-hidden bg-marine texture-bruit"
+    <div className="relative overflow-hidden bg-marine text-clinical texture-bruit"
          style={{
            borderRadius: "var(--r-l)", boxShadow: "var(--ombre-flotte)",
            // LA CARTE RESTE MARINE DANS LES DEUX MODES : ses jetons de texte
@@ -187,7 +187,7 @@ export default function CarteAffilie({
              data-testid="affiliate-periode-graph">
           <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em]
                         text-nova pb-2.5 mb-3 border-b border-dashed border-white/20">
-            {L("Ce mois-ci", "This month")}
+            {L("Votre taux ce mois-ci", "Your rate this month")}
           </p>
           <p className="font-display text-[26px] sm:text-[30px] font-bold leading-none
                         tracking-[-0.03em] tabular-nums" data-testid="affiliate-periode-total">
@@ -311,7 +311,7 @@ export default function CarteAffilie({
              data-testid="affiliate-paliers-prix">
           <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em]
                         text-nova pb-2.5 mb-3 border-b border-dashed border-white/20">
-            {L("Au ", "On ")}{jourCourt(data?.prochaine_periode_debut)}
+            {L("Votre taux au ", "Your rate on ")}{jourCourt(data?.prochaine_periode_debut)}
           </p>
           <p className="font-display text-[26px] sm:text-[30px] font-bold leading-none
                         tracking-[-0.03em] tabular-nums">
@@ -371,8 +371,6 @@ export default function CarteAffilie({
                     {L("tout ce que vous vendez sert à monter",
                        "everything you sell moves you up")}
                   </b>
-                  {suivant && L(`. ${tierNom(suivant.tier, L)} et ses ${Math.round((suivant.rate || 0) * 100)} % sont votre prochaine étape.`,
-                                `. ${tierNom(suivant.tier, L)} and its ${Math.round((suivant.rate || 0) * 100)}% are your next step.`)}
                 </p>
               )}
             </>
