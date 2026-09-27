@@ -187,7 +187,7 @@ export default function CarteAffilie({
              data-testid="affiliate-periode-graph">
           <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em]
                         text-nova pb-2.5 mb-3 border-b border-dashed border-white/20">
-            {L("Votre taux ce mois-ci", "Your rate this month")}
+            {L("Vos ventes", "Your sales")}
           </p>
           <p className="font-display text-[26px] sm:text-[30px] font-bold leading-none
                         tracking-[-0.03em] tabular-nums" data-testid="affiliate-periode-total">
@@ -311,7 +311,7 @@ export default function CarteAffilie({
              data-testid="affiliate-paliers-prix">
           <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em]
                         text-nova pb-2.5 mb-3 border-b border-dashed border-white/20">
-            {L("Votre taux au ", "Your rate on ")}{jourCourt(data?.prochaine_periode_debut)}
+            {L("Vos ventes au ", "Your sales on ")}{jourCourt(data?.prochaine_periode_debut)}
           </p>
           <p className="font-display text-[26px] sm:text-[30px] font-bold leading-none
                         tracking-[-0.03em] tabular-nums">
