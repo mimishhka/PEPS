@@ -40,6 +40,7 @@ module.exports = {
         mist: "rgb(var(--fn-mist) / <alpha-value>)",               // secondary text on nordfjord surfaces
         abyss: "rgb(var(--fn-abyss) / <alpha-value>)",             // hero panel and hairline
         "nova-hover": "rgb(var(--fn-nova-hover) / <alpha-value>)",  // accent hover state
+        marine: "rgb(var(--fn-marine) / <alpha-value>)",        // la carte affiliee, fixe
         fog: "rgb(var(--fn-fog) / <alpha-value>)",               // constant ink-surface text
 
         /* ---- Jetons shadcn/ui, branches sur l'identite ----

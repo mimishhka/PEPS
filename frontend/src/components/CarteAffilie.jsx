@@ -95,8 +95,17 @@ export default function CarteAffilie({
   const echeance = jourCourt(data?.taux_valide_jusqu_au);
 
   return (
-    <div className="relative overflow-hidden bg-nordfjord text-clinical texture-bruit"
-         style={{ borderRadius: "var(--r-l)", boxShadow: "var(--ombre-flotte)" }}
+    <div className="relative overflow-hidden bg-marine texture-bruit"
+         style={{
+           borderRadius: "var(--r-l)", boxShadow: "var(--ombre-flotte)",
+           // LA CARTE RESTE MARINE DANS LES DEUX MODES : ses jetons de texte
+           // se figent sur les valeurs de jour. Sans cela, le mode nuit
+           // inversait clinical en ink (texte sombre sur marine) et mist en
+           // ardoise (2,9:1) : la carte devenait illisible.
+           "--fn-clinical": "247 250 252",
+           "--fn-mist": "183 202 221",
+           "--fn-abyss": "10 15 20",
+         }}
          data-testid="affiliate-carte">
       <div className="absolute inset-0 pointer-events-none"
            style={{ background: tierLueur }} aria-hidden="true" />

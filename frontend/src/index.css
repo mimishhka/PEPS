@@ -86,6 +86,11 @@
   --fn-marine-platine:  143 190 224;   /* #8FBEE0 — 6,99:1 */
   --fn-marine-diamant:  170 155 238;   /* #AA9BEE — 5,69:1 */
   --fn-marine-defaut:   183 202 221;   /* #B7CADD — 8,10:1 */
+  /* LA SURFACE de la carte affiliee, CONSTANTE dans les deux themes : la
+     carte reste marine de nuit comme de jour, contrairement aux panneaux
+     dont les roles s'echangent. Son texte suit des valeurs fixes — voir les
+     surcharges locales dans CarteAffilie. */
+  --fn-marine:          11 46 79;      /* #0B2E4F — Nordfjord, la marque */
   --fn-vif-defaut:    120 136 158;   /* #78889E — 3,05:1 */   /* texte sur ink : l'ink est CONSTANT d'un mode a l'autre, son texte doit l'etre aussi */
 
   /* Anciennes variables hexadécimales, conservées : plusieurs feuilles de
@@ -263,7 +268,8 @@
 .dark .bg-ink.text-white,
 .dark .bg-black.text-white,
 .dark .bg-ink .text-white,
-.dark .bg-black .text-white { color: #FFFFFF; }
+.dark .bg-black .text-white,
+.dark .bg-marine .text-white { color: #FFFFFF; }
 
 /* Les champs de formulaire gardent un fond blanc en dur dans plusieurs écrans.
  * Sans cette règle, on saisirait du texte clair sur du blanc. */
