@@ -39,16 +39,30 @@ export default function ClocheAffilie({ L, onOuvrirParametres }) {
   const [ouvert, setOuvert] = useState(false);
   const panneau = useRef(null);
 
+  // TEMPS REEL : un releve toutes les 30 secondes tant que la page est
+  // ouverte, et un releve immediat quand on revient sur l'onglet. Leger et
+  // fiable — un WebSocket tiendrait une connexion entiere pour une liste
+  // que presque personne ne regarde en continu.
   useEffect(() => {
     let monte = true;
-    api.get("/affiliate/notifications")
-      .then((r) => {
-        if (!monte) return;
-        setNotifs(r.data?.notifications || []);
-        setNonLues((r.data?.notifications || []).length);
-      })
-      .catch(() => { /* la cloche reste silencieuse, jamais bloquante */ });
-    return () => { monte = false; };
+    const relever = () => {
+      api.get("/affiliate/notifications")
+        .then((r) => {
+          if (!monte) return;
+          setNotifs(r.data?.notifications || []);
+          setNonLues((r.data?.notifications || []).length);
+        })
+        .catch(() => { /* la cloche reste silencieuse, jamais bloquante */ });
+    };
+    relever();
+    const intervalle = setInterval(relever, 30000);
+    const auFocus = () => { if (document.visibilityState === "visible") relever(); };
+    document.addEventListener("visibilitychange", auFocus);
+    return () => {
+      monte = false;
+      clearInterval(intervalle);
+      document.removeEventListener("visibilitychange", auFocus);
+    };
   }, []);
 
   // Fermeture au clic dehors : la cloche est une liste, pas une page.
