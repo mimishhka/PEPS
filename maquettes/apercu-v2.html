@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FIRONOVA — l'aperçu optimisé : code et adhésion visibles</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --nordfjord:#0B2E4F; --glacier:#3E5C76; --nova:#00B8D4; --nova-texte:#096E80;
+    --clinical:#F7FAFC; --ash:#CBD5E0; --mist:#B7CADD;
+    --or:#F0B84A; --menthe:#2DBFB0; --ciel:#5FD8EC;
+    --display:'Space Grotesk',sans-serif; --body:'Inter',sans-serif; --data:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--body);background:#EEF2F6;color:var(--nordfjord);
+       padding:32px 20px 90px;-webkit-font-smoothing:antialiased}
+  .page{max-width:960px;margin:0 auto}
+  h1{font-family:var(--display);font-size:29px;font-weight:700;letter-spacing:-.02em}
+  .chapeau{color:var(--glacier);margin-top:8px;max-width:74ch;line-height:1.66;font-size:14px}
+  .chapeau b{color:var(--nordfjord)}
+  .bloc{margin-top:46px}
+  .etiquette{display:flex;align-items:baseline;gap:12px;margin-bottom:16px;
+             padding-bottom:10px;border-bottom:1px solid var(--ash);flex-wrap:wrap}
+  .etiquette b{font-family:var(--display);font-size:19px;font-weight:700}
+  .etiquette span{font-family:var(--data);font-size:11px;text-transform:uppercase;
+                  letter-spacing:.18em;color:var(--nova-texte)}
+  .note{margin-top:15px;font-size:13px;color:var(--glacier);line-height:1.68;max-width:78ch}
+  .note b{color:var(--nordfjord)}
+  .tnum{font-variant-numeric:tabular-nums}
+
+  /* ---------------- la page d'accueil commune ---------------- */
+  .fenetre{background:#fff;border:1px solid var(--ash);border-radius:10px;
+           padding:22px 24px 26px;box-shadow:0 1px 2px rgba(11,46,79,.05),
+           0 8px 20px -12px rgba(11,46,79,.12)}
+  .entete{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .salut{font-family:var(--display);font-size:23px;font-weight:700;letter-spacing:-.02em}
+  .salut em{font-style:normal;color:var(--nova-texte)}
+  .entete .droite{display:flex;align-items:center;gap:8px}
+  .pastille{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;
+            border-radius:99px;font-family:var(--data);font-size:11px;font-weight:600;
+            letter-spacing:.06em;text-transform:uppercase}
+  .pastille.or{background:rgba(240,184,74,.14);color:#8A6216;
+               box-shadow:inset 0 0 0 1px rgba(193,136,31,.34)}
+
+  /* LA LIGNE D'IDENTITE : c'est elle qui repond a la demande de Mireille.
+     Code + date d'adhesion, visibles en haut, sans etre un troisieme panneau.
+     Le code se copie d'un appui — c'est un OUTIL, pas une etiquette. */
+  .identite{display:flex;align-items:center;gap:18px;margin-top:14px;
+            padding-top:13px;border-top:1px solid var(--ash);flex-wrap:wrap}
+  .identite .cell{display:flex;flex-direction:column;gap:3px}
+  .identite .cell p{font-family:var(--data);font-size:11px;letter-spacing:.17em;
+                    text-transform:uppercase;color:var(--glacier)}
+  .identite .cell b{font-family:var(--data);font-size:13px;font-weight:600;letter-spacing:.04em}
+  .identite .code{display:flex;align-items:center;gap:8px}
+  .identite .code b{font-size:15px;letter-spacing:.12em}
+  .copier{border:1px solid var(--ash);background:#fff;color:var(--nova-texte);
+          padding:4px 10px;border-radius:5px;font-family:var(--data);font-size:11px;
+          font-weight:600;letter-spacing:.05em;cursor:pointer;
+          transition:transform 160ms cubic-bezier(.23,1,.32,1)}
+  .copier:active{transform:scale(.97)}
+
+  .onglets{display:flex;gap:7px;margin-top:20px;flex-wrap:wrap}
+  .onglet{font-family:var(--data);font-size:12px;font-weight:600;letter-spacing:.08em;
+          text-transform:uppercase;padding:9px 15px;border-radius:99px}
+  .onglet.actif{background:var(--nordfjord);color:#fff}
+  .onglet{background:#fff;color:var(--glacier);border:1px solid var(--ash)}
+
+  /* ---------------- la carte, disposition A ---------------- */
+  .carte{position:relative;border-radius:14px;color:#fff;overflow:hidden;
+    background:linear-gradient(160deg,#123F66 0%,#0B2E4F 54%,#08243E 100%);
+    box-shadow:0 4px 10px rgba(11,46,79,.09),0 26px 52px -22px rgba(11,46,79,.42)}
+  .carte::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(64% 108% at 22% 0%,rgba(240,184,74,.34) 0%,
+               rgba(240,184,74,.07) 48%,transparent 74%)}
+  .carte>*{position:relative}
+  .bandeau{padding:11px 24px;background:rgba(0,0,0,.22);
+           border-bottom:1px solid rgba(255,255,255,.09);
+           display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .bandeau .g{font-family:var(--data);font-size:11px;letter-spacing:.16em;
+              text-transform:uppercase;color:rgba(255,255,255,.68)}
+  .bandeau .d{font-family:var(--data);font-size:12px;font-weight:600;letter-spacing:.03em}
+
+  .argent{display:flex;align-items:center;gap:22px;padding:22px 24px;flex-wrap:wrap}
+  .argent .gauche{flex:1;min-width:190px}
+  .argent .cle{font-family:var(--data);font-size:11px;font-weight:600;letter-spacing:.2em;
+               text-transform:uppercase;color:var(--ciel)}
+  .argent .gros{font-family:var(--display);font-size:40px;font-weight:700;
+                letter-spacing:-.035em;line-height:1;margin-top:8px}
+  .argent .sous{font-size:12px;color:var(--mist);margin-top:9px;line-height:1.5}
+  .argent .droite{display:flex;align-items:center;gap:13px;padding-left:22px;
+                  border-left:1px solid rgba(255,255,255,.13)}
+  .argent .nom{font-family:var(--display);font-size:19px;font-weight:700}
+  .argent .taux{font-family:var(--data);font-size:13px;font-weight:600;color:var(--or);
+                margin-top:4px;letter-spacing:.06em}
+
+  .preuve{padding:18px 24px 16px;border-top:1px solid rgba(255,255,255,.13)}
+  .graph{position:relative;display:flex;align-items:flex-end;gap:6px;height:84px;padding-top:26px}
+  .ligne{position:absolute;left:0;right:0;top:26px;border-top:1px dashed rgba(255,255,255,.40)}
+  .ligne span{position:absolute;right:0;top:-19px;font-family:var(--data);font-size:11px;
+              letter-spacing:.06em;color:var(--mist)}
+  .graph i{flex:1;border-radius:3px 3px 0 0;
+           background:linear-gradient(180deg,#00B8D4 0%,rgba(0,184,212,.28) 100%)}
+  .graph i.vide{background:rgba(255,255,255,.07);min-height:3px}
+  .graph i.sortant{background:repeating-linear-gradient(-45deg,
+      rgba(183,202,221,.42) 0 4px, rgba(183,202,221,.12) 4px 8px);
+      box-shadow:inset 0 0 0 1px rgba(183,202,221,.54)}
+  .mois{display:flex;gap:6px;margin-top:8px}
+  .mois span{flex:1;text-align:center;font-family:var(--data);font-size:11px;
+             letter-spacing:.04em;color:rgba(255,255,255,.68)}
+  .mois span.part{color:var(--mist);font-weight:600}
+  .legende{display:flex;align-items:center;gap:8px;margin-top:11px;font-family:var(--data);
+           font-size:11px;letter-spacing:.05em;color:var(--mist)}
+  .legende b{width:11px;height:11px;border-radius:2px;flex-shrink:0;
+    background:repeating-linear-gradient(-45deg,rgba(183,202,221,.42) 0 3px,
+               rgba(183,202,221,.12) 3px 6px);
+    box-shadow:inset 0 0 0 1px rgba(183,202,221,.54)}
+  .totalPeriode{font-family:var(--data);font-size:13px;font-weight:600;letter-spacing:.02em;
+                margin-top:14px;padding-top:13px;border-top:1px solid rgba(255,255,255,.13)}
+  .totalPeriode em{font-style:normal;display:block;font-family:var(--body);font-size:12px;
+                   font-weight:400;color:var(--mist);margin-top:4px;line-height:1.5}
+
+  .paliers{padding:18px 24px 6px;border-top:1px solid rgba(255,255,255,.13)}
+  .paliers .cle{font-family:var(--data);font-size:11px;letter-spacing:.17em;
+                text-transform:uppercase;color:rgba(255,255,255,.68)}
+  .paliers .sous{font-size:12px;color:var(--mist);margin:4px 0 12px;line-height:1.5}
+  .palier{display:flex;align-items:center;gap:14px;padding:11px 13px;border-radius:7px}
+  .palier+.palier{margin-top:7px}
+  .palier .cout{font-family:var(--display);font-size:20px;font-weight:700;
+                letter-spacing:-.02em;min-width:86px;line-height:1}
+  .palier .fl{font-family:var(--data);font-size:13px;opacity:.5}
+  .palier .quoi{font-family:var(--data);font-size:12px;letter-spacing:.07em;
+                text-transform:uppercase;line-height:1.5}
+  .palier .quoi em{font-style:normal;display:block;font-size:11px;color:var(--mist)}
+  .palier .sceau{margin-left:auto;font-family:var(--data);font-size:11px;
+                 letter-spacing:.1em;text-transform:uppercase;text-align:right;line-height:1.5}
+  .palier.mien{background:rgba(240,184,74,.15);box-shadow:inset 0 0 0 1px rgba(240,184,74,.34)}
+  .palier.mien .cout,.palier.mien .quoi,.palier.mien .sceau{color:var(--or)}
+  .palier.suivant{background:rgba(143,190,224,.13);box-shadow:inset 0 0 0 1px rgba(143,190,224,.28)}
+  .palier.suivant .cout,.palier.suivant .quoi{color:#8FBEE0}
+
+  /* L'etat zero : plus de phrase a 100 $. Un zero assume, et la seule chose
+     utile a dire a quelqu'un qui n'a rien vendu : son outil est pret. */
+  .zero .sous b{color:#fff;font-weight:600}
+
+  /* ---------------- le panneau de lien, apres la carte ---------------- */
+  .panneau{background:#fff;border:1px solid var(--ash);border-radius:10px;padding:20px 22px;
+           box-shadow:0 1px 2px rgba(11,46,79,.05),0 4px 12px -8px rgba(11,46,79,.14);margin-top:18px}
+  .panneau .titre{font-family:var(--data);font-size:11px;font-weight:600;letter-spacing:.22em;
+                  text-transform:uppercase;color:var(--nova-texte)}
+  .panneau .lien{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+  .panneau .url{flex:1;min-width:220px;border:1px solid var(--ash);border-radius:6px;
+                padding:11px 13px;font-family:var(--data);font-size:12px;color:var(--glacier);
+                background:var(--clinical)}
+  .panneau button{border:0;background:var(--nordfjord);color:#fff;border-radius:6px;
+                  padding:11px 16px;font-family:var(--data);font-size:12px;font-weight:600;
+                  letter-spacing:.05em;cursor:pointer;transition:transform 160ms cubic-bezier(.23,1,.32,1)}
+  .panneau button:active{transform:scale(.97)}
+
+  .verdict{margin-top:17px;border-left:3px solid var(--menthe);background:#fff;
+           border-radius:0 6px 6px 0;padding:13px 16px;font-size:13px;
+           line-height:1.66;color:var(--glacier);box-shadow:0 1px 2px rgba(11,46,79,.06)}
+  .verdict b{color:var(--nordfjord)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>L'aperçu optimisé — code et adhésion en haut, la phrase à 100 $ retirée</h1>
+  <p class="chapeau">
+    Trois façons de placer ce que tu réclames : <b>le code affilié en haut de page</b> et
+    <b>la date d'adhésion</b>. Dans les trois, la phrase « Une commande de 100 $ vous
+    rapporte… » <b>disparaît</b> de l'état zéro : elle est remplacée par un zéro assumé et une
+    seule chose utile — le code est prêt à partager. La carte à trois bandes, le panneau de
+    lien et les onglets ne bougent pas.
+  </p>
+
+  <!-- ================================================== VARIANTE 1 -->
+  <div class="bloc">
+    <div class="etiquette"><span>Variante 1</span><b>La ligne d'identité sous le bonjour</b></div>
+
+    <div class="fenetre">
+      <div class="entete">
+        <div>
+          <p class="salut">Bonjour <em>Marjolaine</em></p>
+          <p class="identite">
+            <span class="cell"><p>Membre depuis</p><b class="tnum">mars 2026</b></span>
+            <span class="cell"><p>Votre code</p>
+              <span class="code"><b class="tnum">FN7K2Q</b><button class="copier">Copier</button></span>
+            </span>
+          </p>
+        </div>
+        <div class="droite">
+          <span class="pastille or">⬡ Or · 16 %</span>
+          <span class="pastille" style="color:#19736A;background:rgba(45,191,176,.14);
+                box-shadow:inset 0 0 0 1px rgba(45,191,176,.3)">● Conforme</span>
+        </div>
+      </div>
+
+      <div class="onglets">
+        <span class="onglet actif">Aperçu</span><span class="onglet">Performance</span>
+        <span class="onglet">Paiements</span><span class="onglet">Conformité</span>
+        <span class="onglet">Paramètres</span><span class="onglet">Aide</span>
+      </div>
+    </div>
+
+    <div class="carte" style="margin-top:18px">
+      <div class="bandeau">
+        <p class="g">Période retenue</p>
+        <p class="d">1 sept. 2025 → 31 août 2026</p>
+      </div>
+      <div class="argent">
+        <div class="gauche">
+          <p class="cle">Gains du mois en cours</p>
+          <p class="gros tnum">184,50 $</p>
+          <p class="sous tnum">1 153,13 $ de ventes validées · 6 commandes</p>
+        </div>
+        <div class="droite">
+          <svg width="38" height="38" viewBox="0 0 100 100" aria-hidden="true">
+            <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                     stroke="#F0B84A" stroke-width="6" opacity=".4"/>
+            <circle cx="50" cy="8" r="9" fill="#F0B84A"/><circle cx="12" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/>
+            <circle cx="88" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/><circle cx="12" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/>
+            <circle cx="88" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/><circle cx="50" cy="92" r="6.5" fill="#F0B84A" opacity=".26"/>
+          </svg>
+          <div>
+            <p class="nom">Palier Or</p>
+            <p class="taux">16 % de commission</p>
+          </div>
+        </div>
+      </div>
+      <div class="preuve">
+        <div class="graph">
+          <div class="ligne"><span>834 $/mois × 12 = Or</span></div>
+          <i class="sortant" style="height:100%"></i>
+          <i style="height:38%"></i><i style="height:47%"></i><i style="height:61%"></i>
+          <i style="height:34%"></i><i style="height:44%"></i><i style="height:40%"></i>
+          <i style="height:52%"></i><i style="height:37%"></i><i style="height:60%"></i>
+          <i style="height:45%"></i><i style="height:39%"></i>
+        </div>
+        <div class="mois">
+          <span class="part">S</span><span>O</span><span>N</span><span>D</span><span>J</span>
+          <span>F</span><span>M</span><span>A</span><span>M</span><span>J</span><span>J</span><span>A</span>
+        </div>
+        <p class="legende"><b></b>Septembre 2025 · 1 880 $ · sort de la période le 1er octobre</p>
+        <p class="totalPeriode tnum">11 240,00 $
+          <em>de ventes qui comptent pour votre palier — 11 240 $ sur les douze mois clos, plus ce que vous vendez ce mois-ci</em></p>
+      </div>
+      <div class="paliers">
+        <p class="cle">D'ici le 30 septembre</p>
+        <p class="sous">pour reconduire votre taux le mois prochain — monter, lui, se fait tout de suite</p>
+        <div class="palier mien">
+          <p class="cout tnum">231 $</p><p class="fl">→</p>
+          <p class="quoi">Or · 16 %<em>votre palier actuel</em></p>
+          <p class="sceau">pour reconduire<br>le taux</p>
+        </div>
+        <div class="palier suivant">
+          <p class="cout tnum">10 231 $</p><p class="fl">→</p>
+          <p class="quoi">Platine · 18 %<em>le palier au-dessus</em></p>
+          <p class="sceau">le taux monte<br>dès le seuil franchi</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panneau">
+      <p class="titre">Votre lien de parrainage</p>
+      <div class="lien">
+        <p class="url tnum">peptide-ca.com/?ref=FN7K2Q</p>
+        <button>Copier le lien</button>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>Le pari :</b> l'identité vit dans l'en-tête, là où l'œil la cherche — le code ne se
+      répète pas dans la carte. La ligne remplace le lien « Questions fréquentes » qui flottait
+      sous le bonjour : il rejoint l'onglet Aide, sa place naturelle.
+      <b>Ce que ça coûte :</b> deux lignes de plus en tête de page sur mobile.
+    </p>
+  </div>
+
+  <!-- ================================================== VARIANTE 2 -->
+  <div class="bloc">
+    <div class="etiquette"><span>Variante 2</span><b>La bande d'identité dans la carte</b></div>
+
+    <div class="fenetre">
+      <div class="entete">
+        <p class="salut">Bonjour <em>Marjolaine</em></p>
+        <div class="droite">
+          <span class="pastille or">⬡ Or · 16 %</span>
+          <span class="pastille" style="color:#19736A;background:rgba(45,191,176,.14);
+                box-shadow:inset 0 0 0 1px rgba(45,191,176,.3)">● Conforme</span>
+        </div>
+      </div>
+      <div class="onglets">
+        <span class="onglet actif">Aperçu</span><span class="onglet">Performance</span>
+        <span class="onglet">Paiements</span><span class="onglet">Conformité</span>
+        <span class="onglet">Paramètres</span><span class="onglet">Aide</span>
+      </div>
+    </div>
+
+    <div class="carte" style="margin-top:18px">
+      <!-- LA BANDE DE LA MAQUETTE QU'ELLE AIME (affilie-melange-2) : le strip
+           « membre depuis · code · prochain versement » devient la tete de
+           carte, au-dessus de la periode. Trois faits d'identite, une ligne. -->
+      <div class="bandeau" style="background:rgba(0,0,0,.22)">
+        <span class="cell"><p style="font-family:var(--data);font-size:11px;letter-spacing:.15em;
+          text-transform:uppercase;color:rgba(255,255,255,.68)">Membre depuis</p>
+          <b class="tnum" style="font-family:var(--data);font-size:13px">mars 2026</b></span>
+        <span class="cell"><p style="font-family:var(--data);font-size:11px;letter-spacing:.15em;
+          text-transform:uppercase;color:rgba(255,255,255,.68)">Votre code</p>
+          <span class="code"><b class="tnum" style="font-family:var(--data);font-size:15px;letter-spacing:.12em">FN7K2Q</b>
+          <button class="copier" style="background:rgba(255,255,255,.08);color:#fff;
+            border-color:rgba(255,255,255,.2)">Copier</button></span></span>
+        <span class="cell" style="margin-left:auto;text-align:right">
+          <p style="font-family:var(--data);font-size:11px;letter-spacing:.15em;
+            text-transform:uppercase;color:rgba(255,255,255,.68)">Prochain versement</p>
+          <b class="tnum" style="font-family:var(--data);font-size:13px">1 oct · 312,80 $</b></span>
+      </div>
+      <div class="bandeau" style="background:transparent">
+        <p class="g">Période retenue</p>
+        <p class="d">1 sept. 2025 → 31 août 2026</p>
+      </div>
+      <div class="argent">
+        <div class="gauche">
+          <p class="cle">Gains du mois en cours</p>
+          <p class="gros tnum">184,50 $</p>
+          <p class="sous tnum">1 153,13 $ de ventes validées · 6 commandes</p>
+        </div>
+        <div class="droite">
+          <svg width="38" height="38" viewBox="0 0 100 100" aria-hidden="true">
+            <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                     stroke="#F0B84A" stroke-width="6" opacity=".4"/>
+            <circle cx="50" cy="8" r="9" fill="#F0B84A"/><circle cx="12" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/>
+            <circle cx="88" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/><circle cx="12" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/>
+            <circle cx="88" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/><circle cx="50" cy="92" r="6.5" fill="#F0B84A" opacity=".26"/>
+          </svg>
+          <div>
+            <p class="nom">Palier Or</p>
+            <p class="taux">16 % de commission</p>
+          </div>
+        </div>
+      </div>
+      <div class="paliers">
+        <p class="cle">D'ici le 30 septembre</p>
+        <p class="sous">pour reconduire votre taux le mois prochain — monter, lui, se fait tout de suite</p>
+        <div class="palier mien">
+          <p class="cout tnum">231 $</p><p class="fl">→</p>
+          <p class="quoi">Or · 16 %<em>votre palier actuel</em></p>
+          <p class="sceau">pour reconduire<br>le taux</p>
+        </div>
+        <div class="palier suivant">
+          <p class="cout tnum">10 231 $</p><p class="fl">→</p>
+          <p class="quoi">Platine · 18 %<em>le palier au-dessus</em></p>
+          <p class="sceau">le taux monte<br>dès le seuil franchi</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panneau">
+      <p class="titre">Votre lien de parrainage</p>
+      <div class="lien">
+        <p class="url tnum">peptide-ca.com/?ref=FN7K2Q</p>
+        <button>Copier le lien</button>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>Le pari :</b> la carte porte tout — l'argent, la preuve, les paliers, et maintenant
+      l'identité. C'est la disposition de la maquette que tu as déjà aimée, transplantée telle
+      quelle. Le code est au sommet de la page, copiable. <b>Ce que ça coûte :</b> la tête de
+      carte s'épaissit ; sur téléphone, la période et les paliers descendent d'un cran.
+    </p>
+  </div>
+
+  <!-- ================================================== VARIANTE 3 -->
+  <div class="bloc">
+    <div class="etiquette"><span>Variante 3</span><b>Le code en tête de carte, l'adhésion dans le pied</b></div>
+
+    <div class="fenetre">
+      <div class="entete">
+        <p class="salut">Bonjour <em>Marjolaine</em></p>
+        <div class="droite">
+          <span class="pastille or">⬡ Or · 16 %</span>
+          <span class="pastille" style="color:#19736A;background:rgba(45,191,176,.14);
+                box-shadow:inset 0 0 0 1px rgba(45,191,176,.3)">● Conforme</span>
+        </div>
+      </div>
+      <div class="onglets">
+        <span class="onglet actif">Aperçu</span><span class="onglet">Performance</span>
+        <span class="onglet">Paiements</span><span class="onglet">Conformité</span>
+        <span class="onglet">Paramètres</span><span class="onglet">Aide</span>
+      </div>
+    </div>
+
+    <div class="carte" style="margin-top:18px">
+      <div class="bandeau">
+        <p class="g">Période retenue</p>
+        <span class="code"><b class="tnum" style="font-family:var(--data);font-size:13px;
+          letter-spacing:.12em">FN7K2Q</b>
+          <button class="copier" style="background:rgba(255,255,255,.08);color:#fff;
+            border-color:rgba(255,255,255,.2)">Copier</button></span>
+      </div>
+      <div class="argent">
+        <div class="gauche">
+          <p class="cle">Gains du mois en cours</p>
+          <p class="gros tnum">184,50 $</p>
+          <p class="sous tnum">1 153,13 $ de ventes validées · 6 commandes</p>
+        </div>
+        <div class="droite">
+          <svg width="38" height="38" viewBox="0 0 100 100" aria-hidden="true">
+            <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                     stroke="#F0B84A" stroke-width="6" opacity=".4"/>
+            <circle cx="50" cy="8" r="9" fill="#F0B84A"/><circle cx="12" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/>
+            <circle cx="88" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/><circle cx="12" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/>
+            <circle cx="88" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/><circle cx="50" cy="92" r="6.5" fill="#F0B84A" opacity=".26"/>
+          </svg>
+          <div>
+            <p class="nom">Palier Or</p>
+            <p class="taux">16 % de commission</p>
+          </div>
+        </div>
+      </div>
+      <div class="paliers">
+        <p class="cle">D'ici le 30 septembre</p>
+        <p class="sous">pour reconduire votre taux le mois prochain — monter, lui, se fait tout de suite</p>
+        <div class="palier mien">
+          <p class="cout tnum">231 $</p><p class="fl">→</p>
+          <p class="quoi">Or · 16 %<em>votre palier actuel</em></p>
+          <p class="sceau">pour reconduire<br>le taux</p>
+        </div>
+        <div class="palier suivant">
+          <p class="cout tnum">10 231 $</p><p class="fl">→</p>
+          <p class="quoi">Platine · 18 %<em>le palier au-dessus</em></p>
+          <p class="sceau">le taux monte<br>dès le seuil franchi</p>
+        </div>
+      </div>
+      <!-- Le pied : le strip de la maquette aimee, mais SANS le code (deja en
+           tete) et SANS le versement (il vit dans Paiements). Restent les deux
+           faits qui n'ont leur place nulle part ailleurs. -->
+      <div style="display:flex;border-top:1px solid rgba(255,255,255,.13);background:rgba(0,0,0,.20)">
+        <div style="flex:1;padding:13px 24px">
+          <p style="font-family:var(--data);font-size:11px;letter-spacing:.15em;text-transform:uppercase;
+            color:rgba(255,255,255,.68)">Membre depuis</p>
+          <p class="tnum" style="font-family:var(--data);font-size:14px;font-weight:600;margin-top:5px">mars 2026</p>
+        </div>
+        <div style="flex:1;padding:13px 24px;border-left:1px solid rgba(255,255,255,.10)">
+          <p style="font-family:var(--data);font-size:11px;letter-spacing:.15em;text-transform:uppercase;
+            color:rgba(255,255,255,.68)">Première vente</p>
+          <p class="tnum" style="font-family:var(--data);font-size:14px;font-weight:600;margin-top:5px">22 avril 2026</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panneau">
+      <p class="titre">Votre lien de parrainage</p>
+      <div class="lien">
+        <p class="url tnum">peptide-ca.com/?ref=FN7K2Q</p>
+        <button>Copier le lien</button>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>Le pari :</b> le code, l'outil qu'on manipule, monte en tête de carte ; l'adhésion,
+      un fait qu'on consulte rarement, descend dans le pied — avec la date de première vente,
+      qui n'existe nulle part ailleurs et qui raconte plus que l'adhésion. <b>Ce que ça coûte :</b>
+      il faut ajouter cette seconde date au calcul — une somme de plus côté serveur.
+    </p>
+  </div>
+
+  <!-- ================================================== L'ÉTAT ZÉRO -->
+  <div class="bloc">
+    <div class="etiquette"><span>L'état zéro</span><b>La phrase à 100 $ s'en va</b></div>
+
+    <div class="carte zero">
+      <div class="bandeau">
+        <p class="g">Période retenue</p>
+        <p class="d">1 sept. 2025 → 31 août 2026</p>
+      </div>
+      <div class="argent">
+        <div class="gauche">
+          <p class="cle">Gains du mois en cours</p>
+          <p class="gros tnum">0,00 $</p>
+          <p class="sous"><b>Votre code FN7K2Q est prêt</b> — partagez votre lien,<br>
+            la première commande apparaîtra ici.</p>
+        </div>
+        <div class="droite">
+          <svg width="38" height="38" viewBox="0 0 100 100" aria-hidden="true">
+            <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                     stroke="#B7CADD" stroke-width="6" opacity=".36"/>
+            <circle cx="50" cy="8" r="9" fill="#B7CADD"/><circle cx="12" cy="29" r="6.5" fill="#B7CADD" opacity=".26"/>
+            <circle cx="88" cy="29" r="6.5" fill="#B7CADD" opacity=".26"/><circle cx="12" cy="71" r="6.5" fill="#B7CADD" opacity=".26"/>
+            <circle cx="88" cy="71" r="6.5" fill="#B7CADD" opacity=".26"/><circle cx="50" cy="92" r="6.5" fill="#B7CADD" opacity=".26"/>
+          </svg>
+          <div>
+            <p class="nom">Palier Standard</p>
+            <p class="taux" style="color:var(--mist)">10 % de commission</p>
+          </div>
+        </div>
+      </div>
+      <div class="paliers">
+        <p class="cle">D'ici le 30 septembre</p>
+        <p class="sous">pour reconduire votre taux le mois prochain — monter, lui, se fait tout de suite</p>
+        <div class="palier mien" style="background:rgba(45,191,176,.14);
+          box-shadow:inset 0 0 0 1px rgba(45,191,176,.3)">
+          <p class="cout" style="font-family:var(--data);font-size:14px;font-weight:600;color:var(--menthe)">Garanti</p>
+          <p class="fl">→</p>
+          <p class="quoi" style="color:var(--menthe)">Standard · 10 %<em>votre palier actuel</em></p>
+          <p class="sceau" style="color:var(--menthe)">taux garanti</p>
+        </div>
+        <div class="palier suivant">
+          <p class="cout tnum">2 001 $</p><p class="fl">→</p>
+          <p class="quoi">Bronze · 12 %<em>le palier au-dessus</em></p>
+          <p class="sceau">le taux monte<br>dès le seuil franchi</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="verdict">
+      <b>Ce qui remplace la phrase :</b> un zéro assumé — c'est un bilan, pas un échec — et la
+      seule chose vraie à dire : l'outil est prêt, la première commande apparaîtra ici.
+      Plus de calcul d'exemple, plus de taux à expliquer.
+    </p>
+  </div>
+
+  <!-- ================================================== LES INCOHERENCES -->
+  <div class="bloc">
+    <div class="etiquette"><span>À trancher</span><b>Ce qui ne fait pas sens aujourd'hui</b></div>
+    <p class="note">
+      <b>1 · Le lien « Questions fréquentes » flotte sous le bonjour.</b> Une question se pose en
+      regardant ses chiffres, pas un en-tête de page. Ma proposition : il rejoint l'onglet Aide,
+      qui existe déjà.<br>
+      <b>2 · Le chemin de démarrage (« Complétez votre profil… ») peut s'afficher à une ancienne.</b>
+      Tant qu'une étape reste inachevée, il occupe le haut de l'aperçu. Proposé : le déplacer dans
+      Paramètres, où ces étapes se règlent.<br>
+      <b>3 · Le panneau de lien répète le code</b> une fois que celui-ci est en haut. Proposé : le
+      panneau ne montre plus que l'URL de partage, le code vit en haut et nulle part ailleurs.<br>
+      <b>4 · Le widget « Partagez ces produits »</b> est un outil de vente posé en fin d'aperçu, après
+      l'identité et la carte. Proposé : le garder, mais en dernier, sous le lien — c'est déjà le cas —
+      ou le déplacer dans Performance si tu le juges plus marketing que bilan.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>
