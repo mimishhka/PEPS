@@ -123,7 +123,7 @@ export default function CarteAffilie({
             valeur={insights?.current_month?.commission}
             format={money}
             testId="affiliate-gains-mois"
-            className="block font-display text-[40px] sm:text-[46px] font-bold
+            className="block font-display text-[34px] sm:text-[46px] font-bold
                        leading-[0.95] tracking-[-0.035em] mt-2"
           />
           {/* ETAT ZERO : un zero assume, et la seule chose vraie a dire — son
@@ -150,7 +150,8 @@ export default function CarteAffilie({
           )}
         </div>
 
-        <div className="flex items-center gap-3.5 sm:pl-7 sm:border-l sm:border-white/12"
+        <div className="flex items-center gap-3.5 w-full border-t border-white/12 pt-4
+                        sm:w-auto sm:border-t-0 sm:pt-0 sm:pl-7 sm:border-l"
              data-testid="affiliate-tier-badge">
           <TierMark tier={data?.tier} color={teinte} size={38} />
           <div>
@@ -180,8 +181,8 @@ export default function CarteAffilie({
                         text-nova pb-2.5 mb-3.5 border-b border-dashed border-white/20">
             {L("Ce mois-ci", "This month")}
           </p>
-          <p className="font-display text-[30px] font-bold leading-none tracking-[-0.03em]
-                        tabular-nums" data-testid="affiliate-periode-total">
+          <p className="font-display text-[26px] sm:text-[30px] font-bold leading-none
+                        tracking-[-0.03em] tabular-nums" data-testid="affiliate-periode-total">
             {money(total)}
           </p>
           <p className="text-[12px] text-mist mt-1.5">
@@ -201,7 +202,7 @@ export default function CarteAffilie({
                          style={{ top: `calc(50% + 12px)` }} aria-hidden="true" />
                   </>
                 )}
-                <div className="absolute inset-x-0 bottom-0 top-6 flex items-end gap-1.5">
+                <div className="absolute inset-x-0 bottom-0 top-6 flex items-end gap-1 sm:gap-1.5">
                   {serie.map((m) => {
                     const montant = Number(m.montant || 0);
                     const vide = montant <= 0;
@@ -238,7 +239,7 @@ export default function CarteAffilie({
                   })}
                 </div>
               </div>
-              <div className="flex gap-1.5 mt-2" aria-hidden="true">
+              <div className="flex gap-1 sm:gap-1.5 mt-2" aria-hidden="true">
                 {serie.map((m) => (
                   <span key={m.mois}
                         className={`flex-1 text-center font-data text-[11px] tracking-[0.04em] ${
@@ -297,14 +298,15 @@ export default function CarteAffilie({
         </div>
 
         {/* — AU 1er ... : la prevision, et ce qu'elle demande. */}
-        <div className="relative px-5 sm:px-7 pt-5 pb-6"
+        <div className="relative px-5 sm:px-7 pt-4 pb-6 border-t border-white/12
+                        sm:pt-5 sm:border-t-0 sm:border-l"
              data-testid="affiliate-paliers-prix">
           <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em]
                         text-nova pb-2.5 mb-3.5 border-b border-dashed border-white/20">
             {L("Au ", "On ")}{jourCourt(data?.prochaine_periode_debut)}
           </p>
-          <p className="font-display text-[30px] font-bold leading-none tracking-[-0.03em]
-                        tabular-nums">
+          <p className="font-display text-[26px] sm:text-[30px] font-bold leading-none
+                        tracking-[-0.03em] tabular-nums">
             {money(projection)}
           </p>
           <p className="text-[12px] text-mist mt-1.5">
@@ -403,8 +405,9 @@ function Ligne({ montant, gros, nom, sous, sceau, teinte, fond, trait, testId })
         </em>
       </p>
       {sceau && (
-        <p className="ml-auto font-data text-[11px] tracking-[0.04em]
-                      text-right leading-[1.5] shrink-0 whitespace-pre-line"
+        <p className="w-full text-left mt-1 font-data text-[11px] tracking-[0.04em]
+                      leading-[1.5] whitespace-pre-line
+                      sm:w-auto sm:text-right sm:mt-0 sm:ml-auto"
            style={{ color: teinte }}>
           {sceau}
         </p>
