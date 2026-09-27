@@ -19,7 +19,6 @@ import GuidedTour, { visiteDejaVue, marquerVisiteVue } from "../components/Guide
 import AffiliateSupport from "../components/AffiliateSupport";
 import TermsModal from "../components/TermsModal";
 import TierLadder from "../components/TierLadder";
-import TierMark from "../components/TierMark";
 import CarteAffilie from "../components/CarteAffilie";
 import ChiffreAnime from "../components/ChiffreAnime";
 import ThemeToggle from "../components/ThemeToggle";
@@ -674,16 +673,14 @@ export default function AffiliateDashboard() {
   }
 
   const tierJeton = TIER_META[data?.tier]?.jeton || "--fn-palier-defaut";
-  const tierColor = `rgb(var(${tierJeton}))`;
-  // Le voile du fond : les memes canaux, a douze pour cent. Il suit donc le
-  // theme comme le trait, au lieu d'etre une valeur figee.
-  const tierVoile = `rgb(var(${tierJeton}) / 0.12)`;
   // LE SYMBOLE ET LE LIBELLE N'ONT PAS LE MEME SEUIL.
   //
   // 4,5:1 vaut pour du TEXTE ; un objet graphique n'exige que 3:1. En durcissant
   // les six paliers au seuil du texte, j'avais eteint les symboles sans raison.
-  // Le libelle garde `tierColor`, le symbole reprend `tierVif`.
+  // Le trait VIF sert aux cartes KPI de l'onglet Performance : au seuil
+  // d'un accent, pas d'un texte.
   const tierVif = `rgb(var(${tierJeton.replace("--fn-palier-", "--fn-vif-")}))`;
+  // Le libelle garde `tierColor`, le symbole reprend `tierVif`.
   // LE RANG COLORE LA PAGE.
   //
   // Mireille : « il n'y a aucune couleur, c'est trop blanc ». La reponse n'est
@@ -808,6 +805,15 @@ export default function AffiliateDashboard() {
       { year: "numeric", month: "long", day: "numeric" });
   const payoutPct = payoutMin > 0 ? Math.min(100, Math.round((dueNow / payoutMin) * 100)) : null;
 
+  // La date d'adhesion, pour l'en-tete. Replie sur vide quand la fiche n'a
+  // pas de date : une etiquette sans valeur vaut mieux qu'une date inventee.
+  const moisAdhesion = (() => {
+    const d = new Date(data?.created_at || "");
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
+      { month: "long", year: "numeric", timeZone: "UTC" });
+  })();
+
   const TABS = [
     ["overview", L("Vue globale", "Overview")],
     ["performance", L("Performance", "Performance")],
@@ -829,11 +835,19 @@ export default function AffiliateDashboard() {
   }
 
   return (
-    <div className="bg-clinical min-h-screen">
+    <div className="relative bg-clinical min-h-screen">
+      {/* LE FOND N'EST PLUS UN BLANC UNI. Deux lueurs tres douces, l'une
+          nova en haut a gauche, l'autre glacier a droite : la page respire
+          sans voler l'attention a la carte. Elles suivent les jetons, donc
+          le mode nuit. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-[420px]"
+           style={{ background:
+             "radial-gradient(55% 60% at 18% 0%, rgb(var(--fn-nova) / 0.06) 0%, transparent 70%)," +
+             "radial-gradient(45% 50% at 88% 0%, rgb(var(--fn-glacier) / 0.09) 0%, transparent 70%)" }} />
       {tourOuvert && (
         <GuidedTour steps={TOUR} L={L} onClose={fermerTour} onTab={setTab} />
       )}
-      <div className="max-w-6xl mx-auto px-6 py-16" data-testid="affiliate-dashboard">
+      <div className="relative max-w-6xl mx-auto px-6 py-16" data-testid="affiliate-dashboard">
         {/* Header */}
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ash pb-6 mb-8">
           <div>
@@ -857,27 +871,27 @@ export default function AffiliateDashboard() {
                 {data.company}
               </p>
             )}
-            <p className="font-data text-xs text-glacier mt-2">
-              {/* Placé ici plutôt que dans un onglet : les questions viennent
-                  quand on regarde ses chiffres, pas quand on cherche un menu.
-                  L'ancienne « prochaine réévaluation » a disparu avec la
-                  rétrogradation trimestrielle (P2-2). */}
-              <Link to="/affiliate/faq" data-testid="affiliate-faq-link" className="text-nova underline">
-                {L("Questions fréquentes", "FAQ")}
-              </Link>
-            </p>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5  font-data
-                             text-[11px] font-semibold uppercase tracking-wider"
-                  data-testid="affiliate-tier-badge"
-                  style={{ borderRadius: "var(--r-m)", background: tierVoile, color: tierColor }}>
-              <TierMark tier={data?.tier} color={tierVif} size={16} />
-              {tierLabel} · {Math.round((data?.commission_rate || 0) * 100)}%
-            </span>
-            <span className={`px-3 py-1.5 rounded-full font-data text-[11px] font-semibold ${comp.cls}`}>
-              {comp.dot} {comp[lang]}
-            </span>
+          {/* LES DOUBLONS SORTENT. La pastille de palier repete la carte,
+              celle de conformite repete son onglet. A la place, l'identite
+              que Mireille reclame : la date d'adhesion et le code, copiable
+              la ou l'oeil le trouve. */}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <p className="font-data text-[12px] text-glacier">
+              {moisAdhesion && (
+                <>{L("Membre depuis", "Member since")}{" "}
+                  <span className="text-nordfjord font-semibold">{moisAdhesion}</span>
+                  {" · "}</>
+              )}
+              {L("Code", "Code")}{" "}
+              <span className="text-nordfjord font-semibold tracking-[0.08em]">
+                {data?.code || "-"}
+              </span>{" "}
+              <button onClick={copyCode} data-testid="affiliate-copy-code-header"
+                className="underline text-nova-texte hover:text-nova font-data text-[12px]">
+                {codeCopie ? L("Copié ✓", "Copied ✓") : L("Copier", "Copy")}
+              </button>
+            </p>
             <ThemeToggle />
           </div>
         </div>
@@ -890,9 +904,12 @@ export default function AffiliateDashboard() {
             toujours un ressort fait main.
             L'onglet actif se ramene en vue au chargement : revenir sur
             « Paiements » ne doit pas obliger a rechercher l'onglet. */}
+        {/* LES ONGLETS SORTENT DU BLANC : l'inactif est transparent, pose
+            sur un filet. Seul l'actif porte la couleur pleine — un seul
+            objet sombre par ligne, comme la carte. */}
         <div className="-mx-5 px-5 sm:mx-0 sm:px-0 mb-7 overflow-x-auto sm:overflow-visible
-                        scrollbar-none snap-x snap-mandatory">
-          <div className="flex gap-2 w-max sm:w-auto sm:flex-wrap">
+                        scrollbar-none snap-x snap-mandatory border-b border-ash pb-2.5">
+          <div className="flex gap-1 w-max sm:w-auto sm:flex-wrap">
             {TABS.map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)}
                 data-testid={`affiliate-tab-${k}`}
@@ -900,7 +917,8 @@ export default function AffiliateDashboard() {
                 aria-current={tab === k ? "page" : undefined}
                 className={`snap-start shrink-0 px-4 py-2.5 rounded-full font-data text-xs font-semibold
                             uppercase tracking-wider transition-colors active:scale-[0.97] ${
-                  tab === k ? "bg-nordfjord text-white" : "bg-white text-glacier border border-ash hover:border-nova"
+                  tab === k ? "bg-nordfjord text-white shadow-sm"
+                            : "text-glacier hover:text-nordfjord hover:bg-white"
                 }`}>
                 {label}
               </button>
@@ -948,6 +966,16 @@ export default function AffiliateDashboard() {
                           tierLabel={tierLabel} tierJeton={tierJeton}
                           tierLueur={tierLueur} />
 
+            {/* Les questions viennent quand on regarde ses chiffres : le lien
+                reste donc dans l'apercu, mais sous la carte, hors de
+                l'en-tete ou il flottait. */}
+            <p className="mt-1 font-data text-[12px]">
+              <Link to="/affiliate/faq" data-testid="affiliate-faq-link"
+                    className="text-nova underline">
+                {L("Questions fréquentes", "FAQ")}
+              </Link>
+            </p>
+
             {/* LES BOITES N'ONT PAS TOUTES LE MEME RANG.
                 Mireille : « les priorites des boites ». Elles portaient toutes
                 le meme `bg-white rounded-xl border border-ash p-5` : une page
@@ -990,33 +1018,11 @@ export default function AffiliateDashboard() {
             <div className="bg-white rounded-xl border border-ash p-6"
                  data-testid="affiliate-link-panel">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
-                {L("VOTRE LIEN ET VOTRE CODE", "YOUR LINK AND CODE")}
+                {L("VOTRE LIEN", "YOUR LINK")}
               </p>
 
-              {/* Le CODE, en premier et en grand. Il ne figurait que dans les
-                  Paramètres, alors que c'est lui qu'on donne de vive voix ou
-                  dans un message : et les conditions imposent précisément la
-                  communication privée. Le lien vient après : il sert quand on
-                  peut écrire une adresse cliquable, ce qui est le cas le moins
-                  fréquent depuis cette règle.
-                  Sa propre copie, car on ne partage pas les deux ensemble. */}
-              <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b border-ash">
-                <span className="font-data text-[10px] uppercase tracking-[0.18em] text-glacier">
-                  {L("Code", "Code")}
-                </span>
-                <code className="font-data text-lg font-bold text-nordfjord tracking-[0.08em]
-                                 bg-clinical rounded-lg px-4 py-2 border border-ash"
-                      data-testid="affiliate-ref-code">
-                  {refCode || "-"}
-                </code>
-                {refCode && (
-                  <button onClick={copyCode} data-testid="affiliate-copy-code"
-                    className="px-4 py-2  border border-ash text-nordfjord font-data
-                               text-xs font-bold uppercase tracking-wider hover:border-nova transition" style={{ borderRadius: "var(--r-m)" }}>
-                    {codeCopie ? L("Copié ✓", "Copied ✓") : L("Copier le code", "Copy code")}
-                  </button>
-                )}
-              </div>
+              {/* Le code vit desormais dans l'en-tete, copiable en un clic :
+                  le panneau ne le repete plus. */}
               <div className="flex flex-col sm:flex-row gap-5">
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-3">
@@ -1158,6 +1164,14 @@ export default function AffiliateDashboard() {
         {/* PERFORMANCE */}
         {tab === "performance" && (
           <div className="space-y-6" data-testid="affiliate-performance">
+            <header>
+              <h2 className="font-display text-[22px] font-bold text-nordfjord leading-tight">
+                {L("Performance", "Performance")}
+              </h2>
+              <p className="text-[13px] text-glacier mt-1">
+                {L("vos chiffres et votre activité", "your numbers and your activity")}
+              </p>
+            </header>
             {/* VENUS DE L'APERCU. Chiffres cles, statistiques, echelle des
                 paliers et activite recente : de la mesure, donc de la
                 performance. L'apercu n'a pas a les porter. */}
@@ -1393,6 +1407,15 @@ export default function AffiliateDashboard() {
         {/* PAYMENTS */}
         {tab === "payments" && (
           <div className="space-y-6" data-testid="affiliate-payments">
+            <header>
+              <h2 className="font-display text-[22px] font-bold text-nordfjord leading-tight">
+                {L("Paiements", "Payments")}
+              </h2>
+              <p className="text-[13px] text-glacier mt-1">
+                {L("votre argent : le cycle, le seuil, l'historique",
+                   "your money: the cycle, the threshold, the history")}
+              </p>
+            </header>
             {/* VENUS DE L'APERCU. Le cycle et le prochain versement y
                 occupaient 150 lignes alors qu'ils parlent de paiement : leur
                 place est ici. La carte garde le montant en pied, en resume. */}
@@ -1688,6 +1711,14 @@ export default function AffiliateDashboard() {
         {/* COMPLIANCE */}
         {tab === "compliance" && (
           <div className="space-y-6" data-testid="affiliate-compliance">
+            <header>
+              <h2 className="font-display text-[22px] font-bold text-nordfjord leading-tight">
+                {L("Conformité", "Compliance")}
+              </h2>
+              <p className="text-[13px] text-glacier mt-1">
+                {L("votre statut et vos obligations", "your status and your obligations")}
+              </p>
+            </header>
             <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
                 {L("STATUT DE CONFORMITÉ", "COMPLIANCE STATUS")}
@@ -1725,6 +1756,14 @@ export default function AffiliateDashboard() {
         {/* SETTINGS */}
         {tab === "settings" && (
           <div className="space-y-6 max-w-xl" data-testid="affiliate-settings">
+            <header>
+              <h2 className="font-display text-[22px] font-bold text-nordfjord leading-tight">
+                {L("Paramètres", "Settings")}
+              </h2>
+              <p className="text-[13px] text-glacier mt-1">
+                {L("votre adresse de versement", "your payout address")}
+              </p>
+            </header>
             <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
                 {L("PARAMÈTRES DE PAIEMENT : USDT / USDC", "PAYOUT SETTINGS : USDT / USDC")}
