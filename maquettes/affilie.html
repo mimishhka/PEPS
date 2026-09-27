@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FIRONOVA — trois directions pour le compte affilié</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --nordfjord:#0B2E4F; --glacier:#3E5C76; --nova:#00B8D4; --nova-texte:#096E80;
+    --clinical:#F7FAFC; --ash:#CBD5E0; --ink:#0A0F14; --mist:#B7CADD; --abyss:#0D3560;
+    --or:#C1881F; --or-vif:#DFA436; --diamant:#9888DF;
+    --display:'Space Grotesk',sans-serif; --body:'Inter',sans-serif; --data:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--body);background:#EEF2F6;color:var(--nordfjord);padding:32px 20px 80px;-webkit-font-smoothing:antialiased}
+  .page{max-width:1120px;margin:0 auto}
+  .intro{margin-bottom:40px}
+  .intro h1{font-family:var(--display);font-size:30px;font-weight:700;letter-spacing:-.02em}
+  .intro p{color:var(--glacier);margin-top:8px;max-width:64ch;line-height:1.6;font-size:14px}
+  .bloc{margin-bottom:56px}
+  .etiquette{display:flex;align-items:baseline;gap:12px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--ash)}
+  .etiquette b{font-family:var(--display);font-size:19px;font-weight:700}
+  .etiquette span{font-family:var(--data);font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--nova-texte)}
+  .etiquette i{font-style:normal;color:var(--glacier);font-size:13px;margin-left:auto}
+  .toile{background:var(--clinical);border:1px solid var(--ash);border-radius:6px;padding:22px;overflow:hidden}
+  .toile.nuit{background:var(--ink);border-color:#1E3C58}
+  .tnum{font-variant-numeric:tabular-nums}
+
+  /* ---------------------------------------------------- A — CARTE DE MEMBRE */
+  .carte{position:relative;border-radius:14px;padding:26px 28px;color:#fff;overflow:hidden;
+    background:linear-gradient(135deg,#0B2E4F 0%,#12456F 55%,#0B2E4F 100%);
+    box-shadow:0 4px 8px rgba(11,46,79,.07),0 28px 56px -20px rgba(11,46,79,.34)}
+  .carte::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(70% 110% at 100% 0%,rgba(223,164,54,.46) 0%,rgba(223,164,54,.10) 44%,transparent 70%)}
+  .carte>*{position:relative}
+  .carte .haut{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:26px}
+  .carte .marque{font-family:var(--display);font-weight:700;letter-spacing:.04em;font-size:14px}
+  .carte .marque i{color:var(--nova);font-style:normal}
+  .rang{display:flex;align-items:center;gap:8px;font-family:var(--data);font-size:11px;
+    text-transform:uppercase;letter-spacing:.18em;color:var(--or-vif)}
+  .carte .cle{font-family:var(--data);font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--mist);margin-bottom:6px}
+  .carte .somme{font-family:var(--display);font-size:56px;font-weight:700;line-height:.94;letter-spacing:-.03em}
+  .carte .sous{color:var(--mist);font-size:13px;margin-top:8px}
+  .carte .bas{display:flex;justify-content:space-between;align-items:flex-end;margin-top:26px;
+    padding-top:18px;border-top:1px solid rgba(255,255,255,.14)}
+  .carte .bas div p:first-child{font-family:var(--data);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.5)}
+  .carte .bas div p:last-child{font-family:var(--data);font-size:14px;font-weight:600;margin-top:4px}
+  .rangee{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--ash);
+    border:1px solid var(--ash);border-radius:6px;overflow:hidden;margin-top:18px}
+  .rangee div{background:#fff;padding:16px 18px}
+  .rangee p:first-child{font-family:var(--data);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--glacier)}
+  .rangee p:last-child{font-family:var(--display);font-size:22px;font-weight:700;margin-top:6px;letter-spacing:-.02em}
+
+  /* ------------------------------------------------------- B — INSTRUMENT */
+  .inst{display:grid;grid-template-columns:1.35fr .65fr;gap:16px}
+  .cadran{background:#0F1B2A;border:1px solid #1E3C58;border-radius:8px;padding:24px;color:#fff;position:relative;overflow:hidden}
+  .cadran::before{content:"";position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(255,255,255,.028) 0 1px,transparent 1px 4px)}
+  .cadran>*{position:relative}
+  .lignehaut{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;
+    font-family:var(--data);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#6E8CA8}
+  .pulse{display:inline-flex;align-items:center;gap:7px;color:var(--nova)}
+  .pulse b{width:7px;height:7px;border-radius:50%;background:var(--nova);box-shadow:0 0 10px var(--nova);animation:bat 1.9s ease-in-out infinite}
+  @keyframes bat{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.82)}}
+  .grand{font-family:var(--display);font-size:52px;font-weight:700;line-height:.94;letter-spacing:-.03em}
+  .grand em{font-style:normal;font-family:var(--data);font-size:15px;color:#6E8CA8;margin-left:8px;letter-spacing:0}
+  .delta{display:inline-flex;align-items:center;gap:6px;font-family:var(--data);font-size:12px;
+    color:#2DBFB0;background:rgba(45,191,176,.12);padding:4px 9px;border-radius:4px;margin-top:12px}
+  .spark{display:flex;align-items:flex-end;gap:4px;height:56px;margin-top:22px}
+  .spark i{flex:1;background:linear-gradient(180deg,var(--nova) 0%,rgba(0,184,212,.18) 100%);border-radius:2px 2px 0 0;display:block}
+  .jauge{background:#0F1B2A;border:1px solid #1E3C58;border-radius:8px;padding:20px;color:#fff;display:flex;flex-direction:column;justify-content:space-between}
+  .anneau{position:relative;width:132px;height:132px;margin:6px auto 0}
+  .anneau svg{transform:rotate(-90deg)}
+  .anneau .val{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .anneau .val b{font-family:var(--display);font-size:26px;font-weight:700}
+  .anneau .val span{font-family:var(--data);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:#6E8CA8;margin-top:2px}
+  .petit{font-family:var(--data);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#6E8CA8;text-align:center;margin-top:16px;line-height:1.7}
+  .petit b{color:var(--or-vif);display:block;font-size:13px;letter-spacing:.04em;margin-top:3px}
+
+  /* -------------------------------------------------------- C — ASCENSION */
+  .asc{background:#fff;border:1px solid var(--ash);border-radius:8px;padding:26px 28px;
+    box-shadow:0 2px 4px rgba(11,46,79,.06),0 12px 28px -10px rgba(11,46,79,.16)}
+  .asc .tete{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:26px;flex-wrap:wrap;gap:16px}
+  .asc .tete .g p:first-child{font-family:var(--data);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--nova-texte)}
+  .asc .tete .g p:last-child{font-family:var(--display);font-size:46px;font-weight:700;line-height:1;letter-spacing:-.03em;margin-top:6px}
+  .asc .tete .d{text-align:right}
+  .asc .tete .d p:first-child{font-family:var(--data);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--glacier)}
+  .asc .tete .d p:last-child{font-family:var(--display);font-size:17px;font-weight:700;color:var(--or);margin-top:5px;display:flex;align-items:center;gap:8px;justify-content:flex-end}
+  .echelle{position:relative;padding:8px 0 0}
+  .rail{height:8px;border-radius:99px;background:var(--ash);position:relative;overflow:hidden}
+  .rail i{position:absolute;inset:0 auto 0 0;width:64%;border-radius:99px;
+    background:linear-gradient(90deg,#27A598 0%,#C1881F 62%,#9888DF 100%)}
+  .crans{display:flex;justify-content:space-between;margin-top:12px}
+  .cran{flex:1;text-align:center;position:relative}
+  .cran b{display:block;width:13px;height:13px;border-radius:50%;background:#fff;border:2px solid var(--ash);margin:-19px auto 8px;position:relative;z-index:2}
+  .cran.fait b{background:var(--or);border-color:var(--or)}
+  .cran.ici b{background:#fff;border-color:var(--or);box-shadow:0 0 0 4px rgba(193,136,31,.22);width:17px;height:17px;margin-top:-21px}
+  .cran p:first-of-type{font-family:var(--data);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--glacier)}
+  .cran p:last-of-type{font-family:var(--data);font-size:11px;font-weight:600;color:var(--nordfjord);margin-top:3px}
+  .cran.ici p:first-of-type{color:var(--or);font-weight:600}
+  .encart{margin-top:24px;background:linear-gradient(100deg,rgba(193,136,31,.10) 0%,rgba(0,184,212,.07) 100%);
+    border:1px solid rgba(193,136,31,.30);border-radius:6px;padding:15px 18px;display:flex;align-items:center;gap:14px}
+  .encart .rond{width:38px;height:38px;border-radius:50%;background:var(--or);display:flex;align-items:center;
+    justify-content:center;color:#fff;font-family:var(--display);font-weight:700;font-size:15px;flex-shrink:0}
+  .encart p:first-child{font-family:var(--data);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--or)}
+  .encart p:last-child{font-size:14px;margin-top:3px;line-height:1.5}
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+  .duo>div{border:1px solid var(--ash);border-radius:6px;padding:16px 18px;background:#fff;position:relative;overflow:hidden}
+  .duo>div::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;
+    background:linear-gradient(90deg,var(--or) 0%,transparent 85%)}
+  .duo p:first-of-type{font-family:var(--data);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--glacier)}
+  .duo p:nth-of-type(2){font-family:var(--display);font-size:28px;font-weight:700;margin-top:7px;letter-spacing:-.02em}
+  .duo p:last-of-type{font-family:var(--data);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--glacier);margin-top:5px}
+  .note{margin-top:14px;font-size:13px;color:var(--glacier);line-height:1.65;max-width:70ch}
+  .note b{color:var(--nordfjord)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="intro">
+    <h1>Compte affilié — trois directions</h1>
+    <p>Même écran, mêmes données, trois partis pris. Chacun répond autrement à « trop blanc, aucune profondeur, aucune vie ». Tes jetons de marque sont respectés partout ; ce qui change, c'est ce que l'écran met en avant et comment il le met en scène.</p>
+  </div>
+
+  <!-- =============================================== A -->
+  <div class="bloc">
+    <div class="etiquette">
+      <span>Direction A</span><b>Carte de membre</b>
+      <i>Le rang comme objet — sombre, personnel, premium</i>
+    </div>
+    <div class="toile">
+      <div class="carte">
+        <div class="haut">
+          <div class="marque">FIRONOVA<i>.</i></div>
+          <div class="rang">
+            <svg width="17" height="17" viewBox="0 0 100 100"><polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none" stroke="#DFA436" stroke-width="5" opacity=".38"/><circle cx="50" cy="92" r="8" fill="#DFA436"/><circle cx="12" cy="71" r="8" fill="#DFA436"/><circle cx="12" cy="29" r="8" fill="#DFA436"/><circle cx="50" cy="8" r="8" fill="#DFA436"/><circle cx="88" cy="29" r="5" fill="#DFA436" opacity=".2"/><circle cx="88" cy="71" r="5" fill="#DFA436" opacity=".2"/></svg>
+            Or · 18 %
+          </div>
+        </div>
+        <p class="cle">Gains du mois en cours</p>
+        <p class="somme tnum">184,50 $</p>
+        <p class="sous">1 025,00 $ de ventes validées · 6 commandes</p>
+        <div class="bas">
+          <div><p>Membre depuis</p><p class="tnum">MARS 2026</p></div>
+          <div><p>Votre code</p><p class="tnum">FN7K2Q</p></div>
+          <div><p>Prochain versement</p><p class="tnum">1 OCT</p></div>
+        </div>
+      </div>
+      <div class="rangee">
+        <div><p>Revenu validé cumulé</p><p class="tnum">1 250,50 $</p></div>
+        <div><p>12 derniers mois</p><p class="tnum">980,25 $</p></div>
+        <div><p>À verser</p><p class="tnum">184,50 $</p></div>
+      </div>
+    </div>
+    <p class="note"><b>Le pari :</b> le compte devient un objet qu'on est content de posséder. Le rang n'est plus une étiquette, c'est la matière de la carte — l'or la dore, le diamant la teinte en violet. <b>Ce que ça coûte :</b> une seule surface dominante, donc peu de place pour le détail ; tout le reste descend en lignes sobres.</p>
+  </div>
+
+  <!-- =============================================== B -->
+  <div class="bloc">
+    <div class="etiquette">
+      <span>Direction B</span><b>Instrument</b>
+      <i>Dense, vivant, technique — le monde de la marque</i>
+    </div>
+    <div class="toile nuit">
+      <div class="inst">
+        <div class="cadran">
+          <div class="lignehaut">
+            <span>Gains · septembre 2026</span>
+            <span class="pulse"><b></b>EN DIRECT</span>
+          </div>
+          <p class="grand tnum">184,50 <em>CAD</em></p>
+          <span class="delta">▲ 42 % vs août</span>
+          <div class="spark">
+            <i style="height:22%"></i><i style="height:34%"></i><i style="height:28%"></i>
+            <i style="height:51%"></i><i style="height:44%"></i><i style="height:68%"></i>
+            <i style="height:59%"></i><i style="height:76%"></i><i style="height:64%"></i>
+            <i style="height:88%"></i><i style="height:79%"></i><i style="height:100%"></i>
+          </div>
+        </div>
+        <div class="jauge">
+          <div>
+            <div class="lignehaut" style="margin-bottom:6px"><span>Palier</span></div>
+            <div class="anneau">
+              <svg width="132" height="132">
+                <circle cx="66" cy="66" r="56" fill="none" stroke="#1E3C58" stroke-width="11"/>
+                <circle cx="66" cy="66" r="56" fill="none" stroke="#DFA436" stroke-width="11"
+                        stroke-linecap="round" stroke-dasharray="352" stroke-dashoffset="127"/>
+              </svg>
+              <div class="val"><b class="tnum">64 %</b><span>vers Platine</span></div>
+            </div>
+          </div>
+          <p class="petit">Encore<b class="tnum">1 019,75 $</b></p>
+        </div>
+      </div>
+    </div>
+    <p class="note"><b>Le pari :</b> l'écran d'un labo, pas d'une boutique. Fond sombre, chiffres qui respirent, courbe vivante, anneau de progression. Le mode nuit devient le mode par défaut de cet écran. <b>Ce que ça coûte :</b> c'est le plus loin de ta vitrine claire — il faut assumer que le compte affilié ait sa propre atmosphère.</p>
+  </div>
+
+  <!-- =============================================== C -->
+  <div class="bloc">
+    <div class="etiquette">
+      <span>Direction C</span><b>Ascension</b>
+      <i>La montée des paliers comme colonne vertébrale</i>
+    </div>
+    <div class="toile">
+      <div class="asc">
+        <div class="tete">
+          <div class="g">
+            <p>Gains du mois en cours</p>
+            <p class="tnum">184,50 $</p>
+          </div>
+          <div class="d">
+            <p>Votre palier</p>
+            <p>
+              <svg width="20" height="20" viewBox="0 0 100 100"><polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none" stroke="#C1881F" stroke-width="5" opacity=".34"/><circle cx="50" cy="92" r="8" fill="#C1881F"/><circle cx="12" cy="71" r="8" fill="#C1881F"/><circle cx="12" cy="29" r="8" fill="#C1881F"/><circle cx="50" cy="8" r="8" fill="#C1881F"/><circle cx="88" cy="29" r="5" fill="#C1881F" opacity=".2"/><circle cx="88" cy="71" r="5" fill="#C1881F" opacity=".2"/></svg>
+              Or · 18 %
+            </p>
+          </div>
+        </div>
+
+        <div class="echelle">
+          <div class="rail"><i></i></div>
+          <div class="crans">
+            <div class="cran fait"><b></b><p>Standard</p><p>10 %</p></div>
+            <div class="cran fait"><b></b><p>Bronze</p><p>12 %</p></div>
+            <div class="cran fait"><b></b><p>Argent</p><p>15 %</p></div>
+            <div class="cran ici"><b></b><p>Or</p><p>18 %</p></div>
+            <div class="cran"><b></b><p>Platine</p><p>19 %</p></div>
+            <div class="cran"><b></b><p>Diamant</p><p>20 %</p></div>
+          </div>
+        </div>
+
+        <div class="encart">
+          <div class="rond">+1</div>
+          <div>
+            <p>Prochain palier</p>
+            <p>Encore <b class="tnum">1 019,75 $</b> de ventes validées et vous passez à <b>Platine · 19 %</b>.</p>
+          </div>
+        </div>
+
+        <div class="duo">
+          <div><p>Revenu validé cumulé</p><p class="tnum">1 250,50 $</p><p>CAD</p></div>
+          <div><p>12 derniers mois</p><p class="tnum">980,25 $</p><p>CAD · fixe votre palier</p></div>
+        </div>
+      </div>
+    </div>
+    <p class="note"><b>Le pari :</b> ce qui motive n'est pas le montant, c'est la montée. L'échelle des six paliers devient l'axe de la page — on voit d'où l'on vient, où l'on est, ce qu'il reste. Clair, lisible, et la couleur sert la progression. <b>Ce que ça coûte :</b> moins spectaculaire que B au premier regard ; sa force se révèle à la deuxième visite, quand le curseur a bougé.</p>
+  </div>
+
+</div>
+</body>
+</html>

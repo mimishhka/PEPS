@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FIRONOVA — la carte conservée, chiffres justes</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --nordfjord:#0B2E4F; --glacier:#3E5C76; --nova:#00B8D4; --nova-texte:#096E80;
+    --clinical:#F7FAFC; --ash:#CBD5E0; --mist:#B7CADD;
+    --or:#C1881F; --or-vif:#DFA436; --menthe:#2DBFB0; --corail:#F0977E;
+    --display:'Space Grotesk',sans-serif; --body:'Inter',sans-serif; --data:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--body);background:#EEF2F6;color:var(--nordfjord);
+       padding:32px 20px 80px;-webkit-font-smoothing:antialiased}
+  .page{max-width:1120px;margin:0 auto}
+  h1{font-family:var(--display);font-size:30px;font-weight:700;letter-spacing:-.02em}
+  .chapeau{color:var(--glacier);margin-top:8px;max-width:72ch;line-height:1.66;font-size:14px}
+  .chapeau b{color:var(--nordfjord)}
+  .bloc{margin-top:46px}
+  .etiquette{display:flex;align-items:baseline;gap:12px;margin-bottom:16px;
+             padding-bottom:10px;border-bottom:1px solid var(--ash);flex-wrap:wrap}
+  .etiquette b{font-family:var(--display);font-size:19px;font-weight:700}
+  .etiquette span{font-family:var(--data);font-size:11px;text-transform:uppercase;
+                  letter-spacing:.18em;color:var(--nova-texte)}
+  .note{margin-top:16px;font-size:13px;color:var(--glacier);line-height:1.68;max-width:78ch}
+  .note b{color:var(--nordfjord)}
+  .tnum{font-variant-numeric:tabular-nums}
+
+  .rangee{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+  .etat{width:326px;flex-shrink:0}
+  .etatTitre{font-family:var(--data);font-size:11px;letter-spacing:.15em;text-transform:uppercase;
+             color:var(--glacier);margin-bottom:9px;display:flex;align-items:center;gap:8px}
+  .etatTitre em{font-style:normal;width:7px;height:7px;border-radius:50%;background:var(--corail)}
+  .etat.ok .etatTitre em{background:var(--menthe)}
+  .etat.neuf .etatTitre em{background:var(--nova)}
+
+  /* ================= LA CARTE QU'ELLE GARDE =================
+     Meme ADN : marine en degrade, halo dore au sommet, hexagone, nom en
+     Space Grotesk, taux en mono. Ce qui change est DEDANS, pas autour. */
+  .carte{position:relative;border-radius:14px;color:#fff;overflow:hidden;
+    background:linear-gradient(160deg,#123F66 0%,#0B2E4F 52%,#08243E 100%);
+    box-shadow:0 4px 10px rgba(11,46,79,.09),0 26px 52px -22px rgba(11,46,79,.42)}
+  .carte::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(88% 122% at 50% 0%,rgba(223,164,54,.46) 0%,
+               rgba(223,164,54,.10) 46%,transparent 72%)}
+  .carte>*{position:relative}
+
+  /* LE BANDEAU DE PERIODE : la demande precedente, posee en tete de carte.
+     Les dates tiennent sur une ligne en 11 px mono, meme sur 326 px. */
+  .bandeau{padding:11px 20px;background:rgba(0,0,0,.22);
+           border-bottom:1px solid rgba(255,255,255,.09);
+           display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .bandeau p:first-child{font-family:var(--data);font-size:11px;letter-spacing:.16em;
+                         text-transform:uppercase;color:rgba(255,255,255,.68)}
+  .bandeau p:last-child{font-family:var(--data);font-size:11px;font-weight:600;
+                        letter-spacing:.02em;color:#fff}
+
+  .coeur{display:flex;flex-direction:column;align-items:center;padding:24px 20px 20px}
+  .nom{font-family:var(--display);font-size:27px;font-weight:700;
+       margin-top:13px;letter-spacing:-.015em}
+  .taux{font-family:var(--data);font-size:15px;font-weight:600;
+        color:var(--or-vif);margin-top:5px;letter-spacing:.06em}
+
+  /* LA JAUGE, ET LE CURSEUR QUI DIT OU ON SERA.
+     C'est l'element neuf. Le trait plein = aujourd'hui. Le curseur = la
+     position au 1er du mois prochain, une fois le vieux mois sorti et le mois
+     courant entre. A GAUCHE du trait, on descend ; a DROITE, on monte.
+     Rien d'autre sur cet ecran ne rend la fenetre glissante visible. */
+  .jauge{width:100%;margin-top:18px;position:relative}
+  .piste{height:7px;border-radius:99px;background:rgba(255,255,255,.15);
+         position:relative;overflow:hidden}
+  .piste i{position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--or-vif)}
+  .curseur{position:absolute;top:-7px;width:2px;height:21px;border-radius:2px}
+  .curseur::after{content:attr(data-quand);position:absolute;top:24px;
+    left:50%;transform:translateX(-50%);white-space:nowrap;
+    font-family:var(--data);font-size:11px;letter-spacing:.09em;
+    text-transform:uppercase}
+  /* Aux extremites, l'etiquette s'aligne sur le bord au lieu de rester
+     centree : centree, elle sort de la carte et le overflow:hidden la coupe. */
+  .curseur.bordG::after{left:0;transform:none}
+  .curseur.bordD::after{left:auto;right:0;transform:none}
+  .curseur.baisse{background:var(--corail)}
+  .curseur.baisse::after{color:var(--corail)}
+  .curseur.hausse{background:var(--menthe)}
+  .curseur.hausse::after{color:var(--menthe)}
+  .bornes{display:flex;justify-content:space-between;margin-top:34px;
+          font-family:var(--data);font-size:11px;letter-spacing:.07em;
+          color:rgba(255,255,255,.68)}
+
+  /* ================= LE BLOC QUI REMPLACE « ENCORE X $ » =================
+     L'ancien disait « Encore 1 019,75 $ vers Platine » : une promesse que la
+     fenetre ne peut pas tenir, puisqu'elle perd aussi des mois par l'arriere.
+     Le neuf donne deux montants ET une date. Les deux sont des regles reelles. */
+  .actions{width:100%;margin-top:22px;border-top:1px solid rgba(255,255,255,.13);
+           padding-top:15px}
+  .echeance{font-family:var(--data);font-size:11px;letter-spacing:.17em;
+            text-transform:uppercase;color:var(--mist);text-align:center;margin-bottom:13px}
+  .acte{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+        padding:9px 11px;border-radius:6px}
+  .acte+.acte{margin-top:6px}
+  .acte .montant{font-family:var(--display);font-size:20px;font-weight:700;
+                 letter-spacing:-.02em;line-height:1}
+  .acte .quoi{font-family:var(--data);font-size:11px;letter-spacing:.09em;
+              text-transform:uppercase;text-align:right;line-height:1.5}
+  .acte.urgent{background:rgba(240,151,126,.17);
+               box-shadow:inset 0 0 0 1px rgba(240,151,126,.38)}
+  .acte.urgent .montant{color:var(--corail)}
+  .acte.urgent .quoi{color:var(--corail)}
+  .acte.acquis{background:rgba(45,191,176,.14);
+               box-shadow:inset 0 0 0 1px rgba(45,191,176,.32)}
+  .acte.acquis .montant{color:var(--menthe);font-size:15px;font-family:var(--data);
+                        font-weight:600;letter-spacing:.04em}
+  .acte.acquis .quoi{color:var(--menthe)}
+  .acte.viser{background:rgba(255,255,255,.055)}
+  .acte.viser .montant{color:#fff}
+  .acte.viser .quoi{color:var(--mist)}
+
+  .pied{display:flex;border-top:1px solid rgba(255,255,255,.13);background:rgba(0,0,0,.20)}
+  .pied div{flex:1;padding:13px 20px}
+  .pied div+div{border-left:1px solid rgba(255,255,255,.10)}
+  .pied p:first-child{font-family:var(--data);font-size:11px;letter-spacing:.17em;
+                      text-transform:uppercase;color:rgba(255,255,255,.68)}
+  .pied p:last-child{font-family:var(--data);font-size:14px;font-weight:600;
+                     margin-top:5px;letter-spacing:.04em}
+
+  /* variante 2 : le pied porte les deux montants */
+  .pied.duo p:last-child{font-size:15px}
+  .pied.duo .r p:last-child{color:var(--corail)}
+  .pied.duo .v p:last-child{color:#fff}
+
+  .verdict{margin-top:18px;border-left:3px solid var(--menthe);background:#fff;
+           border-radius:0 6px 6px 0;padding:13px 16px;font-size:13px;
+           line-height:1.66;color:var(--glacier);box-shadow:0 1px 2px rgba(11,46,79,.06)}
+  .verdict b{color:var(--nordfjord)}
+  .verdict.alerte{border-left-color:var(--corail)}
+
+  table.paliers{border-collapse:collapse;margin-top:14px;font-size:13px}
+  table.paliers th,table.paliers td{padding:7px 16px 7px 0;text-align:left;
+    border-bottom:1px solid var(--ash)}
+  table.paliers th{font-family:var(--data);font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--glacier);font-weight:500}
+  table.paliers td{font-family:var(--data);font-variant-numeric:tabular-nums}
+  table.paliers tr.ici td{color:var(--or);font-weight:600}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>La carte, conservée — avec des chiffres qui existent</h1>
+  <p class="chapeau">
+    Même forme, même halo, même hexagone. Trois choses changent à l'intérieur :
+    <b>les paliers sont les vrais</b> (Or est à 16 %, pas 18 ; Platine à 18, pas 19) ;
+    <b>« Encore 1 019,75 $ » disparaît</b> au profit de deux montants datés ; et la jauge
+    gagne <b>un curseur</b> qui montre où l'affiliée sera le 1<sup>er</sup> du mois prochain,
+    une fois le vieux mois sorti de la fenêtre.
+  </p>
+
+  <!-- ================================================== VARIANTE 1 -->
+  <div class="bloc">
+    <div class="etiquette"><span>Variante 1</span><b>Le bloc central remplacé</b></div>
+
+    <div class="rangee">
+
+      <!-- en danger -->
+      <div class="etat">
+        <p class="etatTitre"><em></em>Palier menacé</p>
+        <div class="carte">
+          <div class="bandeau">
+            <p>Période</p>
+            <p>1 sept. 2025 → 31 août 2026</p>
+          </div>
+          <div class="coeur">
+            <svg width="66" height="66" viewBox="0 0 100 100" aria-hidden="true">
+              <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                       stroke="#DFA436" stroke-width="4" opacity=".42"/>
+              <circle cx="50" cy="8" r="7.5" fill="#DFA436"/>
+              <circle cx="12" cy="29" r="7.5" fill="#DFA436"/>
+              <circle cx="12" cy="71" r="7.5" fill="#DFA436"/>
+              <circle cx="50" cy="92" r="7.5" fill="#DFA436"/>
+              <circle cx="88" cy="29" r="5" fill="#DFA436" opacity=".24"/>
+              <circle cx="88" cy="71" r="5" fill="#DFA436" opacity=".24"/>
+            </svg>
+            <p class="nom">Palier Or</p>
+            <p class="taux">16 % de commission</p>
+
+            <div class="jauge">
+              <div class="piste"><i style="width:12.4%"></i></div>
+              <!-- la projection tombe SOUS le plancher du palier : le curseur
+                   se colle a zero et vire au corail. -->
+              <div class="curseur baisse bordG" style="left:0" data-quand="au 1er oct."></div>
+              <div class="bornes"><span>10 001 $</span><span>20 001 $</span></div>
+            </div>
+
+            <div class="actions">
+              <p class="echeance">D'ici le 30 septembre</p>
+              <div class="acte urgent">
+                <p class="montant tnum">231 $</p>
+                <p class="quoi">pour garder<br>votre palier Or</p>
+              </div>
+              <div class="acte viser">
+                <p class="montant tnum">10 231 $</p>
+                <p class="quoi">pour atteindre<br>Platine · 18 %</p>
+              </div>
+            </div>
+          </div>
+          <div class="pied">
+            <div>
+              <p>Prochain versement</p>
+              <p class="tnum">1 oct · 184,50 $</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- acquis -->
+      <div class="etat ok">
+        <p class="etatTitre"><em></em>Palier acquis</p>
+        <div class="carte">
+          <div class="bandeau">
+            <p>Période</p>
+            <p>1 sept. 2025 → 31 août 2026</p>
+          </div>
+          <div class="coeur">
+            <svg width="66" height="66" viewBox="0 0 100 100" aria-hidden="true">
+              <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                       stroke="#DFA436" stroke-width="4" opacity=".42"/>
+              <circle cx="50" cy="8" r="7.5" fill="#DFA436"/>
+              <circle cx="12" cy="29" r="7.5" fill="#DFA436"/>
+              <circle cx="88" cy="29" r="5" fill="#DFA436" opacity=".24"/>
+              <circle cx="88" cy="71" r="5" fill="#DFA436" opacity=".24"/>
+              <circle cx="50" cy="92" r="5" fill="#DFA436" opacity=".24"/>
+              <circle cx="12" cy="71" r="5" fill="#DFA436" opacity=".24"/>
+            </svg>
+            <p class="nom">Palier Bronze</p>
+            <p class="taux">12 % de commission</p>
+
+            <div class="jauge">
+              <div class="piste"><i style="width:70.6%"></i></div>
+              <!-- ici la projection MONTE : le curseur passe a droite du trait
+                   et vire au menthe. Le meme objet dit les deux sens. -->
+              <div class="curseur hausse" style="left:83.1%" data-quand="au 1er oct."></div>
+              <div class="bornes"><span>2 001 $</span><span>5 001 $</span></div>
+            </div>
+
+            <div class="actions">
+              <p class="echeance">D'ici le 30 septembre</p>
+              <div class="acte acquis">
+                <p class="montant">Marge de 2 494 $</p>
+                <p class="quoi">Bronze est<br>acquis</p>
+              </div>
+              <div class="acte viser">
+                <p class="montant tnum">506 $</p>
+                <p class="quoi">pour atteindre<br>Argent · 14 %</p>
+              </div>
+            </div>
+          </div>
+          <div class="pied">
+            <div>
+              <p>Prochain versement</p>
+              <p class="tnum">1 oct · 67,40 $</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- premier mois -->
+      <div class="etat neuf">
+        <p class="etatTitre"><em></em>Premier mois</p>
+        <div class="carte">
+          <div class="bandeau">
+            <p>Période</p>
+            <p>1 sept. 2025 → 31 août 2026</p>
+          </div>
+          <div class="coeur">
+            <svg width="66" height="66" viewBox="0 0 100 100" aria-hidden="true">
+              <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                       stroke="#B7CADD" stroke-width="4" opacity=".34"/>
+              <circle cx="50" cy="8" r="7.5" fill="#B7CADD"/>
+              <circle cx="12" cy="29" r="5" fill="#B7CADD" opacity=".24"/>
+              <circle cx="88" cy="29" r="5" fill="#B7CADD" opacity=".24"/>
+              <circle cx="12" cy="71" r="5" fill="#B7CADD" opacity=".24"/>
+              <circle cx="88" cy="71" r="5" fill="#B7CADD" opacity=".24"/>
+              <circle cx="50" cy="92" r="5" fill="#B7CADD" opacity=".24"/>
+            </svg>
+            <p class="nom">Palier Standard</p>
+            <p class="taux" style="color:var(--mist)">10 % de commission</p>
+
+            <div class="jauge">
+              <div class="piste"><i style="width:4%;background:var(--nova)"></i></div>
+              <div class="curseur hausse" style="left:4%" data-quand="au 1er oct."></div>
+              <div class="bornes"><span>0 $</span><span>2 001 $</span></div>
+            </div>
+
+            <div class="actions">
+              <p class="echeance">D'ici le 30 septembre</p>
+              <!-- Standard n'a pas de plancher : il ne peut pas etre perdu.
+                   Aucune alerte de maintien ici — ce serait une fausse peur,
+                   le pendant exact du faux espoir. -->
+              <div class="acte acquis">
+                <p class="montant">Aucun risque</p>
+                <p class="quoi">Standard ne<br>se perd pas</p>
+              </div>
+              <div class="acte viser">
+                <p class="montant tnum">1 921 $</p>
+                <p class="quoi">pour atteindre<br>Bronze · 12 %</p>
+              </div>
+            </div>
+          </div>
+          <div class="pied">
+            <div>
+              <p>Prochain versement</p>
+              <p class="tnum">1 oct · 8,00 $</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <p class="note">
+      <b>Ce qui reste :</b> la carte entière — halo, hexagone, nom, taux, jauge, pied de versement.
+      <b>Ce qui change :</b> le bloc « ENCORE / VERS PLATINE » devient deux lignes datées. La
+      première est un <b>avertissement</b> quand le palier est menacé, une <b>confirmation</b>
+      quand il est acquis. La seconde est l'objectif. <b>Le curseur sur la jauge</b> montre où
+      elle atterrit le 1<sup>er</sup> octobre : à gauche du trait elle descend, à droite elle monte.
+    </p>
+    <p class="verdict alerte">
+      <b>Regarde la première carte.</b> Elle a 11 240 $ au compteur, largement au-dessus du
+      plancher Or de 10 001 $ — et elle va <b>perdre son palier</b>, parce que 1 880 $ de
+      septembre 2025 sortent le 1<sup>er</sup> octobre. Aujourd'hui, aucun écran ne peut le lui dire.
+      C'est exactement ce que ton idée rend possible.
+    </p>
+  </div>
+
+  <!-- ================================================== VARIANTE 2 -->
+  <div class="bloc">
+    <div class="etiquette"><span>Variante 2</span><b>Les deux montants dans le pied</b></div>
+
+    <div class="rangee">
+      <div class="etat">
+        <p class="etatTitre"><em></em>Palier menacé</p>
+        <div class="carte">
+          <div class="bandeau">
+            <p>Période</p>
+            <p>1 sept. 2025 → 31 août 2026</p>
+          </div>
+          <div class="coeur">
+            <svg width="66" height="66" viewBox="0 0 100 100" aria-hidden="true">
+              <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                       stroke="#DFA436" stroke-width="4" opacity=".42"/>
+              <circle cx="50" cy="8" r="7.5" fill="#DFA436"/>
+              <circle cx="12" cy="29" r="7.5" fill="#DFA436"/>
+              <circle cx="12" cy="71" r="7.5" fill="#DFA436"/>
+              <circle cx="50" cy="92" r="7.5" fill="#DFA436"/>
+              <circle cx="88" cy="29" r="5" fill="#DFA436" opacity=".24"/>
+              <circle cx="88" cy="71" r="5" fill="#DFA436" opacity=".24"/>
+            </svg>
+            <p class="nom">Palier Or</p>
+            <p class="taux">16 % de commission</p>
+
+            <div class="jauge">
+              <div class="piste"><i style="width:12.4%"></i></div>
+              <div class="curseur baisse bordG" style="left:0" data-quand="au 1er oct."></div>
+              <div class="bornes"><span>10 001 $</span><span>20 001 $</span></div>
+            </div>
+
+            <p class="echeance" style="margin:24px 0 0">Échéance · 30 septembre</p>
+          </div>
+          <div class="pied duo">
+            <div class="r">
+              <p>Garder Or</p>
+              <p class="tnum">231 $</p>
+            </div>
+            <div class="v">
+              <p>Vers Platine</p>
+              <p class="tnum">10 231 $</p>
+            </div>
+          </div>
+          <div class="pied">
+            <div>
+              <p>Prochain versement</p>
+              <p class="tnum">1 oct · 184,50 $</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="etat ok">
+        <p class="etatTitre"><em></em>Palier acquis</p>
+        <div class="carte">
+          <div class="bandeau">
+            <p>Période</p>
+            <p>1 sept. 2025 → 31 août 2026</p>
+          </div>
+          <div class="coeur">
+            <svg width="66" height="66" viewBox="0 0 100 100" aria-hidden="true">
+              <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                       stroke="#DFA436" stroke-width="4" opacity=".42"/>
+              <circle cx="50" cy="8" r="7.5" fill="#DFA436"/>
+              <circle cx="12" cy="29" r="7.5" fill="#DFA436"/>
+              <circle cx="88" cy="29" r="5" fill="#DFA436" opacity=".24"/>
+              <circle cx="88" cy="71" r="5" fill="#DFA436" opacity=".24"/>
+              <circle cx="50" cy="92" r="5" fill="#DFA436" opacity=".24"/>
+              <circle cx="12" cy="71" r="5" fill="#DFA436" opacity=".24"/>
+            </svg>
+            <p class="nom">Palier Bronze</p>
+            <p class="taux">12 % de commission</p>
+
+            <div class="jauge">
+              <div class="piste"><i style="width:70.6%"></i></div>
+              <div class="curseur hausse" style="left:83.1%" data-quand="au 1er oct."></div>
+              <div class="bornes"><span>2 001 $</span><span>5 001 $</span></div>
+            </div>
+
+            <p class="echeance" style="margin:24px 0 0">Échéance · 30 septembre</p>
+          </div>
+          <div class="pied duo">
+            <div class="v">
+              <p>Garder Bronze</p>
+              <p class="tnum" style="color:var(--menthe)">Acquis</p>
+            </div>
+            <div class="v">
+              <p>Vers Argent</p>
+              <p class="tnum">506 $</p>
+            </div>
+          </div>
+          <div class="pied">
+            <div>
+              <p>Prochain versement</p>
+              <p class="tnum">1 oct · 67,40 $</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>Le pari :</b> le cœur de la carte reste contemplatif — hexagone, nom, taux, jauge — et
+      tout l'actionnable descend dans les bandeaux du bas, alignés sur celui du versement.
+      <b>Ce que ça gagne :</b> une carte plus courte, et trois bandeaux qui se lisent comme une
+      liste. <b>Ce que ça coûte :</b> l'avertissement perd sa couleur d'alerte — un palier menacé
+      ne saute plus aux yeux. À retenir seulement si tu juges la perte de palier rare.
+    </p>
+  </div>
+
+  <!-- ================================================== les vrais paliers -->
+  <div class="bloc">
+    <div class="etiquette"><span>Référence</span><b>Tes paliers réels</b></div>
+    <table class="paliers">
+      <tr><th>Palier</th><th>Taux</th><th>Plancher</th><th>Plafond</th></tr>
+      <tr><td>Standard</td><td>10 %</td><td>0 $</td><td>2 000 $</td></tr>
+      <tr><td>Bronze</td><td>12 %</td><td>2 001 $</td><td>5 000 $</td></tr>
+      <tr><td>Argent</td><td>14 %</td><td>5 001 $</td><td>10 000 $</td></tr>
+      <tr class="ici"><td>Or</td><td>16 %</td><td>10 001 $</td><td>20 000 $</td></tr>
+      <tr><td>Platine</td><td>18 %</td><td>20 001 $</td><td>35 000 $</td></tr>
+      <tr><td>Diamant</td><td>20 %</td><td>35 001 $</td><td>—</td></tr>
+    </table>
+    <p class="note">
+      Source : <b>server.py:10443</b>. Les maquettes précédentes affichaient « Or · 18 % » et
+      « vers Platine · 19 % » — deux valeurs qui n'existent nulle part dans ton code.
+    </p>
+  </div>
+
+  <!-- ================================================== le calcul -->
+  <div class="bloc">
+    <div class="etiquette"><span>Le calcul</span><b>D'où sortent les deux montants</b></div>
+    <p class="note">
+      En mois calendaires, la fenêtre d'octobre sera <b>1 oct. 2025 → 30 sept. 2026</b>. Par
+      rapport à celle de septembre, elle <b>perd septembre 2025</b> et <b>gagne septembre 2026</b>.
+      D'où :
+    </p>
+    <table class="paliers">
+      <tr><th>Étape</th><th>Montant</th></tr>
+      <tr><td>Total de la fenêtre actuelle</td><td>11 240 $</td></tr>
+      <tr><td>− ventes de septembre 2025 (sortent)</td><td>− 1 880 $</td></tr>
+      <tr><td>+ ventes de septembre 2026 à ce jour</td><td>+ 410 $</td></tr>
+      <tr class="ici"><td>= projection au 1<sup>er</sup> octobre</td><td>9 770 $</td></tr>
+      <tr><td>Plancher Or</td><td>10 001 $</td></tr>
+      <tr class="ici"><td>= à vendre d'ici le 30 septembre</td><td>231 $</td></tr>
+    </table>
+    <p class="verdict">
+      <b>Ce qu'il manque au backend :</b> deux sommes de plus dans l'agrégation existante — les
+      ventes du mois qui sort, et celles du mois en cours. Aucune requête supplémentaire.
+      Le reste (planchers, palier courant) est déjà là.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

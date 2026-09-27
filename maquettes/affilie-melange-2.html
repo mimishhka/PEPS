@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FIRONOVA — trois mélanges de plus</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --nordfjord:#0B2E4F; --glacier:#3E5C76; --nova:#00B8D4; --nova-texte:#096E80;
+    --clinical:#F7FAFC; --ash:#CBD5E0; --ink:#0A0F14; --mist:#B7CADD;
+    --or:#C1881F; --or-vif:#DFA436; --diamant:#9888DF; --menthe:#2DBFB0;
+    --display:'Space Grotesk',sans-serif; --body:'Inter',sans-serif; --data:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--body);background:#EEF2F6;color:var(--nordfjord);padding:32px 20px 80px;-webkit-font-smoothing:antialiased}
+  .page{max-width:1120px;margin:0 auto}
+  .intro h1{font-family:var(--display);font-size:30px;font-weight:700;letter-spacing:-.02em}
+  .intro p{color:var(--glacier);margin-top:8px;max-width:68ch;line-height:1.65;font-size:14px}
+  .bloc{margin-top:46px}
+  .etiquette{display:flex;align-items:baseline;gap:12px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--ash);flex-wrap:wrap}
+  .etiquette b{font-family:var(--display);font-size:19px;font-weight:700}
+  .etiquette span{font-family:var(--data);font-size:11px;text-transform:uppercase;letter-spacing:.18em;color:var(--nova-texte)}
+  .etiquette i{font-style:normal;color:var(--glacier);font-size:13px;margin-left:auto}
+  .toile{border:1px solid var(--ash);border-radius:6px;padding:22px;overflow:hidden;background:var(--clinical)}
+  .tnum{font-variant-numeric:tabular-nums}
+  .note{margin-top:14px;font-size:13px;color:var(--glacier);line-height:1.65;max-width:74ch}
+  .note b{color:var(--nordfjord)}
+
+  /* ---------- le fond de carte, commun ---------- */
+  .carte{position:relative;border-radius:12px;color:#fff;overflow:hidden;
+    background:linear-gradient(135deg,#0B2E4F 0%,#123F66 58%,#0B2E4F 100%);
+    box-shadow:0 4px 8px rgba(11,46,79,.07),0 28px 56px -20px rgba(11,46,79,.34)}
+  .carte::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(76% 116% at 100% 0%,rgba(223,164,54,.42) 0%,rgba(223,164,54,.09) 46%,transparent 72%)}
+  .carte>*{position:relative}
+  .corps{padding:24px 26px}
+  .marque{font-family:var(--display);font-weight:700;letter-spacing:.04em;font-size:14px}
+  .marque i{color:var(--nova);font-style:normal}
+  .cle{font-family:var(--data);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--mist)}
+  .somme{font-family:var(--display);font-weight:700;line-height:.94;letter-spacing:-.03em}
+  .sous{color:var(--mist);font-size:13px;margin-top:9px}
+  .rang{display:inline-flex;align-items:center;gap:9px;font-family:var(--data);font-size:12px;
+    font-weight:600;text-transform:uppercase;letter-spacing:.14em;color:var(--or-vif)}
+  .delta{display:inline-flex;gap:6px;font-family:var(--data);font-size:12px;font-weight:600;
+    color:#7BE0D2;background:rgba(45,191,176,.16);padding:5px 10px;border-radius:4px}
+
+  /* ---------- LE BANDEAU QU'ELLE AIME ---------- */
+  .meta{display:flex;gap:0;border-top:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.14)}
+  .meta div{flex:1;padding:15px 26px}
+  .meta div+div{border-left:1px solid rgba(255,255,255,.10)}
+  .meta p:first-child{font-family:var(--data);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.62)}
+  .meta p:last-child{font-family:var(--data);font-size:15px;font-weight:600;margin-top:5px;letter-spacing:.06em}
+
+  .courbe{display:flex;align-items:flex-end;gap:5px;height:50px}
+  .courbe i{flex:1;border-radius:2px 2px 0 0;background:linear-gradient(180deg,var(--nova) 0%,rgba(0,184,212,.22) 100%)}
+
+  /* ---------- l'echelle horizontale ---------- */
+  .rail{height:8px;border-radius:99px;background:var(--ash);position:relative;overflow:hidden}
+  .rail i{position:absolute;inset:0 auto 0 0;width:64%;border-radius:99px;
+    background:linear-gradient(90deg,var(--menthe) 0%,var(--or) 62%,var(--diamant) 100%)}
+  .crans{display:flex;justify-content:space-between;margin-top:13px}
+  .cran{flex:1;text-align:center}
+  .cran b{display:block;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--ash);margin:-19px auto 9px;position:relative;z-index:2}
+  .cran.fait b{background:var(--or);border-color:var(--or)}
+  .cran.ici b{border-color:var(--or);width:16px;height:16px;margin-top:-21px;box-shadow:0 0 0 4px rgba(193,136,31,.24)}
+  .cran p{font-family:var(--data);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--glacier)}
+  .cran p+p{font-weight:600;color:var(--nordfjord);margin-top:3px;letter-spacing:.04em}
+  .cran.ici p:first-child{color:var(--or);font-weight:600}
+
+  /* ---------- MELANGE 3 : colonnes ---------- */
+  .colonnes{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+  .panneau{background:#fff;border:1px solid var(--ash);border-radius:8px;padding:20px 22px;
+    box-shadow:0 1px 2px rgba(11,46,79,.06),0 2px 6px -2px rgba(11,46,79,.08)}
+  .panneau>p:first-child{font-family:var(--data);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--glacier);margin-bottom:18px}
+  .ligne{display:flex;justify-content:space-between;align-items:baseline;padding:13px 0}
+  .ligne+.ligne{border-top:1px solid var(--ash)}
+  .ligne span:first-child{font-size:14px;color:var(--glacier)}
+  /* LA COULEUR PASSE AU CHIFFRE, plus a un filet decoratif sur le cote */
+  .ligne span:last-child{font-family:var(--display);font-size:22px;font-weight:700;letter-spacing:-.02em}
+  .ligne.cle span:last-child{color:var(--or)}
+
+  /* ---------- MELANGE 4 : echelle verticale ---------- */
+  .duo4{display:grid;grid-template-columns:1fr 190px;gap:16px;margin-top:0}
+  .tour{background:#fff;border:1px solid var(--ash);border-radius:8px;padding:20px 18px;
+    box-shadow:0 1px 2px rgba(11,46,79,.06),0 2px 6px -2px rgba(11,46,79,.08);display:flex;flex-direction:column}
+  .tour>p{font-family:var(--data);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--glacier);margin-bottom:16px;text-align:center}
+  .vrail{flex:1;display:flex;gap:14px;padding-left:6px}
+  .vbarre{width:8px;border-radius:99px;background:var(--ash);position:relative;overflow:hidden}
+  .vbarre i{position:absolute;inset:auto 0 0 0;height:64%;border-radius:99px;
+    background:linear-gradient(0deg,var(--menthe) 0%,var(--or) 62%,var(--diamant) 100%)}
+  .vcrans{flex:1;display:flex;flex-direction:column-reverse;justify-content:space-between}
+  .vcran{display:flex;align-items:center;gap:10px;height:22px}
+  .vcran b{width:11px;height:11px;border-radius:50%;background:#fff;border:2px solid var(--ash);margin-left:-25px;flex-shrink:0}
+  .vcran.fait b{background:var(--or);border-color:var(--or)}
+  .vcran.ici b{border-color:var(--or);width:15px;height:15px;margin-left:-27px;box-shadow:0 0 0 4px rgba(193,136,31,.24)}
+  .vcran p{font-family:var(--data);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--glacier)}
+  .vcran.ici p{color:var(--or);font-weight:600}
+  .vcran em{font-style:normal;font-family:var(--data);font-size:11px;color:var(--nordfjord);font-weight:600;margin-left:auto}
+
+  /* ---------- MELANGE 5 : deux cartes ---------- */
+  .paire{display:grid;grid-template-columns:1.15fr .85fr;gap:16px}
+  .carte.palier::after{background:radial-gradient(90% 130% at 50% 0%,rgba(223,164,54,.50) 0%,rgba(223,164,54,.12) 48%,transparent 74%)}
+  .hexGrand{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:26px 20px 22px}
+  .hexGrand .nom{font-family:var(--display);font-size:27px;font-weight:700;margin-top:14px;letter-spacing:-.01em}
+  .hexGrand .taux{font-family:var(--data);font-size:15px;font-weight:600;color:var(--or-vif);margin-top:5px;letter-spacing:.08em}
+  .hexGrand .reste{font-family:var(--data);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mist);margin-top:16px;text-align:center;line-height:1.8}
+  .hexGrand .reste b{display:block;font-size:14px;color:#fff;letter-spacing:.04em;margin-top:3px}
+  .miniRail{width:100%;height:6px;border-radius:99px;background:rgba(255,255,255,.16);margin-top:14px;overflow:hidden;position:relative}
+  .miniRail i{position:absolute;inset:0 auto 0 0;width:64%;border-radius:99px;background:var(--or-vif)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="intro">
+    <h1>Trois mélanges de plus</h1>
+    <p>Le bandeau que tu aimes — <b>membre depuis · code · prochain versement</b> — est gardé dans les trois, et il devient la signature du bas de carte. Ce qui change à chaque fois : comment la progression et les chiffres s'organisent autour. Et le filet d'accent sur le côté des cartes a disparu : <b>la couleur passe au chiffre lui-même</b>, là où elle porte une information.</p>
+  </div>
+
+  <!-- ======================================= 3 -->
+  <div class="bloc">
+    <div class="etiquette">
+      <span>Mélange 3</span><b>Carte large, puis deux colonnes</b>
+      <i>La carte annonce, les colonnes détaillent</i>
+    </div>
+    <div class="toile">
+      <div class="carte">
+        <div class="corps">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap">
+            <div>
+              <div class="marque">FIRONOVA<i>.</i></div>
+              <p class="cle" style="margin-top:22px">Gains du mois en cours</p>
+              <p class="somme tnum" style="font-size:54px">184,50 $</p>
+              <p class="sous">1 025,00 $ de ventes validées · 6 commandes</p>
+            </div>
+            <div style="text-align:right">
+              <div class="rang">
+                <svg width="19" height="19" viewBox="0 0 100 100"><polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none" stroke="#DFA436" stroke-width="5" opacity=".4"/><circle cx="50" cy="92" r="8" fill="#DFA436"/><circle cx="12" cy="71" r="8" fill="#DFA436"/><circle cx="12" cy="29" r="8" fill="#DFA436"/><circle cx="50" cy="8" r="8" fill="#DFA436"/><circle cx="88" cy="29" r="5" fill="#DFA436" opacity=".22"/><circle cx="88" cy="71" r="5" fill="#DFA436" opacity=".22"/></svg>
+                Or · 18 %
+              </div>
+              <div class="courbe" style="width:240px;margin-top:20px">
+                <i style="height:24%"></i><i style="height:36%"></i><i style="height:30%"></i>
+                <i style="height:52%"></i><i style="height:45%"></i><i style="height:70%"></i>
+                <i style="height:60%"></i><i style="height:78%"></i><i style="height:66%"></i>
+                <i style="height:90%"></i><i style="height:80%"></i><i style="height:100%"></i>
+              </div>
+              <p class="cle" style="margin-top:9px">12 derniers mois</p>
+            </div>
+          </div>
+        </div>
+        <div class="meta">
+          <div><p>Membre depuis</p><p class="tnum">MARS 2026</p></div>
+          <div><p>Votre code</p><p class="tnum">FN7K2Q</p></div>
+          <div><p>Prochain versement</p><p class="tnum">1 OCT</p></div>
+        </div>
+      </div>
+
+      <div class="colonnes">
+        <div class="panneau">
+          <p>Votre progression</p>
+          <div class="rail"><i></i></div>
+          <div class="crans">
+            <div class="cran fait"><b></b><p>Std</p><p>10 %</p></div>
+            <div class="cran fait"><b></b><p>Bronze</p><p>12 %</p></div>
+            <div class="cran fait"><b></b><p>Argent</p><p>15 %</p></div>
+            <div class="cran ici"><b></b><p>Or</p><p>18 %</p></div>
+            <div class="cran"><b></b><p>Platine</p><p>19 %</p></div>
+            <div class="cran"><b></b><p>Diamant</p><p>20 %</p></div>
+          </div>
+          <div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--ash);font-size:14px;line-height:1.55">
+            Encore <b class="tnum" style="color:var(--or);font-family:var(--display);font-size:17px">1 019,75 $</b>
+            de ventes validées et vous passez à <b>Platine · 19 %</b>.
+          </div>
+        </div>
+        <div class="panneau">
+          <p>Vos chiffres</p>
+          <div class="ligne cle"><span>Revenu validé cumulé</span><span class="tnum">1 250,50 $</span></div>
+          <div class="ligne"><span>12 derniers mois</span><span class="tnum">980,25 $</span></div>
+          <div class="ligne"><span>À verser le 1er octobre</span><span class="tnum">184,50 $</span></div>
+          <div class="ligne"><span>Commandes ce mois</span><span class="tnum">6</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="note"><b>Le pari :</b> la carte annonce, les colonnes détaillent. Deux blocs de même poids sous elle, l'un pour la montée, l'autre pour les montants — on sait toujours de quel côté regarder. <b>Le chiffre le plus important de chaque colonne porte la couleur du palier</b> : l'accent sert l'information, il ne décore plus un bord de carte.</p>
+  </div>
+
+  <!-- ======================================= 4 -->
+  <div class="bloc">
+    <div class="etiquette">
+      <span>Mélange 4</span><b>Échelle verticale</b>
+      <i>La montée se lit comme un ascenseur</i>
+    </div>
+    <div class="toile">
+      <div class="duo4">
+        <div class="carte">
+          <div class="corps">
+            <div class="marque">FIRONOVA<i>.</i></div>
+            <p class="cle" style="margin-top:22px">Gains du mois en cours</p>
+            <p class="somme tnum" style="font-size:50px">184,50 $</p>
+            <p class="sous">1 025,00 $ de ventes validées · 6 commandes</p>
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-top:20px;flex-wrap:wrap">
+              <span class="delta">▲ 42 % vs août</span>
+              <div class="courbe" style="width:210px">
+                <i style="height:24%"></i><i style="height:36%"></i><i style="height:30%"></i>
+                <i style="height:52%"></i><i style="height:45%"></i><i style="height:70%"></i>
+                <i style="height:60%"></i><i style="height:78%"></i><i style="height:66%"></i>
+                <i style="height:90%"></i><i style="height:80%"></i><i style="height:100%"></i>
+              </div>
+            </div>
+          </div>
+          <div class="meta">
+            <div><p>Membre depuis</p><p class="tnum">MARS 2026</p></div>
+            <div><p>Votre code</p><p class="tnum">FN7K2Q</p></div>
+            <div><p>Prochain versement</p><p class="tnum">1 OCT</p></div>
+          </div>
+        </div>
+
+        <div class="tour">
+          <p>Votre montée</p>
+          <div class="vrail">
+            <div class="vbarre"><i></i></div>
+            <div class="vcrans">
+              <div class="vcran fait"><b></b><p>Standard</p><em>10 %</em></div>
+              <div class="vcran fait"><b></b><p>Bronze</p><em>12 %</em></div>
+              <div class="vcran fait"><b></b><p>Argent</p><em>15 %</em></div>
+              <div class="vcran ici"><b></b><p>Or</p><em>18 %</em></div>
+              <div class="vcran"><b></b><p>Platine</p><em>19 %</em></div>
+              <div class="vcran"><b></b><p>Diamant</p><em>20 %</em></div>
+            </div>
+          </div>
+          <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--ash);text-align:center">
+            <p style="font-family:var(--data);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--glacier)">Encore</p>
+            <p class="tnum" style="font-family:var(--display);font-size:20px;font-weight:700;color:var(--or);margin-top:4px">1 019,75 $</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="colonnes" style="grid-template-columns:repeat(3,1fr)">
+        <div class="panneau" style="padding:16px 18px">
+          <p style="margin-bottom:8px">Revenu validé cumulé</p>
+          <p class="tnum" style="font-family:var(--display);font-size:27px;font-weight:700;color:var(--or);letter-spacing:-.02em">1 250,50 $</p>
+        </div>
+        <div class="panneau" style="padding:16px 18px">
+          <p style="margin-bottom:8px">12 derniers mois</p>
+          <p class="tnum" style="font-family:var(--display);font-size:27px;font-weight:700;letter-spacing:-.02em">980,25 $</p>
+        </div>
+        <div class="panneau" style="padding:16px 18px">
+          <p style="margin-bottom:8px">Commandes ce mois</p>
+          <p class="tnum" style="font-family:var(--display);font-size:27px;font-weight:700;letter-spacing:-.02em">6</p>
+        </div>
+      </div>
+    </div>
+    <p class="note"><b>Le pari :</b> une montée se lit mieux de bas en haut. L'échelle devient une colonne à droite, comme un ascenseur : on voit les étages franchis sous soi et ceux qui restent au-dessus. <b>Ce que ça gagne :</b> l'échelle est visible en permanence sans voler la largeur du chiffre. <b>Ce que ça coûte :</b> sur téléphone elle devra repasser à l'horizontale.</p>
+  </div>
+
+  <!-- ======================================= 5 -->
+  <div class="bloc">
+    <div class="etiquette">
+      <span>Mélange 5</span><b>Deux cartes</b>
+      <i>Les gains et le rang, à égalité</i>
+    </div>
+    <div class="toile">
+      <div class="paire">
+        <div class="carte">
+          <div class="corps">
+            <div class="marque">FIRONOVA<i>.</i></div>
+            <p class="cle" style="margin-top:22px">Gains du mois en cours</p>
+            <p class="somme tnum" style="font-size:52px">184,50 $</p>
+            <p class="sous">1 025,00 $ de ventes validées · 6 commandes</p>
+            <div class="courbe" style="margin-top:22px">
+              <i style="height:24%"></i><i style="height:36%"></i><i style="height:30%"></i>
+              <i style="height:52%"></i><i style="height:45%"></i><i style="height:70%"></i>
+              <i style="height:60%"></i><i style="height:78%"></i><i style="height:66%"></i>
+              <i style="height:90%"></i><i style="height:80%"></i><i style="height:100%"></i>
+            </div>
+          </div>
+          <div class="meta">
+            <div><p>Membre depuis</p><p class="tnum">MARS 2026</p></div>
+            <div><p>Votre code</p><p class="tnum">FN7K2Q</p></div>
+          </div>
+        </div>
+
+        <div class="carte palier">
+          <div class="hexGrand">
+            <svg width="76" height="76" viewBox="0 0 100 100"><polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none" stroke="#DFA436" stroke-width="4" opacity=".4"/><circle cx="50" cy="92" r="8" fill="#DFA436"/><circle cx="12" cy="71" r="8" fill="#DFA436"/><circle cx="12" cy="29" r="8" fill="#DFA436"/><circle cx="50" cy="8" r="8" fill="#DFA436"/><circle cx="88" cy="29" r="5" fill="#DFA436" opacity=".22"/><circle cx="88" cy="71" r="5" fill="#DFA436" opacity=".22"/></svg>
+            <p class="nom">Palier Or</p>
+            <p class="taux">18 % de commission</p>
+            <div class="miniRail"><i></i></div>
+            <p class="reste">Encore<b class="tnum">1 019,75 $</b>vers Platine · 19 %</p>
+          </div>
+          <div class="meta">
+            <div><p>Prochain versement</p><p class="tnum">1 OCT · 184,50 $</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="colonnes" style="grid-template-columns:repeat(3,1fr)">
+        <div class="panneau" style="padding:16px 18px">
+          <p style="margin-bottom:8px">Revenu validé cumulé</p>
+          <p class="tnum" style="font-family:var(--display);font-size:27px;font-weight:700;color:var(--or);letter-spacing:-.02em">1 250,50 $</p>
+        </div>
+        <div class="panneau" style="padding:16px 18px">
+          <p style="margin-bottom:8px">12 derniers mois</p>
+          <p class="tnum" style="font-family:var(--display);font-size:27px;font-weight:700;letter-spacing:-.02em">980,25 $</p>
+        </div>
+        <div class="panneau" style="padding:16px 18px">
+          <p style="margin-bottom:8px">Clics ce mois</p>
+          <p class="tnum" style="font-family:var(--display);font-size:27px;font-weight:700;letter-spacing:-.02em">147</p>
+        </div>
+      </div>
+    </div>
+    <p class="note"><b>Le pari :</b> l'argent et le rang sont deux fiertés différentes — chacun sa carte, à égalité. Le symbole du palier passe à 76 px : il devient un blason, pas une pastille. <b>Ce que ça gagne :</b> le rang n'est plus un détail dans un coin. <b>Ce que ça coûte :</b> le montant perd un peu de largeur, et le bandeau de métadonnées se répartit sur les deux cartes.</p>
+  </div>
+
+</div>
+</body>
+</html>

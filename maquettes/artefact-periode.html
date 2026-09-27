@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FIRONOVA — trois artéfacts pour la période</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --nordfjord:#0B2E4F; --glacier:#3E5C76; --nova:#00B8D4; --nova-texte:#096E80;
+    --clinical:#F7FAFC; --ash:#CBD5E0; --ink:#0A0F14; --mist:#B7CADD;
+    --or:#C1881F; --or-vif:#DFA436; --menthe:#2DBFB0; --corail:#E8927C;
+    --display:'Space Grotesk',sans-serif; --body:'Inter',sans-serif; --data:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--body);background:#EEF2F6;color:var(--nordfjord);
+       padding:32px 20px 80px;-webkit-font-smoothing:antialiased}
+  .page{max-width:1120px;margin:0 auto}
+  h1{font-family:var(--display);font-size:30px;font-weight:700;letter-spacing:-.02em}
+  .chapeau{color:var(--glacier);margin-top:8px;max-width:70ch;line-height:1.65;font-size:14px}
+  .chapeau b{color:var(--nordfjord)}
+
+  .bloc{margin-top:46px}
+  .etiquette{display:flex;align-items:baseline;gap:12px;margin-bottom:16px;
+             padding-bottom:10px;border-bottom:1px solid var(--ash);flex-wrap:wrap}
+  .etiquette b{font-family:var(--display);font-size:19px;font-weight:700}
+  .etiquette span{font-family:var(--data);font-size:11px;text-transform:uppercase;
+                  letter-spacing:.18em;color:var(--nova-texte)}
+  .note{margin-top:16px;font-size:13px;color:var(--glacier);line-height:1.68;max-width:78ch}
+  .note b{color:var(--nordfjord)}
+  .tnum{font-variant-numeric:tabular-nums}
+
+  /* Les deux etats cote a cote : c'est la comparaison qui repond a la question. */
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:860px){.duo{grid-template-columns:1fr}}
+  .etat{position:relative}
+  .etatTitre{font-family:var(--data);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+             color:var(--glacier);margin-bottom:9px;display:flex;align-items:center;gap:8px}
+  .etatTitre em{font-style:normal;width:7px;height:7px;border-radius:50%;background:var(--menthe)}
+  .etat.neuf .etatTitre em{background:var(--corail)}
+
+  /* ---------- la carte sombre, commune aux trois ---------- */
+  .carte{position:relative;border-radius:12px;color:#fff;overflow:hidden;
+    background:linear-gradient(135deg,#0B2E4F 0%,#123F66 58%,#0B2E4F 100%);
+    box-shadow:0 4px 8px rgba(11,46,79,.07),0 24px 48px -20px rgba(11,46,79,.32)}
+  .carte::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(76% 116% at 100% 0%,rgba(0,184,212,.20) 0%,transparent 66%)}
+  .carte>*{position:relative}
+  .corps{padding:20px 22px 22px}
+
+  /* ---------- L'EN-TETE DE PERIODE : la demande de Mireille ----------
+     Les dates remplacent « 12 derniers mois ». Elles se suffisent : on voit
+     sur quoi le calcul porte, et jusqu'a quand il vaut. Aucune phrase a lire. */
+  .periode{display:flex;align-items:baseline;justify-content:space-between;
+           gap:14px;flex-wrap:wrap;padding-bottom:13px;margin-bottom:16px;
+           border-bottom:1px solid rgba(255,255,255,.14)}
+  .periode .cle{font-family:var(--data);font-size:11px;letter-spacing:.2em;
+                text-transform:uppercase;color:rgba(255,255,255,.55)}
+  .periode .dates{font-family:var(--data);font-size:13px;font-weight:600;
+                  letter-spacing:.03em;color:#fff;margin-top:4px}
+  .periode .fin{font-family:var(--data);font-size:11px;letter-spacing:.11em;
+                text-transform:uppercase;color:var(--mist);text-align:right;line-height:1.7}
+  .periode .fin b{display:block;color:#fff;font-size:12px;letter-spacing:.04em}
+
+  /* ================= ARTEFACT 1 : l'echelle ancree au rythme ================= */
+  .rythme{position:relative;height:86px;display:flex;align-items:flex-end;gap:5px;
+          padding-top:24px}
+  /* La ligne de mire : le montant mensuel qui mene au palier suivant. C'est
+     ELLE qui fixe le 100 %, jamais le meilleur mois — donc un mois unique ne
+     peut plus remplir la hauteur. */
+  .mire{position:absolute;left:0;right:0;top:24px;border-top:1px dashed rgba(255,255,255,.42)}
+  .mire span{position:absolute;right:0;top:-18px;font-family:var(--data);font-size:11px;
+             letter-spacing:.1em;color:var(--mist)}
+  .rythme i{flex:1;border-radius:2px 2px 0 0;position:relative;
+            background:linear-gradient(180deg,var(--nova) 0%,rgba(0,184,212,.26) 100%)}
+  .rythme i.vide{background:rgba(255,255,255,.07);min-height:3px}
+  /* Un mois au-dessus de la mire est ecrete, et le chevron le dit : on ne
+     laisse pas croire que la barre s'est arretee la. */
+  .rythme i.plein::before{content:"";position:absolute;left:50%;top:4px;
+    transform:translateX(-50%);border-left:5px solid transparent;
+    border-right:5px solid transparent;border-bottom:6px solid var(--menthe)}
+  .moisSous{display:flex;gap:5px;margin-top:8px}
+  .moisSous span{flex:1;text-align:center;font-family:var(--data);font-size:11px;
+                 letter-spacing:.05em;color:rgba(255,255,255,.40)}
+
+  /* ================= ARTEFACT 2 : les douze cases ================= */
+  /* Geometrie FIXE : douze cases de meme taille, toujours. La donnee ne change
+     que la teinte. Rien ne peut se deformer, a aucune densite. */
+  .cases{display:grid;grid-template-columns:repeat(12,1fr);gap:4px}
+  .case{aspect-ratio:1/1.45;border-radius:3px;background:rgba(255,255,255,.055);
+        border:1px solid rgba(255,255,255,.10);position:relative}
+  .case b{position:absolute;inset:0;border-radius:2px;background:var(--nova)}
+  .case.zero{border-style:dashed;border-color:rgba(255,255,255,.16)}
+  .casesSous{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;margin-top:7px}
+  .casesSous span{text-align:center;font-family:var(--data);font-size:11px;
+                  letter-spacing:.04em;color:rgba(255,255,255,.42)}
+  .legende{display:flex;align-items:center;gap:8px;margin-top:13px;
+           font-family:var(--data);font-size:11px;letter-spacing:.1em;
+           text-transform:uppercase;color:rgba(255,255,255,.50)}
+  .jauge{flex:1;height:5px;border-radius:99px;max-width:120px;
+         background:linear-gradient(90deg,rgba(0,184,212,.14),var(--nova))}
+
+  /* ================= ARTEFACT 3 : la montee cumulee ================= */
+  /* Le cumul ne peut pas mentir sur un seul mois : il part de zero et il en
+     est encore pres. La forme dit « commence », jamais « accompli ». */
+  .montee{position:relative}
+  .montee svg{display:block;width:100%;height:78px;overflow:visible}
+  .butoir{font-family:var(--data);font-size:11px;letter-spacing:.1em;
+          color:var(--mist);position:absolute;right:0;top:-4px}
+  .pied{display:flex;justify-content:space-between;margin-top:9px;
+        font-family:var(--data);font-size:11px;letter-spacing:.05em;
+        color:rgba(255,255,255,.42)}
+
+  /* bas de carte commun */
+  .somme{display:flex;align-items:baseline;justify-content:space-between;
+         gap:12px;margin-top:18px;padding-top:15px;
+         border-top:1px solid rgba(255,255,255,.14)}
+  .somme .gros{font-family:var(--display);font-size:26px;font-weight:700;
+               letter-spacing:-.025em;line-height:1}
+  .somme .droite{text-align:right;font-family:var(--data);font-size:11px;
+                 letter-spacing:.14em;text-transform:uppercase;color:var(--mist);line-height:1.8}
+  .somme .droite b{display:block;font-size:13px;color:var(--or-vif);letter-spacing:.05em}
+
+  .verdict{margin-top:18px;border-left:3px solid var(--menthe);
+           background:#fff;border-radius:0 6px 6px 0;padding:13px 16px;
+           font-size:13px;line-height:1.66;color:var(--glacier);
+           box-shadow:0 1px 2px rgba(11,46,79,.06)}
+  .verdict b{color:var(--nordfjord)}
+  .verdict.alerte{border-left-color:var(--corail)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>La période au-dessus, et trois façons de ne pas mentir</h1>
+  <p class="chapeau">
+    Tu as raison sur les deux points. <b>La période remplace « 12 derniers mois »</b> — les dates
+    se suffisent. Et <b>le graphique actuel casse au premier mois</b> : les barres sont un
+    pourcentage du mois le plus fort, donc avec un seul mois de ventes, ce mois vaut 100 % et
+    remplit la hauteur. Une première vente de 80 $ s'affiche comme un sommet.
+    Chaque artéfact ci-dessous est montré <b>plein</b> (à gauche) et <b>au premier mois</b> (à droite).
+  </p>
+
+  <!-- ================================================== ARTEFACT 1 -->
+  <div class="bloc">
+    <div class="etiquette">
+      <span>Artéfact 1</span><b>L'échelle ancrée au rythme</b>
+    </div>
+
+    <div class="duo">
+      <!-- plein -->
+      <div class="etat">
+        <p class="etatTitre"><em></em>Douze mois de ventes</p>
+        <div class="carte"><div class="corps">
+          <div class="periode">
+            <div>
+              <p class="cle">Période retenue</p>
+              <p class="dates">1 oct. 2025 → 30 sept. 2026</p>
+            </div>
+            <p class="fin">Taux valide jusqu'au<b>31 oct. 2026</b></p>
+          </div>
+
+          <div class="rythme">
+            <div class="mire"><span>167 $ / mois pour Platine</span></div>
+            <i style="height:21%"></i><i style="height:31%"></i><i style="height:26%"></i>
+            <i style="height:46%"></i><i style="height:40%"></i><i style="height:55%"></i>
+            <i style="height:48%"></i><i style="height:62%"></i><i style="height:53%"></i>
+            <i class="plein" style="height:100%"></i><i style="height:64%"></i><i style="height:34%"></i>
+          </div>
+          <div class="moisSous">
+            <span>O</span><span>N</span><span>D</span><span>J</span><span>F</span><span>M</span>
+            <span>A</span><span>M</span><span>J</span><span>J</span><span>A</span><span>S</span>
+          </div>
+
+          <div class="somme">
+            <p class="gros tnum">980,25 $</p>
+            <p class="droite">Palier<b>Or · 18 %</b></p>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- premier mois -->
+      <div class="etat neuf">
+        <p class="etatTitre"><em></em>Premier mois · une vente de 80 $</p>
+        <div class="carte"><div class="corps">
+          <div class="periode">
+            <div>
+              <p class="cle">Période retenue</p>
+              <p class="dates">1 oct. 2025 → 30 sept. 2026</p>
+            </div>
+            <p class="fin">Taux valide jusqu'au<b>31 oct. 2026</b></p>
+          </div>
+
+          <div class="rythme">
+            <div class="mire"><span>167 $ / mois pour Bronze</span></div>
+            <i class="vide" style="height:0"></i><i class="vide" style="height:0"></i>
+            <i class="vide" style="height:0"></i><i class="vide" style="height:0"></i>
+            <i class="vide" style="height:0"></i><i class="vide" style="height:0"></i>
+            <i class="vide" style="height:0"></i><i class="vide" style="height:0"></i>
+            <i class="vide" style="height:0"></i><i class="vide" style="height:0"></i>
+            <i class="vide" style="height:0"></i><i style="height:48%"></i>
+          </div>
+          <div class="moisSous">
+            <span>O</span><span>N</span><span>D</span><span>J</span><span>F</span><span>M</span>
+            <span>A</span><span>M</span><span>J</span><span>J</span><span>A</span><span>S</span>
+          </div>
+
+          <div class="somme">
+            <p class="gros tnum">80,00 $</p>
+            <p class="droite">Palier<b>Standard · 10 %</b></p>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>Le principe :</b> le 100 % n'est plus le meilleur mois, c'est le <b>montant mensuel qui
+      mène au palier suivant</b> — la ligne pointillée. 80 $ contre un rythme de 167 $ donne une
+      barre à 48 %, pas au plafond. <b>Ce que ça gagne :</b> le graphique devient un objectif, pas
+      un miroir — on voit d'un coup si le mois tient le rythme. <b>Ce que ça coûte :</b> un mois
+      exceptionnel dépasse la ligne et doit être écrêté (le chevron vert le signale).
+    </p>
+    <p class="verdict"><b>Au premier mois :</b> onze emplacements vides en pointillé, une barre à
+      mi-hauteur. Honnête, et déjà encourageant — elle voit qu'elle est à la moitié du rythme.</p>
+  </div>
+
+  <!-- ================================================== ARTEFACT 2 -->
+  <div class="bloc">
+    <div class="etiquette">
+      <span>Artéfact 2</span><b>Les douze cases</b>
+    </div>
+
+    <div class="duo">
+      <div class="etat">
+        <p class="etatTitre"><em></em>Douze mois de ventes</p>
+        <div class="carte"><div class="corps">
+          <div class="periode">
+            <div>
+              <p class="cle">Période retenue</p>
+              <p class="dates">1 oct. 2025 → 30 sept. 2026</p>
+            </div>
+            <p class="fin">Taux valide jusqu'au<b>31 oct. 2026</b></p>
+          </div>
+
+          <div class="cases">
+            <div class="case"><b style="opacity:.26"></b></div>
+            <div class="case"><b style="opacity:.29"></b></div>
+            <div class="case"><b style="opacity:.31"></b></div>
+            <div class="case"><b style="opacity:.42"></b></div>
+            <div class="case"><b style="opacity:.37"></b></div>
+            <div class="case"><b style="opacity:.51"></b></div>
+            <div class="case"><b style="opacity:.44"></b></div>
+            <div class="case"><b style="opacity:.58"></b></div>
+            <div class="case"><b style="opacity:.49"></b></div>
+            <div class="case"><b style="opacity:1"></b></div>
+            <div class="case"><b style="opacity:.59"></b></div>
+            <div class="case"><b style="opacity:.32"></b></div>
+          </div>
+          <div class="casesSous">
+            <span>O</span><span>N</span><span>D</span><span>J</span><span>F</span><span>M</span>
+            <span>A</span><span>M</span><span>J</span><span>J</span><span>A</span><span>S</span>
+          </div>
+          <div class="legende">Creux<span class="jauge"></span>Pic · 180 $</div>
+
+          <div class="somme">
+            <p class="gros tnum">980,25 $</p>
+            <p class="droite">Palier<b>Or · 18 %</b></p>
+          </div>
+        </div></div>
+      </div>
+
+      <div class="etat neuf">
+        <p class="etatTitre"><em></em>Premier mois · une vente de 80 $</p>
+        <div class="carte"><div class="corps">
+          <div class="periode">
+            <div>
+              <p class="cle">Période retenue</p>
+              <p class="dates">1 oct. 2025 → 30 sept. 2026</p>
+            </div>
+            <p class="fin">Taux valide jusqu'au<b>31 oct. 2026</b></p>
+          </div>
+
+          <div class="cases">
+            <div class="case zero"></div><div class="case zero"></div><div class="case zero"></div>
+            <div class="case zero"></div><div class="case zero"></div><div class="case zero"></div>
+            <div class="case zero"></div><div class="case zero"></div><div class="case zero"></div>
+            <div class="case zero"></div><div class="case zero"></div>
+            <div class="case"><b style="opacity:1"></b></div>
+          </div>
+          <div class="casesSous">
+            <span>O</span><span>N</span><span>D</span><span>J</span><span>F</span><span>M</span>
+            <span>A</span><span>M</span><span>J</span><span>J</span><span>A</span><span>S</span>
+          </div>
+          <div class="legende">Creux<span class="jauge"></span>Pic · 80 $</div>
+
+          <div class="somme">
+            <p class="gros tnum">80,00 $</p>
+            <p class="droite">Palier<b>Standard · 10 %</b></p>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>Le principe :</b> plus de hauteur du tout. Douze cases de taille <b>fixe</b>, la donnée ne
+      change que la teinte. <b>Ce que ça gagne :</b> impossible à déformer — à une, six ou douze
+      valeurs, le bloc fait exactement la même taille, et onze cases en pointillé se lisent comme
+      « pas encore » plutôt que comme un vide. C'est aussi le plus compact des trois sur téléphone.
+      <b>Ce que ça coûte :</b> l'œil compare mal deux teintes. On lit le rythme, pas l'écart —
+      d'où la légende chiffrée.
+    </p>
+    <p class="verdict"><b>Au premier mois :</b> le cas est traité par construction. Aucune
+      déformation possible, puisque la géométrie ne dépend pas des données.</p>
+  </div>
+
+  <!-- ================================================== ARTEFACT 3 -->
+  <div class="bloc">
+    <div class="etiquette">
+      <span>Artéfact 3</span><b>La montée cumulée</b>
+    </div>
+
+    <div class="duo">
+      <div class="etat">
+        <p class="etatTitre"><em></em>Douze mois de ventes</p>
+        <div class="carte"><div class="corps">
+          <div class="periode">
+            <div>
+              <p class="cle">Période retenue</p>
+              <p class="dates">1 oct. 2025 → 30 sept. 2026</p>
+            </div>
+            <p class="fin">Taux valide jusqu'au<b>31 oct. 2026</b></p>
+          </div>
+
+          <div class="montee">
+            <p class="butoir">Platine · 2 000 $</p>
+            <svg viewBox="0 0 240 78" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <linearGradient id="aire" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#00B8D4" stop-opacity=".42"/>
+                  <stop offset="100%" stop-color="#00B8D4" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <!-- la ligne de but : le plancher du palier suivant -->
+              <line x1="0" y1="8" x2="240" y2="8" stroke="#B7CADD" stroke-width="1"
+                    stroke-dasharray="3 4" opacity=".55"/>
+              <line x1="0" y1="66" x2="240" y2="66" stroke="#fff" stroke-width="1" opacity=".16"/>
+              <path d="M6,64.99 L26.7,63.48 L47.5,62.20 L68.2,60.00 L88.9,58.08 L109.6,55.42
+                       L130.4,53.10 L151.1,50.08 L171.8,47.53 L192.5,42.31 L213.3,39.23 L234,37.57
+                       L234,66 L6,66 Z" fill="url(#aire)"/>
+              <path d="M6,64.99 L26.7,63.48 L47.5,62.20 L68.2,60.00 L88.9,58.08 L109.6,55.42
+                       L130.4,53.10 L151.1,50.08 L171.8,47.53 L192.5,42.31 L213.3,39.23 L234,37.57"
+                    fill="none" stroke="#00B8D4" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="234" cy="37.57" r="3.6" fill="#0B2E4F" stroke="#00B8D4" stroke-width="2"/>
+            </svg>
+          </div>
+          <div class="pied"><span>1 oct. 2025</span><span>30 sept. 2026</span></div>
+
+          <div class="somme">
+            <p class="gros tnum">980,25 $</p>
+            <p class="droite">Palier<b>Or · 18 %</b></p>
+          </div>
+        </div></div>
+      </div>
+
+      <div class="etat neuf">
+        <p class="etatTitre"><em></em>Premier mois · une vente de 80 $</p>
+        <div class="carte"><div class="corps">
+          <div class="periode">
+            <div>
+              <p class="cle">Période retenue</p>
+              <p class="dates">1 oct. 2025 → 30 sept. 2026</p>
+            </div>
+            <p class="fin">Taux valide jusqu'au<b>31 oct. 2026</b></p>
+          </div>
+
+          <div class="montee">
+            <p class="butoir">Bronze · 2 000 $</p>
+            <svg viewBox="0 0 240 78" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <linearGradient id="aire2" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#00B8D4" stop-opacity=".42"/>
+                  <stop offset="100%" stop-color="#00B8D4" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <line x1="0" y1="8" x2="240" y2="8" stroke="#B7CADD" stroke-width="1"
+                    stroke-dasharray="3 4" opacity=".55"/>
+              <line x1="0" y1="66" x2="240" y2="66" stroke="#fff" stroke-width="1" opacity=".16"/>
+              <path d="M6,66 L26.7,66 L47.5,66 L68.2,66 L88.9,66 L109.6,66 L130.4,66
+                       L151.1,66 L171.8,66 L192.5,66 L213.3,66 L234,63.68
+                       L234,66 L6,66 Z" fill="url(#aire2)"/>
+              <path d="M6,66 L26.7,66 L47.5,66 L68.2,66 L88.9,66 L109.6,66 L130.4,66
+                       L151.1,66 L171.8,66 L192.5,66 L213.3,66 L234,63.68"
+                    fill="none" stroke="#00B8D4" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="234" cy="63.68" r="3.6" fill="#0B2E4F" stroke="#00B8D4" stroke-width="2"/>
+            </svg>
+          </div>
+          <div class="pied"><span>1 oct. 2025</span><span>30 sept. 2026</span></div>
+
+          <div class="somme">
+            <p class="gros tnum">80,00 $</p>
+            <p class="droite">Palier<b>Standard · 10 %</b></p>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>Le principe :</b> on ne trace plus les mois, on trace le <b>total qui court</b> — exactement
+      le chiffre qui fixe le palier. L'échelle verticale est le plancher du palier suivant.
+      <b>Ce que ça gagne :</b> c'est le seul des trois qui montre la <b>vraie</b> mécanique : la
+      courbe monte quand elle vend, et elle <b>redescend</b> quand un vieux mois sort de la fenêtre.
+      Aucun autre artéfact ne rend ça visible. <b>Ce que ça coûte :</b> la variation mensuelle
+      disparaît — un mois creux ne se voit plus, seulement un ralentissement de la pente.
+    </p>
+    <p class="verdict"><b>Au premier mois :</b> le trait part du sol et s'en décolle à peine. Une
+      forme qui dit « commencé », jamais « accompli ». C'est structurellement impossible à
+      confondre avec un sommet, puisque le cumul commence toujours à zéro.</p>
+  </div>
+
+  <!-- ================================================== choisir -->
+  <div class="bloc">
+    <div class="etiquette"><span>Pour choisir</span><b>Ce qui les sépare vraiment</b></div>
+    <p class="note">
+      <b>1 · Le rythme</b> répond à « est-ce que je tiens la cadence ? ». C'est le plus motivant, et
+      le plus risqué : il affiche un objectif que l'affiliée peut rater.<br>
+      <b>2 · Les cases</b> répondent à « est-ce que je suis régulière ? ». C'est le plus robuste et
+      le plus compact — le seul qui ne puisse jamais casser, à aucune densité de données.<br>
+      <b>3 · Le cumul</b> répond à « où j'en suis pour mon palier ? ». C'est le plus honnête sur la
+      fenêtre glissante, parce qu'il montre la descente quand un mois sort.
+    </p>
+    <p class="verdict alerte">
+      <b>Un point à trancher avant de coder :</b> les trois supposent qu'on peut découper la période
+      par mois. Aujourd'hui le tableau de bord ne renvoie qu'un total (<code>rolling12_revenue</code>)
+      — il faudra ajouter un regroupement mensuel à l'agrégation. C'est une somme de plus sur la
+      même requête, pas un appel supplémentaire.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

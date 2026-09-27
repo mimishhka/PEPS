@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FIRONOVA — la carte et le graphique réunis</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --nordfjord:#0B2E4F; --glacier:#3E5C76; --nova:#00B8D4; --nova-texte:#096E80;
+    --clinical:#F7FAFC; --ash:#CBD5E0; --mist:#B7CADD;
+    --or:#C1881F; --or-vif:#DFA436; --platine:#A99BE8; --menthe:#2DBFB0;
+    --display:'Space Grotesk',sans-serif; --body:'Inter',sans-serif; --data:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--body);background:#EEF2F6;color:var(--nordfjord);
+       padding:32px 20px 80px;-webkit-font-smoothing:antialiased}
+  .page{max-width:1000px;margin:0 auto}
+  h1{font-family:var(--display);font-size:30px;font-weight:700;letter-spacing:-.02em}
+  .chapeau{color:var(--glacier);margin-top:8px;max-width:72ch;line-height:1.66;font-size:14px}
+  .chapeau b{color:var(--nordfjord)}
+  .bloc{margin-top:44px}
+  .etiquette{display:flex;align-items:baseline;gap:12px;margin-bottom:15px;
+             padding-bottom:10px;border-bottom:1px solid var(--ash);flex-wrap:wrap}
+  .etiquette b{font-family:var(--display);font-size:19px;font-weight:700}
+  .etiquette span{font-family:var(--data);font-size:11px;text-transform:uppercase;
+                  letter-spacing:.18em;color:var(--nova-texte)}
+  .note{margin-top:15px;font-size:13px;color:var(--glacier);line-height:1.68;max-width:78ch}
+  .note b{color:var(--nordfjord)}
+  .tnum{font-variant-numeric:tabular-nums}
+
+  /* ============================ LA CARTE, ELARGIE ============================
+     Meme ADN que celle qu'elle garde : marine en degrade, halo dore au sommet,
+     hexagone, nom en Space Grotesk, taux en mono, pied de versement. Elle
+     s'elargit pour accueillir le graphique a droite plutot que de vivre a cote. */
+  .carte{position:relative;border-radius:14px;color:#fff;overflow:hidden;
+    background:linear-gradient(160deg,#123F66 0%,#0B2E4F 54%,#08243E 100%);
+    box-shadow:0 4px 10px rgba(11,46,79,.09),0 26px 52px -22px rgba(11,46,79,.42)}
+  .carte::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(64% 108% at 22% 0%,rgba(223,164,54,.40) 0%,
+               rgba(223,164,54,.08) 48%,transparent 74%)}
+  /* LE HALO SUIT LE PALIER. Dore fixe, il mettait une lueur d'or sur une carte
+     Standard : la couleur cessait de vouloir dire quelque chose. */
+  .carte.debut::after{background:radial-gradient(64% 108% at 22% 0%,
+    rgba(95,216,236,.30) 0%, rgba(95,216,236,.07) 48%, transparent 74%)}
+  .carte>*{position:relative}
+
+  .bandeau{padding:12px 24px;background:rgba(0,0,0,.22);
+           border-bottom:1px solid rgba(255,255,255,.09);
+           display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .bandeau .g{font-family:var(--data);font-size:11px;letter-spacing:.16em;
+              text-transform:uppercase;color:rgba(255,255,255,.68)}
+  .bandeau .d{font-family:var(--data);font-size:12px;font-weight:600;
+              letter-spacing:.03em;color:#fff}
+
+  /* deux colonnes : l'identite a gauche, la preuve a droite */
+  .duo{display:grid;grid-template-columns:274px 1fr;gap:0}
+  @media(max-width:720px){.duo{grid-template-columns:1fr}}
+
+  .identite{padding:24px 22px;display:flex;flex-direction:column;align-items:center;
+            text-align:center;border-right:1px solid rgba(255,255,255,.11)}
+  @media(max-width:720px){.identite{border-right:0;
+    border-bottom:1px solid rgba(255,255,255,.11)}}
+  .nom{font-family:var(--display);font-size:25px;font-weight:700;
+       margin-top:12px;letter-spacing:-.015em}
+  .taux{font-family:var(--data);font-size:14px;font-weight:600;
+        color:var(--or-vif);margin-top:5px;letter-spacing:.06em}
+  /* ============ CE QU'ELLE VIENT VOIR PASSE DEVANT ============
+     « 415 $ / SUR LA PÉRIODE » se lisait comme les gains du mois. Deux
+     confusions dans une seule etiquette : QUELLE periode, et surtout VENTES
+     ou GAINS — 415 $ est du chiffre d'affaires genere, pas de l'argent
+     touche. L'argent passe donc en tete, et le reste se nomme en toutes
+     lettres. */
+  .gains{width:100%;margin-top:18px;padding-top:16px;
+         border-top:1px solid rgba(255,255,255,.14)}
+  .gainsCle{font-family:var(--data);font-size:11px;letter-spacing:.17em;
+            text-transform:uppercase;color:rgba(255,255,255,.68)}
+  .gainsGros{font-family:var(--display);font-size:34px;font-weight:700;
+             letter-spacing:-.035em;line-height:1;margin-top:8px}
+  .gainsSous{font-size:12px;color:var(--mist);margin-top:9px;line-height:1.5}
+  /* Le total de la periode redescend au rang de reference : il ne se paie
+     pas, il sert a fixer le palier. L'etiquette le dit. */
+  .periodeTotal{width:100%;margin-top:15px;padding-top:14px;
+                border-top:1px solid rgba(255,255,255,.14);
+                font-family:var(--data);font-size:13px;font-weight:600;
+                letter-spacing:.02em}
+  .periodeTotal em{font-style:normal;display:block;font-family:var(--body);
+                   font-size:12px;font-weight:400;letter-spacing:0;
+                   color:var(--mist);margin-top:5px;line-height:1.5}
+
+  /* ---------- le graphique, cote preuve ---------- */
+  .preuve{padding:22px 24px 18px}
+  .moyenne{position:relative;height:98px;display:flex;align-items:flex-end;gap:6px;
+           padding-top:26px}
+  /* LA LIGNE EST UN CALCUL, PAS UNE CONDITION.
+     « Moyenne du palier » laissait croire a un seuil mensuel ; « minimum »
+     serait carrement faux — une seule vente de 2 001 $ donne Bronze, sans
+     jamais atteindre 167 $ un autre mois. L'equation montre son propre
+     raisonnement : c'est 2 001 divise par 12, rien de plus. */
+  .ligne{position:absolute;left:0;right:0;top:26px;border-top:1px dashed rgba(255,255,255,.40)}
+  .ligne span{position:absolute;right:0;top:-19px;font-family:var(--data);font-size:11px;
+              letter-spacing:.08em;color:var(--mist)}
+  .moyenne i{flex:1;border-radius:3px 3px 0 0;position:relative;
+             background:linear-gradient(180deg,var(--nova) 0%,rgba(0,184,212,.28) 100%)}
+  .moyenne i.vide{background:rgba(255,255,255,.07);min-height:3px}
+  /* LE MOIS QUI SORT. C'est lui qui explique pourquoi le palier bouge alors
+     qu'elle a bien vendu. Hachure + liseré : present, mais deja dehors. */
+  .moyenne i.sortant{background:repeating-linear-gradient(-45deg,
+      rgba(183,202,221,.42) 0 4px, rgba(183,202,221,.12) 4px 8px);
+      box-shadow:inset 0 0 0 1px rgba(183,202,221,.54)}
+  .moisSous{display:flex;gap:6px;margin-top:8px}
+  .moisSous span{flex:1;text-align:center;font-family:var(--data);font-size:11px;
+                 letter-spacing:.04em;color:rgba(255,255,255,.68)}
+  .moisSous span.part{color:var(--mist);font-weight:600}
+  .legendeSort{font-family:var(--data);font-size:11px;letter-spacing:.07em;
+               color:var(--mist);margin-top:11px;display:flex;align-items:center;gap:7px}
+  .legendeSort b{width:11px;height:11px;border-radius:2px;flex-shrink:0;
+    background:repeating-linear-gradient(-45deg,rgba(183,202,221,.42) 0 3px,
+               rgba(183,202,221,.12) 3px 6px);
+    box-shadow:inset 0 0 0 1px rgba(183,202,221,.54)}
+
+  /* ---------- la jauge pleine largeur, avec le curseur ---------- */
+  .zoneJauge{padding:4px 24px 22px}
+  .piste{height:7px;border-radius:99px;background:rgba(255,255,255,.15);
+         position:relative;overflow:hidden}
+  .piste i{position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--or-vif)}
+  .jauge{position:relative}
+  .curseur{position:absolute;top:-7px;width:2px;height:21px;border-radius:2px;
+           background:var(--menthe)}
+  .curseur::after{content:attr(data-quand);position:absolute;top:25px;left:50%;
+    transform:translateX(-50%);white-space:nowrap;font-family:var(--data);
+    font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--menthe)}
+  /* Aux extremites l'etiquette s'aligne au bord : centree, elle sortait de la
+     carte, et le overflow:hidden du halo la COUPAIT. */
+  .curseur.bordG::after{left:0;transform:none}
+  .curseur.bordD::after{left:auto;right:0;transform:none}
+  .bornes{display:flex;justify-content:space-between;margin-top:34px;
+          font-family:var(--data);font-size:11px;letter-spacing:.06em;
+          color:rgba(255,255,255,.68)}
+
+  /* ============ LE PRIX DE CHAQUE PALIER, PAS UNE ALERTE ============
+     Mireille : « en rouge ça fait négatif — on veut encourager les affiliés à
+     se surpasser ». Le montant a garder et le montant a gagner sont la MEME
+     chose : ce que coute chaque palier pour le mois prochain. Presentes en
+     colonne, tous deux portent la couleur de LEUR palier. Aucun rouge, aucune
+     alerte : deux objectifs, l'un a portee, l'autre plus haut. */
+  .prix{border-top:1px solid rgba(255,255,255,.13);padding:17px 24px 6px}
+  .prixCle{font-family:var(--data);font-size:11px;letter-spacing:.17em;
+           text-transform:uppercase;color:rgba(255,255,255,.68);margin-bottom:13px}
+  .palier{display:flex;align-items:center;gap:14px;padding:11px 13px;border-radius:7px;
+          transition:transform 160ms cubic-bezier(.23,1,.32,1)}
+  .palier+.palier{margin-top:7px}
+  .palier .cout{font-family:var(--display);font-size:21px;font-weight:700;
+                letter-spacing:-.02em;line-height:1;min-width:92px}
+  .palier .fleche{font-family:var(--data);font-size:14px;opacity:.5;flex-shrink:0}
+  .palier .quoi{font-family:var(--data);font-size:12px;letter-spacing:.07em;
+                text-transform:uppercase;line-height:1.55}
+  /* Le sous-libelle ne se distingue PAS par l'opacite : a 72 % sur un fond
+     deja teinte, l'or tombait a 3,3:1. Il se distingue par la taille et par
+     une couleur neutre, a pleine opacite. */
+  .palier .quoi em{font-style:normal;display:block;font-size:11px;color:var(--mist)}
+  .palier .sceau{margin-left:auto;font-family:var(--data);font-size:11px;
+                 letter-spacing:.11em;text-transform:uppercase;
+                 text-align:right;line-height:1.5;flex-shrink:0}
+  /* Sous 420 px le sceau passe SOUS le libelle plutot que de le comprimer :
+     « pour reconduire le taux » ne tient pas a cote sur un telephone. */
+  @media(max-width:420px){
+    .palier{flex-wrap:wrap}
+    .palier .sceau{margin-left:0;width:100%;text-align:left;
+                   padding-left:106px;margin-top:3px}
+  }
+
+  .palier.mien{background:rgba(223,164,54,.15);box-shadow:inset 0 0 0 1px rgba(223,164,54,.34)}
+  .palier.mien .cout,.palier.mien .quoi,.palier.mien .sceau{color:var(--or-vif)}
+  .palier.suivant{background:rgba(169,155,232,.14);box-shadow:inset 0 0 0 1px rgba(169,155,232,.30)}
+  .palier.suivant .cout,.palier.suivant .quoi{color:var(--platine)}
+  .palier.acquis{background:rgba(45,191,176,.13);box-shadow:inset 0 0 0 1px rgba(45,191,176,.30)}
+  .palier.acquis .cout{font-family:var(--data);font-size:14px;font-weight:600;
+                       letter-spacing:.04em;color:var(--menthe)}
+  .palier.acquis .quoi,.palier.acquis .sceau{color:var(--menthe)}
+  .palier.bronze{background:rgba(0,184,212,.13);box-shadow:inset 0 0 0 1px rgba(0,184,212,.30)}
+  .palier.bronze .cout,.palier.bronze .quoi{color:#5FD8EC}
+
+  /* L'ENCOURAGEMENT remplace l'avertissement quand le palier n'a pas de
+     plancher. « Defendre », « proteger », « garder » : tout ce registre fait
+     du palier un bien menace. On parle de ce que chaque palier DEMANDE. */
+  .elan{margin-top:11px;padding:12px 14px;border-radius:7px;
+        background:rgba(45,191,176,.11);box-shadow:inset 0 0 0 1px rgba(45,191,176,.24);
+        font-size:13px;line-height:1.6;color:#8FE3D8}
+  .elan b{color:#fff;font-weight:600}
+
+  .pied{display:flex;border-top:1px solid rgba(255,255,255,.13);
+        background:rgba(0,0,0,.20);margin-top:17px}
+  .pied div{flex:1;padding:13px 24px}
+  .pied div+div{border-left:1px solid rgba(255,255,255,.10)}
+  .pied p:first-child{font-family:var(--data);font-size:11px;letter-spacing:.17em;
+                      text-transform:uppercase;color:rgba(255,255,255,.68)}
+  .pied p:last-child{font-family:var(--data);font-size:14px;font-weight:600;
+                     margin-top:5px;letter-spacing:.04em}
+
+  .etatTitre{font-family:var(--data);font-size:11px;letter-spacing:.15em;
+             text-transform:uppercase;color:var(--glacier);margin-bottom:10px;
+             display:flex;align-items:center;gap:8px}
+  .etatTitre em{font-style:normal;width:7px;height:7px;border-radius:50%;background:var(--or-vif)}
+  .etatTitre.n em{background:var(--nova)}
+
+  .verdict{margin-top:17px;border-left:3px solid var(--menthe);background:#fff;
+           border-radius:0 6px 6px 0;padding:13px 16px;font-size:13px;
+           line-height:1.66;color:var(--glacier);box-shadow:0 1px 2px rgba(11,46,79,.06)}
+  .verdict b{color:var(--nordfjord)}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Les deux réunis, et plus rien en rouge</h1>
+  <p class="chapeau">
+    La carte et le graphique ne vivent plus côte à côte : le graphique devient la
+    <b>colonne de droite de la carte</b>. Et le montant « pour garder » cesse d'être une alerte —
+    il devient <b>le prix d'entrée du palier</b>, au même titre que celui du palier suivant.
+    Deux objectifs de même nature, chacun dans la couleur de son palier. Aucun rouge.
+  </p>
+
+  <!-- ============================================== ÉTAT 1 : deux paliers a portee -->
+  <div class="bloc">
+    <div class="etiquette"><span>État 1</span><b>Un palier acquis, un palier à viser</b></div>
+    <p class="etatTitre"><em></em>Palier Or · 11 240 $ sur la fenêtre</p>
+
+    <div class="carte">
+      <div class="bandeau">
+        <p class="g">Période retenue</p>
+        <p class="d">1 sept. 2025 → 31 août 2026</p>
+      </div>
+
+      <div class="duo">
+        <div class="identite">
+          <svg width="62" height="62" viewBox="0 0 100 100" aria-hidden="true">
+            <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                     stroke="#DFA436" stroke-width="4" opacity=".42"/>
+            <circle cx="50" cy="8" r="7.5" fill="#DFA436"/>
+            <circle cx="12" cy="29" r="7.5" fill="#DFA436"/>
+            <circle cx="12" cy="71" r="7.5" fill="#DFA436"/>
+            <circle cx="50" cy="92" r="7.5" fill="#DFA436"/>
+            <circle cx="88" cy="29" r="5" fill="#DFA436" opacity=".24"/>
+            <circle cx="88" cy="71" r="5" fill="#DFA436" opacity=".24"/>
+          </svg>
+          <p class="nom">Palier Or</p>
+          <p class="taux">16 % de commission</p>
+          <div class="gains">
+            <p class="gainsCle">Gains du mois en cours</p>
+            <p class="gainsGros tnum">184,50 $</p>
+            <p class="gainsSous tnum">1 153,13 $ de ventes validées · 6 commandes</p>
+          </div>
+          <p class="periodeTotal tnum">11 240 $
+            <em>de ventes sur la période — c'est ce montant qui fixe votre palier</em></p>
+        </div>
+
+        <div class="preuve">
+          <div class="moyenne">
+            <div class="ligne"><span>834 $/mois × 12 = Or</span></div>
+            <i class="sortant" style="height:100%"></i>
+            <i style="height:38%"></i><i style="height:47%"></i><i style="height:61%"></i>
+            <i style="height:34%"></i><i style="height:44%"></i><i style="height:40%"></i>
+            <i style="height:52%"></i><i style="height:37%"></i><i style="height:60%"></i>
+            <i style="height:45%"></i><i style="height:39%"></i>
+          </div>
+          <div class="moisSous">
+            <span class="part">S</span><span>O</span><span>N</span><span>D</span>
+            <span>J</span><span>F</span><span>M</span><span>A</span>
+            <span>M</span><span>J</span><span>J</span><span>A</span>
+          </div>
+          <p class="legendeSort"><b></b>Septembre 2025 · 1 880 $ · sort de la période le 1er octobre</p>
+        </div>
+      </div>
+
+      <div class="zoneJauge">
+        <div class="jauge">
+          <div class="piste"><i style="width:12.4%"></i></div>
+          <div class="curseur bordG" style="left:0" data-quand="position au 1er oct."></div>
+          <div class="bornes"><span>10 001 $ · Or</span><span>20 001 $ · Platine</span></div>
+        </div>
+      </div>
+
+      <div class="prix">
+        <p class="prixCle">Ce que chaque palier demande d'ici le 30 septembre</p>
+        <div class="palier mien">
+          <p class="cout tnum">231 $</p>
+          <p class="fleche">→</p>
+          <p class="quoi">Or · 16 %<em>votre palier actuel</em></p>
+          <p class="sceau">pour reconduire<br>le taux</p>
+        </div>
+        <div class="palier suivant">
+          <p class="cout tnum">10 231 $</p>
+          <p class="fleche">→</p>
+          <p class="quoi">Platine · 18 %<em>le palier au-dessus</em></p>
+        </div>
+      </div>
+
+      <div class="pied">
+        <div><p>Prochain versement</p><p class="tnum">1 oct · 312,80 $</p></div>
+        <div><p>Commandes sur la période</p><p class="tnum">34</p></div>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>Ce que le graphique explique :</b> la barre hachurée est septembre 2025, 1 880 $ qui
+      <b>sortent de la période</b> le 1<sup>er</sup> octobre. C'est elle qui rend les 231 $ compréhensibles :
+      l'affiliée a 11 240 $, bien au-dessus du plancher Or de 10 001 $, et elle doit quand même
+      vendre. Sans la barre hachurée, le chiffre paraîtrait arbitraire.
+    </p>
+    <p class="verdict">
+      <b>Aucun rouge nulle part.</b> Les deux lignes disent la même chose de la même façon :
+      ce que coûte chaque palier pour octobre. La première porte l'or de son palier, la seconde
+      le violet de Platine. Reconduire et monter deviennent deux gestes de même nature — on ne
+      protège pas un acquis, on choisit une place.
+    </p>
+  </div>
+
+  <!-- ============================================== ÉTAT 2 : premier palier -->
+  <div class="bloc">
+    <div class="etiquette"><span>État 2</span><b>Le premier palier — aucun minimum</b></div>
+    <p class="etatTitre n"><em></em>Palier Standard · deux mois de ventes</p>
+
+    <div class="carte debut">
+      <div class="bandeau">
+        <p class="g">Période retenue</p>
+        <p class="d">1 sept. 2025 → 31 août 2026</p>
+      </div>
+
+      <div class="duo">
+        <div class="identite">
+          <svg width="62" height="62" viewBox="0 0 100 100" aria-hidden="true">
+            <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                     stroke="#5FD8EC" stroke-width="4" opacity=".38"/>
+            <circle cx="50" cy="8" r="7.5" fill="#5FD8EC"/>
+            <circle cx="12" cy="29" r="5" fill="#5FD8EC" opacity=".26"/>
+            <circle cx="88" cy="29" r="5" fill="#5FD8EC" opacity=".26"/>
+            <circle cx="12" cy="71" r="5" fill="#5FD8EC" opacity=".26"/>
+            <circle cx="88" cy="71" r="5" fill="#5FD8EC" opacity=".26"/>
+            <circle cx="50" cy="92" r="5" fill="#5FD8EC" opacity=".26"/>
+          </svg>
+          <p class="nom">Palier Standard</p>
+          <p class="taux" style="color:#5FD8EC">10 % de commission</p>
+          <div class="gains">
+            <p class="gainsCle">Gains du mois en cours</p>
+            <p class="gainsGros tnum">24,80 $</p>
+            <p class="gainsSous tnum">248,00 $ de ventes validées · 2 commandes</p>
+          </div>
+          <p class="periodeTotal tnum">415,00 $
+            <em>de ventes sur la période — c'est ce montant qui fixe votre palier</em></p>
+        </div>
+
+        <div class="preuve">
+          <div class="moyenne">
+            <div class="ligne"><span>167 $/mois × 12 = Bronze</span></div>
+            <i class="vide" style="height:0"></i><i class="vide" style="height:0"></i>
+            <i class="vide" style="height:0"></i><i class="vide" style="height:0"></i>
+            <i class="vide" style="height:0"></i><i class="vide" style="height:0"></i>
+            <i class="vide" style="height:0"></i><i class="vide" style="height:0"></i>
+            <i class="vide" style="height:0"></i><i class="vide" style="height:0"></i>
+            <i style="height:71%"></i><i style="height:84%"></i>
+          </div>
+          <div class="moisSous">
+            <span>S</span><span>O</span><span>N</span><span>D</span>
+            <span>J</span><span>F</span><span>M</span><span>A</span>
+            <span>M</span><span>J</span><span class="part">J</span><span class="part">A</span>
+          </div>
+          <p class="legendeSort" style="color:#8FE3D8">
+            Deux mois, et le second dépasse déjà le premier.
+          </p>
+        </div>
+      </div>
+
+      <div class="zoneJauge">
+        <div class="jauge">
+          <div class="piste"><i style="width:20.7%;background:#5FD8EC"></i></div>
+          <div class="curseur" style="left:29.5%" data-quand="position au 1er oct."></div>
+          <div class="bornes"><span>0 $ · Standard</span><span>2 001 $ · Bronze</span></div>
+        </div>
+      </div>
+
+      <div class="prix">
+        <p class="prixCle">Ce que chaque palier demande d'ici le 30 septembre</p>
+        <!-- Standard n'a pas de plancher : il ne peut PAS etre perdu. Afficher
+             un montant « a reconduire » ici serait une fausse peur — le pendant
+             exact du faux espoir qu'on vient de retirer. -->
+        <div class="palier acquis">
+          <p class="cout">Garanti</p>
+          <p class="fleche">→</p>
+          <p class="quoi">Standard · 10 %<em>votre palier actuel</em></p>
+          <p class="sceau">taux garanti</p>
+        </div>
+        <div class="palier bronze">
+          <p class="cout tnum">1 586 $</p>
+          <p class="fleche">→</p>
+          <p class="quoi">Bronze · 12 %<em>le palier au-dessus</em></p>
+        </div>
+        <!-- « jamais descendre » etait vrai pour Standard et FAUX pour le
+             programme : les paliers superieurs se perdent quand la periode
+             glisse. Une affiliee qui atteint Bronze puis le perd se souviendra
+             de la promesse. La phrase est donc BORNEE au palier courant — le
+             mot « ici » fait tout le travail — et ne dit plus rien de la suite. -->
+        <p class="elan">
+          Ici, aucun minimum à atteindre : <b>tout ce que vous vendez sert à
+          monter</b>. Bronze et ses 12 % sont votre prochaine étape.
+        </p>
+      </div>
+
+      <div class="pied">
+        <div><p>Prochain versement</p><p class="tnum">1 oct · 16,70 $</p></div>
+        <div><p>Commandes sur la période</p><p class="tnum">5</p></div>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>Ce qui disparaît :</b> la ligne « à reconduire ». Standard n'a pas de plancher, il ne
+      peut pas être perdu — afficher un montant à maintenir serait une fausse peur, exactement
+      le pendant du faux espoir qu'on vient de retirer. À la place, un <b>sceau « Garanti »</b>
+      et une phrase qui dit la seule chose vraie : ici, tout ne fait que monter.
+    </p>
+    <p class="verdict">
+      <b>Le graphique tient aussi :</b> deux mois de ventes, dix emplacements vides, aucune
+      barre au plafond. L'échelle reste <code>max(meilleur mois, moyenne du palier visé)</code> —
+      la moyenne empêche une barre unique de remplir la hauteur.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

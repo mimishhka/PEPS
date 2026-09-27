@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FIRONOVA — trois dispositions</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --nordfjord:#0B2E4F; --glacier:#3E5C76; --nova:#00B8D4; --nova-texte:#096E80;
+    --clinical:#F7FAFC; --ash:#CBD5E0; --mist:#B7CADD; --ciel:#5FD8EC;
+    --or-vif:#DFA436; --menthe:#2DBFB0;
+    /* LE SYMBOLE ET LE TEXTE N'ONT PAS LE MEME SEUIL.
+       `--ciel` se posait sur le halo cyan de la carte : 3,5:1, sous le seuil
+       du TEXTE (4,5:1) alors qu'il reste bon pour un objet GRAPHIQUE (3:1).
+       L'hexagone garde --ciel ; tout ce qui se lit prend --ciel-texte. */
+    --ciel-texte:#A8ECF7;
+    --display:'Space Grotesk',sans-serif; --body:'Inter',sans-serif; --data:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--body);background:#EEF2F6;color:var(--nordfjord);
+       padding:32px 20px 80px;-webkit-font-smoothing:antialiased}
+  .page{max-width:1000px;margin:0 auto}
+  h1{font-family:var(--display);font-size:29px;font-weight:700;letter-spacing:-.02em}
+  .chapeau{color:var(--glacier);margin-top:8px;max-width:72ch;line-height:1.66;font-size:14px}
+  .chapeau b{color:var(--nordfjord)}
+  .bloc{margin-top:44px}
+  .etiquette{display:flex;align-items:baseline;gap:12px;margin-bottom:15px;
+             padding-bottom:10px;border-bottom:1px solid var(--ash);flex-wrap:wrap}
+  .etiquette b{font-family:var(--display);font-size:19px;font-weight:700}
+  .etiquette span{font-family:var(--data);font-size:11px;text-transform:uppercase;
+                  letter-spacing:.18em;color:var(--nova-texte)}
+  .note{margin-top:15px;font-size:13px;color:var(--glacier);line-height:1.68;max-width:78ch}
+  .note b{color:var(--nordfjord)}
+  .tnum{font-variant-numeric:tabular-nums}
+  .verdict{margin-top:15px;border-left:3px solid var(--menthe);background:#fff;
+           border-radius:0 6px 6px 0;padding:13px 16px;font-size:13px;
+           line-height:1.66;color:var(--glacier);box-shadow:0 1px 2px rgba(11,46,79,.06)}
+  .verdict b{color:var(--nordfjord)}
+
+  /* ======================= socle commun des trois cartes ======================= */
+  .carte{position:relative;border-radius:14px;color:#fff;overflow:hidden;
+    background:linear-gradient(160deg,#123F66 0%,#0B2E4F 54%,#08243E 100%);
+    box-shadow:0 4px 10px rgba(11,46,79,.09),0 26px 52px -22px rgba(11,46,79,.42)}
+  .carte::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(64% 108% at 22% 0%,rgba(95,216,236,.20) 0%,
+               rgba(95,216,236,.05) 48%,transparent 74%)}
+  .carte>*{position:relative}
+  .cle{font-family:var(--data);font-size:11px;letter-spacing:.17em;
+       text-transform:uppercase;color:rgba(255,255,255,.68)}
+  .sep{border-top:1px solid rgba(255,255,255,.13)}
+
+  .bandeauP{padding:12px 24px;background:rgba(0,0,0,.22);
+            border-bottom:1px solid rgba(255,255,255,.09);
+            display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .bandeauP .d{font-family:var(--data);font-size:12px;font-weight:600;letter-spacing:.03em}
+
+  .nom{font-family:var(--display);font-weight:700;letter-spacing:-.015em}
+  .taux{font-family:var(--data);font-weight:600;color:var(--ciel-texte);letter-spacing:.06em}
+  .gainsGros{font-family:var(--display);font-weight:700;letter-spacing:-.035em;line-height:1}
+  .gainsSous{font-size:12px;color:var(--mist);line-height:1.5}
+  .refPeriode{font-family:var(--data);font-size:13px;font-weight:600;letter-spacing:.02em}
+  .refPeriode em{font-style:normal;display:block;font-family:var(--body);font-size:12px;
+                 font-weight:400;letter-spacing:0;color:var(--mist);margin-top:4px;line-height:1.5}
+
+  /* --- le graphique --- */
+  .graph{position:relative;display:flex;align-items:flex-end;gap:6px;padding-top:26px}
+  .ligneRef{position:absolute;left:0;right:0;border-top:1px dashed rgba(255,255,255,.40)}
+  .ligneRef span{position:absolute;right:0;top:-19px;font-family:var(--data);
+                 font-size:11px;letter-spacing:.08em;color:var(--mist)}
+  .graph i{flex:1;border-radius:3px 3px 0 0;
+           background:linear-gradient(180deg,var(--nova) 0%,rgba(0,184,212,.28) 100%)}
+  .graph i.vide{background:rgba(255,255,255,.07);min-height:3px}
+  .mois{display:flex;gap:6px;margin-top:8px}
+  .mois span{flex:1;text-align:center;font-family:var(--data);font-size:11px;
+             letter-spacing:.04em;color:rgba(255,255,255,.68)}
+  .mois span.part{color:var(--ciel-texte);font-weight:600}
+
+  /* --- la jauge --- */
+  .jauge{position:relative}
+  .piste{height:7px;border-radius:99px;background:rgba(255,255,255,.15);
+         position:relative;overflow:hidden}
+  .piste i{position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--ciel)}
+  .curseur{position:absolute;top:-7px;width:2px;height:21px;border-radius:2px;background:var(--menthe)}
+  .curseur::after{content:attr(data-q);position:absolute;top:25px;left:50%;
+    transform:translateX(-50%);white-space:nowrap;font-family:var(--data);font-size:11px;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--menthe)}
+  /* Aux extremites l'etiquette s'aligne au bord : centree, elle sort de la
+     carte, et le overflow:hidden du halo la COUPE au lieu de la decaler. */
+  .curseur.bordG::after{left:0;transform:none}
+  .curseur.bordD::after{left:auto;right:0;transform:none}
+  .bornes{display:flex;justify-content:space-between;margin-top:34px;
+          font-family:var(--data);font-size:11px;letter-spacing:.06em;
+          color:rgba(255,255,255,.68)}
+
+  /* --- les paliers --- */
+  .palier{display:flex;align-items:center;gap:14px;padding:11px 13px;border-radius:7px}
+  .palier+.palier{margin-top:7px}
+  .palier .cout{font-family:var(--display);font-size:21px;font-weight:700;
+                letter-spacing:-.02em;line-height:1;min-width:88px}
+  .palier .fl{font-family:var(--data);font-size:14px;opacity:.5;flex-shrink:0}
+  .palier .quoi{font-family:var(--data);font-size:12px;letter-spacing:.07em;
+                text-transform:uppercase;line-height:1.55}
+  .palier .quoi em{font-style:normal;display:block;font-size:11px;color:var(--mist)}
+  .palier .sceau{margin-left:auto;font-family:var(--data);font-size:11px;
+                 letter-spacing:.11em;text-transform:uppercase;text-align:right;
+                 line-height:1.5;flex-shrink:0}
+  .palier.acquis{background:rgba(45,191,176,.13);box-shadow:inset 0 0 0 1px rgba(45,191,176,.30)}
+  .palier.acquis .cout{font-family:var(--data);font-size:14px;font-weight:600;
+                       letter-spacing:.04em;color:var(--menthe)}
+  .palier.acquis .quoi,.palier.acquis .sceau{color:var(--menthe)}
+  .palier.suivant{background:rgba(0,184,212,.13);box-shadow:inset 0 0 0 1px rgba(0,184,212,.30)}
+  .palier.suivant .cout,.palier.suivant .quoi{color:var(--ciel-texte)}
+  .elan{margin-top:11px;padding:12px 14px;border-radius:7px;
+        background:rgba(45,191,176,.11);box-shadow:inset 0 0 0 1px rgba(45,191,176,.24);
+        font-size:13px;line-height:1.6;color:#8FE3D8}
+  .elan b{color:#fff;font-weight:600}
+
+  .pied{display:flex;background:rgba(0,0,0,.20)}
+  .pied div{flex:1;padding:13px 24px}
+  .pied div+div{border-left:1px solid rgba(255,255,255,.10)}
+  .pied p:last-child{font-family:var(--data);font-size:14px;font-weight:600;
+                     margin-top:5px;letter-spacing:.04em}
+
+  /* ===================== A — TROIS BANDES ===================== */
+  .A .argent{display:flex;align-items:center;gap:22px;padding:22px 24px;flex-wrap:wrap}
+  .A .argent .gauche{flex:1;min-width:190px}
+  .A .argent .gainsGros{font-size:40px;margin-top:8px}
+  .A .argent .gainsSous{margin-top:9px}
+  .A .argent .droite{display:flex;align-items:center;gap:13px;
+                     padding-left:22px;border-left:1px solid rgba(255,255,255,.13)}
+  @media(max-width:600px){.A .argent .droite{padding-left:0;border-left:0}}
+  .A .argent .nom{font-size:20px}
+  .A .argent .taux{font-size:13px;margin-top:4px}
+  .A .preuve{padding:20px 24px 18px}
+  .A .graph{height:96px}
+  .A .ligneRef{top:26px}
+  .A .refPeriode{margin-top:17px;padding-top:15px;border-top:1px solid rgba(255,255,255,.13)}
+  .A .jauge{margin-top:19px}
+  .A .paliers{padding:18px 24px 6px}
+
+  /* ===================== B — DEUX COLONNES ÉGALES ===================== */
+  .B .rubanP{display:flex;align-items:center;gap:14px;padding:16px 24px}
+  .B .rubanP .nom{font-size:20px}
+  .B .rubanP .taux{font-size:13px;margin-left:auto}
+  .B .paire{display:grid;grid-template-columns:1fr 1fr;gap:0}
+  @media(max-width:660px){.B .paire{grid-template-columns:1fr}}
+  .B .col{padding:20px 24px}
+  .B .col+.col{border-left:1px solid rgba(255,255,255,.13)}
+  @media(max-width:660px){.B .col+.col{border-left:0;border-top:1px solid rgba(255,255,255,.13)}}
+  .B .gainsGros{font-size:36px;margin-top:8px}
+  .B .gainsSous{margin-top:9px}
+  .B .refPeriode{margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.13)}
+  .B .jauge{margin-top:14px}
+  .B .paliers{margin-top:19px}
+  .B .bas{padding:18px 24px}
+  .B .graph{height:74px}
+  .B .ligneRef{top:26px}
+
+  /* ===================== C — UNE SEULE COLONNE ===================== */
+  .C{max-width:400px}
+  .C .tete{padding:22px 22px 20px;text-align:center}
+  .C .tete .nom{font-size:19px;margin-top:10px}
+  .C .tete .taux{font-size:13px;margin-top:4px}
+  .C .argent{padding:19px 22px;text-align:center}
+  .C .gainsGros{font-size:42px;margin-top:9px}
+  .C .gainsSous{margin-top:10px}
+  .C .paliers{padding:18px 22px 6px}
+  .C .zoneJauge{padding:18px 22px 6px}
+  .C .preuve{padding:18px 22px 16px}
+  .C .graph{height:70px}
+  .C .ligneRef{top:26px}
+  .C .refPeriode{margin-top:15px;text-align:center}
+  .C .pied div{padding:13px 22px}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Trois façons de disposer la même information</h1>
+  <p class="chapeau">
+    Toutes montrent l'état 2 — palier Standard, deux mois de ventes. Le contenu est
+    identique&nbsp;: gains du mois, palier et taux, graphique, jauge, prix des paliers,
+    versement. <b>Seul l'agencement change.</b> J'ai aussi corrigé l'échelle du graphique :
+    elle garde désormais <b>15 % de dégagement</b>, donc aucune barre ne touche jamais le haut,
+    même avec un seul mois de ventes.
+  </p>
+
+  <!-- ========================================================= A -->
+  <div class="bloc">
+    <div class="etiquette"><span>Disposition A</span><b>Trois bandes</b>
+      <span style="margin-left:auto;color:var(--glacier)">l'argent · la preuve · les paliers</span></div>
+
+    <div class="carte A">
+      <div class="bandeauP">
+        <p class="cle">Période retenue</p>
+        <p class="d">1 sept. 2025 → 31 août 2026</p>
+      </div>
+
+      <!-- BANDE 1 : ce qu'elle vient voir -->
+      <div class="argent">
+        <div class="gauche">
+          <p class="cle">Gains du mois en cours</p>
+          <p class="gainsGros tnum">24,80 $</p>
+          <p class="gainsSous tnum">248,00 $ de ventes validées · 2 commandes</p>
+        </div>
+        <div class="droite">
+          <svg width="42" height="42" viewBox="0 0 100 100" aria-hidden="true">
+            <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                     stroke="#5FD8EC" stroke-width="5" opacity=".38"/>
+            <circle cx="50" cy="8" r="9" fill="#5FD8EC"/>
+            <circle cx="12" cy="29" r="6" fill="#5FD8EC" opacity=".26"/>
+            <circle cx="88" cy="29" r="6" fill="#5FD8EC" opacity=".26"/>
+            <circle cx="12" cy="71" r="6" fill="#5FD8EC" opacity=".26"/>
+            <circle cx="88" cy="71" r="6" fill="#5FD8EC" opacity=".26"/>
+            <circle cx="50" cy="92" r="6" fill="#5FD8EC" opacity=".26"/>
+          </svg>
+          <div>
+            <p class="nom">Palier Standard</p>
+            <p class="taux">10 % de commission</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- BANDE 2 : la preuve, pleine largeur -->
+      <div class="preuve sep">
+        <div class="graph">
+          <div class="ligneRef"><span>167 $/mois × 12 = Bronze</span></div>
+          <i class="vide"></i><i class="vide"></i><i class="vide"></i><i class="vide"></i>
+          <i class="vide"></i><i class="vide"></i><i class="vide"></i><i class="vide"></i>
+          <i class="vide"></i><i class="vide"></i>
+          <i style="height:59%"></i><i style="height:87%"></i>
+        </div>
+        <div class="mois">
+          <span>S</span><span>O</span><span>N</span><span>D</span><span>J</span><span>F</span>
+          <span>M</span><span>A</span><span>M</span><span>J</span>
+          <span class="part">J</span><span class="part">A</span>
+        </div>
+        <p class="refPeriode tnum">415,00 $
+          <em>de ventes sur la période — c'est ce montant qui fixe votre palier</em></p>
+        <div class="jauge">
+          <div class="piste"><i style="width:20.7%"></i></div>
+          <div class="curseur" style="left:29.5%" data-q="position au 1er oct."></div>
+          <div class="bornes"><span>0 $ · Standard</span><span>2 001 $ · Bronze</span></div>
+        </div>
+      </div>
+
+      <!-- BANDE 3 : ce qu'il y a à faire -->
+      <div class="paliers sep">
+        <p class="cle" style="margin-bottom:13px">Ce que chaque palier demande d'ici le 30 septembre</p>
+        <div class="palier acquis">
+          <p class="cout">Garanti</p><p class="fl">→</p>
+          <p class="quoi">Standard · 10 %<em>votre palier actuel</em></p>
+          <p class="sceau">taux garanti</p>
+        </div>
+        <div class="palier suivant">
+          <p class="cout tnum">1 586 $</p><p class="fl">→</p>
+          <p class="quoi">Bronze · 12 %<em>le palier au-dessus</em></p>
+        </div>
+        <p class="elan">Ici, aucun minimum à atteindre : <b>tout ce que vous vendez sert à
+          monter</b>. Bronze et ses 12 % sont votre prochaine étape.</p>
+      </div>
+
+      <div class="pied sep" style="margin-top:17px">
+        <div><p class="cle">Prochain versement</p><p class="tnum">1 oct · 16,70 $</p></div>
+        <div><p class="cle">Commandes sur la période</p><p class="tnum">5</p></div>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>L'ordre de lecture est imposé :</b> l'argent, puis la preuve, puis ce qu'il y a à faire.
+      Chaque bande a un seul sujet, et le graphique récupère toute la largeur — c'est la
+      disposition où il est le plus lisible. <b>Ce que ça coûte :</b> la carte est haute. Sur
+      téléphone il faut faire défiler pour atteindre les paliers.
+    </p>
+  </div>
+
+  <!-- ========================================================= B -->
+  <div class="bloc">
+    <div class="etiquette"><span>Disposition B</span><b>Deux colonnes égales</b>
+      <span style="margin-left:auto;color:var(--glacier)">l'argent | la progression</span></div>
+
+    <div class="carte B">
+      <div class="bandeauP">
+        <p class="cle">Période retenue</p>
+        <p class="d">1 sept. 2025 → 31 août 2026</p>
+      </div>
+
+      <div class="rubanP sep">
+        <svg width="34" height="34" viewBox="0 0 100 100" aria-hidden="true">
+          <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                   stroke="#5FD8EC" stroke-width="6" opacity=".38"/>
+          <circle cx="50" cy="8" r="10" fill="#5FD8EC"/>
+          <circle cx="12" cy="29" r="7" fill="#5FD8EC" opacity=".26"/>
+          <circle cx="88" cy="29" r="7" fill="#5FD8EC" opacity=".26"/>
+          <circle cx="12" cy="71" r="7" fill="#5FD8EC" opacity=".26"/>
+          <circle cx="88" cy="71" r="7" fill="#5FD8EC" opacity=".26"/>
+          <circle cx="50" cy="92" r="7" fill="#5FD8EC" opacity=".26"/>
+        </svg>
+        <p class="nom">Palier Standard</p>
+        <p class="taux">10 % de commission</p>
+      </div>
+
+      <div class="paire sep">
+        <div class="col">
+          <p class="cle">Gains du mois en cours</p>
+          <p class="gainsGros tnum">24,80 $</p>
+          <p class="gainsSous tnum">248,00 $ de ventes validées · 2 commandes</p>
+          <p class="refPeriode tnum">415,00 $
+            <em>de ventes sur la période — c'est ce montant qui fixe votre palier</em></p>
+        </div>
+        <div class="col">
+          <p class="cle">Votre progression</p>
+          <div class="jauge">
+            <div class="piste"><i style="width:20.7%"></i></div>
+            <div class="curseur" style="left:29.5%" data-q="position au 1er oct."></div>
+            <div class="bornes"><span>0 $ · Standard</span><span>2 001 $ · Bronze</span></div>
+          </div>
+          <div class="paliers">
+            <div class="palier acquis">
+              <p class="cout">Garanti</p><p class="fl">→</p>
+              <p class="quoi">Standard · 10 %<em>votre palier</em></p>
+            </div>
+            <div class="palier suivant">
+              <p class="cout tnum">1 586 $</p><p class="fl">→</p>
+              <p class="quoi">Bronze · 12 %<em>d'ici le 30 sept.</em></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bas sep">
+        <div class="graph">
+          <div class="ligneRef"><span>167 $/mois × 12 = Bronze</span></div>
+          <i class="vide"></i><i class="vide"></i><i class="vide"></i><i class="vide"></i>
+          <i class="vide"></i><i class="vide"></i><i class="vide"></i><i class="vide"></i>
+          <i class="vide"></i><i class="vide"></i>
+          <i style="height:59%"></i><i style="height:87%"></i>
+        </div>
+        <div class="mois">
+          <span>S</span><span>O</span><span>N</span><span>D</span><span>J</span><span>F</span>
+          <span>M</span><span>A</span><span>M</span><span>J</span>
+          <span class="part">J</span><span class="part">A</span>
+        </div>
+      </div>
+
+      <div class="pied sep">
+        <div><p class="cle">Prochain versement</p><p class="tnum">1 oct · 16,70 $</p></div>
+        <div><p class="cle">Commandes sur la période</p><p class="tnum">5</p></div>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>L'argent et la progression se regardent :</b> rien n'est enterré, les deux sujets
+      principaux sont côte à côte au même niveau. Le graphique devient une frise en pied — de la
+      preuve qu'on consulte, pas qu'on lit d'abord. <b>Ce que ça coûte :</b> l'encouragement ne
+      rentre plus, et sur téléphone les deux colonnes s'empilent — on retombe sur A, en plus serré.
+    </p>
+  </div>
+
+  <!-- ========================================================= C -->
+  <div class="bloc">
+    <div class="etiquette"><span>Disposition C</span><b>Une seule colonne, par ordre d'importance</b>
+      <span style="margin-left:auto;color:var(--glacier)">identique sur mobile et ordinateur</span></div>
+
+    <div class="carte C">
+      <div class="bandeauP" style="justify-content:center">
+        <p class="d">1 sept. 2025 → 31 août 2026</p>
+      </div>
+
+      <div class="tete">
+        <svg width="50" height="50" viewBox="0 0 100 100" aria-hidden="true">
+          <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
+                   stroke="#5FD8EC" stroke-width="5" opacity=".38"/>
+          <circle cx="50" cy="8" r="8" fill="#5FD8EC"/>
+          <circle cx="12" cy="29" r="5.5" fill="#5FD8EC" opacity=".26"/>
+          <circle cx="88" cy="29" r="5.5" fill="#5FD8EC" opacity=".26"/>
+          <circle cx="12" cy="71" r="5.5" fill="#5FD8EC" opacity=".26"/>
+          <circle cx="88" cy="71" r="5.5" fill="#5FD8EC" opacity=".26"/>
+          <circle cx="50" cy="92" r="5.5" fill="#5FD8EC" opacity=".26"/>
+        </svg>
+        <p class="nom">Palier Standard</p>
+        <p class="taux">10 % de commission</p>
+      </div>
+
+      <div class="argent sep">
+        <p class="cle">Gains du mois en cours</p>
+        <p class="gainsGros tnum">24,80 $</p>
+        <p class="gainsSous tnum">248,00 $ de ventes validées · 2 commandes</p>
+      </div>
+
+      <div class="paliers sep">
+        <p class="cle" style="margin-bottom:13px;text-align:center">D'ici le 30 septembre</p>
+        <div class="palier acquis">
+          <p class="cout">Garanti</p><p class="fl">→</p>
+          <p class="quoi">Standard · 10 %<em>votre palier</em></p>
+        </div>
+        <div class="palier suivant">
+          <p class="cout tnum">1 586 $</p><p class="fl">→</p>
+          <p class="quoi">Bronze · 12 %<em>le palier au-dessus</em></p>
+        </div>
+        <p class="elan">Ici, aucun minimum à atteindre : <b>tout ce que vous vendez sert à
+          monter</b>.</p>
+      </div>
+
+      <div class="zoneJauge sep" style="padding-top:20px">
+        <div class="jauge">
+          <div class="piste"><i style="width:20.7%"></i></div>
+          <div class="curseur" style="left:29.5%" data-q="position au 1er oct."></div>
+          <div class="bornes"><span>0 $ · Standard</span><span>2 001 $ · Bronze</span></div>
+        </div>
+      </div>
+
+      <div class="preuve sep" style="padding-top:20px">
+        <div class="graph">
+          <div class="ligneRef"><span>167 $/mois × 12 = Bronze</span></div>
+          <i class="vide"></i><i class="vide"></i><i class="vide"></i><i class="vide"></i>
+          <i class="vide"></i><i class="vide"></i><i class="vide"></i><i class="vide"></i>
+          <i class="vide"></i><i class="vide"></i>
+          <i style="height:59%"></i><i style="height:87%"></i>
+        </div>
+        <div class="mois">
+          <span>S</span><span>O</span><span>N</span><span>D</span><span>J</span><span>F</span>
+          <span>M</span><span>A</span><span>M</span><span>J</span>
+          <span class="part">J</span><span class="part">A</span>
+        </div>
+        <p class="refPeriode tnum">415,00 $
+          <em>de ventes sur la période — c'est ce montant qui fixe votre palier</em></p>
+      </div>
+
+      <div class="pied sep">
+        <div><p class="cle">Versement</p><p class="tnum">1 oct · 16,70 $</p></div>
+        <div><p class="cle">Commandes</p><p class="tnum">5</p></div>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>Une seule colonne, ordonnée par ce qui compte :</b> le palier, l'argent, ce qu'il y a à
+      faire, la position, puis la preuve. La taille fait toute la hiérarchie — 42 px pour les
+      gains, 11 px pour les étiquettes. <b>Ce que ça gagne :</b> l'écran du téléphone et celui de
+      l'ordinateur sont <b>le même</b>, donc rien ne se comporte différemment d'un appareil à
+      l'autre. <b>Ce que ça coûte :</b> sur un grand écran, beaucoup de place perdue à droite.
+    </p>
+    <p class="verdict">
+      <b>Si le mobile est la priorité</b> — et tu l'as répété — <b>C est le seul des trois qui ne
+      change jamais de forme.</b> A et B sont plus beaux sur ordinateur, mais ils s'empilent tous
+      les deux sur téléphone : ce que tu vois ici n'est alors plus ce que ton affiliée voit.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>
