@@ -264,12 +264,26 @@ export default function CarteAffilie({
           {money(vive)}
           <em className="not-italic block font-body text-[12px] font-normal tracking-normal
                          text-mist mt-1 leading-snug">
+            {/* LA LIGNE REPOND A LA QUESTION QU'ELLE POSE.
+                « 11 240 + 410 » est exact mais ne dit pas POURQUOI le mois en
+                cours compte. La reponse, c'est le cliquet : les ventes du mois
+                peuvent faire monter le taux TOUT DE SUITE. La ligne le dit en
+                toutes lettres, pour qu'aucune question ne reste. Sans palier
+                au-dessus (Diamant), la seconde moitie change de sens. */}
             {L(courantVentes > 0
-               ? `${money(total)} sur les douze mois clos + ${money(courantVentes)} vendus ce mois-ci — c'est ce qui fixe votre palier`
-               : `${money(total)} sur les douze mois clos — c'est ce qui fixe votre palier`,
+               ? suivant
+                 ? `${money(total)} sur les douze mois clos + ${money(courantVentes)} de ce mois-ci — vos ventes du mois peuvent faire monter votre taux tout de suite`
+                 : `${money(total)} sur les douze mois clos + ${money(courantVentes)} de ce mois-ci — vous êtes au palier le plus haut`
+               : suivant
+                 ? `${money(total)} sur les douze mois clos — une vente ce mois-ci peut déjà faire monter votre taux`
+                 : `${money(total)} sur les douze mois clos — vous êtes au palier le plus haut`,
                courantVentes > 0
-               ? `${money(total)} over the twelve closed months + ${money(courantVentes)} sold this month — this is what sets your tier`
-               : `${money(total)} over the twelve closed months — this is what sets your tier`)}
+               ? suivant
+                 ? `${money(total)} over the twelve closed months + ${money(courantVentes)} this month — this month's sales can raise your rate right away`
+                 : `${money(total)} over the twelve closed months + ${money(courantVentes)} this month — you are at the highest tier`
+               : suivant
+                 ? `${money(total)} over the twelve closed months — a sale this month can already raise your rate`
+                 : `${money(total)} over the twelve closed months — you are at the highest tier`)}
           </em>
         </p>
 
