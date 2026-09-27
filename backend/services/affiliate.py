@@ -69,6 +69,11 @@ def _affiliate_tier_index(tier: str) -> int:
     return 0
 
 
+def _affiliate_palier_le_plus_haut(a: str, b: str) -> str:
+    """Le plus eleve de deux paliers. Sert de cliquet : il ne descend pas."""
+    return a if _affiliate_tier_index(a) >= _affiliate_tier_index(b) else b
+
+
 def _affiliate_tier_bounds(tier: str):
     for name, _r, floor, ceil in s.AFFILIATE_TIERS:
         if name == tier:
@@ -471,6 +476,57 @@ def _normalize_payout(address: str, currency: str) -> tuple:
     )
 
 
+def _affiliate_mois_debut(dt: datetime) -> datetime:
+    """Le 1er du mois de `dt`, a minuit UTC."""
+    return dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def _affiliate_mois_decale(dt: datetime, n: int) -> datetime:
+    """Le 1er du mois situe `n` mois avant (n<0) ou apres (n>0) celui de `dt`."""
+    d = _affiliate_mois_debut(dt)
+    rang = d.year * 12 + (d.month - 1) + n
+    return d.replace(year=rang // 12, month=rang % 12 + 1)
+
+
+def _affiliate_periode_palier(now: Optional[datetime] = None) -> dict:
+    """Les bornes de la fenetre qui fixe le palier, en mois CALENDAIRES clos.
+
+    POURQUOI CE N'EST PLUS 365 JOURS. L'ancienne regle prenait
+    `now - timedelta(days=365)` : une borne qui reculait a chaque instant,
+    l'HEURE COMPRISE. Une commission approuvee le 26 septembre 2025 a midi
+    etait dans la fenetre le matin du 26 septembre 2026 et dehors l'apres-midi.
+    Le meme compte affichait deux totaux le meme jour, et le taux d'une vente
+    dependait de la minute ou elle etait payee. C'etait exact, et
+    inexplicable : aucun affilie ne pouvait savoir a quel taux il vendait.
+
+    La fenetre couvre desormais les DOUZE MOIS CLOS precedant le mois courant.
+    En octobre 2026 : du 1er octobre 2025 au 30 septembre 2026. Le mois en
+    cours n'y entre pas — il n'est pas clos — et le total ne bouge donc qu'une
+    fois par mois, le 1er, a une date qu'on peut annoncer.
+
+    Contrepartie assumee : une vente d'aujourd'hui ne releve plus le taux
+    d'aujourd'hui, elle compte a partir du 1er du mois suivant.
+
+    Renvoie aussi le mois qui SORTIRA au prochain changement — c'est lui qui
+    explique qu'un palier baisse alors que l'affilie a bien vendu.
+    """
+    now = now or datetime.now(timezone.utc)
+    courant = _affiliate_mois_debut(now)          # 1er du mois en cours
+    debut = _affiliate_mois_decale(now, -12)      # 12 mois clos avant lui
+    sortant_fin = _affiliate_mois_decale(now, -11)
+    return {
+        # [debut, fin_exclue) : la fenetre qui fixe le taux du mois en cours.
+        "debut": debut,
+        "fin_exclue": courant,
+        # Le mois qui quittera la fenetre le 1er prochain.
+        "sortant_debut": debut,
+        "sortant_fin_exclue": sortant_fin,
+        # Le mois en cours, qui entrera dans la fenetre le 1er prochain.
+        "courant_debut": courant,
+        "prochain_debut": _affiliate_mois_decale(now, 1),
+    }
+
+
 def _affiliate_quarter_start(now: Optional[datetime] = None) -> datetime:
     now = now or datetime.now(timezone.utc)
     q_month = 3 * ((now.month - 1) // 3) + 1
@@ -500,23 +556,48 @@ def _affiliate_prev_quarter_start(now: Optional[datetime] = None) -> datetime:
 # CALCUL DES MÉTRIQUES D'UN AFFILIÉ
 # ===========================================================================
 
-async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
+async def _affiliate_compute_metrics(affiliate_id: str,
+                                     avec_mensuel: bool = False) -> dict:
     """Agrège les référrals validés (approved|paid) et calcule le palier.
 
-    Le palier repose sur une FENÊTRE GLISSANTE DE 12 MOIS : à chaque instant on
-    additionne le CA généré sur les 365 derniers jours. La fenêtre avance toute
-    seule — le mois écoulé entre, celui d'il y a un an sort — donc le palier
-    monte quand l'activité monte et redescend quand elle ralentit, sans date de
-    révision ni décision manuelle.
+    Le palier repose sur les DOUZE MOIS CALENDAIRES CLOS précédant le mois en
+    cours, plus le mois en cours lui-même — et la règle est ASYMÉTRIQUE :
+
+      — VERS LE HAUT, tout de suite. Dès qu'un seuil est franchi, le taux
+        supérieur s'applique aux commandes suivantes, sans attendre le 1er.
+      — VERS LE BAS, le 1er seulement. Le palier arrêté au premier jour du
+        mois est un PLANCHER : il ne peut pas tomber en cours de mois, même
+        si une commission du mois est annulée.
+
+    Mireille : « si un affilié atteint un seuil au cours d'un mois je le
+    pénalise sur sa commission ». C'était exact : une première version ne
+    comptait que les mois clos, et un affilié qui franchissait Bronze le 3 du
+    mois continuait à toucher 10 % jusqu'au 1er suivant. Il était puni d'avoir
+    bien vendu.
+
+    Le cliquet donne les deux : la récompense est immédiate, et le taux
+    annoncé reste tenable — on promet un MINIMUM pour le mois, jamais un
+    plafond.
+
+    Voir `_affiliate_periode_palier` pour le détail de ce que remplaçait la
+    fenêtre de 365 jours, et pourquoi elle était inexplicable à un affilié.
 
     Remplace un modèle « cumul à vie + rétrogradation trimestrielle » qui était
     mal calibré : il comparait le CA d'UN trimestre au plancher CUMULATIF du
     palier. Conserver Bronze exigeait donc 2 001 $ tous les 90 jours alors que
     l'atteindre n'avait demandé que 2 001 $ au total. Un affilié régulier
     restait bloqué un palier sous celui qu'il avait mérité, indéfiniment.
+
+    `avec_mensuel` déclenche une SECONDE requête, qui ventile la fenêtre mois
+    par mois pour le graphique du tableau de bord. Elle est facultative parce
+    que cette fonction est aussi appelée par `affiliate_on_order_paid`, sur le
+    chemin de l'argent : y ajouter une agrégation par commande payée coûterait
+    à chaque achat pour un graphique que personne ne regarde à ce moment-là.
     """
     now = datetime.now(timezone.utc)
-    window_start = now - timedelta(days=365)
+    periode = _affiliate_periode_palier(now)
+    window_start = periode["debut"]
+    window_end = periode["fin_exclue"]
     # `tier_agreement` FAIT PARTIE du calcul — sans lui, _palier_effectif est
     # appelée en permanence en mode « sans entente ».
     #
@@ -589,11 +670,38 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
                 {"$in": ["$status", ["approved", "paid"]]}, "$base", 0.0]}},
             "validated_orders": {"$sum": {"$cond": [
                 {"$in": ["$status", ["approved", "paid"]]}, 1, 0]}},
+            # BORNE HAUTE AJOUTEE. Sans elle, le mois en cours comptait dans
+            # sa propre fenetre et le taux bougeait a chaque vente.
             "rolling12": {"$sum": {"$cond": [
                 {"$and": [
                     {"$in": ["$status", ["approved", "paid"]]},
                     {"$gte": ["$eff", window_start]},
+                    {"$lt": ["$eff", window_end]},
                 ]}, "$base", 0.0]}},
+            # Le mois qui SORT au prochain changement, et celui qui ENTRE : les
+            # deux sommes qui permettent d'annoncer le taux du mois prochain
+            # avant qu'il ne soit fixe.
+            "mois_sortant": {"$sum": {"$cond": [
+                {"$and": [
+                    {"$in": ["$status", ["approved", "paid"]]},
+                    {"$gte": ["$eff", periode["sortant_debut"]]},
+                    {"$lt": ["$eff", periode["sortant_fin_exclue"]]},
+                ]}, "$base", 0.0]}},
+            "mois_courant": {"$sum": {"$cond": [
+                {"$and": [
+                    {"$in": ["$status", ["approved", "paid"]]},
+                    {"$gte": ["$eff", periode["courant_debut"]]},
+                ]}, "$base", 0.0]}},
+            "mois_courant_commandes": {"$sum": {"$cond": [
+                {"$and": [
+                    {"$in": ["$status", ["approved", "paid"]]},
+                    {"$gte": ["$eff", periode["courant_debut"]]},
+                ]}, 1, 0]}},
+            "mois_courant_commission": {"$sum": {"$cond": [
+                {"$and": [
+                    {"$in": ["$status", ["approved", "paid"]]},
+                    {"$gte": ["$eff", periode["courant_debut"]]},
+                ]}, "$comm", 0.0]}},
             "quarter": {"$sum": {"$cond": [
                 {"$and": [
                     {"$in": ["$status", ["approved", "paid"]]},
@@ -627,15 +735,62 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
     excluded_commission = float(t.get("excluded_commission", 0.0))
     validated_orders = int(t.get("validated_orders", 0))
 
-    # Palier selon le CA des 12 derniers mois. Plus de rétrogradation
-    # trimestrielle : la fenêtre glissante fait déjà redescendre le total quand
-    # l'activité ralentit, progressivement et sans effet de seuil brutal.
-    theoretical = _affiliate_tier_for_revenue(rolling12)
+    # LE CLIQUET.
+    #
+    # `base_close` ne bouge pas du mois : c'est elle qui fixe le PLANCHER du
+    # taux, annonce des le 1er. `base_vive` y ajoute le mois en cours : c'est
+    # elle qui fait MONTER le palier des qu'un seuil est franchi.
+    #
+    # Le max() n'est pas decoratif. Sans lui, une commission du mois annulee
+    # ferait baisser `base_vive` et donc le taux, EN PLEIN MOIS — exactement
+    # la penalite qu'on cherche a supprimer.
+    mois_courant_brut = float(t.get("mois_courant", 0.0))
+    base_close = rolling12
+    base_vive = rolling12 + mois_courant_brut
+    palier_plancher_mois = _affiliate_tier_for_revenue(base_close)
+    theoretical = _affiliate_palier_le_plus_haut(
+        _affiliate_tier_for_revenue(base_vive), palier_plancher_mois)
     effective = _palier_effectif(manual_tier, theoretical,
                                  bool((affiliate or {}).get("tier_agreement")))
 
     rate = _affiliate_rate_for_tier(effective)
     nxt = _affiliate_next_tier(effective)
+
+    # ------------------------------------------------------------------
+    # CE QUE SERA LA FENETRE LE 1er DU MOIS PROCHAIN.
+    #
+    # L'ancien ecran disait « Encore 1 019,75 $ et vous passez a Platine ».
+    # C'etait une promesse que la fenetre ne peut pas tenir : elle perd aussi
+    # des mois par l'arriere. Un affilie pouvait vendre 800 $ et voir l'ecart
+    # GRANDIR, sans rien avoir fait de mal.
+    #
+    # On calcule donc la fenetre du mois PROCHAIN — celle qui fixera le taux —
+    # et on en deduit deux montants qui, eux, sont tenables :
+    #   — ce qu'il faut vendre pour reconduire le taux actuel ;
+    #   — ce qu'il faut vendre pour atteindre le palier au-dessus.
+    # Les deux ont la meme echeance : le dernier jour du mois en cours.
+    mois_sortant = float(t.get("mois_sortant", 0.0))
+    mois_courant = mois_courant_brut
+    projection = max(0.0, rolling12 - mois_sortant + mois_courant)
+    palier_projete = _affiliate_tier_for_revenue(projection)
+
+    plancher_actuel = _affiliate_tier_bounds(effective)[0]
+    # Sous entente, le palier est fige : il n'y a RIEN a reconduire, et
+    # afficher un montant serait une fausse peur.
+    sous_entente = bool((affiliate or {}).get("tier_agreement")) or manual_tier is not None
+    # DEUX QUESTIONS DIFFERENTES, DEUX BASES DIFFERENTES.
+    #
+    #   « Combien pour garder mon taux le mois prochain ? »  -> la PROJECTION,
+    #     parce que le mois sortant quittera la fenetre le 1er.
+    #   « Combien pour monter, maintenant ? »                -> la BASE VIVE,
+    #     parce que le cliquet applique le nouveau taux des le seuil franchi.
+    #
+    # Les mesurer sur la meme base rendrait l'une des deux fausse.
+    maintien = None if sous_entente else max(0.0, plancher_actuel - projection)
+    atteinte = None
+    if nxt and not sous_entente:
+        atteinte = max(0.0, nxt["floor"] - base_vive)
+
     remaining = None
     progress = None
     if nxt:
@@ -646,6 +801,53 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
         if span > 0:
             progress = min(1.0, max(0.0,
                            (rolling12 - _affiliate_tier_bounds(effective)[0]) / span))
+
+    # ------------------------------------------------------------------
+    # LA VENTILATION MOIS PAR MOIS, pour le graphique.
+    #
+    # Douze entrees TOUJOURS, dans l'ordre, les mois sans vente a zero : le
+    # graphique ne doit pas avoir a combler des trous, et une serie courte
+    # ferait retomber l'echelle sur un seul mois — exactement le defaut qui
+    # faisait qu'une premiere vente de 80 $ s'affichait au plafond.
+    mensuel = None
+    if avec_mensuel:
+        lignes = await s.db.affiliate_referrals.aggregate([
+            {"$match": {"affiliate_id": affiliate_id,
+                        "status": {"$in": ["approved", "paid"]}}},
+            {"$project": {
+                "_id": 0,
+                "base": {"$ifNull": ["$base_amount", 0.0]},
+                "eff": {"$switch": {
+                    "branches": [
+                        {"case": {"$in": [
+                            {"$type": {"$ifNull": ["$approved_at", "$created_at", None]}},
+                            ["date", "timestamp"],
+                        ]}, "then": {"$ifNull": ["$approved_at", "$created_at", None]}},
+                    ],
+                    "default": {"$dateFromString": {
+                        "dateString": {"$ifNull": ["$approved_at", "$created_at", None]},
+                        "onError": None, "onNull": None,
+                    }},
+                }},
+            }},
+            {"$match": {"eff": {"$gte": window_start, "$lt": window_end}}},
+            {"$group": {
+                "_id": {"$dateToString": {"format": "%Y-%m", "date": "$eff",
+                                          "timezone": "UTC"}},
+                "montant": {"$sum": "$base"},
+            }},
+        ]).to_list(None)
+        par_cle = {str(l["_id"]): float(l.get("montant") or 0.0) for l in lignes}
+        mensuel = []
+        for i in range(12):
+            d = _affiliate_mois_decale(now, -12 + i)
+            cle = "%04d-%02d" % (d.year, d.month)
+            mensuel.append({
+                "mois": cle,
+                "montant": round(par_cle.get(cle, 0.0), 2),
+                # Le premier de la serie est celui qui sortira le 1er prochain.
+                "sortant": i == 0,
+            })
 
     # Le garde-fou trimestriel est supprimé : plus de rétrogradation, donc plus
     # d'alerte à afficher. Les champs quarter_* restent renseignés — le CA du
@@ -659,7 +861,37 @@ async def _affiliate_compute_metrics(affiliate_id: str) -> dict:
     return {
         "cumulative_revenue": round(cumulative, 2),
         "rolling12_revenue": round(rolling12, 2),
-        "tier_basis": "rolling_12m",
+        # `rolling_12m` mentait sur la regle appliquee : la fenetre n'est plus
+        # glissante, elle est calendaire. Un consommateur qui se fie a ce champ
+        # doit voir le changement.
+        "tier_basis": "calendar_12m",
+        # Les bornes, telles qu'on les affiche. `periode_fin` est le DERNIER
+        # jour compte, pas la borne exclue : c'est la date que lit l'affilie.
+        "periode_debut": window_start.isoformat(),
+        "periode_fin": (window_end - timedelta(days=1)).isoformat(),
+        "taux_valide_jusqu_au": (periode["prochain_debut"] - timedelta(days=1)).isoformat(),
+        "prochaine_periode_debut": periode["prochain_debut"].isoformat(),
+        # De quoi expliquer un palier qui baisse malgre de bonnes ventes.
+        "mois_sortant_montant": round(mois_sortant, 2),
+        "mois_sortant_cle": "%04d-%02d" % (periode["sortant_debut"].year,
+                                           periode["sortant_debut"].month),
+        "mois_courant_ventes": round(mois_courant, 2),
+        "mois_courant_commission": round(float(t.get("mois_courant_commission", 0.0)), 2),
+        "mois_courant_commandes": int(t.get("mois_courant_commandes", 0)),
+        "projection_prochaine_periode": round(projection, 2),
+        # La base qui fait monter le palier TOUT DE SUITE : mois clos + mois
+        # en cours. L'ecran en a besoin pour placer la jauge sur la position
+        # reelle, pas sur celle du 1er.
+        "base_vive": round(base_vive, 2),
+        # Le palier arrete le 1er : le plancher du mois. L'ecran s'en sert pour
+        # dire « au minimum X % jusqu'au ... », une promesse tenable.
+        "palier_plancher_mois": palier_plancher_mois,
+        "palier_projete": palier_projete,
+        "palier_plancher": plancher_actuel,
+        # Les deux montants de l'ecran, meme echeance.
+        "maintien_montant": None if maintien is None else round(maintien, 2),
+        "atteinte_montant": None if atteinte is None else round(atteinte, 2),
+        "mensuel": mensuel,
         "quarter_revenue": round(quarter, 2),
         "validated_orders": validated_orders,
         "tier": effective,

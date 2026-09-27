@@ -83,9 +83,12 @@ const QA = [
     fr: {
       q: "Comment mon palier est-il déterminé ?",
       a: [
-        "Par votre chiffre d'affaires validé des douze derniers mois glissants : une fenêtre qui avance avec vous, pas un total remis à zéro en janvier.",
+        "Par votre chiffre d'affaires validé sur les douze mois calendaires clos qui précèdent le mois en cours. En octobre, la période va donc du 1er octobre de l'année précédente au 30 septembre.",
+        "Un taux minimum est arrêté le 1er de chaque mois : il ne peut pas baisser avant le 1er suivant, quoi qu'il arrive. Vous savez donc, dès le premier jour, le taux le plus bas auquel vous vendrez ce mois-ci.",
+        "Mais il peut monter en cours de mois : dès que vos ventes franchissent un seuil — le mois en cours compris —, le taux supérieur s'applique aux commandes suivantes, sans attendre le 1er.",
         "Les paliers : Standard 10 % jusqu'à 2 000 $, Bronze 12 % à partir de 2 001 $, Silver 14 % à partir de 5 001 $, Gold 16 % à partir de 10 001 $, Platinum 18 % à partir de 20 001 $, Diamond 20 % à partir de 35 001 $.",
-        "Le palier monte dès le seuil franchi, et le nouveau taux s'applique aux commandes suivantes. Les commissions déjà acquises ne sont pas recalculées.",
+        "Chaque 1er, la période avance d'un mois : le mois le plus ancien en sort, celui qui vient de se terminer y entre. Votre compte affiche lequel sort, quand, et ce qu'il représente.",
+        "Une vente d'aujourd'hui peut donc vous faire monter aujourd'hui. Ce qu'elle ne fera jamais, c'est vous faire descendre : une baisse n'a lieu qu'au 1er, quand la période avance. Les commissions déjà acquises ne sont jamais recalculées.",
         // Réservé aux comptes SOUS ENTENTE. Une entente est confidentielle :
         // son existence même ne se divulgue pas, et un affilié au barème ne
         // doit pas apprendre ici qu'un autre bénéficie d'un traitement
@@ -96,9 +99,12 @@ const QA = [
     en: {
       q: "How is my tier determined?",
       a: [
-        "By your validated revenue over the last twelve rolling months : a window that moves with you, not a total reset every January.",
+        "By your validated revenue over the twelve closed calendar months preceding the current month. In October, the period runs from 1 October of the previous year to 30 September.",
+        "A minimum rate is set on the 1st of each month : it cannot go down before the next 1st, whatever happens. From day one you know the lowest rate you will be selling at this month.",
+        "It can go up during the month, though : as soon as your sales cross a threshold — counting the current month —, the higher rate applies to subsequent orders, without waiting for the 1st.",
         "The tiers: Standard 10% up to $2,000, Bronze 12% from $2,001, Silver 14% from $5,001, Gold 16% from $10,001, Platinum 18% from $20,001, Diamond 20% from $35,001.",
-        "The tier rises as soon as the threshold is crossed, and the new rate applies to subsequent orders. Commissions already earned are not recalculated.",
+        "On the 1st of each month the period moves forward by one month : the oldest month drops out, the month that just ended comes in. Your account shows which month is leaving, when, and what it is worth.",
+        "A sale made today can therefore move you up today. What it will never do is move you down : a decrease only happens on the 1st, when the period moves forward. Commissions already earned are never recalculated.",
         { entente: true, texte: "Your rate resulting from an agreement, it does not follow this rule: it does not vary with your sales volume and never decreases automatically." },
       ],
     },

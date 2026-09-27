@@ -11500,7 +11500,9 @@ async def affiliate_tour_reset(request: Request):
 
 async def affiliate_me(request: Request, lang: str = "fr"):
     aff = await get_current_affiliate(request)
-    metrics = await _affiliate_compute_metrics(aff["id"])
+    # Le tableau de bord est le SEUL appelant qui affiche le graphique :
+    # la ventilation mensuelle ne se paie qu'ici, pas sur le chemin de l'argent.
+    metrics = await _affiliate_compute_metrics(aff["id"], avec_mensuel=True)
     out = _affiliate_public(aff, metrics, lang=lang)
     # Taux de change CAD→USD transparent (Banque du Canada) — utilisé dans
     # l'aperçu Payments pour montrer combien 1 CAD = X USDT/USDC.

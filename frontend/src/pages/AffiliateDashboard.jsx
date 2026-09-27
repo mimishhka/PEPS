@@ -20,6 +20,7 @@ import AffiliateSupport from "../components/AffiliateSupport";
 import TermsModal from "../components/TermsModal";
 import TierLadder from "../components/TierLadder";
 import TierMark from "../components/TierMark";
+import CarteAffilie from "../components/CarteAffilie";
 import ChiffreAnime from "../components/ChiffreAnime";
 import ThemeToggle from "../components/ThemeToggle";
 
@@ -243,26 +244,6 @@ export default function AffiliateDashboard() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  // LA BARRE DE PROGRESSION PART DE ZERO, PUIS SE REMPLIT.
-  //
-  // Sans ce decalage d'une trame, le navigateur peint directement la largeur
-  // finale et il n'y a aucune transition a voir.
-  //
-  // CE CROCHET VIT ICI, ET NON PRES DE LA BARRE : le composant a une sortie
-  // anticipee pour l'etat de chargement, et un crochet declare apres elle ne
-  // s'executerait pas a tous les rendus. React exige le meme ordre a chaque
-  // fois. La sonde de pre-commit du projet l'a signale avant le commit — le
-  // linter, lui, ne l'avait pas vu.
-  const [barreRemplie, setBarreRemplie] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined") { setBarreRemplie(true); return undefined; }
-    const sansMouvement = window.matchMedia
-      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (sansMouvement) { setBarreRemplie(true); return undefined; }
-    const t = setTimeout(() => setBarreRemplie(true), 80);
-    return () => clearTimeout(t);
-  }, []);
 
   useEffect(() => {
     if (!data) return;
@@ -727,7 +708,6 @@ export default function AffiliateDashboard() {
   ].join(", ");
   const tierLabel = TIER_META[data?.tier]?.[lang] || data?.tier;
   const comp = COMPLIANCE_META[data?.compliance_status] || COMPLIANCE_META.compliant;
-  const progress = data?.progress_to_next != null ? Math.round(data.progress_to_next * 100) : null;
 
   // Ce qu'une vente rapporte. L'exemple est ancre sur la BASE COMMISSIONNABLE,
   // pas sur le prix affiche avant rabais : ainsi le taux du palier s'applique
@@ -735,8 +715,6 @@ export default function AffiliateDashboard() {
   // deux montants differents. Annoncer « une vente de 100 $ rapporte 9 $ »
   // etait exact mais illisible : le lecteur ne sait pas lequel des deux
   // chiffres est le sien.
-  const exampleBase = 100;
-  const exampleEarn = exampleBase * Number(data?.commission_rate || 0);
 
   // Jalons de demarrage, deduits des donnees reelles : jamais d'etape declaree
   // franchie sans preuve. Le bloc disparait quand les trois sont acquises :
@@ -933,6 +911,15 @@ export default function AffiliateDashboard() {
         {/* OVERVIEW */}
         {tab === "overview" && (
           <div className="space-y-8" data-testid="affiliate-overview">
+            {/* L'APERCU NE GARDE QUE TROIS BLOCS.
+                Il en portait onze, sur 650 lignes : la carte, le versement, le
+                palier, la fenetre, les chiffres cles, les statistiques,
+                l'echelle, l'activite, le lien... Mireille : « je ne veux pas
+                que tout soit deroule sur une page du haut a la fin ».
+                Chaque bloc a rejoint l'onglet dont il releve. Deux ont
+                disparu — progression de palier et « vos 12 derniers mois » —
+                parce que la carte les porte desormais, et que leur texte
+                decrivait encore la fenetre glissante supprimee. */}
             {/* Bandeau. Tant que rien n'a ete gagne, un « 0,00 $ » en gros
                 caracteres n'enseigne rien : on montre ce qu'une vente vaut. Des
                 qu'il y a des gains, le montant reel est plus utile. */}
@@ -949,107 +936,17 @@ export default function AffiliateDashboard() {
                 un tableau : ce qu'on a gagne. La maille moleculaire et la
                 texture de bruit le rattachent au hero de la boutique : c'est
                 la meme marque, vue de l'interieur. */}
-            <div className="relative overflow-hidden bg-nordfjord text-clinical texture-bruit px-6 py-7 sm:px-8 sm:py-8"
-                 style={{ borderRadius: "var(--r-l)", boxShadow: "var(--ombre-flotte)" }}
-                 data-testid="affiliate-hero">
-              {/* La lueur du palier, derriere le contenu. `pointer-events-none`
-                  parce qu'une decoration ne doit jamais intercepter un clic. */}
-              <div className="absolute inset-0 pointer-events-none"
-                   style={{ background: tierLueur }} aria-hidden="true" />
-              <div className="relative flex flex-wrap items-end justify-between gap-x-8 gap-y-6">
-                <div className="min-w-0">
-                  {Number(data?.cumulative_revenue || 0) === 0 ? (
-                    <>
-                      <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">
-                        {L("CE QUE VOUS GAGNEZ", "WHAT YOU EARN")}
-                      </p>
-                      {/* SANS VENTE, UN « 0,00 $ » EN GROS N'APPREND RIEN.
-                          On montre ce qu'une commande RAPPORTE : c'est la seule
-                          chose motivante a dire a quelqu'un qui commence. */}
-                      <p className="font-display text-[26px] sm:text-[30px] font-bold leading-[1.15] max-w-[22ch]">
-                        {L("Une commande de ", "A ")}
-                        <span className="tabular-nums">{money(exampleBase)}</span>
-                        {L(" vous rapporte ", " order earns you ")}
-                        <span className="text-nova tabular-nums">{money(exampleEarn)}</span>
-                      </p>
-                      <p className="text-[12px] text-mist mt-2.5 leading-relaxed max-w-[46ch]">
-                        {L(`${Math.round((data?.commission_rate || 0) * 100)} % du sous-total des produits après rabais : livraison et taxes exclues.`,
-                           `${Math.round((data?.commission_rate || 0) * 100)}% of the product subtotal after discount : shipping and taxes excluded.`)}
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">
-                        {L("GAINS DU MOIS EN COURS", "THIS MONTH'S EARNINGS")}
-                      </p>
-                      {/* LE CHIFFRE EST LE HEROS. Il passait a 28 px, la taille
-                          d'un sous-titre ; il monte a 52 px. C'est le nombre
-                          qu'on vient chercher, et il doit se lire d'un coup
-                          d'oeil depuis l'autre bout de la piece. */}
-                      {/* LE CHIFFRE COMPTE JUSQU'A SON TOTAL. Vu une fois par
-                          visite, il entre dans le cas « occasionnel » de la
-                          table de frequence d'Emil : celui qui autorise le
-                          plaisir. Et le compte EST la lecture du montant, pas
-                          une decoration posee dessus. */}
-                      <ChiffreAnime
-                        valeur={insights?.current_month?.commission}
-                        format={money}
-                        testId="affiliate-gains-mois"
-                        className="block font-display text-[44px] sm:text-[52px] font-bold leading-[0.95] tracking-[-0.03em]"
-                      />
-                      <p className="text-[13px] text-mist mt-2">
-                        {money(insights?.current_month?.revenue)} {L("de ventes validées", "in validated sales")}
-                      </p>
-                    </>
-                  )}
-                </div>
-
-                {/* LE PALIER MONTE DANS LE BANDEAU. C'est le rang dont on est
-                    fier : il vivait en petite pastille perdue dans l'en-tete,
-                    a cote d'un bouton de theme. Ici il accompagne le chiffre
-                    qu'il explique — le taux et les gains se lisent ensemble. */}
-                <div className="flex items-end gap-6 sm:gap-8">
-                  <div>
-                    {/* L'ECHELLE SE RESSERRE. Les tailles sautaient de 10 a 19
-                        a 52 px sans palier intermediaire : des bonds pareils se
-                        lisent comme trois objets sans rapport. Un rapport
-                        d'environ 1,25 entre les crans donne une progression
-                        qu'on suit sans y penser. */}
-                    <p className="font-data text-[10px] uppercase tracking-[0.2em] text-mist mb-2">
-                      {data?.tier_agreement ? L("Taux convenu", "Agreed rate") : L("Votre palier", "Your tier")}
-                    </p>
-                    <p className="font-display text-[21px] font-bold leading-none flex items-center gap-2.5 text-clinical">
-                      <TierMark tier={data?.tier} color={tierVif} size={22} />
-                      {tierLabel}
-                    </p>
-                    <p className="font-data text-[15px] font-semibold text-nova tabular-nums mt-2">
-                      {Math.round((data?.commission_rate || 0) * 100)} %
-                    </p>
-                  </div>
-
-                  {insights?.best_month && (
-                    <div className="pl-6 sm:pl-8 border-l border-abyss">
-                      <p className="font-data text-[10px] uppercase tracking-[0.2em] text-mist mb-1.5">
-                        {L("Meilleur mois", "Best month")}
-                      </p>
-                      <p className="font-display text-[21px] font-bold leading-none tabular-nums">
-                        {money(insights.best_month.commission)}
-                      </p>
-                      <p className="font-data text-[12px] text-mist mt-1.5">{insights.best_month.month}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Le cycle de versement. « Commissions approuvées » mêlait deux
-                choses : l'argent du mois clos, qui part dans les jours qui
-                viennent, et celui du mois en cours, qui attendra. Un seul
-                total pour deux échéances ne dit ni quand ni combien. */}
-            {data?.payout_cycle && (
-              <CycleVersement cycle={data.payout_cycle} seuil={data?.payout_min_cad}
-                              L={L} lang={lang} />
-            )}
+            {/* LE BANDEAU DEVIENT UNE CARTE A TROIS BANDES.
+                Il portait le chiffre du mois et le palier ; six autres blocs
+                disaient le reste, disperses plus bas dans un apercu de 650
+                lignes. Mireille : « les gains du mois sont beaucoup trop loin
+                dans le tableau », puis « je ne veux pas que tout soit deroule
+                sur une page du haut a la fin ».
+                La carte reunit l'argent, la preuve et les paliers dans un seul
+                objet, dans cet ordre. Voir components/CarteAffilie.jsx. */}
+            <CarteAffilie data={data} insights={insights} L={L} money={money}
+                          tierLabel={tierLabel} tierJeton={tierJeton}
+                          tierLueur={tierLueur} />
 
             {/* LES BOITES N'ONT PAS TOUTES LE MEME RANG.
                 Mireille : « les priorites des boites ». Elles portaient toutes
@@ -1088,330 +985,6 @@ export default function AffiliateDashboard() {
                 </ol>
               </div>
             )}
-
-            {/* KPI cards : la devise est explicite. Les montants sont en CAD
-                alors que le versement part en USDT/USDC : sans etiquette, un
-                affilie qui voit « 250 $ » et recoit 180 USDT croit a une
-                retenue. La conversion n'apparaissait qu'APRES un versement,
-                dans l'historique : donc jamais pour qui n'a pas encore ete paye. */}
-            {/* DEUX cartes, pas quatre. Ce bandeau ne porte que le chiffre
-                d'affaires : les commissions vivent dans le panneau de
-                versement, et l'activité : clics, conversion, commandes, panier
-                : dans la rangée d'indicateurs plus bas. Chacune de ces trois
-                zones répond à une question distincte, et aucune ne répète les
-                chiffres d'une autre. */}
-            {/* DEUX COLONNES DES LE TELEPHONE. Ce sont deux nombres : les
-                empiler poussait le second sous la ligne de flottaison, alors
-                que c'est precisement la comparaison des deux qui interesse
-                l'affilie — ce qu'il a gagne en tout, et ce qui compte pour son
-                palier. */}
-            <div className="grid grid-cols-2 gap-3 sm:gap-4" data-testid="affiliate-kpis">
-              <KpiCard label={L("Revenu validé cumulé", "Cumulative validated revenue")}
-                       valeurBrute={data?.cumulative_revenue} format={money} sub="CAD" teinte={tierVif} />
-              <KpiCard label={L("12 derniers mois", "Last 12 months")}
-                       valeurBrute={data?.rolling12_revenue} format={money}
-                       sub={L("CAD · fixe votre palier", "CAD · sets your tier")} teinte={tierVif} />
-            </div>
-
-            {/* Prochain versement. Affiche meme a zero : c'est justement quand
-                rien n'est accumule qu'un affilie doit connaitre le seuil. La
-                version precedente se cachait dans ce cas, et un solde bloque
-                sous le minimum ressemblait alors a une retenue inexpliquee. */}
-            {/* Le prochain versement est une ACTION a venir, pas une archive :
-                il se leve d'un cran au-dessus de la reference. */}
-            {payoutMin > 0 && (
-              <div className="bg-white rounded-xl border border-ash p-5 transition-[transform,box-shadow]
-                              duration-200 ease-out hover:-translate-y-0.5"
-                   style={{ boxShadow: "var(--ombre-leve)" }} data-testid="payout-estimate">
-                <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
-                  {L("VOTRE PROCHAIN VERSEMENT", "YOUR NEXT PAYOUT")}
-                </p>
-                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                  <p className="font-display text-2xl font-bold text-nordfjord tabular-nums">
-                    {money(dueNow)}
-                    <span className="text-sm font-medium text-glacier ml-1.5">
-                      {L(`sur ${money(payoutMin)} requis`, `of ${money(payoutMin)} required`)}
-                    </span>
-                  </p>
-                  {/* Jeton de conversion, TOUJOURS visible dès que le taux est
-                      connu : y compris à zéro. C'est justement avant le premier
-                      versement qu'on doit comprendre qu'on sera payé dans une
-                      autre devise ; le conditionner au solde le faisait
-                      disparaître exactement pour qui l'ignorait encore.
-                      Sa couleur le distingue des montants en dollars canadiens
-                      qui l'entourent : trois « $ » de suite sur un écran, dont
-                      un qui n'est pas la même monnaie, se confondent. */}
-                  {data?.fx_rate_cad_to_usd > 0 && (
-                    <span className="font-data text-[12px] tabular-nums rounded-lg px-2.5 py-1.5
-                                     border whitespace-nowrap"
-                          data-testid="payout-conversion"
-                          style={{
-                            color: "rgb(var(--fn-palier-diamant))",
-                            background: "rgba(124,92,214,.09)",
-                            borderColor: "rgba(124,92,214,.28)",
-                          }}>
-                      ≈ {(dueNow * Number(data.fx_rate_cad_to_usd)).toFixed(2)}
-                      <span className="uppercase ml-1">{data.payout_currency || "usdt"}</span>
-                    </span>
-                  )}
-                </div>
-                <div className="h-3 rounded-full bg-ash overflow-hidden mt-2">
-                  <div className="h-full rounded-full transition-all"
-                       style={{ width: `${payoutPct || 0}%`, background: "rgb(var(--fn-nova))" }} />
-                </div>
-
-                {/* La regle du cycle, sans mystere : rien accumule, sous le
-                    seuil (differe), ou verse a telle date. Et ce qui est
-                    encore en maturation, separement : ce n'est PAS de
-                    l'argent du, pas encore. */}
-                <p className="font-data text-[11px] text-glacier mt-2" data-testid="payout-cycle">
-                  {dueNow <= 0
-                    ? L("Rien d'accumulé pour l'instant : vos gains du mois en cours restent visibles ci-dessus.",
-                        "Nothing accumulated yet : this month's earnings stay visible above.")
-                    : dueNow < payoutMin
-                    ? L(`Sous le seuil de ${money(payoutMin)} : versé au premier cycle qui l'atteint.`,
-                        `Below the ${money(payoutMin)} threshold: paid in the first cycle that reaches it.`)
-                    : L(`Versement au cycle du ${prochainCycle}.`,
-                        `Paid in the cycle of ${prochainCycle}.`)}
-                </p>
-                {Number(data?.pending_commission || 0) > 0 && (
-                  <p className="font-data text-[11px] text-warning mt-1" data-testid="payout-maturing">
-                    {L(`En maturation : ${money(data.pending_commission)}`,
-                       `Maturing: ${money(data.pending_commission)}`)}
-                  </p>
-                )}
-
-                {/* Le parcours complet de l'argent. Ce panneau n'affichait que
-                    le montant validé, sans dire d'où il venait ni où il allait :
-                    on ne pouvait pas savoir, d'ici, ce qu'on avait gagné en
-                    tout. Il fallait remonter à la rangée d'indicateurs et
-                    additionner soi-même trois cases qui ne se présentaient pas
-                    comme les étapes d'une même somme. Les voici dans l'ordre où
-                    l'argent les traverse. */}
-                <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-ash">
-                  {[
-                    [L("En attente", "Pending"), data?.pending_commission,
-                     L(`validé après ${data?.approval_hold_days ?? 7} j`,
-                       `validated after ${data?.approval_hold_days ?? 7}d`)],
-                    [L("Validé", "Validated"), dueNow,
-                     L("part au prochain cycle", "goes out next cycle")],
-                    [L("Déjà versé", "Already paid"), data?.paid_commission,
-                     L("depuis le début", "since the start")],
-                  ].map(([titre, valeur, note], i) => (
-                    <div key={i} data-testid={`payout-flow-${i}`}>
-                      <p className="font-data text-[10px] uppercase tracking-[0.14em] text-glacier">
-                        {titre}
-                      </p>
-                      <p className={`font-data text-sm font-bold tabular-nums mt-0.5 ${
-                        Number(valeur) > 0 ? "text-nordfjord" : "text-glacier/45"}`}>
-                        {money(valeur)}
-                      </p>
-                      <p className="font-data text-[10px] text-glacier/70 leading-tight mt-0.5">
-                        {note}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                <p className="font-data text-[11px] text-glacier mt-3">
-                  {dueNow >= payoutMin
-                    ? L("Seuil atteint : le versement part au prochain cycle mensuel.",
-                        "Threshold met : the payout goes out at the next monthly cycle.")
-                    : L("Rien n'est perdu sous le seuil : vos commissions restent à votre crédit et s'ajoutent au mois suivant.",
-                        "Nothing is lost below the threshold: your commissions stay to your credit and carry over.")}
-                </p>
-                {/* La conversion s'affiche meme a solde nul. Elle ne servait
-                    d'abord qu'a chiffrer un montant ; c'est en realite une
-                    information de devise, et c'est AVANT le premier versement
-                    qu'elle evite le malentendu : voir « 250 $ » puis recevoir
-                    180 USDT ressemble a une retenue. La conditionner au solde
-                    la faisait disparaitre pour qui n'a encore rien gagne. */}
-                {/* La DEVISE vient du choix de l'affilie (payout_currency,
-                    USDT ou USDC) et s'enonce toujours. Le TAUX vient de la
-                    Banque du Canada et peut manquer : affiliate_me() l'omet
-                    silencieusement si l'API est indisponible. Les lier ferait
-                    disparaitre l'information de devise lors d'une panne
-                    exterieure, alors qu'elle n'en depend pas. */}
-                <p className="font-data text-[11px] text-glacier mt-1">
-                  {L("Vos commissions sont calculées en CAD et versées en ",
-                     "Your commissions are calculated in CAD and paid in ")}
-                  <span className="uppercase">{data?.payout_currency || "usdt"}</span>
-                  {data?.fx_rate_cad_to_usd > 0 ? (
-                    <>
-                      {dueNow > 0
-                        ? <>{" · "}{money(dueNow)} CAD × {Number(data.fx_rate_cad_to_usd).toFixed(4)}</>
-                        : <>{" · 1 CAD ≈ "}{Number(data.fx_rate_cad_to_usd).toFixed(4)}</>}
-                      {" : "}
-                      {L("taux de la Banque du Canada. Le taux définitif sera celui du jour du versement.",
-                         "Bank of Canada rate. The final rate is the one on payout day.")}
-                    </>
-                  ) : (
-                    L(" : au taux officiel de la Banque du Canada le jour du versement.",
-                      " : at the official Bank of Canada rate on payout day.")
-                  )}
-                </p>
-              </div>
-            )}
-
-            {/* Insights secondaires : clics / conversion / commandes / panier.
-                CHAQUE VIGNETTE DIT SA FENETRE. Ces quatre chiffres comptent
-                depuis l'ouverture du compte ; la carte « sources de vos clics »
-                plus bas compte sur 30 jours. Deux totaux de clics differents
-                sur le meme ecran, sans un mot pour les distinguer, se lisent
-                comme une erreur : et on finit par ne plus croire ni l'un ni
-                l'autre. */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <MiniInsight label={L("Clics sur votre lien", "Clicks on your link")}
-                           fenetre={L("depuis le début", "all time")}
-                           value={insights?.clicks != null ? insights.clicks.toLocaleString("en-CA") : "-"} />
-              <MiniInsight label={L("Taux de conversion", "Conversion rate")}
-                           fenetre={L("depuis le début", "all time")}
-                           value={insights?.conversion_rate != null ? `${(insights.conversion_rate * 100).toFixed(1)}%` : "-"} />
-              <MiniInsight label={L("Commandes validées", "Validated orders")}
-                           fenetre={L("depuis le début", "all time")}
-                           value={insights?.validated_orders != null ? insights.validated_orders.toLocaleString("en-CA") : "-"} />
-              <MiniInsight label={L("Panier moyen", "Avg order")}
-                           fenetre={L("sous-total produits", "product subtotal")}
-                           value={money(insights?.avg_order_value)} />
-            </div>
-
-            {/* Palier. La bascule se fait sur tier_agreement, PAS sur
-                l'existence d'un palier manuel : ce commentaire disait
-                l'inverse (« manual_tier l'emporte sur le palier calcule »),
-                ce qui n'est plus vrai depuis _palier_effectif() : sans
-                entente, un palier force n'est qu'un plancher et la
-                progression continue. Afficher « encore 3 465 $ pour Argent »
-                reste donc juste dans ce cas, et faux SOUS ENTENTE seulement,
-                ou franchir le seuil ne change effectivement rien. */}
-            <div className="bg-white rounded-xl border border-ash p-6">
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
-                {data?.tier_agreement
-                  ? L("VOTRE TAUX CONVENU", "YOUR AGREED RATE")
-                  : L("PROGRESSION DE PALIER", "TIER PROGRESSION")}
-              </p>
-              {data?.tier_agreement ? (
-                <>
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <TierMark tier={data?.tier} color={tierColor} size={28} />
-                    <span className="font-display text-2xl font-bold text-nordfjord">{tierLabel}</span>
-                    <span className="font-data text-sm font-semibold" style={{ color: tierColor }}>
-                      {Math.round((data?.commission_rate || 0) * 100)} %
-                    </span>
-                  </div>
-                  <p className="text-sm text-glacier mt-2">
-                    {L("Ce taux fait l'objet d'une entente entre vous et FIRONOVA. Il ne varie pas avec votre volume de ventes et ne baisse jamais automatiquement. Toute modification ferait l'objet d'un avis préalable.",
-                       "This rate is the subject of an agreement between you and FIRONOVA. It does not vary with your sales volume and never decreases automatically. Any change would be preceded by notice.")}
-                  </p>
-                </>
-              ) : data?.next_tier ? (
-                <>
-                  <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
-                    <span className="inline-flex items-center gap-2.5">
-                      <TierMark tier={data?.tier} color={tierVif} size={30} />
-                      <span className="font-display text-2xl font-bold text-nordfjord">{tierLabel}</span>
-                    </span>
-                    <span className="font-data text-xs text-glacier">
-                      {L("Encore", "Still")} {money(data.remaining_to_next)} {L("pour", "to reach")} {TIER_META[data.next_tier.tier]?.[lang] || data.next_tier.tier} ({Math.round(data.next_tier.rate * 100)}%)
-                    </span>
-                  </div>
-                  {/* LA BARRE SE REMPLIT AU LIEU D'APPARAITRE PLEINE.
-                      Le remplissage DIT la progression : c'est la meme
-                      information, mais vue avancer. Aux couleurs du palier
-                      VISE, pas du palier actuel — on regarde ou l'on va.
-                      La transition porte la seule largeur, jamais `all` : une
-                      propriete nommee est une propriete qu'on maitrise. */}
-                  <div className="h-3 rounded-full bg-ash overflow-hidden">
-                    <div className="h-full rounded-full transition-all"
-                         style={{
-                           width: `${barreRemplie ? (progress || 0) : 0}%`,
-                           background: `linear-gradient(90deg, rgb(var(${tierJeton})) 0%, rgb(var(--fn-nova)) 100%)`,
-                           transition: "width 900ms cubic-bezier(0.23, 1, 0.32, 1)",
-                         }} />
-                  </div>
-                  <p className="font-data text-[11px] text-glacier mt-2">{progress || 0}%</p>
-                </>
-              ) : (
-                <p className="font-display text-2xl font-bold text-nordfjord">
-                  🏆 {L("Palier maximal atteint", "Top tier reached")} : {tierLabel}
-                </p>
-              )}
-            </div>
-
-            {/* Fenetre glissante de 12 mois : c'est elle qui fixe le palier.
-                Remplace l'ancienne carte « securisez votre palier », qui
-                annoncait une retrogradation trimestrielle desormais supprimee. */}
-            {data?.rolling12_revenue != null && (
-              <div className="bg-white rounded-xl border border-ash p-6">
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div>
-                    <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
-                      {L("VOS 12 DERNIERS MOIS", "YOUR LAST 12 MONTHS")}
-                    </p>
-                    <p className="font-display text-2xl font-bold text-nordfjord tabular-nums">
-                      {money(data.rolling12_revenue)}
-                      {data.next_tier && !data.tier_agreement && (
-                        <span className="text-sm font-medium text-glacier">
-                          {" / "}{money(data.next_tier.floor)}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                </div>
-                {data.next_tier && !data.tier_agreement && (
-                  <div className="h-3 rounded-full bg-ash overflow-hidden">
-                    <div className="h-full rounded-full transition-all"
-                         style={{ width: `${Math.min(100, Math.round((data.progress_to_next || 0) * 100))}%`,
-                                  background: "rgb(var(--fn-nova))" }} />
-                  </div>
-                )}
-                {!data.tier_agreement && (
-                  <p className="font-data text-[11px] text-glacier mt-2">
-                    {data.next_tier ? (
-                      <>{L("Encore ", "Still ")}{money(data.remaining_to_next)}
-                        {L(" de ventes validees pour atteindre ", " in validated sales to reach ")}
-                        {TIER_META[data.next_tier.tier]?.[lang] || data.next_tier.tier}
-                        {" ("}{Math.round(data.next_tier.rate * 100)} %{")."}
-                      </>
-                    ) : (
-                      L("Palier maximal atteint.", "Top tier reached.")
-                    )}
-                  </p>
-                )}
-                <p className="font-data text-[11px] text-glacier mt-1">
-                  {data.tier_agreement
-                    ? L("Chiffre indicatif : votre taux étant convenu par entente, ce total ne le modifie pas.",
-                        "For information only: your rate being set by agreement, this total does not change it.")
-                    : L("Votre taux suit ce total : il monte quand vos ventes montent, et redescend progressivement si elles ralentissent.",
-                        "Your rate follows this total: it rises as your sales rise, and eases down gradually if they slow.")}
-                </p>
-              </div>
-            )}
-
-            {/* Échelle des paliers et simulateur. Masquée sous entente : le
-                barème ne s'applique pas à ces comptes, leur montrer une échelle
-                qu'ils ne gravissent pas serait une fausse promesse : et cela
-                révélerait au passage qu'un autre régime existe. */}
-            {!data?.tier_agreement && (
-              <TierLadder data={data} L={L} lang={lang} money={money} TIER_META={TIER_META} />
-            )}
-
-            {/* Activité récente */}
-            <div className="bg-white rounded-xl border border-ash p-6">
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
-                {L("ACTIVITÉ RÉCENTE", "RECENT ACTIVITY")}
-              </p>
-              {activity.length === 0 ? (
-                <p className="text-glacier text-sm py-6 text-center">
-                  {L("Aucune activité pour l'instant.", "No activity yet.")}
-                </p>
-              ) : (
-                <div className="space-y-1">
-                  {activity.slice(0, 8).map((e, i) => (
-                    <ActivityRow key={i} e={e} L={L} lang={lang} money={money} fmtDateTime={fmtDateTime} />
-                  ))}
-                </div>
-              )}
-            </div>
 
             {/* Referral link */}
             <div className="bg-white rounded-xl border border-ash p-6"
@@ -1585,6 +1158,81 @@ export default function AffiliateDashboard() {
         {/* PERFORMANCE */}
         {tab === "performance" && (
           <div className="space-y-6" data-testid="affiliate-performance">
+            {/* VENUS DE L'APERCU. Chiffres cles, statistiques, echelle des
+                paliers et activite recente : de la mesure, donc de la
+                performance. L'apercu n'a pas a les porter. */}
+            {/* KPI cards : la devise est explicite. Les montants sont en CAD
+                alors que le versement part en USDT/USDC : sans etiquette, un
+                affilie qui voit « 250 $ » et recoit 180 USDT croit a une
+                retenue. La conversion n'apparaissait qu'APRES un versement,
+                dans l'historique : donc jamais pour qui n'a pas encore ete paye. */}
+            {/* DEUX cartes, pas quatre. Ce bandeau ne porte que le chiffre
+                d'affaires : les commissions vivent dans le panneau de
+                versement, et l'activité : clics, conversion, commandes, panier
+                : dans la rangée d'indicateurs plus bas. Chacune de ces trois
+                zones répond à une question distincte, et aucune ne répète les
+                chiffres d'une autre. */}
+            {/* DEUX COLONNES DES LE TELEPHONE. Ce sont deux nombres : les
+                empiler poussait le second sous la ligne de flottaison, alors
+                que c'est precisement la comparaison des deux qui interesse
+                l'affilie — ce qu'il a gagne en tout, et ce qui compte pour son
+                palier. */}
+            <div className="grid grid-cols-2 gap-3 sm:gap-4" data-testid="affiliate-kpis">
+              <KpiCard label={L("Revenu validé cumulé", "Cumulative validated revenue")}
+                       valeurBrute={data?.cumulative_revenue} format={money} sub="CAD" teinte={tierVif} />
+              <KpiCard label={L("12 derniers mois", "Last 12 months")}
+                       valeurBrute={data?.rolling12_revenue} format={money}
+                       sub={L("CAD · fixe votre palier", "CAD · sets your tier")} teinte={tierVif} />
+            </div>
+
+            {/* Insights secondaires : clics / conversion / commandes / panier.
+                CHAQUE VIGNETTE DIT SA FENETRE. Ces quatre chiffres comptent
+                depuis l'ouverture du compte ; la carte « sources de vos clics »
+                plus bas compte sur 30 jours. Deux totaux de clics differents
+                sur le meme ecran, sans un mot pour les distinguer, se lisent
+                comme une erreur : et on finit par ne plus croire ni l'un ni
+                l'autre. */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <MiniInsight label={L("Clics sur votre lien", "Clicks on your link")}
+                           fenetre={L("depuis le début", "all time")}
+                           value={insights?.clicks != null ? insights.clicks.toLocaleString("en-CA") : "-"} />
+              <MiniInsight label={L("Taux de conversion", "Conversion rate")}
+                           fenetre={L("depuis le début", "all time")}
+                           value={insights?.conversion_rate != null ? `${(insights.conversion_rate * 100).toFixed(1)}%` : "-"} />
+              <MiniInsight label={L("Commandes validées", "Validated orders")}
+                           fenetre={L("depuis le début", "all time")}
+                           value={insights?.validated_orders != null ? insights.validated_orders.toLocaleString("en-CA") : "-"} />
+              <MiniInsight label={L("Panier moyen", "Avg order")}
+                           fenetre={L("sous-total produits", "product subtotal")}
+                           value={money(insights?.avg_order_value)} />
+            </div>
+
+            {/* Échelle des paliers et simulateur. Masquée sous entente : le
+                barème ne s'applique pas à ces comptes, leur montrer une échelle
+                qu'ils ne gravissent pas serait une fausse promesse : et cela
+                révélerait au passage qu'un autre régime existe. */}
+            {!data?.tier_agreement && (
+              <TierLadder data={data} L={L} lang={lang} money={money} TIER_META={TIER_META} />
+            )}
+
+            {/* Activité récente */}
+            <div className="bg-white rounded-xl border border-ash p-6">
+              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
+                {L("ACTIVITÉ RÉCENTE", "RECENT ACTIVITY")}
+              </p>
+              {activity.length === 0 ? (
+                <p className="text-glacier text-sm py-6 text-center">
+                  {L("Aucune activité pour l'instant.", "No activity yet.")}
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {activity.slice(0, 8).map((e, i) => (
+                    <ActivityRow key={i} e={e} L={L} lang={lang} money={money} fmtDateTime={fmtDateTime} />
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
                 {L("REVENU VALIDÉ : 12 DERNIERS MOIS", "VALIDATED REVENUE : LAST 12 MONTHS")}
@@ -1745,6 +1393,158 @@ export default function AffiliateDashboard() {
         {/* PAYMENTS */}
         {tab === "payments" && (
           <div className="space-y-6" data-testid="affiliate-payments">
+            {/* VENUS DE L'APERCU. Le cycle et le prochain versement y
+                occupaient 150 lignes alors qu'ils parlent de paiement : leur
+                place est ici. La carte garde le montant en pied, en resume. */}
+            {/* Le cycle de versement. « Commissions approuvées » mêlait deux
+                choses : l'argent du mois clos, qui part dans les jours qui
+                viennent, et celui du mois en cours, qui attendra. Un seul
+                total pour deux échéances ne dit ni quand ni combien. */}
+            {data?.payout_cycle && (
+              <CycleVersement cycle={data.payout_cycle} seuil={data?.payout_min_cad}
+                              L={L} lang={lang} />
+            )}
+
+            {/* Prochain versement. Affiche meme a zero : c'est justement quand
+                rien n'est accumule qu'un affilie doit connaitre le seuil. La
+                version precedente se cachait dans ce cas, et un solde bloque
+                sous le minimum ressemblait alors a une retenue inexpliquee. */}
+            {/* Le prochain versement est une ACTION a venir, pas une archive :
+                il se leve d'un cran au-dessus de la reference. */}
+            {payoutMin > 0 && (
+              <div className="bg-white rounded-xl border border-ash p-5 transition-[transform,box-shadow]
+                              duration-200 ease-out hover:-translate-y-0.5"
+                   style={{ boxShadow: "var(--ombre-leve)" }} data-testid="payout-estimate">
+                <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+                  {L("VOTRE PROCHAIN VERSEMENT", "YOUR NEXT PAYOUT")}
+                </p>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <p className="font-display text-2xl font-bold text-nordfjord tabular-nums">
+                    {money(dueNow)}
+                    <span className="text-sm font-medium text-glacier ml-1.5">
+                      {L(`sur ${money(payoutMin)} requis`, `of ${money(payoutMin)} required`)}
+                    </span>
+                  </p>
+                  {/* Jeton de conversion, TOUJOURS visible dès que le taux est
+                      connu : y compris à zéro. C'est justement avant le premier
+                      versement qu'on doit comprendre qu'on sera payé dans une
+                      autre devise ; le conditionner au solde le faisait
+                      disparaître exactement pour qui l'ignorait encore.
+                      Sa couleur le distingue des montants en dollars canadiens
+                      qui l'entourent : trois « $ » de suite sur un écran, dont
+                      un qui n'est pas la même monnaie, se confondent. */}
+                  {data?.fx_rate_cad_to_usd > 0 && (
+                    <span className="font-data text-[12px] tabular-nums rounded-lg px-2.5 py-1.5
+                                     border whitespace-nowrap"
+                          data-testid="payout-conversion"
+                          style={{
+                            color: "rgb(var(--fn-palier-diamant))",
+                            background: "rgba(124,92,214,.09)",
+                            borderColor: "rgba(124,92,214,.28)",
+                          }}>
+                      ≈ {(dueNow * Number(data.fx_rate_cad_to_usd)).toFixed(2)}
+                      <span className="uppercase ml-1">{data.payout_currency || "usdt"}</span>
+                    </span>
+                  )}
+                </div>
+                <div className="h-3 rounded-full bg-ash overflow-hidden mt-2">
+                  <div className="h-full rounded-full transition-all"
+                       style={{ width: `${payoutPct || 0}%`, background: "rgb(var(--fn-nova))" }} />
+                </div>
+
+                {/* La regle du cycle, sans mystere : rien accumule, sous le
+                    seuil (differe), ou verse a telle date. Et ce qui est
+                    encore en maturation, separement : ce n'est PAS de
+                    l'argent du, pas encore. */}
+                <p className="font-data text-[11px] text-glacier mt-2" data-testid="payout-cycle">
+                  {dueNow <= 0
+                    ? L("Rien d'accumulé pour l'instant : vos gains du mois en cours restent visibles ci-dessus.",
+                        "Nothing accumulated yet : this month's earnings stay visible above.")
+                    : dueNow < payoutMin
+                    ? L(`Sous le seuil de ${money(payoutMin)} : versé au premier cycle qui l'atteint.`,
+                        `Below the ${money(payoutMin)} threshold: paid in the first cycle that reaches it.`)
+                    : L(`Versement au cycle du ${prochainCycle}.`,
+                        `Paid in the cycle of ${prochainCycle}.`)}
+                </p>
+                {Number(data?.pending_commission || 0) > 0 && (
+                  <p className="font-data text-[11px] text-warning mt-1" data-testid="payout-maturing">
+                    {L(`En maturation : ${money(data.pending_commission)}`,
+                       `Maturing: ${money(data.pending_commission)}`)}
+                  </p>
+                )}
+
+                {/* Le parcours complet de l'argent. Ce panneau n'affichait que
+                    le montant validé, sans dire d'où il venait ni où il allait :
+                    on ne pouvait pas savoir, d'ici, ce qu'on avait gagné en
+                    tout. Il fallait remonter à la rangée d'indicateurs et
+                    additionner soi-même trois cases qui ne se présentaient pas
+                    comme les étapes d'une même somme. Les voici dans l'ordre où
+                    l'argent les traverse. */}
+                <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-ash">
+                  {[
+                    [L("En attente", "Pending"), data?.pending_commission,
+                     L(`validé après ${data?.approval_hold_days ?? 7} j`,
+                       `validated after ${data?.approval_hold_days ?? 7}d`)],
+                    [L("Validé", "Validated"), dueNow,
+                     L("part au prochain cycle", "goes out next cycle")],
+                    [L("Déjà versé", "Already paid"), data?.paid_commission,
+                     L("depuis le début", "since the start")],
+                  ].map(([titre, valeur, note], i) => (
+                    <div key={i} data-testid={`payout-flow-${i}`}>
+                      <p className="font-data text-[10px] uppercase tracking-[0.14em] text-glacier">
+                        {titre}
+                      </p>
+                      <p className={`font-data text-sm font-bold tabular-nums mt-0.5 ${
+                        Number(valeur) > 0 ? "text-nordfjord" : "text-glacier/45"}`}>
+                        {money(valeur)}
+                      </p>
+                      <p className="font-data text-[10px] text-glacier/70 leading-tight mt-0.5">
+                        {note}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="font-data text-[11px] text-glacier mt-3">
+                  {dueNow >= payoutMin
+                    ? L("Seuil atteint : le versement part au prochain cycle mensuel.",
+                        "Threshold met : the payout goes out at the next monthly cycle.")
+                    : L("Rien n'est perdu sous le seuil : vos commissions restent à votre crédit et s'ajoutent au mois suivant.",
+                        "Nothing is lost below the threshold: your commissions stay to your credit and carry over.")}
+                </p>
+                {/* La conversion s'affiche meme a solde nul. Elle ne servait
+                    d'abord qu'a chiffrer un montant ; c'est en realite une
+                    information de devise, et c'est AVANT le premier versement
+                    qu'elle evite le malentendu : voir « 250 $ » puis recevoir
+                    180 USDT ressemble a une retenue. La conditionner au solde
+                    la faisait disparaitre pour qui n'a encore rien gagne. */}
+                {/* La DEVISE vient du choix de l'affilie (payout_currency,
+                    USDT ou USDC) et s'enonce toujours. Le TAUX vient de la
+                    Banque du Canada et peut manquer : affiliate_me() l'omet
+                    silencieusement si l'API est indisponible. Les lier ferait
+                    disparaitre l'information de devise lors d'une panne
+                    exterieure, alors qu'elle n'en depend pas. */}
+                <p className="font-data text-[11px] text-glacier mt-1">
+                  {L("Vos commissions sont calculées en CAD et versées en ",
+                     "Your commissions are calculated in CAD and paid in ")}
+                  <span className="uppercase">{data?.payout_currency || "usdt"}</span>
+                  {data?.fx_rate_cad_to_usd > 0 ? (
+                    <>
+                      {dueNow > 0
+                        ? <>{" · "}{money(dueNow)} CAD × {Number(data.fx_rate_cad_to_usd).toFixed(4)}</>
+                        : <>{" · 1 CAD ≈ "}{Number(data.fx_rate_cad_to_usd).toFixed(4)}</>}
+                      {" : "}
+                      {L("taux de la Banque du Canada. Le taux définitif sera celui du jour du versement.",
+                         "Bank of Canada rate. The final rate is the one on payout day.")}
+                    </>
+                  ) : (
+                    L(" : au taux officiel de la Banque du Canada le jour du versement.",
+                      " : at the official Bank of Canada rate on payout day.")
+                  )}
+                </p>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {/* Devise explicite. Ces trois montants sont en CAD alors que le
                   versement part en USDT/USDC : sans etiquette, trois « \$ » sur

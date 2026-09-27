@@ -67,6 +67,25 @@
   --fn-vif-or:        193 136 31;    /* #C1881F — 3,08:1 */
   --fn-vif-platine:   93 155 201;    /* #5D9BC9 — 3,00:1 */
   --fn-vif-diamant:   152 136 223;   /* #9888DF — 3,03:1 */
+  /* ---------------------------------------------------------------------
+   * TROISIEME FAMILLE : LE TEXTE SUR LA SURFACE MARINE.
+   *
+   * La carte affiliee est marine (#0B2E4F) dans LES DEUX modes : ses couleurs
+   * ne doivent donc pas suivre le theme de la page. `--fn-vif-*` est calibre
+   * « sur blanc » en mode jour, et au seuil d'un OBJET GRAPHIQUE (3:1) ;
+   * s'en servir comme TEXTE sur du marine fait tomber le bronze a 4,2:1.
+   *
+   * Cette famille reprend les valeurs de nuit, mesurees une fois pour toutes
+   * sur #0B2E4F au seuil du TEXTE. Elle n'est PAS redefinie en mode nuit :
+   * c'est tout l'interet, la surface ne change pas.
+   * --------------------------------------------------------------------- */
+  --fn-marine-standard: 45 191 176;    /* #2DBFB0 — 6,06:1 sur #0B2E4F */
+  --fn-marine-bronze:   216 140 82;    /* #D88C52 — 5,14:1 */
+  --fn-marine-argent:   159 179 192;   /* #9FB3C0 — 6,38:1 */
+  --fn-marine-or:       240 184 74;    /* #F0B84A — 7,68:1 */
+  --fn-marine-platine:  143 190 224;   /* #8FBEE0 — 6,99:1 */
+  --fn-marine-diamant:  170 155 238;   /* #AA9BEE — 5,69:1 */
+  --fn-marine-defaut:   183 202 221;   /* #B7CADD — 8,10:1 */
   --fn-vif-defaut:    120 136 158;   /* #78889E — 3,05:1 */   /* texte sur ink : l'ink est CONSTANT d'un mode a l'autre, son texte doit l'etre aussi */
 
   /* Anciennes variables hexadécimales, conservées : plusieurs feuilles de
