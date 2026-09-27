@@ -83,6 +83,7 @@ export default function CarteAffilie({
   // `rolling12_revenue`. Placer la jauge sur la base close montrerait
   // l'affiliee en arriere de la ou elle est vraiment.
   const vive = data?.base_vive != null ? Number(data.base_vive) : total;
+  const courantVentes = Number(data?.mois_courant_ventes || 0);
   const projection = Number(data?.projection_prochaine_periode || 0);
   const plafond = Number(suivant?.floor || 0);
   const etendue = plafond > plancher ? plafond - plancher : 0;
@@ -263,8 +264,12 @@ export default function CarteAffilie({
           {money(vive)}
           <em className="not-italic block font-body text-[12px] font-normal tracking-normal
                          text-mist mt-1 leading-snug">
-            {L(`de ventes qui comptent pour votre palier — ${money(total)} sur les douze mois clos, plus ce que vous vendez ce mois-ci`,
-               `in sales counting toward your tier — ${money(total)} over the twelve closed months, plus what you sell this month`)}
+            {L(courantVentes > 0
+               ? `${money(total)} sur les douze mois clos + ${money(courantVentes)} vendus ce mois-ci — c'est ce qui fixe votre palier`
+               : `${money(total)} sur les douze mois clos — c'est ce qui fixe votre palier`,
+               courantVentes > 0
+               ? `${money(total)} over the twelve closed months + ${money(courantVentes)} sold this month — this is what sets your tier`
+               : `${money(total)} over the twelve closed months — this is what sets your tier`)}
           </em>
         </p>
 
