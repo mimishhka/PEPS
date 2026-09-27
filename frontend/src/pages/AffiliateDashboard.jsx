@@ -629,12 +629,36 @@ export default function AffiliateDashboard() {
           <h1 className="font-display text-[32px] font-bold text-nordfjord mb-4">
             {L("Accès sur invitation", "Invitation only")}
           </h1>
-          <p className="text-glacier leading-relaxed">
-            {L(
-              "Le programme d'affiliation Fironova est privé et fonctionne uniquement sur invitation. Si vous avez reçu une invitation, activez-la depuis le lien de votre courriel.",
-              "The Fironova affiliate program is private and invitation-only. If you received an invitation, activate it from the link in your email."
-            )}
-          </p>
+          {user ? (
+            /* MIREILLE : une personne CONNECTEE tombait sur ce mur apres son
+               lien magique, sans que rien ne dise qu'elle etait bien
+               connectee — la page laissait croire que la connexion avait
+               echoue. La distinction change tout : le compte existe, il
+               n'est simplement pas affilie au programme. */
+            <>
+              <p className="text-glacier leading-relaxed">
+                {L(
+                  "Vous êtes bien connecté(e) — mais votre compte n'est pas affilié au programme, qui reste sur invitation. Votre compte client et vos commandes ne changent pas.",
+                  "You are signed in — but your account is not part of the affiliate program, which remains invitation-only. Your customer account and orders are unchanged."
+                )}
+              </p>
+              <div className="flex items-center justify-center gap-3 flex-wrap mt-8">
+                <Link to="/account" className="btn-pill btn-nova" data-testid="not-member-account">
+                  {L("Aller à mon compte", "Go to my account")}
+                </Link>
+                <button onClick={logout} className="btn-pill btn-outline" data-testid="not-member-logout">
+                  {L("Se déconnecter", "Log out")}
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="text-glacier leading-relaxed">
+              {L(
+                "Le programme d'affiliation Fironova est privé et fonctionne uniquement sur invitation. Si vous avez reçu une invitation, activez-la depuis le lien de votre courriel.",
+                "The Fironova affiliate program is private and invitation-only. If you received an invitation, activate it from the link in your email."
+              )}
+            </p>
+          )}
         </div>
       </div>
     );
