@@ -790,10 +790,10 @@ export default function AffiliateDashboard() {
       titre: L("Une question ?", "A question?"),
       texte: L("Écrivez-nous d'ici : votre code, votre palier et votre configuration sont joints automatiquement. Réponse sous un à deux jours ouvrables.",
                "Write to us from here: your code, tier and settings are attached automatically. Reply within one to two business days.") },
-    { cible: "affiliate-faq-link", ton: "regle", onglet: "overview",
+    { cible: "affiliate-tab-faq", ton: "regle", onglet: "overview",
       titre: L("Vos questions", "Your questions"),
-      texte: L("Le détail des règles s'y trouve : calcul des commissions, attribution, adresses de portefeuille. Vous pouvez relancer cette visite depuis là.",
-               "The detailed rules live there: commission calculation, attribution, wallet addresses. You can restart this tour from there.") },
+      texte: L("Le détail des règles s'y trouve, au menu avec le reste : calcul des commissions, attribution, adresses de portefeuille. Vous pouvez relancer cette visite depuis là.",
+               "The detailed rules live there, in the menu with the rest: commission calculation, attribution, wallet addresses. You can restart this tour from there.") },
   ];
 
   const payoutMin = Number(data?.payout_min_cad || 0);
@@ -821,6 +821,10 @@ export default function AffiliateDashboard() {
     ["compliance", L("Conformité", "Compliance")],
     ["settings", L("Paramètres", "Settings")],
     ["support", L("Aide", "Help")],
+    // La FAQ vit dans le MENU, pas sous la carte : c'est un endpoint comme
+    // les autres. C'est une PAGE complete (conditions, etats d'erreur), donc
+    // l'onglet y mene au lieu d'incruster la page dans le tableau de bord.
+    ["faq", L("FAQ", "FAQ")],
   ];
 
   // Conditions non acceptées pour la version courante : on rend UNIQUEMENT
@@ -911,17 +915,26 @@ export default function AffiliateDashboard() {
                         scrollbar-none snap-x snap-mandatory border-b border-ash pb-2.5">
           <div className="flex gap-1 w-max sm:w-auto sm:flex-wrap">
             {TABS.map(([k, label]) => (
-              <button key={k} onClick={() => setTab(k)}
-                data-testid={`affiliate-tab-${k}`}
-                ref={tab === k ? ongletActif : null}
-                aria-current={tab === k ? "page" : undefined}
-                className={`snap-start shrink-0 px-4 py-2.5 rounded-full font-data text-xs font-semibold
-                            uppercase tracking-wider transition-colors active:scale-[0.97] ${
-                  tab === k ? "bg-nordfjord text-white shadow-sm"
-                            : "text-glacier hover:text-nordfjord hover:bg-white"
-                }`}>
-                {label}
-              </button>
+              k === "faq" ? (
+                <Link key={k} to="/affiliate/faq" data-testid="affiliate-tab-faq"
+                  className="snap-start shrink-0 px-4 py-2.5 rounded-full font-data text-xs
+                             font-semibold uppercase tracking-wider transition-colors
+                             active:scale-[0.97] text-glacier hover:text-nordfjord hover:bg-white">
+                  {label}
+                </Link>
+              ) : (
+                <button key={k} onClick={() => setTab(k)}
+                  data-testid={`affiliate-tab-${k}`}
+                  ref={tab === k ? ongletActif : null}
+                  aria-current={tab === k ? "page" : undefined}
+                  className={`snap-start shrink-0 px-4 py-2.5 rounded-full font-data text-xs font-semibold
+                              uppercase tracking-wider transition-colors active:scale-[0.97] ${
+                    tab === k ? "bg-nordfjord text-white shadow-sm"
+                              : "text-glacier hover:text-nordfjord hover:bg-white"
+                  }`}>
+                  {label}
+                </button>
+              )
             ))}
           </div>
         </div>
@@ -965,16 +978,6 @@ export default function AffiliateDashboard() {
             <CarteAffilie data={data} insights={insights} L={L} money={money}
                           tierLabel={tierLabel} tierJeton={tierJeton}
                           tierLueur={tierLueur} />
-
-            {/* Les questions viennent quand on regarde ses chiffres : le lien
-                reste donc dans l'apercu, mais sous la carte, hors de
-                l'en-tete ou il flottait. */}
-            <p className="mt-1 font-data text-[12px]">
-              <Link to="/affiliate/faq" data-testid="affiliate-faq-link"
-                    className="text-nova underline">
-                {L("Questions fréquentes", "FAQ")}
-              </Link>
-            </p>
 
             {/* LES BOITES N'ONT PAS TOUTES LE MEME RANG.
                 Mireille : « les priorites des boites ». Elles portaient toutes
