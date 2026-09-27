@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>FIRONOVA — l'aperçu optimisé : code et adhésion visibles</title>
+<title>FIRONOVA — l'aperçu consolidé : la règle en trois parties</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
@@ -17,7 +17,7 @@
        padding:32px 20px 90px;-webkit-font-smoothing:antialiased}
   .page{max-width:960px;margin:0 auto}
   h1{font-family:var(--display);font-size:29px;font-weight:700;letter-spacing:-.02em}
-  .chapeau{color:var(--glacier);margin-top:8px;max-width:74ch;line-height:1.66;font-size:14px}
+  .chapeau{color:var(--glacier);margin-top:8px;max-width:76ch;line-height:1.66;font-size:14px}
   .chapeau b{color:var(--nordfjord)}
   .bloc{margin-top:46px}
   .etiquette{display:flex;align-items:baseline;gap:12px;margin-bottom:16px;
@@ -29,7 +29,7 @@
   .note b{color:var(--nordfjord)}
   .tnum{font-variant-numeric:tabular-nums}
 
-  /* ---------------- la page d'accueil commune ---------------- */
+  /* ---------------- la page d'accueil ---------------- */
   .fenetre{background:#fff;border:1px solid var(--ash);border-radius:10px;
            padding:22px 24px 26px;box-shadow:0 1px 2px rgba(11,46,79,.05),
            0 8px 20px -12px rgba(11,46,79,.12)}
@@ -42,10 +42,10 @@
             letter-spacing:.06em;text-transform:uppercase}
   .pastille.or{background:rgba(240,184,74,.14);color:#8A6216;
                box-shadow:inset 0 0 0 1px rgba(193,136,31,.34)}
+  .pastille.ok{color:#19736A;background:rgba(45,191,176,.14);
+               box-shadow:inset 0 0 0 1px rgba(45,191,176,.3)}
 
-  /* LA LIGNE D'IDENTITE : c'est elle qui repond a la demande de Mireille.
-     Code + date d'adhesion, visibles en haut, sans etre un troisieme panneau.
-     Le code se copie d'un appui — c'est un OUTIL, pas une etiquette. */
+  /* L'identite en haut : le code, l'adhesion, sans troisieme panneau. */
   .identite{display:flex;align-items:center;gap:18px;margin-top:14px;
             padding-top:13px;border-top:1px solid var(--ash);flex-wrap:wrap}
   .identite .cell{display:flex;flex-direction:column;gap:3px}
@@ -62,9 +62,9 @@
 
   .onglets{display:flex;gap:7px;margin-top:20px;flex-wrap:wrap}
   .onglet{font-family:var(--data);font-size:12px;font-weight:600;letter-spacing:.08em;
-          text-transform:uppercase;padding:9px 15px;border-radius:99px}
-  .onglet.actif{background:var(--nordfjord);color:#fff}
-  .onglet{background:#fff;color:var(--glacier);border:1px solid var(--ash)}
+          text-transform:uppercase;padding:9px 15px;border-radius:99px;
+          background:#fff;color:var(--glacier);border:1px solid var(--ash)}
+  .onglet.actif{background:var(--nordfjord);color:#fff;border-color:var(--nordfjord)}
 
   /* ---------------- la carte, disposition A ---------------- */
   .carte{position:relative;border-radius:14px;color:#fff;overflow:hidden;
@@ -88,23 +88,35 @@
   .argent .gros{font-family:var(--display);font-size:40px;font-weight:700;
                 letter-spacing:-.035em;line-height:1;margin-top:8px}
   .argent .sous{font-size:12px;color:var(--mist);margin-top:9px;line-height:1.5}
+  .argent .sous b{color:#fff;font-weight:600}
   .argent .droite{display:flex;align-items:center;gap:13px;padding-left:22px;
                   border-left:1px solid rgba(255,255,255,.13)}
   .argent .nom{font-family:var(--display);font-size:19px;font-weight:700}
   .argent .taux{font-family:var(--data);font-size:13px;font-weight:600;color:var(--or);
                 margin-top:4px;letter-spacing:.06em}
 
+  /* ---------------- la preuve ----------------
+     L'ECHELLE EST ANCREE AU RYTHME DU PALIER, jamais aux donnees.
+     Le haut du cadre = 2x le rythme (plancher du palier / 12). Un mois
+     au rythme = mi-hauteur ; un mois exceptionnel est ECRETE avec un
+     chevron. Un premier mois de 80 $ contre un rythme de 167 $ fait 24 % :
+     l'exageration est impossible par construction, a une ou douze valeurs. */
   .preuve{padding:18px 24px 16px;border-top:1px solid rgba(255,255,255,.13)}
-  .graph{position:relative;display:flex;align-items:flex-end;gap:6px;height:84px;padding-top:26px}
-  .ligne{position:absolute;left:0;right:0;top:26px;border-top:1px dashed rgba(255,255,255,.40)}
+  .graph{position:relative;display:flex;align-items:flex-end;gap:6px;height:86px}
+  .ligne{position:absolute;left:0;right:0;top:50%;border-top:1px dashed rgba(255,255,255,.40)}
   .ligne span{position:absolute;right:0;top:-19px;font-family:var(--data);font-size:11px;
               letter-spacing:.06em;color:var(--mist)}
-  .graph i{flex:1;border-radius:3px 3px 0 0;
+  .graph i{flex:1;border-radius:3px 3px 0 0;position:relative;
            background:linear-gradient(180deg,#00B8D4 0%,rgba(0,184,212,.28) 100%)}
   .graph i.vide{background:rgba(255,255,255,.07);min-height:3px}
   .graph i.sortant{background:repeating-linear-gradient(-45deg,
       rgba(183,202,221,.42) 0 4px, rgba(183,202,221,.12) 4px 8px);
       box-shadow:inset 0 0 0 1px rgba(183,202,221,.54)}
+  /* LE MOIS ECRETE : au-dessus de 2x le rythme, la barre se coupe et le
+     chevron dit qu'elle continue au-dela du cadre. */
+  .graph i.plein::before{content:"";position:absolute;left:50%;top:4px;
+    transform:translateX(-50%);border-left:5px solid transparent;
+    border-right:5px solid transparent;border-bottom:6px solid var(--menthe)}
   .mois{display:flex;gap:6px;margin-top:8px}
   .mois span{flex:1;text-align:center;font-family:var(--data);font-size:11px;
              letter-spacing:.04em;color:rgba(255,255,255,.68)}
@@ -115,11 +127,26 @@
     background:repeating-linear-gradient(-45deg,rgba(183,202,221,.42) 0 3px,
                rgba(183,202,221,.12) 3px 6px);
     box-shadow:inset 0 0 0 1px rgba(183,202,221,.54)}
-  .totalPeriode{font-family:var(--data);font-size:13px;font-weight:600;letter-spacing:.02em;
+  .totalPeriode{font-family:var(--data);font-size:15px;font-weight:600;letter-spacing:.02em;
                 margin-top:14px;padding-top:13px;border-top:1px solid rgba(255,255,255,.13)}
   .totalPeriode em{font-style:normal;display:block;font-family:var(--body);font-size:12px;
-                   font-weight:400;color:var(--mist);margin-top:4px;line-height:1.5}
+                   font-weight:400;color:var(--mist);margin-top:4px;line-height:1.55}
 
+  /* ---------------- la jauge ---------------- */
+  .jauge{position:relative;margin-top:18px}
+  .piste{height:7px;border-radius:99px;background:rgba(255,255,255,.15);
+         position:relative;overflow:hidden}
+  .piste i{position:absolute;inset:0 auto 0 0;border-radius:99px;background:var(--or)}
+  .curseur{position:absolute;top:-7px;width:2px;height:21px;border-radius:2px;
+           background:#F0977E}
+  .curseur::after{content:attr(data-q);position:absolute;top:25px;left:0;white-space:nowrap;
+    font-family:var(--data);font-size:11px;letter-spacing:.07em;
+    text-transform:uppercase;color:#F0977E}
+  .bornes{display:flex;justify-content:space-between;margin-top:34px;
+          font-family:var(--data);font-size:11px;letter-spacing:.05em;
+          color:rgba(255,255,255,.68)}
+
+  /* ---------------- les paliers ---------------- */
   .paliers{padding:18px 24px 6px;border-top:1px solid rgba(255,255,255,.13)}
   .paliers .cle{font-family:var(--data);font-size:11px;letter-spacing:.17em;
                 text-transform:uppercase;color:rgba(255,255,255,.68)}
@@ -133,18 +160,26 @@
                 text-transform:uppercase;line-height:1.5}
   .palier .quoi em{font-style:normal;display:block;font-size:11px;color:var(--mist)}
   .palier .sceau{margin-left:auto;font-family:var(--data);font-size:11px;
-                 letter-spacing:.04em;text-align:right;line-height:1.5;
-                 color:inherit}
+                 letter-spacing:.04em;text-align:right;line-height:1.5}
   .palier.mien{background:rgba(240,184,74,.15);box-shadow:inset 0 0 0 1px rgba(240,184,74,.34)}
   .palier.mien .cout,.palier.mien .quoi,.palier.mien .sceau{color:var(--or)}
   .palier.suivant{background:rgba(143,190,224,.13);box-shadow:inset 0 0 0 1px rgba(143,190,224,.28)}
-  .palier.suivant .cout,.palier.suivant .quoi{color:#8FBEE0}
+  /* #8FBEE0 est calibre sur le marine NU ; sur le lavis platine il tombait
+     a 4,3:1. Un cran plus clair : 5,3:1. */
+  .palier.suivant .cout,.palier.suivant .quoi,.palier.suivant .sceau{color:#A9D2EC}
+  .palier.menthe{background:rgba(45,191,176,.14);box-shadow:inset 0 0 0 1px rgba(45,191,176,.3)}
+  /* Sur le lavis menthe, #2DBFB0 tombait a 3,8:1 : un cran plus clair. */
+  .palier.menthe .cout,.palier.menthe .quoi,.palier.menthe .sceau{color:#4FD8C4}
 
-  /* L'etat zero : plus de phrase a 100 $. Un zero assume, et la seule chose
-     utile a dire a quelqu'un qui n'a rien vendu : son outil est pret. */
-  .zero .sous b{color:#fff;font-weight:600}
+  .pied{display:flex;border-top:1px solid rgba(255,255,255,.13);
+        background:rgba(0,0,0,.20);margin-top:17px}
+  .pied div{flex:1;padding:13px 24px}
+  .pied div+div{border-left:1px solid rgba(255,255,255,.10)}
+  .pied p:first-child{font-family:var(--data);font-size:11px;letter-spacing:.15em;
+                      text-transform:uppercase;color:rgba(255,255,255,.68)}
+  .pied p:last-child{font-family:var(--data);font-size:14px;font-weight:600;
+                     margin-top:5px;letter-spacing:.04em}
 
-  /* ---------------- le panneau de lien, apres la carte ---------------- */
   .panneau{background:#fff;border:1px solid var(--ash);border-radius:10px;padding:20px 22px;
            box-shadow:0 1px 2px rgba(11,46,79,.05),0 4px 12px -8px rgba(11,46,79,.14);margin-top:18px}
   .panneau .titre{font-family:var(--data);font-size:11px;font-weight:600;letter-spacing:.22em;
@@ -167,18 +202,17 @@
 <body>
 <div class="page">
 
-  <h1>L'aperçu optimisé — code et adhésion en haut, la phrase à 100 $ retirée</h1>
+  <h1>L'aperçu consolidé — la règle en trois parties, lisible d'un coup</h1>
   <p class="chapeau">
-    Trois façons de placer ce que tu réclames : <b>le code affilié en haut de page</b> et
-    <b>la date d'adhésion</b>. Dans les trois, la phrase « Une commande de 100 $ vous
-    rapporte… » <b>disparaît</b> de l'état zéro : elle est remplacée par un zéro assumé et une
-    seule chose utile — le code est prêt à partager. La carte à trois bandes, le panneau de
-    lien et les onglets ne bougent pas.
+    Une seule disposition : la carte à trois bandes, l'identité en haut de page, la règle
+    annoncée noir sur blanc. Le graphique a une <b>échelle ancrée au rythme du palier</b> —
+    jamais aux données — donc il ne peut plus se surdimensionner, même au tout premier mois.
+    Les états sont montrés : complet, zéro, et premier mois.
   </p>
 
-  <!-- ================================================== VARIANTE 1 -->
+  <!-- ================================================== L'ÉTAT COMPLET -->
   <div class="bloc">
-    <div class="etiquette"><span>Variante 1</span><b>La ligne d'identité sous le bonjour</b></div>
+    <div class="etiquette"><span>L'écran</span><b>Un compte établi — palier Or</b></div>
 
     <div class="fenetre">
       <div class="entete">
@@ -193,11 +227,9 @@
         </div>
         <div class="droite">
           <span class="pastille or">⬡ Or · 16 %</span>
-          <span class="pastille" style="color:#19736A;background:rgba(45,191,176,.14);
-                box-shadow:inset 0 0 0 1px rgba(45,191,176,.3)">● Conforme</span>
+          <span class="pastille ok">● Conforme</span>
         </div>
       </div>
-
       <div class="onglets">
         <span class="onglet actif">Aperçu</span><span class="onglet">Performance</span>
         <span class="onglet">Paiements</span><span class="onglet">Conformité</span>
@@ -210,6 +242,8 @@
         <p class="g">Période de référence</p>
         <p class="d">1 sept. 2025 → 31 août 2026</p>
       </div>
+
+      <!-- BANDE 1 · L'ARGENT -->
       <div class="argent">
         <div class="gauche">
           <p class="cle">Gains du mois en cours</p>
@@ -220,9 +254,12 @@
           <svg width="38" height="38" viewBox="0 0 100 100" aria-hidden="true">
             <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
                      stroke="#F0B84A" stroke-width="6" opacity=".4"/>
-            <circle cx="50" cy="8" r="9" fill="#F0B84A"/><circle cx="12" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/>
-            <circle cx="88" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/><circle cx="12" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/>
-            <circle cx="88" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/><circle cx="50" cy="92" r="6.5" fill="#F0B84A" opacity=".26"/>
+            <circle cx="50" cy="8" r="9" fill="#F0B84A"/>
+            <circle cx="12" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/>
+            <circle cx="88" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/>
+            <circle cx="12" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/>
+            <circle cx="88" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/>
+            <circle cx="50" cy="92" r="6.5" fill="#F0B84A" opacity=".26"/>
           </svg>
           <div>
             <p class="nom">Palier Or</p>
@@ -230,28 +267,41 @@
           </div>
         </div>
       </div>
+
+      <!-- BANDE 2 · LA PREUVE -->
       <div class="preuve">
         <div class="graph">
+          <!-- Haut du cadre = 2x le rythme (834 x 2 = 1 668). Le mois hachure
+               (1 880) le depasse : il est ecrete, et le chevron le dit. -->
           <div class="ligne"><span>834 $/mois × 12 = Or</span></div>
-          <i class="sortant" style="height:100%"></i>
-          <i style="height:38%"></i><i style="height:47%"></i><i style="height:61%"></i>
-          <i style="height:34%"></i><i style="height:44%"></i><i style="height:40%"></i>
-          <i style="height:52%"></i><i style="height:37%"></i><i style="height:60%"></i>
-          <i style="height:45%"></i><i style="height:39%"></i>
+          <i class="sortant plein" style="height:100%"></i>
+          <i style="height:59%"></i><i style="height:44%"></i><i style="height:67%"></i>
+          <i style="height:40%"></i><i style="height:49%"></i><i style="height:53%"></i>
+          <i style="height:42%"></i><i style="height:57%"></i><i style="height:50%"></i>
+          <i style="height:64%"></i><i style="height:37%"></i>
         </div>
         <div class="mois">
           <span class="part">S</span><span>O</span><span>N</span><span>D</span><span>J</span>
           <span>F</span><span>M</span><span>A</span><span>M</span><span>J</span><span>J</span><span>A</span>
         </div>
         <p class="legende"><b></b>Septembre 2025 · 1 880 $ · ne comptera plus le 1er octobre</p>
+
         <p class="totalPeriode tnum">11 240,00 $
-          <em>11 240 $ sur les douze derniers mois — c'est ce qui fixe votre taux ce
-          mois-ci. Prévision au 1er octobre : 9 770 $ (les onze derniers mois + ce mois-ci).</em></p>
+          <em>sur les douze derniers mois — c'est ce qui fixe votre taux ce mois-ci.
+          Prévision au 1er octobre : 9 770,00 $ (les onze derniers mois + ce mois-ci).</em></p>
+
+        <div class="jauge">
+          <div class="piste"><i style="width:12.4%"></i></div>
+          <div class="curseur" style="left:0" data-q="au 1er oct."></div>
+          <div class="bornes"><span>10 001 $ · Or</span><span>20 001 $ · Platine</span></div>
+        </div>
       </div>
+
+      <!-- BANDE 3 · LES PALIERS -->
       <div class="paliers">
         <p class="cle">D'ici le 30 septembre</p>
-        <p class="sous">les deux montants sont mesurés sur la prévision du 1er — ce que vous montez,
-        vous le gardez</p>
+        <p class="sous">les deux montants sont mesurés sur la prévision du 1er — ce que vous
+        montez, vous le gardez</p>
         <div class="palier mien">
           <p class="cout tnum">231 $</p><p class="fl">→</p>
           <p class="quoi">Or · 16 %<em>votre palier actuel</em></p>
@@ -263,100 +313,10 @@
           <p class="sceau">Le taux monte<br>dès le seuil franchi</p>
         </div>
       </div>
-    </div>
 
-    <div class="panneau">
-      <p class="titre">Votre lien de parrainage</p>
-      <div class="lien">
-        <p class="url tnum">peptide-ca.com/?ref=FN7K2Q</p>
-        <button>Copier le lien</button>
-      </div>
-    </div>
-
-    <p class="note">
-      <b>Le pari :</b> l'identité vit dans l'en-tête, là où l'œil la cherche — le code ne se
-      répète pas dans la carte. La ligne remplace le lien « Questions fréquentes » qui flottait
-      sous le bonjour : il rejoint l'onglet Aide, sa place naturelle.
-      <b>Ce que ça coûte :</b> deux lignes de plus en tête de page sur mobile.
-    </p>
-  </div>
-
-  <!-- ================================================== VARIANTE 2 -->
-  <div class="bloc">
-    <div class="etiquette"><span>Variante 2</span><b>La bande d'identité dans la carte</b></div>
-
-    <div class="fenetre">
-      <div class="entete">
-        <p class="salut">Bonjour <em>Marjolaine</em></p>
-        <div class="droite">
-          <span class="pastille or">⬡ Or · 16 %</span>
-          <span class="pastille" style="color:#19736A;background:rgba(45,191,176,.14);
-                box-shadow:inset 0 0 0 1px rgba(45,191,176,.3)">● Conforme</span>
-        </div>
-      </div>
-      <div class="onglets">
-        <span class="onglet actif">Aperçu</span><span class="onglet">Performance</span>
-        <span class="onglet">Paiements</span><span class="onglet">Conformité</span>
-        <span class="onglet">Paramètres</span><span class="onglet">Aide</span>
-      </div>
-    </div>
-
-    <div class="carte" style="margin-top:18px">
-      <!-- LA BANDE DE LA MAQUETTE QU'ELLE AIME (affilie-melange-2) : le strip
-           « membre depuis · code · prochain versement » devient la tete de
-           carte, au-dessus de la periode. Trois faits d'identite, une ligne. -->
-      <div class="bandeau" style="background:rgba(0,0,0,.22)">
-        <span class="cell"><p style="font-family:var(--data);font-size:11px;letter-spacing:.15em;
-          text-transform:uppercase;color:rgba(255,255,255,.68)">Membre depuis</p>
-          <b class="tnum" style="font-family:var(--data);font-size:13px">mars 2026</b></span>
-        <span class="cell"><p style="font-family:var(--data);font-size:11px;letter-spacing:.15em;
-          text-transform:uppercase;color:rgba(255,255,255,.68)">Votre code</p>
-          <span class="code"><b class="tnum" style="font-family:var(--data);font-size:15px;letter-spacing:.12em">FN7K2Q</b>
-          <button class="copier" style="background:rgba(255,255,255,.08);color:#fff;
-            border-color:rgba(255,255,255,.2)">Copier</button></span></span>
-        <span class="cell" style="margin-left:auto;text-align:right">
-          <p style="font-family:var(--data);font-size:11px;letter-spacing:.15em;
-            text-transform:uppercase;color:rgba(255,255,255,.68)">Prochain versement</p>
-          <b class="tnum" style="font-family:var(--data);font-size:13px">1 oct · 312,80 $</b></span>
-      </div>
-      <div class="bandeau" style="background:transparent">
-        <p class="g">Période de référence</p>
-        <p class="d">1 sept. 2025 → 31 août 2026</p>
-      </div>
-      <div class="argent">
-        <div class="gauche">
-          <p class="cle">Gains du mois en cours</p>
-          <p class="gros tnum">184,50 $</p>
-          <p class="sous tnum">soit 1 153,13 $ de ventes validées · 6 commandes</p>
-        </div>
-        <div class="droite">
-          <svg width="38" height="38" viewBox="0 0 100 100" aria-hidden="true">
-            <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
-                     stroke="#F0B84A" stroke-width="6" opacity=".4"/>
-            <circle cx="50" cy="8" r="9" fill="#F0B84A"/><circle cx="12" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/>
-            <circle cx="88" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/><circle cx="12" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/>
-            <circle cx="88" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/><circle cx="50" cy="92" r="6.5" fill="#F0B84A" opacity=".26"/>
-          </svg>
-          <div>
-            <p class="nom">Palier Or</p>
-            <p class="taux">16 % de commission</p>
-          </div>
-        </div>
-      </div>
-      <div class="paliers">
-        <p class="cle">D'ici le 30 septembre</p>
-        <p class="sous">les deux montants sont mesurés sur la prévision du 1er — ce que vous montez,
-        vous le gardez</p>
-        <div class="palier mien">
-          <p class="cout tnum">231 $</p><p class="fl">→</p>
-          <p class="quoi">Or · 16 %<em>votre palier actuel</em></p>
-          <p class="sceau">Pour reconduire<br>le taux</p>
-        </div>
-        <div class="palier suivant">
-          <p class="cout tnum">10 231 $</p><p class="fl">→</p>
-          <p class="quoi">Platine · 18 %<em>le palier au-dessus</em></p>
-          <p class="sceau">Le taux monte<br>dès le seuil franchi</p>
-        </div>
+      <div class="pied">
+        <div><p>Prochain versement</p><p class="tnum">1 oct · 312,80 $</p></div>
+        <div><p>Commandes sur la période</p><p class="tnum">34</p></div>
       </div>
     </div>
 
@@ -368,115 +328,20 @@
       </div>
     </div>
 
-    <p class="note">
-      <b>Le pari :</b> la carte porte tout — l'argent, la preuve, les paliers, et maintenant
-      l'identité. C'est la disposition de la maquette que tu as déjà aimée, transplantée telle
-      quelle. Le code est au sommet de la page, copiable. <b>Ce que ça coûte :</b> la tête de
-      carte s'épaissit ; sur téléphone, la période et les paliers descendent d'un cran.
+    <p class="verdict">
+      <b>Comment la lire :</b> elle est Or aujourd'hui (11 240 $ sur les douze mois clos). Le
+      mois hachuré sort le 1er, la prévision tombe à 9 770 $ — sous le plancher Or. Le
+      curseur corail le montre au bord gauche. Elle doit donc vendre <b>231 $</b> d'ici le 30
+      pour garder Or, ou <b>10 231 $</b> pour monter à Platine — et cette montée, mesurée sur
+      la prévision, <b>tiendra le 1er octobre</b>.
     </p>
   </div>
 
-  <!-- ================================================== VARIANTE 3 -->
+  <!-- ================================================== LE PREMIER MOIS -->
   <div class="bloc">
-    <div class="etiquette"><span>Variante 3</span><b>Le code en tête de carte, l'adhésion dans le pied</b></div>
+    <div class="etiquette"><span>La preuve</span><b>Premier mois : le graphique ne peut pas exagérer</b></div>
 
-    <div class="fenetre">
-      <div class="entete">
-        <p class="salut">Bonjour <em>Marjolaine</em></p>
-        <div class="droite">
-          <span class="pastille or">⬡ Or · 16 %</span>
-          <span class="pastille" style="color:#19736A;background:rgba(45,191,176,.14);
-                box-shadow:inset 0 0 0 1px rgba(45,191,176,.3)">● Conforme</span>
-        </div>
-      </div>
-      <div class="onglets">
-        <span class="onglet actif">Aperçu</span><span class="onglet">Performance</span>
-        <span class="onglet">Paiements</span><span class="onglet">Conformité</span>
-        <span class="onglet">Paramètres</span><span class="onglet">Aide</span>
-      </div>
-    </div>
-
-    <div class="carte" style="margin-top:18px">
-      <div class="bandeau">
-        <p class="g">Période de référence</p>
-        <span class="code"><b class="tnum" style="font-family:var(--data);font-size:13px;
-          letter-spacing:.12em">FN7K2Q</b>
-          <button class="copier" style="background:rgba(255,255,255,.08);color:#fff;
-            border-color:rgba(255,255,255,.2)">Copier</button></span>
-      </div>
-      <div class="argent">
-        <div class="gauche">
-          <p class="cle">Gains du mois en cours</p>
-          <p class="gros tnum">184,50 $</p>
-          <p class="sous tnum">soit 1 153,13 $ de ventes validées · 6 commandes</p>
-        </div>
-        <div class="droite">
-          <svg width="38" height="38" viewBox="0 0 100 100" aria-hidden="true">
-            <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
-                     stroke="#F0B84A" stroke-width="6" opacity=".4"/>
-            <circle cx="50" cy="8" r="9" fill="#F0B84A"/><circle cx="12" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/>
-            <circle cx="88" cy="29" r="6.5" fill="#F0B84A" opacity=".26"/><circle cx="12" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/>
-            <circle cx="88" cy="71" r="6.5" fill="#F0B84A" opacity=".26"/><circle cx="50" cy="92" r="6.5" fill="#F0B84A" opacity=".26"/>
-          </svg>
-          <div>
-            <p class="nom">Palier Or</p>
-            <p class="taux">16 % de commission</p>
-          </div>
-        </div>
-      </div>
-      <div class="paliers">
-        <p class="cle">D'ici le 30 septembre</p>
-        <p class="sous">les deux montants sont mesurés sur la prévision du 1er — ce que vous montez,
-        vous le gardez</p>
-        <div class="palier mien">
-          <p class="cout tnum">231 $</p><p class="fl">→</p>
-          <p class="quoi">Or · 16 %<em>votre palier actuel</em></p>
-          <p class="sceau">Pour reconduire<br>le taux</p>
-        </div>
-        <div class="palier suivant">
-          <p class="cout tnum">10 231 $</p><p class="fl">→</p>
-          <p class="quoi">Platine · 18 %<em>le palier au-dessus</em></p>
-          <p class="sceau">Le taux monte<br>dès le seuil franchi</p>
-        </div>
-      </div>
-      <!-- Le pied : le strip de la maquette aimee, mais SANS le code (deja en
-           tete) et SANS le versement (il vit dans Paiements). Restent les deux
-           faits qui n'ont leur place nulle part ailleurs. -->
-      <div style="display:flex;border-top:1px solid rgba(255,255,255,.13);background:rgba(0,0,0,.20)">
-        <div style="flex:1;padding:13px 24px">
-          <p style="font-family:var(--data);font-size:11px;letter-spacing:.15em;text-transform:uppercase;
-            color:rgba(255,255,255,.68)">Membre depuis</p>
-          <p class="tnum" style="font-family:var(--data);font-size:14px;font-weight:600;margin-top:5px">mars 2026</p>
-        </div>
-        <div style="flex:1;padding:13px 24px;border-left:1px solid rgba(255,255,255,.10)">
-          <p style="font-family:var(--data);font-size:11px;letter-spacing:.15em;text-transform:uppercase;
-            color:rgba(255,255,255,.68)">Première vente</p>
-          <p class="tnum" style="font-family:var(--data);font-size:14px;font-weight:600;margin-top:5px">22 avril 2026</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="panneau">
-      <p class="titre">Votre lien de parrainage</p>
-      <div class="lien">
-        <p class="url tnum">peptide-ca.com/?ref=FN7K2Q</p>
-        <button>Copier le lien</button>
-      </div>
-    </div>
-
-    <p class="note">
-      <b>Le pari :</b> le code, l'outil qu'on manipule, monte en tête de carte ; l'adhésion,
-      un fait qu'on consulte rarement, descend dans le pied — avec la date de première vente,
-      qui n'existe nulle part ailleurs et qui raconte plus que l'adhésion. <b>Ce que ça coûte :</b>
-      il faut ajouter cette seconde date au calcul — une somme de plus côté serveur.
-    </p>
-  </div>
-
-  <!-- ================================================== L'ÉTAT ZÉRO -->
-  <div class="bloc">
-    <div class="etiquette"><span>L'état zéro</span><b>La phrase à 100 $ s'en va</b></div>
-
-    <div class="carte zero">
+    <div class="carte">
       <div class="bandeau">
         <p class="g">Période de référence</p>
         <p class="d">1 sept. 2025 → 31 août 2026</p>
@@ -485,16 +350,19 @@
         <div class="gauche">
           <p class="cle">Gains du mois en cours</p>
           <p class="gros tnum">0,00 $</p>
-          <p class="sous"><b>Votre code FN7K2Q est prêt</b> — partagez votre lien,<br>
-            la première commande apparaîtra ici.</p>
+          <p class="sous"><b>Votre code FN7K2Q est prêt</b> — partagez votre lien,
+          la première commande apparaîtra ici.</p>
         </div>
         <div class="droite">
           <svg width="38" height="38" viewBox="0 0 100 100" aria-hidden="true">
             <polygon points="50,8 88,29 88,71 50,92 12,71 12,29" fill="none"
                      stroke="#B7CADD" stroke-width="6" opacity=".36"/>
-            <circle cx="50" cy="8" r="9" fill="#B7CADD"/><circle cx="12" cy="29" r="6.5" fill="#B7CADD" opacity=".26"/>
-            <circle cx="88" cy="29" r="6.5" fill="#B7CADD" opacity=".26"/><circle cx="12" cy="71" r="6.5" fill="#B7CADD" opacity=".26"/>
-            <circle cx="88" cy="71" r="6.5" fill="#B7CADD" opacity=".26"/><circle cx="50" cy="92" r="6.5" fill="#B7CADD" opacity=".26"/>
+            <circle cx="50" cy="8" r="9" fill="#B7CADD"/>
+            <circle cx="12" cy="29" r="6.5" fill="#B7CADD" opacity=".26"/>
+            <circle cx="88" cy="29" r="6.5" fill="#B7CADD" opacity=".26"/>
+            <circle cx="12" cy="71" r="6.5" fill="#B7CADD" opacity=".26"/>
+            <circle cx="88" cy="71" r="6.5" fill="#B7CADD" opacity=".26"/>
+            <circle cx="50" cy="92" r="6.5" fill="#B7CADD" opacity=".26"/>
           </svg>
           <div>
             <p class="nom">Palier Standard</p>
@@ -502,19 +370,47 @@
           </div>
         </div>
       </div>
+
+      <div class="preuve">
+        <!-- Un seul mois clos : aout 2026, 380 $. Le cadre vaut toujours 2x le
+             rythme Bronze (167 x 2 = 334). 380/334 = 114 % : la barre est
+             ECRETEE avec le chevron, au lieu de devenir la nouvelle echelle
+             et d'ecraser les onze cases vides. -->
+        <div class="graph">
+          <div class="ligne"><span>167 $/mois × 12 = Bronze</span></div>
+          <i class="vide"></i><i class="vide"></i><i class="vide"></i><i class="vide"></i>
+          <i class="vide"></i><i class="vide"></i><i class="vide"></i><i class="vide"></i>
+          <i class="vide"></i><i class="vide"></i><i class="vide"></i>
+          <i class="plein" style="height:100%"></i>
+        </div>
+        <div class="mois">
+          <span>S</span><span>O</span><span>N</span><span>D</span><span>J</span>
+          <span>F</span><span>M</span><span>A</span><span>M</span><span>J</span>
+          <span>J</span><span class="part">A</span>
+        </div>
+        <p class="legende" style="color:#8FE3D8">Août 2026 · 380 $ · seul mois de la période</p>
+
+        <p class="totalPeriode tnum">380,00 $
+          <em>sur les douze derniers mois — c'est ce qui fixe votre taux ce mois-ci.
+          Prévision au 1er octobre : 380,00 $ (les onze derniers mois + ce mois-ci).</em></p>
+
+        <div class="jauge">
+          <div class="piste"><i style="width:19%"></i></div>
+          <div class="bornes"><span>0 $ · Standard</span><span>2 001 $ · Bronze</span></div>
+        </div>
+      </div>
+
       <div class="paliers">
         <p class="cle">D'ici le 30 septembre</p>
-        <p class="sous">les deux montants sont mesurés sur la prévision du 1er — ce que vous montez,
-        vous le gardez</p>
-        <div class="palier mien" style="background:rgba(45,191,176,.14);
-          box-shadow:inset 0 0 0 1px rgba(45,191,176,.3)">
-          <p class="cout" style="font-family:var(--data);font-size:14px;font-weight:600;color:var(--menthe)">Aucun minimum</p>
-          <p class="fl">→</p>
-          <p class="quoi" style="color:var(--menthe)">Standard · 10 %<em>votre palier actuel</em></p>
-          <p class="sceau" style="color:var(--menthe)">Taux garanti</p>
+        <p class="sous">les deux montants sont mesurés sur la prévision du 1er — ce que vous
+        montez, vous le gardez</p>
+        <div class="palier menthe">
+          <p class="cout">Aucun minimum</p><p class="fl">→</p>
+          <p class="quoi">Standard · 10 %<em>votre palier actuel</em></p>
+          <p class="sceau">Taux garanti</p>
         </div>
         <div class="palier suivant">
-          <p class="cout tnum">2 001 $</p><p class="fl">→</p>
+          <p class="cout tnum">1 621 $</p><p class="fl">→</p>
           <p class="quoi">Bronze · 12 %<em>le palier au-dessus</em></p>
           <p class="sceau">Le taux monte<br>dès le seuil franchi</p>
         </div>
@@ -522,27 +418,29 @@
     </div>
 
     <p class="verdict">
-      <b>Ce qui remplace la phrase :</b> un zéro assumé — c'est un bilan, pas un échec — et la
-      seule chose vraie à dire : l'outil est prêt, la première commande apparaîtra ici.
-      Plus de calcul d'exemple, plus de taux à expliquer.
+      <b>Pourquoi ça ne peut pas exagérer :</b> le haut du cadre vaut toujours <b>deux fois le
+      rythme du palier</b> — 167 $/mois pour Bronze — quel que soit le mois. Un mois isolé de
+      380 $ dépasse le cadre : il est <b>écrêté</b> avec le chevron vert, au lieu de devenir la
+      nouvelle échelle et d'écraser les onze cases vides. La ligne pointillée reste toujours
+      à mi-hauteur. C'est le repère, pas les données.
     </p>
   </div>
 
-  <!-- ================================================== LES INCOHERENCES -->
+  <!-- ================================================== LES REGLES -->
   <div class="bloc">
-    <div class="etiquette"><span>À trancher</span><b>Ce qui ne fait pas sens aujourd'hui</b></div>
+    <div class="etiquette"><span>Pour valider</span><b>Les trois règles de lecture, écrites</b></div>
     <p class="note">
-      <b>1 · Le lien « Questions fréquentes » flotte sous le bonjour.</b> Une question se pose en
-      regardant ses chiffres, pas un en-tête de page. Ma proposition : il rejoint l'onglet Aide,
-      qui existe déjà.<br>
-      <b>2 · Le chemin de démarrage (« Complétez votre profil… ») peut s'afficher à une ancienne.</b>
-      Tant qu'une étape reste inachevée, il occupe le haut de l'aperçu. Proposé : le déplacer dans
-      Paramètres, où ces étapes se règlent.<br>
-      <b>3 · Le panneau de lien répète le code</b> une fois que celui-ci est en haut. Proposé : le
-      panneau ne montre plus que l'URL de partage, le code vit en haut et nulle part ailleurs.<br>
-      <b>4 · Le widget « Partagez ces produits »</b> est un outil de vente posé en fin d'aperçu, après
-      l'identité et la carte. Proposé : le garder, mais en dernier, sous le lien — c'est déjà le cas —
-      ou le déplacer dans Performance si tu le juges plus marketing que bilan.
+      <b>1 · Le grand chiffre de la preuve</b> est la base du mois en cours : les douze derniers
+      mois clos, arrêtés le 1er. C'est lui qui fixe le taux minimum du mois.<br>
+      <b>2 · La prévision</b> (onze mois + le mois en cours) est écrite juste dessous, chiffrée.
+      Elle devient la base du 1er prochain — donc une montée mesurée dessus <b>tient</b>.<br>
+      <b>3 · Le graphique</b> est ancré au rythme du palier : haut de cadre = 2 × (plancher ÷ 12).
+      Un mois exceptionnel est écrêté au lieu de redéfinir l'échelle. Exagération impossible.
+    </p>
+    <p class="verdict">
+      <b>À trancher avant l'implémentation :</b> le composant réel garde encore l'ancienne
+      échelle (meilleur mois × 1,15). Si tu valides l'échelle ancrée, je la porte dans
+      <code>CarteAffilie.jsx</code> avec les états montrés ici.
     </p>
   </div>
 
