@@ -887,7 +887,11 @@ export default function AffiliateDashboard() {
                 {data?.code || "-"}
               </span>{" "}
               <button onClick={copyCode} data-testid="affiliate-copy-code-header"
-                className="underline text-nova-texte hover:text-nova font-data text-[12px]">
+                className="px-3 py-2 border border-ash rounded-md text-nova-texte
+                           font-data text-[12px] font-semibold
+                           hover:border-nova hover:text-nova
+                           transition-colors active:scale-[0.97]"
+                style={{ borderRadius: "var(--r-m)" }}>
                 {codeCopie ? L("Copié ✓", "Copied ✓") : L("Copier", "Copy")}
               </button>
             </p>
@@ -910,7 +914,7 @@ export default function AffiliateDashboard() {
 
         {/* OVERVIEW */}
         {tab === "overview" && (
-          <div className="space-y-8" data-testid="affiliate-overview">
+          <div className="space-y-5 sm:space-y-6" data-testid="affiliate-overview">
             {/* L'APERCU NE GARDE QUE TROIS BLOCS.
                 Il en portait onze, sur 650 lignes : la carte, le versement, le
                 palier, la fenetre, les chiffres cles, les statistiques,
@@ -987,7 +991,7 @@ export default function AffiliateDashboard() {
             )}
 
             {/* Referral link */}
-            <div className="bg-white rounded-xl border border-ash p-6"
+            <div className="bg-white rounded-xl border border-ash p-5 sm:p-6"
                  data-testid="affiliate-link-panel">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
                 {L("VOTRE LIEN", "YOUR LINK")}
@@ -1042,7 +1046,7 @@ export default function AffiliateDashboard() {
 
             {/* Top products share widget */}
             {topProducts.length > 0 && (refCode || "").length > 0 && (
-              <div className="bg-white rounded-xl border border-ash p-6" data-testid="affiliate-share-widget">
+              <div className="bg-white rounded-xl border border-ash p-5 sm:p-6" data-testid="affiliate-share-widget">
                 <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
                   <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
                     {personalTop

@@ -117,7 +117,7 @@ export default function CarteAffilie({
         <p className="font-data text-[11px] uppercase tracking-[0.17em] text-mist">
           {L("Période de référence", "Reference period")}
         </p>
-        <p className="font-data text-[11px] sm:text-[12px] font-semibold tracking-[0.02em] text-clinical tabular-nums">
+        <p className="font-data text-[12px] font-semibold tracking-[0.02em] text-clinical tabular-nums">
           {jourCourt(data?.periode_debut)} → {jourCourt(data?.periode_fin)}
         </p>
       </div>
@@ -132,7 +132,7 @@ export default function CarteAffilie({
             valeur={insights?.current_month?.commission}
             format={money}
             testId="affiliate-gains-mois"
-            className="block font-display text-[30px] sm:text-[46px] font-bold
+            className="block font-display text-[34px] sm:text-[46px] font-bold
                        leading-[0.95] tracking-[-0.035em] mt-2"
           />
           {/* ETAT ZERO : un zero assume, et la seule chose vraie a dire — son
@@ -180,30 +180,29 @@ export default function CarteAffilie({
           colonnes, chacune titree par son moment. Les montants vivent sous
           le chiffre qu'ils visent : plus aucune phrase d'explication, les
           titres font le travail. */}
-      <div className="relative grid grid-cols-[1.05fr_0.95fr] border-t border-white/12">
+      <div className="relative grid sm:grid-cols-[1.05fr_0.95fr] border-t border-white/12">
 
         {/* — CE MOIS-CI : la base du taux, sa preuve, la position. */}
-        <div className="relative px-4 sm:px-7 pt-4 sm:pt-5 pb-5 sm:pb-6
-                        border-r border-white/12"
+        <div className="relative px-4 sm:px-7 pt-4 sm:pt-5 pb-5 sm:pb-6 sm:border-r border-white/12"
              data-testid="affiliate-periode-graph">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.12em]
-                        sm:tracking-[0.2em] text-nova pb-2.5 mb-3 border-b border-dashed border-white/20">
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em]
+                        text-nova pb-2.5 mb-3 border-b border-dashed border-white/20">
             {L("Ce mois-ci", "This month")}
           </p>
-          <p className="font-display text-[22px] sm:text-[30px] font-bold leading-none
+          <p className="font-display text-[26px] sm:text-[30px] font-bold leading-none
                         tracking-[-0.03em] tabular-nums" data-testid="affiliate-periode-total">
             {money(total)}
           </p>
-          <p className="text-[11px] sm:text-[12px] text-mist mt-1">
+          <p className="text-[12px] text-mist mt-1">
             {L("les douze derniers mois", "the last twelve months")}
           </p>
 
           {serie.length > 0 && (
             <>
-              <div className="relative h-[96px] sm:h-[110px] mt-3">
+              <div className="relative h-[110px] mt-3">
                 {hauteurLigne !== null && (
                   <>
-                    <p className="absolute left-0 sm:left-auto sm:right-0 top-0 font-data text-[11px]
+                    <p className="absolute right-0 top-0 font-data text-[11px]
                                   tracking-[0.06em] text-mist">
                       {money(Math.round(moyenneRef))}{L("/mois × 12 = ", "/mo × 12 = ")}{libelleRef}
                     </p>
@@ -211,7 +210,7 @@ export default function CarteAffilie({
                          style={{ top: `calc(50% + 12px)` }} aria-hidden="true" />
                   </>
                 )}
-                <div className="absolute inset-x-0 bottom-0 top-6 flex items-end gap-1 sm:gap-1.5">
+                <div className="absolute inset-x-0 bottom-0 top-6 flex items-end gap-1.5">
                   {serie.map((m) => {
                     const montant = Number(m.montant || 0);
                     const vide = montant <= 0;
@@ -248,7 +247,7 @@ export default function CarteAffilie({
                   })}
                 </div>
               </div>
-              <div className="flex gap-1 sm:gap-1.5 mt-2" aria-hidden="true">
+              <div className="flex gap-1.5 mt-2" aria-hidden="true">
                 {serie.map((m) => (
                   <span key={m.mois}
                         className={`flex-1 text-center font-data text-[11px] tracking-[0.04em] ${
@@ -307,17 +306,18 @@ export default function CarteAffilie({
         </div>
 
         {/* — AU 1er ... : la prevision, et ce qu'elle demande. */}
-        <div className="relative px-4 sm:px-7 pt-4 sm:pt-5 pb-5 sm:pb-6"
+        <div className="relative px-4 sm:px-7 pt-4 sm:pt-5 pb-5 sm:pb-6
+                        border-t border-white/12 sm:border-t-0"
              data-testid="affiliate-paliers-prix">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.12em]
-                        sm:tracking-[0.2em] text-nova pb-2.5 mb-3 border-b border-dashed border-white/20">
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em]
+                        text-nova pb-2.5 mb-3 border-b border-dashed border-white/20">
             {L("Au ", "On ")}{jourCourt(data?.prochaine_periode_debut)}
           </p>
-          <p className="font-display text-[22px] sm:text-[30px] font-bold leading-none
+          <p className="font-display text-[26px] sm:text-[30px] font-bold leading-none
                         tracking-[-0.03em] tabular-nums">
             {money(projection)}
           </p>
-          <p className="text-[11px] sm:text-[12px] text-mist mt-1">
+          <p className="text-[12px] text-mist mt-1">
             {L("les onze derniers mois + ce mois-ci",
                "the last eleven months + this month")}
           </p>
@@ -395,17 +395,17 @@ export default function CarteAffilie({
 function Ligne({ montant, gros, nom, sous, sceau, teinte, fond, trait, testId }) {
   return (
     <div data-testid={testId}
-         className="flex flex-wrap items-center gap-x-2.5 sm:gap-x-3.5 gap-y-1 px-2.5 sm:px-3.5 py-2.5 sm:py-3
+         className="flex flex-wrap items-center gap-x-3.5 gap-y-1 px-3.5 py-3
                     rounded-[7px] mt-2 first:mt-4"
          style={{ background: fond, boxShadow: `inset 0 0 0 1px ${trait}` }}>
-      <p className={`${gros ? "font-display text-[17px] sm:text-[20px] font-bold tracking-[-0.02em]"
-                            : "font-data text-[12px] sm:text-[13px] font-semibold tracking-[0.04em]"}
-                     leading-none min-w-[72px] sm:min-w-[86px] tabular-nums`}
+      <p className={`${gros ? "font-display text-[20px] font-bold tracking-[-0.02em]"
+                            : "font-data text-[13px] font-semibold tracking-[0.04em]"}
+                     leading-none min-w-[86px] tabular-nums`}
          style={{ color: teinte }}>
         {montant}
       </p>
       <p className="font-data text-[13px] opacity-50 shrink-0" aria-hidden="true">→</p>
-      <p className="font-data text-[11px] sm:text-[12px] uppercase tracking-[0.07em] leading-snug"
+      <p className="font-data text-[12px] uppercase tracking-[0.07em] leading-snug"
          style={{ color: teinte }}>
         {nom}
         <em className="not-italic block text-[11px] text-mist normal-case tracking-[0.04em] mt-0.5">
