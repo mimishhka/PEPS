@@ -20,6 +20,7 @@ import AffiliateSupport from "../components/AffiliateSupport";
 import TermsModal from "../components/TermsModal";
 import TierLadder from "../components/TierLadder";
 import TierMark from "../components/TierMark";
+import ChiffreAnime from "../components/ChiffreAnime";
 import ThemeToggle from "../components/ThemeToggle";
 
 import useChartColors from "../hooks/useChartColors";
@@ -242,6 +243,26 @@ export default function AffiliateDashboard() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // LA BARRE DE PROGRESSION PART DE ZERO, PUIS SE REMPLIT.
+  //
+  // Sans ce decalage d'une trame, le navigateur peint directement la largeur
+  // finale et il n'y a aucune transition a voir.
+  //
+  // CE CROCHET VIT ICI, ET NON PRES DE LA BARRE : le composant a une sortie
+  // anticipee pour l'etat de chargement, et un crochet declare apres elle ne
+  // s'executerait pas a tous les rendus. React exige le meme ordre a chaque
+  // fois. La sonde de pre-commit du projet l'a signale avant le commit — le
+  // linter, lui, ne l'avait pas vu.
+  const [barreRemplie, setBarreRemplie] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") { setBarreRemplie(true); return undefined; }
+    const sansMouvement = window.matchMedia
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (sansMouvement) { setBarreRemplie(true); return undefined; }
+    const t = setTimeout(() => setBarreRemplie(true), 80);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     if (!data) return;
@@ -676,6 +697,19 @@ export default function AffiliateDashboard() {
   // Le voile du fond : les memes canaux, a douze pour cent. Il suit donc le
   // theme comme le trait, au lieu d'etre une valeur figee.
   const tierVoile = `rgb(var(${tierJeton}) / 0.12)`;
+  // LE RANG COLORE LA PAGE.
+  //
+  // Mireille : « il n'y a aucune couleur, c'est trop blanc ». La reponse n'est
+  // pas d'ajouter des couleurs decoratives — un seul accent par page reste la
+  // regle — mais de rendre l'accent PERSONNEL : c'est le palier de l'affiliee
+  // qui teinte son bandeau. Diamant le tire vers le violet, Or vers l'ambre.
+  // Elle reconnait son rang avant de lire un mot, et monter d'un palier change
+  // visiblement sa page. Une couleur qui recompense vaut mieux qu'une couleur
+  // qui decore.
+  //
+  // Le degrade part du haut-droit et se dissout : la lueur reste derriere le
+  // chiffre sans jamais passer sous le texte, ou elle mangerait le contraste.
+  const tierLueur = `radial-gradient(120% 140% at 100% 0%, rgb(var(${tierJeton}) / 0.38) 0%, rgb(var(${tierJeton}) / 0.10) 42%, transparent 72%)`;
   const tierLabel = TIER_META[data?.tier]?.[lang] || data?.tier;
   const comp = COMPLIANCE_META[data?.compliance_status] || COMPLIANCE_META.compliant;
   const progress = data?.progress_to_next != null ? Math.round(data.progress_to_next * 100) : null;
@@ -887,43 +921,105 @@ export default function AffiliateDashboard() {
             {/* Bandeau. Tant que rien n'a ete gagne, un « 0,00 $ » en gros
                 caracteres n'enseigne rien : on montre ce qu'une vente vaut. Des
                 qu'il y a des gains, le montant reel est plus utile. */}
-            <div className="border border-ash p-6 flex flex-wrap items-center justify-between gap-4" style={{ borderRadius: "var(--r-m)" }}>
-              {Number(data?.cumulative_revenue || 0) === 0 ? (
-                <div>
-                  <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
-                    {L("CE QUE VOUS GAGNEZ", "WHAT YOU EARN")}
-                  </p>
-                  <p className="font-display text-3xl font-bold text-white">
-                    {L("Une commande de ", "A ")}{money(exampleBase)}{L(" vous rapporte ", " order earns you ")}
-                    <span className="text-nova tabular-nums">{money(exampleEarn)}</span>
-                  </p>
-                  <p className="font-data text-xs text-white/60 mt-1">
-                    {L(`${Math.round((data?.commission_rate || 0) * 100)} % du sous-total des produits après rabais : livraison et taxes exclues.`,
-                       `${Math.round((data?.commission_rate || 0) * 100)}% of the product subtotal after discount : shipping and taxes excluded.`)}
-                  </p>
+            {/* LE MOMENT FORT DE LA PAGE, ET IL ETAIT INVISIBLE.
+                Le 2026-09-25, une passe de nettoyage a retire `bg-nordfjord`
+                de ce bandeau SANS toucher aux `text-white` qu'il contenait :
+                six lignes de texte blanc sur une page blanche. L'affiliee
+                ouvrait son compte devant un cadre vide — exactement la plainte
+                « les informations ne sont pas faciles a trouver ».
+
+                Il est reconstruit comme ce qu'il doit etre : la seule surface
+                sombre de la page, et son plus gros chiffre. C'est ce qu'on
+                vient voir en ouvrant son compte d'affiliee — pas un menu, pas
+                un tableau : ce qu'on a gagne. La maille moleculaire et la
+                texture de bruit le rattachent au hero de la boutique : c'est
+                la meme marque, vue de l'interieur. */}
+            <div className="relative overflow-hidden bg-nordfjord text-clinical texture-bruit px-6 py-7 sm:px-8 sm:py-8"
+                 style={{ borderRadius: "var(--r-l)" }} data-testid="affiliate-hero">
+              {/* La lueur du palier, derriere le contenu. `pointer-events-none`
+                  parce qu'une decoration ne doit jamais intercepter un clic. */}
+              <div className="absolute inset-0 pointer-events-none"
+                   style={{ background: tierLueur }} aria-hidden="true" />
+              <div className="relative flex flex-wrap items-end justify-between gap-x-8 gap-y-6">
+                <div className="min-w-0">
+                  {Number(data?.cumulative_revenue || 0) === 0 ? (
+                    <>
+                      <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">
+                        {L("CE QUE VOUS GAGNEZ", "WHAT YOU EARN")}
+                      </p>
+                      {/* SANS VENTE, UN « 0,00 $ » EN GROS N'APPREND RIEN.
+                          On montre ce qu'une commande RAPPORTE : c'est la seule
+                          chose motivante a dire a quelqu'un qui commence. */}
+                      <p className="font-display text-[26px] sm:text-[30px] font-bold leading-[1.15] max-w-[22ch]">
+                        {L("Une commande de ", "A ")}
+                        <span className="tabular-nums">{money(exampleBase)}</span>
+                        {L(" vous rapporte ", " order earns you ")}
+                        <span className="text-nova tabular-nums">{money(exampleEarn)}</span>
+                      </p>
+                      <p className="text-[12px] text-mist mt-2.5 leading-relaxed max-w-[46ch]">
+                        {L(`${Math.round((data?.commission_rate || 0) * 100)} % du sous-total des produits après rabais : livraison et taxes exclues.`,
+                           `${Math.round((data?.commission_rate || 0) * 100)}% of the product subtotal after discount : shipping and taxes excluded.`)}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">
+                        {L("GAINS DU MOIS EN COURS", "THIS MONTH'S EARNINGS")}
+                      </p>
+                      {/* LE CHIFFRE EST LE HEROS. Il passait a 28 px, la taille
+                          d'un sous-titre ; il monte a 52 px. C'est le nombre
+                          qu'on vient chercher, et il doit se lire d'un coup
+                          d'oeil depuis l'autre bout de la piece. */}
+                      {/* LE CHIFFRE COMPTE JUSQU'A SON TOTAL. Vu une fois par
+                          visite, il entre dans le cas « occasionnel » de la
+                          table de frequence d'Emil : celui qui autorise le
+                          plaisir. Et le compte EST la lecture du montant, pas
+                          une decoration posee dessus. */}
+                      <ChiffreAnime
+                        valeur={insights?.current_month?.commission}
+                        format={money}
+                        testId="affiliate-gains-mois"
+                        className="block font-display text-[44px] sm:text-[52px] font-bold leading-[0.95] tracking-[-0.03em]"
+                      />
+                      <p className="text-[13px] text-mist mt-2">
+                        {money(insights?.current_month?.revenue)} {L("de ventes validées", "in validated sales")}
+                      </p>
+                    </>
+                  )}
                 </div>
-              ) : (
-              <div>
-                <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
-                  {L("GAINS DU MOIS EN COURS", "THIS MONTH'S EARNINGS")}
-                </p>
-                <p className="font-display text-[28px] font-semibold text-nordfjord tabular-nums">
-                  {money(insights?.current_month?.commission)}
-                </p>
-                <p className="font-data text-xs text-white/60 mt-1">
-                  {money(insights?.current_month?.revenue)} {L("de ventes validées", "in validated sales")}
-                </p>
+
+                {/* LE PALIER MONTE DANS LE BANDEAU. C'est le rang dont on est
+                    fier : il vivait en petite pastille perdue dans l'en-tete,
+                    a cote d'un bouton de theme. Ici il accompagne le chiffre
+                    qu'il explique — le taux et les gains se lisent ensemble. */}
+                <div className="flex items-end gap-6 sm:gap-8">
+                  <div>
+                    <p className="font-data text-[10px] uppercase tracking-[0.2em] text-mist mb-1.5">
+                      {data?.tier_agreement ? L("Taux convenu", "Agreed rate") : L("Votre palier", "Your tier")}
+                    </p>
+                    <p className="font-display text-[19px] font-bold leading-none flex items-center gap-2"
+                       style={{ color: tierColor }}>
+                      <TierMark tier={data?.tier} color={tierColor} size={18} />
+                      {tierLabel}
+                    </p>
+                    <p className="font-data text-[13px] font-semibold text-nova tabular-nums mt-1.5">
+                      {Math.round((data?.commission_rate || 0) * 100)} %
+                    </p>
+                  </div>
+
+                  {insights?.best_month && (
+                    <div className="pl-6 sm:pl-8 border-l border-abyss">
+                      <p className="font-data text-[10px] uppercase tracking-[0.2em] text-mist mb-1.5">
+                        {L("Meilleur mois", "Best month")}
+                      </p>
+                      <p className="font-display text-[19px] font-bold leading-none tabular-nums">
+                        {money(insights.best_month.commission)}
+                      </p>
+                      <p className="font-data text-[12px] text-mist mt-1.5">{insights.best_month.month}</p>
+                    </div>
+                  )}
+                </div>
               </div>
-              )}
-              {insights?.best_month && (
-                <div className="text-right">
-                  <p className="font-data text-[11px] uppercase tracking-wider text-white/50 mb-1">
-                    {L("Meilleur mois", "Best month")}
-                  </p>
-                  <p className="font-display text-xl font-bold text-white">{money(insights.best_month.commission)}</p>
-                  <p className="font-data text-xs text-white/60">{insights.best_month.month}</p>
-                </div>
-              )}
             </div>
 
             {/* Le cycle de versement. « Commissions approuvées » mêlait deux
@@ -945,7 +1041,8 @@ export default function AffiliateDashboard() {
                 <ol className="grid grid-cols-1 sm:grid-cols-3 gap-4 list-none p-0 m-0">
                   {steps.map((st, i) => (
                     <li key={i}
-                        className={`bg-white rounded-xl border p-5 ${
+                        className={`bg-white rounded-xl border p-5 transition-colors duration-150
+                          hover:border-nova ${
                           i === nextStep ? "border-nova ring-1 ring-nova" : "border-ash"}`}>
                       <p className="font-data text-[10px] uppercase tracking-[0.18em] text-glacier">
                         {st.done
@@ -1181,9 +1278,19 @@ export default function AffiliateDashboard() {
                       {L("Encore", "Still")} {money(data.remaining_to_next)} {L("pour", "to reach")} {TIER_META[data.next_tier.tier]?.[lang] || data.next_tier.tier} ({Math.round(data.next_tier.rate * 100)}%)
                     </span>
                   </div>
+                  {/* LA BARRE SE REMPLIT AU LIEU D'APPARAITRE PLEINE.
+                      Le remplissage DIT la progression : c'est la meme
+                      information, mais vue avancer. Aux couleurs du palier
+                      VISE, pas du palier actuel — on regarde ou l'on va.
+                      La transition porte la seule largeur, jamais `all` : une
+                      propriete nommee est une propriete qu'on maitrise. */}
                   <div className="h-3 rounded-full bg-ash overflow-hidden">
                     <div className="h-full rounded-full transition-all"
-                         style={{ width: `${progress || 0}%`, background: "rgb(var(--fn-nova))" }} />
+                         style={{
+                           width: `${barreRemplie ? (progress || 0) : 0}%`,
+                           background: `linear-gradient(90deg, rgb(var(${tierJeton})) 0%, rgb(var(--fn-nova)) 100%)`,
+                           transition: "width 900ms cubic-bezier(0.23, 1, 0.32, 1)",
+                         }} />
                   </div>
                   <p className="font-data text-[11px] text-glacier mt-2">{progress || 0}%</p>
                 </>
