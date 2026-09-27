@@ -84,7 +84,9 @@ export function AuthProvider({ children }) {
       const { data } = await api.post("/auth/login", { email, password });
       setUser({ id: data.id, email: data.email, name: data.name, role: data.role, created_at: data.created_at });
       emitSessionRestored(data.email);
-      return { ok: true };
+      // Le serveur dit si le compte est AFFILIE : la redirection d'apres
+      // connexion en depend — une affiliee retourne a SON tableau de bord.
+      return { ok: true, isAffiliate: Boolean(data.is_affiliate) };
     } catch (e) {
       // Message d'erreur explicite qui distingue:
       //  - une vraie réponse HTTP (mauvais mdp, 429…): affiche le detail serveur
@@ -139,7 +141,9 @@ export function AuthProvider({ children }) {
       const { data } = await api.post("/auth/magic/verify", { token });
       setUser({ id: data.id, email: data.email, name: data.name, role: data.role, created_at: data.created_at });
       emitSessionRestored(data.email);
-      return { ok: true };
+      // Le serveur dit si le compte est AFFILIE : la redirection d'apres
+      // connexion en depend — une affiliee retourne a SON tableau de bord.
+      return { ok: true, isAffiliate: Boolean(data.is_affiliate) };
     } catch (e) {
       return { ok: false, error: formatApiError(e.response?.data?.detail) || e.message };
     }

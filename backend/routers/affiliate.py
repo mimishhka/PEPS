@@ -28,6 +28,16 @@ async def affiliate_me(request: Request, lang: str = "fr"):
     return await s.affiliate_me(request, lang)
 
 
+@router.get("/affiliate/notifications")
+async def affiliate_notifications(request: Request, limit: int = 20):
+    return await s.affiliate_notifications(request, limit)
+
+
+@router.post("/affiliate/notifications/dismiss")
+async def affiliate_notification_dismiss(request: Request, payload: dict):
+    return await s.affiliate_notification_dismiss(request, payload)
+
+
 @router.post("/affiliate/terms/accept")
 async def affiliate_terms_accept(payload: s.AffiliateTermsAcceptIn, request: Request):
     return await s.affiliate_terms_accept(payload, request)

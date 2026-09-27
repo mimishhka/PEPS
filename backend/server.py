@@ -1762,9 +1762,14 @@ async def magic_verify(response: Response, request: Request, token: str = Body(.
             asyncio.create_task(welcome_new_user(email, user.get("name", ""), "fr"))
         user = {**user, "email_verified": True}
     await _start_session(response, request, user)
+    aff = await db.affiliates.find_one(
+        {"email": email, "status": "active"}, {"_id": 0, "id": 1})
     return {
         "id": user["id"], "email": user["email"], "name": user["name"],
         "role": user["role"], "created_at": user["created_at"],
+        # « Affilie » au sens du programme : actif ET avec une fiche. Le
+        # frontend l'emploie pour choisir la destination apres connexion.
+        "is_affiliate": bool(aff),
     }
 
 
@@ -10323,6 +10328,7 @@ async def _start_background_workers() -> None:
     """Lance les tâches de fond. Appelé une seule fois, verrou en main."""
     asyncio.create_task(_unpaid_orders_watchdog())
     asyncio.create_task(_monthly_payouts_scheduler())
+    asyncio.create_task(_affiliate_reminders_scheduler())
     asyncio.create_task(_backfill_dispatch_batch())
     asyncio.create_task(_release_preorders_watchdog())
     if INTERAC_AUTOCONFIRM_MODE == "strict":
@@ -10474,6 +10480,7 @@ try:
         affiliate_on_order_paid, affiliate_on_order_reversed, affiliate_maintenance_watchdog,
         _process_affiliate_email_job, _affiliate_email_worker, affiliate_ensure_indexes,
         _defer_affiliate_payout_below_threshold, _monthly_payouts_scheduler,
+        _affiliate_reminders_scheduler, _affiliate_notifier,
         _generate_payouts_for_period, _affiliate_payout_amounts,
         _annoncer_versement_du_cycle, _confirmer_versement_envoye,
         _reprendre_avis_en_echec,
@@ -10491,6 +10498,7 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
         affiliate_on_order_paid, affiliate_on_order_reversed, affiliate_maintenance_watchdog,
         _process_affiliate_email_job, _affiliate_email_worker, affiliate_ensure_indexes,
         _defer_affiliate_payout_below_threshold, _monthly_payouts_scheduler,
+        _affiliate_reminders_scheduler, _affiliate_notifier,
         _generate_payouts_for_period, _affiliate_payout_amounts,
         _annoncer_versement_du_cycle, _confirmer_versement_envoye,
         _reprendre_avis_en_echec,
@@ -11190,6 +11198,10 @@ async def _notify_ticket_reply(ticket: dict) -> None:
     email = (ticket.get("affiliate_email") or "").strip()
     if not email:
         return
+    # LA REPONSE DEVIENT AUSSI UNE NOTIFICATION DANS LE COMPTE : la cloche
+    # s'allume sans attendre la lecture du courriel.
+    if ticket.get("affiliate_id"):
+        await _affiliate_notifier(ticket["affiliate_id"], "message")
     lien = f"{_trusted_public_base_url()}/affiliate"
     sujet = ticket.get("subject", "")
     body_html = f"""\
@@ -11506,6 +11518,11 @@ async def affiliate_me(request: Request, lang: str = "fr"):
     # la ventilation mensuelle ne se paie qu'ici, pas sur le chemin de l'argent.
     metrics = await _affiliate_compute_metrics(aff["id"], avec_mensuel=True)
     out = _affiliate_public(aff, metrics, lang=lang)
+    try:
+        out["notifications_unread"] = await db.affiliate_notifications.count_documents(
+            {"affiliate_id": aff["id"], "dismissed": False})
+    except Exception:
+        out["notifications_unread"] = 0
     # Taux de change CAD→USD transparent (Banque du Canada) — utilisé dans
     # l'aperçu Payments pour montrer combien 1 CAD = X USDT/USDC.
     try:
@@ -11517,6 +11534,30 @@ async def affiliate_me(request: Request, lang: str = "fr"):
         # ne bloque pas le dashboard si l'API Banque du Canada est down
         pass
     return out
+
+
+async def affiliate_notifications(request: Request, limit: int = 20):
+    """Les notifications non lues de l'affilie, les plus recentes d'abord."""
+    aff = await get_current_affiliate(request)
+    rows = await db.affiliate_notifications.find(
+        {"affiliate_id": aff["id"], "dismissed": False},
+        {"_id": 0, "id": 1, "kind": 1, "ref": 1, "created_at": 1},
+    ).sort([("created_at", -1)]).limit(min(max(limit, 1), 50)).to_list(None)
+    return {"notifications": rows}
+
+
+async def affiliate_notification_dismiss(request: Request, payload: dict = Body(...)):  # noqa: F821
+    """Efface UNE notification (payload.id) ou TOUTES (payload.all)."""
+    aff = await get_current_affiliate(request)
+    filtre = {"affiliate_id": aff["id"], "dismissed": False}
+    if not payload.get("all"):
+        nid = (payload.get("id") or "").strip()
+        if not nid:
+            raise HTTPException(400, "id requis (ou all=true).")
+        filtre["id"] = nid
+    await db.affiliate_notifications.update_many(
+        filtre, {"$set": {"dismissed": True}})
+    return {"ok": True}
 
 
 async def affiliate_referrals(request: Request, limit: int = 200,

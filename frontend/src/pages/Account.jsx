@@ -92,25 +92,35 @@ export default function Account() {
           <Link
             to="/affiliate"
             data-testid="account-affiliate-link"
-            className="group rounded-xl border border-nova/40 bg-gradient-to-br from-nova/8 to-transparent p-5 sm:p-6 mb-8 flex items-center gap-4 flex-wrap hover:border-nova hover:shadow-md transition"
+            className="group block rounded-xl border border-nova/40 bg-gradient-to-br from-nova/8 to-transparent p-5 sm:p-6 mb-8 hover:border-nova hover:shadow-md transition"
           >
-            <div className="w-11 h-11 rounded-xl bg-nova text-nordfjord flex items-center justify-center font-display font-bold text-lg shrink-0" aria-hidden="true">
-              ★
+            {/* EN VERTICAL, LE FLEX-WRAP EMPILAIT MAL : le texte se repliait
+                sous l'icone et le libelle d'action tombait en morceaux.
+                Structure en deux blocs : la tete (icone + titre) sur une
+                ligne, le detail et l'action en dessous, sur toute la
+                largeur. */}
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 rounded-xl bg-nova text-nordfjord flex items-center justify-center font-display font-bold text-lg shrink-0" aria-hidden="true">
+                ★
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-data text-[10px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-1">
+                  {lang === "fr" ? "PROGRAMME AFFILIÉ · ACTIF" : "AFFILIATE PROGRAM · ACTIVE"}
+                </p>
+                <p className="font-display text-lg font-bold text-nordfjord leading-tight">
+                  {lang === "fr" ? "Mon programme affilié" : "My affiliate program"}
+                </p>
+              </div>
+              <span className="hidden sm:inline font-data text-xs font-semibold uppercase tracking-[0.18em] text-nordfjord group-hover:text-nova-texte transition-colors shrink-0">
+                {lang === "fr" ? "Ouvrir" : "Open"} →
+              </span>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-data text-[10px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-1">
-                {lang === "fr" ? "PROGRAMME AFFILIÉ · ACTIF" : "AFFILIATE PROGRAM · ACTIVE"}
-              </p>
-              <p className="font-display text-lg font-bold text-nordfjord leading-tight">
-                {lang === "fr" ? "Mon programme affilié" : "My affiliate program"}
-              </p>
-              <p className="font-data text-xs text-glacier mt-1">
-                {lang === "fr"
-                  ? <>Code : <span className="text-nordfjord font-bold">{affiliate.code}</span> · Consultez vos revenus, clics et meilleurs produits</>
-                  : <>Code: <span className="text-nordfjord font-bold">{affiliate.code}</span> · Track your earnings, clicks and best-selling products</>}
-              </p>
-            </div>
-            <span className="font-data text-xs font-semibold uppercase tracking-[0.18em] text-nordfjord group-hover:text-nova-texte transition-colors shrink-0">
+            <p className="font-data text-xs text-glacier mt-2.5 leading-relaxed">
+              {lang === "fr"
+                ? <>Code : <span className="text-nordfjord font-bold">{affiliate.code}</span> · Consultez vos revenus, clics et meilleurs produits</>
+                : <>Code: <span className="text-nordfjord font-bold">{affiliate.code}</span> · Track your earnings, clicks and best-selling products</>}
+            </p>
+            <span className="inline-block sm:hidden mt-2.5 font-data text-xs font-semibold uppercase tracking-[0.18em] text-nordfjord group-hover:text-nova-texte transition-colors">
               {lang === "fr" ? "Ouvrir le tableau de bord" : "Open dashboard"} →
             </span>
           </Link>

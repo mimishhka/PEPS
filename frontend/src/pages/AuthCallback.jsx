@@ -36,8 +36,14 @@ export default function AuthCallback() {
     window.history.replaceState({}, "", cleanUrl);
     (async () => {
       const res = await verifyMagic(token);
-      if (res.ok) navigate(redirectTo, { replace: true });
-      else setStatus("error");
+      if (!res.ok) { setStatus("error"); return; }
+      // MIREILLE : une affiliee qui se connecte doit arriver sur SON tableau
+      // de bord, pas sur le compte client. Le repli /account ne s'applique
+      // qu'aux comptes non affilies ; une destination precise (checkout,
+      // page demandee) garde la priorite.
+      const cible = res.isAffiliate && redirectTo === "/account"
+        ? "/affiliate" : redirectTo;
+      navigate(cible, { replace: true });
     })();
   }, [location.hash, location.pathname, location.search, navigate, verifyMagic]);
 

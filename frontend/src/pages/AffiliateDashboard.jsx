@@ -8,7 +8,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip,
 import { QRCodeSVG } from "qrcode.react";
 import {
   MousePointerClick, ShoppingBag, Wallet, Download,
-  MessageCircle, Send, Mail, Check } from "lucide-react";
+  MessageCircle, Send, Mail, Check, User } from "lucide-react";
 import api, { formatApiError } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
@@ -21,6 +21,7 @@ import TermsModal from "../components/TermsModal";
 import TierLadder from "../components/TierLadder";
 import CarteAffilie from "../components/CarteAffilie";
 import OngletsAffilie, { CLES_ONGLETS } from "../components/OngletsAffilie";
+import ClocheAffilie from "../components/ClocheAffilie";
 import ChiffreAnime from "../components/ChiffreAnime";
 import ThemeToggle from "../components/ThemeToggle";
 
@@ -167,6 +168,19 @@ export default function AffiliateDashboard() {
   const [activity, setActivity] = useState([]);
   // L'onglet initial peut venir de l'URL : la page FAQ renvoie vers
   // /affiliate?tab=payments quand on quitte le menu par un bouton.
+  const [menuCompteOuvert, setMenuCompteOuvert] = useState(false);
+  const menuCompte = useRef(null);
+  useEffect(() => {
+    if (!menuCompteOuvert) return undefined;
+    const fermer = (e) => {
+      if (menuCompte.current && !menuCompte.current.contains(e.target)) {
+        setMenuCompteOuvert(false);
+      }
+    };
+    document.addEventListener("pointerdown", fermer);
+    return () => document.removeEventListener("pointerdown", fermer);
+  }, [menuCompteOuvert]);
+
   const [tab, setTab] = useState(() => {
     const p = new URLSearchParams(window.location.search).get("tab");
     return p && CLES_ONGLETS.includes(p) ? p : "overview";
@@ -919,7 +933,46 @@ export default function AffiliateDashboard() {
                 {codeCopie ? L("Copié ✓", "Copied ✓") : L("Copier", "Copy")}
               </button>
             </p>
-            <ThemeToggle />
+            <ClocheAffilie L={L} onOuvrirParametres={() => setTab("settings")} />
+
+            {/* LE MENU COMPTE. Mireille : l'option jour/nuit devait etre
+                ailleurs, et l'icone compte doit mener au compte client.
+                Les deux vivent ici, avec la deconnexion. */}
+            <div className="relative" ref={menuCompte}>
+              <button onClick={() => setMenuCompteOuvert((o) => !o)}
+                aria-label={L("Compte", "Account")}
+                data-testid="affiliate-account-menu"
+                className="p-2.5 rounded-full border border-ash text-glacier
+                           hover:text-nordfjord hover:border-nova transition-colors
+                           active:scale-[0.97]">
+                <User size={16} />
+              </button>
+              {menuCompteOuvert && (
+                <div className="absolute right-0 top-11 z-50 w-[240px]
+                                rounded-xl border border-ash bg-white overflow-hidden"
+                     style={{ boxShadow: "var(--ombre-flotte)" }}
+                     data-testid="affiliate-account-menu-panel">
+                  <Link to="/account" data-testid="account-menu-client"
+                    className="block px-4 py-3 text-[13px] text-nordfjord
+                               hover:bg-clinical transition-colors">
+                    {L("Mon compte client", "My customer account")}
+                  </Link>
+                  <div className="flex items-center justify-between px-4 py-2
+                                  border-t border-ash">
+                    <span className="text-[13px] text-nordfjord">
+                      {L("Mode nuit", "Dark mode")}
+                    </span>
+                    <ThemeToggle />
+                  </div>
+                  <button onClick={logout} data-testid="account-menu-logout"
+                    className="block w-full text-left px-4 py-3 border-t border-ash
+                               text-[13px] text-glacier hover:text-error hover:bg-clinical
+                               transition-colors">
+                    {L("Se déconnecter", "Log out")} →
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

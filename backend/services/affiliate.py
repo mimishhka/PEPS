@@ -8,7 +8,9 @@ import os
 import re
 import secrets
 import uuid
+import calendar
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 from fastapi import HTTPException, Request, Response
@@ -67,6 +69,30 @@ def _affiliate_tier_index(tier: str) -> int:
         if name == tier:
             return i
     return 0
+
+
+async def _affiliate_notifier(affiliate_id: str, kind: str, ref: str = "") -> None:
+    """Cree une notification d'affilie, avec de-duplication par (kind, ref).
+
+    `kind` : "message" (reponse du support), "palier" (palier franchi),
+    "paiement" (parametres de versement manquants).
+    `ref` : la cle qui empeche le doublon — le palier atteint, ou le mois
+    "YYYY-MM" pour le rappel mensuel.
+    """
+    if ref:
+        deja = await s.db.affiliate_notifications.find_one(
+            {"affiliate_id": affiliate_id, "kind": kind, "ref": ref,
+             "dismissed": False})
+        if deja:
+            return
+    await s.db.affiliate_notifications.insert_one({
+        "id": str(uuid.uuid4()),
+        "affiliate_id": affiliate_id,
+        "kind": kind,
+        "ref": ref or "",
+        "dismissed": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
 
 
 def _affiliate_palier_le_plus_haut(a: str, b: str) -> str:
@@ -1534,6 +1560,23 @@ async def affiliate_on_order_paid(order: dict) -> None:
     metrics = await _affiliate_compute_metrics(affiliate_id)
     commission = round(base * metrics["commission_rate"], 2)
 
+    # LA MONTEE DE PALIER SE NOTIFIE. Sans cette ligne, l'affiliee decouvrait
+    # son nouveau taux au hasard d'un releve. On ne notifie que les MONTESS
+    # (jamais les descentes, qui ne sont pas une nouvelle a celebrer) et
+    # jamais Standard, qui n'est pas un palier atteint mais un point de
+    # depart. Le dernier palier notifie vit sur la fiche : aucune comparaison
+    # couteuse, et un palier force par entente est silencieux par nature.
+    nouveau_palier = metrics["tier"]
+    if (not metrics.get("tier_is_manual")
+            and not affiliate.get("tier_agreement")
+            and _affiliate_tier_index(nouveau_palier) > _affiliate_tier_index("standard")):
+        dernier = affiliate.get("notifie_palier") or ""
+        if (nouveau_palier != dernier
+                and _affiliate_tier_index(nouveau_palier) > _affiliate_tier_index(dernier or "standard")):
+            await s.db.affiliates.update_one(
+                {"id": affiliate_id}, {"$set": {"notifie_palier": nouveau_palier}})
+            await _affiliate_notifier(affiliate_id, "palier", nouveau_palier)
+
     # Auto-achat : commande passée par l'affilié avec son propre code/lien.
     # Décision commerciale assumée — le rabais ET la commission sont conservés.
     # On ne fait que FLAGGER pour le suivi admin ; ce n'est pas un signal de
@@ -2610,6 +2653,97 @@ async def _reprendre_avis_en_echec(maintenant=None) -> int:
 
 
 # ---- Scheduler mensuel (America/Toronto minuit local) ------------------------
+async def _affiliate_payout_setup_reminder() -> None:
+    """RAPPEL DE MIREILLE : cinq jours avant la fin du mois, un affilie qui a
+    de quoi etre paye mais AUCUNE adresse de versement recois une
+    notification ET un courriel. De-duplique par mois (ref "YYYY-MM") : le
+    serveur peut tourner chaque jour sans jamais envoyer deux fois."""
+
+    now_local = datetime.now(ZoneInfo("America/Toronto"))
+    dernier_jour = calendar.monthrange(now_local.year, now_local.month)[1]
+    jours_restants = dernier_jour - now_local.day
+    if jours_restants > 5:
+        return
+    mois = "%04d-%02d" % (now_local.year, now_local.month)
+
+    affilies = await s.db.affiliates.find(
+        {"status": "active"}, {"_id": 0, "id": 1, "email": 1, "first_name": 1}).to_list(None)
+    for aff in affilies:
+        try:
+            if (aff.get("payout_address") or "").strip():
+                continue
+            m = await _affiliate_compute_metrics(aff["id"])
+            if float(m.get("approved_commission", 0.0)) < float(s.AFFILIATE_PAYOUT_MIN_CAD):
+                continue
+            deja = await s.db.affiliate_notifications.find_one(
+                {"affiliate_id": aff["id"], "kind": "paiement", "ref": mois})
+            if deja:
+                continue
+            await _affiliate_notifier(aff["id"], "paiement", mois)
+            await s._send_email(
+                aff["email"],
+                "FIRONOVA — votre versement attend votre adresse USDT/USDC",
+                _courriel_rappel_versement(aff.get("first_name") or aff.get("email", ""),
+                                           m["approved_commission"]),
+                from_email=(s.AFFILIATE_SENDER_EMAIL or s.SENDER_EMAIL))
+        except Exception as e:  # un affilie en erreur ne bloque pas les autres
+            logging.warning("[affiliate-reminder] rappel manque ref=%s error=%s",
+                            _private_ref(aff.get("id")), type(e).__name__)
+
+
+def _courriel_rappel_versement(prenom: str, montant: float) -> str:
+    prenom = (prenom or "").split(" ")[0] or "vous"
+    return f"""\
+<div style="font-family:Inter,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;background:#F7FAFC;padding:40px 24px;">
+  <div style="background:#0B2E4F;border-radius:20px 20px 0 0;padding:28px 32px;">
+    <span style="font-family:'Space Grotesk',sans-serif;color:#F7FAFC;font-size:20px;font-weight:700;">FIRONOVA</span>
+    <span style="color:#00B8D4;font-size:20px;font-weight:700;"> ·</span>
+  </div>
+  <div style="background:#ffffff;border-radius:0 0 20px 20px;padding:36px 32px;border:1px solid #E2E8F0;border-top:none;">
+    <h1 style="margin:0 0 12px;font-size:20px;color:#0B2E4F;">Votre versement attend une adresse</h1>
+    <p style="margin:0 0 16px;color:#3E5C76;font-size:14px;line-height:1.6;">
+      Bonjour {prenom}, vos commissions approuvees totalisent
+      <b style="color:#0B2E4F;">{montant:,.2f} $ CAD</b> et partent le 1er du mois
+      prochain. Sans adresse USDT/USDC configuree, le versement ne peut pas partir.
+    </p>
+    <a href="{s._trusted_public_base_url()}/affiliate?tab=settings"
+       style="display:inline-block;background:#00B8D4;color:#0B2E4F;text-decoration:none;padding:12px 24px;border-radius:999px;font-weight:700;font-size:14px;">
+      Configurer mon adresse de versement
+    </a>
+    <p style="margin:24px 0 0;font-size:11px;color:#A0AEC0;">
+      Une adresse Ethereum (0x…) ou Tron (T…) suffit. Les frais de reseau sont plus faibles sur Tron.
+    </p>
+  </div>
+</div>"""
+
+
+async def _affiliate_reminders_scheduler():
+    """Chaque jour a 11 h 07 (heure de Montreal) : le rappel de versement, et
+    le nettoyage des notifications lues de plus de 90 jours."""
+
+    while True:
+        try:
+            tz = ZoneInfo("America/Toronto")
+            now_local = datetime.now(tz)
+            next_run = now_local.replace(hour=11, minute=7, second=0, microsecond=0)
+            if next_run <= now_local:
+                next_run += timedelta(days=1)
+            wait_s = (next_run - now_local).total_seconds()
+            logging.info("[affiliate-reminders] next run: %s (in %.0f min)",
+                         next_run.isoformat(), wait_s / 60)
+            await asyncio.sleep(max(60, wait_s))
+            await _affiliate_payout_setup_reminder()
+            try:
+                seuil = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+                await s.db.affiliate_notifications.delete_many(
+                    {"dismissed": True, "created_at": {"$lt": seuil}})
+            except Exception as e:
+                logging.warning("[affiliate-reminders] cleanup error: %s", e)
+        except Exception as e:
+            logging.error("[affiliate-reminders] loop error: %s", e)
+            await asyncio.sleep(3600)
+
+
 async def _monthly_payouts_scheduler():
     """Génère automatiquement les payouts le 1er de chaque mois à minuit
     America/Toronto (heure locale québécoise). Anti-double via collection
