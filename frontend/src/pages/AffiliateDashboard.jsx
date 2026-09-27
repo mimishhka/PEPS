@@ -20,6 +20,7 @@ import AffiliateSupport from "../components/AffiliateSupport";
 import TermsModal from "../components/TermsModal";
 import TierLadder from "../components/TierLadder";
 import CarteAffilie from "../components/CarteAffilie";
+import OngletsAffilie, { CLES_ONGLETS } from "../components/OngletsAffilie";
 import ChiffreAnime from "../components/ChiffreAnime";
 import ThemeToggle from "../components/ThemeToggle";
 
@@ -164,7 +165,12 @@ export default function AffiliateDashboard() {
   const [insights, setInsights] = useState(null);
   const [sources, setSources] = useState(null);
   const [activity, setActivity] = useState([]);
-  const [tab, setTab] = useState("overview");
+  // L'onglet initial peut venir de l'URL : la page FAQ renvoie vers
+  // /affiliate?tab=payments quand on quitte le menu par un bouton.
+  const [tab, setTab] = useState(() => {
+    const p = new URLSearchParams(window.location.search).get("tab");
+    return p && CLES_ONGLETS.includes(p) ? p : "overview";
+  });
   // L ONGLET ACTIF SE RAMENE EN VUE. Sur telephone, la barre glisse : revenir
   // sur « Aide », le dernier des six, laissait la barre au debut et l onglet
   // choisi hors ecran. On ne demande pas a quelqu un de rechercher la ou il
@@ -814,18 +820,6 @@ export default function AffiliateDashboard() {
       { month: "long", year: "numeric", timeZone: "UTC" });
   })();
 
-  const TABS = [
-    ["overview", L("Vue globale", "Overview")],
-    ["performance", L("Performance", "Performance")],
-    ["payments", L("Paiements", "Payments")],
-    ["compliance", L("Conformité", "Compliance")],
-    ["settings", L("Paramètres", "Settings")],
-    ["support", L("Aide", "Help")],
-    // La FAQ vit dans le MENU, pas sous la carte : c'est un endpoint comme
-    // les autres. C'est une PAGE complete (conditions, etats d'erreur), donc
-    // l'onglet y mene au lieu d'incruster la page dans le tableau de bord.
-    ["faq", L("FAQ", "FAQ")],
-  ];
 
   // Conditions non acceptées pour la version courante : on rend UNIQUEMENT
   // l'écran d'acceptation. Pas une surcouche par-dessus le tableau de bord -
@@ -908,36 +902,10 @@ export default function AffiliateDashboard() {
             toujours un ressort fait main.
             L'onglet actif se ramene en vue au chargement : revenir sur
             « Paiements » ne doit pas obliger a rechercher l'onglet. */}
-        {/* LES ONGLETS SORTENT DU BLANC : l'inactif est transparent, pose
-            sur un filet. Seul l'actif porte la couleur pleine — un seul
-            objet sombre par ligne, comme la carte. */}
-        <div className="-mx-5 px-5 sm:mx-0 sm:px-0 mb-7 overflow-x-auto sm:overflow-visible
-                        scrollbar-none snap-x snap-mandatory border-b border-ash pb-2.5">
-          <div className="flex gap-1 w-max sm:w-auto sm:flex-wrap">
-            {TABS.map(([k, label]) => (
-              k === "faq" ? (
-                <Link key={k} to="/affiliate/faq" data-testid="affiliate-tab-faq"
-                  className="snap-start shrink-0 px-4 py-2.5 rounded-full font-data text-xs
-                             font-semibold uppercase tracking-wider transition-colors
-                             active:scale-[0.97] text-glacier hover:text-nordfjord hover:bg-white">
-                  {label}
-                </Link>
-              ) : (
-                <button key={k} onClick={() => setTab(k)}
-                  data-testid={`affiliate-tab-${k}`}
-                  ref={tab === k ? ongletActif : null}
-                  aria-current={tab === k ? "page" : undefined}
-                  className={`snap-start shrink-0 px-4 py-2.5 rounded-full font-data text-xs font-semibold
-                              uppercase tracking-wider transition-colors active:scale-[0.97] ${
-                    tab === k ? "bg-nordfjord text-white shadow-sm"
-                              : "text-glacier hover:text-nordfjord hover:bg-white"
-                  }`}>
-                  {label}
-                </button>
-              )
-            ))}
-          </div>
-        </div>
+        {/* LE MENU PARTAGE : meme barre sur le tableau de bord et sur la
+            page FAQ, donc meme ordre, memes libelles, meme style — les deux
+            ecrans ne peuvent pas diverger. Voir OngletsAffilie. */}
+        <OngletsAffilie actif={tab} L={L} onTab={setTab} actifRef={ongletActif} />
 
         {/* OVERVIEW */}
         {tab === "overview" && (

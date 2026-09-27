@@ -18,6 +18,7 @@ import useAffiliate from "../hooks/useAffiliate";
 import { useAuth } from "../contexts/AuthContext";
 import { oublierVisiteVue } from "../components/GuidedTour";
 import { DashboardSkeleton } from "../components/LoadingSkeletons";
+import OngletsAffilie from "../components/OngletsAffilie";
 import api from "../lib/api";
 
 const QA = [
@@ -279,7 +280,12 @@ export default function AffiliateFaq() {
 
   return (
     <div className="bg-clinical min-h-screen">
-      <div className="max-w-3xl mx-auto px-6 py-16 space-y-10" data-testid="affiliate-faq-page">
+      <div className="max-w-3xl mx-auto px-6 pt-12 pb-16 space-y-10" data-testid="affiliate-faq-page">
+        {/* LE MENU, ICI AUSSI : Mireille — « le menu doit aussi etre sur la
+            page FAQ ». Les boutons renvoient vers le tableau de bord avec
+            l'onglet voulu ; FAQ reste l'entree active. */}
+        <OngletsAffilie actif="faq" L={L}
+                        onTab={(k) => navigate(`/affiliate?tab=${k}`)} />
         <header className="border-b border-ash pb-6">
           <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-3">
             {L("PROGRAMME D'AFFILIATION", "AFFILIATE PROGRAM")}
