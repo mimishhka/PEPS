@@ -845,7 +845,8 @@ export default function AffiliateDashboard() {
       {tourOuvert && (
         <GuidedTour steps={TOUR} L={L} onClose={fermerTour} onTab={setTab} />
       )}
-      <div className="relative max-w-6xl mx-auto px-6 py-16" data-testid="affiliate-dashboard">
+      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-10 sm:py-16"
+           data-testid="affiliate-dashboard">
         {/* Header */}
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ash pb-6 mb-8">
           <div>
@@ -2067,11 +2068,17 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
 function KpiCard({ label, value, sub, accent, valeurBrute, format, teinte }) {
   return (
     <div
-      style={{ boxShadow: accent ? "var(--ombre-leve)" : "var(--ombre-pose)" }}
+      style={{
+        boxShadow: accent ? "var(--ombre-leve)" : "var(--ombre-pose)",
+        // Meme traitement que CarteAffilie : la carte accent restait un
+        // panneau BLANC eclatant en mode nuit. Surface marine constante,
+        // jetons de texte figes sur les valeurs de jour.
+        ...(accent ? { "--fn-clinical": "247 250 252", "--fn-mist": "183 202 221" } : {}),
+      }}
       className={`relative overflow-hidden rounded-xl border p-5
                   transition-[transform,box-shadow] duration-200 ease-out
                   hover:-translate-y-0.5 ${
-        accent ? "bg-nordfjord border-nordfjord" : "bg-white border-ash"}`}>
+        accent ? "bg-marine border-marine" : "bg-white border-ash"}`}>
       {/* Le filet de tete : un degrade qui s'eteint vers la droite, pour que
           la couleur signe la carte sans la souligner comme un onglet. */}
       {teinte && (
