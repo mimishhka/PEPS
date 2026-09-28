@@ -44,9 +44,9 @@ const EMPTY_ADDRESS = {
 };
 
 export default function Account() {
-  useDocumentHead({ title: "My Account", path: "/account", noindex: true });
   const { user, logout, refresh } = useAuth();
   const { t, lang } = useLang();
+  useDocumentHead({ title: lang === "fr" ? "Mon compte" : "My Account", path: "/account", noindex: true });
   const navigate = useNavigate();
   // L'onglet peut s'ouvrir par l'adresse : ?tab=support : pour que le lien
   // du courriel « nous avons répondu à votre demande » mène droit au fil.

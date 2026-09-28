@@ -528,6 +528,14 @@ async def _start_session(response: Response, request: Request, user: dict, famil
     )
     set_auth_cookie(response, access_token, request)
     _set_refresh_cookie(response, raw_refresh, request)
+    # E2E AU-012/AF-007 : le code affilie capte pendant une visite s'appliquait
+    # aussi a la commande d'un AUTRE compte connecte ensuite dans le meme
+    # onglet. A la connexion, l'attribution de la visite s'eteint : un compte
+    # qui se connecte n'arrive plus « par un lien ».
+    try:
+        response.delete_cookie(s.AFFILIATE_COOKIE_NAME, path="/")
+    except Exception:
+        pass
 
 
 def _reject_refresh(detail: str) -> JSONResponse:
@@ -972,6 +980,24 @@ class StockNotifyIn(BaseModel):
     product_id: str
     variant_id: Optional[str] = None
     website: str = ""  # honeypot anti-bot — doit rester vide
+
+
+class CartLineIn(BaseModel):
+    """Une ligne de panier telle que le navigateur la detient."""
+    product_id: str
+    variant_id: Optional[str] = None
+
+
+class CartRevalidateIn(BaseModel):
+    """Le panier du navigateur, soumis pour re-lecture des prix.
+
+    RAPPORT E2E PA-019 : le panier vivait dans localStorage, PRIX COMPRIS.
+    Un prix modifie a la main s'affichait donc (210,99 $) alors que le
+    serveur facturait le vrai (259,98 $) : le total annonce n'etait pas
+    celui debite. Le serveur refusait bien la fraude, mais l'ecran mentait
+    jusqu'au paiement. Cette route redonne les valeurs qui font foi.
+    """
+    items: list[CartLineIn] = []
 
 
 class GuestOrderAccessIn(BaseModel):
@@ -2153,6 +2179,18 @@ async def account_delete(payload: AccountDeleteIn, response: Response,
 # ---------------------------------------------------------------------------
 # Product endpoints
 # ---------------------------------------------------------------------------
+def _stock_produit_coherent(p: dict) -> dict:
+    """E2E CA-008 : le stock au niveau produit ne correspondait pas a la
+    somme des variantes (85 vs 59...). Le produit renvoye est donc recalc —
+    la somme fait foi — et porte un indicateur `stock_low` pour l'ecran."""
+    variants = p.get("variants") or []
+    if variants:
+        p["stock"] = sum(int(v.get("stock", 0) or 0) for v in variants)
+    seuil = int(p.get("low_stock_threshold", 10) or 10)
+    p["stock_low"] = int(p.get("stock", 0) or 0) <= seuil
+    return p
+
+
 async def list_products(category: Optional[str] = None, q: Optional[str] = None, featured: Optional[bool] = None):
     filt: dict = {"active": True}
     if category and category != "all":
@@ -2169,14 +2207,58 @@ async def list_products(category: Optional[str] = None, q: Optional[str] = None,
             {"slug": {"$regex": q_safe, "$options": "i"}},
         ]
     products = await db.products.find(filt, {"_id": 0}).sort("name_en", 1).to_list(500)
-    return products
+    return [_stock_produit_coherent(p) for p in products]
 
 
 async def get_product(slug: str):
     product = await db.products.find_one({"slug": slug, "active": True}, {"_id": 0})
     if not product:
         raise HTTPException(404, "Product not found")
-    return product
+    return _stock_produit_coherent(product)
+
+
+async def cart_revalidate(payload: CartRevalidateIn, request: Request):
+    """Renvoie le prix et le stock REELS de chaque ligne du panier.
+
+    Le navigateur garde le panier en localStorage ; ces valeurs peuvent donc
+    etre vieilles (prix change entre-temps) ou trafiquees. L'ecran doit
+    afficher ce que le serveur facturera, pas ce que le navigateur a retenu.
+
+    Ne renvoie que ce qui est public — prix, stock, nom. Aucune ligne
+    inconnue n'est inventee : un produit retire rend `found: false` et
+    l'interface peut le signaler plutot que de le facturer.
+    """
+    await _rate_limit("cart_revalidate", _client_ip(request), 60, 60,
+                      "Trop de vérifications. Réessayez dans un instant.")
+    sorties = []
+    for ligne in (payload.items or [])[:50]:
+        produit = await db.products.find_one(
+            {"id": ligne.product_id, "active": True}, {"_id": 0})
+        if not produit:
+            sorties.append({"product_id": ligne.product_id,
+                            "variant_id": ligne.variant_id, "found": False})
+            continue
+        variantes = produit.get("variants") or []
+        v = None
+        if ligne.variant_id:
+            v = next((x for x in variantes if x.get("id") == ligne.variant_id), None)
+        if v is None and variantes:
+            v = variantes[0]
+        prix = float((v or {}).get("price") if v else produit.get("price_cad", 0) or 0)
+        solde = (v or {}).get("sale_price")
+        if solde and float(solde) < prix:
+            prix = float(solde)
+        sorties.append({
+            "product_id": ligne.product_id,
+            "variant_id": ligne.variant_id,
+            "found": True,
+            "price_cad": round(prix, 2),
+            "stock": int((v or {}).get("stock", produit.get("stock", 0)) or 0),
+            "variant_sku": (v or {}).get("sku", ""),
+            "name_fr": produit.get("name_fr", ""),
+            "name_en": produit.get("name_en", ""),
+        })
+    return {"items": sorties}
 
 
 async def notify_stock_request(payload: StockNotifyIn, request: Request):
@@ -2564,6 +2646,31 @@ async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict
                 asyncio.create_task(_maybe_notify_restock(product_id, vid))
         if before.get("stock", 0) <= 0 < after.get("stock", 0):
             asyncio.create_task(_maybe_notify_restock(product_id, None))
+
+        # E2E PR-004 : modifier le stock par l'editeur n'ecrivait AUCUN
+        # mouvement — pas d'audit, alors que le reapprovisionnement en cree un.
+        # Chaque variante dont le stock change est donc journalisee ici, sur
+        # le meme schema que le reassort.
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for v in after.get("variants", []):
+            vid = v.get("id")
+            avant = int(before_variant_stock.get(vid, 0) or 0)
+            apres = int(v.get("stock", 0) or 0)
+            if apres != avant:
+                await db.stock_movements.insert_one({
+                    "id": str(uuid.uuid4()),
+                    "product_id": product_id,
+                    "product_name": after.get("name_en") or after.get("name_fr") or after.get("slug"),
+                    "variant_id": vid,
+                    "variant_name": v.get("name", ""),
+                    "delta": apres - avant,
+                    "movement_type": "adjustment",
+                    "stock_before": avant,
+                    "stock_after": apres,
+                    "reason": "Éditeur produit (valeur absolue)",
+                    "admin_email": (_admin or {}).get("email", ""),
+                    "created_at": now_iso,
+                })
 
     # Re-evaluate preorders whenever stock or COA/coming-soon badges change.
     asyncio.create_task(_release_ready_preorder_orders())
@@ -3871,7 +3978,12 @@ async def checkout(payload: CheckoutIn, request: Request):
                 "send_to": INTERAC_EMAIL,
                 "amount_cad": total,
                 "reference": order_number,
-                "security_question": "What is the brand name? (lowercase)",
+                # La question etait en anglais seulement, quel que soit l'ecran
+                # (rapport E2E PM-002). Les deux langues sont stockees, et
+                # chaque ecran choisit la sienne. Les anciennes commandes n'ont
+                # que la cle anglaise : les lecteurs retombent dessus.
+                "security_question_fr": "Quel est le nom de la marque ? (en minuscules)",
+                "security_question_en": "What is the brand name? (lowercase)",
                 "security_answer_hint": INTERAC_PASSWORD_HINT.lower(),
             },
         }
@@ -8765,11 +8877,16 @@ async def order_invoice_pdf(order_id: str, request: Request):
     if not order:
         raise HTTPException(404, "Order not found")
     user = await _resolve_user(request)
-    if order.get("user_id"):
-        if not user or (user["id"] != order["user_id"] and user.get("role") != "admin"):
+    # E2E CO-007 : une commande INVITE ouvrait la facture a 403 meme pour
+    # l'admin — le jeton invite est dans le navigateur du client, pas dans
+    # la session admin. Un compte admin ou staff passe donc d'abord.
+    est_admin = bool(user and user.get("role") in ("admin", "staff"))
+    if not est_admin:
+        if order.get("user_id"):
+            if not user or user["id"] != order["user_id"]:
+                raise HTTPException(403, "Forbidden")
+        elif not _guest_order_accessible(order, request):
             raise HTTPException(403, "Forbidden")
-    elif not _guest_order_accessible(order, request):
-        raise HTTPException(403, "Forbidden")
     pdf = _generate_invoice_pdf(order)
     return Response(
         content=pdf,
@@ -15041,7 +15158,15 @@ async def seo_health():
     return {"ok": True, "source": "fironova"}
 
 async def seo_sitemap():
-    return {"sitemap": ["/", "/catalog", "/about", "/faq", "/privacy", "/compliance"]}
+    # E2E NF-008 : cette liste ne portait que six pages, aucune fiche produit.
+    # Les produits actifs s'y ajoutent — le sitemap public (sitemap.xml) le
+    # faisait deja ; cet endpoint ne doit plus induire en erreur.
+    statiques = ["/", "/catalog", "/about", "/faq", "/privacy", "/compliance"]
+    produits = []
+    async for p in db.products.find({"active": True}, {"_id": 0, "slug": 1}):
+        if p.get("slug"):
+            produits.append(f"/product/{p['slug']}")
+    return {"sitemap": statiques + produits}
 
 # ===== FIRONOVA_SEO_BACKEND_END =====
 

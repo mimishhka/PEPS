@@ -3,8 +3,8 @@ import useDocumentHead from "../hooks/useDocumentHead";
 import { MolecularMesh, NovaSpark, Reveal } from "../components/brand";
 
 export default function About() {
-  useDocumentHead({ title: "About", path: "/about" });
   const { lang } = useLang();
+  useDocumentHead({ title: lang === "fr" ? "À propos" : "About", path: "/about" });
   const isFr = lang === "fr";
 
   const steps = [
@@ -49,6 +49,80 @@ export default function About() {
                 </div>
                 <h3 className="font-display text-xl font-bold text-nordfjord mb-3">{s.t}</h3>
                 <p className="text-sm text-glacier leading-relaxed">{s.d}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      {/* CE QUI NOUS DEFINI. Trois faits, sans promesse : la recherche
+          seulement, les deux langues, l'ancrage canadien. Rien ici n'invente
+          — tout reprend ce que le site affirme deja ailleurs. */}
+      <section className="border-t border-ash bg-white">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8 py-24">
+          <Reveal>
+            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-5 flex items-center gap-2">
+              <span className="inline-block w-8 h-px bg-nova" /> {isFr ? "CE QUI NOUS DÉFINIT" : "WHAT DEFINES US"}
+            </p>
+          </Reveal>
+          <div className="grid sm:grid-cols-3 gap-10">
+            <Reveal delay={60}>
+              <h3 className="font-display text-xl font-bold text-nordfjord mb-3">
+                {isFr ? "Recherche seulement" : "Research only"}
+              </h3>
+              <p className="text-sm text-glacier leading-relaxed">
+                {isFr
+                  ? "Nos peptides sont des réactifs de recherche, destinés exclusivement aux laboratoires et aux chercheurs. Aucun produit n'est destiné à un usage humain ou vétérinaire, et chaque page le rappelle."
+                  : "Our peptides are research reagents, intended exclusively for laboratories and researchers. No product is intended for human or veterinary use, and every page says so."}
+              </p>
+            </Reveal>
+            <Reveal delay={140}>
+              <h3 className="font-display text-xl font-bold text-nordfjord mb-3">
+                {isFr ? "Bilingue, de bout en bout" : "Bilingual, end to end"}
+              </h3>
+              <p className="text-sm text-glacier leading-relaxed">
+                {isFr
+                  ? "Catalogue, commande, soutien : tout se fait en français et en anglais. Une équipe québécoise répond dans votre langue, pas par traduction automatique."
+                  : "Catalogue, checkout, support: everything works in French and English. A Québec-based team answers in your language, not through machine translation."}
+              </p>
+            </Reveal>
+            <Reveal delay={220}>
+              <h3 className="font-display text-xl font-bold text-nordfjord mb-3">
+                {isFr ? "Expédié du Canada" : "Shipped from Canada"}
+              </h3>
+              <p className="text-sm text-glacier leading-relaxed">
+                {isFr
+                  ? "Nos installations sont à Montréal. Les colis partent par Postes Canada Xpresspost, avec suivi, dans un emballage discret."
+                  : "Our facility is in Montréal. Parcels leave via Canada Post Xpresspost, tracked, in discreet packaging."}
+              </p>
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* NOS ENGAGEMENTS. Des faits verifiables, pas des slogans. */}
+      <section className="max-w-7xl mx-auto px-6 lg:px-8 py-24">
+        <Reveal>
+          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-5 flex items-center gap-2">
+            <span className="inline-block w-8 h-px bg-nova" /> {isFr ? "NOS ENGAGEMENTS" : "OUR COMMITMENTS"}
+          </p>
+        </Reveal>
+        <div className="grid sm:grid-cols-3 gap-6">
+          {[
+            { t: isFr ? "Chaque lot, testé" : "Every batch, tested",
+              d: isFr ? "Analyse par un laboratoire tiers — HPLC et spectrométrie de masse — avant mise en vente. Le certificat d'analyse (COA) du lot est téléchargeable sur la fiche du produit."
+                      : "Third-party analysis — HPLC and mass spectrometry — before release. The batch certificate of analysis (COA) is downloadable from the product page." },
+            { t: isFr ? "Des lots frais" : "Fresh batches",
+              d: isFr ? "Nous commandons en petites quantités et renouvelons régulièrement : ce que vous recevez n'a pas dormi des années sur une étagère."
+                      : "We order in small quantities and restock regularly: what you receive has not been sitting on a shelf for years." },
+            { t: isFr ? "Un vrai service" : "Real support",
+              d: isFr ? "Une question sur un composé, une commande, un certificat ? Une personne vous répond, dans votre langue, sous un à deux jours ouvrables."
+                      : "A question about a compound, an order, a certificate? A person answers, in your language, within one to two business days." },
+          ].map((e, i) => (
+            <Reveal key={e.t} delay={i * 90}>
+              <div className="rounded-xl border border-ash bg-white p-8 h-full">
+                <h3 className="font-display text-xl font-bold text-nordfjord mb-3">{e.t}</h3>
+                <p className="text-sm text-glacier leading-relaxed">{e.d}</p>
               </div>
             </Reveal>
           ))}

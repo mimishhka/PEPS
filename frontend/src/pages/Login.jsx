@@ -9,8 +9,8 @@ import { MolecularMesh, Wordmark, FnMark } from "../components/brand";
 import { sanitizeRedirectTarget, rememberRedirectTarget } from "../lib/redirects";
 
 export default function Login() {
-  useDocumentHead({ title: "Sign in", path: "/login", noindex: true });
   const { t, lang } = useLang();
+  useDocumentHead({ title: lang === "fr" ? "Connexion" : "Sign in", path: "/login", noindex: true });
   const { login, requestMagic } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
-import {  } from "../lib/api";
+import api from "../lib/api";
 import ProductImage from "../components/ProductImage";
 
 const CartContext = createContext(null);
@@ -40,7 +40,13 @@ export function CartProvider({ children }) {
   // qui se sont connectés sur ce navigateur.
   const courrielConnu = useRef(null);
 
+  // Le contenu courant, lisible par une fonction memorisee sans la faire
+  // dependre de `items` — sinon la revalidation se recreerait a chaque
+  // changement et relancerait une requete en boucle.
+  const itemsRef = useRef(items);
+
   useEffect(() => {
+    itemsRef.current = items;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
@@ -122,6 +128,10 @@ export function CartProvider({ children }) {
           product_id: product.id,
           variant_id,
           variant_name: (v?.name && v.name !== "Default") ? v.name : "",
+          // LE SKU DE LA VARIANTE CHOISIE (rapport E2E PA-001). Le panier
+          // affichait le slug du PRODUIT : « BPC-157-5MG » restait sous la
+          // variante 10 mg, donc l'article annonce n'etait pas celui commande.
+          variant_sku: v?.sku || "",
           slug: product.slug,
           name_en: product.name_en,
           name_fr: product.name_fr,
@@ -195,6 +205,48 @@ export function CartProvider({ children }) {
     }
   }, []);
 
+  // E2E PA-019 : le panier gardait des prix vieillis dans localStorage, et le
+  // resume affichait un montant que le serveur ne facturerait pas. Le checkout
+  // rappelle les prix reels et les injecte ici, article par article.
+  const syncPrices = useCallback((frais) => {
+    if (!Array.isArray(frais) || frais.length === 0) return;
+    setItems((curr) => curr.map((it) => {
+      const m = frais.find((f) =>
+        f.product_id === it.product_id
+        && String(f.variant_id || "") === String(it.variant_id || ""));
+      if (!m || m.found === false) return it;
+      // Le SKU suit le prix : une ligne ajoutee avant le correctif du SKU
+      // se repare d'elle-meme a la premiere revalidation.
+      return { ...it, price_cad: m.price_cad,
+               variant_sku: it.variant_sku || m.variant_sku || "" };
+    }));
+  }, []);
+
+  // LE PANIER SE RELIT AUPRES DU SERVEUR (rapport E2E PA-019).
+  //
+  // Les prix vivaient dans localStorage : un prix vieilli — ou modifie a la
+  // main — s'affichait jusqu'au paiement, alors que le serveur facturait le
+  // vrai. Le serveur refusait la fraude, mais l'ecran mentait. A chaque
+  // ouverture du panier, on redemande les valeurs qui font foi.
+  const revaliderPanier = useCallback(async () => {
+    const lignes = itemsRef.current;
+    if (!Array.isArray(lignes) || lignes.length === 0) return;
+    try {
+      const { data } = await api.post("/cart/revalidate", {
+        items: lignes.map((i) => ({ product_id: i.product_id, variant_id: i.variant_id || null })),
+      });
+      syncPrices(data?.items || []);
+    } catch {
+      // Une panne reseau ne doit pas vider le panier : on garde l'affichage
+      // en place, le serveur reste de toute facon la source de verite au
+      // moment de payer.
+    }
+  }, [syncPrices]);
+
+  useEffect(() => {
+    if (open) revaliderPanier();
+  }, [open, revaliderPanier]);
+
   const subtotal = useMemo(
     () => items.reduce((s, i) => s + i.price_cad * i.qty, 0),
     [items]
@@ -203,8 +255,9 @@ export function CartProvider({ children }) {
   const count = useMemo(() => items.reduce((s, i) => s + i.qty, 0), [items]);
 
   const value = useMemo(
-    () => ({ items, add, remove, setQty, clear, subtotal, count, open, setOpen }),
-    [items, add, remove, setQty, clear, subtotal, count, open]
+    () => ({ items, add, remove, setQty, clear, subtotal, count, open, setOpen,
+             syncPrices, revaliderPanier }),
+    [items, add, remove, setQty, clear, subtotal, count, open, syncPrices, revaliderPanier]
   );
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

@@ -117,7 +117,12 @@ export default function Home() {
     ? "Nouveaux lots, certificats d'analyse, r\u00e9assorts. D\u00e9sabonnez-vous \u00e0 tout moment."
     : "New lots, certificates of analysis, restocks. Unsubscribe at any time.";
   const newsLabel = lang === "fr" ? "Adresse courriel" : "Email address";
-  const newsDone = lang === "fr" ? "Confirmé : vous êtes inscrit." : "Confirmed : you're on the list.";
+  // E2E AU-015 : le message laissait croire que l'inscription etait deja
+  // confirmee, alors que la regle est le double opt-in : la confirmation
+  // arrive PAR COURRIEL.
+  const newsDone = lang === "fr"
+    ? "Vérifiez votre courriel pour confirmer votre inscription."
+    : "Check your inbox to confirm your subscription.";
 
   return (
     <div data-testid="home-page">

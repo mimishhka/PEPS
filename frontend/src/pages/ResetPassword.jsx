@@ -11,8 +11,8 @@ import api, { formatApiError } from "../lib/api";
 const PW_RE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
 export default function ResetPassword() {
-  useDocumentHead({ title: "Reset password", path: "/reset-password", noindex: true });
   const { lang } = useLang();
+  useDocumentHead({ title: lang === "fr" ? "Réinitialiser le mot de passe" : "Reset password", path: "/reset-password", noindex: true });
   const { refresh } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();

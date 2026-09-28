@@ -337,8 +337,8 @@ const SHIPPING = [
 ];
 
 export default function Compliance() {
-  useDocumentHead({ title: "Compliance", description: "Fironova compliance and regulatory positioning. For Research Use Only. Not for human consumption.", path: "/compliance" });
   const { lang } = useLang();
+  useDocumentHead({ title: lang === "fr" ? "Conformité" : "Compliance", description: "Fironova compliance and regulatory positioning. For Research Use Only. Not for human consumption.", path: "/compliance" });
   const isFr = lang === "fr";
   return (
     <div className="bg-clinical min-h-screen">

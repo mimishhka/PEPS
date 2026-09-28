@@ -5,8 +5,8 @@ import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 
 export default function Lab() {
-  useDocumentHead({ title: "Lab", description: "Verify a Fironova HPLC certificate of analysis by lot number, or track your order.", path: "/lab" });
   const { lang } = useLang();
+  useDocumentHead({ title: lang === "fr" ? "Laboratoire" : "Lab", description: "Verify a Fironova HPLC certificate of analysis by lot number, or track your order.", path: "/lab" });
   const isFr = lang === "fr";
 
   const [lot, setLot] = useState("");

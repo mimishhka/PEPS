@@ -347,12 +347,12 @@ export const SECTIONS = [
 ];
 
 export default function AffiliateTerms() {
+  const { lang } = useLang();
   useDocumentHead({
-    title: "Affiliate Program Terms",
+    title: lang === "fr" ? "Conditions du programme d'affiliation" : "Affiliate Program Terms",
     description: "Terms of the FIRONOVA affiliate program.",
     path: "/affiliate/terms",
   });
-  const { lang } = useLang();
   const isFr = lang === "fr";
 
   return (

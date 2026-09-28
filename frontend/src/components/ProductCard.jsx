@@ -24,6 +24,15 @@ export default function ProductCard({ product, index = 0 }) {
 
   const stockN = cheapest ? (cheapest.stock ?? 0) : (product.stock ?? 0);
   const inStock = stockN > 0;
+  // E2E CA-007 : le bouton restait actif quand tout est a zero sans
+  // precommande. Il ne s'ouvre que s'il reste du stock quelque part, ou
+  // qu'une precommande prend le relais.
+  const unStock = priced.some((v) => Number(v.stock) > 0);
+  const achetable = unStock || anyPreorder;
+  // E2E CA-008 : aucun indicateur de stock bas. Le seuil vient de la fiche
+  // (ou 10 par defaut), et le libelle devient « Stock bas · N ».
+  const seuilStock = Number(product.low_stock_threshold ?? 10);
+  const stockBas = inStock && stockN <= seuilStock;
 
   const specLine = [
     product.dosage_mg ? `${product.dosage_mg} mg` : null,
@@ -62,7 +71,11 @@ export default function ProductCard({ product, index = 0 }) {
             </span>
           )}
           {anyPreorder && (
-            <span className="font-data text-[9.5px] font-semibold uppercase tracking-[0.14em] border border-nova text-nova-texte px-1.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`preorder-badge-${product.slug}`}>
+            /* DEBORDEMENT A 360 px (rapport E2E NF-001) : « PRÉCOMMANDE » en
+               chasse large ne peut pas se couper, et poussait la grille a
+               408 px. La chasse se resserre sur mobile et le mot peut passer
+               a la ligne plutot que d'elargir la carte. */
+            <span className="font-data text-[9.5px] font-semibold uppercase tracking-[0.06em] sm:tracking-[0.14em] border border-nova text-nova-texte px-1.5 py-0.5 break-words min-w-0" style={{ borderRadius: "var(--r-s)" }} data-testid={`preorder-badge-${product.slug}`}>
               {lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"}
             </span>
           )}
@@ -83,10 +96,10 @@ export default function ProductCard({ product, index = 0 }) {
               <span className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{lang === "fr" ? "dès" : "from"}</span>
             )}
           </div>
-          <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock ? "text-success" : "text-warning"}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${inStock ? "bg-success" : "bg-warning"}`} />
+          <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock && !stockBas ? "text-success" : "text-warning"}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${inStock && !stockBas ? "bg-success" : "bg-warning"}`} />
             {anyPreorder && !inStock ? (lang === "fr" ? "Précommande" : "Pre-order")
-              : inStock ? (lang === "fr" ? "En stock" : "In stock")
+              : inStock ? (stockBas ? `${lang === "fr" ? "Stock bas" : "Low stock"} · ${stockN}` : (lang === "fr" ? "En stock" : "In stock"))
               : (lang === "fr" ? "Rupture" : "Out")}
           </span>
         </div>
@@ -96,9 +109,12 @@ export default function ProductCard({ product, index = 0 }) {
         <button
           data-testid={`add-to-cart-${product.slug}`}
           onClick={() => add(product, 1, cheapest)}
-          className="w-full btn-pill btn-nova !py-1.5 !text-[11px] !tracking-[0.06em]"
+          disabled={!achetable}
+          className={`w-full btn-pill btn-nova !py-1.5 !text-[11px] !tracking-[0.06em] ${!achetable ? "opacity-45 cursor-not-allowed" : ""}`}
         >
-          {lang === "fr" ? "Ajouter à la commande" : "Add to order"}
+          {achetable
+            ? (lang === "fr" ? "Ajouter à la commande" : "Add to order")
+            : (lang === "fr" ? "Rupture" : "Out of stock")}
         </button>
       </div>
     </div>

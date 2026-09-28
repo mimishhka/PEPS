@@ -17,6 +17,12 @@ async def get_product(slug: str):
     return await s.get_product(slug)
 
 
+@router.post("/cart/revalidate")
+async def cart_revalidate(payload: s.CartRevalidateIn, request: Request):
+    """Le panier du navigateur, relu par le serveur : prix et stock qui font foi."""
+    return await s.cart_revalidate(payload, request)
+
+
 @router.post("/notify-stock")
 async def notify_stock_request(payload: s.StockNotifyIn, request: Request):
     return await s.notify_stock_request(payload, request)

@@ -8,8 +8,8 @@ import { MolecularMesh, Wordmark, FnMark } from "../components/brand";
 import { sanitizeRedirectTarget } from "../lib/redirects";
 
 export default function Register() {
-  useDocumentHead({ title: "Register", path: "/register", noindex: true });
   const { t, lang } = useLang();
+  useDocumentHead({ title: lang === "fr" ? "Inscription" : "Register", path: "/register", noindex: true });
   const { register, requestMagic } = useAuth();
   const navigate = useNavigate();
 

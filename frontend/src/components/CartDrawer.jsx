@@ -59,12 +59,17 @@ export default function CartDrawer() {
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">{it.slug}</div>
+                      {/* Le SKU de la VARIANTE, pas le slug du produit : sous
+                          la variante 10 mg, le panier montrait le SKU du 5 mg.
+                          Les lignes ajoutees avant ce correctif n'ont pas de
+                          variant_sku — elles retombent sur le slug. */}
+                      <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">{it.variant_sku || it.slug}</div>
                       <div className="font-display font-bold text-sm text-nordfjord">{name}</div>
                       <div className="font-data text-[10px] text-glacier">{it.variant_name || `${it.dosage_mg} mg`}</div>
                       <div className="flex items-center gap-2 mt-2">
                         <button
                           onClick={() => setQty(it.product_id, it.variant_id, Math.max(1, it.qty - 1))}
+                          aria-label={lang === "fr" ? "Diminuer la quantité" : "Decrease quantity"}
                           className="w-8 h-8 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova-texte"
                           data-testid={`cart-qty-dec-${it.slug}`}
                         >
@@ -73,6 +78,7 @@ export default function CartDrawer() {
                         <span className="font-data text-sm w-8 text-center text-nordfjord" data-testid={`cart-qty-${it.slug}`}>{it.qty}</span>
                         <button
                           onClick={() => setQty(it.product_id, it.variant_id, it.qty + 1)}
+                          aria-label={lang === "fr" ? "Augmenter la quantité" : "Increase quantity"}
                           className="w-8 h-8 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova-texte"
                           data-testid={`cart-qty-inc-${it.slug}`}
                         >
@@ -81,7 +87,7 @@ export default function CartDrawer() {
                       </div>
                     </div>
                     <div className="flex flex-col items-end justify-between">
-                      <button onClick={() => remove(it.product_id, it.variant_id)} data-testid={`cart-remove-${it.slug}`} aria-label="Remove" className="text-glacier hover:text-error transition-colors">
+                      <button onClick={() => remove(it.product_id, it.variant_id)} data-testid={`cart-remove-${it.slug}`} aria-label={lang === "fr" ? "Retirer du panier" : "Remove from cart"} className="text-glacier hover:text-error transition-colors">
                         <Trash2 size={14} strokeWidth={1.5} />
                       </button>
                       <div className="font-data font-bold text-nordfjord">${(it.price_cad * it.qty).toFixed(2)}</div>

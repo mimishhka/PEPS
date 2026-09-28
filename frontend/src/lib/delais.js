@@ -36,5 +36,7 @@ export function resteLisible(millisecondes, lang) {
   }
   const heures = Math.floor(minutes / 60);
   const reste = minutes % 60;
+  // E2E cosmétique : « 2 H 0 MIN » n'a pas de sens — zéro minute ne se dit pas.
+  if (reste === 0) return en ? `${heures}h` : `${heures} h`;
   return en ? `${heures}h ${reste}min` : `${heures} h ${reste} min`;
 }

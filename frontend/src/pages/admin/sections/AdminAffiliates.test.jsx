@@ -337,7 +337,10 @@ describe("AdminAffiliates — conciliation des commissions", () => {
     await ouvrirFiche();
     const figures = screen.getByTestId("affiliate-figures");
     expect(figures).toHaveTextContent("CA validé (tout)");
-    expect(figures).toHaveTextContent("12 mois glissants");
+    // La fenetre n'est plus GLISSANTE : depuis bb938b7, le palier repose sur
+    // les douze mois CLOS (plancher) et la prevision fait monter. L'ecran le
+    // dit, le test suivait encore l'ancienne regle.
+    expect(figures).toHaveTextContent("12 mois clos");
     expect(figures).toHaveTextContent("Seuil de versement");
     expect(screen.getByTestId("cycle-versement")).toHaveTextContent("sous le seuil");
   });

@@ -506,16 +506,19 @@ function OrderDetail({ order, onClose, onUpdate }) {
     }
   };
 
+  const [motifOuvert, setMotifOuvert] = useState(false);
+  const [motif, setMotif] = useState("");
+
   const reopenOrder = async () => {
-    const note = window.prompt(
-      L("Motif de réouverture (optionnel : conservé dans l'historique) :",
-        "Reason for reopening (optional : kept in the history):"), "") || "";
     if (!await confirm({
       title: L("Rouvrir cette commande annulée ?", "Reopen this cancelled order?"),
       description: L(
         "Le stock sera à nouveau décrémenté (refusé si un article n'est plus disponible). La commande repasse en attente de paiement.",
         "Stock will be decremented again (refused if an item is no longer available). The order goes back to awaiting payment."),
     })) return;
+    const note = motif.trim();
+    setMotif("");
+    setMotifOuvert(false);
     setReopenBusy(true);
     try {
       await api.post(`/admin/orders/${order.id}/reopen`, { mark_paid: false, note });
@@ -711,7 +714,7 @@ function OrderDetail({ order, onClose, onUpdate }) {
                   </button>
                 )}
                 {canReopenGeneric && (
-                  <button onClick={reopenOrder} disabled={reopenBusy} data-testid="reopen-order-btn"
+                  <button onClick={() => setMotifOuvert(true)} disabled={reopenBusy} data-testid="reopen-order-btn"
                     className="bg-nordfjord text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
                     title={L("Rouvrir cette commande annulée (repasse en attente de paiement)",
                              "Reopen this cancelled order (back to awaiting payment)")}>
@@ -923,6 +926,29 @@ function OrderDetail({ order, onClose, onUpdate }) {
           </div>
           )}
 
+          {/* E2E #13 : le motif de réouverture ne passe plus par une boîte
+              native du navigateur — un vrai champ, puis la boîte stylée. */}
+          {motifOuvert && (
+            <div className={carte} data-testid="reopen-motif">
+              <div className={`${titre} mb-3`}>{L("Motif de réouverture", "Reason for reopening")}</div>
+              <input value={motif} onChange={(e) => setMotif(e.target.value)}
+                placeholder={L("Optionnel — conservé dans l'historique", "Optional — kept in the history")}
+                data-testid="reopen-motif-input"
+                className="w-full border border-ash px-4 py-2 text-sm bg-white"
+                style={{ borderRadius: "var(--r-m)" }} />
+              <div className="flex gap-2 mt-2">
+                <button onClick={reopenOrder} data-testid="reopen-motif-confirm"
+                  className="bg-nordfjord text-white text-xs font-mono uppercase tracking-[0.2em] px-4 py-2 hover:opacity-90">
+                  {L("Rouvrir", "Reopen")}
+                </button>
+                <button onClick={() => setMotifOuvert(false)} data-testid="reopen-motif-cancel"
+                  className="border border-ash text-xs font-mono uppercase tracking-[0.2em] px-4 py-2">
+                  {L("Annuler", "Cancel")}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Ces deux actions n'existent que pour un paiement en attente.
               Ailleurs, le bloc s'affichait vide : un titre sans bouton. */}
           {EN_ATTENTE.includes(order.payment_status) && (
@@ -985,7 +1011,16 @@ function OrderDetail({ order, onClose, onUpdate }) {
                       : n.text}
                   </div>
                   <div className="font-mono text-[10px] text-foreground/50 mt-1">
-                    {n.admin_email || n.author} · {((n.ts || n.created_at) || "").slice(0, 16).replace("T", " ")}
+                    {n.admin_email || n.author} · {(n.ts || n.created_at) ? (() => {
+                      const d = new Date(n.ts || n.created_at);
+                      return Number.isNaN(d.getTime())
+                        ? String(n.ts || n.created_at).slice(0, 16).replace("T", " ")
+                        // E2E #24 : l'heure etait en UTC (22:28 au lieu de
+                        // 18:28). Les notes internes s'affichent a l'heure de
+                        // Montreal, comme tout le reste du Canada.
+                        : d.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA",
+                            { timeZone: "America/Toronto", dateStyle: "short", timeStyle: "short" });
+                    })() : ""}
                     {n.visible_to_customer && <span className="ml-2 text-emerald-600 font-bold">{L("VISIBLE CLIENT", "CUSTOMER")}</span>}
                   </div>
                 </div>

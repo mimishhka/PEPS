@@ -34,6 +34,12 @@ jest.mock("../hooks/useAffiliate", () => ({ __esModule: true, default: () => ({ 
 jest.mock("../components/brand", () => ({ Seal: () => null }));
 jest.mock("../components/ProductImage", () => ({ __esModule: true, default: () => null }));
 jest.mock("../components/LoadingSkeletons", () => ({ ProductDetailSkeleton: () => null }));
+// La fiche demande une CONFIRMATION avant une precommande. Sans ce double,
+// `useConfirm` exige son fournisseur et le rendu casse avant la premiere
+// assertion — la fiche entiere devenait intestable.
+jest.mock("../components/ConfirmDialog", () => ({
+  useConfirm: () => () => Promise.resolve(true),
+}));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock("lucide-react", () => new Proxy({}, {
   get: (cible, nom) => (nom === "__esModule" ? true : () => null),
@@ -74,7 +80,11 @@ test("en précommande sans stock, la pastille annonce aussi la rupture", async (
     coa_status: "pending", badge_coa_pending: true,
   });
 
-  expect(screen.getByTestId("stock-state")).toHaveTextContent("Précommande · Rupture");
+  // L'ORDRE DIT LEQUEL COMPTE. « Précommande · Rupture » se lisait comme une
+  // contradiction (rapport E2E #20) : on annoncait une precommande, puis on
+  // la dementait. L'etat REEL vient d'abord — c'est une rupture —, la
+  // precommande suit comme le recours offert.
+  expect(screen.getByTestId("stock-state")).toHaveTextContent("Rupture · Précommande");
 });
 
 test("en précommande avec du stock, la rupture n'est pas annoncée à tort", async () => {

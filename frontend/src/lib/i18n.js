@@ -54,7 +54,9 @@ export const dict = {
       subscribe: "Subscribe",
       newsletterConsent: "I agree to receive research notes, COA releases and restock alerts from FIRONOVA by email. I can withdraw my consent at any time via the unsubscribe link.",
       newsletterConsentRequired: "Please confirm your consent before subscribing.",
-      newsletterOk: "Confirmed : you're on the list.",
+      // DOUBLE OPT-IN (rapport E2E AU-015) : « Confirmed » etait faux —
+      // l'inscription n'est acquise qu'apres le clic dans le courriel.
+      newsletterOk: "Check your email to confirm your subscription.",
       newsletterAlready: "This address is already subscribed.",
       newsletterError: "Subscription failed. Please try again.",
     },
@@ -320,7 +322,8 @@ export const dict = {
       subscribe: "S'abonner",
       newsletterConsent: "J'accepte de recevoir par courriel les notes de recherche, les nouveaux COA et les avis de réapprovisionnement de FIRONOVA. Je peux retirer mon consentement à tout moment via le lien de désabonnement.",
       newsletterConsentRequired: "Veuillez confirmer votre consentement avant de vous abonner.",
-      newsletterOk: "Confirmé : vous êtes inscrit.",
+      // Voir la note anglaise : l'inscription n'est PAS confirmee a ce stade.
+      newsletterOk: "Vérifiez votre courriel pour confirmer votre inscription.",
       newsletterAlready: "Cette adresse est déjà abonnée.",
       newsletterError: "L'inscription a échoué. Veuillez réessayer.",
     },

@@ -145,8 +145,8 @@ export default function AffiliateProgramme() {
                        "Your link clicked, your QR code scanned, or your code entered at checkout : for that particular order. The click or scan applies the discount and credits you for the current visit, with nothing for your contact to type. If they come back later without going through you, they need only enter your code: it does not expire. An order placed with no link, no QR code and no code earns no commission.")}
                   </Bloc>
                   <Bloc titre={L("Quand vous êtes payé", "When you get paid")}>
-                    {L(`Une commission est validée sept jours après la commande, quel que soit le mode de paiement. Les versements partent le 1er de chaque mois, en cryptomonnaie stable (USDT ou USDC, réseau de votre choix), dès que le total atteint ${argent(data.payout_min_cad)}.`,
-                       `A commission is validated seven days after the order, whatever the payment method. Payouts go out on the 1st of each month, in stablecoin (USDT or USDC, network of your choice), once the total reaches ${argent(data.payout_min_cad)}.`)}
+                    {L(`Une commission est validée sept jours après la commande, quel que soit le mode de paiement. Le mois clos est versé au début du mois suivant, en cryptomonnaie stable (USDT ou USDC, réseau de votre choix), dès que le total atteint ${argent(data.payout_min_cad)}.`,
+                       `A commission is validated seven days after the order, whatever the payment method. The closed month is paid at the start of the following month, in stablecoin (USDT or USDC, network of your choice), once the total reaches ${argent(data.payout_min_cad)}.`)}
                   </Bloc>
                   <Bloc titre={L("Ce qu'on vous demande", "What we ask of you")}>
                     {L("Nos produits sont destinés exclusivement à la recherche en laboratoire. Vos communications ne doivent jamais leur prêter d'usage humain, médical ou thérapeutique, ni promettre un résultat de santé.",
@@ -160,8 +160,8 @@ export default function AffiliateProgramme() {
                       {L("Votre taux monte avec vos ventes", "Your rate grows with your sales")}
                     </h2>
                     <p className="text-sm text-glacier mb-4 leading-relaxed">
-                      {L("Calculé sur vos ventes des douze derniers mois. Votre tableau de bord vous montre en permanence ce qui vous sépare du palier suivant.",
-                         "Based on your sales over the last twelve months. Your dashboard always shows how far you are from the next tier.")}
+                      {L("Calculé sur vos ventes des 12 mois clos (plancher fixé le 1er), et votre taux monte dès qu'un seuil est franchi sur la prévision des 11 mois + mois en cours. Votre tableau de bord vous montre en permanence ce qui vous sépare du palier suivant.",
+                         "Based on your sales over the 12 closed months (floor set on the 1st), and your rate rises as soon as a threshold is crossed on the 11-month + current-month forecast. Your dashboard always shows how far you are from the next tier.")}
                     </p>
                     <div className="overflow-x-auto rounded-xl border border-ash">
                       <table className="w-full text-sm">

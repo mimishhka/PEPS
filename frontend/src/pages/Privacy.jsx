@@ -201,8 +201,8 @@ const SECTIONS = [
 ];
 
 export default function Privacy() {
-  useDocumentHead({ title: "Privacy", path: "/privacy" });
   const { lang } = useLang();
+  useDocumentHead({ title: lang === "fr" ? "Confidentialité" : "Privacy", path: "/privacy" });
   const isFr = lang === "fr";
   return (
     <div className="bg-clinical min-h-screen">

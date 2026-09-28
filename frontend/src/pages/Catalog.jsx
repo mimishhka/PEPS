@@ -11,8 +11,8 @@ import ProductCard from "../components/ProductCard.jsx";
 // présente désormais l'ensemble des produits, avec recherche et tri sur des
 // critères objectifs (nom, séquence, CAS, prix).
 export default function Catalog() {
-  useDocumentHead({ title: "Catalog", description: "Browse Fironova research peptides. Certificate-of-analysis documentation. For Research Use Only.", path: "/catalog" });
   const { lang } = useLang();
+  useDocumentHead({ title: lang === "fr" ? "Catalogue" : "Catalog", description: "Browse Fironova research peptides. Certificate-of-analysis documentation. For Research Use Only.", path: "/catalog" });
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -39,8 +39,21 @@ export default function Catalog() {
           .some((s) => String(s).toLowerCase().includes(q))
       );
     }
-    if (sort === "price-asc") arr.sort((a, b) => a.price_cad - b.price_cad);
-    if (sort === "price-desc") arr.sort((a, b) => b.price_cad - a.price_cad);
+    // E2E CA-003 : le tri Prix ignorait la promo — GHK-Cu a 30 $ etait classe
+    // apres un produit a 44,99 $. On trie sur le PRIX EFFECTIF : le moins
+    // cher des prix de variante (promo, precommande, ou prix plein).
+    const prixEffectif = (p) => {
+      const vs = Array.isArray(p.variants) && p.variants.length ? p.variants : [];
+      const prix = vs.map((v) => {
+        if (v.sale_price && v.sale_price < v.price) return v.sale_price;
+        if (v.preorder_price && v.price && v.preorder_price < v.price) return v.preorder_price;
+        return v.price;
+      }).filter((x) => typeof x === "number" && !Number.isNaN(x));
+      if (prix.length) return Math.min(...prix);
+      return p.price_cad ?? 0;
+    };
+    if (sort === "price-asc") arr.sort((a, b) => prixEffectif(a) - prixEffectif(b));
+    if (sort === "price-desc") arr.sort((a, b) => prixEffectif(b) - prixEffectif(a));
     if (sort === "name") arr.sort((a, b) => a.name_en.localeCompare(b.name_en));
     return arr;
   }, [products, sort, query]);

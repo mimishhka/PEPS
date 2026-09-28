@@ -10,6 +10,7 @@ const FALLBACK_COLS = [
   // un effet physiologique. Le catalogue complet reste accessible.
   { key: "shop", titleKey: "footer.shop", links: [
     { to: "/catalog", labelKey: "nav.catalog" },
+    { to: "/about", labelKey: "nav.about" },
     { to: "/lab", labelKey: "nav.lab" },
   ]},
   { key: "legal", titleKey: "footer.legal", links: [

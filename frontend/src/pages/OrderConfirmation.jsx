@@ -13,10 +13,10 @@ const guestRequestConfig = (token) => token
   : {};
 
 export default function OrderConfirmation() {
-  useDocumentHead({ title: "Order", noindex: true });
   const { id } = useParams();
   const { state, search } = useLocation();
   const { t, lang } = useLang();
+  useDocumentHead({ title: lang === "fr" ? "Commande" : "Order", noindex: true });
   const confirm = useConfirm();
   const [order, setOrder] = useState(state?.order || null);
   const [copied, setCopied] = useState("");
@@ -228,6 +228,29 @@ export default function OrderConfirmation() {
       : "Save your order number : you'll need it to complete the payment.",
   };
 
+  // E2E CO-006/PM-007 : la page restait sur « en preparation » meme apres
+  // l'expedition — le suivi saisi n'apparaissait nulle part. Une commande
+  // PAYEE prend le statut reel de l'expedition, et le suivi s'affiche.
+  const exp = order.shipping_info || {};
+  const statutExp = order.fulfillment_status;
+  const etatAffiche = order.payment_status === "paid" && (statutExp === "shipped" || statutExp === "delivered")
+    ? {
+        bandeau: lang === "fr"
+          ? (statutExp === "delivered" ? "// COMMANDE LIVRÉE" : "// COMMANDE EXPÉDIÉE")
+          : (statutExp === "delivered" ? "// ORDER DELIVERED" : "// ORDER SHIPPED"),
+        titre: lang === "fr"
+          ? (statutExp === "delivered" ? "Commande livrée" : "Commande expédiée")
+          : (statutExp === "delivered" ? "Order delivered" : "Order shipped"),
+        phrase: lang === "fr"
+          ? (statutExp === "delivered"
+              ? "Votre commande est livrée. Merci de votre confiance !"
+              : "Votre commande est en route. Le numéro de suivi est plus bas.")
+          : (statutExp === "delivered"
+              ? "Your order has been delivered. Thank you!"
+              : "Your order is on its way. The tracking number is below."),
+      }
+    : etatPaiement;
+
   return (
     // LA PAGE COMMENCE PLUS HAUT SUR TELEPHONE. Soixante-quatre pixels de vide
     // au-dessus d un ecran ou l on doit PAYER repoussaient les instructions
@@ -236,7 +259,7 @@ export default function OrderConfirmation() {
       <div className="border border-nordfjord/20 rounded-xl overflow-hidden">
         <div className="px-6 py-4 flex items-center justify-between font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord border-b border-ash">
           <span>
-            {etatPaiement.bandeau}
+            {etatAffiche.bandeau}
           </span>
           <span>{new Date(order.created_at).toLocaleString()}</span>
         </div>
@@ -247,10 +270,16 @@ export default function OrderConfirmation() {
         <div className="px-6 py-5 sm:flex sm:items-baseline sm:justify-between sm:gap-6">
           <div className="min-w-0">
             <h1 className="font-display text-xl sm:text-2xl uppercase tracking-tight text-nordfjord">
-              {etatPaiement.titre}
+              {etatAffiche.titre}
             </h1>
             <p className="text-sm text-glacier mt-1.5 leading-relaxed">
-              {etatPaiement.phrase}
+              {etatAffiche.phrase}
+              {exp.tracking && (
+                <span className="block mt-2 font-data text-[12px] text-nova">
+                  {lang === "fr" ? "Suivi : " : "Tracking: "}
+                  <span className="tabular-nums text-nordfjord font-semibold">{exp.tracking}</span>
+                </span>
+              )}
             </p>
           </div>
           <div className="mt-4 sm:mt-0 sm:text-right shrink-0">
@@ -348,7 +377,10 @@ export default function OrderConfirmation() {
               note={lang === "fr"
                 ? "C'est ce numéro qui relie votre virement à cette commande. Recopiez-le exactement."
                 : "This number links your transfer to this order. Copy it exactly."} />
-            <Row numero="4" label={t("confirmation.interacStep4")} value={interac.security_question} testId="interac-question" />
+            <Row numero="4" label={t("confirmation.interacStep4")}
+              value={lang === "fr" ? (interac.security_question_fr || interac.security_question)
+                                    : (interac.security_question_en || interac.security_question)}
+              testId="interac-question" />
             <Row numero="5" label={t("confirmation.interacStep5")} value={interac.security_answer_hint} onCopy={() => copy(interac.security_answer_hint, "ans")} copied={copied === "ans"} testId="interac-answer" />
             <p className="text-[12px] text-glacier pt-5 border-t border-ash leading-relaxed">
               {t("confirmation.interacFooter")}

@@ -7,8 +7,8 @@ import { MolecularMesh, Wordmark, FnMark } from "../components/brand";
 import api, { formatApiError } from "../lib/api";
 
 export default function ForgotPassword() {
-  useDocumentHead({ title: "Reset password", path: "/forgot-password", noindex: true });
   const { lang } = useLang();
+  useDocumentHead({ title: lang === "fr" ? "Mot de passe oublié" : "Forgot password", path: "/forgot-password", noindex: true });
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);

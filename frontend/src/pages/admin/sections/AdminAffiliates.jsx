@@ -1983,10 +1983,10 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 </div>
                 {/* Le contexte NOMNE ses periodes : un montant sans sa fenetre
                     est une enigme. « Tout » = depuis l'ouverture ; « 12 mois
-                    glissants » = la base du palier du programme. */}
+                    clos » = la base du palier du programme (2026-09-27). */}
                 <p className="text-[11px] text-glacier mt-1.5">
                   {L("CA validé (tout)", "Validated revenue (all time)")} <span className="tabular-nums text-nordfjord">{money(m.cumulative_revenue)}</span>
-                  {" · "}{L("12 mois glissants", "rolling 12 months")} <span className="tabular-nums text-nordfjord">{money(m.rolling12_revenue)}</span>
+                  {" · "}{L("12 mois clos (base)", "12 closed months (base)")} <span className="tabular-nums text-nordfjord">{money(m.rolling12_revenue)}</span>
                   {" · "}{L("Taux", "Rate")} <span className="tabular-nums text-nordfjord">{Math.round(m.commission_rate * 100)} %</span>
                   {seuilVersement > 0 && (
                     <>{L(" · Seuil de versement", " · Payout threshold")} <span className="tabular-nums text-nordfjord">{money(seuilVersement)}</span></>
@@ -2001,6 +2001,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                       ? L(`${money(m.approved_commission)} approuvés · sous le seuil de ${money(seuilVersement)} : versés au cycle où le seuil est atteint`,
                            `${money(m.approved_commission)} approved · below the ${money(seuilVersement)} threshold: paid in the first cycle that reaches it`)
                       : cycle && Number(cycle.due_now) > 0
+                        && (seuilVersement <= 0 || Number(cycle.due_now) >= seuilVersement)
                         ? L(`${money(cycle.due_now)} à verser pour ${moisLisible(cycle.period, lang)} · ${cycle.overdue ? "échéance dépassée" : `avant le ${jourLisible(cycle.due_by, lang)}, ${cycle.days_left} jour(s)`}`,
                              `${money(cycle.due_now)} to send for ${moisLisible(cycle.period, lang)} · ${cycle.overdue ? "deadline passed" : `by ${jourLisible(cycle.due_by, lang)}, ${cycle.days_left} day(s)`}`)
                         // Rien pour le mois clos : tout ce qui est approuve
@@ -2567,7 +2568,7 @@ function EditGroupe({ titre, children, apres }) {
 function EntenteAbsente({ L }) {
   return (
     <p className="text-[12px] text-glacier leading-relaxed" data-testid="tier-agreement-hint">
-      {L("Le palier suit le chiffre d'affaires sur douze mois glissants. Pour fixer un palier vous-même : ou enregistrer une entente négociée avec cet affilié : choisissez un palier dans la liste ci-dessus.",
+      {L("Le palier suit le chiffre d'affaires des 12 mois clos (plancher fixé le 1er), et monte dès qu'un seuil est franchi sur la prévision des 11 mois + mois en cours. Pour fixer un palier vous-même : ou enregistrer une entente négociée avec cet affilié : choisissez un palier dans la liste ci-dessus.",
          "The tier follows revenue over a rolling twelve months. To set a tier yourself : or record a negotiated agreement with this affiliate : pick a tier in the list above.")}
     </p>
   );

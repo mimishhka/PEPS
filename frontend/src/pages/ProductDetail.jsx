@@ -7,6 +7,7 @@ import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import useAffiliate from "../hooks/useAffiliate";
 import { useCart } from "../contexts/CartContext";
+import { useConfirm } from "../components/ConfirmDialog";
 import ProductImage from "../components/ProductImage";
 import { ProductDetailSkeleton } from "../components/LoadingSkeletons";
 
@@ -20,6 +21,23 @@ export default function ProductDetail() {
   const { slug } = useParams();
   const { lang, t } = useLang();
   const { add } = useCart();
+  const confirm = useConfirm();
+
+  // E2E #35 / decision de Mireille : une PRE-COMMANDE se confirme — le client
+  // doit savoir qu'il achete un produit absent du stock, avec son delai.
+  const confirmerPrecommande = async () => {
+    const delai = selectedVariant?.preorder_delay_message
+      ? ` ${lang === "fr" ? "Délai annoncé" : "Announced delay"} : ${selectedVariant.preorder_delay_message}.` : "";
+    if (await confirm({
+      title: lang === "fr" ? "Précommander ce produit ?" : "Pre-order this product?",
+      description: lang === "fr"
+        ? `Ce produit n'est pas en stock : votre commande partira à l'arrivée du prochain lot.${delai}`
+        : `This product is out of stock : your order ships when the next batch arrives.${delai}`,
+      confirmLabel: lang === "fr" ? "Précommander" : "Pre-order",
+    })) {
+      add(product, qty, selectedVariant);
+    }
+  };
   const { affiliate } = useAffiliate();
 
   const copyAffiliateLink = async () => {
@@ -131,6 +149,9 @@ export default function ProductDetail() {
   const isComingSoon = !!(selectedVariant && selectedVariant.badge_coming_soon && !selectedVariant.preorder_enabled);
   const isOutOfStock = !!(selectedVariant && selectedVariant.stock <= 0 && !selectedVariant.preorder_enabled && !coaComing);
   const stockN = selectedVariant?.stock ?? product.stock ?? 0;
+  // E2E CA-008 : l'indicateur de stock bas manquait sur la fiche.
+  const seuilStock = Number(product.low_stock_threshold ?? 10);
+  const stockBas = stockN > 0 && stockN <= seuilStock;
 
   const submitNotify = async () => {
     if (!/^\S+@\S+\.\S+$/.test(notifyEmail)) {
@@ -268,15 +289,16 @@ export default function ProductDetail() {
                   <div className="font-data text-[11px] text-warning mt-1" data-testid="preorder-note">{selectedVariant.preorder_note}</div>
                 )}
               </div>
-              <span data-testid="stock-state" className={`font-data text-[12px] uppercase tracking-[0.14em] flex items-center gap-2 ${stockN > 0 ? "text-success" : "text-warning"}`}>
-                <span className={`w-2 h-2 rounded-full ${stockN > 0 ? "bg-success" : "bg-warning"}`} />
+              <span data-testid="stock-state" className={`font-data text-[12px] uppercase tracking-[0.14em] flex items-center gap-2 ${stockN > 0 && !stockBas ? "text-success" : "text-warning"}`}>
+                <span className={`w-2 h-2 rounded-full ${stockN > 0 && !stockBas ? "bg-success" : "bg-warning"}`} />
                 {/* En precommande on annonce AUSSI la rupture : « Precommande »
                     seul laisse croire que le flacon part demain, alors qu'il n'y
                     en a pas un seul en tablette. */}
                 {isComingSoon ? (lang === "fr" ? "À venir" : "Coming soon")
                   : isVariantPreorder ? (stockN > 0
                       ? (lang === "fr" ? "Précommande" : "Pre-order")
-                      : (lang === "fr" ? "Précommande · Rupture" : "Pre-order · Out of stock"))
+                      : (lang === "fr" ? "Rupture · Précommande" : "Out of stock · Pre-order"))
+                  : stockBas ? `${lang === "fr" ? "Stock bas" : "Low stock"} · ${stockN}`
                   : stockN > 0 ? (lang === "fr" ? "En stock" : "In stock")
                   : (lang === "fr" ? "Rupture" : "Out of stock")}
               </span>
@@ -284,12 +306,12 @@ export default function ProductDetail() {
 
             <div className="flex items-stretch gap-3 mb-4">
               <div className="flex items-center gap-1 border border-ash bg-white px-2" style={{ borderRadius: "var(--r-m)" }}>
-                <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="w-9 h-9 flex items-center justify-center text-nordfjord hover:text-nova-texte" data-testid="product-qty-dec"><Minus size={15} /></button>
+                <button onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label={lang === "fr" ? "Diminuer la quantité" : "Decrease quantity"} className="w-9 h-9 flex items-center justify-center text-nordfjord hover:text-nova-texte" data-testid="product-qty-dec"><Minus size={15} /></button>
                 <span className="font-data font-semibold w-8 text-center text-nordfjord" data-testid="product-qty">{qty}</span>
-                <button onClick={() => setQty((q) => q + 1)} className="w-9 h-9 flex items-center justify-center text-nordfjord hover:text-nova-texte" data-testid="product-qty-inc"><Plus size={15} /></button>
+                <button onClick={() => setQty((q) => q + 1)} aria-label={lang === "fr" ? "Augmenter la quantité" : "Increase quantity"} className="w-9 h-9 flex items-center justify-center text-nordfjord hover:text-nova-texte" data-testid="product-qty-inc"><Plus size={15} /></button>
               </div>
               <button
-                onClick={() => add(product, qty, selectedVariant)}
+                onClick={() => (isVariantPreorder ? confirmerPrecommande() : add(product, qty, selectedVariant))}
                 data-testid="product-add-to-cart"
                 disabled={isOutOfStock || isComingSoon}
                 className="flex-1 inline-flex items-center justify-center gap-2 font-semibold uppercase transition-colors duration-150 cursor-pointer text-[14px] tracking-[0.04em] bg-nordfjord text-white hover:bg-nova hover:text-white disabled:opacity-40 disabled:pointer-events-none" style={{ borderRadius: "var(--r-m)", padding: "13px 22px" }}
@@ -374,7 +396,17 @@ export default function ProductDetail() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {related.map((p) => {
                 const rvars = p.variants || [];
-                const rprice = rvars.map((v) => Number(v.sale_price || v.price)).filter(Boolean).sort((a, b) => a - b)[0];
+                // E2E CA-004 : le prix affiche ignorait la promo (Tirzepatide
+                // 259,99 $ au lieu de 200 $). Meme regle que le serveur :
+                // la promo ne s'applique que si elle est STRICTEMENT sous le
+                // prix plein, et on prend la variante la moins chere.
+                const rprice = rvars.map((v) => {
+                  const plein = Number(v.price);
+                  const promo = Number(v.sale_price);
+                  if (promo > 0 && promo < plein) return promo;
+                  return plein;
+                }).filter((x) => x > 0).sort((a, b) => a - b)[0]
+                  || Number(p.price_cad || p.price) || 0;
                 const rstock = rvars.some((v) => Number(v.stock) > 0) || Number(p.stock) > 0;
                 return (
                   <Link key={p.id} to={`/product/${p.slug}`} data-testid="related-card"

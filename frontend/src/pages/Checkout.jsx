@@ -42,29 +42,74 @@ function normalizePostal(country, value) {
 }
 
 function validateAddress(a, lang) {
-  const req = (k, label) => (!String(a[k] || "").trim() ? `${label} ${lang === "fr" ? "est requis" : "is required"}` : null);
-  const errs = [
-    req("full_name", lang === "fr" ? "Nom" : "Full name"),
-    req("line1", lang === "fr" ? "Adresse" : "Address"),
-    req("city", lang === "fr" ? "Ville" : "City"),
-    req("province", lang === "fr" ? "Province" : "Province"),
-    req("postal_code", lang === "fr" ? "Code postal" : "Postal code"),
-    req("country", lang === "fr" ? "Pays" : "Country"),
-  ].filter(Boolean);
+  // E2E PA-008 : une seule erreur toast a la fois, et des accords fautifs
+  // (« Adresse est requis »). Chaque champ a desormais SON message, affiche
+  // sous lui, avec les bons accords.
+  const fr = lang === "fr";
+  const requis = {
+    full_name: fr ? "Le prénom et le nom sont requis." : "Full name is required.",
+    line1: fr ? "L'adresse est requise." : "Address is required.",
+    city: fr ? "La ville est requise." : "City is required.",
+    province: fr ? "La province est requise." : "Province is required.",
+    postal_code: fr ? "Le code postal est requis." : "Postal code is required.",
+    country: fr ? "Le pays est requis." : "Country is required.",
+  };
+  const errs = {};
+  Object.keys(requis).forEach((k) => {
+    if (!String(a[k] || "").trim()) errs[k] = requis[k];
+  });
 
   if (a.country === "CA" && a.postal_code) {
     const ok = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/.test(a.postal_code);
-    if (!ok) errs.push(lang === "fr" ? "Code postal canadien invalide" : "Invalid Canadian postal code");
+    if (!ok) errs.postal_code = fr ? "Code postal canadien invalide." : "Invalid Canadian postal code.";
   }
   if (a.country === "US" && a.postal_code) {
     const ok = /^\d{5}(-\d{4})?$/.test(a.postal_code);
-    if (!ok) errs.push(lang === "fr" ? "Code ZIP invalide" : "Invalid ZIP code");
+    if (!ok) errs.postal_code = fr ? "Code ZIP invalide." : "Invalid ZIP code.";
   }
   return errs;
 }
 
 export default function Checkout() {
-  const { items, subtotal, clear } = useCart();
+  const { items, subtotal, clear, syncPrices } = useCart();
+
+  // E2E PA-019 : le resume affichait les prix stockes dans le panier, meme si
+  // le serveur avait change de prix entre-temps. A l'ouverture, on rappelle
+  // les prix reels et on resynchronise le panier ; le serveur reste la
+  // reference de facturation. La cle de comparaison ignore le prix : une
+  // resynchronisation ne se rejoue donc pas en boucle.
+  const derniereSync = useRef("");
+  useEffect(() => {
+    if (!items?.length) return;
+    const cle = items.map((i) => `${i.product_id}:${i.variant_id}:${i.qty}`).join("|");
+    if (derniereSync.current === cle) return;
+    derniereSync.current = cle;
+    let monte = true;
+    api.get("/products")
+      .then((r) => {
+        if (!monte) return;
+        const liste = r.data?.products || r.data || [];
+        const frais = [];
+        items.forEach((it) => {
+          const p = liste.find((x) => x.slug === it.slug);
+          if (!p) return;
+          const v = (p.variants || []).find((x) => String(x.id) === String(it.variant_id))
+            || (p.variants || [])[0];
+          if (!v) return;
+          const plein = Number(v.price);
+          const promo = Number(v.sale_price);
+          const isPre = v.preorder_enabled
+            && (v.badge_coa_pending || v.badge_coming_soon || Number(v.stock) < Number(it.qty));
+          const prix = (isPre && Number(v.preorder_price))
+            ? Number(v.preorder_price)
+            : (promo > 0 && promo < plein ? promo : plein);
+          frais.push({ product_id: it.product_id, variant_id: it.variant_id || "", price_cad: prix });
+        });
+        syncPrices(frais);
+      })
+      .catch(() => { /* le serveur tranchera de toute facon */ });
+    return () => { monte = false; };
+  }, [items, syncPrices]);
   const { lang } = useLang();
   const { user } = useAuth();
   const nav = useNavigate();
@@ -74,6 +119,9 @@ export default function Checkout() {
 
   const [submitting, setSubmitting] = useState(false);
   const [email, setEmail] = useState("");
+  // Les erreurs champ par champ (E2E PA-008) : la cle est le nom du champ,
+  // la valeur le message affiche SOUS le champ.
+  const [erreurs, setErreurs] = useState({});
   const { minAge, shippingFlatCad, freeShippingThresholdCad } = useSiteConfig();
   // ?? et non || : un seuil configure a 0 (livraison toujours gratuite)
   // est une valeur legitime que || aurait remplacee par le repli.
@@ -294,7 +342,14 @@ export default function Checkout() {
       toast.success(lang === "fr" ? "Code appliqué" : "Coupon applied");
     } catch (err) {
       setCoupon(null);
-      toast.error(formatApiError(err?.response?.data?.detail) || (lang === "fr" ? "Code invalide" : "Invalid code"));
+      // E2E PA-014 : le message serveur « Invalid coupon code » restait en
+      // anglais sur une interface francaise. Les messages connus se
+      // traduisent, le reste passe par le formatteur habituel.
+      const d = err?.response?.data?.detail;
+      const msg = d === "Invalid coupon code"
+        ? (lang === "fr" ? "Code promo invalide." : "Invalid coupon code.")
+        : formatApiError(d) || (lang === "fr" ? "Code invalide" : "Invalid code");
+      toast.error(msg);
     } finally {
       setCouponBusy(false);
     }
@@ -363,15 +418,30 @@ export default function Checkout() {
     const shipNorm = { ...ship, postal_code: normalizePostal(ship.country, ship.postal_code) };
     const billRaw = billSame ? shipNorm : { ...bill, postal_code: normalizePostal(bill.country, bill.postal_code) };
 
-    const se = validateAddress(shipNorm, lang);
-    const be = billSame ? [] : validateAddress(billRaw, lang);
-    const errs = [...se, ...be];
-    if (errs.length) { toast.error(errs[0]); return; }
-    if (!email.trim()) { toast.error(lang === "fr" ? "Courriel requis" : "Email required"); return; }
+    // E2E PA-008 : les erreurs s'affichent SOUS CHAQUE CHAMP, et la page
+    // defile jusqu'au premier champ en erreur — plus de toast unique qui
+    // n'en nomme qu'un.
+    const errs = {};
+    Object.assign(errs, validateAddress(shipNorm, lang));
+    if (!billSame) Object.assign(errs, validateAddress(billRaw, lang));
+    if (!email.trim()) errs.email = lang === "fr" ? "Le courriel est requis." : "Email is required.";
     if (!confirmAge || !acceptRuO || !acceptPolicy) {
-      toast.error(lang === "fr" ? "Veuillez confirmer toutes les cases de conformité." : "Please confirm all compliance items.");
+      errs.conformite = lang === "fr"
+        ? "Veuillez confirmer toutes les cases de conformité."
+        : "Please confirm all compliance items.";
+    }
+    if (Object.keys(errs).length) {
+      setErreurs(errs);
+      const champ = Object.keys(errs)[0];
+      const section = champ === "email" ? "etape-contact"
+        : (champ === "conformite" ? "etape-attestations"
+          : (billSame ? "etape-livraison" : "etape-livraison"));
+      try {
+        document.getElementById(section)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      } catch { /* defilement facultatif */ }
       return;
     }
+    setErreurs({});
 
     const toAddr = (a) => ({
       full_name: a.full_name, address1: a.line1, address2: a.line2 || "",
@@ -478,12 +548,15 @@ export default function Checkout() {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); setErreurs((er) => { if (!er.email) return er; const n = { ...er }; delete n.email; return n; }); }}
               placeholder={lang === "fr" ? "votre@courriel.com" : "you@email.com"}
               data-testid="checkout-email"
               className="w-full border border-ash bg-white px-4 py-3 outline-none transition-colors duration-150 focus:border-nova"
               style={{ borderRadius: "var(--r-m)" }}
             />
+            {erreurs.email && (
+              <p className="text-[12px] text-error mt-1.5" data-testid="checkout-email-erreur">{erreurs.email}</p>
+            )}
           </Etape>
 
           <Etape numero="2" id="etape-livraison" titre={lang === "fr" ? "Adresse de livraison" : "Shipping address"}>
@@ -508,7 +581,8 @@ export default function Checkout() {
                 </select>
               </div>
             )}
-            <AddressForm value={ship} setValue={setShip} lang={lang} prefix="shipping" />
+            <AddressForm value={ship} setValue={setShip} lang={lang} prefix="shipping"
+              erreurs={erreurs} onClear={(k) => setErreurs((e) => { if (!e[k]) return e; const n = { ...e }; delete n[k]; return n; })} />
             {/* La verification a lieu ICI, pendant la saisie, et non a
                 l'envoi. Le controle serveur du checkout reste en place :
                 c'est lui la source de verite, celui-ci evite d'y arriver. */}
@@ -522,7 +596,8 @@ export default function Checkout() {
             </label>
             {!billSame && (
               <div className="mt-5">
-                <AddressForm value={bill} setValue={setBill} lang={lang} prefix="billing" />
+                <AddressForm value={bill} setValue={setBill} lang={lang} prefix="billing"
+                  erreurs={erreurs} onClear={(k) => setErreurs((e) => { if (!e[k]) return e; const n = { ...e }; delete n[k]; return n; })} />
               </div>
             )}
           </Etape>
@@ -585,6 +660,11 @@ export default function Checkout() {
               </span>
             </label>
             </div>
+            {erreurs.conformite && (
+              <p className="text-[12px] text-error mt-3" data-testid="checkout-conformite-erreur">
+                {erreurs.conformite}
+              </p>
+            )}
           </Etape>
           </div>
         </section>
@@ -997,8 +1077,11 @@ function Etape({ numero, titre, id, children }) {
   );
 }
 
-function AddressForm({ value, setValue, lang, prefix }) {
-  const set = (k, v) => setValue((s) => ({ ...s, [k]: v }));
+function AddressForm({ value, setValue, lang, prefix, erreurs = {}, onClear }) {
+  const set = (k, v) => {
+    setValue((s) => ({ ...s, [k]: v }));
+    if (onClear) onClear(k);
+  };
   const lbl = (en, fr) => lang === "fr" ? fr : en;
   const regions = regionsDuPays("CA"); // boutique canadienne : une seule liste, toujours
 
@@ -1040,12 +1123,20 @@ function AddressForm({ value, setValue, lang, prefix }) {
       {/* Deux champs a l'ecran, un seul stocke : voir NomEnDeux. */}
       <NomEnDeux valeur={value.full_name} onChange={(v) => set("full_name", v)}
         lang={lang} prefix={prefix} />
+      {erreurs.full_name && (
+        <span className="text-[11px] text-error sm:col-span-2" data-testid={`${prefix}-full_name-erreur`}>
+          {erreurs.full_name}
+        </span>
+      )}
       <label className="sm:col-span-2 flex flex-col gap-1">
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Address", "Adresse")}</span>
         <input value={value.line1} onChange={(e) => set("line1", e.target.value)}
           placeholder={lbl("Address line 1", "Adresse")} data-testid={`${prefix}-line1`}
           autoComplete="address-line1"
           className="rounded border border-ash px-4 py-3 outline-none focus:border-nova" />
+        {erreurs.line1 && (
+          <span className="text-[11px] text-error" data-testid={`${prefix}-line1-erreur`}>{erreurs.line1}</span>
+        )}
       </label>
       <label className="sm:col-span-2 flex flex-col gap-1">
         <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Apt / Suite (optional)", "Appartement (optionnel)")}</span>
@@ -1063,13 +1154,13 @@ function AddressForm({ value, setValue, lang, prefix }) {
           placeholder={value.country === "CA" ? "A1A 1A1" : "12345"} data-testid={`${prefix}-postal`}
           autoComplete="postal-code" inputMode={value.country === "CA" ? "text" : "numeric"}
           className={`rounded border px-4 py-3 outline-none focus:border-nova ${cpMalForme ? "border-error" : "border-ash"}`} />
-        {cpMalForme && (
+        {cpMalForme || erreurs.postal_code ? (
           <span className="font-data text-[11px] text-error" data-testid={`${prefix}-postal-erreur`}>
-            {value.country === "CA"
+            {erreurs.postal_code || (value.country === "CA"
               ? lbl("Six characters, like A1A 1A1.", "Six caractères, comme A1A 1A1.")
-              : lbl("Five digits, like 12345.", "Cinq chiffres, comme 12345.")}
+              : lbl("Five digits, like 12345.", "Cinq chiffres, comme 12345."))}
           </span>
-        )}
+        ) : null}
       </label>
 
       <label className="flex flex-col gap-1">
@@ -1078,6 +1169,9 @@ function AddressForm({ value, setValue, lang, prefix }) {
           placeholder={lbl("City", "Ville")} data-testid={`${prefix}-city`}
           autoComplete="address-level2"
           className="rounded border border-ash px-4 py-3 outline-none focus:border-nova" />
+        {erreurs.city && (
+          <span className="text-[11px] text-error" data-testid={`${prefix}-city-erreur`}>{erreurs.city}</span>
+        )}
       </label>
 
       {/* LISTE DÉROULANTE, plus un champ libre. « Quebec », « Qc », « PQ »
@@ -1097,6 +1191,9 @@ function AddressForm({ value, setValue, lang, prefix }) {
           <span className="font-data text-[11px] text-error" data-testid={`${prefix}-province-desaccord`}>
             {lbl(`This postal code is in ${attendue}.`, `Ce code postal est en ${attendue}.`)}
           </span>
+        )}
+        {!desaccord && erreurs.province && (
+          <span className="text-[11px] text-error" data-testid={`${prefix}-province-erreur`}>{erreurs.province}</span>
         )}
       </label>
 

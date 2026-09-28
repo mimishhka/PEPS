@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ShieldCheck, LogOut } from "lucide-react";
 import { useLang } from "../contexts/LanguageContext";
 
 export default function AgeGate() {
   const { t } = useLang();
-  const [open, setOpen] = useState(false);
+  // E2E SP-004 : la confirmation etait persistee en localStorage, donc le
+  // gate ne revenait plus au rechargement — contrairement a la regle du plan
+  // (« pas memorise »). L'etat vit en MEMOIRE : chaque chargement repose la
+  // question, comme une verification d'age doit le faire.
+  const [open, setOpen] = useState(true);
   // « Quitter » renvoyait vers le site de Santé Canada.
   //
   // Deux problèmes. Envoyer un visiteur vers le régulateur depuis une boutique
@@ -18,26 +22,64 @@ export default function AgeGate() {
   // évite d'enfermer quelqu'un sur un refus mal cliqué.
   const [refuse, setRefuse] = useState(false);
 
+  // PIEGE DE FOCUS (E2E NF-007 / SP-003) : la tabulation restait dans la
+  // page derriere le voile et atteignait le catalogue sans repondre. Tant
+  // que la question est posee (ou le refus affiche), Tab ne sort pas de la
+  // fenetre : on reboucle du dernier element au premier.
+  const fenetreRef = useRef(null);
   useEffect(() => {
-    const accepted = localStorage.getItem("fironova_age_confirmed");
-    if (!accepted) setOpen(true);
-  }, []);
+    if (!open) return undefined;
+    const surTouche = (e) => {
+      if (e.key !== "Tab") return;
+      const fenetre = fenetreRef.current;
+      if (!fenetre) return;
+      const ciblables = Array.from(
+        fenetre.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+      ).filter((el) => !el.hasAttribute("disabled"));
+      if (ciblables.length === 0) return;
+      const premier = ciblables[0];
+      const dernier = ciblables[ciblables.length - 1];
+      if (e.shiftKey && document.activeElement === premier) {
+        e.preventDefault();
+        dernier.focus();
+      } else if (!e.shiftKey && document.activeElement === dernier) {
+        e.preventDefault();
+        premier.focus();
+      }
+    };
+    document.addEventListener("keydown", surTouche);
+    // Le premier element interactif prend le focus des l'ouverture : le
+    // clavier commence dans la fenetre, pas derriere.
+    const t = setTimeout(() => {
+      const f = fenetreRef.current;
+      if (f) {
+        const premier = f.querySelector("button, a[href], input, [tabindex]");
+        if (premier) premier.focus();
+      }
+    }, 50);
+    return () => { document.removeEventListener("keydown", surTouche); clearTimeout(t); };
+  }, [open]);
 
   // Le voile couvrait l'écran sans empêcher la page de défiler dessous : on
   // pouvait parcourir le catalogue à la molette sans jamais répondre. Le
   // défilement est donc bloqué tant que la question est posée, et rendu dès
   // qu'elle ne l'est plus : y compris si le composant disparaît entre-temps.
+  // E2E SP-005 : body etait bloque, mais <html> defilait encore a la molette.
   useEffect(() => {
     if (!open) return undefined;
-    const precedent = document.body.style.overflow;
+    const precedentBody = document.body.style.overflow;
+    const precedentHtml = document.documentElement.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = precedent; };
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = precedentBody;
+      document.documentElement.style.overflow = precedentHtml;
+    };
   }, [open]);
 
   if (!open) return null;
 
   const confirm = () => {
-    localStorage.setItem("fironova_age_confirmed", "1");
     setOpen(false);
   };
 
@@ -50,6 +92,7 @@ export default function AgeGate() {
         data-testid="age-gate-denied"
         role="alertdialog"
         aria-modal="true"
+        ref={fenetreRef}
       >
         <div className="w-full max-w-md text-center">
           <ShieldCheck size={28} className="text-nova-texte mx-auto" aria-hidden="true" />
@@ -71,6 +114,9 @@ export default function AgeGate() {
     <div
       className="fixed inset-0 flex items-center justify-center bg-nordfjord/80 backdrop-blur-xl px-4" style={{ zIndex: "var(--z-modal)" }}
       data-testid="age-gate-modal"
+      role="dialog"
+      aria-modal="true"
+      ref={fenetreRef}
     >
       {/* Mesh accent */}
       <div className="pointer-events-none absolute inset-0 opacity-30"

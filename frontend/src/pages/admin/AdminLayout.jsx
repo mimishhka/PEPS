@@ -270,7 +270,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f7f7] -mt-px" data-testid="admin-shell">
+    <div className="min-h-screen bg-clinical -mt-px" data-testid="admin-shell">
       <div className="flex">
         <aside
           style={{ top: hautEntete, maxHeight: `calc(100vh - ${hautEntete}px)` }}

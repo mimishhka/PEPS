@@ -147,9 +147,9 @@ export default function AffiliateDashboard() {
   // Les couleurs de graphique passent par des PROPRIETES, pas des
   // classes : sans ce crochet elles ignorent le mode nuit.
   const couleursGraphique = useChartColors();
-  useDocumentHead({ title: "Affiliate Dashboard", path: "/affiliate", noindex: true });
   const { user, logout, refresh } = useAuth();
   const { lang } = useLang();
+  useDocumentHead({ title: lang === "fr" ? "Tableau de bord affilié" : "Affiliate Dashboard", path: "/affiliate", noindex: true });
   const L = (fr, en) => (lang === "fr" ? fr : en);
   const {
     affiliate: data,
