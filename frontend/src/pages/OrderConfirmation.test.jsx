@@ -384,7 +384,9 @@ describe("le visuel des instructions de paiement", () => {
     render(<OrderConfirmation />);
 
     const montant = await screen.findByTestId("crypto-amount");
-    expect(montant).toHaveTextContent("64.99");
+    // Le prix s'ecrit desormais dans la langue de qui le lit (rapport E2E
+    // #20) : en francais, « 64,99 $ ». Ce test tourne en francais.
+    expect(montant).toHaveTextContent("64,99");
     // En chasse fixe : un chiffre qui saute d'un pixel en changeant de valeur
     // est un defaut que personne ne nomme mais que tout le monde sent.
     expect(montant.className).toMatch(/tabular-nums/);
@@ -503,7 +505,7 @@ describe("la mise en deux colonnes", () => {
   it("garde le total lisible et en chasse fixe", async () => {
     afficher();
     const total = await screen.findByTestId("confirm-total");
-    expect(total).toHaveTextContent("64.99");
+    expect(total).toHaveTextContent("64,99");
     expect(total.className).toMatch(/tabular-nums/);
   });
 });

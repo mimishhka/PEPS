@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import api, { formatApiError, resolveAssetUrl } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
+import { prix } from "../lib/prix";
 import useAffiliate from "../hooks/useAffiliate";
 import { useCart } from "../contexts/CartContext";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -242,7 +243,7 @@ export default function ProductDetail() {
                         data-testid={`variant-${v.name}`}
                         className={`border-[1px] px-4 py-2.5 text-left transition-colors ${isActive ? "border-nova bg-nova/5" : "border-ash hover:border-nova"} disabled:opacity-40 disabled:cursor-not-allowed`} style={{ borderRadius: "var(--r-m)" }}>
                         <span className="font-display font-bold text-nordfjord">{v.name}</span>
-                        <span className="font-data text-[11px] text-glacier ml-2">${vPrice?.toFixed(2)}</span>
+                        <span className="font-data text-[11px] text-glacier ml-2">{prix(vPrice, lang)}</span>
                         {v.coa_status === "pending" && (
                           <span className="block font-data text-[10px] uppercase tracking-[0.14em] text-warning mt-0.5">{lang === "fr" ? "COA à venir" : "COA pending"}</span>
                         )}
@@ -277,11 +278,11 @@ export default function ProductDetail() {
                 <div className="flex items-baseline gap-3 flex-wrap">
                   {showOriginal && (
                     <span className="font-display text-2xl font-bold line-through text-glacier" data-testid="product-original-price">
-                      ${selectedVariant.price.toFixed(2)}
+                      {prix(selectedVariant.price, lang)}
                     </span>
                   )}
                   <span className={`font-data text-[28px] font-medium leading-none ${showOriginal ? "text-nova-texte" : "text-nordfjord"}`} data-testid="product-price">
-                    ${effectivePrice.toFixed(2)}
+                    {prix(effectivePrice, lang)}
                   </span>
                   <span className="font-data text-sm text-glacier">CAD</span>
                 </div>
@@ -317,9 +318,9 @@ export default function ProductDetail() {
                 className="flex-1 inline-flex items-center justify-center gap-2 font-semibold uppercase transition-colors duration-150 cursor-pointer text-[14px] tracking-[0.04em] bg-nordfjord text-white hover:bg-nova hover:text-white disabled:opacity-40 disabled:pointer-events-none" style={{ borderRadius: "var(--r-m)", padding: "13px 22px" }}
               >
                 {isComingSoon ? (lang === "fr" ? "À VENIR" : "COMING SOON")
-                  : isVariantPreorder ? `${lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"} · $${(effectivePrice * qty).toFixed(2)}`
+                  : isVariantPreorder ? `${lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"} · ${prix(effectivePrice * qty, lang)}`
                   : isOutOfStock ? (lang === "fr" ? "RUPTURE" : "OUT OF STOCK")
-                  : `${lang === "fr" ? "Ajouter à la commande" : "Add to order"} · $${(effectivePrice * qty).toFixed(2)}`}
+                  : `${lang === "fr" ? "Ajouter à la commande" : "Add to order"} · ${prix(effectivePrice * qty, lang)}`}
               </button>
             </div>
 
@@ -429,7 +430,7 @@ export default function ProductDetail() {
                     </div>
                     <div className="flex items-center justify-between mt-2">
                       <span className="font-data text-[12px] text-nordfjord">
-                        {rprice ? `$${rprice.toFixed(2)}` : "-"}
+                        {rprice ? prix(rprice, lang) : "-"}
                       </span>
                       <span className={`w-2 h-2 rounded-full ${rstock ? "bg-success" : "bg-warning"}`} />
                     </div>

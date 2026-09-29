@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
 import ProductImage from "./ProductImage";
+import { prix } from "../lib/prix";
 
 export default function CartDrawer() {
   const { lang, t } = useLang();
@@ -90,7 +91,7 @@ export default function CartDrawer() {
                       <button onClick={() => remove(it.product_id, it.variant_id)} data-testid={`cart-remove-${it.slug}`} aria-label={lang === "fr" ? "Retirer du panier" : "Remove from cart"} className="text-glacier hover:text-error transition-colors">
                         <Trash2 size={14} strokeWidth={1.5} />
                       </button>
-                      <div className="font-data font-bold text-nordfjord">${(it.price_cad * it.qty).toFixed(2)}</div>
+                      <div className="font-data font-bold text-nordfjord">{prix(it.price_cad * it.qty, lang)}</div>
                     </div>
                   </li>
                 );
@@ -102,7 +103,7 @@ export default function CartDrawer() {
           <div className="border-t border-ash p-6 space-y-4">
             <div className="flex justify-between items-baseline">
               <span className="font-data text-xs uppercase tracking-[0.16em] text-glacier">{t("common.subtotal")}</span>
-              <span className="font-display font-bold text-xl text-nordfjord" data-testid="cart-subtotal">${subtotal.toFixed(2)} CAD</span>
+              <span className="font-display font-bold text-xl text-nordfjord" data-testid="cart-subtotal">{prix(subtotal, lang)} CAD</span>
             </div>
             <p className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">
               {lang === "fr" ? "TAXES ET LIVRAISON CALCULÉES AU PAIEMENT" : "TAXES & SHIPPING CALCULATED AT CHECKOUT"}

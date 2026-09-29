@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
+import { prix } from "../lib/prix";
 import NomEnDeux from "../components/NomEnDeux";
 import { regionsDuPays, provinceDepuisCodePostal, formaterCodePostal,
          codePostalComplet, provinceCoherente } from "../lib/adresse";
@@ -689,7 +690,7 @@ export default function Checkout() {
                       <div className="font-medium text-nordfjord">{title}</div>
                       <div className="text-xs text-glacier">{it.variant_name ? `${it.variant_name} · ` : ""}x{it.qty}</div>
                     </div>
-                    <div className="font-semibold text-nordfjord tabular-nums">${(Number(unit) * Number(it.qty || 1)).toFixed(2)}</div>
+                    <div className="font-semibold text-nordfjord tabular-nums">{prix(Number(unit) * Number(it.qty || 1), lang)}</div>
                   </div>
                 );
               })}
@@ -723,25 +724,25 @@ export default function Checkout() {
             <div className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between text-glacier">
                 <span>{lang === "fr" ? "Sous-total" : "Subtotal"}</span>
-                <span data-testid="summary-subtotal" className="tabular-nums">${Number(subtotal).toFixed(2)}</span>
+                <span data-testid="summary-subtotal" className="tabular-nums">{prix(subtotal, lang)}</span>
               </div>
               {discount > 0 && (
                 <div className="flex justify-between text-nova-texte">
                   <span>{lang === "fr" ? "Rabais" : "Discount"}</span>
-                  <span data-testid="summary-discount" className="tabular-nums">−${discount.toFixed(2)}</span>
+                  <span data-testid="summary-discount" className="tabular-nums">−{prix(discount, lang)}</span>
                 </div>
               )}
               <div className="flex justify-between text-glacier">
                 <span>{lang === "fr" ? "Livraison" : "Shipping"}</span>
                 <span data-testid="summary-shipping" className="tabular-nums">
-                  {shippingEst === 0 ? (lang === "fr" ? "GRATUITE" : "FREE") : `$${shippingEst.toFixed(2)}`}
+                  {shippingEst === 0 ? (lang === "fr" ? "GRATUITE" : "FREE") : prix(shippingEst, lang)}
                 </span>
               </div>
               {shippingEst > 0 && (
                 <div className="font-data text-[10px] uppercase tracking-[0.14em] text-compliance" data-testid="free-shipping-hint">
                   {lang === "fr"
-                    ? `Livraison gratuite dès ${seuilGratuit.toFixed(0)}$ : plus que ${(seuilGratuit - Math.max(0, subtotal - discount)).toFixed(2)}$`
-                    : `Free shipping at $${seuilGratuit.toFixed(0)} : only $${(seuilGratuit - Math.max(0, subtotal - discount)).toFixed(2)} to go`}
+                    ? `Livraison gratuite dès ${prix(seuilGratuit, "fr")} : plus que ${prix(seuilGratuit - Math.max(0, subtotal - discount), "fr")}`
+                    : `Free shipping at ${prix(seuilGratuit, "en")} : only ${prix(seuilGratuit - Math.max(0, subtotal - discount), "en")} to go`}
                 </div>
               )}
               {coupon?.free_shipping && shippingEst === 0 && (
@@ -756,7 +757,7 @@ export default function Checkout() {
               <div className="flex items-baseline justify-between text-nordfjord pt-3.5 mt-1 border-t border-ash">
                 <span className="font-display font-semibold text-[15px]">{lang === "fr" ? "Total" : "Total"}</span>
                 <span data-testid="summary-total" className="font-display font-bold text-[22px] tabular-nums tracking-[-0.02em]">
-                  ${Number(total).toFixed(2)}
+                  {prix(total, lang)}
                   <span className="font-data font-medium text-[11px] text-glacier ml-1.5 tracking-normal">CAD</span>
                 </span>
               </div>

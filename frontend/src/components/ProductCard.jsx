@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useLang } from "../contexts/LanguageContext";
 import { useCart } from "../contexts/CartContext";
 import ProductImage from "./ProductImage";
+import { prix } from "../lib/prix";
 
 export default function ProductCard({ product, index = 0 }) {
   const { lang } = useLang();
@@ -86,11 +87,11 @@ export default function ProductCard({ product, index = 0 }) {
           <div className="flex items-baseline gap-2">
             {displayOriginal && (
               <span className="font-data text-sm line-through text-glacier" data-testid={`card-original-price-${product.slug}`}>
-                ${displayOriginal.toFixed(2)}
+                {prix(displayOriginal, lang)}
               </span>
             )}
             <span className={`font-data text-[13.5px] font-medium tabular-nums ${displayOriginal ? "text-nova-texte" : "text-nordfjord"}`} data-testid={`card-price-${product.slug}`}>
-              ${(displayPrice ?? 0).toFixed(2)}
+              {prix(displayPrice ?? 0, lang)}
             </span>
             {variants.length > 1 && (
               <span className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{lang === "fr" ? "dès" : "from"}</span>

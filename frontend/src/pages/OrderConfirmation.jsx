@@ -5,6 +5,7 @@ import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import { useConfirm } from "../components/ConfirmDialog";
 import useDocumentHead from "../hooks/useDocumentHead";
+import { prix } from "../lib/prix";
 import { delaiLisible, resteLisible } from "../lib/delais";
 import ModuleCrypto from "../components/ModuleCrypto";
 
@@ -371,7 +372,7 @@ export default function OrderConfirmation() {
           </div>
           <div className="px-6 sm:px-8 py-7 space-y-6">
             <Row numero="1" label={t("confirmation.interacStep1")} value={interac.send_to} onCopy={() => copy(interac.send_to, "email")} copied={copied === "email"} testId="interac-email" />
-            <Row numero="2" label={t("confirmation.interacStep2")} value={`$${interac.amount_cad.toFixed(2)} CAD`} onCopy={() => copy(interac.amount_cad.toFixed(2), "amount")} copied={copied === "amount"} testId="interac-amount" />
+            <Row numero="2" label={t("confirmation.interacStep2")} value={`${prix(interac.amount_cad, lang)} CAD`} onCopy={() => copy(interac.amount_cad.toFixed(2), "amount")} copied={copied === "amount"} testId="interac-amount" />
             <Row numero="3" label={t("confirmation.interacStep3")} value={interac.reference}
               onCopy={() => copy(interac.reference, "ref")} copied={copied === "ref"} testId="interac-ref" highlight
               note={lang === "fr"
@@ -408,7 +409,7 @@ export default function OrderConfirmation() {
                   {lang === "fr" ? "Montant à payer" : "Amount to pay"}
                 </div>
                 <div className="font-display text-[30px] font-bold text-nordfjord tabular-nums tracking-[-0.02em]" data-testid="crypto-amount">
-                  ${order.total.toFixed(2)}
+                  {prix(order.total, lang)}
                   <span className="font-data font-medium text-[12px] text-glacier ml-1.5 tracking-normal">CAD</span>
                 </div>
               </div>
@@ -491,31 +492,31 @@ export default function OrderConfirmation() {
           {order.items.map((i) => (
             <li key={i.product_id} className="py-3 flex justify-between text-sm">
               <span><span className="font-mono text-foreground/60">{i.qty}×</span> {lang === "fr" ? (i.name_fr || i.name_en) : i.name_en}</span>
-              <span className="font-bold">${i.line_total.toFixed(2)}</span>
+              <span className="font-bold">{prix(i.line_total, lang)}</span>
             </li>
           ))}
         </ul>
         <div className="mt-4 pt-3 border-t border-nordfjord/15 space-y-1.5 text-sm">
           <div className="flex justify-between text-foreground/70">
             <span>{lang === "fr" ? "Sous-total" : "Subtotal"}</span>
-            <span data-testid="confirm-subtotal">${Number(order.subtotal ?? order.total).toFixed(2)}</span>
+            <span data-testid="confirm-subtotal">{prix(order.subtotal ?? order.total, lang)}</span>
           </div>
           {Number(order.discount) > 0 && (
             <div className="flex justify-between text-nova-texte">
               <span>{lang === "fr" ? "Rabais" : "Discount"}</span>
-              <span data-testid="confirm-discount">−${Number(order.discount).toFixed(2)}</span>
+              <span data-testid="confirm-discount">−{prix(order.discount, lang)}</span>
             </div>
           )}
           <div className="flex justify-between text-foreground/70">
             <span>{lang === "fr" ? "Livraison" : "Shipping"}</span>
             <span data-testid="confirm-shipping">
-              {Number(order.shipping) > 0 ? `$${Number(order.shipping).toFixed(2)}` : (lang === "fr" ? "GRATUITE" : "FREE")}
+              {Number(order.shipping) > 0 ? prix(order.shipping, lang) : (lang === "fr" ? "GRATUITE" : "FREE")}
             </span>
           </div>
           {Number(order.tax) > 0 && (
             <div className="flex justify-between text-foreground/70">
               <span>{lang === "fr" ? "Taxes" : "Tax"}</span>
-              <span data-testid="confirm-tax">${Number(order.tax).toFixed(2)}</span>
+              <span data-testid="confirm-tax">{prix(order.tax, lang)}</span>
             </div>
           )}
         </div>
@@ -525,7 +526,7 @@ export default function OrderConfirmation() {
         <div className="border-t border-ash mt-3 pt-3.5 flex items-baseline justify-between">
           <span className="font-display font-semibold text-[15px] text-nordfjord">TOTAL</span>
           <span data-testid="confirm-total" className="font-display font-bold text-[22px] text-nordfjord tabular-nums tracking-[-0.02em]">
-            ${order.total.toFixed(2)}
+            {prix(order.total, lang)}
             <span className="font-data font-medium text-[11px] text-glacier ml-1.5 tracking-normal">CAD</span>
           </span>
         </div>
