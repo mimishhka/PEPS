@@ -6,6 +6,7 @@ import api, { formatApiError, resolveAssetUrl } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { prix } from "../lib/prix";
+import { dosage } from "../lib/dosage";
 import useAffiliate from "../hooks/useAffiliate";
 import { useCart } from "../contexts/CartContext";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -242,7 +243,7 @@ export default function ProductDetail() {
                         disabled={(v.badge_coming_soon && !v.preorder_enabled) || outNoPre}
                         data-testid={`variant-${v.name}`}
                         className={`border-[1px] px-4 py-2.5 text-left transition-colors ${isActive ? "border-nova bg-nova/5" : "border-ash hover:border-nova"} disabled:opacity-40 disabled:cursor-not-allowed`} style={{ borderRadius: "var(--r-m)" }}>
-                        <span className="font-display font-bold text-nordfjord">{v.name}</span>
+                        <span className="font-display font-bold text-nordfjord">{dosage(v.name, lang)}</span>
                         <span className="font-data text-[11px] text-glacier ml-2">{prix(vPrice, lang)}</span>
                         {v.coa_status === "pending" && (
                           <span className="block font-data text-[10px] uppercase tracking-[0.14em] text-warning mt-0.5">{lang === "fr" ? "COA à venir" : "COA pending"}</span>

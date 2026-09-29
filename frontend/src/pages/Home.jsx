@@ -21,7 +21,12 @@ export default function Home() {
 
   useEffect(() => {
     api.get("/products", { params: { featured: true } })
-      .then((r) => setProducts(r.data.slice(0, 4)))
+      // L'ACCUEIL MONTRE CE QUE L'ADMIN A MARQUE (rapport E2E #20). Une
+      // coupe a quatre ignorait deux des six produits vedettes : le site
+      // contredisait la configuration sans le dire. La borne a huit reste
+      // par prudence — deux rangees pleines sur grand ecran — pour qu'un
+      // marquage massif ne transforme pas l'accueil en catalogue.
+      .then((r) => setProducts(r.data.slice(0, 8)))
       .catch(() => {});
   }, []);
 

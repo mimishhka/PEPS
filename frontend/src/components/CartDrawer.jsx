@@ -4,6 +4,7 @@ import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
 import ProductImage from "./ProductImage";
 import { prix } from "../lib/prix";
+import { dosage } from "../lib/dosage";
 
 export default function CartDrawer() {
   const { lang, t } = useLang();
@@ -66,7 +67,7 @@ export default function CartDrawer() {
                           variant_sku — elles retombent sur le slug. */}
                       <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">{it.variant_sku || it.slug}</div>
                       <div className="font-display font-bold text-sm text-nordfjord">{name}</div>
-                      <div className="font-data text-[10px] text-glacier">{it.variant_name || `${it.dosage_mg} mg`}</div>
+                      <div className="font-data text-[10px] text-glacier">{it.variant_name ? dosage(it.variant_name, lang) : `${it.dosage_mg} mg`}</div>
                       <div className="flex items-center gap-2 mt-2">
                         <button
                           onClick={() => setQty(it.product_id, it.variant_id, Math.max(1, it.qty - 1))}
