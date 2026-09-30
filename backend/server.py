@@ -1493,6 +1493,58 @@ async def admin_autologin(_admin: dict = Depends(get_admin_user)):
     return {"ok": True}
 
 
+# ===========================================================================
+# « EST AFFILIE » : UNE SEULE DEFINITION
+# ===========================================================================
+#
+# MIREILLE, 29/09/2026 : « un affilie qui se connecte doit etre redirige
+# directement vers son tableau de bord ». Ce ne l'etait pas.
+#
+# Il existait DEUX regles concurrentes :
+#
+#   get_current_affiliate — la porte du tableau de bord
+#       cherche par user_id, accepte « active » ET « suspended »
+#   le drapeau is_affiliate rendu a la connexion
+#       cherchait par email, n'acceptait que « active »
+#
+# Trois facons de se contredire, et la premiere explique le defaut signale :
+#
+#  1. /auth/login ne rendait PAS le drapeau du tout. Une affiliee qui entrait
+#     son mot de passe recevait `is_affiliate` absent, donc faux, donc le
+#     compte client. Le lien magique menait au tableau de bord, le mot de
+#     passe jamais — d'ou une panne qui semblait intermittente.
+#
+#  2. Une fiche suspendue : la porte l'admet, precisement pour lui montrer
+#     « compte suspendu » la ou ce message vit. Le drapeau la refusait et
+#     l'expediait sur le compte client, sans rien expliquer.
+#
+#  3. Une fiche active restee sans user_id (invitation jamais menee a bout) :
+#     le drapeau disait « affiliee » sur la foi du seul courriel, la porte
+#     repondait 403. On promettait un tableau de bord pour livrer une erreur.
+#
+# D'ou une fonction unique, alignee sur la porte : si la porte ouvre, la
+# redirection y mene ; si elle refuse, elle n'y mene pas.
+async def _est_affilie(user: Optional[dict]) -> bool:
+    if not user or not user.get("id"):
+        return False
+    try:
+        aff = await db.affiliates.find_one(
+            {"user_id": user["id"], "status": {"$in": ["active", "suspended"]}},
+            {"_id": 1},
+        )
+    except Exception as e:
+        # UNE CONNEXION NE DOIT JAMAIS ECHOUER ICI.
+        #
+        # Ce calcul ne sert qu'a choisir la page d'arrivee. Le laisser remonter
+        # ferait rendre 500 a /auth/login sur un incident de la collection des
+        # affilies : plus personne ne pourrait entrer, ni client ni affilie,
+        # pour une question de redirection. Le repli est benin — on arrive sur
+        # le compte client, d'ou le tableau de bord reste a un clic.
+        logging.warning("affiliate flag lookup failed error_type=%s", type(e).__name__)
+        return False
+    return bool(aff)
+
+
 async def login(payload: LoginIn, response: Response, request: Request):
     email = payload.email.lower().strip()
     throttle_key = f"{_client_ip(request)}:{email}"
@@ -1517,6 +1569,11 @@ async def login(payload: LoginIn, response: Response, request: Request):
         "name": user["name"],
         "role": user["role"],
         "created_at": user["created_at"],
+        # Absent jusqu'ici : c'est LE defaut. Le frontend lisait
+        # `is_affiliate` pour choisir la destination, ne le trouvait pas, et
+        # envoyait toute affiliee connectee par mot de passe sur le compte
+        # client. Voir _est_affilie.
+        "is_affiliate": await _est_affilie(user),
     }
 
 
@@ -1788,14 +1845,12 @@ async def magic_verify(response: Response, request: Request, token: str = Body(.
             asyncio.create_task(welcome_new_user(email, user.get("name", ""), "fr"))
         user = {**user, "email_verified": True}
     await _start_session(response, request, user)
-    aff = await db.affiliates.find_one(
-        {"email": email, "status": "active"}, {"_id": 0, "id": 1})
     return {
         "id": user["id"], "email": user["email"], "name": user["name"],
         "role": user["role"], "created_at": user["created_at"],
-        # « Affilie » au sens du programme : actif ET avec une fiche. Le
-        # frontend l'emploie pour choisir la destination apres connexion.
-        "is_affiliate": bool(aff),
+        # Meme regle que la porte du tableau de bord, et non plus une
+        # recherche par courriel de son cru. Voir _est_affilie.
+        "is_affiliate": await _est_affilie(user),
     }
 
 

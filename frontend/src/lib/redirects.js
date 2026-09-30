@@ -14,6 +14,8 @@
  * une page demandée la veille.
  */
 const CLE_REDIRECTION = "fn_post_login_redirect";
+// Le repli generique : « je me connecte », sans page precise en tete.
+export const REPLI_CONNEXION = "/account";
 const DUREE_REDIRECTION_MS = 15 * 60 * 1000;
 
 export function rememberRedirectTarget(path) {
@@ -72,4 +74,54 @@ export function sanitizeRedirectTarget(raw, fallback = "/") {
   } catch {
     return fallback;
   }
+}
+
+/* Destination apres une connexion reussie.
+ *
+ * MIREILLE, 29/09/2026 : « un affilie qui se connecte doit etre redirige
+ * directement vers son tableau de bord ».
+ *
+ * La regle etait ecrite dans AuthCallback SEULEMENT. Le retour par lien
+ * magique menait donc au tableau de bord, et la connexion par mot de passe
+ * jamais : deux chemins pour une seule intention, un seul des deux corrige.
+ * Elle vit maintenant ici, et les deux pages l'appellent.
+ *
+ * Une destination PRECISE garde la priorite : qui demandait /checkout ou une
+ * page protegee y retourne. Le tableau de bord ne remplace que le repli
+ * generique — sans quoi un affilie ne pourrait plus jamais atteindre son
+ * compte client par une connexion.
+ */
+export function ciblePostConnexion(cible, estAffilie) {
+  const demande = sanitizeRedirectTarget(cible, REPLI_CONNEXION);
+  if (!estAffilie) return demande;
+  return demande === REPLI_CONNEXION ? "/affiliate" : demande;
+}
+
+/* Ou mene l'icone de compte quand personne n'est connecte.
+ *
+ * MIREILLE : « quand je me deconnecte d'OPS et que je clique sur l'icone du
+ * compte client, il ne se passe rien ».
+ *
+ * L'icone portait `/login?next=<page courante>`. Sortir d'OPS laisse sur la
+ * page de connexion — la route admin est protegee, elle s'evacue d'elle-meme
+ * des que la session tombe. Le lien pointait donc vers la page ou l'on se
+ * trouvait DEJA : React Router ne changeait qu'une chaine de requete, rien ne
+ * bougeait a l'ecran, et aucune erreur ne venait l'expliquer.
+ *
+ * Deux regles :
+ *  : une page d'authentification ne se memorise pas comme destination. On n'y
+ *    revient pas apres s'etre connecte ;
+ *  : le chemin d'OPS non plus. C'est l'icone du compte CLIENT : elle ne doit
+ *    jamais ramener a l'administration, meme a qui vient d'en sortir.
+ */
+export function hrefConnexion(cheminCourant, cheminAdmin) {
+  const courant = typeof cheminCourant === "string" ? cheminCourant : "";
+  const inutile =
+    !courant ||
+    courant === "/" ||
+    ["/login", "/register", "/auth/callback", "/forgot-password",
+     "/reset-password"].some((p) => courant.startsWith(p)) ||
+    (cheminAdmin && courant.startsWith(cheminAdmin));
+  const cible = inutile ? REPLI_CONNEXION : courant;
+  return `/login?next=${encodeURIComponent(cible)}`;
 }

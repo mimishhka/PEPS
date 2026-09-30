@@ -4,7 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { MolecularMesh, Wordmark, FnMark } from "../components/brand";
-import { sanitizeRedirectTarget, consumeRedirectTarget } from "../lib/redirects";
+import { sanitizeRedirectTarget, consumeRedirectTarget, ciblePostConnexion } from "../lib/redirects";
 
 export default function AuthCallback() {
   useDocumentHead({ title: "Connexion", path: "/auth/callback", noindex: true });
@@ -37,13 +37,9 @@ export default function AuthCallback() {
     (async () => {
       const res = await verifyMagic(token);
       if (!res.ok) { setStatus("error"); return; }
-      // MIREILLE : une affiliee qui se connecte doit arriver sur SON tableau
-      // de bord, pas sur le compte client. Le repli /account ne s'applique
-      // qu'aux comptes non affilies ; une destination precise (checkout,
-      // page demandee) garde la priorite.
-      const cible = res.isAffiliate && redirectTo === "/account"
-        ? "/affiliate" : redirectTo;
-      navigate(cible, { replace: true });
+      // La regle vit dans lib/redirects : elle etait ecrite ici seulement,
+      // et la connexion par mot de passe ne l'avait donc jamais.
+      navigate(ciblePostConnexion(redirectTo, res.isAffiliate), { replace: true });
     })();
   }, [location.hash, location.pathname, location.search, navigate, verifyMagic]);
 

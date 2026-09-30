@@ -6,7 +6,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { MolecularMesh, Wordmark, FnMark } from "../components/brand";
-import { sanitizeRedirectTarget, rememberRedirectTarget } from "../lib/redirects";
+import { sanitizeRedirectTarget, rememberRedirectTarget, ciblePostConnexion } from "../lib/redirects";
 
 export default function Login() {
   const { t, lang } = useLang();
@@ -45,7 +45,10 @@ export default function Login() {
     setBusy(true);
     const res = await login(email, password);
     setBusy(false);
-    if (res.ok) navigate(nextUrl(), { replace: true });
+    // Une affiliee arrive sur SON tableau de bord, par mot de passe comme
+    // par lien magique. Cette ligne manquait : seul AuthCallback appliquait
+    // la regle, donc la moitie des connexions l'ignorait.
+    if (res.ok) navigate(ciblePostConnexion(nextUrl(), res.isAffiliate), { replace: true });
     else toast.error(res.error);
   };
 

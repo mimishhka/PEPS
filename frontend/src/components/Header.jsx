@@ -7,6 +7,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useCart } from "../contexts/CartContext";
 import { useSiteConfig } from "../contexts/SiteConfigContext";
 import { FnMark, Wordmark } from "./brand";
+import { hrefConnexion } from "../lib/redirects";
 
 export default function Header() {
   const { lang, toggle, t } = useLang();
@@ -34,7 +35,12 @@ export default function Header() {
     { to: "/about", label: t("nav.about") },
   ];
 
-  const loginHref = `/login?next=${encodeURIComponent(`${location.pathname}${location.search || ""}${location.hash || ""}`)}`;
+  // Voir hrefConnexion : la page courante servait de destination, y compris
+  // quand c'etait la page de connexion elle-meme ou une page d'OPS.
+  const loginHref = hrefConnexion(
+    `${location.pathname}${location.search || ""}${location.hash || ""}`,
+    ADMIN_PATH,
+  );
 
   const [menuNav, setMenuNav] = useState(null);
   useEffect(() => {
