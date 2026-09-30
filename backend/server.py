@@ -3460,6 +3460,194 @@ async def _claim_coupon_usage(order: dict) -> bool:
     return True
 
 
+async def _scinder_precommande(order: dict) -> dict:
+    """Une commande mixte se scinde : le disponible part, la precommande suit.
+
+    MIREILLE, 30/09/2026 : « je crois que retenir la commande complete n'est
+    pas une bonne idee ».
+
+    Elle avait raison, et pour trois raisons qui se cumulaient. Le stock etait
+    GELE : _reserve_stock_atomic decremente les lignes en stock des la caisse,
+    donc la marchandise restait sur la tablette, reservee, invendable, le temps
+    que la precommande arrive. RIEN NE PARTAIT : « preorder » ne figure dans
+    aucune file de dispatch, et il n'existe pas d'expedition partielle. Et la
+    COMMISSION de l'affilie etait versee sept jours apres la commande, donc
+    bien avant la livraison — argent sorti, marchandise en entrepot.
+
+    POURQUOI AU PAIEMENT, ET NON A LA CAISSE
+    ----------------------------------------
+    Scinder a la creation ferait naitre une commande de suite marquee « paid »
+    avant qu'un sou soit arrive — et _release_ready_preorder_orders, qui ne
+    cherche que « paid » + « preorder », pourrait l'expedier. Au paiement, il
+    n'y a qu'un seul point d'accroche, et Interac, cryptomonnaie,
+    confirmation manuelle, reconciliation et reouverture y passent tous : aucun
+    chemin n'est oublie. Une commande impayee se comporte exactement comme
+    avant, donc cancel_stale_unpaid_orders n'a pas bouge.
+
+    APRES la commission, jamais avant : affiliate_on_order_paid doit voir le
+    panier ENTIER, pour qu'une seule commission soit creee, au bon montant.
+
+    LA MERE RESTE LA FACTURE
+    ------------------------
+    Ses totaux ne bougent pas et ses lignes sont conservees en entier. Le
+    client a ete facture pour le panier complet : recalculer le ferait soit
+    passer sous le seuil de livraison gratuite et ajouter vingt dollars qu'il
+    n'a pas consentis, soit exiger un remboursement partiel. La somme percue
+    doit rester attachee a un seul enregistrement — celui que la
+    reconciliation Interac rapproche du virement.
+
+    Les lignes deplacees portent `fulfilled_by_order_id`. C'est _order_items()
+    qui les ecarte du COLIS, sans toucher a la facture.
+
+    L'ENFANT N'EST PAS UN DOCUMENT FINANCIER
+    ----------------------------------------
+    Total zero, ni coupon ni affilie. Poser le coupon le compterait deux fois ;
+    poser l'affilie creerait une seconde commission sur une vente unique. Et
+    surtout : PAS d'appel a _mark_order_paid sur l'enfant, qui enverrait un
+    deuxieme courriel « paiement recu » pour un seul paiement. Les champs sont
+    poses directement, comme le fait deja _create_replacement_order.
+
+    Retourne la mere rafraichie — sept appelants utilisent l'objet que
+    _mark_order_paid leur rend, et il mentirait autrement.
+    """
+    lignes = order.get("items") or []
+    a_suivre = [it for it in lignes if it.get("preorder")]
+    a_expedier = [it for it in lignes if not it.get("preorder")]
+
+    # Trois raisons de ne rien faire, toutes legitimes :
+    #  — tout est en precommande : il n'y aurait rien a expedier maintenant ;
+    #  — rien n'est en precommande : la commande part telle quelle ;
+    #  — deja scindee : _mark_order_paid est protege par un filtre atomique,
+    #    mais une garde explicite coute une ligne et ferme le sujet.
+    if not a_suivre or not a_expedier or order.get("suite_order_id"):
+        return order
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    enfant_id = str(uuid.uuid4())
+    numero_mere = order.get("order_number") or ""
+
+    # Les lignes sont COPIEES, pas partagees : la mere garde les siennes pour
+    # sa facture. `preorder` reste vrai — c'est ce drapeau que le chien de
+    # garde de liberation cherche, et qui empeche le restock d'un stock jamais
+    # decremente.
+    items_enfant = [dict(it) for it in a_suivre]
+    for it in items_enfant:
+        it.pop("fulfilled_by_order_id", None)
+        it["preorder"] = True
+    sous_total_enfant = round(
+        sum(float(it.get("line_total") or 0.0) for it in items_enfant), 2)
+
+    enfant = {
+        "id": enfant_id,
+        # Meme procede que le « -R » des remplacements : on lit d'un coup d'oeil
+        # que les deux commandes vont ensemble, au telephone comme dans OPS.
+        # Un seul enfant par commande, donc l'unicite de l'index tient.
+        "order_number": f"{numero_mere}-P",
+        "user_id": order.get("user_id"),
+        "email": order.get("email"),
+        "items": items_enfant,
+        # Indicatif : l'argent est sur la mere. On garde le sous-total pour que
+        # la fiche ne montre pas un envoi a valeur nulle, ce qui compliquerait
+        # une declaration douaniere ou une reclamation a Postes Canada.
+        "subtotal": sous_total_enfant,
+        "discount": 0.0,
+        "tax_rate": 0.0,
+        "tax": 0.0,
+        "shipping": 0.0,
+        "total": 0.0,
+        "currency": order.get("currency") or "CAD",
+        "shipping_address": order.get("shipping_address"),
+        "address_verified": order.get("address_verified"),
+        "address_suggestions": order.get("address_suggestions") or [],
+        "address_verification_provider": order.get("address_verification_provider"),
+        # Neuf et vide. Jamais l'etiquette de la mere : ce sont deux colis.
+        "shipping_info": {"carrier": "", "tracking_number": "", "shipped_at": None},
+        "payment_method": order.get("payment_method"),
+        "payment_status": "paid",
+        # Surtout PAS les instructions Interac de la mere : le client recevrait
+        # un ordre de paiement pour une commande deja reglee.
+        "payment_info": {
+            "type": "preorder_suite",
+            "suite_of_order_id": order.get("id"),
+            "suite_of_order_number": numero_mere,
+        },
+        "fulfillment_status": "preorder",
+        "has_preorder": True,
+        "notes": [
+            {
+                "id": str(uuid.uuid4()),
+                "text": f"Envoi de suite de {numero_mere} — précommande, déjà payée.",
+                "author": "system",
+                "created_at": now_iso,
+            },
+            {
+                "id": str(uuid.uuid4()),
+                "text": (f"Cet envoi complète votre commande {numero_mere}. "
+                         "Il est déjà payé : aucun montant ne vous sera demandé, "
+                         "et les frais de livraison restent à notre charge."),
+                "author": "system",
+                "created_at": now_iso,
+                "visible_to_customer": True,
+            },
+        ],
+        "suite_of_order_id": order.get("id"),
+        "created_at": now_iso,
+        "paid_at": order.get("paid_at") or now_iso,
+        "compliance": order.get("compliance"),
+    }
+    await db.orders.insert_one(enfant)
+    enfant.pop("_id", None)
+
+    # La mere : elle redevient une commande ordinaire, expediable aujourd'hui.
+    # Sans has_preorder=False ni « processing », elle resterait hors du dispatch
+    # — _mark_order_paid venait justement de la mettre en « preorder ».
+    items_mere = []
+    for it in lignes:
+        ligne = dict(it)
+        # Le meme predicat qui a constitue `a_suivre`, plutot qu'une
+        # correspondance d'objets : c'est verifiable a la lecture.
+        if ligne.get("preorder"):
+            ligne["fulfilled_by_order_id"] = enfant_id
+        items_mere.append(ligne)
+
+    maj = {
+        "items": items_mere,
+        "has_preorder": False,
+        "fulfillment_status": "processing",
+        "dispatch_batch": compute_dispatch_batch(order.get("paid_at") or now),
+        "suite_order_id": enfant_id,
+        "suite_order_number": enfant["order_number"],
+    }
+    note_mere = {
+        "id": str(uuid.uuid4()),
+        "text": (f"Scindée : {len(a_suivre)} ligne(s) en précommande déplacée(s) "
+                 f"sur {enfant['order_number']}. Le disponible part maintenant."),
+        "author": "system",
+        "created_at": now_iso,
+    }
+    note_client = {
+        "id": str(uuid.uuid4()),
+        "text": ("Une partie de votre commande part dès maintenant. "
+                 f"L'article en précommande suivra dans un envoi séparé "
+                 f"({enfant['order_number']}), sans frais supplémentaires."),
+        "author": "system",
+        "created_at": now_iso,
+        "visible_to_customer": True,
+    }
+    await db.orders.update_one(
+        {"id": order.get("id")},
+        {"$set": maj, "$push": {"notes": {"$each": [note_mere, note_client]}}},
+    )
+    logging.info(
+        "Order %s split: %d preorder line(s) moved to %s",
+        numero_mere, len(a_suivre), enfant["order_number"],
+    )
+
+    rafraichie = await db.orders.find_one({"id": order.get("id")}, {"_id": 0})
+    return rafraichie or {**order, **maj}
+
+
 async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Optional[dict]:
     """Retourne l'order fraîche si CET appel a fait la transition, sinon None."""
     paid_at = datetime.now(timezone.utc).isoformat()
@@ -3512,6 +3700,11 @@ async def _mark_order_paid(order_id: str, note_text: Optional[str] = None) -> Op
     # asyncio.create_task(_auto_create_dispatch_label(order_id))
     # --- AFFILIATE: commission pending au paiement confirme ---
     await affiliate_on_order_paid(order)
+    # LA SCISSION VIENT APRES LA COMMISSION, et ce n'est pas un detail : la
+    # commission doit se calculer sur le panier ENTIER, une seule fois. Voir
+    # _scinder_precommande. Elle rend la commande rafraichie parce que les
+    # appelants se servent de cet objet.
+    order = await _scinder_precommande(order)
     return order
 
 
@@ -4302,9 +4495,45 @@ async def get_order(order_id: str, request: Request):
 
     if not _guest_order_accessible(order, request):
         raise HTTPException(403, "Forbidden")
-    order = _customer_order_payload(order)
-    order["guest_access_used"] = True
-    return order
+    payload = _customer_order_payload(order)
+    payload["guest_access_used"] = True
+    await _ajouter_acces_soeur(payload, order)
+    return payload
+
+
+async def _ajouter_acces_soeur(payload: dict, order: dict) -> None:
+    """Donne a un invite le jeton d'acces de sa commande soeur.
+
+    Une commande mixte est scindee au paiement : la precommande part sur un
+    envoi de suite (voir _scinder_precommande). Un client AVEC COMPTE retrouve
+    les deux dans « Mes commandes ». Un invite, lui, n'a que le jeton derive de
+    la commande qu'il consulte — celui de la soeur porte un `created_at`
+    different, donc il ne l'a pas, et l'envoi de suite lui serait inaccessible.
+
+    Le lui donner est sans risque : il vient de prouver son acces a une
+    commande liee, portant la MEME adresse courriel. Le jeton se recalcule
+    (HMAC de id + created_at + email), rien n'est stocke.
+
+    Silencieux en cas d'echec : un jeton manquant degrade l'affichage, il ne
+    doit jamais empecher de consulter la commande demandee.
+    """
+    soeur_id = order.get("suite_order_id") or order.get("suite_of_order_id")
+    if not soeur_id:
+        return
+    try:
+        soeur = await db.orders.find_one(
+            {"id": soeur_id}, {"_id": 0, "id": 1, "order_number": 1,
+                               "created_at": 1, "email": 1, "user_id": 1})
+        if not soeur or soeur.get("user_id"):
+            return
+        # Garde-fou : deux commandes liees portent la meme adresse par
+        # construction. Si ce n'etait pas le cas, on ne distribue rien.
+        if (soeur.get("email") or "").strip().lower() != (order.get("email") or "").strip().lower():
+            return
+        payload["soeur_access_token"] = _guest_order_access_token(soeur)
+        payload["soeur_order_number"] = soeur.get("order_number")
+    except Exception as e:  # pragma: no cover
+        logging.warning("sibling access token failed error_type=%s", type(e).__name__)
 
 
 async def order_tracking(order_id: str, request: Request):
@@ -7289,8 +7518,42 @@ class FulfillmentBulkIn(BaseModel):
 
 
 def _order_items(order: dict) -> list:
-    """Articles d'une commande. Les commandes sont stockées avec la clé
-    "items" ; on accepte aussi "line_items" par compatibilité."""
+    """Articles de CE COLIS — pas la facture.
+
+    Les commandes sont stockées avec la clé "items" ; on accepte aussi
+    "line_items" par compatibilité.
+
+    LES LIGNES PARTIES SUR UNE COMMANDE DE SUITE SONT EXCLUES.
+    -----------------------------------------------------------
+    Quand une commande mélange des articles en stock et une précommande, la
+    précommande est déplacée sur une commande de suite pour que le disponible
+    parte tout de suite. La ligne d'origine RESTE sur la commande mère, parce
+    que la mère est la facture : c'est elle qui porte le total payé, le coupon
+    et la commission, et un total qui ne correspond plus à ses lignes serait
+    un document faux.
+
+    Mais le colis de la mère, lui, ne contient plus cet article. Or les six
+    appelants de cette fonction sont TOUS des surfaces d'expedition : poids du
+    colis (_order_weight_kg), choix de la boite, bordereau de prelevement
+    (_picking_lines), compteurs et totaux du dispatch. Aucune surface
+    financiere ne passe par ici — elles lisent order["items"] directement.
+
+    Le filtre vit donc a cet endroit unique, et il suffit : sans lui on
+    facturerait un colis au poids d'un article absent, on choisirait une boite
+    trop grande, et le bordereau enverrait chercher sur la tablette quelque
+    chose qui n'y est plus.
+    """
+    lignes = order.get("items") or order.get("line_items") or []
+    return [it for it in lignes if not it.get("fulfilled_by_order_id")]
+
+
+def _order_items_factures(order: dict) -> list:
+    """TOUTES les lignes, y compris celles parties sur une commande de suite.
+
+    Pour les surfaces financieres et les recapitulatifs : la facture, le
+    courriel de confirmation, la fiche client. Elles doivent montrer ce qui a
+    ete achete et paye, pas ce qui tient dans un carton.
+    """
     return order.get("items") or order.get("line_items") or []
 
 
@@ -9967,7 +10230,19 @@ async def _cancel_order_side_effects(order: dict, *, reverse_affiliate: bool = T
 
     Idempotent — sûr à appeler plusieurs fois grâce aux gardes internes.
     À utiliser depuis TOUS les chemins d'annulation (auto-cancel, cancel
-    manuel admin, refund complet) pour garantir cohérence."""
+    manuel admin, refund complet) pour garantir cohérence.
+
+    4. Annulation de l'ENVOI DE SUITE, s'il existe.
+
+    Une commande mixte est scindée au paiement (voir _scinder_precommande) :
+    la précommande part sur une commande de suite, qui n'a ni argent, ni
+    coupon, ni affilié. Annuler la mère sans elle laisserait un envoi orphelin
+    en attente de stock — et le chien de garde de libération l'expédierait un
+    jour, à quelqu'un qui a été remboursé.
+
+    Son stock n'a jamais été décrémenté (ses lignes sont encore `preorder`), et
+    _restock_order_items saute précisément ces lignes : il n'y a donc rien à
+    remettre en inventaire, seulement une commande à clore."""
     await _restock_order_items(order)
     await _decrement_coupon_usage(order)
     if reverse_affiliate and order.get("payment_status") == "paid":
@@ -9975,6 +10250,42 @@ async def _cancel_order_side_effects(order: dict, *, reverse_affiliate: bool = T
             await affiliate_on_order_reversed(order["id"], full=True)  # noqa: F821
         except Exception as e:
             logging.warning("[cancel] affiliate reverse failed for %s: %s", order.get("id"), e)
+    await _annuler_envoi_de_suite(order)
+
+
+async def _annuler_envoi_de_suite(order: dict) -> None:
+    """Clôt la commande de suite quand sa mère est annulée. Voir ci-dessus.
+
+    `reverse_affiliate` ne se propage pas : l'enfant ne porte aucune
+    commission, par construction. Rien à reprendre.
+    """
+    enfant_id = order.get("suite_order_id")
+    if not enfant_id:
+        return
+    now_iso = datetime.now(timezone.utc).isoformat()
+    note = {
+        "id": str(uuid.uuid4()),
+        "text": (f"Annulée avec sa commande d'origine "
+                 f"{order.get('order_number') or order.get('id')}."),
+        "author": "system",
+        "created_at": now_iso,
+    }
+    # Filtre sur un statut non terminal : si l'envoi de suite est déjà parti
+    # ou déjà annulé, on n'y touche pas. Une commande expédiée ne se referme
+    # pas parce que la mère fait l'objet d'un litige — c'est un remboursement
+    # qu'il faut alors, pas une annulation rétroactive.
+    res = await db.orders.update_one(
+        {"id": enfant_id,
+         "fulfillment_status": {"$nin": ["cancelled", "shipped", "delivered", "refunded"]}},
+        {"$set": {"payment_status": "cancelled",
+                  "fulfillment_status": "cancelled",
+                  "cancelled_at": now_iso,
+                  "cancelled_reason": "suite_parent_cancelled"},
+         "$push": {"notes": note}},
+    )
+    if res.modified_count:
+        logging.info("Suite order %s cancelled with parent %s",
+                     enfant_id, order.get("order_number") or order.get("id"))
 
 
 # Le rappel se calcule à partir du délai, il n'est plus fixé en dur.
