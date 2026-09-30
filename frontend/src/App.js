@@ -1,5 +1,5 @@
-import { Suspense, lazy, useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Suspense, lazy, useState, useEffect, useRef } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 
 import { LanguageProvider } from "./contexts/LanguageContext";
@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { CartProvider } from "./contexts/CartContext";
 import { SiteConfigProvider, useSiteConfig } from "./contexts/SiteConfigContext";
 import api from "./lib/api";
+import { doitQuitterALaDeconnexion } from "./lib/deconnexion";
 
 import Header from "./components/Header";
 import ScrollToTop from "./components/ScrollToTop";
@@ -196,6 +197,40 @@ function AppRoutes() {
   );
 }
 
+/* Une page personnelle ne reste pas a l'ecran apres une deconnexion.
+ *
+ * MIREILLE, 29/09/2026 : « lorsque je me deconnecte alors que je suis sur la
+ * page des instructions de paiement, celle-ci reste la — cela n'a pas lieu
+ * d'etre ».
+ *
+ * La LISTE des pages concernees vit dans lib/deconnexion, avec ses tests :
+ * ce sont les pages publiques qui affichent quelque chose de personnel, et
+ * que rien n'evacuait faute de garde. Les routes protegees n'y figurent pas,
+ * ProtectedRoute s'en occupe.
+ *
+ * On n'ecoute que « fironova:session-cleared », qui ne part que de
+ * purgeClientSession, appelee par logout(). La visite d'un invite ne
+ * declenche rien et n'est pas derangee.
+ */
+function EvacuationALaDeconnexion() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  // La page courante lue par une reference, et non par une dependance : sans
+  // cela, l'ecouteur serait detache et rattache a chaque navigation.
+  const chemin = useRef(location.pathname);
+  useEffect(() => { chemin.current = location.pathname; }, [location.pathname]);
+
+  useEffect(() => {
+    const surDeconnexion = () => {
+      if (doitQuitterALaDeconnexion(chemin.current)) navigate("/", { replace: true });
+    };
+    window.addEventListener("fironova:session-cleared", surDeconnexion);
+    return () => window.removeEventListener("fironova:session-cleared", surDeconnexion);
+  }, [navigate]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -206,6 +241,7 @@ export default function App() {
       <SiteConfigProvider>
         <LanguageProvider>
           <AuthProvider>
+            <EvacuationALaDeconnexion />
             <CartProvider>
               <ErrorBoundary>
                 <GatedApp />
