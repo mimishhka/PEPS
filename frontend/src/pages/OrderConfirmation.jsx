@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useLocation, Link } from "react-router-dom";
-import { Copy, Check, X, Landmark, Wallet, ShieldCheck, CircleCheck, TriangleAlert, Clock } from "lucide-react";
+import { Copy, Check, X, Landmark, Wallet, ShieldCheck, CircleCheck, TriangleAlert, Clock, Package } from "lucide-react";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -349,6 +349,58 @@ export default function OrderConfirmation() {
         </div>
       )}
 
+      {/* DEUX COMMANDES POUR UN SEUL PAIEMENT : il faut le dire ici.
+        *
+        * MIREILLE, 30/09/2026 : retenir la commande complete n'est pas
+        * acceptable. Une commande mixte est donc scindee au paiement — le
+        * disponible part tout de suite, la precommande suit.
+        *
+        * Sans ce bandeau, le client voit apparaitre une seconde commande dans
+        * son compte, d'un montant de zero dollar, et conclut a une erreur de
+        * facturation. Ou bien il attend un colis unique qui ne viendra pas.
+        *
+        * Pleine largeur et non dans une colonne : comme les deux bandeaux
+        * au-dessus, cela concerne toute la commande. */}
+      {order.suite_order_number && (
+        <div className="mt-5 border border-warning/40 bg-warning/5 px-4 py-3.5 flex items-start gap-3"
+          style={{ borderRadius: "var(--r-m)" }} data-testid="suite-banner">
+          <Package size={17} className="text-warning shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="min-w-0">
+            <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-warning">
+              {lang === "fr" ? "Deux envois" : "Two shipments"}
+            </div>
+            <p className="mt-1 text-sm text-glacier leading-relaxed">
+              {lang === "fr"
+                ? `Les articles disponibles partent tout de suite. L'article en précommande suivra dès son arrivée, dans un second envoi (${order.suite_order_number}) — déjà payé, sans frais de livraison supplémentaires.`
+                : `Available items ship right away. The pre-ordered item will follow as soon as it arrives, in a second shipment (${order.suite_order_number}) — already paid, at no extra shipping cost.`}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* L'AUTRE COTE DU LIEN : cette commande EST l'envoi de suite.
+        *
+        * Elle porte un total de zero dollar, ce qui, sans explication, se lit
+        * comme une erreur. Les instructions de paiement, elles, ne s'affichent
+        * pas d'elles-memes : `interac` vaut null des que la commande n'attend
+        * plus de paiement. */}
+      {order.payment_info?.suite_of_order_number && (
+        <div className="mt-5 border border-nova/30 bg-nova/5 px-4 py-3.5 flex items-start gap-3"
+          style={{ borderRadius: "var(--r-m)" }} data-testid="suite-of-banner">
+          <Package size={17} className="text-nova-texte shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="min-w-0">
+            <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-nova-texte">
+              {lang === "fr" ? "Envoi de suite" : "Follow-up shipment"}
+            </div>
+            <p className="mt-1 text-sm text-glacier leading-relaxed">
+              {lang === "fr"
+                ? `Cet envoi complète votre commande ${order.payment_info.suite_of_order_number}. Il est déjà payé : aucun montant ne vous sera demandé, et la livraison reste à notre charge.`
+                : `This shipment completes your order ${order.payment_info.suite_of_order_number}. It is already paid: no further payment is due, and shipping is on us.`}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* DEUX COLONNES A PARTIR DE 1024 px.
           L'ACTION a gauche — comment payer —, la REFERENCE a droite : ce
           qu'on a commande, ce qu'on doit. Empilees, elles obligeaient a
@@ -490,9 +542,26 @@ export default function OrderConfirmation() {
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-glacier mb-3">{lang === "fr" ? "ARTICLES" : "ITEMS"}</div>
         <ul className="divide-y divide-nordfjord/10">
           {order.items.map((i) => (
-            <li key={i.product_id} className="py-3 flex justify-between text-sm">
-              <span><span className="font-mono text-foreground/60">{i.qty}×</span> {lang === "fr" ? (i.name_fr || i.name_en) : i.name_en}</span>
-              <span className="font-bold">{prix(i.line_total, lang)}</span>
+            <li key={i.product_id} className="py-3 flex justify-between text-sm gap-3">
+              <span className="min-w-0">
+                <span className="font-mono text-foreground/60">{i.qty}×</span> {lang === "fr" ? (i.name_fr || i.name_en) : i.name_en}
+                {/* Le recapitulatif ne lisait jamais `preorder` : une ligne en
+                    precommande y ressemblait a n'importe quelle autre.
+                    `fulfilled_by_order_id` distingue le cas plus precis — la
+                    ligne reste sur la facture, mais part dans l'autre colis. */}
+                {i.fulfilled_by_order_id ? (
+                  <span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-warning mt-0.5"
+                    data-testid={`recap-suite-${i.slug || i.product_id}`}>
+                    {lang === "fr" ? "Dans le second envoi" : "In the second shipment"}
+                  </span>
+                ) : i.preorder ? (
+                  <span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-warning mt-0.5"
+                    data-testid={`recap-preorder-${i.slug || i.product_id}`}>
+                    {lang === "fr" ? "Précommande" : "Pre-order"}
+                  </span>
+                ) : null}
+              </span>
+              <span className="font-bold shrink-0">{prix(i.line_total, lang)}</span>
             </li>
           ))}
         </ul>

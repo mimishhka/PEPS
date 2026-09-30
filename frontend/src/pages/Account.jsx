@@ -172,6 +172,23 @@ function OrderCard({ o, t, lang }) {
         <div className="flex items-center gap-2">
           <span className="font-display font-bold text-nordfjord text-sm truncate">{o.order_number}</span>
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold font-data uppercase tracking-[0.08em] ${badge.cls}`}>{badge.label}</span>
+          {/* DEUX COMMANDES POUR UN SEUL PAIEMENT.
+              Une commande mixte est scindee au paiement : le disponible part
+              tout de suite, la precommande suit. Sans cette pastille, la
+              seconde ligne affiche « 0,00 $ » sans rien qui l'explique, et se
+              lit comme une erreur de facturation. */}
+          {o.suite_of_order_number && (
+            <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold font-data uppercase tracking-[0.08em] bg-nova/10 text-nova-texte"
+              data-testid={`order-suite-of-${o.order_number}`}>
+              {lang === "fr" ? "Envoi de suite" : "Follow-up"}
+            </span>
+          )}
+          {o.suite_order_number && (
+            <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold font-data uppercase tracking-[0.08em] bg-warning/10 text-warning"
+              data-testid={`order-has-suite-${o.order_number}`}>
+              {lang === "fr" ? "2 envois" : "2 shipments"}
+            </span>
+          )}
         </div>
         <div className="font-data text-[11px] text-glacier mt-0.5 truncate">
           {new Date(o.created_at).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { year: "numeric", month: "short", day: "numeric" })}
@@ -181,6 +198,17 @@ function OrderCard({ o, t, lang }) {
               target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
               className="text-nova-texte underline" data-testid={`order-tracking-${o.order_number}`}>{lang === "fr" ? "suivi" : "track"}</a></>
           ) : fl ? <> · {lang === "fr" ? fl.fr : fl.en}</> : null}
+          {/* Le numero de la soeur, pour relier les deux lignes a la lecture.
+              La carte entiere est deja un lien : `stopPropagation` evite que
+              le clic sur celui-ci ouvre aussi la commande courante. */}
+          {(o.suite_of_order_number || o.suite_order_number) && (
+            <> · <Link to={`/order/${o.suite_of_order_id || o.suite_order_id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="text-nova-texte underline"
+              data-testid={`order-suite-link-${o.order_number}`}>
+              {o.suite_of_order_number || o.suite_order_number}
+            </Link></>
+          )}
         </div>
       </div>
       <div className="font-display font-bold text-nordfjord text-sm shrink-0">${o.total.toFixed(2)}</div>

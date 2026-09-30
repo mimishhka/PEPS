@@ -3623,6 +3623,10 @@ async def _scinder_precommande(order: dict) -> dict:
             },
         ],
         "suite_of_order_id": order.get("id"),
+        # Le NUMERO aussi, et non seulement l'identifiant : les ecrans
+        # l'affichent, et aller le chercher demanderait une requete de plus a
+        # chaque ligne d'une liste de commandes.
+        "suite_of_order_number": numero_mere,
         "created_at": now_iso,
         "paid_at": order.get("paid_at") or now_iso,
         "compliance": order.get("compliance"),
