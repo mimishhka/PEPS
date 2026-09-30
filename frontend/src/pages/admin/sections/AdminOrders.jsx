@@ -86,12 +86,30 @@ const enQuery = (params) => {
 
 export default function AdminOrders() {
   const confirm = useConfirm();
+  // Meme convention que OrderDetail plus bas : un helper local, pas i18n.js.
+  const { lang } = useLang();
+  const L = (fr, en) => (lang === "fr" ? fr : en);
   const [orders, setOrders] = useState([]);
   const [query, setQuery] = useState("");
   const [filterPayment, setFilterPayment] = useState("all");
   const [filterFulfill, setFilterFulfill] = useState("all");
   const [filterLate, setFilterLate] = useState("all");
   const [selected, setSelected] = useState(null);
+
+  /* Ouvrir une commande dont on n'a que l'identifiant.
+   *
+   * Les pastilles de liaison — remplacement, envoi de suite — pointent vers
+   * une commande soeur qui n'est pas forcement sur la page affichee : la
+   * liste est paginee par cinquante, et deux commandes liees peuvent tres
+   * bien se trouver de part et d'autre d'une coupure. `setSelected(o)` ne
+   * marche que pour une ligne deja chargee ; ici on va la chercher.
+   */
+  const ouvrirParId = useCallback((id) => {
+    if (!id) return;
+    api.get(`/admin/orders/${id}`)
+      .then((r) => setSelected(r.data))
+      .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message));
+  }, []);
   const [tab, setTab] = useState("active");
   const [counts, setCounts] = useState({});
   const [manifest, setManifest] = useState(null);   // {configured, pending_count, groups}
@@ -380,12 +398,42 @@ export default function AdminOrders() {
                     </span>
                   )}
                   {o.replaces_order_id && (
-                    <span
-                      className="inline-flex mt-1 items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-amber-700"
+                    // Cliquable, desormais : la pastille annoncait un lien
+                    // vers une autre commande sans y mener, et il fallait
+                    // chercher le numero a la main.
+                    <button
+                      type="button"
+                      onClick={() => ouvrirParId(o.replaces_order_id)}
+                      className="inline-flex mt-1 items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-amber-700 hover:bg-amber-100"
                       data-testid={`replacement-badge-${o.order_number}`}
                     >
-                      Remplacement
-                    </span>
+                      Remplacement →
+                    </button>
+                  )}
+                  {/* LES DEUX COTES DE LA SCISSION.
+                      Une commande mixte est scindee au paiement : le
+                      disponible part, la precommande suit. Sans ces pastilles,
+                      deux commandes pour un seul virement ressemblent a un
+                      doublon — et l'envoi de suite, a 0 $, a une erreur. */}
+                  {o.suite_order_id && (
+                    <button
+                      type="button"
+                      onClick={() => ouvrirParId(o.suite_order_id)}
+                      className="inline-flex mt-1 items-center rounded-full border border-orange-300 bg-orange-50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-orange-700 hover:bg-orange-100"
+                      data-testid={`suite-badge-${o.order_number}`}
+                    >
+                      {L("Suite", "Follow-up")} {o.suite_order_number || ""} →
+                    </button>
+                  )}
+                  {o.suite_of_order_id && (
+                    <button
+                      type="button"
+                      onClick={() => ouvrirParId(o.suite_of_order_id)}
+                      className="inline-flex mt-1 items-center rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-sky-700 hover:bg-sky-100"
+                      data-testid={`suite-of-badge-${o.order_number}`}
+                    >
+                      {L("Suite de", "Follows")} {o.suite_of_order_number || ""} →
+                    </button>
                   )}
                   <div className="font-mono text-[10px] text-foreground/50">{(o.created_at || "").slice(0, 10)}</div>
                   {o.dispatch_batch && (
@@ -678,6 +726,23 @@ function OrderDetail({ order, onClose, onUpdate }) {
                 {L("Lot d'expédition", "Dispatch batch")} · {order.dispatch_batch}
               </div>
             )}
+            {/* OU EST L'ARGENT. Une commande de suite porte un total de 0 $ :
+                sans cette ligne, on la croit erronée ou on cherche un paiement
+                qui n'existe pas. Le virement, le coupon et la commission sont
+                sur la commande d'origine, et les remboursements s'y font. */}
+            {order.suite_of_order_number && (
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-orange-300 mt-0.5"
+                data-testid="order-detail-suite-of">
+                {L("Envoi de suite de", "Follow-up to")} {order.suite_of_order_number}
+                {" · "}{L("paiement sur la commande d'origine", "payment on the original order")}
+              </div>
+            )}
+            {order.suite_order_number && (
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-orange-300 mt-0.5"
+                data-testid="order-detail-has-suite">
+                {L("Précommande expédiée sur", "Pre-order ships on")} {order.suite_order_number}
+              </div>
+            )}
           </div>
           <button onClick={onClose} aria-label={L("Fermer", "Close")} data-testid="close-order-detail"
             className="text-white/80 hover:text-white shrink-0"><X size={20} /></button>
@@ -824,7 +889,19 @@ function OrderDetail({ order, onClose, onUpdate }) {
                       <div className="font-mono text-[10px] text-foreground/50">
                         {it.variant_name || it.slug} · {it.qty}× @ ${it.price_cad?.toFixed(2)}
                       </div>
-                      {it.preorder && <span className="inline-block mt-1 text-[10px] font-mono uppercase tracking-[0.15em] bg-orange-500 text-white px-2 py-0.5">{L("Précommande", "Pre-order")}</span>}
+                      {/* Une ligne partie sur l'envoi de suite RESTE ici :
+                          c'est la facture, et c'est elle qui justifie le
+                          total payé. Mais elle ne monte pas dans CE colis —
+                          le bordereau de prélèvement l'ignore déjà. Sans ce
+                          marqueur, on la chercherait sur la tablette. */}
+                      {it.fulfilled_by_order_id ? (
+                        <span className="inline-block mt-1 text-[10px] font-mono uppercase tracking-[0.15em] bg-sky-600 text-white px-2 py-0.5"
+                          data-testid={`item-sur-suite-${it.slug || it.product_id}`}>
+                          {L("Expédié sur", "Ships on")} {order.suite_order_number || L("l'envoi de suite", "the follow-up")}
+                        </span>
+                      ) : it.preorder ? (
+                        <span className="inline-block mt-1 text-[10px] font-mono uppercase tracking-[0.15em] bg-orange-500 text-white px-2 py-0.5">{L("Précommande", "Pre-order")}</span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-right font-bold tabular-nums">${it.line_total?.toFixed(2)}</td>
                   </tr>
