@@ -1415,15 +1415,28 @@ async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
     À appeler DANS checkout() juste avant db.orders.insert_one(order_doc)."""
     order_email = (order_doc.get("email") or "").lower().strip()
 
-    source = "click"
-    code = (request.cookies.get(s.AFFILIATE_COOKIE_NAME) or "").strip()
+    # LE CODE SAISI L'EMPORTE SUR LE COOKIE. L'ordre inverse a verse une
+    # commission a la mauvaise personne.
+    #
+    # Le cookie est la trace PASSIVE d'une visite ancienne — un clic sur un
+    # lien de parrainage, parfois des semaines plus tot, parfois par
+    # curiosite. Le code saisi a la caisse est un acte DELIBERE, fait
+    # maintenant, sur cette commande-la.
+    #
+    # Et c'est le code saisi qui porte la REMISE : le client tape « lola10 »,
+    # obtient le rabais de Lola, et Lola renonce a sa marge. Payer un autre
+    # affilie sur cette vente est indefendable — il touche une commission sur
+    # un rabais qu'il n'a pas consenti, pendant que celle qui a fait la vente
+    # ne recoit rien.
+    #
+    # Le cookie reste le repli : il sert quand le client arrive par un lien et
+    # ne tape rien, ce qui est le cas le plus frequent.
+    applied = order_doc.get("coupon") or {}
+    code = str(applied.get("code") or "").strip() if isinstance(applied, dict) else ""
+    source = "code"
     if not code:
-        # Le coupon appliqué porte le code de l'affilié — c'est ainsi que
-        # _affiliate_ensure_coupon() le crée. checkout() le range sous
-        # order_doc["coupon"], sous forme de dict {"code": …}.
-        applied = order_doc.get("coupon") or {}
-        code = str(applied.get("code") or "").strip() if isinstance(applied, dict) else ""
-        source = "code"
+        code = (request.cookies.get(s.AFFILIATE_COOKIE_NAME) or "").strip()
+        source = "click"
 
     affiliate = None
     if code:

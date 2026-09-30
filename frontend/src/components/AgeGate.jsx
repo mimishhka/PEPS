@@ -2,13 +2,29 @@ import { useEffect, useRef, useState } from "react";
 import { ShieldCheck, LogOut } from "lucide-react";
 import { useLang } from "../contexts/LanguageContext";
 
+// La reponse vit dans sessionStorage : elle vaut pour l'onglet ouvert, pas
+// pour la machine. Nommee ici pour que le composant et un eventuel test
+// parlent de la meme clef.
+const CLE_AGE = "fironova_age_session";
+
 export default function AgeGate() {
   const { t } = useLang();
-  // E2E SP-004 : la confirmation etait persistee en localStorage, donc le
-  // gate ne revenait plus au rechargement — contrairement a la regle du plan
-  // (« pas memorise »). L'etat vit en MEMOIRE : chaque chargement repose la
-  // question, comme une verification d'age doit le faire.
-  const [open, setOpen] = useState(true);
+  // LA CONFIRMATION SE MEMORISE, POUR UNE SESSION.
+  //
+  // Elle a brievement vecu en memoire : la question revenait alors a CHAQUE
+  // rechargement, y compris au retour d'un lien de connexion recu par
+  // courriel — on se faisait barrer juste avant d'entrer dans son compte.
+  // Un site qu'on ne peut pas traverser ne protege personne : il se fait
+  // fermer.
+  //
+  // `sessionStorage` et non `localStorage` : la reponse vaut pour l'onglet
+  // ouvert et disparait a sa fermeture. Un visiteur qui revient demain
+  // reconfirme ; celui qui recharge trois fois en cinq minutes, non.
+  const [open, setOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try { return sessionStorage.getItem(CLE_AGE) !== "1"; }
+    catch { return true; }   // navigation privee stricte : on redemande
+  });
   // « Quitter » renvoyait vers le site de Santé Canada.
   //
   // Deux problèmes. Envoyer un visiteur vers le régulateur depuis une boutique
@@ -80,6 +96,10 @@ export default function AgeGate() {
   if (!open) return null;
 
   const confirm = () => {
+    // On enregistre AVANT de fermer : si l'ecriture echoue (navigation privee
+    // stricte, quota plein), la question reviendra au prochain chargement —
+    // c'est le repli sur, et il ne coute qu'un clic.
+    try { sessionStorage.setItem(CLE_AGE, "1"); } catch { /* on redemandera */ }
     setOpen(false);
   };
 
