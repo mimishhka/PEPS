@@ -83,8 +83,12 @@ def test_affiliate_attach_to_order_accepts_self_order_by_user_id(server_module):
     affiliate = {"id": "aff-1", "code": "SELF", "status": "active", "user_id": "user-1"}
     server_module.db = types.SimpleNamespace(affiliates=DummyAffiliates(affiliate))
 
-    order_doc = {"user_id": "user-1", "email": "customer@example.com"}
-    request = DummyRequest(cookies={"fn_ref": "SELF"})
+    # L'attribution passe par le CODE SAISI, plus par le temoin : depuis le
+    # 29/09/2026, une commande sans code n'est jamais attribuee. Le sujet de
+    # ce test reste l'auto-parrainage, pas le vehicule de l'attribution.
+    order_doc = {"user_id": "user-1", "email": "customer@example.com",
+                 "coupon": {"code": "SELF"}}
+    request = DummyRequest(cookies={})
 
     asyncio.run(server_module.affiliate_attach_to_order(order_doc, request))
 

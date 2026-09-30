@@ -14,8 +14,13 @@ Lola renonce a sa marge. Payer un autre affilie sur cette vente lui verse une
 commission sur un rabais qu'il n'a pas consenti, pendant que celle qui a fait
 la vente ne recoit rien.
 
-Le cookie reste le repli : il sert quand le client arrive par un lien et ne
-tape rien, ce qui est le cas le plus frequent.
+SECOND TOUR, 29/09/2026 : « toutes les commandes passees sans entrer de code
+de rabais sont attribuees a cet affilie — assure toi que ce genre n'arrive
+jamais dans aucun cas ». Le repli sur le cookie a donc ete RETIRE.
+
+Le clic ne posait qu'un temoin, sans appliquer le moindre rabais : un client
+qui cliquait puis commandait sans rien saisir payait plein tarif, et
+l'affilie touchait quand meme. La commission accompagne desormais le RABAIS.
 """
 import asyncio
 import os
@@ -129,12 +134,25 @@ def test_le_cookie_ne_touche_rien_quand_un_code_est_saisi(attacher):
 # CE QUI NE DOIT PAS AVOIR CHANGE
 # ===========================================================================
 
-def test_le_cookie_reste_le_repli_sans_code(attacher):
-    """Le cas le plus frequent : on arrive par un lien et on ne tape rien."""
+def test_sans_code_le_cookie_n_attribue_plus_rien(attacher):
+    """LA REGLE DE MIREILLE : pas de code, pas de commission.
+
+    Le clic ne pose qu'un temoin et n'applique aucun rabais. Attribuer ici
+    verserait une commission sur une vente au plein tarif, que rien ne
+    distingue d'une vente directe.
+    """
     commande = _commande(code_coupon=None)
     asyncio.run(attacher(commande, FausseRequete({COOKIE: "AUTRE50"})))
-    assert commande["affiliate_id"] == "aff-autre"
-    assert commande["affiliate_source"] == "click"
+    assert "affiliate_id" not in commande
+    assert "affiliate_code" not in commande
+
+
+def test_aucun_cookie_n_attribue_jamais_sans_code(attacher):
+    """« Dans aucun cas » : on essaie chaque code connu, y compris un alias."""
+    for temoin in ("LOLA10", "AUTRE50", "FITNES70", "FITNES100"):
+        commande = _commande(code_coupon=None)
+        asyncio.run(attacher(commande, FausseRequete({COOKIE: temoin})))
+        assert "affiliate_id" not in commande, temoin
 
 
 def test_un_alias_actif_attribue_au_titulaire(attacher):
@@ -163,9 +181,7 @@ def test_un_code_inconnu_ne_retombe_pas_sur_le_cookie(attacher):
     """LA REGLE LA PLUS SUBTILE, et celle qui protege du defaut d'origine.
 
     Une cliente tape un code qui n'existe pas (faute de frappe, code
-    desactive). Retomber sur le cookie paierait un affilie que personne n'a
-    invoque, sur une commande ou le client a explicitement nomme quelqu'un
-    d'autre. On n'attribue rien : mieux vaut une commission manquante,
+    desactive). On n'attribue rien : mieux vaut une commission manquante,
     qu'on peut corriger, qu'une commission versee a tort.
     """
     commande = _commande(code_coupon="CODEQUINEXISTEPAS")

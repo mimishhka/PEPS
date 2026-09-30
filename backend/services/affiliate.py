@@ -1385,18 +1385,29 @@ async def affiliate_capture_click(request: Request, response: Response, code: st
 
 
 async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
-    """Attache l'affilié à la commande. DEUX sources, et rien d'autre.
+    """Attache l'affilié à la commande. UNE SEULE SOURCE : le code saisi.
 
-    1. Le cookie fn_ref, posé au clic sur un lien de parrainage.
-    2. À défaut, le code de réduction saisi au paiement.
+    RÈGLE DE MIREILLE, 29/09/2026 : « une commande sans code n'est jamais
+    attribuée à un affilié ». Sans exception, dans aucun cas.
 
-    Le code compte autant que le lien, et c'est nécessaire : un affilié partage
-    naturellement son CODE — à l'oral, dans une conversation, sans rien de
-    cliquable. Sans cette seconde source, le client obtenait son rabais et
-    l'affilié ne touchait rien.
+    Le cookie `fn_ref` a été retiré de l'attribution. Il ne posait qu'un
+    témoin au clic — il n'appliquait AUCUN rabais. Un client qui cliquait un
+    lien puis commandait sans rien saisir payait donc le plein tarif, et
+    l'affilié touchait quand même sa commission : une commission sans
+    contrepartie, sur une vente que rien ne distingue d'une vente directe.
+    Toutes les commandes sans code partaient ainsi au dernier affilié cliqué.
 
-    IL N'Y A PAS DE TROISIÈME SOURCE. La commission récompense un ACTE
-    d'apport, et cet acte doit être visible SUR LA COMMANDE.
+    La commission accompagne désormais le RABAIS. Pas de code, pas de rabais,
+    pas de commission. C'est vérifiable sur la commande, et c'est la seule
+    règle qu'on puisse expliquer sans embarras à un affilié comme à un client.
+
+    Conséquence assumée : un lien de parrainage ne rapporte plus rien par
+    lui-même. Pour qu'il rapporte, il faudrait qu'il applique le coupon à
+    l'arrivée — ce qu'il ne fait pas aujourd'hui.
+
+    Le témoin reste posé et les clics restent journalisés : ils mesurent
+    l'audience d'un affilié, et cette mesure garde sa valeur. Ils ne décident
+    simplement plus d'aucune commission.
 
     Deux notions à ne pas confondre, et la distinction est tout le sujet :
 
@@ -1415,28 +1426,18 @@ async def affiliate_attach_to_order(order_doc: dict, request: Request) -> None:
     À appeler DANS checkout() juste avant db.orders.insert_one(order_doc)."""
     order_email = (order_doc.get("email") or "").lower().strip()
 
-    # LE CODE SAISI L'EMPORTE SUR LE COOKIE. L'ordre inverse a verse une
-    # commission a la mauvaise personne.
+    # LE CODE SAISI, ET RIEN D'AUTRE.
     #
-    # Le cookie est la trace PASSIVE d'une visite ancienne — un clic sur un
-    # lien de parrainage, parfois des semaines plus tot, parfois par
-    # curiosite. Le code saisi a la caisse est un acte DELIBERE, fait
-    # maintenant, sur cette commande-la.
+    # Le coupon applique porte le code de l'affilie — c'est ainsi que
+    # _affiliate_ensure_coupon() le cree. checkout() le range sous
+    # order_doc["coupon"], sous forme de dict {"code": …}.
     #
-    # Et c'est le code saisi qui porte la REMISE : le client tape « lola10 »,
-    # obtient le rabais de Lola, et Lola renonce a sa marge. Payer un autre
-    # affilie sur cette vente est indefendable — il touche une commission sur
-    # un rabais qu'il n'a pas consenti, pendant que celle qui a fait la vente
-    # ne recoit rien.
-    #
-    # Le cookie reste le repli : il sert quand le client arrive par un lien et
-    # ne tape rien, ce qui est le cas le plus frequent.
+    # Aucun repli sur le cookie : sans code sur la commande, on sort sans
+    # rien attribuer. `request` reste dans la signature parce que les
+    # appelants la passent et que le journal des clics s'en sert ailleurs.
     applied = order_doc.get("coupon") or {}
     code = str(applied.get("code") or "").strip() if isinstance(applied, dict) else ""
     source = "code"
-    if not code:
-        code = (request.cookies.get(s.AFFILIATE_COOKIE_NAME) or "").strip()
-        source = "click"
 
     affiliate = None
     if code:
