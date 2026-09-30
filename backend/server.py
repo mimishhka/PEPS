@@ -172,6 +172,14 @@ AFFILIATE_NOTICE_MAX_ATTEMPTS = int(os.environ.get("AFFILIATE_NOTICE_MAX_ATTEMPT
 CANADA_POST_LABEL_MAX_ATTEMPTS = int(
     os.environ.get("CANADA_POST_LABEL_MAX_ATTEMPTS", "5"))
 PREORDER_RELEASE_INTERVAL_SECONDS = int(os.environ.get("PREORDER_RELEASE_INTERVAL_SECONDS", "300"))
+# A partir de combien de jours une precommande payee et toujours en attente
+# merite-t-elle qu'on s'en inquiete ? Trente jours par defaut : au-dela, soit
+# le lot a du retard et le client doit etre prevenu, soit la fiche produit est
+# restee « bientot » par oubli et la commande ne partira jamais toute seule.
+#
+# C'est le SEUL garde-fou contre une precommande oubliee — et sa commission a
+# deja ete versee sept jours apres la commande.
+PREORDER_STALE_DAYS = float(os.environ.get("PREORDER_STALE_DAYS", "30"))
 # Rabais % du coupon auto-lié à chaque affilié (0 = pas de coupon auto).
 AFFILIATE_COUPON_PERCENT = float(os.environ.get("AFFILIATE_COUPON_PERCENT", "10"))
 _STANDARD_COUPON_MAX_PERCENT_RAW = os.environ.get("STANDARD_COUPON_MAX_PERCENT", "").strip()
@@ -3295,7 +3303,7 @@ try:
     from services.mail import (  # noqa: F401
         _order_email_html, _send_email, _process_email_outbox_job, _email_outbox_worker,
         EMAIL_JANITOR_INTERVAL_S, EMAIL_FAILED_RETRY_AFTER_S, EMAIL_JANITOR_MAX_PER_TICK,
-        _email_outbox_janitor, send_order_confirmation, send_payment_received,
+        _email_outbox_janitor, send_order_confirmation, send_payment_received, send_preorder_released,
         _simple_order_email_html, _prelaunch_email_html, send_prelaunch_welcome,
         send_shipping_notification, send_customer_note_email, send_refund_email, ABANDON_MIN_HOURS,
         ABANDON_MAX_HOURS, ABANDON_COUPON_CODE, ABANDON_SWEEP_MINUTES,
@@ -3307,7 +3315,7 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
     from backend.services.mail import (  # noqa: F401
         _order_email_html, _send_email, _process_email_outbox_job, _email_outbox_worker,
         EMAIL_JANITOR_INTERVAL_S, EMAIL_FAILED_RETRY_AFTER_S, EMAIL_JANITOR_MAX_PER_TICK,
-        _email_outbox_janitor, send_order_confirmation, send_payment_received,
+        _email_outbox_janitor, send_order_confirmation, send_payment_received, send_preorder_released,
         _simple_order_email_html, _prelaunch_email_html, send_prelaunch_welcome,
         send_shipping_notification, send_customer_note_email, send_refund_email, ABANDON_MIN_HOURS,
         ABANDON_MAX_HOURS, ABANDON_COUPON_CODE, ABANDON_SWEEP_MINUTES,
@@ -10533,6 +10541,27 @@ async def _release_ready_preorder_orders() -> int:
         if res.modified_count:
             released += 1
             logging.info("Preorder order %s released to processing", order.get("order_number", order["id"]))
+            # LE CLIENT L'APPREND. Jusqu'ici la liberation posait une note
+            # interne, journalisait une ligne, et se taisait : quelqu'un qui
+            # avait paye six semaines plus tot ne pouvait le savoir qu'en
+            # revenant consulter son compte de lui-meme.
+            #
+            # LA COMMANDE EST RELUE EN ENTIER. Le curseur ci-dessus ne
+            # projette que id, order_number et items — ni courriel, ni langue,
+            # ni totaux. Le courriel serait donc silencieusement saute
+            # (send_preorder_released sort sans adresse), et son
+            # recapitulatif serait vide. Une requete de plus par liberation
+            # est sans consequence : elles sont rares.
+            #
+            # En tache de fond : un courriel en echec ne doit pas empecher la
+            # liberation des commandes suivantes de la meme passe.
+            try:
+                complete = await db.orders.find_one({"id": order["id"]}, {"_id": 0})
+                if complete:
+                    asyncio.create_task(send_preorder_released(complete))  # noqa: F821
+            except Exception as e:  # pragma: no cover
+                logging.warning("preorder released email failed for %s: %s",
+                                order.get("order_number", order["id"]), e)
         else:
             # M1 : la commande a changé d'état entre la lecture et l'écriture
             # (annulation concurrente). Le stock vient d'être décrémenté : on le
@@ -10550,12 +10579,115 @@ async def _release_ready_preorder_orders() -> int:
     return released
 
 
+async def _alerter_precommandes_anciennes() -> int:
+    """Signale les precommandes payees qui attendent depuis trop longtemps.
+
+    Une precommande qui n'arrive jamais ne produit AUCUN signal : elle n'est
+    dans aucune file de dispatch (c'est voulu, on n'emballe pas ce qu'on n'a
+    pas), elle ne declenche pas d'annulation automatique puisqu'elle est
+    payee, et le client ne reclame pas forcement. Elle peut donc dormir
+    indefiniment — pendant que sa commission, elle, a ete versee sept jours
+    apres la commande.
+
+    Deux causes possibles, et l'alerte permet de les distinguer : le lot a du
+    retard, et il faut prevenir le client ; ou la fiche produit est restee
+    « bientot » par oubli, et la commande ne partira jamais toute seule.
+
+    ALERTE UNE SEULE FOIS par commande : `preorder_stale_alerted_at` sert de
+    marqueur. Une alerte repetee toutes les cinq minutes serait ignoree au
+    bout d'une heure, ce qui vaut moins que pas d'alerte du tout.
+    """
+    seuil = datetime.now(timezone.utc) - timedelta(days=PREORDER_STALE_DAYS)
+    anciennes = await db.orders.find(
+        {
+            "payment_status": "paid",
+            "fulfillment_status": "preorder",
+            "paid_at": {"$lt": seuil.isoformat()},
+            "preorder_stale_alerted_at": None,
+        },
+        {"_id": 0, "id": 1, "order_number": 1, "paid_at": 1, "email": 1,
+         "items": 1, "suite_of_order_number": 1},
+    ).to_list(50)
+    if not anciennes:
+        return 0
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    lignes = []
+    for o in anciennes:
+        attend = [it.get("name_en") or it.get("name_fr") or it.get("slug") or "?"
+                  for it in (o.get("items") or []) if it.get("preorder")]
+        jours = ""
+        depuis = _date_ou_rien_local(o.get("paid_at"))
+        if depuis:
+            jours = f" — {(datetime.now(timezone.utc) - depuis).days} days"
+        origine = (f" (follow-up to {o.get('suite_of_order_number')})"
+                   if o.get("suite_of_order_number") else "")
+        lignes.append(
+            f"<li><strong>{html.escape(str(o.get('order_number') or o['id']))}</strong>"
+            f"{html.escape(origine)}{html.escape(jours)} : "
+            f"{html.escape(', '.join(attend) or 'unknown item')}</li>"
+        )
+
+    corps = (
+        f"<p><strong>{len(anciennes)} paid pre-order(s) have been waiting more "
+        f"than {PREORDER_STALE_DAYS:.0f} days.</strong></p>"
+        "<p>Either the batch is late and these customers should be told, or a "
+        "product is still flagged coming-soon by mistake and the order will "
+        "never release on its own.</p>"
+        "<ul style='margin:10px 0 0 18px;padding:0;line-height:1.7'>"
+        + "".join(lignes) + "</ul>"
+        "<p style='margin-top:14px'>Commissions on these orders were approved "
+        "seven days after the order, so they are already out the door.</p>"
+    )
+    try:
+        await _send_email(
+            ADMIN_NOTIFICATION_EMAIL,
+            f"[FIRONOVA ADMIN] {len(anciennes)} pre-order(s) waiting over "
+            f"{PREORDER_STALE_DAYS:.0f} days",
+            _simple_order_email_html({"order_number": ""},
+                                     "Pre-orders waiting", corps),
+        )
+    except Exception as e:  # pragma: no cover
+        logging.warning("stale preorder alert failed: %s", e)
+        return 0
+
+    # Marque APRES l'envoi : si le courriel echoue, la prochaine passe
+    # reessaiera plutot que de perdre l'alerte en silence.
+    await db.orders.update_many(
+        {"id": {"$in": [o["id"] for o in anciennes]}},
+        {"$set": {"preorder_stale_alerted_at": now_iso}},
+    )
+    logging.warning("[preorder] %d stale pre-order(s) flagged", len(anciennes))
+    return len(anciennes)
+
+
+def _date_ou_rien_local(valeur):
+    """Lit une date sans jamais lever. Meme repli que _date_ou_rien du service
+    d'affiliation, duplique ici pour ne pas creer de dependance croisee pour
+    trois lignes."""
+    if isinstance(valeur, datetime):
+        return valeur if valeur.tzinfo else valeur.replace(tzinfo=timezone.utc)
+    if not valeur:
+        return None
+    try:
+        d = datetime.fromisoformat(str(valeur).replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
 async def _release_preorders_watchdog():
     while True:
         try:
             await _release_ready_preorder_orders()
         except Exception as e:
             logging.error("Preorder release watchdog error: %s", e)
+        # Dans un try SEPARE : une panne de l'alerte ne doit pas empecher la
+        # liberation, qui est la fonction utile de ce chien de garde.
+        try:
+            await _alerter_precommandes_anciennes()
+        except Exception as e:
+            logging.error("Stale preorder watchdog error: %s", e)
         await asyncio.sleep(PREORDER_RELEASE_INTERVAL_SECONDS)
 
 

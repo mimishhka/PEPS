@@ -669,6 +669,22 @@ async def send_order_confirmation(order: dict) -> None:
     )
 
 
+async def send_preorder_released(order: dict) -> None:
+    """La precommande est arrivee et part enfin.
+
+    MIREILLE, 30/09/2026 : le client n'etait JAMAIS prevenu. La liberation
+    posait une note interne, journalisait une ligne, et se taisait. Quelqu'un
+    qui a paye six semaines plus tot ne pouvait l'apprendre qu'en revenant
+    consulter son compte de lui-meme, ou en recevant le colis sans crier gare.
+    """
+    if not order.get("email"):
+        logging.info("[email] skip preorder-released: no email on order %s",
+                     order.get("order_number"))
+        return
+    lang, to, ctx = _order_ctx(order)
+    await s.send_template_email("preorder_released", to, lang, ctx, order)
+
+
 async def send_payment_received(order: dict) -> None:
     if not order.get("email"):
         logging.info("[email] skip payment-received: no email on order %s", order["order_number"])
@@ -1086,6 +1102,30 @@ EMAIL_TEMPLATE_CATALOG = {
             "cta_url": "{{tracking_url}}", "cta_label_fr": "Suivre mon colis", "cta_label_en": "Track my parcel",
         },
     },
+    "preorder_released": {
+        "label": "Précommande arrivée / Pre-order arrived",
+        "variables": ["{{order_number}}", "{{customer_name}}", "{{order_url}}"],
+        # « items » : le client a commande il y a des semaines et ne se
+        # souvient plus forcement de ce qu'il attend. Le recapitulatif le lui
+        # redit sans qu'il ait a chercher.
+        "block": "items",
+        "default": {
+            "subject_fr": "FIRONOVA — Votre précommande {{order_number}} part enfin",
+            "subject_en": "FIRONOVA — Your pre-order {{order_number}} is on its way",
+            "heading_fr": "Ça y est, {{customer_name}}",
+            "heading_en": "It's here, {{customer_name}}",
+            "intro_fr": "Le lot est arrivé. Votre précommande <strong>{{order_number}}</strong> entre en préparation et partira sous peu.",
+            "intro_en": "The batch has arrived. Your pre-order <strong>{{order_number}}</strong> is now being prepared and ships shortly.",
+            # Le texte durable va dans `body`, et non dans `intro`/`outro` :
+            # l'ecran OPS n'edite que subject/heading/body/cta, et Mireille
+            # doit pouvoir retoucher ce message sans passer par le code.
+            "body_fr": "Rien ne vous est demandé : cet envoi est déjà payé, frais de livraison compris. Vous recevrez un numéro de suivi dès que le colis sera remis à Postes Canada. Merci d'avoir patienté — une précommande, c'est une confiance faite à l'avance, et nous en avons conscience.",
+            "body_en": "Nothing is due from you: this shipment is already paid for, shipping included. You will receive a tracking number as soon as the parcel is handed to Canada Post. Thank you for waiting — a pre-order is trust given in advance, and we do not take it lightly.",
+            "outro_fr": "Bonnes recherches !",
+            "outro_en": "Happy researching!",
+            "cta_url": "{{order_url}}", "cta_label_fr": "Voir ma commande", "cta_label_en": "View my order",
+        },
+    },
     "order_delivered": {
         "label": "Commande livrée / Order delivered",
         "variables": ["{{order_number}}", "{{customer_name}}"],
@@ -1226,9 +1266,53 @@ def _render_block(block: str, lang: str, order: Optional[dict]) -> str:
         for it in items[:12]:
             name = html.escape(str(it.get("name_en") or it.get("name_fr") or it.get("slug", "")))
             qty = it.get("qty", 1)
+            # LE MOT « PRECOMMANDE » N'APPARAISSAIT DANS AUCUN COURRIEL.
+            #
+            # MIREILLE, 30/09/2026 : « il n'y a pas de notification pour le
+            # client ». Le courriel est la seule trace qu'il CONSERVE : il
+            # peut y revenir dans trois semaines pour savoir ce qu'il attend.
+            # Le laisser muet rendait la precommande invisible partout ou elle
+            # comptait.
+            #
+            # Deux cas distincts : une ligne partie sur l'envoi de suite, et
+            # une precommande sur cette commande-ci.
+            mention = ""
+            if it.get("fulfilled_by_order_id"):
+                mention = L("second envoi", "second shipment")
+            elif it.get("preorder"):
+                mention = L("précommande", "pre-order")
+            if mention:
+                name += (' <span style="font-size:11px;color:#B45309;'
+                         'text-transform:uppercase;letter-spacing:.08em">'
+                         f'· {mention}</span>')
             rows += (
                 f'<tr><td style="padding:6px 0;color:#1A2A38">{name}</td>'
                 f'<td style="padding:6px 0;text-align:right;color:#3E5C76">× {qty}</td></tr>'
+            )
+
+        # CE QUI VA SE PASSER, en une phrase, quand la commande part en deux.
+        # Affichee seulement s'il y a LES DEUX : une commande entierement en
+        # precommande n'est pas scindee, et l'annoncer serait faux.
+        avis_scission = ""
+        if any(it.get("preorder") or it.get("fulfilled_by_order_id") for it in items)                 and any(not it.get("preorder") and not it.get("fulfilled_by_order_id")
+                        for it in items):
+            numero_suite = html.escape(str(order.get("suite_order_number") or ""))
+            reference = f" ({numero_suite})" if numero_suite else ""
+            avis_scission = (
+                '<div style="margin:14px 0;padding:12px 14px;border:1px solid #FCD34D;'
+                'background:#FFFBEB;border-radius:8px;font-size:13px;line-height:1.6;'
+                'color:#1A2A38">'
+                + L(
+                    "<strong>Deux envois.</strong> Les articles disponibles vous "
+                    "sont expédiés tout de suite. L'article en précommande suivra "
+                    f"dès son arrivée, dans un second envoi{reference} — déjà payé, "
+                    "sans frais de livraison supplémentaires.",
+                    "<strong>Two shipments.</strong> Available items ship right "
+                    "away. The pre-ordered item will follow as soon as it arrives, "
+                    f"in a second shipment{reference} — already paid, at no extra "
+                    "shipping cost.",
+                )
+                + "</div>"
             )
 
         subtotal = float(order.get("subtotal", 0) or 0)
@@ -1273,7 +1357,8 @@ def _render_block(block: str, lang: str, order: Optional[dict]) -> str:
             <tr><td style="padding:12px 0 0;border-top:2px solid #0B2E4F;font-weight:bold">{L("Total", "Total")}</td><td style="padding:12px 0 0;border-top:2px solid #0B2E4F;text-align:right;font-weight:bold">{total:.2f} $ CAD</td></tr>
           </table>
           {shipping_address_html}
-        </div>"""
+        </div>
+        {avis_scission}"""
 
     if block == "interac":
         pi = (order.get("payment_info") or {}).get("instructions") or {}
@@ -1391,6 +1476,11 @@ def _order_ctx(order: dict) -> tuple:
         "amount": f"{order.get('_refund_amount', order.get('total', 0)):.2f} $",
         "tracking_number": order.get("tracking_number") or order.get("tracking") or "",
         "tracking_url": order.get("tracking_url") or "",
+        # AUCUNE CLEF NE POINTAIT VERS UNE COMMANDE. Les gabarits ne pouvaient
+        # donc pas offrir « voir ma commande » — seulement le catalogue ou le
+        # panier. Un client qui attend une precommande depuis six semaines veut
+        # precisement ce lien-la.
+        "order_url": (s.PUBLIC_BASE_URL or "").rstrip("/") + "/order/" + str(order.get("id") or ""),
         "catalog_url": (s.PUBLIC_BASE_URL or "").rstrip("/") + "/catalog",
         "cart_url": (s.PUBLIC_BASE_URL or "").rstrip("/") + "/cart",
     }
