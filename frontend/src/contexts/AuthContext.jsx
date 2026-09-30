@@ -23,6 +23,19 @@ export function AuthProvider({ children }) {
         detail: { email: (user?.email || "").toLowerCase().trim() || null },
       }));
       window.localStorage.removeItem("fironova_cart_v1");
+      // LE BROUILLON DE CAISSE PART AVEC LA SESSION.
+      //
+      // Il porte une adresse de domicile, un courriel, parfois un code de
+      // reduction. Le laisser derriere soi sur un ordinateur partage, c'est
+      // le montrer a la personne suivante — ce qui est arrive. On efface
+      // celui de la personne qui s'en va, et l'ancien format a clef unique,
+      // qui est precisement celui qui fuyait.
+      const courriel = (user?.email || "").trim().toLowerCase();
+      if (courriel) {
+        window.localStorage.removeItem(`fironova_checkout_draft_v2:${courriel}`);
+      }
+      window.localStorage.removeItem("fironova_checkout_draft_v2:invite");
+      window.localStorage.removeItem("fironova_checkout_draft_v1");
       // Re-lock admin gate on explicit or implicit disconnect.
       window.sessionStorage.removeItem("fironova_admin_gate_ok");
       window.dispatchEvent(new Event("fironova:session-cleared"));

@@ -32,7 +32,31 @@ import {
  * reponse de /meta, ou si celle-ci echoue : jamais comme reference. */
 const LIVRAISON_REPLI = 20.0;
 const SEUIL_GRATUIT_REPLI = 200.0;
-const CHECKOUT_DRAFT_KEY = "fironova_checkout_draft_v1";
+// LE BROUILLON APPARTIENT A UNE PERSONNE, PAS A UN NAVIGATEUR.
+//
+// Mireille, 29/09/2026 : « je me suis branchee sur mon compte et au
+// checkout j'avais deja une adresse complete qui n'etait pas la mienne ».
+//
+// La clef etait unique pour tout le navigateur : l'adresse, le courriel et
+// le code de qui passait avant s'affichaient a la suivante. Sur un
+// ordinateur partage — une famille, un poste de travail — c'est l'adresse
+// du domicile d'un tiers qui apparait.
+//
+// La clef porte desormais l'identite. Un invite garde la sienne, chaque
+// compte la sienne, et personne ne lit celle d'un autre.
+const CHECKOUT_DRAFT_PREFIXE = "fironova_checkout_draft_v2";
+
+function cleBrouillon(courriel) {
+  const qui = String(courriel || "").trim().toLowerCase();
+  return qui ? `${CHECKOUT_DRAFT_PREFIXE}:${qui}` : `${CHECKOUT_DRAFT_PREFIXE}:invite`;
+}
+
+// Les brouillons de l'ancienne version (clef unique) sont effaces au premier
+// passage : ils contiennent justement les donnees qui fuyaient.
+function purgerAncienBrouillon() {
+  try { window.localStorage.removeItem("fironova_checkout_draft_v1"); }
+  catch { /* rien a faire */ }
+}
 
 function normalizePostal(country, value) {
   const v = String(value || "").trim();
@@ -159,8 +183,9 @@ export default function Checkout() {
   // Restore checkout draft so user can sign in mid-flow without losing progress.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    purgerAncienBrouillon();
     try {
-      const raw = window.localStorage.getItem(CHECKOUT_DRAFT_KEY);
+      const raw = window.localStorage.getItem(cleBrouillon(user?.email));
       const draft = raw ? JSON.parse(raw) : null;
       if (!draft || typeof draft !== "object") return;
 
@@ -222,7 +247,7 @@ export default function Checkout() {
       savedAt: Date.now(),
     };
     try {
-      window.localStorage.setItem(CHECKOUT_DRAFT_KEY, JSON.stringify(draft));
+      window.localStorage.setItem(cleBrouillon(user?.email), JSON.stringify(draft));
     } catch {
       // Ignore storage failures.
     }
@@ -469,7 +494,7 @@ export default function Checkout() {
       const { data } = await api.post("/checkout", payload);
       if (!data?.id) throw new Error(lang === "fr" ? "Réponse de commande invalide" : "Malformed checkout response");
       clear();
-      try { window.localStorage.removeItem(CHECKOUT_DRAFT_KEY); } catch { /* ignore */ }
+      try { window.localStorage.removeItem(cleBrouillon(user?.email)); } catch { /* ignore */ }
       try {
         if (data?.guest_access_token && !data?.user_id && typeof window !== "undefined") {
           window.sessionStorage.setItem(`fironova_guest_order_token:${data.id}`, data.guest_access_token);
