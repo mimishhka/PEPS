@@ -34,7 +34,7 @@ jest.mock("../contexts/CartContext", () => ({
 jest.mock("../contexts/LanguageContext", () => ({ useLang: () => ({ lang: "fr", t: (k) => k }) }));
 jest.mock("../contexts/AuthContext", () => ({ useAuth: () => ({ user: null }) }));
 jest.mock("../contexts/SiteConfigContext", () => ({ useSiteConfig: () => ({ config: {} }) }));
-jest.mock("../hooks/useAffiliateRef", () => ({ codeAffiliePourPaiement: () => null }));
+jest.mock("../lib/codeParrainage", () => ({ codeAffiliePourPaiement: () => null }));
 jest.mock("../hooks/useDocumentHead", () => ({ __esModule: true, default: () => {} }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock("lucide-react", () => new Proxy({}, {

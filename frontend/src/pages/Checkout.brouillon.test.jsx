@@ -14,6 +14,8 @@
 
 const PREFIXE = "fironova_checkout_draft_v2";
 const ANCIENNE = "fironova_checkout_draft_v1";
+// La copie du code d'affiliation, posee par le clic sur un lien.
+const CLE_CODE_LIEN = "fn_ref_code";
 
 // La meme regle que la page : une clef par identite, « invite » a defaut.
 function cleBrouillon(courriel) {
@@ -28,6 +30,7 @@ const ADRESSE_LOLA = JSON.stringify({
 
 beforeEach(() => {
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 describe("la clef porte l'identite", () => {
@@ -84,6 +87,8 @@ describe("le nettoyage a la deconnexion", () => {
     if (qui) window.localStorage.removeItem(`${PREFIXE}:${qui}`);
     window.localStorage.removeItem(`${PREFIXE}:invite`);
     window.localStorage.removeItem(ANCIENNE);
+    // Le code porte par un lien de parrainage, lui, vit dans l'onglet.
+    window.sessionStorage.removeItem(CLE_CODE_LIEN);
   };
 
   test("le brouillon de qui s'en va ne reste pas sur la machine", () => {
@@ -112,5 +117,44 @@ describe("le nettoyage a la deconnexion", () => {
     window.localStorage.setItem(cleBrouillon("lola@example.com"), ADRESSE_LOLA);
     purger("mireille@example.com");
     expect(window.localStorage.getItem(cleBrouillon("lola@example.com"))).toBe(ADRESSE_LOLA);
+  });
+});
+
+describe("le code du lien de parrainage part avec la session", () => {
+  // MIREILLE, 29/09/2026 : « le coupon doit etre applique, mais une fois
+  // deconnecte il ne tient plus — ce qui est tout a fait normal ».
+  //
+  // Le brouillon etait bien efface, donc le coupon applique. Mais cette copie
+  // du code survivait dans l'onglet, et l'effet de preremplissage de la caisse
+  // le remettait des le retour : la deconnexion ne tenait pas sa promesse.
+  const purger = (courriel) => {
+    const qui = String(courriel || "").trim().toLowerCase();
+    if (qui) window.localStorage.removeItem(`${PREFIXE}:${qui}`);
+    window.localStorage.removeItem(`${PREFIXE}:invite`);
+    window.localStorage.removeItem(ANCIENNE);
+    window.sessionStorage.removeItem(CLE_CODE_LIEN);
+  };
+
+  test("LE CAS DE MIREILLE : le code ne survit pas a la deconnexion", () => {
+    window.sessionStorage.setItem(CLE_CODE_LIEN, "LOLA10");
+    purger("lola@example.com");
+    expect(window.sessionStorage.getItem(CLE_CODE_LIEN)).toBeNull();
+  });
+
+  test("il part meme si personne n'etait connecte", () => {
+    // Un invite qui arrive par un lien puis se deconnecte d'un autre compte :
+    // le code ne doit pas se glisser dans la commande de la personne suivante.
+    window.sessionStorage.setItem(CLE_CODE_LIEN, "LOLA10");
+    purger(null);
+    expect(window.sessionStorage.getItem(CLE_CODE_LIEN)).toBeNull();
+  });
+
+  test("le panier et le code ne se confondent pas", () => {
+    // Filet : la purge ne doit pas emporter l'onglet entier. Seule cette clef
+    // est visee.
+    window.sessionStorage.setItem(CLE_CODE_LIEN, "LOLA10");
+    window.sessionStorage.setItem("fironova_age_session", "1");
+    purger("lola@example.com");
+    expect(window.sessionStorage.getItem("fironova_age_session")).toBe("1");
   });
 });

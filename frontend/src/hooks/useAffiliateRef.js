@@ -8,48 +8,16 @@
 // (/product/xxx?ref=CODE), le code QR ou le lien d'accueil suivent le meme
 // chemin : il n'y a pas de traitement particulier a la page d'accueil, et il
 // ne doit pas y en avoir.
+//
+// Le rangement du code lui-meme vit dans lib/codeParrainage : ce module-la ne
+// depend ni du routeur ni du reseau, ce qui permet a AuthContext de l'oublier
+// a la deconnexion sans se lier au routage.
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import api from "../lib/api";
+import { memoriserCode } from "../lib/codeParrainage";
 
 const SESSION_KEY = "fn_ref_captured";
-
-/* Le code porté par le lien, le temps de la VISITE EN COURS. Rien de plus.
- *
- * Pourquoi il faut le porter du tout : le témoin d'attribution posé par le
- * backend est `httpOnly`, donc le paiement ne peut pas le lire. Sans cette
- * copie, cliquer sur le lien créditait l'affilié mais n'accordait aucun
- * rabais : le contact payait plein tarif.
- *
- * POURQUOI `sessionStorage` ET NON `localStorage`. Une première version gardait
- * le code 365 jours. Conséquence : un client venu une fois par un lien obtenait
- * le rabais à CHAQUE commande de l'année suivante, sans jamais recliquer. Ce
- * n'est pas la règle voulue : le rabais se mérite par un geste : taper le code,
- * cliquer sur le lien, scanner le code QR. `sessionStorage` disparaît avec
- * l'onglet : le code vaut pour la visite pendant laquelle il a été utilisé, et
- * pour elle seule.
- *
- * Cette copie ne décide de RIEN : le rabais reste accordé par le serveur, qui
- * revalide le coupon au paiement : un code d'affilié suspendu sera refusé là,
- * quoi qu'il y ait ici.
- */
-const CLE_CODE = "fn_ref_code";
-
-export function codeAffiliePourPaiement() {
-  try {
-    return (window.sessionStorage.getItem(CLE_CODE) || "").toUpperCase();
-  } catch {
-    return "";
-  }
-}
-
-function memoriserCode(code) {
-  try {
-    window.sessionStorage.setItem(CLE_CODE, String(code).toUpperCase());
-  } catch {
-    /* stockage indisponible : le lien crédite toujours, sans préremplissage */
-  }
-}
 
 // Types d'appareil pour l'analyse des sources (stocké côté backend).
 const detectDevice = () => {

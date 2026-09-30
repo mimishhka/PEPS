@@ -9,7 +9,7 @@ import { useLang } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useSiteConfig } from "../contexts/SiteConfigContext";
 import api, { formatApiError } from "../lib/api";
-import { codeAffiliePourPaiement } from "../hooks/useAffiliateRef";
+import { codeAffiliePourPaiement } from "../lib/codeParrainage";
 import { toast } from "sonner";
 import { Check, ShieldCheck } from "lucide-react";
 import {
@@ -398,8 +398,11 @@ export default function Checkout() {
    * saisi à la main l'aurait fait économiser.
    *
    * Quatre précautions :
-   *  : on ne touche à rien si un coupon est déjà appliqué ou si le champ
-   *    contient une saisie, y compris restaurée du brouillon ;
+   *  : on ne touche à rien si un coupon est déjà appliqué, ni si le champ
+   *    contient une SAISIE du client, y compris restaurée du brouillon. Le
+   *    code qu'on a soi-même prérempli n'en est pas une : sans cette nuance,
+   *    le préremplissage bloquerait la seconde tentative décrite ci-dessous
+   *    et le rabais serait perdu pour tout coupon exigeant une identité ;
    *  : DEUX tentatives au plus, et la seconde seulement si la première a eu
    *    lieu avant que le courriel soit saisi. Le serveur exige une identité
    *    pour certains coupons (usage par client, première commande) : une
@@ -413,16 +416,41 @@ export default function Checkout() {
    */
   useEffect(() => {
     if (etatCodeLien.current === "fait") return;
-    if (coupon || couponInput.trim()) return;
+    if (coupon) return;
     if (!items?.length || subtotal <= 0) return;
+    const code = codeAffiliePourPaiement();
+    if (!code) return;
+    // Une saisie du client l'emporte et n'est jamais écrasée. Mais le champ
+    // peut désormais contenir le code qu'on y a mis nous-mêmes au premier
+    // passage : celui-là ne bloque pas la relance.
+    const saisie = couponInput.trim();
+    if (saisie && saisie.toUpperCase() !== code.toUpperCase()) return;
     const courriel = email.trim();
     // Deuxième passage réservé au moment où le courriel arrive.
     if (etatCodeLien.current === "sans-email" && !courriel) return;
-    const code = codeAffiliePourPaiement();
-    if (!code) return;
     // Marqué AVANT l'appel : deux rendus rapprochés ne doivent pas lancer
     // deux requêtes concurrentes.
     etatCodeLien.current = courriel ? "fait" : "sans-email";
+    /* LE CODE S'AFFICHE AVANT D'ÊTRE VALIDÉ.
+     *
+     * MIREILLE, 29/09/2026 : « il doit apparaître dans le champ coupon, ce qui
+     * ne semble pas être le cas en ce moment ».
+     *
+     * Le code n'apparaissait qu'en cas de SUCCÈS de la validation, et l'échec
+     * est silencieux — à juste titre : personne n'a tapé ce code, lui afficher
+     * « Code invalide » n'aurait aucun sens. Mais la conjonction des deux
+     * laissait le champ vide, et le client ne pouvait pas deviner qu'un code
+     * existait : ni rabais, ni trace, ni recours.
+     *
+     * Le remplir tout de suite renverse cela. Si la validation passe, la puce
+     * remplace le champ comme avant. Si elle échoue — sous-total minimum non
+     * atteint, code réservé à une première commande, affilié suspendu depuis
+     * le clic — le code reste VISIBLE et le bouton « Appliquer » est là : le
+     * client peut tenter lui-même et lire, cette fois, la vraie raison.
+     *
+     * Rien n'est décidé ici : le rabais reste accordé par le serveur.
+     */
+    setCouponInput(code);
     (async () => {
       try {
         const params = new URLSearchParams({ code, subtotal: String(subtotal) });

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from "react";
 import api, { formatApiError } from "../lib/api";
+import { oublierCodeAffilie } from "../lib/codeParrainage";
 
 const AuthContext = createContext(null);
 
@@ -36,6 +37,11 @@ export function AuthProvider({ children }) {
       }
       window.localStorage.removeItem("fironova_checkout_draft_v2:invite");
       window.localStorage.removeItem("fironova_checkout_draft_v1");
+      // Le code porte par un lien de parrainage part aussi. Sans cela, le
+      // brouillon etait bien efface mais l'effet de preremplissage remettait
+      // le coupon des le retour a la caisse : « une fois deconnecte il ne
+      // tient plus » n'etait donc pas vrai. Voir oublierCodeAffilie.
+      oublierCodeAffilie();
       // Re-lock admin gate on explicit or implicit disconnect.
       window.sessionStorage.removeItem("fironova_admin_gate_ok");
       window.dispatchEvent(new Event("fironova:session-cleared"));
