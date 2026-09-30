@@ -15,7 +15,7 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import api from "../lib/api";
-import { memoriserCode } from "../lib/codeParrainage";
+import { memoriserCode, oublierCodeAffilie } from "../lib/codeParrainage";
 
 const SESSION_KEY = "fn_ref_captured";
 
@@ -74,8 +74,21 @@ export default function useAffiliateRef() {
           /* noop */
         }
       })
-      .catch(() => {
-        /* silencieux : l'attribution ne doit jamais bloquer l'UX */
+      .catch((e) => {
+        /* Silencieux pour la personne : l'attribution ne doit jamais bloquer
+         * l'UX. Mais un code INCONNU s'oublie.
+         *
+         * Le backend rend 404 pour un code qui n'existe pas, ou dont
+         * l'affilie n'est plus actif. Depuis que la caisse affiche le code
+         * dans le champ de rabais avant de le valider, le garder ferait voir
+         * un code mort a quelqu'un qui n'a rien tape : « Appliquer » ne
+         * repondrait que « code invalide », sur un code qui n'est pas le sien.
+         *
+         * SEULEMENT sur 404. Une panne de reseau, un backend endormi, une
+         * coupure de tunnel : le code est peut-etre parfaitement valide et
+         * c'est la requete qui a echoue. L'oublier la ferait perdre son
+         * rabais a la personne, et sa commission a l'affilie. */
+        if (e?.response?.status === 404) oublierCodeAffilie();
       });
   }, [location.pathname, location.search]);
 }
