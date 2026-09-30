@@ -171,3 +171,26 @@ describe("le tiroir de l'envoi de suite", () => {
     expect(screen.queryByTestId("order-detail-has-suite")).not.toBeInTheDocument();
   });
 });
+
+describe("le filtre d'execution", () => {
+  test("il connait les DIX etats du backend", async () => {
+    /* `packing` et `packed` manquaient. Le dispatch y place pourtant les
+     * commandes lui-meme — le bordereau de prelevement fait passer en
+     * « packing », l'etiquette en « packed » — et le filtre ne pouvait pas
+     * les retrouver : il fallait defiler la liste entiere pour voir ce qui
+     * etait en cours d'emballage.
+     *
+     * La liste de reference est `valid_fulfillment_statuses` dans
+     * backend/server.py. Ce test est le garde-fou de leur alignement.
+     */
+    lister([]);
+    render(<AdminOrders />);
+
+    const filtre = await screen.findByTestId("filter-fulfill");
+    const etats = [...filtre.querySelectorAll("option")].map((o) => o.value);
+    expect(etats).toEqual([
+      "all", "pending", "preorder", "processing", "packing", "packed",
+      "shipped", "delivered", "cancelled", "failed", "refunded",
+    ]);
+  });
+});

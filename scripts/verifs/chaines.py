@@ -42,6 +42,27 @@ LIGNE_CHAINE = re.compile(r'^\s*".*",?\s*$')
 # ce qui le rend pire qu'absent.
 LIGNE_CLE_VALEUR = re.compile(r'^\s*"[^"\\]*"\s*:')
 
+# Suite de chaines separees par des virgules, sur une meme ligne :
+#
+#     "intro_fr", "intro_en", "body_fr",
+#
+# Forme legitime et courante : la continuation d'un tableau de courtes
+# valeurs. Le compte de guillemets y depasse deux sans qu'il y ait faute, et
+# le controle criait donc a tort. Sa propre note le dit, deux lignes plus
+# haut : « un controle qui crie a tort finit ignore, ce qui le rend pire
+# qu'absent ».
+#
+# LA FAUTE D'ORIGINE RESTE ATTRAPEE, et c'est ce qui rend l'assouplissement
+# sur. La ligne qui avait casse le build,
+#
+#     "In practice: ... appear in your "customers you brought in", ...",
+#
+# ne forme PAS une suite valide : apres le guillemet qui ferme « your » vient
+# « customers » et non une virgule. Elle retombe donc sur la regle des deux
+# guillemets, et elle est signalee.
+SUITE_DE_CHAINES = re.compile(
+    r'^\s*"(?:[^"\\]|\\.)*"(?:\s*,\s*"(?:[^"\\]|\\.)*")*\s*,?\s*$')
+
 
 def _guillemets_non_echappes(ligne: str) -> int:
     # On retire les \" avant de compter : ceux-la sont legitimes.
@@ -57,6 +78,8 @@ def verifier(fichiers) -> list:
             continue
         for n, ligne in enumerate(lignes, 1):
             if not LIGNE_CHAINE.match(ligne) or LIGNE_CLE_VALEUR.match(ligne):
+                continue
+            if SUITE_DE_CHAINES.match(ligne):
                 continue
             compte = _guillemets_non_echappes(ligne)
             if compte != 2:

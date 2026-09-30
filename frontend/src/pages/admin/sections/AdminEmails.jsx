@@ -8,6 +8,22 @@ import api, { formatApiError } from "../../../lib/api";
 import { useLang } from "../../../contexts/LanguageContext";
 import { useConfirm } from "../../../components/ConfirmDialog";
 
+/* Ce que chaque bloc automatique injecte. Miroir de _render_block
+ * (backend/services/mail.py) : si un bloc y est ajoute, il faut une ligne
+ * ici, sinon l'ecran annonce « contenu genere a l'envoi » sans plus. */
+const BLOCS = {
+  interac: { fr: "les instructions de virement Interac et le récapitulatif de la commande",
+             en: "the Interac transfer instructions and the order recap" },
+  crypto: { fr: "l'adresse de paiement en cryptomonnaie et le récapitulatif",
+            en: "the cryptocurrency payment address and the order recap" },
+  items: { fr: "le récapitulatif des articles, des totaux et de l'adresse de livraison",
+           en: "the recap of items, totals and shipping address" },
+  tracking: { fr: "le numéro de suivi, s'il existe",
+              en: "the tracking number, when one exists" },
+  refund_detail: { fr: "le montant remboursé",
+                   en: "the refunded amount" },
+};
+
 export default function AdminEmails() {
   const { lang } = useLang();
   const L = (fr, en) => (lang === "fr" ? fr : en);
@@ -43,8 +59,19 @@ export default function AdminEmails() {
     setForm({
       subject_fr: t.subject_fr || "", subject_en: t.subject_en || "",
       heading_fr: t.heading_fr || "", heading_en: t.heading_en || "",
+      // INTRO ET OUTRO ETAIENT RENDUS MAIS PAS EDITABLES.
+      //
+      // Le moteur assemble intro, puis le bloc contextuel, puis le corps,
+      // puis l'outro (services/mail.py). Le formulaire n'offrait que le
+      // corps : les deux tiers du texte d'un courriel etaient donc
+      // intouchables sans passer par le code, alors que le backend les
+      // acceptait depuis le debut et que la fusion les honorait.
+      intro_fr: t.intro_fr || "", intro_en: t.intro_en || "",
       body_fr: t.body_fr || "", body_en: t.body_en || "",
+      outro_fr: t.outro_fr || "", outro_en: t.outro_en || "",
       cta_url: t.cta_url || "", cta_label_fr: t.cta_label_fr || "", cta_label_en: t.cta_label_en || "",
+      // Le bloc est retenu pour etre MONTRE, jamais modifie — voir plus bas.
+      _block: t.block || "none",
       _variables: t.variables || [], _label: t.label || t.key,
     });
     setPreviewHtml(""); setPreviewSubject("");
@@ -54,7 +81,7 @@ export default function AdminEmails() {
     if (!selected || !form) return;
     setSaving(true);
     try {
-      const { _variables, _label, ...payload } = form;
+      const { _variables, _label, _block, ...payload } = form;
       await api.put(`/admin/email-templates/${selected}`, payload);
       toast.success(L("Email enregistré", "Email saved"));
       load();
@@ -129,7 +156,26 @@ export default function AdminEmails() {
    * Ce sont ses textes.
    */
   const CHAMPS_TEXTE = ["subject_fr", "subject_en", "heading_fr", "heading_en",
-                        "body_fr", "body_en", "cta_url", "cta_label_fr", "cta_label_en"];
+                        "intro_fr", "intro_en", "body_fr", "body_en",
+                        "outro_fr", "outro_en",
+                        "cta_url", "cta_label_fr", "cta_label_en"];
+
+  /* LES BOUTONS VISENT LE CHAMP OU L'ON TRAVAILLE.
+   *
+   * Ils inseraient toujours dans le corps FRANCAIS, et l'etiquette le disait
+   * — « cliquez pour inserer dans le corps FR ». Le corps anglais, l'intro et
+   * l'outro n'y avaient donc pas droit : il fallait taper « {{order_number}} »
+   * a la main, en se souvenant du nombre exact d'accolades, ce qui est
+   * precisement ce que ces boutons existent pour eviter.
+   *
+   * On retient le dernier champ visite. Le repli sur le corps FR conserve le
+   * comportement d'avant pour qui clique un bouton sans avoir rien touche.
+   */
+  const [champActif, setChampActif] = useState("body_fr");
+  const CHAMPS_INSERABLES = ["intro_fr", "intro_en", "body_fr", "body_en",
+                             "outro_fr", "outro_en", "subject_fr", "subject_en",
+                             "heading_fr", "heading_en"];
+  const cibleInsertion = CHAMPS_INSERABLES.includes(champActif) ? champActif : "body_fr";
   /* UNE FONCTION, et non une constante : `.test()` sur une expression
    * reguliere globale avance `lastIndex`. Reutiliser le meme objet dans un
    * `filter` ferait donc demarrer chaque champ la ou le precedent s'est
@@ -222,15 +268,48 @@ export default function AdminEmails() {
                   </button>
                 </div>
               )}
+              {/* CE QUE LE MOTEUR ASSEMBLE, ET DANS QUEL ORDRE.
+                *
+                * Sans cette ligne, impossible de composer un courriel en
+                * connaissance de cause : on ne peut pas savoir que le bloc
+                * contextuel s'insere ENTRE l'intro et le corps, ni pourquoi un
+                * gabarit affiche des instructions de paiement qu'on n'a pas
+                * ecrites.
+                *
+                * LE BLOC RESTE EN LECTURE SEULE, et c'est delibere. Le rendre
+                * modifiable permettrait de mettre « aucun » sur la
+                * confirmation Interac — et d'envoyer une demande de paiement
+                * SANS les instructions de paiement. Un champ qui casse
+                * silencieusement un courriel transactionnel n'a rien a faire
+                * dans un formulaire. Si le bloc doit changer un jour, cela se
+                * decide dans le code, ou l'on voit les consequences. */}
+              <div className="rounded-lg border border-ash bg-clinical p-3" data-testid="email-structure">
+                <p className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-1.5">
+                  {L("Structure du message", "Message structure")}
+                </p>
+                <p className="text-xs text-glacier leading-relaxed">
+                  {L("Le courriel s'assemble dans cet ordre : titre, intro, bloc automatique, corps, outro, bouton d'action.",
+                     "The email is assembled in this order: heading, intro, automatic block, body, outro, action button.")}
+                </p>
+                <p className="text-xs text-glacier leading-relaxed mt-1.5">
+                  {form._block === "none"
+                    ? L("Bloc automatique : aucun.", "Automatic block: none.")
+                    : L(`Bloc automatique : « ${form._block} » — ${BLOCS[form._block]?.fr || "contenu généré à l'envoi"}. Il se règle dans le code, pas ici : le retirer d'un courriel transactionnel en supprimerait l'essentiel.`,
+                        `Automatic block: "${form._block}" — ${BLOCS[form._block]?.en || "content generated at send time"}. It is set in code, not here: removing it from a transactional email would strip its substance.`)}
+                </p>
+              </div>
+
               {/* Aide-mémoire variables */}
               {form._variables?.length > 0 && (
                 <div className="rounded-lg border border-ash bg-clinical p-3">
-                  <p className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-2">
-                    {L("Variables disponibles (cliquez pour insérer dans le corps FR)", "Available variables (click to insert into FR body)")}
+                  <p className="font-data text-[10px] uppercase tracking-[0.2em] text-glacier mb-2"
+                    data-testid="email-var-cible">
+                    {L(`Variables disponibles — insérées dans : ${cibleInsertion}`,
+                       `Available variables — inserted into: ${cibleInsertion}`)}
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {form._variables.map((v) => (
-                      <button key={v} onClick={() => insertVar("body_fr", v)}
+                      <button key={v} onClick={() => insertVar(cibleInsertion, v)}
                         data-testid={`email-var-${jetonVariable(v).replace(/[{}]/g, "")}`}
                         className="px-2 py-1 rounded bg-white border border-ash font-data text-[11px] hover:border-nova transition">
                         {jetonVariable(v)}
@@ -243,17 +322,31 @@ export default function AdminEmails() {
               {/* FR */}
               <div className="rounded-xl border border-ash bg-white p-4">
                 <div className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-3">Français</div>
-                <LabeledInput label={L("Sujet", "Subject")} value={form.subject_fr} onChange={(v) => setForm({ ...form, subject_fr: v })} />
-                <LabeledInput label={L("Titre", "Heading")} value={form.heading_fr} onChange={(v) => setForm({ ...form, heading_fr: v })} />
-                <LabeledTextarea label={L("Corps (HTML permis)", "Body (HTML allowed)")} value={form.body_fr} onChange={(v) => setForm({ ...form, body_fr: v })} testId="email-body-fr" />
+                <LabeledInput label={L("Sujet", "Subject")} value={form.subject_fr} onChange={(v) => setForm({ ...form, subject_fr: v })}
+                  onFocus={() => setChampActif("subject_fr")} testId="email-subject-fr" />
+                <LabeledInput label={L("Titre", "Heading")} value={form.heading_fr} onChange={(v) => setForm({ ...form, heading_fr: v })}
+                  onFocus={() => setChampActif("heading_fr")} testId="email-heading-fr" />
+                <LabeledTextarea label={L("Intro (avant le bloc automatique)", "Intro (before the automatic block)")} value={form.intro_fr} onChange={(v) => setForm({ ...form, intro_fr: v })}
+                  onFocus={() => setChampActif("intro_fr")} testId="email-intro-fr" />
+                <LabeledTextarea label={L("Corps (HTML permis)", "Body (HTML allowed)")} value={form.body_fr} onChange={(v) => setForm({ ...form, body_fr: v })}
+                  onFocus={() => setChampActif("body_fr")} testId="email-body-fr" />
+                <LabeledTextarea label={L("Outro (dernier mot)", "Outro (closing words)")} value={form.outro_fr} onChange={(v) => setForm({ ...form, outro_fr: v })}
+                  onFocus={() => setChampActif("outro_fr")} testId="email-outro-fr" />
               </div>
 
               {/* EN */}
               <div className="rounded-xl border border-ash bg-white p-4">
                 <div className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-3">English</div>
-                <LabeledInput label="Subject" value={form.subject_en} onChange={(v) => setForm({ ...form, subject_en: v })} />
-                <LabeledInput label="Heading" value={form.heading_en} onChange={(v) => setForm({ ...form, heading_en: v })} />
-                <LabeledTextarea label="Body (HTML allowed)" value={form.body_en} onChange={(v) => setForm({ ...form, body_en: v })} />
+                <LabeledInput label="Subject" value={form.subject_en} onChange={(v) => setForm({ ...form, subject_en: v })}
+                  onFocus={() => setChampActif("subject_en")} testId="email-subject-en" />
+                <LabeledInput label="Heading" value={form.heading_en} onChange={(v) => setForm({ ...form, heading_en: v })}
+                  onFocus={() => setChampActif("heading_en")} testId="email-heading-en" />
+                <LabeledTextarea label="Intro (before the automatic block)" value={form.intro_en} onChange={(v) => setForm({ ...form, intro_en: v })}
+                  onFocus={() => setChampActif("intro_en")} testId="email-intro-en" />
+                <LabeledTextarea label="Body (HTML allowed)" value={form.body_en} onChange={(v) => setForm({ ...form, body_en: v })}
+                  onFocus={() => setChampActif("body_en")} testId="email-body-en" />
+                <LabeledTextarea label="Outro (closing words)" value={form.outro_en} onChange={(v) => setForm({ ...form, outro_en: v })}
+                  onFocus={() => setChampActif("outro_en")} testId="email-outro-en" />
               </div>
 
               {/* CTA optionnel */}
@@ -309,21 +402,23 @@ export default function AdminEmails() {
   );
 }
 
-function LabeledInput({ label, value, onChange, testId }) {
+function LabeledInput({ label, value, onChange, testId, onFocus }) {
   return (
     <label className="block mb-3">
       <span className="block font-data text-[10px] uppercase tracking-[0.2em] mb-1 text-glacier">{label}</span>
       <input value={value || ""} onChange={(e) => onChange(e.target.value)} data-testid={testId}
+        onFocus={onFocus}
         className="w-full rounded-lg border border-ash px-3 py-2 text-sm outline-none focus:border-nova" />
     </label>
   );
 }
 
-function LabeledTextarea({ label, value, onChange, testId }) {
+function LabeledTextarea({ label, value, onChange, testId, onFocus }) {
   return (
-    <label className="block">
+    <label className="block mb-3 last:mb-0">
       <span className="block font-data text-[10px] uppercase tracking-[0.2em] mb-1 text-glacier">{label}</span>
       <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} rows={4} data-testid={testId}
+        onFocus={onFocus}
         className="w-full rounded-lg border border-ash px-3 py-2 text-sm font-data outline-none focus:border-nova resize-y" />
     </label>
   );

@@ -41,7 +41,10 @@ const GABARIT = {
   variables: ["{{order_number}}", "{{customer_name}}", "{{total}}"],
   subject_fr: "Sujet", subject_en: "Subject",
   heading_fr: "Titre", heading_en: "Heading",
+  intro_fr: "", intro_en: "",
   body_fr: "", body_en: "",
+  outro_fr: "", outro_en: "",
+  block: "interac",
   cta_url: "", cta_label_fr: "", cta_label_en: "",
 };
 
@@ -227,4 +230,115 @@ test("l'avis disparait une fois la correction faite", async () => {
   await waitFor(() => {
     expect(screen.queryByTestId("email-jetons-abimes")).not.toBeInTheDocument();
   });
+});
+
+// ===========================================================================
+// INTRO, OUTRO ET STRUCTURE
+//
+// Le moteur assemble intro, puis le bloc contextuel, puis le corps, puis
+// l'outro. Le formulaire n'offrait que le corps : les deux tiers du texte
+// d'un courriel étaient intouchables sans passer par le code, alors que le
+// backend les acceptait depuis le début et que la fusion les honorait.
+// ===========================================================================
+
+test("intro et outro sont editables, dans les deux langues", async () => {
+  render(<AdminEmails />);
+  await waitFor(() => expect(screen.getByTestId("email-intro-fr")).toBeInTheDocument());
+
+  for (const id of ["email-intro-fr", "email-outro-fr",
+                    "email-intro-en", "email-outro-en", "email-body-en"]) {
+    expect(screen.getByTestId(id)).toBeInTheDocument();
+  }
+});
+
+test("intro et outro partent bien a l'enregistrement", async () => {
+  /* Le piege : les champs internes du formulaire portent un tiret bas
+   * (`_variables`, `_label`, `_block`) et sont retires avant l'envoi. Un
+   * champ oublie dans cette liste serait envoye au backend ; un champ reel
+   * absent du formulaire serait perdu en silence. */
+  api.put.mockResolvedValue({ data: { ok: true } });
+  render(<AdminEmails />);
+  await waitFor(() => expect(screen.getByTestId("email-intro-fr")).toBeInTheDocument());
+
+  await userEvent.type(screen.getByTestId("email-intro-fr"), "Bonjour");
+  await userEvent.click(screen.getByTestId("email-save"));
+
+  await waitFor(() => expect(api.put).toHaveBeenCalled());
+  const [, payload] = api.put.mock.calls[0];
+  expect(payload.intro_fr).toBe("Bonjour");
+  expect(payload).toHaveProperty("outro_en");
+  // Les champs internes ne doivent PAS partir.
+  expect(payload).not.toHaveProperty("_block");
+  expect(payload).not.toHaveProperty("_variables");
+  expect(payload).not.toHaveProperty("_label");
+});
+
+test("l'ecran dit dans quel ordre le message s'assemble", async () => {
+  // Sans cela, impossible de composer en connaissance de cause : on ne peut
+  // pas deviner que le bloc automatique s'insere ENTRE l'intro et le corps.
+  render(<AdminEmails />);
+
+  const structure = await screen.findByTestId("email-structure");
+  expect(structure).toHaveTextContent(/intro.*corps.*outro/i);
+});
+
+test("il explique ce que le bloc automatique injecte", async () => {
+  // C'est la reponse a « pourquoi ce gabarit affiche des instructions de
+  // paiement que je n'ai pas ecrites ».
+  render(<AdminEmails />);
+
+  const structure = await screen.findByTestId("email-structure");
+  expect(structure).toHaveTextContent(/Interac/);
+});
+
+test("le bloc n'est PAS modifiable", async () => {
+  /* Delibere. Le rendre modifiable permettrait de mettre « aucun » sur la
+   * confirmation Interac — et d'envoyer une demande de paiement SANS les
+   * instructions de paiement. Un champ qui casse silencieusement un courriel
+   * transactionnel n'a rien a faire dans un formulaire. */
+  render(<AdminEmails />);
+  await screen.findByTestId("email-structure");
+
+  expect(screen.queryByTestId("email-block-select")).not.toBeInTheDocument();
+  expect(screen.getByTestId("email-structure").querySelector("select")).toBeNull();
+});
+
+// ===========================================================================
+// LES BOUTONS VISENT LE CHAMP OU L'ON TRAVAILLE
+// ===========================================================================
+
+test("par defaut, l'insertion va dans le corps francais", async () => {
+  // Le comportement d'avant, conserve pour qui clique sans avoir rien touche.
+  render(<AdminEmails />);
+  await waitFor(() => expect(screen.getByTestId("email-var-cible")).toBeInTheDocument());
+
+  expect(screen.getByTestId("email-var-cible")).toHaveTextContent("body_fr");
+});
+
+test("LE CAS : le corps ANGLAIS recoit enfin les variables", async () => {
+  /* Les boutons inseraient toujours dans le corps francais, et l'etiquette le
+   * disait. Le corps anglais n'y avait donc pas droit : il fallait taper
+   * « {{order_number}} » a la main, en se souvenant du nombre exact
+   * d'accolades — ce que ces boutons existent precisement pour eviter. */
+  render(<AdminEmails />);
+  await waitFor(() => expect(screen.getByTestId("email-body-en")).toBeInTheDocument());
+
+  screen.getByTestId("email-body-en").focus();
+  await waitFor(() => {
+    expect(screen.getByTestId("email-var-cible")).toHaveTextContent("body_en");
+  });
+  await userEvent.click(screen.getByTestId("email-var-order_number"));
+
+  expect(screen.getByTestId("email-body-en")).toHaveValue("{{order_number}}");
+  expect(screen.getByTestId("email-body-fr")).toHaveValue("");
+});
+
+test("l'intro et l'outro aussi", async () => {
+  render(<AdminEmails />);
+  await waitFor(() => expect(screen.getByTestId("email-outro-fr")).toBeInTheDocument());
+
+  screen.getByTestId("email-outro-fr").focus();
+  await userEvent.click(screen.getByTestId("email-var-customer_name"));
+
+  expect(screen.getByTestId("email-outro-fr")).toHaveValue("{{customer_name}}");
 });

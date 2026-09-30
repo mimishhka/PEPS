@@ -10,7 +10,13 @@ import { useLang } from "../../../contexts/LanguageContext";
 import { Th } from "../ui";
 import CorrigerAdresse from "./CorrigerAdresse";
 
-const FULFILLMENT_OPTS = ["pending", "preorder", "processing", "shipped", "delivered", "cancelled", "failed", "refunded"];
+// Les dix etats du backend, dans l'ordre du parcours. `packing` et `packed`
+// manquaient : le dispatch y place pourtant les commandes lui-meme, et le
+// filtre ne pouvait donc pas les retrouver — il fallait defiler la liste pour
+// voir ce qui etait en cours d'emballage. La liste de reference vit dans
+// `valid_fulfillment_statuses` (backend/server.py) ; celle-ci doit la suivre.
+const FULFILLMENT_OPTS = ["pending", "preorder", "processing", "packing", "packed",
+                          "shipped", "delivered", "cancelled", "failed", "refunded"];
 const PAYMENT_OPTS = ["awaiting_etransfer", "awaiting_crypto", "paid", "refunded", "cancelled", "failed"];
 const PAGE_SIZE = 50;
 // Mêmes clés que _ORDER_STATUS_GROUPS côté serveur. « Refunded » a son
