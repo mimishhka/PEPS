@@ -50,7 +50,7 @@ def _order_email_html(order: dict, body_intro: str) -> str:
             <tr><td style="padding:6px 0;color:#666">Send to:</td><td style="padding:6px 0;font-weight:bold">{interac["send_to"]}</td></tr>
             <tr><td style="padding:6px 0;color:#666">Amount:</td><td style="padding:6px 0;font-weight:bold">${interac["amount_cad"]:.2f} CAD</td></tr>
             <tr><td style="padding:6px 0;color:#666">Reference (required):</td><td style="padding:6px 0;font-weight:bold;color:#00B8D4">{interac["reference"]}</td></tr>
-            <tr><td style="padding:6px 0;color:#666">Security question:</td><td style="padding:6px 0">{interac["security_question"]}</td></tr>
+            <tr><td style="padding:6px 0;color:#666">Security question:</td><td style="padding:6px 0">{interac.get("security_question_en") or interac.get("security_question", "")}</td></tr>
             <tr><td style="padding:6px 0;color:#666">Security answer:</td><td style="padding:6px 0;font-weight:bold">{interac["security_answer_hint"]}</td></tr>
           </table>
         </div>"""
@@ -534,16 +534,29 @@ async def _email_outbox_janitor_tick() -> dict:
                       "requeued_at": now_iso, "requeued_by": "janitor"},
              "$inc": {"janitor_requeues": 1}},
         )
-    return {"stuck_requeued": stuck.modified_count, "failed_requeued": len(ids)}
+    # 3) E2E SY-007 : un job en « retry » SANS corps mais avec sent_at rempli
+    #    est un courriel DEJA envoye (le corps s'efface a l'envoi) que ni la
+    #    reprise manuelle ni le worker ne pouvaient traiter — il restait
+    #    bloque en retry a vie. Le janitor le clot comme « sent ».
+    sent_closed = await s.db.email_outbox.update_many(
+        {"status": "retry", "sent_at": {"$exists": True, "$ne": ""},
+         "$or": [{"html": None}, {"html": ""}]},
+        {"$set": {"status": "sent", "closed_by": "janitor_sent_detect",
+                  "closed_at": now_iso}},
+    )
+    return {"stuck_requeued": stuck.modified_count,
+            "failed_requeued": len(ids),
+            "sent_closed": sent_closed.modified_count}
 
 
 async def _email_outbox_janitor():
     while True:
         try:
             report = await _email_outbox_janitor_tick()
-            if report["stuck_requeued"] or report["failed_requeued"]:
-                logging.info("[email] janitor stuck=%d failed=%d",
-                             report["stuck_requeued"], report["failed_requeued"])
+            if report["stuck_requeued"] or report["failed_requeued"] or report["sent_closed"]:
+                logging.info("[email] janitor stuck=%d failed=%d sent_closed=%d",
+                             report["stuck_requeued"], report["failed_requeued"],
+                             report["sent_closed"])
         except Exception as e:
             logging.error("[email] janitor tick error_type=%s", type(e).__name__)
         await asyncio.sleep(EMAIL_JANITOR_INTERVAL_S)
@@ -1273,7 +1286,7 @@ def _render_block(block: str, lang: str, order: Optional[dict]) -> str:
             <tr><td style="padding:7px 0;color:#3E5C76">{L("Destinataire","Send to")}</td><td style="padding:7px 0;text-align:right;font-weight:bold;color:#0B2E4F">{pi.get("send_to","")}</td></tr>
             <tr><td style="padding:7px 0;color:#3E5C76">{L("Montant exact","Exact amount")}</td><td style="padding:7px 0;text-align:right;font-weight:bold;color:#0B2E4F">{pi.get("amount_cad",0):.2f} $ CAD</td></tr>
             <tr><td style="padding:7px 0;color:#3E5C76">{L("Référence (à inscrire)","Reference (include it)")}</td><td style="padding:7px 0;text-align:right;font-weight:bold;color:#00838F">{pi.get("reference","")}</td></tr>
-            <tr><td style="padding:7px 0;color:#3E5C76">{L("Question de sécurité","Security question")}</td><td style="padding:7px 0;text-align:right;color:#0B2E4F">{pi.get("security_question","")}</td></tr>
+            <tr><td style="padding:7px 0;color:#3E5C76">{L("Question de sécurité","Security question")}</td><td style="padding:7px 0;text-align:right;color:#0B2E4F">{L(pi.get("security_question_fr",""), pi.get("security_question_en","") or pi.get("security_question",""))}</td></tr>
             <tr><td style="padding:7px 0;color:#3E5C76">{L("Réponse de sécurité","Security answer")}</td><td style="padding:7px 0;text-align:right;font-weight:bold;color:#0B2E4F">{pi.get("security_answer_hint","")}</td></tr>
           </table>
                 </div>
