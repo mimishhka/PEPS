@@ -91,8 +91,83 @@ export default function AdminEmails() {
     }
   };
 
+  /* LE JETON EXACT QUE LE MOTEUR REMPLACE : deux accolades, ni plus ni moins.
+   *
+   * Le bouton ajoutait une paire d'accolades AUTOUR de la variable — mais
+   * celles du catalogue en portent deja : `["{{order_number}}", …]`. Cliquer
+   * produisait donc `{{{order_number}}}`. Le moteur, qui remplace
+   * `{{order_number}}` (services/mail.py), trouvait bien son jeton a
+   * l'interieur et laissait les accolades orphelines : le client recevait
+   * « {FN-260930-ABCD1234} » au lieu de son numero de commande.
+   *
+   * Le meme defaut affichait aussi `{{{order_number}}}` SUR le bouton, ce qui
+   * rendait la chose difficile a soupconner : l'ecran etait coherent avec
+   * lui-meme, et faux des deux cotes.
+   *
+   * On normalise plutot que de supposer une forme d'entree : un gabarit cree
+   * depuis OPS porte les variables que quelqu'un a tapees a la main, avec ou
+   * sans accolades. On retire tout et on remet exactement deux paires.
+   */
+  const jetonVariable = (v) => {
+    const nom = String(v || "").replace(/[{}\s]/g, "");
+    return nom ? `{{${nom}}}` : "";
+  };
+
+  /* LES GABARITS DEJA PERSONNALISES PORTENT PEUT-ETRE LE DEFAUT.
+   *
+   * Tant que le bouton ajoutait une paire d'accolades de trop, tout texte
+   * compose avec lui a ete ENREGISTRE ainsi. Corriger le bouton ne repare
+   * donc pas le passe : ces gabarits continueraient d'envoyer
+   * « {FN-260930-ABCD1234} » a chaque commande.
+   *
+   * Personne ne peut deviner lesquels sont touches sans ouvrir les treize
+   * gabarits un par un. L'ecran le dit donc lui-meme, sur celui qu'on
+   * regarde — c'est le seul endroit ou l'information sert.
+   *
+   * On ne reecrit RIEN tout seul : le bouton ci-dessous ne touche que le
+   * formulaire a l'ecran, et rien n'est enregistre avant « Enregistrer ».
+   * Ce sont ses textes.
+   */
+  const CHAMPS_TEXTE = ["subject_fr", "subject_en", "heading_fr", "heading_en",
+                        "body_fr", "body_en", "cta_url", "cta_label_fr", "cta_label_en"];
+  /* UNE FONCTION, et non une constante : `.test()` sur une expression
+   * reguliere globale avance `lastIndex`. Reutiliser le meme objet dans un
+   * `filter` ferait donc demarrer chaque champ la ou le precedent s'est
+   * arrete : le premier champ abime detecte, les suivants sautes. Un
+   * avertissement partiel est plus trompeur qu'aucun.
+   *
+   * Une litterale a l'interieur d'une fonction cree un objet neuf a chaque
+   * appel, et evite au passage tout echappement de chaine. */
+  const jetonAbime = () => /\{\{\{\s*([\w.]+)\s*\}\}\}/g;
+
+  const champsAbimes = form
+    ? CHAMPS_TEXTE.filter((c) => jetonAbime().test(String(form[c] || "")))
+    : [];
+
+  const reparerJetons = () => {
+    setForm((f) => {
+      const suite = { ...f };
+      for (const c of CHAMPS_TEXTE) {
+        if (typeof suite[c] === "string") {
+          suite[c] = suite[c].replace(jetonAbime(), "{{$1}}");
+        }
+      }
+      return suite;
+    });
+    toast.success(L("Jetons corrigés — pensez à enregistrer",
+                    "Tokens fixed — remember to save"));
+  };
+
   const insertVar = (field, variable) => {
-    setForm((f) => ({ ...f, [field]: (f[field] || "") + `{${variable}}` }));
+    const jeton = jetonVariable(variable);
+    if (!jeton) return;
+    setForm((f) => {
+      const actuel = f[field] || "";
+      // Une espace si le texte n'en finit pas par une : sans elle, la variable
+      // se collait au mot precedent.
+      const separateur = actuel && !/\s$/.test(actuel) ? " " : "";
+      return { ...f, [field]: actuel + separateur + jeton };
+    });
   };
 
   return (
@@ -131,6 +206,22 @@ export default function AdminEmails() {
           {/* Éditeur */}
           {form && (
             <div className="space-y-5">
+              {champsAbimes.length > 0 && (
+                <div className="rounded-lg border border-warning/40 bg-warning/5 p-3"
+                  data-testid="email-jetons-abimes">
+                  <p className="font-data text-[10px] uppercase tracking-[0.2em] text-warning mb-1">
+                    {L("Jetons à corriger", "Tokens to fix")}
+                  </p>
+                  <p className="text-xs text-glacier leading-relaxed">
+                    {L(`Ce gabarit contient des variables à trois accolades (${champsAbimes.join(", ")}). Le client reçoit alors la valeur entourée d'accolades, par exemple « {FN-260930-ABCD1234} » au lieu du numéro seul. C'est un reste de l'ancien bouton d'insertion, corrigé depuis.`,
+                       `This template contains three-brace variables (${champsAbimes.join(", ")}). The customer then receives the value wrapped in braces — for example "{FN-260930-ABCD1234}" instead of the number alone. This is a leftover from the old insert button, now fixed.`)}
+                  </p>
+                  <button onClick={reparerJetons} data-testid="email-reparer-jetons"
+                    className="mt-2 px-3 py-1.5 rounded bg-warning/15 border border-warning/40 font-data text-[11px] uppercase tracking-[0.14em] text-warning hover:bg-warning/25 transition">
+                    {L("Corriger ici", "Fix here")}
+                  </button>
+                </div>
+              )}
               {/* Aide-mémoire variables */}
               {form._variables?.length > 0 && (
                 <div className="rounded-lg border border-ash bg-clinical p-3">
@@ -140,8 +231,9 @@ export default function AdminEmails() {
                   <div className="flex flex-wrap gap-1.5">
                     {form._variables.map((v) => (
                       <button key={v} onClick={() => insertVar("body_fr", v)}
+                        data-testid={`email-var-${jetonVariable(v).replace(/[{}]/g, "")}`}
                         className="px-2 py-1 rounded bg-white border border-ash font-data text-[11px] hover:border-nova transition">
-                        {`{${v}}`}
+                        {jetonVariable(v)}
                       </button>
                     ))}
                   </div>
@@ -153,7 +245,7 @@ export default function AdminEmails() {
                 <div className="font-data text-[10px] uppercase tracking-[0.2em] text-nova mb-3">Français</div>
                 <LabeledInput label={L("Sujet", "Subject")} value={form.subject_fr} onChange={(v) => setForm({ ...form, subject_fr: v })} />
                 <LabeledInput label={L("Titre", "Heading")} value={form.heading_fr} onChange={(v) => setForm({ ...form, heading_fr: v })} />
-                <LabeledTextarea label={L("Corps (HTML permis)", "Body (HTML allowed)")} value={form.body_fr} onChange={(v) => setForm({ ...form, body_fr: v })} />
+                <LabeledTextarea label={L("Corps (HTML permis)", "Body (HTML allowed)")} value={form.body_fr} onChange={(v) => setForm({ ...form, body_fr: v })} testId="email-body-fr" />
               </div>
 
               {/* EN */}
@@ -217,21 +309,21 @@ export default function AdminEmails() {
   );
 }
 
-function LabeledInput({ label, value, onChange }) {
+function LabeledInput({ label, value, onChange, testId }) {
   return (
     <label className="block mb-3">
       <span className="block font-data text-[10px] uppercase tracking-[0.2em] mb-1 text-glacier">{label}</span>
-      <input value={value || ""} onChange={(e) => onChange(e.target.value)}
+      <input value={value || ""} onChange={(e) => onChange(e.target.value)} data-testid={testId}
         className="w-full rounded-lg border border-ash px-3 py-2 text-sm outline-none focus:border-nova" />
     </label>
   );
 }
 
-function LabeledTextarea({ label, value, onChange }) {
+function LabeledTextarea({ label, value, onChange, testId }) {
   return (
     <label className="block">
       <span className="block font-data text-[10px] uppercase tracking-[0.2em] mb-1 text-glacier">{label}</span>
-      <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} rows={4}
+      <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} rows={4} data-testid={testId}
         className="w-full rounded-lg border border-ash px-3 py-2 text-sm font-data outline-none focus:border-nova resize-y" />
     </label>
   );
