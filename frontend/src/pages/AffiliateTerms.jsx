@@ -108,8 +108,8 @@ export const SECTIONS = [
     en: { title: "Sale attribution" },
     paras: [
       {
-        fr: "Une commande est attribuée à l'Affilié lorsque son lien de parrainage, son code QR ou son code de réduction est utilisé pour cette commande précise. Le lien et le code QR déposent un témoin de connexion valable le temps de la visite : la commande passée au cours de cette visite est attribuée, sans saisie de code. Passé ce moment, le code doit être saisi au paiement. En l'absence de l'un ou de l'autre sur la commande, aucune commission n'est due, même si le client avait déjà été amené par l'Affilié.",
-        en: "An order is attributed to the Affiliate when their referral link, QR code or discount code is used for that particular order. The link and QR code set a cookie lasting for the duration of the visit: an order placed during that visit is attributed, with no code to enter. Beyond that point, the code must be entered at checkout. With neither on the order, no commission is due, even if the customer had previously been brought in by the Affiliate.",
+        fr: "Une commande est attribuée à l'Affilié lorsque son code de réduction figure sur cette commande précise. Son lien de parrainage et son code QR remplissent ce code automatiquement au paiement : c'est ainsi qu'ils attribuent la vente. Une commande sans code n'est jamais attribuée, même si le lien avait été cliqué : aucun rabais n'a alors été accordé, et rien ne distingue cette vente d'une vente directe. Si le client retire le code du champ, il renonce au rabais et aucune commission n'est due.",
+        en: "An order is attributed to the Affiliate when their discount code appears on that particular order. Their referral link and QR code fill that code in automatically at checkout : this is how they attribute the sale. An order with no code is never attributed, even if the link had been clicked : no discount was granted in that case, and nothing distinguishes the sale from a direct one. If the customer removes the code from the field, they give up the discount and no commission is due.",
       },
       {
         fr: "Le rattachement durable du client, qui attribuait autrefois toute commande ultérieure sans lien ni code, a été supprimé. La liste des clients apportés que l'Affilié consulte dans son tableau de bord est un historique : elle n'ouvre droit à aucune commission.",
@@ -120,8 +120,8 @@ export const SECTIONS = [
         en: "Each order is attributed separately. If a customer places an order through another affiliate's link or code, that order goes to the latter; no prior relationship takes precedence, and the next order will be attributed the same way, to whoever's link or code was used.",
       },
       {
-        fr: "L'attribution par le lien ou le code QR repose sur un témoin de connexion, qui peut être refusé, effacé par le visiteur, ou absent en navigation privée. Elle ne franchit ni la fermeture du navigateur, ni le passage à un autre appareil. Le code de réduction, lui, ne dépend d'aucun de ces éléments : saisi au paiement, il attribue la commande dans tous les cas.",
-        en: "Attribution by link or QR code relies on a cookie, which may be refused, deleted by the visitor, or absent in private browsing. It does not survive closing the browser, nor moving to another device. The discount code depends on none of this: entered at checkout, it attributes the order in every case.",
+        fr: "Le lien et le code QR remplissent le code au paiement ; ce préremplissage repose sur un stockage de navigateur, qui peut être refusé, effacé par le visiteur ou absent en navigation privée, et ne franchit ni la fermeture de l'onglet ni le passage à un autre appareil. Le code saisi à la main ne dépend d'aucun de ces éléments. Dans les deux cas, c'est la présence du code SUR LA COMMANDE qui attribue la vente : elle se vérifie sur la commande elle-même.",
+        en: "The link and QR code fill the code in at checkout ; this pre-fill relies on browser storage, which may be refused, deleted by the visitor or absent in private browsing, and does not survive closing the tab nor moving to another device. A manually entered code depends on none of this. In both cases it is the presence of the code ON THE ORDER that attributes the sale : it can be verified on the order itself.",
       },
     ],
   },

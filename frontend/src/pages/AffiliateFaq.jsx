@@ -28,16 +28,16 @@ const QA = [
       q: "Mon code ou mon lien expirent-ils ?",
       a: [
         "Ni l'un ni l'autre : votre code vaut tant que votre compte est actif, et votre lien de même.",
-        "Mais la commission se gagne commande par commande : il faut que votre lien ait été cliqué, votre code QR scanné, ou votre code saisi, POUR CETTE COMMANDE-LÀ. Le clic ou le scan vaut pour la visite en cours ; ensuite, rien n'est retenu et votre contact doit saisir votre code.",
-        "Concrètement : un client arrivé par votre lien il y a deux ans, qui revient aujourd'hui directement sur le site et commande sans code, ne vous rapporte rien. Il figure toujours dans vos « clients apportés », mais cette liste est un historique : elle n'ouvre droit à aucune commission.",
+        "Mais la commission se gagne commande par commande, et elle suit LE CODE : c'est lui qui doit figurer sur la commande. Votre lien et votre code QR le remplissent tout seuls au paiement — c'est ainsi qu'ils vous rapportent. Le préremplissage vaut pour la visite en cours ; ensuite, votre contact doit saisir le code lui-même.",
+        "Concrètement : un client arrivé par votre lien il y a deux ans, qui revient aujourd'hui directement sur le site et commande SANS CODE, ne vous rapporte rien — il a payé plein tarif, et rien ne distingue cette vente d'une vente directe. Il figure toujours dans vos « clients apportés », mais cette liste est un historique : elle n'ouvre droit à aucune commission.",
       ],
     },
     en: {
       q: "Do my code or my link expire?",
       a: [
         "Neither: your code is valid as long as your account is active, and so is your link.",
-        "But a commission is earned order by order: your link must have been clicked, your QR code scanned, or your code entered, FOR THAT PARTICULAR ORDER. The click or scan counts for the current visit; after that nothing is remembered and your contact must enter your code.",
-        "In practice: a customer who arrived through your link two years ago, returning today straight to the site and ordering without a code, earns you nothing. They still appear in your “customers you brought in”, but that list is a record : it grants no commission.",
+        "But a commission is earned order by order, and it follows THE CODE : the code is what must appear on the order. Your link and your QR code fill it in by themselves at checkout — that is how they earn you money. The pre-fill lasts for the current visit ; after that, your contact must enter the code themselves.",
+        "In practice : a customer who arrived through your link two years ago, returning today straight to the site and ordering WITH NO CODE, earns you nothing — they paid full price, and nothing distinguishes that sale from a direct one. They still appear in your “customers you brought in”, but that list is a record : it grants no commission.",
       ],
     },
   },
