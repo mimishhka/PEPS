@@ -255,7 +255,7 @@ export default function Checkout() {
     } catch {
       // Ignore storage failures.
     }
-  }, [email, paymentMethod, confirmAge, acceptRuO, acceptPolicy, billSame, ship, bill, couponInput, coupon]);
+  }, [email, paymentMethod, confirmAge, acceptRuO, acceptPolicy, billSame, ship, bill, couponInput, coupon, user?.email]);
 
   // A2 : adresses sauvegardées : préremplir email + charger la liste si connecté.
   useEffect(() => {
