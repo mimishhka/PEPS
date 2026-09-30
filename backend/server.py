@@ -986,6 +986,11 @@ class CartLineIn(BaseModel):
     """Une ligne de panier telle que le navigateur la detient."""
     product_id: str
     variant_id: Optional[str] = None
+    # La quantite decide si une ligne est une PRECOMMANDE : commander dix
+    # unites quand il en reste trois y fait basculer la ligne entiere. Sans
+    # elle, la relecture ne verrait que le cas « stock a zero ». Optionnelle :
+    # d'anciens navigateurs ne l'envoient pas, et 1 est alors le repli sur.
+    qty: int = 1
 
 
 class CartRevalidateIn(BaseModel):
@@ -2299,15 +2304,41 @@ async def cart_revalidate(payload: CartRevalidateIn, request: Request):
             v = next((x for x in variantes if x.get("id") == ligne.variant_id), None)
         if v is None and variantes:
             v = variantes[0]
-        prix = float((v or {}).get("price") if v else produit.get("price_cad", 0) or 0)
-        solde = (v or {}).get("sale_price")
-        if solde and float(solde) < prix:
-            prix = float(solde)
+        # LA PRECOMMANDE, ET SON PRIX.
+        #
+        # Cette route ignorait `preorder_price` : elle renvoyait le tarif
+        # ordinaire pour une ligne que la caisse facturerait au tarif de
+        # precommande. Le panier annoncait donc un montant que le serveur ne
+        # debitait pas — exactement le defaut que cette route existait pour
+        # corriger, sur un autre champ.
+        #
+        # La regle est celle de _build_order_totals, a l'identique : un badge
+        # « bientot » ou « COA en attente » force la precommande, de meme
+        # qu'un stock insuffisant pour la quantite demandee.
+        qte = max(1, int(getattr(ligne, "qty", 1) or 1))
+        stock_v = int((v or {}).get("stock", produit.get("stock", 0)) or 0)
+        coa_bientot = bool((v or {}).get("badge_coa_pending")
+                           or (v or {}).get("badge_coming_soon"))
+        est_precommande = bool(
+            (v or {}).get("preorder_enabled") and (coa_bientot or stock_v < qte))
+        if not est_precommande and not v and produit.get("preorder_allowed"):
+            est_precommande = True
+
+        if est_precommande and v:
+            prix = _variant_effective_price(v, True)
+        else:
+            prix = float((v or {}).get("price") if v else produit.get("price_cad", 0) or 0)
+            solde = (v or {}).get("sale_price")
+            if solde and float(solde) < prix:
+                prix = float(solde)
         sorties.append({
             "product_id": ligne.product_id,
             "variant_id": ligne.variant_id,
             "found": True,
             "price_cad": round(prix, 2),
+            # Le navigateur peut enfin le DIRE au client : le panier et la
+            # caisse etaient muets sur les precommandes.
+            "preorder": est_precommande,
             "stock": int((v or {}).get("stock", produit.get("stock", 0)) or 0),
             "variant_sku": (v or {}).get("sku", ""),
             "name_fr": produit.get("name_fr", ""),

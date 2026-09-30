@@ -3,10 +3,12 @@ import { useLang } from "../contexts/LanguageContext";
 import { useCart } from "../contexts/CartContext";
 import ProductImage from "./ProductImage";
 import { prix } from "../lib/prix";
+import { useConfirm } from "./ConfirmDialog";
 
 export default function ProductCard({ product, index = 0 }) {
   const { lang } = useLang();
   const { add } = useCart();
+  const confirm = useConfirm();
   const name = lang === "fr" ? product.name_fr : product.name_en;
 
   const variants = product.variants || [];
@@ -22,6 +24,47 @@ export default function ProductCard({ product, index = 0 }) {
   const displayOriginal = cheapest && cheapest.eff < cheapest.price ? cheapest.price : null;
   const anyPreorder = priced.some((v) => v.isPre);
   const anySale = priced.some((v) => v.sale && !v.isPre);
+
+  /* UNE PRECOMMANDE NE S'AJOUTE PAS EN SILENCE.
+   *
+   * MIREILLE, 30/09/2026 : « je constate que lors de l'ajout d'un produit en
+   * precommande il n'y a pas de notification pour le client ».
+   *
+   * La fiche produit ouvrait bien une confirmation ; cette carte, non. Elle
+   * appelait `add()` directement, sous un bouton qui disait « Ajouter a la
+   * commande » exactement comme pour un article en stock. Le client repartait
+   * avec une precommande au panier sans l'avoir su, et rien ne le lui disait
+   * ensuite — ni le panier, ni la caisse, ni le courriel.
+   *
+   * On reprend la meme confirmation que la fiche produit, avec le delai
+   * annonce. La pastille « Precommande » de la carte ne suffisait pas : elle
+   * informe celui qui la cherche, pas celui qui clique.
+   *
+   * Le test porte sur `cheapest` et non sur `anyPreorder` : c'est CETTE
+   * variante que le bouton ajoute. Une fiche dont une variante est en stock et
+   * une autre en precommande annoncerait « En stock » tout en ajoutant la
+   * precommande.
+   */
+  const ajoutEstUnePrecommande = !!cheapest?.isPre;
+
+  const ajouter = async () => {
+    if (!ajoutEstUnePrecommande) {
+      add(product, 1, cheapest);
+      return;
+    }
+    const delai = cheapest?.preorder_delay_message
+      ? ` ${lang === "fr" ? "Délai annoncé" : "Announced delay"} : ${cheapest.preorder_delay_message}.`
+      : "";
+    if (await confirm({
+      title: lang === "fr" ? "Précommander ce produit ?" : "Pre-order this product?",
+      description: lang === "fr"
+        ? `Ce produit n'est pas en stock : il partira à l'arrivée du prochain lot.${delai} Si votre commande contient aussi des articles disponibles, ceux-ci vous seront expédiés tout de suite, sans frais de livraison supplémentaires.`
+        : `This product is out of stock : it ships when the next batch arrives.${delai} If your order also contains available items, those ship right away, at no extra shipping cost.`,
+      confirmLabel: lang === "fr" ? "Précommander" : "Pre-order",
+    })) {
+      add(product, 1, cheapest);
+    }
+  };
 
   const stockN = cheapest ? (cheapest.stock ?? 0) : (product.stock ?? 0);
   const inStock = stockN > 0;
@@ -109,13 +152,17 @@ export default function ProductCard({ product, index = 0 }) {
       <div className="pt-3 px-0.5">
         <button
           data-testid={`add-to-cart-${product.slug}`}
-          onClick={() => add(product, 1, cheapest)}
+          onClick={ajouter}
           disabled={!achetable}
           className={`w-full btn-pill btn-nova !py-1.5 !text-[11px] !tracking-[0.06em] ${!achetable ? "opacity-45 cursor-not-allowed" : ""}`}
         >
-          {achetable
-            ? (lang === "fr" ? "Ajouter à la commande" : "Add to order")
-            : (lang === "fr" ? "Rupture" : "Out of stock")}
+          {!achetable
+            ? (lang === "fr" ? "Rupture" : "Out of stock")
+            : ajoutEstUnePrecommande
+              // Le bouton dit ce qu'il fait. « Ajouter a la commande » sur une
+              // precommande laissait croire a une expedition immediate.
+              ? (lang === "fr" ? "Précommander" : "Pre-order")
+              : (lang === "fr" ? "Ajouter à la commande" : "Add to order")}
         </button>
       </div>
     </div>

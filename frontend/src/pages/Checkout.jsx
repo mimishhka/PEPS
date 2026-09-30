@@ -128,7 +128,11 @@ export default function Checkout() {
           const prix = (isPre && Number(v.preorder_price))
             ? Number(v.preorder_price)
             : (promo > 0 && promo < plein ? promo : plein);
-          frais.push({ product_id: it.product_id, variant_id: it.variant_id || "", price_cad: prix });
+          // `preorder` accompagne le prix : la caisse connait la quantite, donc
+          // elle sait si la demande depasse le stock. C'est la que le drapeau
+          // se corrige pour les lignes ou seule la quantite fait basculer.
+          frais.push({ product_id: it.product_id, variant_id: it.variant_id || "",
+                       price_cad: prix, preorder: !!isPre });
         });
         syncPrices(frais);
       })
@@ -742,12 +746,48 @@ export default function Checkout() {
                     <div>
                       <div className="font-medium text-nordfjord">{title}</div>
                       <div className="text-xs text-glacier">{it.variant_name ? `${it.variant_name} · ` : ""}x{it.qty}</div>
+                      {it.preorder && (
+                        <div
+                          className="font-data text-[9.5px] font-semibold uppercase tracking-[0.14em] text-warning mt-0.5"
+                          data-testid={`summary-preorder-${it.slug}`}
+                        >
+                          {lang === "fr" ? "Précommande" : "Pre-order"}
+                        </div>
+                      )}
                     </div>
                     <div className="font-semibold text-nordfjord tabular-nums">{prix(Number(unit) * Number(it.qty || 1), lang)}</div>
                   </div>
                 );
               })}
             </div>
+
+            {/* CE QUI SE PASSERA VRAIMENT, dit avant de payer.
+              *
+              * MIREILLE, 30/09/2026 : retenir la commande complete n'est pas
+              * acceptable. Le disponible part donc tout de suite et la
+              * precommande suit — mais le client doit le savoir AVANT de
+              * payer, sinon il verra deux commandes apparaitre pour un seul
+              * paiement et croira a une erreur de facturation.
+              *
+              * La phrase ne s'affiche que s'il y a les DEUX : un article en
+              * precommande et un article disponible. Une commande entierement
+              * en precommande n'est pas scindee, et l'annoncer serait faux. */}
+            {(items || []).some((it) => it.preorder) && (items || []).some((it) => !it.preorder) && (
+              <div
+                className="mt-4 border border-warning/30 bg-warning/5 px-3 py-2.5"
+                style={{ borderRadius: "var(--r-m)" }}
+                data-testid="checkout-preorder-split"
+              >
+                <div className="font-data text-[10px] font-semibold uppercase tracking-[0.16em] text-warning">
+                  {lang === "fr" ? "Deux envois" : "Two shipments"}
+                </div>
+                <p className="text-xs text-glacier mt-1 leading-relaxed">
+                  {lang === "fr"
+                    ? "Les articles disponibles vous seront expédiés tout de suite. L'article en précommande suivra dès son arrivée, dans un second envoi — sans frais de livraison supplémentaires. Un seul paiement, aujourd'hui."
+                    : "Available items ship right away. The pre-ordered item follows as soon as it arrives, in a second shipment — at no extra shipping cost. One single payment, today."}
+                </p>
+              </div>
+            )}
 
             <div className="mt-4">
               {coupon ? (

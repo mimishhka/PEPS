@@ -111,15 +111,35 @@ export function CartProvider({ children }) {
     setItems((curr) => {
       const idx = curr.findIndex((i) => i.product_id === product.id && i.variant_id === variant_id);
       const mergedQty = idx >= 0 ? curr[idx].qty + qty : qty;
+      /* LE PANIER SE SOUVIENT QU'UNE LIGNE EST UNE PRECOMMANDE.
+       *
+       * MIREILLE, 30/09/2026 : « lors de l'ajout d'un produit en precommande
+       * il n'y a pas de notification pour le client ».
+       *
+       * `isPre` n'existait que le temps de calculer un prix, et rien ne le
+       * conservait sur la ligne. Le tiroir du panier et la caisse ne POUVAIENT
+       * donc pas en parler, meme s'ils l'avaient voulu : l'information etait
+       * jetee aussitot calculee.
+       *
+       * Le drapeau ne decide de rien : le serveur retranche la precommande a
+       * la caisse (`_build_order_totals`) en relisant le stock reel. Il sert a
+       * le DIRE.
+       */
+      let isPre = false;
       if (v) {
         const coaComing = v.badge_coa_pending || v.badge_coming_soon;
-        const isPre = v.preorder_enabled && (coaComing || v.stock < mergedQty);
+        isPre = !!(v.preorder_enabled && (coaComing || v.stock < mergedQty));
         unit_price = isPre && v.preorder_price ? v.preorder_price
           : (v.sale_price && v.sale_price < v.price ? v.sale_price : unit_price);
       }
       if (idx >= 0) {
         const next = [...curr];
-        next[idx] = { ...next[idx], qty: next[idx].qty + qty };
+        // Le prix ET le drapeau sont recalcules sur la quantite FUSIONNEE.
+        // Sans cela, ajouter une unite de plus que le stock basculait la ligne
+        // en precommande cote serveur, tandis que le panier continuait
+        // d'afficher le prix et le statut d'un article disponible : le client
+        // decouvrait l'ecart sur sa facture.
+        next[idx] = { ...next[idx], qty: mergedQty, price_cad: unit_price, preorder: isPre };
         return next;
       }
       return [
@@ -136,6 +156,7 @@ export function CartProvider({ children }) {
           name_en: product.name_en,
           name_fr: product.name_fr,
           price_cad: unit_price,
+          preorder: isPre,
           qty,
           image_url: product.image_url,
           dosage_mg: product.dosage_mg,
@@ -217,8 +238,15 @@ export function CartProvider({ children }) {
       if (!m || m.found === false) return it;
       // Le SKU suit le prix : une ligne ajoutee avant le correctif du SKU
       // se repare d'elle-meme a la premiere revalidation.
+      //
+      // Le drapeau de precommande suit AUSSI, quand le serveur le donne. Le
+      // stock a pu bouger depuis l'ajout : un article precommande peut etre
+      // arrive, et un article disponible peut s'etre epuise. La reponse du
+      // serveur fait foi ; en son absence on garde ce qu'on avait, plutot que
+      // d'effacer une information juste.
       return { ...it, price_cad: m.price_cad,
-               variant_sku: it.variant_sku || m.variant_sku || "" };
+               variant_sku: it.variant_sku || m.variant_sku || "",
+               preorder: typeof m.preorder === "boolean" ? m.preorder : it.preorder };
     }));
   }, []);
 
@@ -233,7 +261,11 @@ export function CartProvider({ children }) {
     if (!Array.isArray(lignes) || lignes.length === 0) return;
     try {
       const { data } = await api.post("/cart/revalidate", {
-        items: lignes.map((i) => ({ product_id: i.product_id, variant_id: i.variant_id || null })),
+        // La quantite part avec la ligne : c'est elle qui decide si la
+        // demande depasse le stock, donc s'il s'agit d'une precommande.
+        items: lignes.map((i) => ({ product_id: i.product_id,
+                                    variant_id: i.variant_id || null,
+                                    qty: Number(i.qty) || 1 })),
       });
       syncPrices(data?.items || []);
     } catch {

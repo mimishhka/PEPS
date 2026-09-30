@@ -32,9 +32,12 @@ export default function ProductDetail() {
       ? ` ${lang === "fr" ? "Délai annoncé" : "Announced delay"} : ${selectedVariant.preorder_delay_message}.` : "";
     if (await confirm({
       title: lang === "fr" ? "Précommander ce produit ?" : "Pre-order this product?",
+      // La meme promesse que la carte du catalogue : les deux chemins d'ajout
+      // doivent annoncer la meme chose, sinon le client apprend la scission
+      // par hasard, selon la page d'ou il a clique.
       description: lang === "fr"
-        ? `Ce produit n'est pas en stock : votre commande partira à l'arrivée du prochain lot.${delai}`
-        : `This product is out of stock : your order ships when the next batch arrives.${delai}`,
+        ? `Ce produit n'est pas en stock : il partira à l'arrivée du prochain lot.${delai} Si votre commande contient aussi des articles disponibles, ceux-ci vous seront expédiés tout de suite, sans frais de livraison supplémentaires.`
+        : `This product is out of stock : it ships when the next batch arrives.${delai} If your order also contains available items, those ship right away, at no extra shipping cost.`,
       confirmLabel: lang === "fr" ? "Précommander" : "Pre-order",
     })) {
       add(product, qty, selectedVariant);

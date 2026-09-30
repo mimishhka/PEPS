@@ -68,6 +68,17 @@ export default function CartDrawer() {
                       <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">{it.variant_sku || it.slug}</div>
                       <div className="font-display font-bold text-sm text-nordfjord">{name}</div>
                       <div className="font-data text-[10px] text-glacier">{it.variant_name ? dosage(it.variant_name, lang) : `${it.dosage_mg} mg`}</div>
+                      {/* Le panier ne disait rien d'une precommande. Le client
+                          l'avait confirmee a l'ajout, puis plus un mot : ni
+                          ici, ni a la caisse, ni dans le courriel. */}
+                      {it.preorder && (
+                        <div
+                          className="font-data text-[9.5px] font-semibold uppercase tracking-[0.14em] text-warning"
+                          data-testid={`cart-preorder-${it.slug}`}
+                        >
+                          {lang === "fr" ? "Précommande · envoi séparé" : "Pre-order · ships separately"}
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 mt-2">
                         <button
                           onClick={() => setQty(it.product_id, it.variant_id, Math.max(1, it.qty - 1))}
