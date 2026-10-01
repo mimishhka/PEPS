@@ -183,7 +183,12 @@ describe("un affilié au barème", () => {
     // premiere, donc aucune attente de changement d'onglet.
     await userEvent.click(screen.getByTestId("tour-next"));
     await waitFor(() => expect(titreCourant()).toMatch(/palier/i), ATTENTE);
-    expect(screen.getByTestId("guided-tour")).toHaveTextContent(/douze mois glissants/i);
+    /* « CLOS » ET NON « GLISSANTS ». Ce test épinglait « douze mois
+     * glissants » : la bulle le disait, et c'était faux depuis que la
+     * fenêtre est devenue calendaire (`tier_basis: calendar_12m`). La carte,
+     * elle, affichait déjà « les douze mois clos » : la visite racontait
+     * autre chose que l'écran qu'elle commente. */
+    expect(screen.getByTestId("guided-tour")).toHaveTextContent(/douze mois clos/i);
   });
 });
 
@@ -207,7 +212,46 @@ describe("un affilié avec une entente", () => {
     const bulle = screen.getByTestId("guided-tour");
     expect(bulle).toHaveTextContent(/ne suit pas le barème/i);
     expect(bulle).toHaveTextContent(/ne baisse jamais/i);
-    expect(bulle).not.toHaveTextContent(/douze mois glissants/i);
+    expect(bulle).not.toHaveTextContent(/douze mois clos/i);
+  });
+
+  test("LE CAS DE MIREILLE : la bulle des chiffres ne promet pas de progression", async () => {
+    /* « Performance pour un affilié qui a une entente ne fonctionne pas. Il y
+     * a des choses qui ne correspondent pas à leur situation. »
+     *
+     * La troisième bulle pointe les cartes de Performance et disait « c'est
+     * ce montant qui fait progresser votre palier ». Son palier ne progresse
+     * pas : son taux est fixé par l'entente. La bulle promettait donc une
+     * progression contractuellement impossible, dans l'écran même où il
+     * vérifie ses chiffres.
+     *
+     * Le reste de la bulle — le délai de validation, les réclamations — vaut
+     * pour tout le monde et doit rester. */
+    await ouvrirLaVisite();
+    await userEvent.click(screen.getByTestId("tour-next"));
+    await waitFor(() => expect(titreCourant()).toMatch(/taux convenu/i), ATTENTE);
+    await userEvent.click(screen.getByTestId("tour-next"));
+    await waitFor(() => expect(titreCourant()).toMatch(/ne veut pas dire versé/i), ATTENTE);
+
+    const bulle = screen.getByTestId("guided-tour");
+    expect(bulle).not.toHaveTextContent(/progresser votre palier/i);
+    expect(bulle).not.toHaveTextContent(/palier/i);
+    // Ce qui vaut pour tout le monde est conservé.
+    expect(bulle).toHaveTextContent(/7 jours après/i);
+    expect(bulle).toHaveTextContent(/réclamation/i);
+  });
+
+  test("au barème, cette même bulle parle bien du palier", async () => {
+    // Sans entente l'affirmation est vraie, et utile : c'est le montant
+    // validé qui fait monter le taux.
+    brancher(FICHE_BAREME);
+    await ouvrirLaVisite();
+    await userEvent.click(screen.getByTestId("tour-next"));
+    await waitFor(() => expect(titreCourant()).toMatch(/palier/i), ATTENTE);
+    await userEvent.click(screen.getByTestId("tour-next"));
+    await waitFor(() => expect(titreCourant()).toMatch(/ne veut pas dire versé/i), ATTENTE);
+
+    expect(screen.getByTestId("guided-tour")).toHaveTextContent(/fait progresser votre palier/i);
   });
 
   test("la pastille de palier existe quand même : l'étape n'est pas sautée", async () => {

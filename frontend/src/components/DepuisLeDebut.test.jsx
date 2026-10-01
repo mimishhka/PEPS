@@ -4,7 +4,8 @@
 // aucune vue pour ça. Pareil pour la commission. »
 //
 // Les ventes cumulées existaient — dans l'onglet Performance, sous « Revenu
-// validé cumulé » — et elle ne les a pas trouvées. La commission cumulée,
+// validé cumulé », renommé « Ventes validées cumulées » depuis — et elle ne les
+// a pas trouvées. La commission cumulée,
 // elle, n'était affichée nulle part : `paid_commission` ne servait que de
 // booléen dans la liste de démarrage.
 

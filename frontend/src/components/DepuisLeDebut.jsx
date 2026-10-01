@@ -7,7 +7,9 @@ import ChiffreAnime from "./ChiffreAnime";
  * aucune vue pour ça. Pareil pour la commission. »
  *
  * Les ventes cumulées existaient, mais dans l'onglet Performance, sous le
- * titre « Revenu validé cumulé » — elle-même ne les a pas trouvées. La
+ * titre « Revenu validé cumulé » — elle-même ne les a pas trouvées. Ce titre
+ * disait d'ailleurs « revenu » pour un nombre qui n'est pas le revenu de
+ * l'affilié : il dit « Ventes validées cumulées » depuis. La
  * commission cumulée, elle, n'était affichée NULLE PART : `paid_commission`
  * ne servait que de booléen dans la liste de démarrage.
  *

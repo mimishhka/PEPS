@@ -821,14 +821,26 @@ export default function AffiliateDashboard() {
       texte: data?.tier_agreement
         ? L("Il résulte d'une entente et ne suit pas le barème. Il ne varie pas avec votre volume de ventes et ne baisse jamais automatiquement.",
             "It comes from an agreement and does not follow the scale. It does not vary with your sales volume and never decreases automatically.")
-        : L("Il suit votre chiffre d'affaires validé sur douze mois glissants, et monte dès le seuil franchi. De 10 % à 20 % selon le palier.",
-            "It follows your validated revenue over twelve rolling months, and rises as soon as a threshold is crossed. From 10% to 20%.") },
+        // « GLISSANTS » EST FAUX depuis que la fenêtre est calendaire
+        // (`tier_basis: calendar_12m`). La carte dit « les douze mois clos » :
+        // la visite disait autre chose que l'écran qu'elle commente.
+        : L("Il suit vos ventes validées sur les douze mois clos, et monte dès le seuil franchi. De 10 % à 20 % selon le palier.",
+            "It follows your validated sales over the last twelve closed months, and rises as soon as a threshold is crossed. From 10% to 20%.") },
 
     // ── Performance ──
     { cible: "affiliate-kpis", ton: "acquis", onglet: "performance",
       titre: L("Validé ne veut pas dire versé", "Validated is not paid"),
-      texte: L(`Une commande devient « validée » ${data?.approval_hold_days ?? 7} jours après avoir été passée. C'est ce montant qui fait progresser votre palier. Si une réclamation est déposée, la commission reste en attente jusqu'à la décision.`,
-               `An order becomes “validated” ${data?.approval_hold_days ?? 7} days after it is placed. That amount is what moves your tier. If a claim is filed, the commission stays pending until it is resolved.`) },
+      /* « FAIT PROGRESSER VOTRE PALIER » EST FAUX SOUS ENTENTE. Le taux vient
+         de l'entente, il ne monte pas avec le volume. Et cette bulle pointe
+         les cartes de Performance : elle promettait donc une progression à
+         quelqu'un dont le taux est fixé par contrat, dans l'écran même où il
+         vérifie ses chiffres. Le reste de la bulle — le délai, les
+         réclamations — vaut pour tout le monde. */
+      texte: data?.tier_agreement
+        ? L(`Une commande devient « validée » ${data?.approval_hold_days ?? 7} jours après avoir été passée. C'est ce montant qui porte votre commission. Si une réclamation est déposée, la commission reste en attente jusqu'à la décision.`,
+            `An order becomes “validated” ${data?.approval_hold_days ?? 7} days after it is placed. That amount is what your commission is paid on. If a claim is filed, the commission stays pending until it is resolved.`)
+        : L(`Une commande devient « validée » ${data?.approval_hold_days ?? 7} jours après avoir été passée. C'est ce montant qui fait progresser votre palier. Si une réclamation est déposée, la commission reste en attente jusqu'à la décision.`,
+            `An order becomes “validated” ${data?.approval_hold_days ?? 7} days after it is placed. That amount is what moves your tier. If a claim is filed, the commission stays pending until it is resolved.`) },
     { cible: "affiliate-performance", ton: "nova", onglet: "performance",
       titre: L("D'où viennent vos ventes", "Where your sales come from"),
       texte: L("Clics, conversions, produits qui marchent, appareils utilisés. C'est ici qu'on voit ce qui fonctionne avant de le répéter.",
@@ -1163,8 +1175,8 @@ export default function AffiliateDashboard() {
                       programme sur cette ligne. */}
                   <p className="font-data text-[10px] text-glacier">
                     {personalTop
-                      ? L("Classés par revenu généré grâce à votre code",
-                          "Ranked by revenue generated through your code")
+                      ? L("Classés par ventes générées grâce à votre code",
+                          "Ranked by sales generated through your code")
                       : L("Un clic vous crédite la commande passée pendant cette visite",
                           "One click credits you the order placed during that visit")}
                   </p>
@@ -1278,11 +1290,18 @@ export default function AffiliateDashboard() {
                 l'affilie — ce qu'il a gagne en tout, et ce qui compte pour son
                 palier. */}
             <div className="grid grid-cols-2 gap-3 sm:gap-4" data-testid="affiliate-kpis">
-              <KpiCard label={L("Revenu validé cumulé", "Cumulative validated revenue")}
+              <KpiCard label={L("Ventes validées cumulées", "Cumulative validated sales")}
                        valeurBrute={data?.cumulative_revenue} format={money} sub="CAD" teinte={tierVif} />
+              {/* LE SOUS-TITRE DEPEND DU REGIME. « fixe votre palier » est faux
+                  sous entente : le taux vient de l'entente, pas de la fenêtre.
+                  Le chiffre garde son intérêt — c'est l'activité de l'année —
+                  mais on ne lui prête pas un effet qu'il n'a pas. */}
               <KpiCard label={L("12 derniers mois", "Last 12 months")}
                        valeurBrute={data?.rolling12_revenue} format={money}
-                       sub={L("CAD · fixe votre palier", "CAD · sets your tier")} teinte={tierVif} />
+                       sub={data?.tier_agreement
+                         ? L("CAD · douze mois clos", "CAD · last twelve closed months")
+                         : L("CAD · fixe votre palier", "CAD · sets your tier")}
+                       teinte={tierVif} />
             </div>
 
             {/* Insights secondaires : clics / conversion / commandes / panier.
@@ -1335,7 +1354,7 @@ export default function AffiliateDashboard() {
 
             <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
-                {L("REVENU VALIDÉ : 12 DERNIERS MOIS", "VALIDATED REVENUE : LAST 12 MONTHS")}
+                {L("VENTES VALIDÉES : 12 DERNIERS MOIS", "VALIDATED SALES : LAST 12 MONTHS")}
               </p>
               <p className="font-data text-[11px] text-glacier mb-4 -mt-3">
                 {L("Sous-total des produits, remise déduite : hors livraison et taxes. C'est la base qui porte votre commission.",
@@ -1354,7 +1373,7 @@ export default function AffiliateDashboard() {
                       <YAxis tick={{ fontSize: 11, fill: couleursGraphique.axe }} />
                       <Tooltip formatter={(v) => money(v)} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Line type="monotone" dataKey="revenue" name={L("CA validé", "Revenue")} stroke="#0B2E4F" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="revenue" name={L("Ventes", "Sales")} stroke="#0B2E4F" strokeWidth={2} dot={false} />
                       <Line type="monotone" dataKey="commission" name={L("Commissions", "Commissions")} stroke="#00B8D4" strokeWidth={2} dot={{ r: 3 }} />
                       <Line type="monotone" dataKey="reversed" name={L("Annulées (remboursements)", "Cancelled (refunds)")} stroke="#D64545" strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
                     </LineChart>
@@ -1420,7 +1439,7 @@ export default function AffiliateDashboard() {
                         <th className="text-left px-4 py-3">{L("Rattaché le", "Attached")}</th>
                         <th className="text-left px-4 py-3">{L("Source", "Source")}</th>
                         <th className="text-right px-4 py-3">{L("Cmdes", "Orders")}</th>
-                        <th className="text-right px-4 py-3">{L("CA validé", "Revenue")}</th>
+                        <th className="text-right px-4 py-3">{L("Ventes", "Sales")}</th>
                         <th className="text-right px-4 py-3">{L("Commissions", "Commissions")}</th>
                         <th className="text-left px-4 py-3">{L("Dernière", "Last")}</th>
                       </tr>

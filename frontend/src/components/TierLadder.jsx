@@ -24,7 +24,8 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
   if (!tiers.length) return null;
 
   const actuel = data?.tier;
-  // Chiffre d'affaires des douze mois glissants : c'est LUI qui détermine le
+  // Ventes validées des douze mois CLOS (la fenêtre est calendaire depuis
+  // `tier_basis: calendar_12m`) : c'est LUI qui détermine le
   // palier, pas le montant simulé au curseur. Les deux nombres coexistent sur
   // ce panneau, et les confondre est l'erreur qu'il doit éviter.
   const rolling12 = Number(data?.rolling12_revenue || 0);
