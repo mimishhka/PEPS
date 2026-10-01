@@ -33,6 +33,11 @@ import ChiffreAnime from "./ChiffreAnime";
  *    blanc en mode jour, au seuil d'un objet graphique. En texte sur du
  *    marine, le bronze y tombait a 4,2:1.
  */
+/* Le fuseau ou le mois du palier est defini. Doit suivre FUSEAU_PALIER cote
+ * serveur (backend/services/affiliate.py) : si les deux divergent, la carte
+ * annoncera une periode qui ne sera pas celle du calcul. */
+const FUSEAU = "America/Toronto";
+
 export default function CarteAffilie({
   data, insights, L, money, tierLabel, tierJeton, tierLueur,
 }) {
@@ -52,12 +57,30 @@ export default function CarteAffilie({
     if (!iso) return "";
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
-    // `timeZone: UTC` : les bornes sont posees a minuit UTC par le serveur.
-    // Sans ce reglage, un navigateur a Montreal (UTC-4) affiche la veille.
+    // LE FUSEAU OU LE MOIS EST DEFINI, et non celui du navigateur.
+    //
+    // Les bornes sont posees par le serveur au 1er du mois a minuit A
+    // MONTREAL (voir FUSEAU_PALIER). Les lire dans un autre fuseau ferait
+    // afficher la veille a qui consulte depuis l'Europe, et le commentaire
+    // precedent — « minuit UTC » — n'est plus vrai depuis que la fenetre
+    // suit l'heure locale.
     return d.toLocaleDateString(L("fr-CA", "en-CA"), {
-      day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
+      day: "numeric", month: "short", year: "numeric", timeZone: FUSEAU,
     });
   };
+
+  /* AUJOURD'HUI, dans le meme fuseau que la periode.
+   *
+   * Mireille : « a la place de la periode il faudrait mettre la date du jour
+   * ou le mois en cours ». En tete de carte, la periode de reference repondait
+   * a une question que personne ne se pose en ouvrant son tableau de bord. La
+   * date du jour, elle, situe tout le reste — et elle a d'autant plus sa place
+   * ici que la bascule de mois se fait a minuit a Montreal, pas a minuit chez
+   * le lecteur. */
+  const aujourdhui = new Date().toLocaleDateString(L("fr-CA", "en-CA"), {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+    timeZone: FUSEAU,
+  });
 
   // ---------------------------------------------------------------- graphique
   const serie = Array.isArray(data?.mensuel) ? data.mensuel : [];
@@ -92,6 +115,14 @@ export default function CarteAffilie({
   const maintien = data?.maintien_montant;
   const atteinte = data?.atteinte_montant;
   const sousEntente = maintien === null || maintien === undefined;
+  /* L'ENTENTE SE LIT SUR LA FICHE, pas sur l'absence d'un montant.
+   *
+   * `sousEntente` ci-dessus est une DEDUCTION — pas de montant a maintenir —
+   * qui sert au texte d'encouragement. Pour decider de masquer toute une
+   * colonne, il faut le fait lui-meme : `tier_agreement`. Un affilie au
+   * dernier palier n'a pas non plus de montant a maintenir, et sa prevision
+   * reste pourtant pertinente. */
+  const entente = Boolean(data?.tier_agreement);
   const echeance = jourCourt(data?.taux_valide_jusqu_au);
 
   return (
@@ -110,15 +141,19 @@ export default function CarteAffilie({
       <div className="absolute inset-0 pointer-events-none"
            style={{ background: tierLueur }} aria-hidden="true" />
 
-      {/* ═══════════ LA PERIODE, EN TETE ═══════════ */}
+      {/* ═══════════ AUJOURD'HUI, EN TETE ═══════════
+          La periode de reference vivait ici et repondait a une question que
+          personne ne se pose en ouvrant son compte. Elle a rejoint le titre
+          des ventes, ou elle qualifie un montant — c'est la qu'elle sert. */}
       <div className="relative flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1
                       px-4 sm:px-7 py-2.5 bg-abyss/25 border-b border-white/10"
            data-testid="carte-periode">
         <p className="font-data text-[11px] uppercase tracking-[0.17em] text-mist">
-          {L("Période de référence", "Reference period")}
+          {L("Aujourd'hui", "Today")}
         </p>
-        <p className="font-data text-[12px] font-semibold tracking-[0.02em] text-clinical tabular-nums">
-          {jourCourt(data?.periode_debut)} → {jourCourt(data?.periode_fin)}
+        <p className="font-data text-[12px] font-semibold tracking-[0.02em] text-clinical tabular-nums"
+           data-testid="carte-aujourdhui">
+          {aujourdhui}
         </p>
       </div>
 
@@ -180,7 +215,11 @@ export default function CarteAffilie({
           colonnes, chacune titree par son moment. Les montants vivent sous
           le chiffre qu'ils visent : plus aucune phrase d'explication, les
           titres font le travail. */}
-      <div className="relative grid sm:grid-cols-[1.05fr_0.95fr] border-t border-white/12">
+      {/* Une seule colonne sous entente : sans la prevision, la grille a deux
+          colonnes laisserait une moitie vide — et sur telephone, une carte
+          deux fois plus haute pour rien. */}
+      <div className={`relative grid border-t border-white/12 ${
+        entente ? "" : "sm:grid-cols-[1.05fr_0.95fr]"}`}>
 
         {/* — CE MOIS-CI : la base du taux, sa preuve, la position. */}
         <div className="relative px-4 sm:px-7 pt-4 sm:pt-5 pb-5 sm:pb-6 sm:border-r border-white/12"
@@ -193,8 +232,13 @@ export default function CarteAffilie({
                         tracking-[-0.03em] tabular-nums" data-testid="affiliate-periode-total">
             {money(total)}
           </p>
-          <p className="text-[12px] text-mist mt-1">
-            {L("les douze derniers mois", "the last twelve months")}
+          <p className="text-[12px] text-mist mt-1" data-testid="carte-periode-ventes">
+            {L("les douze mois clos", "the last twelve closed months")}
+            {data?.periode_debut && data?.periode_fin && (
+              <span className="block tabular-nums text-mist/80">
+                {jourCourt(data.periode_debut)} → {jourCourt(data.periode_fin)}
+              </span>
+            )}
           </p>
 
           {serie.length > 0 && (
@@ -305,7 +349,14 @@ export default function CarteAffilie({
           )}
         </div>
 
-        {/* — AU 1er ... : la prevision, et ce qu'elle demande. */}
+        {/* — AU 1er ... : la prevision, et ce qu'elle demande.
+            MASQUEE SOUS ENTENTE. Mireille : « pour une personne qui a une
+            entente la vue ne doit pas avoir les ventes des 11 derniers
+            mois ». Son taux ne depend d'aucune fenetre : lui montrer la
+            projection qui fixe le palier des AUTRES, puis ecrire dessous
+            « taux fixe par entente, independant de la periode », etait une
+            contradiction dans le meme bloc. */}
+        {!entente && (
         <div className="relative px-4 sm:px-7 pt-4 sm:pt-5 pb-5 sm:pb-6
                         border-t border-white/12 sm:border-t-0"
              data-testid="affiliate-paliers-prix">
@@ -375,14 +426,21 @@ export default function CarteAffilie({
               )}
             </>
           ) : (
-            /* Sous entente, le palier est fige : afficher un montant a
-               reconduire serait une fausse peur, le pendant du faux espoir. */
-            <p className="text-[13px] text-mist leading-relaxed mt-5">
-              {L("Taux convenu par entente — il ne dépend pas de la période.",
-                 "Rate set by agreement — independent of the period.")}
+            /* ICI, L'AFFILIE N'EST PAS SOUS ENTENTE : cette colonne entiere
+               est masquee dans ce cas. Le texte disait pourtant « taux convenu
+               par entente » — il etait donc faux pour les seules personnes qui
+               pouvaient le lire.
+               `sousEntente` ne dit pas « il y a une entente », mais « aucun
+               montant a reconduire » : c'est aussi le cas au dernier palier.
+               Le message dit maintenant ce qui est vrai dans les deux cas. */
+            <p className="text-[13px] text-mist leading-relaxed mt-5"
+               data-testid="palier-rien-a-reconduire">
+              {L("Aucun montant à reconduire : votre taux est acquis pour la période.",
+                 "Nothing to maintain: your rate is locked in for the period.")}
             </p>
           )}
         </div>
+        )}
       </div>
     </div>
   );

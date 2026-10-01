@@ -502,16 +502,54 @@ def _normalize_payout(address: str, currency: str) -> tuple:
     )
 
 
+# LE MOIS COMMENCE A MINUIT A MONTREAL, PAS A MINUIT UTC.
+#
+# MIREILLE, 01/10/2026 : « je vois que nous sommes deja au mois suivant et il
+# n'est pas encore minuit a Montreal. Est-ce que c'est UTC ? »
+#
+# Oui, ca l'etait. La fenetre basculait a minuit UTC, soit 20 h a Montreal en
+# heure avancee : le tableau de bord passait au mois suivant quatre heures
+# avant la fin du mois, et « les gains de ce mois-ci » repartaient a zero
+# pendant que la soiree durait encore.
+#
+# Ce n'est pas qu'un affichage. Une vente payee a 21 h le dernier jour du mois
+# tombait dans la fenetre du mois SUIVANT : elle ne comptait pas pour le
+# palier du mois qu'elle cloturait, et comptait pour celui d'apres. Le palier
+# gouverne le taux de toutes les ventes suivantes — c'est donc de l'argent.
+#
+# Le depot avait deja le bon fuseau pour la coupure d'expedition
+# (ORDER_CUTOFF_TZ). Les deux horloges disent desormais la meme heure, et une
+# variable dediee reste possible si le palier devait un jour s'en detacher.
+FUSEAU_PALIER = ZoneInfo(
+    os.environ.get("AFFILIATE_TIER_TZ")
+    or os.environ.get("ORDER_CUTOFF_TZ")
+    or "America/Toronto")
+
+
 def _affiliate_mois_debut(dt: datetime) -> datetime:
-    """Le 1er du mois de `dt`, a minuit UTC."""
-    return dt.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    """Le 1er du mois de `dt`, a minuit A MONTREAL, rendu en instant UTC.
+
+    Les dates stockees sont en UTC : la borne doit l'etre aussi pour que la
+    comparaison ait un sens. Ce qui change, c'est QUEL instant elle designe —
+    minuit local, et non minuit UTC.
+    """
+    local = dt.astimezone(FUSEAU_PALIER)
+    debut = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return debut.astimezone(timezone.utc)
 
 
 def _affiliate_mois_decale(dt: datetime, n: int) -> datetime:
-    """Le 1er du mois situe `n` mois avant (n<0) ou apres (n>0) celui de `dt`."""
-    d = _affiliate_mois_debut(dt)
+    """Le 1er du mois situe `n` mois avant (n<0) ou apres (n>0) celui de `dt`.
+
+    Le calcul se fait sur le calendrier LOCAL : c'est lui qui definit les
+    mois. Le changement d'heure ne pose pas de probleme — il n'a jamais lieu
+    a minuit le 1er.
+    """
+    d = dt.astimezone(FUSEAU_PALIER)
     rang = d.year * 12 + (d.month - 1) + n
-    return d.replace(year=rang // 12, month=rang % 12 + 1)
+    cible = d.replace(year=rang // 12, month=rang % 12 + 1, day=1,
+                      hour=0, minute=0, second=0, microsecond=0)
+    return cible.astimezone(timezone.utc)
 
 
 def _affiliate_periode_palier(now: Optional[datetime] = None) -> dict:
@@ -554,10 +592,13 @@ def _affiliate_periode_palier(now: Optional[datetime] = None) -> dict:
 
 
 def _affiliate_quarter_start(now: Optional[datetime] = None) -> datetime:
+    """Le 1er du trimestre, a minuit a Montreal. Meme raison que les mois."""
     now = now or datetime.now(timezone.utc)
-    q_month = 3 * ((now.month - 1) // 3) + 1
-    return now.replace(month=q_month, day=1, hour=0, minute=0,
-                       second=0, microsecond=0)
+    local = now.astimezone(FUSEAU_PALIER)
+    q_month = 3 * ((local.month - 1) // 3) + 1
+    debut = local.replace(month=q_month, day=1, hour=0, minute=0,
+                          second=0, microsecond=0)
+    return debut.astimezone(timezone.utc)
 
 
 def _affiliate_next_quarter_start(now: Optional[datetime] = None) -> datetime:

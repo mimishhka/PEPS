@@ -24,6 +24,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -43,9 +44,13 @@ def dates():
     """
     src = io.open(os.path.join(RACINE, "services", "affiliate.py"),
                   encoding="utf-8").read()
-    bloc = src[src.index("def _affiliate_mois_debut"):
+    # Le decoupage part de FUSEAU_PALIER et non de la premiere fonction : le
+    # mois commence desormais a minuit A MONTREAL, et cette constante fait
+    # partie des aideurs au meme titre qu'elles.
+    bloc = src[src.index("FUSEAU_PALIER = ZoneInfo("):
                src.index("def _affiliate_quarter_start")]
-    espace = {"datetime": datetime, "timezone": timezone, "Optional": Optional}
+    espace = {"datetime": datetime, "timezone": timezone, "Optional": Optional,
+              "ZoneInfo": ZoneInfo, "os": os}
     exec(compile(bloc, "aideurs_affiliate", "exec"), espace)  # noqa: S102
     return espace
 
@@ -56,6 +61,27 @@ def _utc(a, m, j, h=0, mi=0):
 
 def _jour(d):
     return d.strftime("%Y-%m-%d")
+
+
+# LE MOIS EST DESORMAIS CELUI DE MONTREAL, pas celui d'UTC.
+#
+# Mireille, 01/10/2026 : « nous sommes deja au mois suivant et il n'est pas
+# encore minuit a Montreal. Est-ce que c'est UTC ? »
+#
+# Ces deux aides rendent la difference lisible. `_utc(2026, 10, 1)` designe
+# le 30 septembre a 20 h a Montreal — c'est precisement le piege dans lequel
+# ce fichier etait tombe, en croyant ecrire « le 1er octobre ».
+MONTREAL = ZoneInfo("America/Toronto")
+
+
+def _local(a, m, j, h=12, mi=0):
+    """Une heure de MUR a Montreal, rendue en instant UTC."""
+    return datetime(a, m, j, h, mi, tzinfo=MONTREAL).astimezone(timezone.utc)
+
+
+def _mois_local(a, m):
+    """Le 1er du mois a minuit a Montreal, en instant UTC : la borne reelle."""
+    return _local(a, m, 1, 0, 0)
 
 
 # ===========================================================================
@@ -90,9 +116,9 @@ def test_la_fenetre_exclut_le_mois_en_cours(dates):
     C'est ce qui rend le taux annoncable des le 1er. Sans cette borne haute,
     chaque vente du mois deplacait le palier du mois.
     """
-    p = dates["_affiliate_periode_palier"](_utc(2026, 9, 27))
-    assert p["debut"] == _utc(2025, 9, 1)
-    assert p["fin_exclue"] == _utc(2026, 9, 1)
+    p = dates["_affiliate_periode_palier"](_local(2026, 9, 27))
+    assert p["debut"] == _mois_local(2025, 9)
+    assert p["fin_exclue"] == _mois_local(2026, 9)
     assert _jour(p["fin_exclue"] - timedelta(days=1)) == "2026-08-31"
 
 
@@ -110,8 +136,12 @@ def test_la_fenetre_ne_bouge_pas_dans_le_mois(dates):
     La borne portait l'HEURE : consulter son compte a 9 h et a 15 h donnait
     deux fenetres differentes, donc deux totaux, donc parfois deux paliers.
     """
-    debut = dates["_affiliate_periode_palier"](_utc(2026, 10, 1, 0, 0))
-    fin = dates["_affiliate_periode_palier"](_utc(2026, 10, 31, 23, 59))
+    # Les bornes du mois d'OCTOBRE A MONTREAL : du 1er a minuit au 31 a
+    # 23 h 59. Ecrites en UTC, ces deux instants tombaient de part et d'autre
+    # d'un changement de mois local — le test demandait alors deux fenetres
+    # differentes et avait raison de les trouver differentes.
+    debut = dates["_affiliate_periode_palier"](_local(2026, 10, 1, 0, 0))
+    fin = dates["_affiliate_periode_palier"](_local(2026, 10, 31, 23, 59))
     assert debut == fin
 
 
@@ -122,9 +152,9 @@ def test_le_mois_sortant_est_le_premier_de_la_fenetre(dates):
     l'affilie a bien vendu. Sans cette information, le montant a reconduire
     parait arbitraire.
     """
-    p = dates["_affiliate_periode_palier"](_utc(2026, 9, 27))
-    assert p["sortant_debut"] == p["debut"] == _utc(2025, 9, 1)
-    assert p["sortant_fin_exclue"] == _utc(2025, 10, 1)
+    p = dates["_affiliate_periode_palier"](_local(2026, 9, 27))
+    assert p["sortant_debut"] == p["debut"] == _mois_local(2025, 9)
+    assert p["sortant_fin_exclue"] == _mois_local(2025, 10)
 
 
 def test_le_mois_sortant_dure_un_mois(dates):
@@ -137,8 +167,10 @@ def test_le_mois_sortant_dure_un_mois(dates):
 
 def test_la_fenetre_du_mois_suivant_glisse_d_un_mois(dates):
     """Ce que j'ai annonce a Mireille, verifie : en octobre, septembre 2025 sort."""
-    sept = dates["_affiliate_periode_palier"](_utc(2026, 9, 27))
-    octo = dates["_affiliate_periode_palier"](_utc(2026, 10, 1))
+    sept = dates["_affiliate_periode_palier"](_local(2026, 9, 27))
+    # `_utc(2026, 10, 1)` designerait le 30 septembre a 20 h a Montreal :
+    # encore septembre. C'est exactement le defaut qu'on vient de corriger.
+    octo = dates["_affiliate_periode_palier"](_local(2026, 10, 1))
     assert _jour(sept["debut"]) == "2025-09-01"
     assert _jour(octo["debut"]) == "2025-10-01"
     # Le mois sorti est exactement celui que la carte annoncait comme sortant.
@@ -148,7 +180,7 @@ def test_la_fenetre_du_mois_suivant_glisse_d_un_mois(dates):
 
 def test_le_taux_vaut_jusqu_a_la_fin_du_mois(dates):
     """La date affichee sur la carte : « taux valide jusqu'au ... »."""
-    p = dates["_affiliate_periode_palier"](_utc(2026, 9, 27))
+    p = dates["_affiliate_periode_palier"](_local(2026, 9, 27))
     assert _jour(p["prochain_debut"] - timedelta(days=1)) == "2026-09-30"
     p = dates["_affiliate_periode_palier"](_utc(2026, 2, 10))
     assert _jour(p["prochain_debut"] - timedelta(days=1)) == "2026-02-28"
@@ -159,12 +191,20 @@ def test_le_taux_vaut_jusqu_a_la_fin_du_mois(dates):
 
 
 def test_les_bornes_restent_en_utc(dates):
+    """Exprimees en UTC — les dates stockees le sont — mais placees a minuit
+    A MONTREAL.
+
+    L'ancienne version verifiait « minuit » sur l'heure UTC, ce qui revenait
+    a verifier que la borne tombait a 20 h a Montreal. On lit donc la borne
+    dans le fuseau ou le mois est defini, et on y exige le 1er a minuit.
+    """
     p = dates["_affiliate_periode_palier"](_utc(2026, 7, 4, 18, 30))
     for cle in ("debut", "fin_exclue", "sortant_debut",
                 "sortant_fin_exclue", "courant_debut", "prochain_debut"):
         assert p[cle].tzinfo is timezone.utc, cle
-        assert (p[cle].hour, p[cle].minute, p[cle].second) == (0, 0, 0), cle
-        assert p[cle].day == 1, cle
+        local = p[cle].astimezone(MONTREAL)
+        assert (local.hour, local.minute, local.second) == (0, 0, 0), cle
+        assert local.day == 1, cle
 
 
 # ===========================================================================
