@@ -91,12 +91,33 @@ class Versements:
         self.docs = docs
         self.filtres = []
 
-    async def find_one(self, filtre, _projection=None):
+    async def find_one(self, filtre, _projection=None, sort=None):
+        """Applique le filtre ET le tri.
+
+        `sort` sert au choix du DERNIER versement payé. Un double qui
+        l'ignorerait rendrait le premier document du fixture, et le test
+        passerait quel que soit l'ordre demandé par le code — c'est-à-dire
+        sans rien prouver.
+        """
         self.filtres.append(filtre)
-        for d in self.docs:
-            if all(d.get(k) == v for k, v in filtre.items()):
-                return dict(d)
-        return None
+
+        def correspond(d):
+            for cle, attendu in filtre.items():
+                valeur = d.get(cle)
+                # `{"$in": [...]}` : le seul opérateur dont ce code se sert.
+                if isinstance(attendu, dict) and "$in" in attendu:
+                    if valeur not in attendu["$in"]:
+                        return False
+                elif valeur != attendu:
+                    return False
+            return True
+
+        trouves = [d for d in self.docs if correspond(d)]
+        if sort:
+            for cle, sens in reversed(sort):
+                trouves.sort(key=lambda d: (d.get(cle) is None, d.get(cle) or ""),
+                             reverse=(sens < 0))
+        return dict(trouves[0]) if trouves else None
 
     def find(self, filtre, projection=None):
         trouves = [d for d in self.docs
@@ -298,6 +319,58 @@ def test_un_versement_SANS_lignes_porte_None_et_non_un_mois_invente(server_modul
     rows = asyncio.run(server_module.affiliate_payouts(None, aff=AFF))
 
     assert rows[0]["periode_couverte"] is None
+
+
+def test_LE_DERNIER_PAYE_est_cherche_hors_de_la_page(server_module):
+    """Mireille veut ce versement en tete de l'onglet.
+
+    Le deduire de la page affichee serait faux des que des releves NON payes
+    s'empilent devant : l'ecran annoncerait « aucun paiement » a quelqu'un qui
+    a deja ete paye. Ici deux releves non payes sont plus recents, et c'est
+    bien le paye qui doit sortir.
+    """
+    _brancher(server_module, versements=[
+        {**VERSEMENT, "id": "pay-3", "status": "ready",
+         "paid_at": None, "created_at": "2026-12-01T00:00:00+00:00"},
+        {**VERSEMENT, "id": "pay-2", "status": "review",
+         "paid_at": None, "created_at": "2026-11-01T00:00:00+00:00"},
+        {**VERSEMENT, "id": "pay-1", "status": "paid_manual",
+         "paid_at": "2026-10-03T14:00:00+00:00"},
+    ])
+
+    page = asyncio.run(server_module.affiliate_payouts(None, page=1, aff=AFF))
+
+    assert page["dernier_paye"]["id"] == "pay-1"
+    assert page["dernier_paye"]["periode_couverte"]["debut"] == "2026-08"
+
+
+def test_entre_deux_verses_c_est_le_plus_recemment_PAYE(server_module):
+    # Trie sur `paid_at` : c'est la date du paiement qui ordonne les
+    # paiements, pas celle de creation du releve.
+    _brancher(server_module, versements=[
+        {**VERSEMENT, "id": "vieux", "status": "paid",
+         "paid_at": "2026-08-05T10:00:00+00:00",
+         "created_at": "2026-12-01T00:00:00+00:00"},
+        {**VERSEMENT, "id": "recent", "status": "paid_manual",
+         "paid_at": "2026-10-03T14:00:00+00:00",
+         "created_at": "2026-01-01T00:00:00+00:00"},
+    ])
+
+    page = asyncio.run(server_module.affiliate_payouts(None, page=1, aff=AFF))
+
+    assert page["dernier_paye"]["id"] == "recent"
+
+
+def test_sans_aucun_versement_paye_le_bloc_n_a_rien_a_montrer(server_module):
+    # L'ecran retire alors le bloc : une mauvaise nouvelle en tete de page,
+    # alors que le cycle qui vient est juste en dessous.
+    _brancher(server_module, versements=[
+        {**VERSEMENT, "id": "pay-1", "status": "ready", "paid_at": None},
+    ])
+
+    page = asyncio.run(server_module.affiliate_payouts(None, page=1, aff=AFF))
+
+    assert page["dernier_paye"] is None
 
 
 def test_une_liste_vide_ne_declenche_aucune_requete(server_module):

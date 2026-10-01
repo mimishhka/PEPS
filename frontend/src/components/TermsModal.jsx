@@ -52,9 +52,14 @@ export default function TermsModal({ L, lang, onClose }) {
     };
   }, [onClose]);
 
+  // DEUX attributs `style` vivaient sur le voile. JSX garde le SECOND et jette
+  // le premier en silence : `zIndex: var(--z-modal)` était donc perdu, et cette
+  // fenêtre ne tenait au-dessus du reste que parce qu'elle est `fixed` et tard
+  // dans le DOM. Un bandeau collant déclaré plus bas aurait suffi à passer
+  // devant les conditions qu'on demande d'accepter.
   return (
-    <div className="fixed inset-0 flex items-center justify-center px-4 py-6" style={{ zIndex: "var(--z-modal)" }}
-         style={{ background: "rgba(11,46,79,.72)" }}
+    <div className="fixed inset-0 flex items-center justify-center px-4 py-6"
+         style={{ zIndex: "var(--z-modal)", background: "rgba(11,46,79,.72)" }}
          onClick={() => onClose(false)}
          data-testid="terms-modal">
       <div className="w-full max-w-2xl max-h-full bg-white rounded-xl border border-ash

@@ -12313,7 +12313,25 @@ async def affiliate_payouts(request: Request,
             "created_at", -1
         ).skip((page - 1) * page_size).limit(page_size).to_list(page_size)
         await _attacher_periode_couverte(rows)
-        return {"items": rows, "total": total, "page": page, "page_size": page_size}
+        # LE DERNIER VERSEMENT PAYÉ, cherché indépendamment de la page.
+        #
+        # Mireille le veut en tête de l'onglet : « Paid avec référence le mois
+        # dernier [...] devrait se retrouver en haut de page ». Le déduire de
+        # la page 1 serait faux dès que dix versements non payés s'empilent —
+        # c'est rare, mais l'écran annoncerait alors « aucun paiement » à
+        # quelqu'un qui a déjà été payé, ce qui est exactement le genre de
+        # mensonge qu'on ne découvre jamais en testant un compte sain.
+        #
+        # Trié sur `paid_at` : c'est la date du paiement qui ordonne les
+        # paiements, pas celle de création du relevé.
+        dernier = await db.affiliate_payouts.find_one(
+            {"affiliate_id": aff["id"],
+             "status": {"$in": ["paid", "paid_manual"]}},
+            {"_id": 0}, sort=[("paid_at", -1), ("created_at", -1)])
+        if dernier:
+            dernier["periode_couverte"] = await _periode_couverte(dernier.get("id"))
+        return {"items": rows, "total": total, "page": page,
+                "page_size": page_size, "dernier_paye": dernier}
     rows = await db.affiliate_payouts.find(q, {"_id": 0}).sort(
         "created_at", -1).to_list(200)
     await _attacher_periode_couverte(rows)

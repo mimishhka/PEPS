@@ -13,7 +13,8 @@ import api, { formatApiError } from "../lib/api";
 // Extraites dans lib/periode : ces fonctions vivaient en double ici et
 // dans AdminAffiliates. `periodeLisible` est le pendant de
 // `_periode_lisible` cote serveur, qui sert aux courriels.
-import { moisLisible, jourLisible } from "../lib/periode";
+import { moisLisible, jourLisible, momentLisible, periodeLisible }
+  from "../lib/periode";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import { DashboardSkeleton } from "../components/LoadingSkeletons";
@@ -25,6 +26,8 @@ import TermsModal from "../components/TermsModal";
 import TierLadder from "../components/TierLadder";
 import CarteAffilie from "../components/CarteAffilie";
 import DepuisLeDebut from "../components/DepuisLeDebut";
+import DernierVersement from "../components/DernierVersement";
+import DetailVersement from "../components/DetailVersement";
 import OngletsAffilie, { CLES_ONGLETS } from "../components/OngletsAffilie";
 import ClocheAffilie from "../components/ClocheAffilie";
 import ChiffreAnime from "../components/ChiffreAnime";
@@ -166,6 +169,13 @@ export default function AffiliateDashboard() {
   const [loading, setLoading] = useState(true);
   const [referrals, setReferrals] = useState([]);
   const [payouts, setPayouts] = useState([]);
+  /* LE DERNIER VERSEMENT PAYE vient du serveur et non de la page affichee :
+     le deduire de la page 1 serait faux des que dix releves non payes
+     s'empilent, et l'ecran annoncerait « aucun paiement » a quelqu'un qui a
+     deja ete paye. */
+  const [dernierPaye, setDernierPaye] = useState(null);
+  /* L'identifiant du versement dont la fenetre de detail est ouverte. */
+  const [detailVersement, setDetailVersement] = useState(null);
   const [series, setSeries] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [insights, setInsights] = useState(null);
@@ -242,6 +252,7 @@ export default function AffiliateDashboard() {
       setRefTotal(data?.referrals?.total ?? 0);
       setPayouts(items(data?.payouts));
       setPayTotal(data?.payouts?.total ?? 0);
+      setDernierPaye(data?.payouts?.dernier_paye ?? null);
       setInsights(data?.insights || null);
       setSources(data?.clicks_sources || null);
       setActivity(Array.isArray(data?.activity) ? data.activity : []);
@@ -421,8 +432,16 @@ export default function AffiliateDashboard() {
       const rows = Array.isArray(data) ? data : [];
       downloadCsv(
         `fironova-payouts-${refCode}.csv`,
-        ["Period", "Amount CAD", "FX CAD to USD", "FX source", "Amount received", "Currency", "Status", "Paid at", "Reference"],
+        // « Période couverte » d'abord, et l'étiquette de run gardée a cote
+        // sous son vrai nom : le fichier part chez une comptabilite, qui doit
+        // pouvoir rapprocher un lot ET savoir quel mois a ete gagne.
+        ["Periode couverte", "Run", "Amount CAD", "FX CAD to USD", "FX source", "Amount received", "Currency", "Status", "Paid at", "Reference"],
         rows.map((p) => [
+          p.periode_couverte
+            ? (p.periode_couverte.debut === p.periode_couverte.fin
+              ? p.periode_couverte.debut
+              : `${p.periode_couverte.debut} - ${p.periode_couverte.fin}`)
+            : "",
           p.period,
           p.amount_cad ?? p.amount,
           p.fx_rate_cad_to_usd || "",
@@ -469,6 +488,7 @@ export default function AffiliateDashboard() {
       });
       setPayouts(data?.items || []);
       setPayTotal(data?.total || 0);
+      setDernierPaye(data?.dernier_paye ?? null);
       setPayPage(p);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
@@ -1526,16 +1546,15 @@ export default function AffiliateDashboard() {
               </p>
             </header>
 
-            {/* LE BILAN EN PREMIER.
-                Mireille : « si un affilié veut voir son all-time sales on a
-                aucune vue pour ça. Pareil pour la commission. »
-                Les ventes cumulées existaient — dans l'onglet Performance, et
-                elle ne les a pas trouvées ; la commission cumulée nulle part.
-                Les deux répondent à une seule question, et les séparer est
-                probablement ce qui rendait aucune des deux trouvable.
-                Place en tête : c'est le résumé de tout l'onglet, et le reste
-                répond à « et ensuite ? ». */}
-            <DepuisLeDebut data={data} L={L} money={money} lang={lang} />
+            {/* L'ORDRE DE CET ONGLET EST CELUI QU'ELLE A DICTÉ.
+                Mireille : « Paid avec référence le mois dernier [...] devrait
+                se retrouver en haut de page. Suivi du next payout. Ensuite le
+                all time avec des filtres. »
+                C'est l'ordre des questions qu'on se pose, dans cet ordre :
+                « j'ai été payé ? », « et la prochaine fois ? », « combien en
+                tout ? », « et le détail ? ». Le cumul était en tête et le fait
+                accompli n'existait qu'en bas, dans une ligne de tableau. */}
+            <DernierVersement versement={dernierPaye} L={L} money={money} lang={lang} />
             {/* VENUS DE L'APERCU. Le cycle et le prochain versement y
                 occupaient 150 lignes alors qu'ils parlent de paiement : leur
                 place est ici. La carte garde le montant en pied, en resume. */}
@@ -1688,14 +1707,14 @@ export default function AffiliateDashboard() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Devise explicite. Ces trois montants sont en CAD alors que le
-                  versement part en USDT/USDC : sans etiquette, trois « \$ » sur
-                  un ecran de paiements crypto ne disent pas lesquels. */}
-              <KpiCard label={L("En attente", "Pending")} value={money(data?.pending_commission)} sub="CAD" />
-              <KpiCard label={L("Approuvé", "Approved")} value={money(data?.approved_commission)} sub="CAD" />
-              <KpiCard label={L("Payé", "Paid")} value={money(data?.paid_commission)} sub="CAD" accent />
-            </div>
+            {/* LE CUMUL, troisième — « ensuite le all time ».
+                ET LES TROIS CARTES QUI ÉTAIENT ICI SONT PARTIES. Elles
+                affichaient `pending_commission`, `approved_commission` et
+                `paid_commission` : exactement les trois montants que ce bloc
+                montre, avec en plus leur proportion et leur sens. Deux
+                lectures des mêmes chiffres sur un même écran, c'est ce qui
+                fait qu'on finit par n'en croire aucune. */}
+            <DepuisLeDebut data={data} series={series} L={L} money={money} lang={lang} />
             <div className="bg-white rounded-xl border border-ash overflow-hidden">
               <div className="px-6 py-4 border-b border-ash flex items-center justify-between">
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
@@ -1748,60 +1767,159 @@ export default function AffiliateDashboard() {
                 </div>
               ) : (
                 <>
-                  <div className="overflow-x-auto">
+                  {/* DEUX RENDUS, UNE SEULE SOURCE.
+                      Mireille : « assure-toi que tout fonctionne aussi sur
+                      mobile ». Cette table portait six colonnes — huit avec la
+                      date de paiement et le bouton de détail — en défilement
+                      horizontal. Sur 375 px on ne lit pas une table de huit
+                      colonnes : on la fait glisser en espérant retrouver la
+                      ligne de départ.
+                      Le dépôt n'avait aucun patron table/cartes. Celui-ci
+                      garde la table à partir de `sm`, où elle est le bon
+                      outil, et sert des cartes en dessous. `versementLisible`
+                      prépare les champs UNE fois pour les deux : deux
+                      balisages, c'est deux occasions de diverger, pas deux
+                      vérités. */}
+
+                  {/* ---- CARTES, sous `sm` ---- */}
+                  {payLoading ? (
+                    <p className="sm:hidden px-5 py-8 text-center text-[13px] text-glacier">
+                      {L("Chargement…", "Loading…")}
+                    </p>
+                  ) : (
+                    <ul className="sm:hidden divide-y divide-ash/60"
+                        data-testid="historique-cartes">
+                      {payPageRows.map((p) => {
+                        const v = versementLisible(p, lang);
+                        return (
+                          <li key={p.id} className="px-5 py-4">
+                            <div className="flex items-baseline justify-between gap-3">
+                              <span className="font-data text-[12px] text-nordfjord font-semibold">
+                                {v.periode}
+                              </span>
+                              <span className="font-display text-[16px] font-bold text-nordfjord tabular-nums shrink-0">
+                                {money(v.cad)}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 flex-wrap mt-1.5">
+                              <PayoutStatus status={p.status} L={L} />
+                              {v.paye && (
+                                <span className="font-data text-[11px] text-glacier">
+                                  {L(`payé le ${v.paye}`, `paid ${v.paye}`)}
+                                </span>
+                              )}
+                            </div>
+
+                            {v.recuLisible && (
+                              <p className="font-data text-[11px] text-nova-texte mt-1.5">
+                                {v.recuLisible}
+                                {v.fx && (
+                                  <span className="text-glacier/70">
+                                    {` · 1 CAD ≈ ${Number(v.fx).toFixed(4)} USD`}
+                                  </span>
+                                )}
+                              </p>
+                            )}
+
+                            {p.reference && (
+                              <p className="font-data text-[10px] text-glacier/80 mt-1 leading-relaxed">
+                                {L("réf ", "ref ")}
+                                <code className="break-all select-all">{p.reference}</code>
+                              </p>
+                            )}
+
+                            {/* 44 px de hauteur, `touch-action` et un `:active` :
+                                un bouton de 24 px au doigt se rate. */}
+                            <button onClick={() => setDetailVersement(p.id)}
+                              className="mt-2.5 w-full h-11 rounded-lg border border-ash
+                                         font-data text-[11px] font-semibold uppercase tracking-[0.1em]
+                                         text-nordfjord hover:bg-clinical transition-colors
+                                         active:scale-[0.98]"
+                              style={{ touchAction: "manipulation" }}
+                              data-testid={`detail-bouton-${p.id}`}>
+                              {L("Voir les commandes", "See the orders")}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+
+                  {/* ---- TABLE, à partir de `sm` ---- */}
+                  <div className="hidden sm:block overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-left font-data text-[11px] uppercase tracking-wider text-glacier border-b border-ash">
-                          <th className="px-6 py-3">{L("Période", "Period")}</th>
+                          {/* « Période COUVERTE » : le mot seul laissait lire
+                              l'étiquette de run comme une période. */}
+                          <th className="px-6 py-3">{L("Période couverte", "Period covered")}</th>
                           <th className="px-6 py-3">{L("Montant CAD", "Amount CAD")}</th>
-                          <th className="px-6 py-3">{L("Taux CAD→USD", "CAD→USD rate")}</th>
+                          <th className="px-6 py-3">{L("Payé le", "Paid on")}</th>
                           <th className="px-6 py-3">{L("Reçu", "Received")}</th>
                           <th className="px-6 py-3">{L("Statut", "Status")}</th>
                           <th className="px-6 py-3">{L("Référence", "Reference")}</th>
+                          <th className="px-6 py-3"><span className="sr-only">{L("Détail", "Detail")}</span></th>
                         </tr>
                       </thead>
                       {payLoading ? (
-                        <TableSkeleton cols={6} />
+                        <TableSkeleton cols={7} />
                       ) : (
                         <tbody>
                         {payPageRows.map((p) => {
-                          // Fallback pour les payouts legacy sans champs de conversion.
-                          const amountCad = p.amount_cad ?? p.amount;
-                          const fxRate = p.fx_rate_cad_to_usd;
-                          const currency = (p.currency || "").toLowerCase();
-                          const targetKnown = ["usdt", "usdc"].includes(currency);
+                          const v = versementLisible(p, lang);
                           return (
                             <tr key={p.id} className="border-b border-ash/60">
-                              <td className="px-6 py-3 font-data text-nordfjord align-top">{p.period}</td>
-                              <td className="px-6 py-3 font-semibold text-nordfjord align-top">
-                                {money(amountCad)}
+                              <td className="px-6 py-3 font-data text-nordfjord align-top"
+                                  data-testid={`historique-periode-${p.id}`}>
+                                {v.periode}
                               </td>
-                              <td className="px-6 py-3 font-data text-[12px] text-glacier align-top">
-                                {fxRate
+                              <td className="px-6 py-3 font-semibold text-nordfjord align-top tabular-nums">
+                                {money(v.cad)}
+                              </td>
+                              {/* LA DATE DU PAIEMENT. `paid_at` arrivait du
+                                  serveur depuis toujours, et aucune colonne ne
+                                  le lisait. */}
+                              <td className="px-6 py-3 font-data text-[12px] text-glacier align-top"
+                                  data-testid={`historique-paye-${p.id}`}>
+                                {v.paye || <span className="text-glacier/50">-</span>}
+                              </td>
+                              <td className="px-6 py-3 font-semibold text-nova align-top">
+                                {v.recuLisible
                                   ? (
                                     <>
-                                      <span className="text-nordfjord">{Number(fxRate).toFixed(4)}</span>
-                                      <span className="block text-[10px] text-glacier/70">
-                                        {p.fx_source === "bank_of_canada"
-                                          ? L("Banque du Canada", "Bank of Canada")
-                                          : p.fx_source === "fallback"
-                                            ? L("Estimation", "Fallback")
-                                            : p.fx_source || "-"}
-                                      </span>
+                                      <span>{v.recuLisible}</span>
+                                      {v.fx && (
+                                        <span className="block font-data text-[10px] font-normal text-glacier/70">
+                                          {`1 CAD ≈ ${Number(v.fx).toFixed(4)} USD`}
+                                          {v.source === "bank_of_canada"
+                                            ? L(" · Banque du Canada", " · Bank of Canada")
+                                            : v.source === "fallback"
+                                              ? L(" · estimation", " · fallback")
+                                              : ""}
+                                        </span>
+                                      )}
                                     </>
                                   )
                                   : <span className="text-glacier/50">-</span>}
-                              </td>
-                              <td className="px-6 py-3 font-semibold text-nova align-top">
-                                {targetKnown && p.amount != null
-                                  ? <>{Number(p.amount).toFixed(2)}<span className="ml-1 text-[10px] uppercase text-glacier">{currency}</span></>
-                                  : <span className="text-glacier">{money(p.amount)} {currency ? <span className="text-[10px] uppercase">{currency}</span> : null}</span>}
                               </td>
                               <td className="px-6 py-3 align-top">
                                 <PayoutStatus status={p.status} L={L} />
                               </td>
                               <td className="px-6 py-3 font-data text-[11px] text-glacier break-all max-w-[200px] align-top">
-                                {p.reference || "-"}
+                                {p.reference
+                                  ? <code className="select-all">{p.reference}</code>
+                                  : "-"}
+                              </td>
+                              <td className="px-6 py-3 align-top text-right">
+                                <button onClick={() => setDetailVersement(p.id)}
+                                  className="px-3 py-1.5 rounded-md border border-ash font-data text-[11px]
+                                             text-nordfjord hover:bg-clinical transition-colors
+                                             active:scale-[0.97] whitespace-nowrap"
+                                  style={{ touchAction: "manipulation" }}
+                                  data-testid={`detail-bouton-table-${p.id}`}>
+                                  {L("Détail", "Detail")}
+                                </button>
                               </td>
                             </tr>
                           );
@@ -1825,6 +1943,20 @@ export default function AffiliateDashboard() {
                 </>
               )}
             </div>
+
+            {/* LA FENÊTRE DE DÉTAIL.
+                Mireille : « il faudrait que l'affiliée puisse constater quels
+                sont les commandes [que] représente ce paiement, incluant bien
+                sûr les commandes remboursées ou annulées. (donc un bouton ou
+                avec une fenêtre contextuelle) ».
+                Montée seulement quand on l'ouvre : elle charge son contenu à
+                l'ouverture, donc la garder en vie invisible ferait une requête
+                par versement affiché. */}
+            {detailVersement && (
+              <DetailVersement payoutId={detailVersement}
+                               L={L} money={money} lang={lang}
+                               onClose={() => setDetailVersement(null)} />
+            )}
           </div>
         )}
 
@@ -2539,6 +2671,34 @@ const LIBELLE_VERSEMENT = {
   retenu: { fr: "En vérification", en: "Under review", cls: "bg-warning/15 text-warning" },
   annule: { fr: "Annulé", en: "Reversed", cls: "bg-error/15 text-error" },
 };
+
+/**
+ * Les champs d'un versement, préparés UNE fois pour les deux rendus.
+ *
+ * L'historique s'affiche en cartes sous `sm` et en table au-delà. Répéter la
+ * préparation dans les deux balisages, c'est garantir qu'un jour l'un dira la
+ * période couverte et l'autre l'étiquette de run.
+ */
+function versementLisible(p, lang) {
+  const devise = String(p.currency || "").toLowerCase();
+  const jetonConnu = ["usdt", "usdc"].includes(devise);
+  const recu = p.amount;
+  return {
+    // Repli pour les versements anciens sans champs de conversion.
+    cad: p.amount_cad ?? p.amount,
+    // LA PÉRIODE COUVERTE, avec l'étiquette de run en dernier recours : mieux
+    // vaut un mois approximatif qu'une case vide sur un relevé d'argent.
+    periode: periodeLisible(p.periode_couverte, lang, moisLisible(p.period, lang)),
+    paye: p.paid_at ? momentLisible(p.paid_at, lang) : null,
+    // La quantité de jetons n'a de sens qu'avec sa devise : un nombre nu, sur
+    // un écran où tout est en dollars, se lit comme un second montant CAD.
+    recuLisible: recu != null && devise
+      ? `${jetonConnu ? Number(recu).toFixed(2) : recu} ${devise.toUpperCase()}`
+      : "",
+    fx: p.fx_rate_cad_to_usd,
+    source: p.fx_source,
+  };
+}
 
 function PayoutStatus({ status, L }) {
   // UN ÉTAT INCONNU VAUT « EN COURS », jamais « Prêt ». Affirmer un état

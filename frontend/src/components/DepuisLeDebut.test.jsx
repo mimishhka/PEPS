@@ -10,6 +10,7 @@
 // booléen dans la liste de démarrage.
 
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import DepuisLeDebut from "./DepuisLeDebut";
 
@@ -34,7 +35,27 @@ const ACTIF = {
   validated_orders: 37,
 };
 
-const afficher = (data) => render(<DepuisLeDebut data={data} L={L} money={money} lang="fr" />);
+const afficher = (data, series) =>
+  render(<DepuisLeDebut data={data} series={series} L={L} money={money} lang="fr" />);
+
+/* Douze mois, du plus ancien au plus recent — c'est l'ordre que rend
+ * `_douze_derniers_mois`, MOIS COURANT INCLUS. Le dernier element est donc le
+ * mois en cours, et « mois dernier » est l'avant-dernier. Les commissions sont
+ * distinctes pour que chaque fenetre ait une somme reconnaissable. */
+const SERIE = [
+  { month: "2025-11", revenue: 100, commission: 10, orders: 1, reversed: 0 },
+  { month: "2025-12", revenue: 200, commission: 20, orders: 2, reversed: 0 },
+  { month: "2026-01", revenue: 300, commission: 30, orders: 3, reversed: 0 },
+  { month: "2026-02", revenue: 400, commission: 40, orders: 4, reversed: 0 },
+  { month: "2026-03", revenue: 500, commission: 50, orders: 5, reversed: 0 },
+  { month: "2026-04", revenue: 600, commission: 60, orders: 6, reversed: 0 },
+  { month: "2026-05", revenue: 700, commission: 70, orders: 7, reversed: 0 },
+  { month: "2026-06", revenue: 800, commission: 80, orders: 8, reversed: 0 },
+  { month: "2026-07", revenue: 900, commission: 90, orders: 9, reversed: 0 },
+  { month: "2026-08", revenue: 1000, commission: 100, orders: 10, reversed: 0 },
+  { month: "2026-09", revenue: 1100, commission: 110, orders: 11, reversed: 0 },
+  { month: "2026-10", revenue: 1200, commission: 120, orders: 12, reversed: 0 },
+];
 
 describe("la question qu'on se pose en ouvrant la page", () => {
   test("LE CAS DE MIREILLE : la commission gagnée, en tête", () => {
@@ -185,5 +206,174 @@ describe("des données incomplètes", () => {
       expect(screen.getByTestId("depuis-gagne")).toHaveTextContent("0.00");
       unmount();
     }
+  });
+});
+
+// ===========================================================================
+// LES FILTRES
+//
+// MIREILLE, 01/10/2026 : « ensuite le all time avec des filtres : 3 derniers
+// mois, six derniers mois, derniere annee, mois dernier. Donc avec un
+// graphique peut-etre aussi. »
+// ===========================================================================
+
+describe("les filtres de periode", () => {
+  test("sans serie mensuelle, aucun filtre n'est propose", () => {
+    // Proposer « 3 mois » a quelqu'un dont on n'a pas l'historique mensuel
+    // afficherait zero sous chaque fenetre.
+    afficher(ACTIF);
+    expect(screen.queryByTestId("depuis-filtres")).not.toBeInTheDocument();
+  });
+
+  test("« depuis le debut » est la vue par defaut", () => {
+    afficher(ACTIF, SERIE);
+    // Les scalaires, pas la serie : 820 + 310,50 + 118.
+    expect(screen.getByTestId("depuis-gagne")).toHaveTextContent("1248.50");
+    expect(screen.getByTestId("depuis-filtre-tout")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("LE CAS DE MIREILLE : « mois dernier » exclut le mois courant", async () => {
+    /* La serie inclut le mois courant (`_douze_derniers_mois`). « Mois
+     * dernier » nomme un mois CLOS : c'est le seul filtre qui retire le mois
+     * en cours, et c'est ce qui le distingue d'une fenetre glissante. */
+    afficher(ACTIF, SERIE);
+    await userEvent.click(screen.getByTestId("depuis-filtre-m1"));
+
+    // Septembre, et non octobre.
+    expect(screen.getByTestId("depuis-gagne")).toHaveTextContent("110.00");
+    expect(screen.getByTestId("depuis-ventes")).toHaveTextContent("1100.00");
+    expect(screen.getByTestId("depuis-commandes")).toHaveTextContent("11");
+  });
+
+  test("« 3 mois » additionne les trois derniers, mois courant COMPRIS", async () => {
+    afficher(ACTIF, SERIE);
+    await userEvent.click(screen.getByTestId("depuis-filtre-m3"));
+
+    // 100 + 110 + 120 = aout, septembre, octobre.
+    expect(screen.getByTestId("depuis-gagne")).toHaveTextContent("330.00");
+  });
+
+  test("« 6 mois » et « 12 mois » aussi", async () => {
+    afficher(ACTIF, SERIE);
+
+    await userEvent.click(screen.getByTestId("depuis-filtre-m6"));
+    // 70 + 80 + 90 + 100 + 110 + 120
+    expect(screen.getByTestId("depuis-gagne")).toHaveTextContent("570.00");
+
+    await userEvent.click(screen.getByTestId("depuis-filtre-m12"));
+    // La somme de la serie entiere : 10 + 20 + ... + 120 = 780.
+    expect(screen.getByTestId("depuis-gagne")).toHaveTextContent("780.00");
+  });
+
+  test("CHAQUE FENETRE ECRIT LES MOIS QU'ELLE ADDITIONNE", async () => {
+    /* « 3 derniers mois » est ambigu : avec ou sans le mois courant, qui
+     * n'est pas fini ? Plutot que de choisir une convention et d'esperer
+     * qu'elle se devine, le bloc ecrit les mois reellement comptes. */
+    afficher(ACTIF, SERIE);
+    await userEvent.click(screen.getByTestId("depuis-filtre-m3"));
+
+    const fenetre = screen.getByTestId("depuis-fenetre");
+    expect(fenetre).toHaveTextContent(/2026/);
+    // Une plage, pas un mois isole.
+    expect(fenetre.textContent).toMatch(/\s(à|to)\s/);
+  });
+
+  test("sous une fenetre, la repartition a trois etats DISPARAIT", async () => {
+    /* « Versee / a verser / en attente » est un etat PRESENT de l'argent, pas
+     * une quantite datable : une commission versee en mars n'etait pas
+     * « versee » en mars. Les afficher sous un filtre de trois mois donnerait
+     * trois nombres qui ne s'additionnent pas au total affiche. */
+    afficher(ACTIF, SERIE);
+    expect(screen.getByTestId("depuis-barre")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("depuis-filtre-m3"));
+
+    expect(screen.queryByTestId("depuis-barre")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("depuis-legende-versee")).not.toBeInTheDocument();
+  });
+
+  test("et la mention des remboursements aussi", async () => {
+    // `reversed_commission` est un cumul depuis le debut : l'afficher sous
+    // une fenetre de trois mois attribuerait a ces trois mois des reprises
+    // qui n'en viennent pas.
+    afficher({ ...ACTIF, reversed_commission: 45 }, SERIE);
+    expect(screen.getByTestId("depuis-reprise")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("depuis-filtre-m6"));
+    expect(screen.queryByTestId("depuis-reprise")).not.toBeInTheDocument();
+  });
+
+  test("une serie plus courte que la fenetre n'invente pas de zeros", async () => {
+    /* Un affilie de deux mois voit deux mois sous « 6 mois », et non quatre
+     * mois a zero : un zero invente se lit comme un mois rate. */
+    const courte = SERIE.slice(-2);
+    afficher(ACTIF, courte);
+
+    await userEvent.click(screen.getByTestId("depuis-filtre-m6"));
+    // 110 + 120 seulement.
+    expect(screen.getByTestId("depuis-gagne")).toHaveTextContent("230.00");
+    expect(screen.getAllByTestId(/^depuis-barre-/)).toHaveLength(2);
+  });
+
+  test("la moyenne par commande suit la fenetre", async () => {
+    afficher(ACTIF, SERIE);
+    await userEvent.click(screen.getByTestId("depuis-filtre-m1"));
+    // 110 / 11 = 10,00 par commande.
+    expect(screen.getByTestId("depuis-ventes")).toHaveTextContent("10.00");
+  });
+});
+
+// ===========================================================================
+// LE GRAPHIQUE
+// ===========================================================================
+
+describe("le graphique mensuel", () => {
+  test("IL REND VRAIMENT — c'est pourquoi il n'est pas en Recharts", () => {
+    /* Recharts mesure son conteneur : en jsdom il ne rend rien, donc rien ne
+     * serait verifiable. Douze barres en flex se testent, ne coutent aucun
+     * kilo-octet, et s'adaptent sans point de rupture. */
+    afficher(ACTIF, SERIE);
+
+    expect(screen.getByTestId("depuis-graphe")).toBeInTheDocument();
+    expect(screen.getAllByTestId(/^depuis-barre-20/)).toHaveLength(12);
+  });
+
+  test("la hauteur est proportionnelle, et un mois a zero reste visible", () => {
+    const avecZero = [
+      { month: "2026-09", revenue: 0, commission: 0, orders: 0 },
+      { month: "2026-10", revenue: 1200, commission: 120, orders: 12 },
+    ];
+    afficher(ACTIF, avecZero);
+
+    // Le sommet occupe toute la hauteur.
+    expect(screen.getByTestId("depuis-barre-2026-10").style.height).toBe("100%");
+    // Un mois a zero garde un plancher : il doit se lire comme un mois, pas
+    // disparaitre de la frise.
+    expect(screen.getByTestId("depuis-barre-2026-09").style.height).toBe("2%");
+  });
+
+  test("LE FILTRE SE VOIT SUR LE GRAPHIQUE : les mois exclus s'estompent", async () => {
+    // Ils s'estompent au lieu de disparaitre, pour qu'on voie ce qu'on exclut.
+    afficher(ACTIF, SERIE);
+    await userEvent.click(screen.getByTestId("depuis-filtre-m3"));
+
+    expect(screen.getByTestId("depuis-barre-2026-10")).toHaveAttribute("data-dedans", "oui");
+    expect(screen.getByTestId("depuis-barre-2026-08")).toHaveAttribute("data-dedans", "oui");
+    expect(screen.getByTestId("depuis-barre-2026-07")).toHaveAttribute("data-dedans", "non");
+    expect(screen.getByTestId("depuis-barre-2025-11")).toHaveAttribute("data-dedans", "non");
+    // Les douze barres restent presentes.
+    expect(screen.getAllByTestId(/^depuis-barre-20/)).toHaveLength(12);
+  });
+
+  test("sans commission nulle part, pas de graphique vide", () => {
+    // Douze barres au plancher ne diraient rien.
+    afficher(ACTIF, SERIE.map((m) => ({ ...m, commission: 0 })));
+    expect(screen.queryByTestId("depuis-graphe")).not.toBeInTheDocument();
+  });
+
+  test("il est decrit pour les lecteurs d'ecran", () => {
+    afficher(ACTIF, SERIE);
+    const frise = screen.getByTestId("depuis-graphe").querySelector('[role="img"]');
+    expect(frise.getAttribute("aria-label")).toMatch(/12/);
   });
 });

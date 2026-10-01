@@ -1,39 +1,50 @@
+import { useMemo, useState } from "react";
+
 import ChiffreAnime from "./ChiffreAnime";
+import { moisLisible, periodeLisible } from "../lib/periode";
 
 /**
- * DEPUIS LE DÉBUT — le bilan d'un affilié, en un coup d'œil.
+ * LE BILAN D'UN AFFILIÉ — ce qu'il a vendu, ce qu'il a gagné, sur la période
+ * qu'il choisit.
  *
  * MIREILLE, 01/10/2026 : « si un affilié veut voir son all-time sales on a
- * aucune vue pour ça. Pareil pour la commission. »
+ * aucune vue pour ça. Pareil pour la commission. » Puis, le même jour :
+ * « ensuite le all time avec des filtres : 3 derniers mois, six derniers mois,
+ * dernière année, mois dernier. Donc avec un graphique peut-être aussi. »
  *
  * Les ventes cumulées existaient, mais dans l'onglet Performance, sous le
  * titre « Revenu validé cumulé » — elle-même ne les a pas trouvées. Ce titre
  * disait d'ailleurs « revenu » pour un nombre qui n'est pas le revenu de
- * l'affilié : il dit « Ventes validées cumulées » depuis. La
- * commission cumulée, elle, n'était affichée NULLE PART : `paid_commission`
- * ne servait que de booléen dans la liste de démarrage.
+ * l'affilié : il dit « Ventes validées cumulées » depuis. La commission
+ * cumulée, elle, n'était affichée NULLE PART : `paid_commission` ne servait
+ * que de booléen dans la liste de démarrage.
  *
- * LES DEUX RÉPONDENT À UNE SEULE QUESTION — « j'ai fait quoi, et ça m'a
- * rapporté combien ? » — et les séparer en deux onglets est probablement ce
- * qui a fait qu'aucun des deux n'était trouvable.
+ * ── Pourquoi chaque filtre AFFICHE la période qu'il couvre
  *
- * ── Pourquoi la commission passe en premier, et les ventes en dessous
+ * « 3 derniers mois » est ambigu : avec ou sans le mois courant, qui n'est pas
+ * fini ? Plutôt que de choisir une convention et d'espérer qu'elle se devine,
+ * le bloc écrit les mois réellement additionnés sous le montant. On ne demande
+ * pas au lecteur de deviner ce qu'on a compté.
  *
- * Un affilié ne demande pas son chiffre d'affaires : il demande ce qu'il a
- * gagné. Le chiffre d'affaires est la preuve, pas la réponse. Il reste donc
- * là, mais en pied de bloc, comme la base qui a produit le montant du haut.
+ * `mois dernier` est le seul à exclure le mois courant, parce qu'il nomme un
+ * mois précis et non une fenêtre glissante.
  *
- * ── Pourquoi une barre segmentée plutôt que trois nombres
+ * ── Pourquoi la barre à trois états n'apparaît QUE sur « depuis le début »
  *
- * Les trois états ne se valent pas : « versée » est dans le portefeuille,
- * « à verser » arrive le 1er, « en attente » peut encore disparaître si une
- * commande est remboursée. Une colonne de montants le dit ; elle ne le MONTRE
- * pas. La barre donne la proportion sans qu'on ait à faire l'arithmétique —
- * on voit d'un regard si l'essentiel est acquis ou si tout est encore suspendu.
+ * « Versée / à verser / en attente » est un état PRÉSENT de l'argent, pas une
+ * quantité datable : une commission versée en mars n'était pas « versée » en
+ * mars. La série mensuelle ne porte que ce qui a été acquis par mois. Afficher
+ * la répartition sous un filtre de trois mois mélangerait donc deux axes et
+ * donnerait trois nombres qui ne s'additionnent pas au total affiché.
  *
- * Les couleurs sont celles que le site emploie déjà pour ces notions, et elles
- * qualifient plutôt qu'elles ne décorent : vert pour l'argent arrivé, cyan
- * pour ce qui est acquis et vient, ambre pour ce qui attend.
+ * ── Pourquoi le graphique est en CSS et non en Recharts
+ *
+ * Recharts mesure son conteneur : il ne rend rien en jsdom, donc rien ne
+ * serait testable, et sur 375 px douze graduations se chevauchent. Douze
+ * barres en flex coûtent zéro kilo-octet, s'adaptent par construction, et les
+ * tests peuvent lire leur hauteur. Le graphique sert aussi de repère pour le
+ * filtre : les mois hors fenêtre s'estompent au lieu de disparaître, pour
+ * qu'on voie ce qu'on exclut.
  *
  * ── Pourquoi les commandes remboursées sont affichées, et comment
  *
@@ -48,7 +59,21 @@ import ChiffreAnime from "./ChiffreAnime";
  * vente, exactement comme elle suit le rabais pour l'attribution. Le texte
  * énonce la règle au lieu de décrire une saisie.
  */
-export default function DepuisLeDebut({ data, L, money, lang }) {
+
+/* `decale` : nombre de mois à retirer de la FIN de la série. Seul « mois
+   dernier » l'utilise — c'est le seul à nommer un mois clos plutôt qu'une
+   fenêtre qui court jusqu'à aujourd'hui. */
+const FENETRES = [
+  { cle: "tout", mois: null, decale: 0, fr: "Depuis le début", en: "All time" },
+  { cle: "m12", mois: 12, decale: 0, fr: "12 mois", en: "12 months" },
+  { cle: "m6", mois: 6, decale: 0, fr: "6 mois", en: "6 months" },
+  { cle: "m3", mois: 3, decale: 0, fr: "3 mois", en: "3 months" },
+  { cle: "m1", mois: 1, decale: 1, fr: "Mois dernier", en: "Last month" },
+];
+
+export default function DepuisLeDebut({ data, series, L, money, lang }) {
+  const [fenetre, setFenetre] = useState("tout");
+
   const versee = Math.max(0, Number(data?.paid_commission || 0));
   const aVerser = Math.max(0, Number(data?.approved_commission || 0));
   const enAttente = Math.max(0, Number(data?.pending_commission || 0));
@@ -57,11 +82,33 @@ export default function DepuisLeDebut({ data, L, money, lang }) {
   // Le total NET : les reprises sont deja hors de ces trois montants, puisque
   // le statut « reversed » les sort des trois autres. On ne les soustrait donc
   // pas une seconde fois — ce serait les compter en double.
-  const gagne = versee + aVerser + enAttente;
+  const gagneTotal = versee + aVerser + enAttente;
 
-  const ventes = Number(data?.cumulative_revenue || 0);
-  const commandes = Number(data?.validated_orders || 0);
+  const mensuel = useMemo(
+    () => (Array.isArray(series) ? series : []), [series]);
+
+  const choisie = FENETRES.find((f) => f.cle === fenetre) || FENETRES[0];
+  const toutLeTemps = choisie.mois == null;
+
+  /* La tranche de série additionnée. `slice` sur un tableau plus court que la
+     fenêtre rend simplement ce qui existe : un affilié de deux mois voit deux
+     mois sous « 6 mois », et non quatre zéros inventés. */
+  const tranche = useMemo(() => {
+    if (toutLeTemps) return mensuel;
+    const fin = Math.max(0, mensuel.length - choisie.decale);
+    return mensuel.slice(Math.max(0, fin - choisie.mois), fin);
+  }, [mensuel, choisie, toutLeTemps]);
+
+  const somme = (cle) => tranche.reduce((t, m) => t + Number(m?.[cle] || 0), 0);
+
+  const gagne = toutLeTemps ? gagneTotal : somme("commission");
+  const ventes = toutLeTemps ? Number(data?.cumulative_revenue || 0) : somme("revenue");
+  const commandes = toutLeTemps ? Number(data?.validated_orders || 0) : somme("orders");
   const parCommande = commandes > 0 ? gagne / commandes : 0;
+
+  const periodeTranche = tranche.length
+    ? { debut: tranche[0].month, fin: tranche[tranche.length - 1].month }
+    : null;
 
   const SEGMENTS = [
     { cle: "versee", valeur: versee, ton: "rgb(var(--fn-success))",
@@ -72,7 +119,10 @@ export default function DepuisLeDebut({ data, L, money, lang }) {
       fr: "en attente", en: "pending" },
   ].filter((s) => s.valeur > 0);
 
-  const vide = gagne <= 0;
+  const vide = gagneTotal <= 0;
+  // Les mois retenus par le filtre, pour estomper les autres sans les retirer.
+  const retenus = new Set(tranche.map((m) => m.month));
+  const sommet = Math.max(...mensuel.map((m) => Number(m?.commission || 0)), 0);
 
   return (
     <div className="rounded-xl border border-ash bg-white p-5 sm:p-6"
@@ -81,7 +131,7 @@ export default function DepuisLeDebut({ data, L, money, lang }) {
 
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em] text-nova-texte">
-          {L("Depuis le début", "All time")}
+          {L(choisie.fr, choisie.en)}
         </p>
         {commandes > 0 && (
           <p className="font-data text-[11px] text-glacier tabular-nums"
@@ -93,8 +143,35 @@ export default function DepuisLeDebut({ data, L, money, lang }) {
         )}
       </div>
 
-      {/* LE MONTANT GAGNÉ, en tête. C'est la question qu'on se pose en
-          ouvrant la page ; tout le reste l'explique. */}
+      {/* LES FILTRES. Rangée défilante avec accrochage, comme le menu des
+          onglets : sur 375 px, cinq pastilles ne tiennent pas côte à côte, et
+          les empiler sur deux lignes volerait la place du montant. */}
+      {mensuel.length > 0 && (
+        <div className="-mx-5 sm:-mx-6 px-5 sm:px-6 mt-3.5 overflow-x-auto
+                        scrollbar-none snap-x snap-mandatory">
+          <div className="flex gap-1.5 w-max" role="group"
+               aria-label={L("Période", "Period")}
+               data-testid="depuis-filtres">
+            {FENETRES.map((f) => (
+              <button key={f.cle} onClick={() => setFenetre(f.cle)}
+                aria-pressed={fenetre === f.cle}
+                className={`snap-start shrink-0 px-3 h-9 rounded-full font-data text-[11px]
+                            font-semibold uppercase tracking-[0.08em] transition-colors
+                            active:scale-[0.97] ${
+                  fenetre === f.cle
+                    ? "bg-nordfjord text-white"
+                    : "text-glacier border border-ash hover:text-nordfjord hover:bg-clinical"}`}
+                style={{ touchAction: "manipulation" }}
+                data-testid={`depuis-filtre-${f.cle}`}>
+                {L(f.fr, f.en)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* LE MONTANT GAGNÉ. C'est la question qu'on se pose en ouvrant la
+          page ; tout le reste l'explique. */}
       <ChiffreAnime
         valeur={gagne} format={money} testId="depuis-gagne"
         className="block font-display text-[32px] sm:text-[38px] font-bold
@@ -107,7 +184,16 @@ export default function DepuisLeDebut({ data, L, money, lang }) {
           : L("gagné en commission", "earned in commission")}
       </p>
 
-      {!vide && (
+      {/* LES MOIS RÉELLEMENT ADDITIONNÉS. « 3 derniers mois » n'oblige plus à
+          deviner si le mois courant y est. */}
+      {!toutLeTemps && periodeTranche && (
+        <p className="font-data text-[11px] text-glacier/80 mt-1"
+           data-testid="depuis-fenetre">
+          {periodeLisible(periodeTranche, lang, "")}
+        </p>
+      )}
+
+      {!vide && toutLeTemps && (
         <>
           {/* La barre : trois états, une seule lecture. */}
           <div className="flex h-2.5 w-full overflow-hidden mt-5"
@@ -119,7 +205,7 @@ export default function DepuisLeDebut({ data, L, money, lang }) {
             {SEGMENTS.map((s) => (
               <div key={s.cle}
                    data-testid={`depuis-segment-${s.cle}`}
-                   style={{ width: `${(s.valeur / gagne) * 100}%`, background: s.ton }} />
+                   style={{ width: `${(s.valeur / gagneTotal) * 100}%`, background: s.ton }} />
             ))}
           </div>
 
@@ -139,6 +225,42 @@ export default function DepuisLeDebut({ data, L, money, lang }) {
             ))}
           </ul>
         </>
+      )}
+
+      {/* LE GRAPHIQUE. Douze barres en flex : aucune mesure de conteneur,
+          donc il rend partout — y compris dans les tests — et s'adapte sans
+          point de rupture. Les mois hors fenêtre s'estompent au lieu de
+          disparaître : on voit ce que le filtre exclut. */}
+      {sommet > 0 && (
+        <div className="mt-5" data-testid="depuis-graphe">
+          <div className="flex items-end gap-[3px] h-16" role="img"
+               aria-label={L(`Commission par mois sur ${mensuel.length} mois`,
+                             `Commission per month over ${mensuel.length} months`)}>
+            {mensuel.map((m) => {
+              const valeur = Number(m?.commission || 0);
+              const dedans = retenus.has(m.month);
+              return (
+                <div key={m.month}
+                     className="flex-1 min-w-0 rounded-t-[2px] transition-[background,height] duration-200"
+                     title={`${moisLisible(m.month, lang)} · ${money(valeur)}`}
+                     style={{
+                       // 2 px plancher : un mois a zero doit rester visible
+                       // comme un mois, pas disparaitre de la frise.
+                       height: `${Math.max(2, (valeur / sommet) * 100)}%`,
+                       background: dedans
+                         ? "rgb(var(--fn-nova))"
+                         : "rgb(var(--fn-ash))",
+                     }}
+                     data-testid={`depuis-barre-${m.month}`}
+                     data-dedans={dedans ? "oui" : "non"} />
+              );
+            })}
+          </div>
+          <div className="flex justify-between font-data text-[10px] text-glacier/70 mt-1.5">
+            <span>{moisLisible(mensuel[0]?.month, lang)}</span>
+            <span>{moisLisible(mensuel[mensuel.length - 1]?.month, lang)}</span>
+          </div>
+        </div>
       )}
 
       {/* LA PREUVE, en pied : les ventes qui ont produit ce montant. Elles
@@ -161,7 +283,7 @@ export default function DepuisLeDebut({ data, L, money, lang }) {
           )}
         </p>
 
-        {reprise > 0 && (
+        {toutLeTemps && reprise > 0 && (
           /* Ni accusation ni silence : la regle, enoncee simplement. */
           <p className="text-[12px] text-glacier mt-2 leading-relaxed"
              data-testid="depuis-reprise">
