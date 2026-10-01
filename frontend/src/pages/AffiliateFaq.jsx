@@ -117,7 +117,7 @@ const QA = [
       a: [
         "En attente : la commande est payée, mais les sept jours suivant la commande ne sont pas écoulés : ou une réclamation est en cours d'examen. La commission existe, elle n'est pas encore acquise.",
         "Validé : le délai est passé, la commission vous est acquise et compte pour votre palier. C'est ce montant qui part au prochain versement.",
-        "Ce délai correspond à la période durant laquelle une commande peut encore être annulée ou remboursée. Une commande remboursée après validation est reprise sur le solde suivant.",
+        "Ce délai correspond à la période durant laquelle une commande peut encore être annulée ou remboursée. Si elle est remboursée après validation, la vente est annulée et la commission qui en venait l'est avec elle : l'ajustement paraît sur le solde suivant.",
       ],
     },
     en: {
@@ -125,7 +125,7 @@ const QA = [
       a: [
         "Pending: the order is paid, but the seven days following the order have not elapsed : or a claim is under review. The commission exists, it is not yet earned.",
         "Validated: the period has passed, the commission is yours and counts toward your tier. This is the amount that goes out at the next payout.",
-        "That period matches the window during which an order can still be cancelled or refunded. An order refunded after validation is reversed against the next balance.",
+        "That period matches the window during which an order can still be cancelled or refunded. If it is refunded after validation, the sale is undone and the commission that came from it is undone with it: the adjustment shows on the next balance.",
       ],
     },
   },

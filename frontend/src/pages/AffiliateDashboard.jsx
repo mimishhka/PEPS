@@ -20,6 +20,7 @@ import AffiliateSupport from "../components/AffiliateSupport";
 import TermsModal from "../components/TermsModal";
 import TierLadder from "../components/TierLadder";
 import CarteAffilie from "../components/CarteAffilie";
+import DepuisLeDebut from "../components/DepuisLeDebut";
 import OngletsAffilie, { CLES_ONGLETS } from "../components/OngletsAffilie";
 import ClocheAffilie from "../components/ClocheAffilie";
 import ChiffreAnime from "../components/ChiffreAnime";
@@ -1497,10 +1498,21 @@ export default function AffiliateDashboard() {
                 {L("Paiements", "Payments")}
               </h2>
               <p className="text-[13px] text-glacier mt-1">
-                {L("votre argent : le cycle, le seuil, l'historique",
-                   "your money: the cycle, the threshold, the history")}
+                {L("votre argent : le bilan, le cycle, le seuil, l'historique",
+                   "your money: the total, the cycle, the threshold, the history")}
               </p>
             </header>
+
+            {/* LE BILAN EN PREMIER.
+                Mireille : « si un affilié veut voir son all-time sales on a
+                aucune vue pour ça. Pareil pour la commission. »
+                Les ventes cumulées existaient — dans l'onglet Performance, et
+                elle ne les a pas trouvées ; la commission cumulée nulle part.
+                Les deux répondent à une seule question, et les séparer est
+                probablement ce qui rendait aucune des deux trouvable.
+                Place en tête : c'est le résumé de tout l'onglet, et le reste
+                répond à « et ensuite ? ». */}
+            <DepuisLeDebut data={data} L={L} money={money} lang={lang} />
             {/* VENUS DE L'APERCU. Le cycle et le prochain versement y
                 occupaient 150 lignes alors qu'ils parlent de paiement : leur
                 place est ici. La carte garde le montant en pied, en resume. */}
