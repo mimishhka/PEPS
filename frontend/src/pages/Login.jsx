@@ -136,12 +136,32 @@ export default function Login() {
                 <h3 className="font-display text-[20px] font-bold text-nordfjord mb-2">
                   {t("auth.magicCheckTitle") || "Vérifiez votre boîte mail"}
                 </h3>
-                <p className="text-sm text-glacier mb-4">
-                  {(t("auth.magicCheckSub") || "Un lien de connexion a été envoyé à {email}.").replace("{email}", email)}
+                <p className="text-sm text-glacier mb-3">
+                  {(t("auth.magicCheckSub")
+                    || "Si un compte existe pour {email}, un lien de connexion vient d'y être envoyé.")
+                    .replace("{email}", email)}
                 </p>
-                <button type="button" onClick={() => setMagicSent(false)} className="text-sm font-semibold text-nordfjord hover:text-nova-texte">
-                  {t("auth.magicResend") || "Renvoyer ou changer d'email"}
-                </button>
+                {/* LA SORTIE DE L'IMPASSE.
+                    Le serveur se tait quand aucun compte ne correspond à
+                    l'adresse — c'est voulu, et c'est bien. Mais l'écran
+                    n'offrait que « renvoyer » : quelqu'un sans compte pouvait
+                    redemander indéfiniment un courriel qui ne viendrait
+                    jamais, sans qu'aucune piste ne lui soit donnée.
+                    Les deux causes réelles sont nommées, et la seconde a son
+                    issue. */}
+                <p className="text-[13px] text-glacier/90 leading-relaxed mb-4" data-testid="magic-no-account">
+                  {t("auth.magicCheckNoAccount")
+                    || "Rien après quelques minutes ? Vérifiez vos indésirables — ou peut-être n'avez-vous pas encore de compte."}
+                </p>
+                <div className="flex items-center gap-4 flex-wrap">
+                  <button type="button" onClick={() => setMagicSent(false)} className="text-sm font-semibold text-nordfjord hover:text-nova-texte">
+                    {t("auth.magicResend") || "Renvoyer ou changer d'email"}
+                  </button>
+                  <Link to="/register" data-testid="magic-create-account"
+                        className="text-sm font-semibold text-nova-texte hover:text-nordfjord underline underline-offset-2">
+                    {t("auth.magicCheckCreate") || "Créer un compte"}
+                  </Link>
+                </div>
               </div>
             ) : (
               <form onSubmit={onMagicSubmit} className="space-y-5">

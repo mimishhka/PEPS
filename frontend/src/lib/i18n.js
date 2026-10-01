@@ -168,7 +168,18 @@ export const dict = {
       magicCreate: "Create account",
       magicSent: "Link sent! Check your inbox.",
       magicCheckTitle: "Check your inbox",
-      magicCheckSub: "A sign-in link was sent to {email}.",
+      // « IF an account exists » — not « a link was sent ».
+      //
+      // The server stays silent when no account matches the address, so that
+      // nobody can discover which addresses are registered. That choice is
+      // right. Claiming a link WAS sent is not: it was a plain untruth in
+      // exactly the case where the person most needs guidance, and it left
+      // them resending forever against an address that has no account.
+      //
+      // The wording is identical either way, so nothing is revealed.
+      magicCheckSub: "If an account exists for {email}, a sign-in link is on its way.",
+      magicCheckNoAccount: "Nothing after a few minutes? Check your spam folder — or you may not have an account yet.",
+      magicCheckCreate: "Create an account",
       magicCheckSubSignup: "An activation link was sent to {email}.",
       magicResend: "Resend or change email",
       magicSignupSub: "Create your account with no password : we'll email you an activation link.",
@@ -435,7 +446,19 @@ export const dict = {
       magicCreate: "Créer mon compte",
       magicSent: "Lien envoyé ! Vérifiez votre email.",
       magicCheckTitle: "Vérifiez votre boîte mail",
-      magicCheckSub: "Un lien de connexion a été envoyé à {email}.",
+      // « SI un compte existe » — et non « un lien a été envoyé ».
+      //
+      // Le serveur reste muet lorsqu'aucun compte ne correspond à l'adresse,
+      // pour qu'on ne puisse pas découvrir lesquelles sont inscrites. Ce
+      // choix est bon. Affirmer qu'un lien est parti ne l'est pas : c'était
+      // faux précisément dans le cas où la personne a le plus besoin d'être
+      // guidée, et elle redemandait indéfiniment un courriel qui ne viendrait
+      // jamais.
+      //
+      // La formulation est la même dans les deux cas : rien n'est révélé.
+      magicCheckSub: "Si un compte existe pour {email}, un lien de connexion vient d'y être envoyé.",
+      magicCheckNoAccount: "Rien après quelques minutes ? Vérifiez vos indésirables — ou peut-être n'avez-vous pas encore de compte.",
+      magicCheckCreate: "Créer un compte",
       magicCheckSubSignup: "Un lien d'activation a été envoyé à {email}.",
       magicResend: "Renvoyer ou changer d'email",
       magicSignupSub: "Créez votre compte sans mot de passe : on vous envoie un lien d'activation.",
