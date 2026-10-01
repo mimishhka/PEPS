@@ -206,7 +206,15 @@ def test_register_requires_email_verification_before_session(server_module, monk
     assert "token" not in result
     assert "access_token" not in result
     assert "set-cookie" not in response.headers
-    assert sent_links == ["https://example.com/auth/callback?token=verification-token"]
+    # Le lien porte desormais la langue du courriel (voir _lien_localise) :
+    # un affilie francophone qui n'a jamais visite le site n'a rien en memoire,
+    # et la page s'ouvrait en anglais. Ce test-ci porte sur la VERIFICATION DU
+    # COURRIEL avant l'ouverture de session, pas sur la forme exacte de l'URL —
+    # on verifie donc la destination et le jeton, et non la chaine entiere.
+    assert len(sent_links) == 1
+    assert sent_links[0].startswith(
+        "https://example.com/auth/callback?token=verification-token")
+    assert sent_links[0].endswith("lang=fr")
 
 
 @pytest.mark.parametrize("field", ["role", "is_admin"])

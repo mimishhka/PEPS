@@ -143,7 +143,24 @@ def test_une_clef_d_URL_de_commande_existe_enfin(mail):
     pouvaient offrir que le catalogue ou le panier. Quelqu'un qui attend une
     precommande depuis six semaines veut precisement ce lien-la."""
     _, _, ctx = mail._order_ctx(commande([ligne("creatine")]))
-    assert ctx["order_url"].endswith("/order/cmd-1")
+    assert "/order/cmd-1" in ctx["order_url"]
+
+
+def test_les_liens_du_courriel_portent_SA_langue(mail):
+    """MIREILLE, 01/10/2026 : « le lien ne redirige pas vraiment vers la page
+    dans la bonne langue ».
+
+    Meme defaut que les liens d'invitation : un courriel en francais dont le
+    bouton « Voir ma commande » ouvre une page en anglais. Le lecteur n'a rien
+    demande d'autre que de suivre le lien qu'on lui a envoye.
+    """
+    _, _, ctx = mail._order_ctx(commande([ligne("creatine")], lang="fr"))
+    for clef in ("order_url", "catalog_url", "cart_url"):
+        assert ctx[clef].endswith("lang=fr"), clef
+
+    _, _, ctx = mail._order_ctx(commande([ligne("creatine")], lang="en"))
+    for clef in ("order_url", "catalog_url", "cart_url"):
+        assert ctx[clef].endswith("lang=en"), clef
 
 
 def test_l_envoi_ne_leve_pas_sans_adresse(mail, monkeypatch):

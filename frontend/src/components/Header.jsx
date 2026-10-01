@@ -113,10 +113,22 @@ export default function Header() {
               <Lock size={11} strokeWidth={2} />
               OPS
             </button>
+            {/* LA CIBLE TACTILE EST ÉLARGIE SANS QUE RIEN NE BOUGE.
+
+                Mesure sur un écran de 375 px : 84 × 29. Le minimum tenable au
+                doigt est 44, et ce bouton est la SORTIE DE SECOURS du défaut
+                qu'on vient de corriger — celui qui arrive dans la mauvaise
+                langue n'a que lui pour s'en sortir.
+
+                Le pseudo-élément déborde de huit pixels en haut et en bas, ce
+                qui porte la zone sensible à 45. Il ne se voit pas, ne décale
+                rien, et n'augmente pas la hauteur de l'en-tête : un simple
+                remplissage supplémentaire, lui, aurait repoussé toute la
+                barre vers le bas sur téléphone. */}
             <button
               data-testid="lang-toggle"
               onClick={toggle}
-              className="font-data text-xs font-semibold uppercase tracking-[0.18em] border border-ash px-3 py-1.5 hover:border-nova transition-colors inline-flex items-center gap-1.5" style={{ borderRadius: "var(--r-m)" }}
+              className="relative font-data text-xs font-semibold uppercase tracking-[0.18em] border border-ash px-3 py-1.5 hover:border-nova transition-colors inline-flex items-center gap-1.5 after:absolute after:inset-x-0 after:-inset-y-2 after:content-[''] sm:after:hidden" style={{ borderRadius: "var(--r-m)" }}
               aria-label="Toggle language"
               title={lang === "fr" ? "Passer à l'anglais" : "Switch to French"}
             >

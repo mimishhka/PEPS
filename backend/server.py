@@ -1198,7 +1198,7 @@ async def register(payload: RegisterIn, response: Response, request: Request):
 
     raw = await _issue_magic_token(email, name, is_signup=True, lang="fr", ip=_client_ip(request))
     base = _trusted_public_base_url()
-    link = f"{base}/auth/callback?token={raw}"
+    link = _lien_localise(f"{base}/auth/callback?token={raw}", "fr")
     await _send_magic_email(email, link, "fr", is_signup=True)
 
     return {
@@ -1701,6 +1701,35 @@ def _hash_token(raw: str) -> str:
     return _hash_magic_token(raw)
 
 
+def _lien_localise(lien: str, langue: str) -> str:
+    """Ajoute au lien la langue dans laquelle le courriel a ete ecrit.
+
+    MIREILLE, 01/10/2026 : « si je choisis une langue pour mon affilie, il
+    recevra le courriel dans la langue demandee, sauf que le lien ne redirige
+    pas vraiment vers la page dans la bonne langue — pareil lorsque la
+    personne utilise le lien magique pour se connecter ».
+
+    Les liens ne portaient AUCUNE langue, et le frontend ne lisait que la
+    preference rangee dans le navigateur, avec l'anglais par defaut. Un
+    affilie francophone qui n'avait jamais visite le site n'avait donc rien en
+    memoire : courriel en francais, page en anglais. Le defaut touchait TOUS
+    les liens envoyes par courriel, pas seulement les deux remarques.
+
+    Sur telephone c'est plus net encore : un lien ouvert depuis Gmail ou Mail
+    s'affiche dans un navigateur integre, un contexte de stockage NEUF ou la
+    preference est forcement vide. Le parametre d'URL est alors la seule chose
+    qui survive au passage du courriel a la page.
+
+    `&` et non `?` : tous ces liens portent deja un jeton. Le test reste fait,
+    parce qu'un lien sans parametre arriverait sinon avec un « & » orphelin
+    que certains clients de courriel coupent.
+    """
+    code = str(langue or "").strip().lower()[:2]
+    if code not in ("fr", "en"):
+        return lien
+    return f"{lien}{'&' if '?' in lien else '?'}lang={code}"
+
+
 def _trusted_public_base_url() -> str:
     """Source unique des liens email; ne jamais utiliser request.base_url (Host header)."""
     base = (PUBLIC_BASE_URL or "").rstrip("/")
@@ -1800,7 +1829,7 @@ async def magic_request(payload: MagicRequestIn, request: Request):
                                    payload.lang or "fr", _client_ip(request),
                                    first_name=prenom, last_name=nom)
     base = _trusted_public_base_url()
-    link = f"{base}/auth/callback?token={raw}"
+    link = _lien_localise(f"{base}/auth/callback?token={raw}", payload.lang or "fr")
     await _send_magic_email(email, link, payload.lang or "fr", is_signup)
     return {"ok": True}
 
@@ -1919,7 +1948,8 @@ async def forgot_password(payload: ForgotPasswordIn, request: Request):
             "ip": _client_ip(request),
         })
         base = _trusted_public_base_url()
-        link = f"{base}/reset-password?token={raw}"
+        link = _lien_localise(f"{base}/reset-password?token={raw}",
+                              payload.lang or "fr")
         await _send_reset_email(email, link, payload.lang or "fr")
     return {"ok": True}
 
@@ -6019,7 +6049,9 @@ async def admin_invite_staff(payload: StaffInviteIn, request: Request, admin: di
         "used": False,
     })
     base = _trusted_public_base_url()
-    accept_url = f"{base}/staff-accept?token={token}"
+    # _staff_invite_html est bilingue mais appele sans langue, donc rend du
+    # francais. Le lien doit dire la meme chose que le courriel qui le porte.
+    accept_url = _lien_localise(f"{base}/staff-accept?token={token}", "fr")
     asyncio.create_task(_send_email(
         email, "FIRONOVA — Invitation à rejoindre l'équipe",
         _staff_invite_html(accept_url, admin.get("name", "L'équipe FIRONOVA")),
@@ -13228,10 +13260,13 @@ async def admin_affiliate_invite(payload: AffiliateInviteIn,
         })
 
     base = _trusted_public_base_url()
-    link = f"{base}/affiliate/join?token={raw}"
-    await _affiliate_send_invite(email, first_name, link, payload.lang or "fr",
+    langue_invite = payload.lang or "fr"
+    link = _lien_localise(f"{base}/affiliate/join?token={raw}", langue_invite)
+    await _affiliate_send_invite(email, first_name, link, langue_invite,
                                  taux_convenu=taux_convenu,
-                                 lien_programme=f"{base}/affiliate/programme?token={raw}")
+                                 lien_programme=_lien_localise(
+                                     f"{base}/affiliate/programme?token={raw}",
+                                     langue_invite))
     # Une invitation est l'acte d'entrée dans le programme : elle est tracée
     # (création ou ré-invitation) avec l'affilié ciblé et l'admin à l'origine.
     asyncio.create_task(_log_action(
@@ -13280,7 +13315,8 @@ async def admin_affiliate_resend(affiliate_id: str,
          "$inc": {"invite_sent_count": 1}},
     )
     base = _trusted_public_base_url()
-    link = f"{base}/affiliate/join?token={raw}"
+    link = _lien_localise(f"{base}/affiliate/join?token={raw}",
+                          (aff.get("lang") if aff.get("lang") in ("fr", "en") else "fr"))
     # Un renvoi doit redire la MÊME chose que l'invitation d'origine. Sans
     # cette relecture, quelqu'un dont le taux a été négocié recevrait au
     # second envoi le message qui présente la progression par paliers — un
@@ -13295,7 +13331,8 @@ async def admin_affiliate_resend(affiliate_id: str,
     await _affiliate_send_invite(aff["email"],
                                  (aff.get("first_name") or aff.get("name") or ""),
                                  link, langue, taux_convenu=taux_convenu,
-                                 lien_programme=f"{base}/affiliate/programme?token={raw}")
+                                 lien_programme=_lien_localise(
+                                     f"{base}/affiliate/programme?token={raw}", langue))
     # Un renvoi d'invitation est un acte d'administration : tracé.
     asyncio.create_task(_log_action(
         admin, "affiliate_invite_resend",
@@ -13447,7 +13484,7 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
                     "source": "bulk_csv",
                 })
 
-            link = f"{base}/affiliate/join?token={raw}"
+            link = _lien_localise(f"{base}/affiliate/join?token={raw}", lang)
             try:
                 await db.affiliate_email_jobs.insert_one({
                     "id": str(uuid.uuid4()),
@@ -13456,7 +13493,8 @@ async def admin_affiliate_bulk_invite(payload: AffiliateBulkInviteIn,
                     "email": email,
                     "name": display_name,
                     "link": link,
-                    "programme_link": f"{base}/affiliate/programme?token={raw}",
+                    "programme_link": _lien_localise(
+                        f"{base}/affiliate/programme?token={raw}", lang),
                     "lang": lang,
                     "attempts": 0,
                     "available_at": now.isoformat(),

@@ -1469,6 +1469,7 @@ def _order_ctx(order: dict) -> tuple:
     """Construit (lang, to, ctx) à partir d'une commande."""
     lang = (order.get("lang") or "fr").lower()
     name = order.get("customer_name") or order.get("name") or (order.get("shipping_address") or {}).get("name") or ""
+    base_public = (s.PUBLIC_BASE_URL or "").rstrip("/")
     ctx = {
         "order_number": order.get("order_number", ""),
         "customer_name": name or ("là" if lang.startswith("fr") else "there"),
@@ -1480,8 +1481,17 @@ def _order_ctx(order: dict) -> tuple:
         # donc pas offrir « voir ma commande » — seulement le catalogue ou le
         # panier. Un client qui attend une precommande depuis six semaines veut
         # precisement ce lien-la.
-        "order_url": (s.PUBLIC_BASE_URL or "").rstrip("/") + "/order/" + str(order.get("id") or ""),
-        "catalog_url": (s.PUBLIC_BASE_URL or "").rstrip("/") + "/catalog",
-        "cart_url": (s.PUBLIC_BASE_URL or "").rstrip("/") + "/cart",
+        # LES TROIS LIENS PORTENT LA LANGUE DU COURRIEL, eux aussi.
+        #
+        # Meme defaut que les liens d'invitation et de connexion : un courriel
+        # en francais dont le bouton « Voir ma commande » ouvre une page en
+        # anglais. Le lecteur n'a rien demande d'autre que de suivre le lien
+        # qu'on lui a envoye.
+        #
+        # `lang` est deja la, juste au-dessus : c'est celle du courriel.
+        "order_url": s._lien_localise(
+            base_public + "/order/" + str(order.get("id") or ""), lang),
+        "catalog_url": s._lien_localise(base_public + "/catalog", lang),
+        "cart_url": s._lien_localise(base_public + "/cart", lang),
     }
     return lang, order.get("email"), ctx
