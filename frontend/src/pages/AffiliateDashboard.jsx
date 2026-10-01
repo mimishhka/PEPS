@@ -780,6 +780,27 @@ export default function AffiliateDashboard() {
   // `ton` choisit la couleur fonctionnelle du liseré et l'étiquette de zone.
   // Il qualifie ce dont la bulle parle : argent acquis, argent en attente,
   // règle à respecter : au lieu de colorer pour colorer.
+  /* L'ORDRE SUIT LES ONGLETS, un par un, et chaque etape declare le SIEN.
+   *
+   * La refonte mobile — « je ne veux pas que tout soit deroule sur une page du
+   * haut a la fin » — a vide l'apercu de huit blocs sur onze, chacun rejoignant
+   * l'onglet dont il releve. Les etapes de la visite, elles, ont garde leurs
+   * anciennes declarations : « Valide ne veut pas dire verse » et « Le seuil de
+   * versement » demandaient encore l'apercu, alors que leurs cibles etaient
+   * parties vers Performance et Paiements.
+   *
+   * Une cible introuvable est SAUTEE au bout d'une seconde, sans bruit. Ces
+   * deux bulles — le delai de sept jours et le seuil de versement, les deux
+   * notions d'argent qui comptent le plus pour un debutant — ne s'affichaient
+   * donc plus du tout, et rien ne le signalait.
+   *
+   * L'ordre ci-dessous visite chaque onglet UNE SEULE FOIS. Corriger
+   * seulement les declarations aurait suffi a faire apparaitre les bulles,
+   * mais la visite aurait saute d'un onglet a l'autre six fois : on lit mal
+   * une page qui se derobe. Le recit tient toujours : ce qu'on partage, ce
+   * qu'on gagne, d'ou viennent les ventes, quand on est paye, l'historique,
+   * les regles, ce qu'il faut faire, l'aide, la reference.
+   */
   const TOUR = [
     // Cible le panneau lien+code, TOUJOURS présent : et non le bloc des
     // produits à promouvoir, qui n'apparaît qu'une fois des ventes réalisées.
@@ -789,17 +810,9 @@ export default function AffiliateDashboard() {
       titre: L("Votre lien et votre code", "Your link and code"),
       texte: L("Partagez l'un ou l'autre. Le lien crédite la visite en cours ; après quoi, votre contact doit saisir votre code. Le code, lui, n'expire jamais et fonctionne même à l'oral.",
                "Share either one. The link credits the current visit; after that, your contact needs to enter your code. The code never expires and works even spoken aloud.") },
-    { cible: "affiliate-kpis", ton: "acquis", onglet: "overview",
-      titre: L("Validé ne veut pas dire versé", "Validated is not paid"),
-      texte: L(`Une commande devient « validée » ${data?.approval_hold_days ?? 7} jours après avoir été passée. C'est ce montant qui fait progresser votre palier. Si une réclamation est déposée, la commission reste en attente jusqu'à la décision.`,
-               `An order becomes “validated” ${data?.approval_hold_days ?? 7} days after it is placed. That amount is what moves your tier. If a claim is filed, the commission stays pending until it is resolved.`) },
-    { cible: "payout-estimate", ton: "attente", onglet: "overview",
-      titre: L("Le seuil de versement", "The payout threshold"),
-      // Le seuil est LU du serveur, jamais écrit en dur : une valeur figée ici
-      // divergerait de AFFILIATE_PAYOUT_MIN_CAD au premier changement, et la
-      // visite affirmerait alors un montant que le système n'applique plus.
-      texte: L(`Les versements partent une fois par mois, à partir de ${money(data?.payout_min_cad)}. En dessous, rien n'est perdu : le solde s'ajoute au mois suivant.`,
-               `Payouts go out monthly, from ${money(data?.payout_min_cad)}. Below that nothing is lost: the balance carries over.`) },
+
+    // Le palier vit sur la carte, en haut de l'apercu : meme onglet que la
+    // bulle precedente, donc aucun saut.
     { cible: "affiliate-tier-badge", ton: "acquis", onglet: "overview",
       titre: data?.tier_agreement
         ? L("Votre taux convenu", "Your agreed rate")
@@ -810,18 +823,30 @@ export default function AffiliateDashboard() {
         : L("Il suit votre chiffre d'affaires validé sur douze mois glissants, et monte dès le seuil franchi. De 10 % à 20 % selon le palier.",
             "It follows your validated revenue over twelve rolling months, and rises as soon as a threshold is crossed. From 10% to 20%.") },
 
-    // Les étapes qui suivent changent d'ONGLET. La visite ne parlait que de la
-    // vue globale : cinq onglets sur six n'étaient jamais mentionnés, dont
-    // celui où se saisit l'adresse de versement : sans laquelle un solde
-    // s'accumule et ne peut jamais être envoyé.
+    // ── Performance ──
+    { cible: "affiliate-kpis", ton: "acquis", onglet: "performance",
+      titre: L("Validé ne veut pas dire versé", "Validated is not paid"),
+      texte: L(`Une commande devient « validée » ${data?.approval_hold_days ?? 7} jours après avoir été passée. C'est ce montant qui fait progresser votre palier. Si une réclamation est déposée, la commission reste en attente jusqu'à la décision.`,
+               `An order becomes “validated” ${data?.approval_hold_days ?? 7} days after it is placed. That amount is what moves your tier. If a claim is filed, the commission stays pending until it is resolved.`) },
     { cible: "affiliate-performance", ton: "nova", onglet: "performance",
       titre: L("D'où viennent vos ventes", "Where your sales come from"),
       texte: L("Clics, conversions, produits qui marchent, appareils utilisés. C'est ici qu'on voit ce qui fonctionne avant de le répéter.",
                "Clicks, conversions, products that work, devices used. This is where you see what works before repeating it.") },
+
+    // ── Paiements ──
+    { cible: "payout-estimate", ton: "attente", onglet: "payments",
+      titre: L("Le seuil de versement", "The payout threshold"),
+      // Le seuil est LU du serveur, jamais écrit en dur : une valeur figée ici
+      // divergerait de AFFILIATE_PAYOUT_MIN_CAD au premier changement, et la
+      // visite affirmerait alors un montant que le système n'applique plus.
+      texte: L(`Les versements partent une fois par mois, à partir de ${money(data?.payout_min_cad)}. En dessous, rien n'est perdu : le solde s'ajoute au mois suivant.`,
+               `Payouts go out monthly, from ${money(data?.payout_min_cad)}. Below that nothing is lost: the balance carries over.`) },
     { cible: "affiliate-payments", ton: "acquis", onglet: "payments",
       titre: L("L'historique de vos versements", "Your payout history"),
       texte: L("Chaque versement avec son montant, sa devise, le taux de change retenu et sa référence. Exportable en CSV pour votre comptabilité.",
                "Every payout with its amount, currency, the exchange rate used and its reference. Exportable to CSV for your bookkeeping.") },
+
+    // ── Le reste du menu ──
     { cible: "affiliate-compliance", ton: "regle", onglet: "compliance",
       titre: L("Ce qui peut suspendre votre compte", "What can suspend your account"),
       texte: L("Communication privée uniquement, et aucune allégation de santé : ni posologie, ni effet thérapeutique. C'est le seul manquement qui suspend sans préavis, parce qu'il nous engage tous les deux.",
