@@ -2130,11 +2130,195 @@ async def affiliate_ensure_indexes():
         logging.warning("[affiliate] index unique run_id non créé : %s", e)
 
 # ===========================================================================
+# LA PÉRIODE QU'UN VERSEMENT COUVRE RÉELLEMENT
+# ===========================================================================
+#
+# MIREILLE, 01/10/2026 : « le payout indique le mois d'octobre alors que c'est
+# pour les commissions du mois de septembre ». Puis : « aussi pour les
+# courriels qui indiquent la mauvaise période ».
+#
+# `period` N'EST PAS UNE PÉRIODE COUVERTE, c'est une étiquette de run. Le run
+# agrège `{"status": "approved", "payout_id": None}` — SANS filtre de mois
+# (server.py, _generate_payouts_for_period). Un versement contient donc tout ce
+# qui était approuvé et libre, quel que soit son mois. Avec le seuil de
+# versement, un affilié resté dessous en juillet et août est payé en
+# septembre : UN versement, TROIS mois. Aucune étiquette ne peut dire cela.
+#
+# Et les deux chemins n'écrivent même pas la même chose : le planificateur pose
+# le mois précédent (juste), le run manuel retombe sur le mois courant — ce
+# qu'elle a vu.
+#
+# ON NE CORRIGE PAS L'ÉTIQUETTE. L'index unique est `(affiliate_id, period)` :
+# faire écrire le mois clos au run manuel ferait qu'un rattrapage d'octobre
+# heurterait la ligne déjà posée par le planificateur, prendrait la branche
+# `DuplicateKeyError` — et SAUTERAIT des commissions légitimement libres
+# jusqu'au mois suivant. `period` reste la clé de run ; on cesse de l'afficher.
+#
+# La période couverte est donc DÉRIVÉE À LA LECTURE, depuis les commissions
+# elles-mêmes. Trois vertus : elle est juste pour les versements DÉJÀ en base
+# (aucune migration, aucun rattrapage), elle reste juste pour un multi-mois, et
+# elle ne peut pas se désynchroniser puisqu'il n'y a rien à maintenir.
+
+# LA GARDE CONTRE LES DATES ABÎMÉES, partagée par les deux calculs de
+# période. `$substrCP` sur une valeur vide rend « », qui se classe AVANT tout
+# « AAAA-MM » : sans ce filtre, une seule ligne sans date ferait dire au
+# versement qu'il couvre depuis la chaîne vide. Écrite ici une fois, parce
+# qu'à deux endroits elle finirait par différer.
+_MOIS_VALIDE = {"$regex": r"^\d{4}-\d{2}$"}
+
+_MOIS_NOMS = {
+    "fr": ("janvier", "février", "mars", "avril", "mai", "juin",
+           "juillet", "août", "septembre", "octobre", "novembre", "décembre"),
+    "en": ("January", "February", "March", "April", "May", "June",
+           "July", "August", "September", "October", "November", "December"),
+}
+
+
+def _mois_lisible(cle: Optional[str], lang: str = "fr") -> str:
+    """« 2026-09 » devient « septembre 2026 ».
+
+    Table en dur plutôt que `locale` : la locale d'un serveur n'est pas
+    garantie installée, et `setlocale` est un état GLOBAL au processus — deux
+    requêtes simultanées dans deux langues se marcheraient dessus.
+
+    Pendant côté serveur de `moisLisible` (AffiliateDashboard.jsx), pour que le
+    courriel et l'écran ne puissent pas nommer le même mois autrement.
+    """
+    texte = str(cle or "")
+    if not re.fullmatch(r"\d{4}-\d{2}", texte):
+        return texte
+    annee, mois = int(texte[:4]), int(texte[5:7])
+    if not 1 <= mois <= 12:
+        return texte
+    noms = _MOIS_NOMS["fr" if str(lang).lower().startswith("fr") else "en"]
+    return f"{noms[mois - 1]} {annee}"
+
+
+def _periode_lisible(periode: Optional[dict], lang: str = "fr",
+                     repli: str = "") -> str:
+    """Un mois, ou une plage — « juillet à septembre 2026 ».
+
+    `repli` sert aux versements legacy sans lignes rattachées : mieux vaut
+    rendre une chaîne vide, que l'appelant saura traiter, que d'inventer un
+    mois qui serait faux.
+    """
+    if not periode:
+        return repli
+    debut = periode.get("debut")
+    fin = periode.get("fin")
+    if not debut:
+        return repli
+    if not fin or fin == debut:
+        return _mois_lisible(debut, lang)
+    fr = str(lang).lower().startswith("fr")
+    noms = _MOIS_NOMS["fr" if fr else "en"]
+    md, mf = int(debut[5:7]), int(fin[5:7])
+    # Même année : on ne la répète pas. « juillet à septembre 2026 » se lit ;
+    # « juillet 2026 à septembre 2026 » se déchiffre.
+    if debut[:4] == fin[:4] and 1 <= md <= 12 and 1 <= mf <= 12:
+        return (f"{noms[md - 1]} à {noms[mf - 1]} {debut[:4]}" if fr
+                else f"{noms[md - 1]} to {noms[mf - 1]} {debut[:4]}")
+    return (f"{_mois_lisible(debut, lang)} à {_mois_lisible(fin, lang)}" if fr
+            else f"{_mois_lisible(debut, lang)} to {_mois_lisible(fin, lang)}")
+
+
+async def _periodes_couvertes(payout_ids: list) -> dict:
+    """`{payout_id: {debut, fin, mois, multi}}` pour une LISTE de versements.
+
+    Une seule requête pour toute une page d'historique : grouper par
+    `payout_id` évite le N+1 qu'une boucle par ligne produirait.
+
+    Le mois d'une commission est celui de son APPROBATION (`approved_at`, avec
+    repli sur `created_at`) : c'est la date qui l'a rendue payable, donc celle
+    qui dit à quel mois elle appartient. `s._mois_de` absorbe la cohabitation
+    chaîne ISO / date BSON des dates de ce dépôt.
+    """
+    ids = [str(i) for i in (payout_ids or []) if i]
+    if not ids:
+        return {}
+    pipeline = [
+        {"$match": {"payout_id": {"$in": ids}}},
+        {"$project": {"_id": 0, "payout_id": 1,
+                      "mois": s._mois_de("approved_at", "created_at")}},
+        # UNE DATE ILLISIBLE RENDRAIT « », qui se classe AVANT tout
+        # « AAAA-MM » : sans ce filtre, une seule ligne abîmée ferait dire au
+        # versement qu'il couvre depuis la chaîne vide.
+        {"$match": {"mois": _MOIS_VALIDE}},
+        {"$group": {"_id": "$payout_id", "mois": {"$addToSet": "$mois"}}},
+    ]
+    try:
+        lignes = await s.db.affiliate_referrals.aggregate(pipeline).to_list(500)
+    except Exception as e:
+        # Une période indisponible ne doit jamais faire échouer la page : on
+        # retombe sur l'étiquette, et l'écran dit qu'il la montre faute de
+        # mieux.
+        logging.warning("[payout] période couverte indisponible : %s",
+                        type(e).__name__)
+        return {}
+    out = {}
+    for ligne in lignes:
+        mois = sorted(m for m in (ligne.get("mois") or []) if m)
+        if not mois:
+            continue
+        out[ligne["_id"]] = {
+            "debut": mois[0],
+            "fin": mois[-1],
+            "mois": mois,
+            "multi": len(mois) > 1,
+        }
+    return out
+
+
+async def _periode_couverte(payout_id: Optional[str]) -> Optional[dict]:
+    """La période d'UN versement. `None` si aucune ligne n'y est rattachée."""
+    if not payout_id:
+        return None
+    return (await _periodes_couvertes([payout_id])).get(str(payout_id))
+
+
+async def _periode_des_commissions(referral_ids: Optional[list]) -> Optional[dict]:
+    """La période couverte par une LISTE DE COMMISSIONS, sans passer par un
+    versement.
+
+    POURQUOI CETTE VARIANTE EXISTE. Le courriel de report part précisément
+    quand AUCUN versement n'est créé — le solde est sous le seuil, ou le prix
+    du stablecoin est hors bande. Les commissions n'ont donc pas encore de
+    `payout_id`, et `_periodes_couvertes`, qui filtre là-dessus, ne trouverait
+    rien : le courriel serait reparti avec l'étiquette brute, c'est-à-dire
+    avec le défaut qu'on corrige.
+
+    Même calcul, même garde, autre clé d'entrée : l'identifiant propre des
+    commissions.
+    """
+    ids = [str(i) for i in (referral_ids or []) if i]
+    if not ids:
+        return None
+    pipeline = [
+        {"$match": {"id": {"$in": ids}}},
+        {"$project": {"_id": 0, "mois": s._mois_de("approved_at", "created_at")}},
+        {"$match": {"mois": _MOIS_VALIDE}},
+        {"$group": {"_id": None, "mois": {"$addToSet": "$mois"}}},
+    ]
+    try:
+        lignes = await s.db.affiliate_referrals.aggregate(pipeline).to_list(1)
+    except Exception as e:
+        logging.warning("[payout] période des commissions indisponible : %s",
+                        type(e).__name__)
+        return None
+    mois = sorted(m for m in ((lignes[0] if lignes else {}).get("mois") or []) if m)
+    if not mois:
+        return None
+    return {"debut": mois[0], "fin": mois[-1],
+            "mois": mois, "multi": len(mois) > 1}
+
+
+# ===========================================================================
 # Item 3.2 — Seuil minimum de payout affilié (AFFILIATE_PAYOUT_MIN_CAD)
 # ===========================================================================
 async def _defer_affiliate_payout_below_threshold(
     aff: dict, period: str, amount_cad: float, referral_count: int,
     threshold_cad: float, motif: str = "seuil",
+    referral_ids: Optional[list] = None,
 ) -> bool:
     """Enregistre un report de payout et notifie l'affilié UNE seule fois par
     (affiliate_id, period). Idempotent via unique index.
@@ -2184,12 +2368,20 @@ async def _defer_affiliate_payout_below_threshold(
 
     lang = (aff.get("preferred_lang") or "fr").lower()
     first_name = aff.get("first_name") or aff.get("name") or ""
+
+    # LA PÉRIODE COUVERTE, et non l'étiquette de run. `referral_ids` est
+    # facultatif : sans lui on retombe sur `period`, ce qui garde les appels
+    # existants fonctionnels plutôt que de produire une phrase trouée.
+    _periode = await _periode_des_commissions(referral_ids)
+    mois_fr = _periode_lisible(_periode, "fr", repli=period)
+    mois_en = _periode_lisible(_periode, "en", repli=period)
+
     if motif == "prix":
-        subject_fr = f"FIRONOVA — Votre paiement d'affilié de {period} est reporté par précaution"
-        subject_en = f"FIRONOVA — Your {period} affiliate payout is held as a precaution"
+        subject_fr = f"FIRONOVA — Votre paiement d'affilié de {mois_fr} est reporté par précaution"
+        subject_en = f"FIRONOVA — Your {mois_en} affiliate payout is held as a precaution"
     else:
-        subject_fr = f"FIRONOVA — Votre paiement d'affilié de {period} est reporté au prochain cycle"
-        subject_en = f"FIRONOVA — Your {period} affiliate payout is deferred to next cycle"
+        subject_fr = f"FIRONOVA — Votre paiement d'affilié de {mois_fr} est reporté au prochain cycle"
+        subject_en = f"FIRONOVA — Your {mois_en} affiliate payout is deferred to next cycle"
     subject = subject_fr if lang == "fr" else subject_en
 
     amount_str = f"{amount_cad:.2f} $ CAD"
@@ -2203,7 +2395,7 @@ async def _defer_affiliate_payout_below_threshold(
     _prix_fr = f"""
       <p style="margin:0 0 16px">{hello_fr}</p>
       <p style="margin:0 0 16px">
-        Vos commissions pour la période <strong>{period}</strong> s'élèvent à
+        Vos commissions pour <strong>{mois_fr}</strong> s'élèvent à
         <strong>{amount_str}</strong>. Ce montant vous est entièrement dû.
       </p>
       <p style="margin:0 0 16px">
@@ -2224,7 +2416,7 @@ async def _defer_affiliate_payout_below_threshold(
     _prix_en = f"""
       <p style="margin:0 0 16px">{hello_en}</p>
       <p style="margin:0 0 16px">
-        Your commissions for period <strong>{period}</strong> total
+        Your commissions for <strong>{mois_en}</strong> total
         <strong>{amount_str}</strong>. That amount is owed to you in full.
       </p>
       <p style="margin:0 0 16px">
@@ -2245,7 +2437,7 @@ async def _defer_affiliate_payout_below_threshold(
     body_fr = f"""
       <p style="margin:0 0 16px">{hello_fr}</p>
       <p style="margin:0 0 16px">
-        Vos commissions cumulées pour la période <strong>{period}</strong> s'élèvent à
+        Vos commissions cumulées pour <strong>{mois_fr}</strong> s'élèvent à
         <strong>{amount_str}</strong>, ce qui est inférieur à notre seuil minimum de
         paiement de <strong>{threshold_str}</strong>.
       </p>
@@ -2265,7 +2457,7 @@ async def _defer_affiliate_payout_below_threshold(
     body_en = f"""
       <p style="margin:0 0 16px">{hello_en}</p>
       <p style="margin:0 0 16px">
-        Your accumulated commissions for period <strong>{period}</strong> total
+        Your accumulated commissions for <strong>{mois_en}</strong> total
         <strong>{amount_str}</strong>, which is below our minimum payout threshold of
         <strong>{threshold_str}</strong>.
       </p>
@@ -2321,6 +2513,7 @@ async def _defer_affiliate_payout_below_threshold(
 
 async def _annoncer_versement_du_cycle(
     aff: dict, period: str, amount_cad: float, referral_count: int,
+    referral_ids: Optional[list] = None,
 ) -> bool:
     """Previent l'affilie que son versement du mois clos est calcule, et dit
     avant quelle date il partira.
@@ -2395,9 +2588,17 @@ async def _annoncer_versement_du_cycle(
     lang = (aff.get("preferred_lang") or "fr").lower()
     prenom = aff.get("first_name") or aff.get("name") or ""
     montant = f"{float(amount_cad):.2f} $ CAD"
-    sujet = (f"FIRONOVA — Votre versement d'affilie de {period} est en route"
+
+    # La période réellement couverte. Ce courriel annonce une somme : se
+    # tromper de mois ici, c'est faire chercher à l'affilié des ventes qu'il
+    # n'a pas faites ce mois-là.
+    _periode = await _periode_des_commissions(referral_ids)
+    mois_fr = _periode_lisible(_periode, "fr", repli=period)
+    mois_en = _periode_lisible(_periode, "en", repli=period)
+
+    sujet = (f"FIRONOVA — Votre versement d'affilie de {mois_fr} est en route"
              if lang == "fr"
-             else f"FIRONOVA — Your {period} affiliate payout is on its way")
+             else f"FIRONOVA — Your {mois_en} affiliate payout is on its way")
 
     bonjour_fr = f"Bonjour {prenom}," if prenom else "Bonjour,"
     bonjour_en = f"Hello {prenom}," if prenom else "Hello,"
@@ -2405,7 +2606,7 @@ async def _annoncer_versement_du_cycle(
     corps_fr = f"""
       <p style="margin:0 0 16px">{bonjour_fr}</p>
       <p style="margin:0 0 16px">
-        Vos commissions pour la période <strong>{period}</strong> sont arrêtées :
+        Vos commissions pour <strong>{mois_fr}</strong> sont arrêtées :
         <strong>{montant}</strong>, sur {referral_count} commande(s).
       </p>
       <p style="margin:0 0 16px">
@@ -2423,7 +2624,7 @@ async def _annoncer_versement_du_cycle(
     corps_en = f"""
       <p style="margin:0 0 16px">{bonjour_en}</p>
       <p style="margin:0 0 16px">
-        Your commissions for period <strong>{period}</strong> are final:
+        Your commissions for <strong>{mois_en}</strong> are final:
         <strong>{montant}</strong>, across {referral_count} order(s).
       </p>
       <p style="margin:0 0 16px">
@@ -2532,9 +2733,17 @@ async def _confirmer_versement_envoye(payout: dict) -> bool:
     quantite = payout.get("amount")
     envoye = f"{quantite} {devise}".strip() if quantite and devise else ""
 
-    sujet = (f"FIRONOVA — Votre versement d'affilie de {period} est parti"
+    # ICI on interroge le `payout_id`, et non les `referral_ids` : c'est la
+    # source qu'utilise aussi l'endpoint de détail. Le courriel et l'écran ne
+    # peuvent donc pas nommer deux périodes différentes pour le même
+    # versement.
+    _periode = await _periode_couverte(payout.get("id"))
+    mois_fr = _periode_lisible(_periode, "fr", repli=period)
+    mois_en = _periode_lisible(_periode, "en", repli=period)
+
+    sujet = (f"FIRONOVA — Votre versement d'affilie de {mois_fr} est parti"
              if lang == "fr"
-             else f"FIRONOVA — Your {period} affiliate payout has been sent")
+             else f"FIRONOVA — Your {mois_en} affiliate payout has been sent")
 
     bonjour_fr = f"Bonjour {prenom}," if prenom else "Bonjour,"
     bonjour_en = f"Hello {prenom}," if prenom else "Hello,"
@@ -2552,7 +2761,7 @@ async def _confirmer_versement_envoye(payout: dict) -> bool:
     corps_fr = f"""
       <p style="margin:0 0 16px">{bonjour_fr}</p>
       <p style="margin:0 0 16px">
-        Votre versement pour la période <strong>{period}</strong> a été envoyé :
+        Votre versement pour <strong>{mois_fr}</strong> a été envoyé :
         <strong>{montant}</strong>{envoye_fr}, à l'adresse enregistrée dans votre
         tableau de bord.
       </p>
@@ -2566,7 +2775,7 @@ async def _confirmer_versement_envoye(payout: dict) -> bool:
     corps_en = f"""
       <p style="margin:0 0 16px">{bonjour_en}</p>
       <p style="margin:0 0 16px">
-        Your payout for period <strong>{period}</strong> has been sent:
+        Your payout for <strong>{mois_en}</strong> has been sent:
         <strong>{montant}</strong>{envoye_fr}, to the address saved in your dashboard.
       </p>
       {ref_en}
@@ -3074,6 +3283,6 @@ async def _generate_payouts_for_period(period: str, fx_rate: float,
             # Meme regle que le run admin : l'avis ne part que sur un
             # versement complet, jamais sur un versement mis en revue.
             await _annoncer_versement_du_cycle(
-                aff, period, amount_cad, len(grp["ids"]))
+                aff, period, amount_cad, len(grp["ids"]), grp["ids"])
         count += 1
     return count

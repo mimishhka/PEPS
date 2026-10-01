@@ -86,6 +86,14 @@ async def affiliate_payouts(request: Request,
     return await s.affiliate_payouts(request, page, page_size)
 
 
+# Le detail d'UN versement : chaque commande qu'il couvre, remboursees
+# comprises. La propriete est verifiee dans le handler, qui rend 404 — et non
+# 403 — sur le versement d'un autre affilie.
+@router.get("/affiliate/payouts/{payout_id}")
+async def affiliate_payout_detail(payout_id: str, request: Request):
+    return await s.affiliate_payout_detail(payout_id, request)
+
+
 @router.get("/affiliate/dashboard")
 async def affiliate_dashboard(request: Request, ref_page: int = 1, pay_page: int = 1,
                               page_size: int = 10):

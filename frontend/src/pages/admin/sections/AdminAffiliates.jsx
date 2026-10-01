@@ -11,6 +11,10 @@ import {
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import api, { API_BASE, formatApiError } from "../../../lib/api";
+// Voir lib/periode : ces deux fonctions etaient dupliquees ici et dans
+// AffiliateDashboard, a un detail pres chacune.
+import { moisLisible, jourLisible, periodeLisible }
+  from "../../../lib/periode";
 import { useConfirm } from "../../../components/ConfirmDialog";
 import { useLang } from "../../../contexts/LanguageContext";
 import { Th, Num, Identity, TierBadge, TIER_TONE } from "../ui";
@@ -32,17 +36,6 @@ const TYPES_AVIS = {
   confirmation: { fr: "confirmation d'envoi", en: "sending confirmation" },
 };
 
-const moisLisible = (cle, lang) => (
-  /^\d{4}-\d{2}$/.test(cle || "")
-    ? new Date(Number(cle.slice(0, 4)), Number(cle.slice(5, 7)) - 1, 1)
-        .toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { month: "long", year: "numeric" })
-    : (cle || "-")
-);
-const jourLisible = (iso, lang) => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "-"
-    : d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { day: "numeric", month: "long" });
-};
 
 const PAGE_SIZE = 10;
 const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
@@ -2329,8 +2322,21 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 <div className="space-y-2">
                   {data.payouts.map((p) => (
                     <div key={p.id} className="rounded-lg border border-ash p-3 text-sm">
+                      {/* LA PERIODE COUVERTE, et non l'etiquette de run.
+                          Mireille : « le payout indique le mois d'octobre
+                          alors que c'est pour les commissions du mois de
+                          septembre ». Le run agrege sans filtre de mois, donc
+                          `period` ne dit que QUAND on a paye. Les deux sont
+                          affiches, mais nommes : l'etiquette de run reste
+                          utile pour retrouver un lot, elle n'est juste pas
+                          une periode. */}
                       <div className="flex items-center justify-between">
-                        <span className="text-nordfjord">{p.period} · {money(p.amount)} <span className="uppercase text-xs text-glacier">{p.currency}</span></span>
+                        <span className="text-nordfjord">
+                          {periodeLisible(p.periode_couverte, lang,
+                                          moisLisible(p.period, lang))}
+                          {" · "}{money(p.amount)}{" "}
+                          <span className="uppercase text-xs text-glacier">{p.currency}</span>
+                        </span>
                         <span className={`text-xs px-2 py-0.5 rounded-full ${["paid", "paid_manual"].includes(p.status) ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>
                           {p.status === "paid_manual" ? L("Payé (manuel)", "Paid (manual)") : p.status}
                         </span>
@@ -2341,6 +2347,13 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                         </p>
                       )}
                       {p.reference && <p className="text-[11px] text-glacier mt-1 break-all">{L("Réf", "Ref")}: {p.reference}</p>}
+                      {/* L'etiquette de run, nommee comme telle : sans ce mot,
+                          on la relirait comme une periode. */}
+                      <p className="text-[11px] text-glacier/80 mt-1">
+                        {L(`run de ${moisLisible(p.period, lang)}`,
+                           `${moisLisible(p.period, lang)} run`)}
+                        {p.paid_at && ` · ${L("payé le", "paid")} ${jourLisible(p.paid_at, lang)}`}
+                      </p>
                     </div>
                   ))}
                 </div>

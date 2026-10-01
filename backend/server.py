@@ -11166,6 +11166,8 @@ try:
         _generate_payouts_for_period, _affiliate_payout_amounts,
         _annoncer_versement_du_cycle, _confirmer_versement_envoye,
         _reprendre_avis_en_echec,
+        _mois_lisible, _periode_lisible, _periode_couverte, _periodes_couvertes,
+        _periode_des_commissions,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
     from backend.services.affiliate import (  # noqa: F401
@@ -11184,6 +11186,8 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
         _generate_payouts_for_period, _affiliate_payout_amounts,
         _annoncer_versement_du_cycle, _confirmer_versement_envoye,
         _reprendre_avis_en_echec,
+        _mois_lisible, _periode_lisible, _periode_couverte, _periodes_couvertes,
+        _periode_des_commissions,
     )
 
 
@@ -12270,12 +12274,35 @@ async def affiliate_referrals(request: Request, limit: int = 200,
     return rows
 
 
+async def _attacher_periode_couverte(rows: list) -> list:
+    """Pose `periode_couverte` sur chaque versement d'une liste.
+
+    UNE SEULE requête pour toute la page — `_periodes_couvertes` groupe par
+    `payout_id`. Une boucle par ligne ferait un N+1 sur l'historique.
+
+    `None` quand le versement n'a aucune ligne rattachée (cas legacy) :
+    l'écran dira « indisponible » au lieu d'afficher un mois inventé.
+    """
+    if not rows:
+        return rows
+    periodes = await _periodes_couvertes([r.get("id") for r in rows])
+    for r in rows:
+        r["periode_couverte"] = periodes.get(r.get("id"))
+    return rows
+
+
 async def affiliate_payouts(request: Request,
                             page: Optional[int] = None, page_size: int = 10,
                             aff: Optional[dict] = None):
     """Paiements de l'affilié. Même double contrat que `/affiliate/referrals` :
     liste plate par défaut (export CSV, tests), enveloppe paginée
-    {items,total,page,page_size} dès que `page` est fourni."""
+    {items,total,page,page_size} dès que `page` est fourni.
+
+    `periode_couverte` est attachée dans LES DEUX contrats. L'export CSV lit
+    la liste plate : sans cela, le fichier que l'affilié donne à sa
+    comptabilité porterait l'étiquette de run — le mois où nous avons payé, et
+    non celui qu'il a gagné.
+    """
     aff = aff or await get_current_affiliate(request)
     q = {"affiliate_id": aff["id"]}
     if page is not None:
@@ -12285,10 +12312,75 @@ async def affiliate_payouts(request: Request,
         rows = await db.affiliate_payouts.find(q, {"_id": 0}).sort(
             "created_at", -1
         ).skip((page - 1) * page_size).limit(page_size).to_list(page_size)
+        await _attacher_periode_couverte(rows)
         return {"items": rows, "total": total, "page": page, "page_size": page_size}
     rows = await db.affiliate_payouts.find(q, {"_id": 0}).sort(
         "created_at", -1).to_list(200)
+    await _attacher_periode_couverte(rows)
     return rows
+
+
+async def affiliate_payout_detail(payout_id: str, request: Request,
+                                  aff: Optional[dict] = None):
+    """Ce qu'un versement CONTIENT : chaque commande, avec son sort.
+
+    MIREILLE, 01/10/2026 : « il faudrait que l'affilié puisse constater quelles
+    sont les commandes [que] représente ce paiement, incluant bien sûr les
+    commandes remboursées ou annulées ».
+
+    Calqué sur `admin_affiliate_payout_detail` — même forme de réponse, mêmes
+    totaux de contrôle — pour que l'écran de l'affilié et celui de
+    l'administration racontent la même histoire du même versement.
+
+    TROIS DIFFÉRENCES, chacune pour une raison.
+
+    1. LA PROPRIÉTÉ EST DANS LE FILTRE, et l'absence rend 404 — jamais 403.
+       Un 403 sur le versement d'un autre affilié confirmerait son existence :
+       on pourrait énumérer les versements du programme en lisant les codes de
+       statut. 404 dit la même chose à un propriétaire qu'à un curieux.
+
+    2. `order_email` est exclu, comme dans `/affiliate/referrals`. Et
+       `order_id` aussi : un affilié n'a aucun écran où l'ouvrir, c'est le
+       numéro de commande qui lui parle.
+
+    3. `reversed_at`, `reversed_after_payout` et `clawback_pending` sont
+       INCLUS — la version admin ne les projette pas. Ce sont eux qui rendent
+       visibles les commandes remboursées APRÈS versement, et c'est
+       exactement ce qu'elle demande. Ces lignes sont encore là pour une
+       raison précise : `affiliate_on_order_reversed` pose le statut et la
+       créance mais ne vide JAMAIS `payout_id`.
+    """
+    aff = aff or await get_current_affiliate(request)
+    payout = await db.affiliate_payouts.find_one(
+        {"id": payout_id, "affiliate_id": aff["id"]}, {"_id": 0})
+    if not payout:
+        raise HTTPException(404, "Payout not found")
+
+    lignes = await db.affiliate_referrals.find(
+        {"payout_id": payout_id, "affiliate_id": aff["id"]},
+        {"_id": 0, "id": 1, "order_number": 1, "base_amount": 1,
+         "commission_amount": 1, "order_total": 1, "status": 1,
+         "approved_at": 1, "created_at": 1,
+         "reversed_at": 1, "reversed_after_payout": 1, "clawback_pending": 1},
+    ).sort("created_at", -1).to_list(500)
+
+    payout["periode_couverte"] = await _periode_couverte(payout_id)
+    somme = round(sum(float(l.get("commission_amount") or 0.0)
+                      for l in lignes), 2)
+    montant = round(float(payout.get("amount_cad")
+                          or payout.get("amount") or 0.0), 2)
+    return {
+        "payout": payout,
+        "lines": lignes,
+        "lines_count": len(lignes),
+        "lines_sum_cad": somme,
+        "payout_amount_cad": montant,
+        # L'ÉCART EST RENDU, PAS TU. Il doit valoir zéro : une reprise change
+        # le statut d'une ligne, jamais son `commission_amount`. S'il ne vaut
+        # pas zéro, c'est que le versement et ses lignes ont divergé — et
+        # l'affilié mérite de le voir plutôt que de nous croire sur parole.
+        "difference": round(montant - somme, 2),
+    }
 
 
 async def affiliate_payout_settings(payload: AffiliatePayoutSettingsIn, request: Request):
@@ -14041,6 +14133,9 @@ async def admin_affiliate_detail(affiliate_id: str,
     payouts = await db.affiliate_payouts.find(
         {"affiliate_id": affiliate_id}, {"_id": 0}
     ).sort("created_at", -1).to_list(200)
+    # La période réellement couverte, pour que le tiroir OPS et l'écran de
+    # l'affilié nomment le même mois. Une seule requête pour la liste.
+    await _attacher_periode_couverte(payouts)
     return {"affiliate": aff, "metrics": metrics,
             "referrals": referrals, "payouts": payouts,
             "series": series,
@@ -14514,6 +14609,7 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
             if not dry_run:
                 notified = await _defer_affiliate_payout_below_threshold(
                     aff, period, total, len(grp["ids"]), AFFILIATE_PAYOUT_MIN_CAD,
+                    referral_ids=grp["ids"],
                 )
                 deferral_entry["notified"] = notified
             created.append(deferral_entry)
@@ -14546,6 +14642,7 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
             else:
                 notified = await _defer_affiliate_payout_below_threshold(
                     aff, period, total, len(grp["ids"]), AFFILIATE_PAYOUT_MIN_CAD,
+                    motif="prix", referral_ids=grp["ids"],
                 )
                 created.append({
                     "affiliate_id": affiliate_id,
@@ -14646,7 +14743,7 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
         # qu'on ne tiendra peut-etre pas.
         if revendiquees.modified_count == len(grp["ids"]):
             await _annoncer_versement_du_cycle(
-                aff, period, amount_cad, len(grp["ids"]))
+                aff, period, amount_cad, len(grp["ids"]), grp["ids"])
         created.append({"affiliate_id": affiliate_id, "amount": amount_target,
                         "amount_cad": amount_cad, "currency": payout_currency,
                         "payout_id": payout_id,
@@ -15697,20 +15794,31 @@ async def admin_affiliate_payout_detail(payout_id: str, admin: dict):
     if aff:
         aff_info = aff
 
-    ids = payout.get("referral_ids") or []
-    lines = []
-    if ids:
-        cursor = db.affiliate_referrals.find(
-            {"id": {"$in": ids}, "payout_id": payout_id},
-            {"_id": 0, "id": 1, "order_number": 1, "order_id": 1,
-             "base_amount": 1, "commission_amount": 1, "order_total": 1,
-             "status": 1, "approved_at": 1, "created_at": 1},
-        ).sort("created_at", -1)
-        async for r in cursor:
-            lines.append(r)
+    # LE FILTRE PORTE SUR `payout_id` SEUL.
+    #
+    # Il exigeait aussi l'appartenance à `referral_ids`. Or ce tableau est un
+    # instantané posé à la création du versement, tandis que `payout_id` sur
+    # la commission EST le lien d'argent : c'est lui que la branche de
+    # récupération (DuplicateKeyError) écrit. Une ligne rattachée au versement
+    # mais absente de l'instantané était donc invisible ici — et visible dans
+    # l'écran de l'affilié, qui filtre sur `payout_id`. Deux écrans, deux
+    # listes, pour un même versement.
+    lines = await db.affiliate_referrals.find(
+        {"payout_id": payout_id},
+        {"_id": 0, "id": 1, "order_number": 1, "order_id": 1,
+         "base_amount": 1, "commission_amount": 1, "order_total": 1,
+         "status": 1, "approved_at": 1, "created_at": 1,
+         # LES TROIS CHAMPS DE REPRISE. Ils manquaient : une commande
+         # remboursée APRÈS versement s'affichait ici avec le statut
+         # « reversed » et rien pour dire quand, ni que l'argent était déjà
+         # parti — ce qui est précisément l'information d'une créance.
+         "reversed_at": 1, "reversed_after_payout": 1, "clawback_pending": 1,
+         "clawback_amount": 1},
+    ).sort("created_at", -1).to_list(500)
 
     lines_sum = round(sum(float(l.get("commission_amount") or 0.0) for l in lines), 2)
     payout_amount = round(float(payout.get("amount_cad") or payout.get("amount") or 0.0), 2)
+    payout["periode_couverte"] = await _periode_couverte(payout_id)
     return {
         "payout": payout,
         "affiliate": aff_info,

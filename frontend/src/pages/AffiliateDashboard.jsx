@@ -10,6 +10,10 @@ import {
   MousePointerClick, ShoppingBag, Wallet, Download,
   MessageCircle, Send, Mail, Check, User } from "lucide-react";
 import api, { formatApiError } from "../lib/api";
+// Extraites dans lib/periode : ces fonctions vivaient en double ici et
+// dans AdminAffiliates. `periodeLisible` est le pendant de
+// `_periode_lisible` cote serveur, qui sert aux courriels.
+import { moisLisible, jourLisible } from "../lib/periode";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import { DashboardSkeleton } from "../components/LoadingSkeletons";
@@ -2283,21 +2287,6 @@ function SourceBars({ rows, fmt, L }) {
 
 // « AAAA-MM » -> « août 2026 ». Un mois écrit en chiffres oblige a le
 // décoder ; écrit en toutes lettres, il se lit.
-function moisLisible(cle, lang) {
-  if (!cle || !/^\d{4}-\d{2}$/.test(cle)) return cle || "-";
-  const [a, m] = cle.split("-").map(Number);
-  return new Date(a, m - 1, 1).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
-    { month: "long", year: "numeric" });
-}
-
-function jourLisible(iso, lang) {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
-    { day: "numeric", month: "long" });
-}
-
 // Ce qui doit partir, et ce qui attend. La couleur ne sert qu'au retard :
 // partout ailleurs, la hiérarchie passe par la taille et le blanc.
 function CycleVersement({ cycle, seuil, L, lang }) {
@@ -2510,19 +2499,58 @@ function ReferralStatus({ status, lang }) {
   return <span className={`px-2.5 py-1 rounded-full font-data text-[10px] font-semibold ${m.cls}`}>{lang === "fr" ? m.fr : m.en}</span>;
 }
 
+/**
+ * L'ÉTAT D'UN VERSEMENT, DU POINT DE VUE DE L'AFFILIÉ.
+ *
+ * MIREILLE, 01/10/2026 : « on ne devrait pas voir comment cela a été payé » —
+ * précisé : « je parle de la méthode, manuel ou autre, j'ai vu que c'était
+ * indiqué manuel ».
+ *
+ * Cette table était un MIROIR 1:1 des états internes : « En file (manuel) »,
+ * « Payé (manuel) », « Traitement », « Envoi en cours ». La façon dont le
+ * virement a été exécuté — lot automatisé ou geste à la main — est de la
+ * plomberie. Pour l'affilié, `paid` et `paid_manual` sont le même fait : il a
+ * son argent.
+ *
+ * ET DEUX ÉTATS ÉCRITS EN BASE N'Y FIGURAIENT PAS. `creating` et `review`
+ * tombaient sur `map.ready` : un versement RETENU EN VÉRIFICATION s'affichait
+ * « Prêt ». C'est le plus grave des deux défauts, parce qu'il ne laissait pas
+ * fuir de la plomberie — il cachait un blocage.
+ *
+ * `review` et `failed` sont réunis : pour l'affilié il n'y a aucune
+ * différence, l'argent n'est pas parti et c'est à nous d'agir. Mais ils ne
+ * sont pas TUS, parce qu'un versement bloqué touche son argent et que le
+ * silence serait pire que le jargon.
+ *
+ * L'écran faisait exactement l'inverse : du jargon sur ce qui ne le concerne
+ * pas, et du silence sur ce qui le concerne.
+ */
+const ETATS_VERSEMENT = {
+  paid: "paye", paid_manual: "paye",
+  creating: "en_cours", ready: "en_cours", queued_manual: "en_cours",
+  dispatching: "en_cours", processing: "en_cours",
+  review: "retenu", failed: "retenu",
+  reversed: "annule",
+};
+
+const LIBELLE_VERSEMENT = {
+  paye: { fr: "Payé", en: "Paid", cls: "bg-success/15 text-success" },
+  en_cours: { fr: "En cours", en: "In progress", cls: "bg-nova/15 text-nordfjord" },
+  retenu: { fr: "En vérification", en: "Under review", cls: "bg-warning/15 text-warning" },
+  annule: { fr: "Annulé", en: "Reversed", cls: "bg-error/15 text-error" },
+};
+
 function PayoutStatus({ status, L }) {
-  const map = {
-    ready: { fr: "Prêt", en: "Ready", cls: "bg-warning/15 text-warning" },
-    queued_manual: { fr: "En file (manuel)", en: "Queued (manual)", cls: "bg-ash/50 text-glacier" },
-    dispatching: { fr: "Envoi en cours", en: "Dispatching", cls: "bg-nova/15 text-nordfjord" },
-    processing: { fr: "Traitement", en: "Processing", cls: "bg-nova/15 text-nordfjord" },
-    paid: { fr: "Payé", en: "Paid", cls: "bg-success/15 text-success" },
-    paid_manual: { fr: "Payé (manuel)", en: "Paid (manual)", cls: "bg-success/15 text-success" },
-    failed: { fr: "Échec", en: "Failed", cls: "bg-error/15 text-error" },
-    reversed: { fr: "Annulé", en: "Reversed", cls: "bg-error/15 text-error" },
-  };
-  const m = map[status] || map.ready;
-  return <span className={`px-2.5 py-1 rounded-full font-data text-[10px] font-semibold ${m.cls}`}>{L(m.fr, m.en)}</span>;
+  // UN ÉTAT INCONNU VAUT « EN COURS », jamais « Prêt ». Affirmer un état
+  // précis à partir de rien est précisément ce qui a fait annoncer « Prêt »
+  // pour un versement en vérification.
+  const m = LIBELLE_VERSEMENT[ETATS_VERSEMENT[status] || "en_cours"];
+  return (
+    <span className={`px-2.5 py-1 rounded-full font-data text-[10px] font-semibold ${m.cls}`}
+          data-testid="payout-status">
+      {L(m.fr, m.en)}
+    </span>
+  );
 }
 
 function ComplianceItem({ title, body }) {
