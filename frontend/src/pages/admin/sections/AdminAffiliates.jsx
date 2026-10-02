@@ -2040,7 +2040,9 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                               ["mois", L("Mois", "Month")],
                               ["ca_valide", L("CA validé", "Validated revenue")],
                               ["commissions", L("Commissions", "Commissions")],
-                              ["payee", L("Versées ce mois", "Paid this month")],
+                              // « Versées ce mois » datait du virement ; la colonne
+                              // porte maintenant sur les commissions DE ce mois.
+                              ["payee", L("Dont versées", "Of which paid")],
                               ["recuperee", L("Annulées (remboursements)", "Reversed (refunds)")],
                             ].map(([cle, libelle]) => (
                               <Th key={cle}>
@@ -2353,6 +2355,18 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                         {L(`run de ${moisLisible(p.period, lang)}`,
                            `${moisLisible(p.period, lang)} run`)}
                         {p.paid_at && ` · ${L("payé le", "paid")} ${jourLisible(p.paid_at, lang)}`}
+                        {/* LE LOT. `np_batch_id` est écrit sur chaque versement
+                            au moment de l'envoi, précisément pour relier un
+                            versement à son lot — et il n'était affiché nulle
+                            part. C'est ce qui permet de retrouver l'envoi
+                            correspondant dans l'historique des envois. */}
+                        {p.np_batch_id && (
+                          <>
+                            {" · "}
+                            {L("lot ", "batch ")}
+                            <code className="select-all break-all">{p.np_batch_id}</code>
+                          </>
+                        )}
                       </p>
                     </div>
                   ))}

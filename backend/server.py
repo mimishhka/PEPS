@@ -14134,8 +14134,29 @@ def _affiliate_serie_mensuelle(rows: list, nb_mois: int = 12) -> list:
         date EFFECTIVE (approved_at sinon created_at) — la meme convention que
         le palier, donc les totaux se recoupent ;
       - commissions : ce qui est du ou paye pour ce mois-la (meme convention) ;
-      - payee : ce qui a ete VERSE ce mois-la, d'apres paid_at — la colonne qui
-        permet le retour en arriere demande : « combien ai-je verse en mai ? » ;
+      - payee : parmi les commissions DE CE MOIS-LA, celles qui ont ete
+        versees. Meme axe que les deux colonnes precedentes.
+
+        MIREILLE, 01/10/2026, capture a l'appui : « paid amount not on the good
+        line ». Puis, precisant ce qu'elle veut lire : « ce que je veux voir
+        c'est que la commission du mois a ete versee ».
+
+        Cette colonne etait datee de `paid_at` — le jour du VIREMENT — et
+        repondait donc a « combien ai-je verse en mai ? ». Les trois autres
+        colonnes repondent a « qu'a fait ce mois-la ». Sur sa capture,
+        septembre affichait 500,40 $ de commissions et « 0,00 $ verse », tandis
+        qu'octobre affichait un versement de 500,40 $ sans rapport avec ses
+        56,69 $ de commissions : le versement de septembre est parti en
+        octobre. Deux questions sur une meme ligne, et la ligne devient
+        illisible.
+
+        C'est le meme defaut que l'etiquette `period` d'un versement, corrige
+        le meme jour : on attribue l'argent a la periode qu'il COUVRE, pas a la
+        date du transfert.
+
+        La question « combien est parti en mai » garde sa reponse : la liste
+        des versements, qui est precisement une liste de virements avec leur
+        date ;
       - recuperee : ce qui a ete ANNULE ce mois-la a cause d'un remboursement,
         d'apres reversed_at. Sans cette colonne, une annulation disparaissait
         du CA et des commissions sans laisser de trace — le mois affichait
@@ -14151,7 +14172,9 @@ def _affiliate_serie_mensuelle(rows: list, nb_mois: int = 12) -> list:
     valides = {"approved", "paid"}
     mois_presents = {_mois(r.get("approved_at") or r.get("created_at"))
                      for r in rows if _mois(r.get("approved_at") or r.get("created_at"))}
-    mois_presents |= {_mois(r.get("paid_at")) for r in rows if _mois(r.get("paid_at"))}
+    # `paid_at` ne cree PLUS de mois. Un virement parti en octobre pour
+    # septembre n'est pas une activite d'octobre : l'inclure fabriquait une
+    # ligne dont les trois autres colonnes valaient zero.
     mois_presents |= {_mois(r.get("reversed_at")) for r in rows if _mois(r.get("reversed_at"))}
     mois_ordonnes = sorted(m for m in mois_presents if m)[-nb_mois:]
 
@@ -14163,7 +14186,7 @@ def _affiliate_serie_mensuelle(rows: list, nb_mois: int = 12) -> list:
             if eff == mois and r.get("status") in valides:
                 ca += float(r.get("base_amount") or 0)
                 comm += float(r.get("commission_amount") or 0)
-            if _mois(r.get("paid_at")) == mois and r.get("status") == "paid":
+            if eff == mois and r.get("status") == "paid":
                 payee += float(r.get("commission_amount") or 0)
             if _mois(r.get("reversed_at")) == mois and r.get("status") == "reversed":
                 recuperee += float(r.get("commission_amount") or 0)
