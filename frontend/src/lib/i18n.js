@@ -225,6 +225,8 @@ export const dict = {
       default: "Default",
       makeDefault: "Make default",
       changePassword: "Change password",
+      setPassword: "Set a password",
+      setPasswordHint: "Your account uses sign-in links. Set a password to also sign in with one.",
       newPassword: "New password",
       confirmPassword: "Confirm new password",
       passwordMismatch: "Passwords don't match",
@@ -504,6 +506,8 @@ export const dict = {
       default: "Par défaut",
       makeDefault: "Définir par défaut",
       changePassword: "Changer le mot de passe",
+      setPassword: "Définir un mot de passe",
+      setPasswordHint: "Votre compte utilise les liens de connexion. Définissez un mot de passe pour pouvoir aussi vous connecter avec.",
       newPassword: "Nouveau mot de passe",
       confirmPassword: "Confirmer le nouveau mot de passe",
       passwordMismatch: "Les mots de passe ne correspondent pas",
@@ -559,6 +563,22 @@ export const dict = {
   },
 };
 
+/**
+ * ATTENTION AU REPLI QUI N'EN EST PAS UN.
+ *
+ * Une clé absente rend LA CLé (`node ?? path`), et non une chaîne vide. Une
+ * écriture comme `t("account.setPassword") || "Définir un mot de passe"` ne
+ * tombe donc JAMAIS sur son repli : la clé est toujours véridique. L'écran
+ * affiche alors « account.setPassword » en toutes lettres.
+ *
+ * C'est arrivé : trois chaînes de l'onglet Sécurité étaient écrites ainsi, et
+ * personne ne l'a vu parce que la branche qui les rend était inatteignable —
+ * le serveur ne renvoyait pas le drapeau `passwordless`. Le jour où on l'a
+ * réparé, les clés brutes seraient apparues.
+ *
+ * Rendre la clé reste le bon choix : une traduction manquante doit SE VOIR.
+ * Mais alors on ajoute la clé, on n'écrit pas de repli.
+ */
 export function t(lang, path) {
   const parts = path.split(".");
   let node = dict[lang] || dict.en;

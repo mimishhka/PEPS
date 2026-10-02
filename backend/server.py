@@ -420,8 +420,24 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
+    """Rend toujours un booléen — jamais une exception, jamais un 500.
+
+    `bcrypt` est une extension Rust : un hash vide, tronqué ou absurde ne lève
+    pas une exception Python, il PANIQUE. Et `pyo3_runtime.PanicException`
+    dérive de `BaseException`, donc le `except Exception` ci-dessous ne
+    l'attrapait pas : un seul enregistrement abîmé en base rendait un 500 à la
+    connexion au lieu d'un refus propre.
+
+    On écarte donc en amont ce qui ne peut pas être un hash bcrypt. Un hash
+    valide fait 60 octets — `$2b$12$` puis 22 de sel et 31 de condensat ; le
+    seuil est posé à 59 pour couvrir les variantes `$2a$` et `$2y$` sans se
+    fier à une longueur exacte.
+    """
+    h = (hashed or "").encode("utf-8")
+    if not h.startswith(b"$2") or len(h) < 59:
+        return False
     try:
-        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+        return bcrypt.checkpw(plain.encode("utf-8"), h)
     except Exception:
         return False
 
@@ -619,12 +635,41 @@ async def get_current_user(request: Request) -> dict:
 
 
 def _public_user_payload(user: Optional[dict]) -> dict:
+    """La fiche que l'utilisateur reçoit de lui-même (`/auth/me`).
+
+    `passwordless` EST EXPOSÉ, et doit l'être.
+
+    MIREILLE, 01/10/2026 : « pour établir la première fois le mot de passe, ça
+    demande l'ancien mot de passe — chose impossible lorsque la personne n'a pas
+    créé son compte avec un mot de passe ».
+
+    Le serveur faisait déjà la bonne chose : `_assert_current_password` sort
+    immédiatement pour un compte passwordless, le cookie de session faisant foi.
+    Et l'interface aussi : elle teste `user.passwordless` à quatre endroits pour
+    masquer le champ et l'omettre de la requête. Mais ce drapeau était retiré
+    ici, avec `password_hash` et `token_version` — il valait donc TOUJOURS faux
+    côté navigateur, le champ s'affichait `required`, et le formulaire ne
+    pouvait pas être soumis.
+
+    QUATRE PARCOURS étaient bloqués par cette seule ligne : définir un mot de
+    passe depuis le compte client, le définir depuis le tableau de bord
+    affilié, changer d'adresse courriel, et supprimer son compte.
+
+    CE N'EST PAS UNE DIVULGATION. Cette fonction ne sert qu'à `me()`, qui ne
+    renvoie jamais que la session en cours : la personne sait déjà si elle s'est
+    connectée par lien ou par mot de passe. `password_hash` et `token_version`,
+    eux, restent retirés — ce sont des secrets, pas un état d'interface.
+    """
     if not user:
         return {}
     payload = {
         k: v for k, v in user.items()
-        if k not in {"password_hash", "token_version", "passwordless"}
+        if k not in {"password_hash", "token_version"}
     }
+    # Normalisé en booléen : un compte créé AVEC un mot de passe n'a pas
+    # forcément la clé, et une clé absente obligerait chaque appelant à
+    # redécider ce que « absent » veut dire.
+    payload["passwordless"] = bool(user.get("passwordless", False))
     # Ne pas exposer les permissions internes pour les comptes clients.
     if payload.get("role") not in {"staff", "admin"}:
         payload.pop("permissions", None)

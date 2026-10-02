@@ -546,11 +546,11 @@ function SecurityTab({ t, user, logout, navigate }) {
     <div className="max-w-2xl space-y-5">
       <form onSubmit={changePassword} className="rounded-xl border border-ash bg-white p-6 space-y-5" data-testid="password-form">
         <h2 className="font-display text-lg font-bold text-nordfjord">
-          {pwLess ? (t("account.setPassword") || "Définir un mot de passe / Set a password") : t("account.changePassword")}
+          {pwLess ? t("account.setPassword") : t("account.changePassword")}
         </h2>
         {pwLess && (
           <p className="text-sm text-glacier">
-            {t("account.setPasswordHint") || "Votre compte utilise les liens de connexion. Définissez un mot de passe pour aussi vous connecter avec. / Your account uses sign-in links. Set a password to also sign in with one."}
+            {t("account.setPasswordHint")}
           </p>
         )}
         {!pwLess && (
@@ -574,7 +574,7 @@ function SecurityTab({ t, user, logout, navigate }) {
             className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
         </div>
         <button type="submit" disabled={pwBusy} data-testid="password-save" className="btn-pill btn-nova disabled:opacity-50">
-          {pwBusy ? "…" : (pwLess ? (t("account.setPassword") || "Définir / Set") : t("account.changePassword"))}
+          {pwBusy ? "…" : (pwLess ? t("account.setPassword") : t("account.changePassword"))}
         </button>
         <p className="text-xs text-glacier">{t("account.passwordHint")}</p>
       </form>
