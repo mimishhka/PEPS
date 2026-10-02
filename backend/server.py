@@ -12677,6 +12677,72 @@ def _echeance_pour_periode(period: str) -> Optional[str]:
     return echeance.astimezone(timezone.utc).isoformat()
 
 
+async def _creance_en_cours(affiliate_id: str) -> tuple:
+    """Ce qui a ete verse en trop a cet affilie et n'est pas encore recupere.
+
+    Rend `(montant, lignes)` — les lignes etant les commissions reprises apres
+    versement dont la creance n'est pas soldee, les plus ANCIENNES d'abord :
+    une dette se rembourse dans l'ordre ou elle est nee, et c'est aussi l'ordre
+    qui se raconte le mieux dans un audit.
+    """
+    try:
+        lignes = await db.affiliate_referrals.find(
+            {"affiliate_id": affiliate_id, "clawback_pending": True},
+            {"_id": 0, "id": 1, "clawback_amount": 1, "order_number": 1,
+             "reversed_at": 1},
+        ).sort("reversed_at", 1).to_list(500)
+    except Exception as e:
+        # UNE CREANCE QU'ON NE SAIT PAS LIRE NE DOIT PAS FAIRE PAYER EN TROP.
+        # On leve : mieux vaut un run qui echoue et qu'on relance qu'un run qui
+        # verse en ignorant une dette.
+        logging.error("[payout] creance illisible pour %s : %s",
+                      affiliate_id, type(e).__name__)
+        raise
+    montant = round(sum(float(l.get("clawback_amount") or 0.0) for l in lignes), 2)
+    return montant, lignes
+
+
+async def _solder_creance(lignes: list, budget: float,
+                          payout_id: Optional[str]) -> float:
+    """Eteint les creances a hauteur de `budget`, les plus anciennes d'abord.
+
+    Rend le montant reellement solde.
+
+    LA DERNIERE LIGNE EST SOLDEE PARTIELLEMENT quand le budget ne la couvre
+    pas : son `clawback_amount` baisse du montant absorbe et elle reste
+    `pending`. Marquer la ligne entiere comme soldee effacerait une dette qu'on
+    n'a pas recuperee ; la laisser intacte la ferait deduire deux fois.
+    """
+    restant = round(float(budget), 2)
+    solde = 0.0
+    maintenant = datetime.now(timezone.utc).isoformat()
+    for ligne in lignes:
+        if restant <= 0:
+            break
+        du = round(float(ligne.get("clawback_amount") or 0.0), 2)
+        if du <= 0:
+            continue
+        if du <= restant:
+            await db.affiliate_referrals.update_one(
+                {"id": ligne["id"]},
+                {"$set": {"clawback_pending": False,
+                          "clawback_settled_at": maintenant,
+                          "clawback_settled_by": payout_id,
+                          "clawback_settled_amount": du}},
+            )
+            restant = round(restant - du, 2)
+            solde = round(solde + du, 2)
+        else:
+            await db.affiliate_referrals.update_one(
+                {"id": ligne["id"]},
+                {"$set": {"clawback_amount": round(du - restant, 2)},
+                 "$inc": {"clawback_settled_amount": restant}},
+            )
+            solde = round(solde + restant, 2)
+            restant = 0.0
+    return solde
+
+
 def _cycle_versement(maintenant: Optional[datetime] = None) -> dict:
     """Quel mois est clos, et jusqu'a quand il doit etre verse.
 
@@ -12744,9 +12810,42 @@ async def _commissions_par_cycle(affiliate_id: Optional[str] = None,
     except Exception:
         lignes = []
     t = lignes[0] if lignes else {}
+    acquis = round(float(t.get("due_now", 0.0)), 2)
+
+    # LA CREANCE SORT DU MONTANT ANNONCE.
+    #
+    # Mireille : « the commission to be paid is not updated, that does not make
+    # sense since we have to get back some of what was overpaid ». Ce bloc
+    # annonce « a verser » : s'il ignore ce qui est du en sens inverse, il
+    # promet une somme que le run ne versera pas — et le run, lui, deduit.
+    # Deux ecrans qui annoncent deux montants pour le meme versement, c'est un
+    # appel au service a la clientele.
+    selection_creance = {"clawback_pending": True}
+    if affiliate_id:
+        selection_creance["affiliate_id"] = affiliate_id
+    try:
+        dettes = await db.affiliate_referrals.aggregate([
+            {"$match": selection_creance},
+            {"$group": {"_id": None,
+                        "montant": {"$sum": {"$ifNull": ["$clawback_amount", 0.0]}},
+                        "n": {"$sum": 1}}},
+        ]).to_list(1)
+    except Exception:
+        dettes = []
+    d = dettes[0] if dettes else {}
+    creance = round(float(d.get("montant", 0.0)), 2)
+    due_now = round(max(0.0, acquis - creance), 2)
+
     return {
         **cycle,
-        "due_now": round(float(t.get("due_now", 0.0)), 2),
+        "due_now": due_now,
+        # L'ACQUIS ET LA CREANCE RESTENT VISIBLES A COTE DU NET. Montrer
+        # seulement le net ferait croire a une erreur de calcul : l'affilie
+        # compte ses commissions validees et trouve un autre chiffre.
+        "acquis": acquis,
+        "creance": creance,
+        "creance_lignes": int(d.get("n", 0)),
+        "creance_reportee": round(max(0.0, creance - acquis), 2),
         "due_count": int(t.get("due_count", 0)),
         "current_cycle": round(float(t.get("current_cycle", 0.0)), 2),
         "current_count": int(t.get("current_count", 0)),
@@ -14922,12 +15021,51 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
 
     for grp in payout_groups:
         affiliate_id = grp["_id"]
-        total = round(float(grp["total"]), 2)
-        if total <= 0:
+        acquis = round(float(grp["total"]), 2)
+        if acquis <= 0:
             continue
         aff = affiliates_by_id.get(affiliate_id)
         if not aff or aff.get("status") != "active":
             continue
+
+        # ── LA CREANCE SE DEDUIT AVANT TOUT LE RESTE ──────────────────────
+        #
+        # MIREILLE, 02/10/2026 : « the commission to be paid is not updated,
+        # that does not make sense since we have to get back some of what was
+        # overpaid in a previous payout ».
+        #
+        # Une commande remboursee APRES son versement laisse une creance :
+        # l'argent est parti, la vente n'a pas eu lieu. `clawback_pending`
+        # etait ecrit a la reprise et n'etait lu que pour afficher un compteur.
+        # Un affilie surpaye de 82,50 $ etait repaye plein tarif au cycle
+        # suivant, indefiniment.
+        #
+        # Le seuil s'applique au NET, pas a l'acquis : promettre un versement
+        # sur une somme dont la moitie est due en sens inverse serait annoncer
+        # un montant qu'on ne versera pas.
+        creance, lignes_creance = await _creance_en_cours(affiliate_id)
+        total = round(max(0.0, acquis - creance), 2)
+        creance_absorbee = round(min(creance, acquis), 2)
+
+        if creance > 0 and total <= 0:
+            # TOUT L'ACQUIS PART EN REMBOURSEMENT DE LA DETTE, et il en reste.
+            # Aucun versement n'est cree — il serait de zero — mais la dette
+            # DOIT baisser, sinon elle se deduirait a nouveau au cycle suivant
+            # sur un acquis deja consomme.
+            if not dry_run:
+                await _solder_creance(lignes_creance, creance_absorbee, None)
+            created.append({
+                "affiliate_id": affiliate_id,
+                "affiliate_code": aff.get("code"),
+                "amount_cad": 0.0,
+                "acquis_cad": acquis,
+                "creance_absorbee": creance_absorbee,
+                "creance_restante": round(creance - creance_absorbee, 2),
+                "deferred": True,
+                "reason": "creance",
+            })
+            continue
+
         # ---- Item 3.2 : seuil minimum de payout (skip + notification) --------
         if total < AFFILIATE_PAYOUT_MIN_CAD:
             deferral_entry = {
@@ -15019,6 +15157,13 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
                 "fx_captured_at": fx_captured_at,
                 "payout_address": aff.get("payout_address", ""),
                 "referral_ids": grp["ids"],
+                # CE QUE LE VERSEMENT A ABSORBE, ecrit SUR le versement.
+                # Sans cela, un releve de 117,50 $ la ou l'affilie attendait
+                # 200 $ serait inexplicable six mois plus tard : la creance
+                # aura ete soldee et aucune trace ne dirait pourquoi ce
+                # versement-la etait plus bas.
+                "acquis_cad": acquis,
+                "creance_absorbee": creance_absorbee,
                 "referral_count": len(grp["ids"]),
                 "status": "ready",           # ready → paid
                 "reference": None,
@@ -15073,12 +15218,23 @@ async def admin_affiliate_run_payouts(admin: dict = Depends(get_admin_user),  # 
         # Pas sur un versement passe en « review » — annoncer une date pour
         # une somme qu'un humain doit encore trancher, c'est promettre ce
         # qu'on ne tiendra peut-etre pas.
+        # LA CREANCE EST SOLDEE ICI, et nulle part ailleurs : le versement
+        # existe, son montant est deja net de la dette, donc la dette est
+        # effectivement recuperee. La solder plus tot l'effacerait meme si la
+        # creation du versement echouait ensuite.
+        if creance_absorbee > 0:
+            await _solder_creance(lignes_creance, creance_absorbee, payout_id)
         if revendiquees.modified_count == len(grp["ids"]):
             await _annoncer_versement_du_cycle(
                 aff, period, amount_cad, len(grp["ids"]), grp["ids"])
         created.append({"affiliate_id": affiliate_id, "amount": amount_target,
                         "amount_cad": amount_cad, "currency": payout_currency,
                         "payout_id": payout_id,
+                        # Ce que le versement a absorbe, pour que le releve
+                        # puisse l'expliquer au lieu d'afficher un montant
+                        # plus bas que prevu sans raison.
+                        "acquis_cad": acquis,
+                        "creance_absorbee": creance_absorbee,
                         "review": revendiquees.modified_count != len(grp["ids"])})
     payouts_only = [c for c in created if c.get("payout_id")]
     deferred = [c for c in created if c.get("deferred")]

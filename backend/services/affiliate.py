@@ -785,6 +785,42 @@ async def _affiliate_compute_metrics(affiliate_id: str,
                 {"$eq": ["$status", "reversed"]}, "$comm", 0.0]}},
             "excluded_commission": {"$sum": {"$cond": [
                 {"$eq": ["$status", "excluded"]}, "$comm", 0.0]}},
+
+            # ── UNE REPRISE RECOUVRE DEUX EVENEMENTS TRES DIFFERENTS ──
+            #
+            # MIREILLE, 02/10/2026 : « the reversed commission should be an
+            # activity of its own or showed differently [...] the commission to
+            # be paid is not updated, that does not make sense since we have to
+            # get back some of what was overpaid in a previous payout ».
+            #
+            # Remboursee AVANT le versement : l'argent n'est jamais parti. La
+            # vente n'a pas eu lieu, il n'y a rien a recuperer.
+            #
+            # Remboursee APRES le versement : l'argent EST parti. Il y a une
+            # creance, et elle doit sortir du prochain versement.
+            #
+            # Les deux tombaient dans le meme total `reversed_commission`, et
+            # le second n'avait aucune suite : la creance etait ecrite au
+            # moment de la reprise et lue uniquement pour afficher un compteur.
+            # Un affilie surpaye de 82,50 $ voyait « a verser : 200 $ » et
+            # etait paye 200 $.
+            "reprise_avant_versement": {"$sum": {"$cond": [
+                {"$and": [{"$eq": ["$status", "reversed"]},
+                          {"$ne": ["$reversed_after_payout", True]}]},
+                "$comm", 0.0]}},
+            "reprise_apres_versement": {"$sum": {"$cond": [
+                {"$and": [{"$eq": ["$status", "reversed"]},
+                          {"$eq": ["$reversed_after_payout", True]}]},
+                "$comm", 0.0]}},
+            # LA CREANCE EN COURS : ce qui a ete verse en trop et n'a pas
+            # encore ete recupere. `clawback_pending` repasse a faux des que le
+            # montant a ete deduit d'un versement — sans quoi on le deduirait
+            # a chaque cycle.
+            "creance": {"$sum": {"$cond": [
+                {"$eq": ["$clawback_pending", True]},
+                {"$ifNull": ["$clawback_amount", 0.0]}, 0.0]}},
+            "creance_lignes": {"$sum": {"$cond": [
+                {"$eq": ["$clawback_pending", True]}, 1, 0]}},
         }},
     ]
     totals = await s.db.affiliate_referrals.aggregate(pipeline).to_list(1)
@@ -797,6 +833,23 @@ async def _affiliate_compute_metrics(affiliate_id: str,
     paid_commission = float(t.get("paid_commission", 0.0))
     reversed_commission = float(t.get("reversed_commission", 0.0))
     excluded_commission = float(t.get("excluded_commission", 0.0))
+    reprise_avant = float(t.get("reprise_avant_versement", 0.0))
+    reprise_apres = float(t.get("reprise_apres_versement", 0.0))
+    creance = float(t.get("creance", 0.0))
+    creance_lignes = int(t.get("creance_lignes", 0))
+
+    # CE QUI PARTIRA VRAIMENT AU PROCHAIN VERSEMENT.
+    #
+    # `approved_commission` est ce qui est acquis ; la creance est ce qui est
+    # du en sens inverse. Le net est la seule somme qui repond a « combien
+    # vais-je recevoir », et c'est celle qu'il faut montrer.
+    #
+    # PLANCHER A ZERO, ET LE RESTE REPORTE. Un versement negatif n'existe pas :
+    # quand la creance depasse l'acquis, on ne paie rien et le solde du suit
+    # jusqu'au cycle suivant. Sans ce report, la dette s'effacerait toute seule
+    # au premier cycle trop maigre.
+    a_verser_net = max(0.0, approved_commission - creance)
+    creance_reportee = max(0.0, creance - approved_commission)
     validated_orders = int(t.get("validated_orders", 0))
 
     # LES TROIS BASES DE LA REGLE.
@@ -968,6 +1021,15 @@ async def _affiliate_compute_metrics(affiliate_id: str,
         "paid_commission": round(paid_commission, 2),
         "reversed_commission": round(reversed_commission, 2),
         "excluded_commission": round(excluded_commission, 2),
+        # Les deux reprises, nommees. `reversed_commission` reste leur somme,
+        # pour ne casser aucun appelant existant.
+        "reprise_avant_versement": round(reprise_avant, 2),
+        "reprise_apres_versement": round(reprise_apres, 2),
+        # La creance et ce qu'elle change.
+        "creance": round(creance, 2),
+        "creance_lignes": creance_lignes,
+        "a_verser_net": round(a_verser_net, 2),
+        "creance_reportee": round(creance_reportee, 2),
         # Le seuil de versement : la fiche en a besoin pour dire SI le prochain
         # cycle paiera. Sans lui, « a debourser le 1er » promet un versement
         # que le programme refuse sous le seuil.

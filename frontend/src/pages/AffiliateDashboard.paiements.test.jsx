@@ -103,8 +103,8 @@ const DETAIL = {
 };
 
 const brancher = ({ versements = [VERSEMENT_PAYE], dernier = VERSEMENT_PAYE,
-                    detail = DETAIL } = {}) => {
-  mockFiche = FICHE;
+                    detail = DETAIL, fiche = FICHE } = {}) => {
+  mockFiche = fiche;
   api.get.mockImplementation(async (url) => {
     const u = String(url);
     if (u.includes("/affiliate/payouts/")) return { data: detail };
@@ -495,5 +495,80 @@ describe("sur téléphone", () => {
     const code = screen.getByTestId("historique-cartes").querySelector("code");
     expect(code.className).toContain("break-all");
     expect(code.className).toContain("select-all");
+  });
+});
+
+// ===========================================================================
+// LA CRÉANCE — CE QUI A ÉTÉ VERSÉ EN TROP
+//
+// MIREILLE, 02/10/2026 : « the commission to be paid is not updated, that does
+// not make sense since we have to get back some of what was overpaid in a
+// previous payout ».
+//
+// `clawback_pending` était écrit à la reprise et lu uniquement pour un
+// compteur. Il n'était soustrait nulle part : un affilié surpayé de 82,50 $
+// voyait « à verser : 200 $ » et était payé 200 $, à chaque cycle.
+//
+// Le montant est désormais NET. Et un montant plus bas que ses commissions
+// validées, sans un mot pour l'expliquer, se lirait comme une erreur : les
+// trois nombres sont montrés — acquis, déduit, net.
+// ===========================================================================
+
+describe("la créance sur le prochain versement", () => {
+  const CYCLE_AVEC_DETTE = {
+    period: "2026-09", current_period: "2026-10",
+    due_now: 150.0, acquis: 250.0, creance: 100.0, creance_lignes: 2,
+    creance_reportee: 0, current_cycle: 40, due_by: "2026-10-06T04:00:00Z",
+    days_left: 4, overdue: false,
+  };
+
+  test("LE CAS DE MIREILLE : le montant annoncé est NET de la dette", async () => {
+    await ouvrir({ fiche: { ...FICHE, payout_cycle: CYCLE_AVEC_DETTE } });
+
+    // 250 acquis − 100 déjà versés en trop = 150 qui partiront.
+    expect(screen.getByTestId("cycle-du")).toHaveTextContent("150.00");
+  });
+
+  test("et les trois nombres sont dits, pas seulement le net", async () => {
+    /* Un montant plus bas que ses commissions validées, sans explication, se
+     * lit comme une erreur : l'affilié compte ses commissions et trouve un
+     * autre chiffre. */
+    await ouvrir({ fiche: { ...FICHE, payout_cycle: CYCLE_AVEC_DETTE } });
+
+    const bloc = screen.getByTestId("cycle-creance");
+    expect(bloc).toHaveTextContent("250.00");   // acquis
+    expect(bloc).toHaveTextContent("100.00");   // déduit
+    expect(bloc).toHaveTextContent(/rembours/i);
+  });
+
+  test("la règle est énoncée, et elle n'accuse pas", async () => {
+    // Même décision que partout ailleurs : la commission suit la vente.
+    await ouvrir({ fiche: { ...FICHE, payout_cycle: CYCLE_AVEC_DETTE } });
+
+    const bloc = screen.getByTestId("cycle-creance");
+    expect(bloc).toHaveTextContent(/la commission suit la vente/i);
+    expect(bloc).not.toHaveTextContent(/repris/i);
+  });
+
+  test("une dette PLUS GRANDE que l'acquis annonce le report", async () => {
+    /* Un versement négatif n'existe pas. Rien ne part ce cycle-ci, et le reste
+     * suit — le taire ferait croire à un versement oublié. */
+    await ouvrir({ fiche: { ...FICHE, payout_cycle: {
+      ...CYCLE_AVEC_DETTE, due_now: 0, acquis: 30, creance: 100,
+      creance_reportee: 70,
+    } } });
+
+    expect(screen.getByTestId("cycle-du")).toHaveTextContent("0.00");
+    expect(screen.getByTestId("cycle-creance-reportee")).toHaveTextContent("70.00");
+  });
+
+  test("sans dette, aucun de ces blocs n'apparaît", async () => {
+    // Annoncer « 0,00 $ de créance » inquiéterait pour rien.
+    await ouvrir({ fiche: { ...FICHE, payout_cycle: {
+      ...CYCLE_AVEC_DETTE, due_now: 250, creance: 0, creance_reportee: 0,
+    } } });
+
+    expect(screen.queryByTestId("cycle-creance")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("cycle-creance-reportee")).not.toBeInTheDocument();
   });
 });

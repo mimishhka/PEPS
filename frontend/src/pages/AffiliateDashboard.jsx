@@ -2457,6 +2457,39 @@ function CycleVersement({ cycle, seuil, L, lang }) {
         </div>
       </div>
 
+      {/* LA DEDUCTION EST DITE, jamais subie.
+          MIREILLE, 02/10/2026 : « the commission to be paid is not updated,
+          that does not make sense since we have to get back some of what was
+          overpaid in a previous payout ».
+          Une commande remboursée APRÈS son versement laisse une créance :
+          l'argent est parti, la vente n'a pas eu lieu. Le montant annoncé est
+          désormais NET de cette dette — et un montant plus bas que ses
+          commissions validées, sans un mot pour l'expliquer, se lit comme une
+          erreur. On montre donc les trois nombres : ce qui est acquis, ce qui
+          est déduit, ce qui part. */}
+      {Number(cycle?.creance || 0) > 0 && (
+        <div className="mt-3 rounded-lg border border-warning/35 bg-warning/[0.06] p-3"
+             data-testid="cycle-creance">
+          <p className="font-data text-[11px] text-nordfjord leading-relaxed">
+            {L(`${money(cycle.acquis)} de commissions validées, moins ${money(cycle.creance)} déjà versés sur des commandes remboursées depuis.`,
+               `${money(cycle.acquis)} in validated commissions, less ${money(cycle.creance)} already paid on orders refunded since.`)}
+          </p>
+          <p className="font-data text-[11px] text-glacier mt-1 leading-relaxed">
+            {L("Ces ventes n'ont pas eu lieu : la commission suit la vente, et le montant avait déjà été versé.",
+               "Those sales did not happen: commission follows the sale, and the amount had already been paid out.")}
+          </p>
+          {Number(cycle?.creance_reportee || 0) > 0 && (
+            /* La dette dépasse l'acquis : rien ne part ce cycle-ci, et le
+               reste suit. Le taire ferait croire à un versement oublié. */
+            <p className="font-data text-[11px] text-warning mt-1.5 leading-relaxed"
+               data-testid="cycle-creance-reportee">
+              {L(`Il reste ${money(cycle.creance_reportee)} à reporter sur le cycle suivant.`,
+                 `${money(cycle.creance_reportee)} remains to carry to the next cycle.`)}
+            </p>
+          )}
+        </div>
+      )}
+
       {sousLeSeuil && (
         <p className="font-data text-[11px] text-warning mt-3" data-testid="cycle-sous-seuil">
           {L(`Sous le seuil de ${money(seuil)} : le montant est reporté au cycle suivant.`,

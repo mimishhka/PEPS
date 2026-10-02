@@ -2010,6 +2010,34 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     <>{L(" · Seuil de versement", " · Payout threshold")} <span className="tabular-nums text-nordfjord">{money(seuilVersement)}</span></>
                   )}
                 </p>
+                {/* LA CREANCE : ce qui a ete verse en trop et qu'il faut
+                    recuperer. Mireille : « we have to get back some of what
+                    was overpaid in a previous payout ».
+                    `reversed_commission` melangeait deux evenements : une
+                    commande remboursee AVANT son versement (l'argent n'est
+                    jamais parti) et une remboursee APRES (il est parti, et il
+                    est du). Seul le second cree une dette, et elle sort
+                    desormais du prochain versement. */}
+                {Number(m.creance || 0) > 0 && (
+                  <div className="mt-2 rounded-lg border border-warning/35 bg-warning/[0.06] px-3 py-2"
+                       data-testid="fiche-creance">
+                    <p className="text-[12px] text-nordfjord leading-relaxed">
+                      {L(`${money(m.creance)} versés en trop sur ${m.creance_lignes} commande(s) remboursée(s) après versement.`,
+                         `${money(m.creance)} overpaid on ${m.creance_lignes} order(s) refunded after payout.`)}
+                    </p>
+                    <p className="text-[11px] text-glacier mt-0.5 leading-relaxed">
+                      {L(`Déduit du prochain versement : ${money(m.approved_commission)} acquis − ${money(m.creance)} = ${money(m.a_verser_net)} à verser.`,
+                         `Deducted from the next payout: ${money(m.approved_commission)} earned − ${money(m.creance)} = ${money(m.a_verser_net)} to pay.`)}
+                    </p>
+                    {Number(m.creance_reportee || 0) > 0 && (
+                      <p className="text-[11px] text-warning mt-0.5 leading-relaxed"
+                         data-testid="fiche-creance-reportee">
+                        {L(`La dette dépasse l'acquis : ${money(m.creance_reportee)} se reportent sur le cycle suivant, et rien ne part ce cycle-ci.`,
+                           `The debt exceeds the earnings: ${money(m.creance_reportee)} carries to the next cycle, and nothing goes out this one.`)}
+                      </p>
+                    )}
+                  </div>
+                )}
                 {m.approved_commission > 0 && (
                   <p className="text-[11px] text-nova mt-1" data-testid="cycle-versement">
                     {seuilVersement > 0 && m.approved_commission < seuilVersement

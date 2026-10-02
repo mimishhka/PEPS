@@ -321,6 +321,22 @@ export default function DepuisLeDebut({ data, series, L, money, lang }) {
                `${money(reprise)} was on orders that ended up refunded. Commission follows the sale: when it is cancelled, it does not count — so that amount is not included above.`)}
           </p>
         )}
+
+        {/* LES DEUX REPRISES NE SONT PAS LE MÊME ÉVÉNEMENT.
+            Mireille : « the reversed commission should be an activity of its
+            own or showed differently ».
+            Remboursée AVANT le versement, l'argent n'est jamais parti : il n'y
+            a rien à récupérer, la ligne ci-dessus suffit. Remboursée APRÈS, le
+            montant était déjà dans son compte — et il sera déduit du prochain
+            versement. Confondre les deux, c'est laisser découvrir une
+            déduction sans l'avoir annoncée. */}
+        {toutLeTemps && Number(data?.creance || 0) > 0 && (
+          <p className="text-[12px] text-warning mt-2 leading-relaxed"
+             data-testid="depuis-creance">
+            {L(`Dont ${money(data.creance)} déjà versés avant le remboursement : ce montant sera déduit de votre prochain versement.`,
+               `Of which ${money(data.creance)} had already been paid out before the refund: that amount will be deducted from your next payout.`)}
+          </p>
+        )}
       </div>
     </div>
   );
