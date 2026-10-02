@@ -1,0 +1,27 @@
+# Les lectures non bornees CONNUES au 2026-10-01, jour ou la sonde est nee.
+#
+# Ce fichier est un CLIQUET, pas une permission : la sonde tolere ces
+# comptes et refuse tout ajout. Il ne se regenere pas tout seul — quand un
+# compte baisse, la sonde le dit et demande de l'abaisser ici a la main.
+# C'est ce qui l'empeche de remonter.
+#
+# Objectif : que ce fichier finisse vide, et que la sonde devienne stricte.
+
+affiliate.py|affiliate_referrals|to_list(None) : sans borne = 1
+affiliate.py|orders|ni .limit() ni to_list(n) : lecture non bornee = 1
+canada_post.py|orders|ni .limit() ni to_list(n) : lecture non bornee = 1
+mail.py|orders|ni .limit() ni to_list(n) : lecture non bornee = 1
+server.py|addresses|collection inconnue : classez-la dans CROISSANCE ou CONFIGURATION = 1
+server.py|affiliate_clicks|ni .limit() ni to_list(n) : lecture non bornee = 2
+server.py|affiliate_notifications|to_list(None) : sans borne = 1
+server.py|affiliate_payouts|_cursor_all : materialise TOUTE la collection = 1
+server.py|affiliate_payouts|ni .limit() ni to_list(n) : lecture non bornee = 2
+server.py|affiliate_referrals|ni .limit() ni to_list(n) : lecture non bornee = 1
+server.py|affiliate_referrals|to_list(None) : sans borne = 2
+server.py|checkout_compensation_failures|collection inconnue : classez-la dans CROISSANCE ou CONFIGURATION = 1
+server.py|order_messages|ni .limit() ni to_list(n) : lecture non bornee = 1
+server.py|orders|_cursor_all : materialise TOUTE la collection = 3
+server.py|orders|ni .limit() ni to_list(n) : lecture non bornee = 8
+server.py|orders|to_list(None) : sans borne = 1
+server.py|subscribers|_cursor_all : materialise TOUTE la collection = 1
+server.py|users|_cursor_all : materialise TOUTE la collection = 1

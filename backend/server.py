@@ -10070,6 +10070,40 @@ async def seed_admin_and_products():
     await db.customer_tickets.create_index([("status", 1), ("updated_at", -1)])
     # Filtrage admin par rôle (staff, affiliés, clients) — évite un scan complet users.
     await db.users.create_index("role")
+
+    # ===== ÉCHELLE : les index qui manquaient =====================
+    #
+    # MIREILLE, 01/10/2026 : « tout le site doit être conçu pour une expansion
+    # possible, quelle que soit l'information ».
+    #
+    # LE PLUS URGENT EST SUR LE CHEMIN DE CONNEXION. `magic_tokens` n'avait
+    # AUCUN index, et `find_one({"token_hash": …})` est exécuté à chaque clic
+    # sur un lien de connexion envoyé par courriel : chacun balayait la
+    # collection entière. C'est la requête la plus sensible de l'application,
+    # et celle qui se dégrade le plus vite — un lien par demande, et les
+    # demandes ne cessent jamais.
+    await db.magic_tokens.create_index("token_hash", unique=True)
+    #
+    # CE N'EST PAS UN INDEX TTL, ET C'EST DÉLIBÉRÉ. `expires_at` est stocké en
+    # CHAÎNE ISO (`(now + …).isoformat()`), comme toutes les dates posées à la
+    # création dans ce dépôt. Un TTL ne fonctionne que sur une vraie date
+    # BSON : MongoDB l'accepterait sans broncher et ne supprimerait JAMAIS
+    # rien — une correction qui a l'air faite. Le ménage reste donc celui de
+    # `_magic_cleanup`, et cet index rend son `delete_many` efficace au lieu
+    # d'un second balayage.
+    await db.magic_tokens.create_index("expires_at")
+
+    # Listes triées par date de création. Sans index, chaque ouverture
+    # d'écran trie la collection entière en mémoire.
+    await db.users.create_index("created_at")
+    await db.subscribers.create_index("created_at")
+    # `admin_audit_log` a déjà le sien — vérifié avant d'en ajouter un second.
+
+    # Les notifications d'un affilié : lues par (affiliate_id, dismissed) et
+    # triées par date. Cette collection n'avait aucun index.
+    await db.affiliate_notifications.create_index(
+        [("affiliate_id", 1), ("dismissed", 1), ("created_at", -1)])
+    # ==============================================================
     await db.coupons.create_index("code", unique=True)
     # counted_order_ids : lookup index (non-unique).
     # L'ancienne définition `unique=True, sparse=True` plantait au cancel :

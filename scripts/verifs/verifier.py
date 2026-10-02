@@ -43,6 +43,11 @@ SONDES = [
     # pas lequel est l'ancien et lequel est le nouveau. Invisible au lint, aux
     # tests et au build — ca ne se voit que dans un vrai navigateur.
     ("motsdepasse", "motsdepasse.py", False),
+    # Une lecture non bornee sur une collection qui grandit. Pose en
+    # CLIQUET : elle tolere les trente connues au jour de sa naissance et
+    # refuse tout ajout, pour que le travail de correction puisse etre
+    # decoupe sans que la sonde soit desactivee entre-temps.
+    ("echelle",     "echelle.py",     False),
 ]
 
 
