@@ -39,6 +39,10 @@ SONDES = [
     ("commentaires", "jsxcomment.py", True),
     ("imports",     "imports.py",    False),  # analyse le projet d'un bloc
     ("chaines",     "chaines.py",    False),
+    # Un champ de mot de passe sans `autoComplete` : le gestionnaire ne sait
+    # pas lequel est l'ancien et lequel est le nouveau. Invisible au lint, aux
+    # tests et au build — ca ne se voit que dans un vrai navigateur.
+    ("motsdepasse", "motsdepasse.py", False),
 ]
 
 

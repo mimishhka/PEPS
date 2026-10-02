@@ -186,7 +186,8 @@ export default function Register() {
               </div>
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
-                <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-magic-email"
+                <input type="email" required autoComplete="username"
+                  value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-magic-email"
                   className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
               </div>
               {consent}
@@ -219,12 +220,14 @@ export default function Register() {
               </div>
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
-                <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-email"
+                <input type="email" required autoComplete="username"
+                  value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-email"
                   className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
               </div>
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.password")} (≥ 8)</label>
-                <input type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="register-password"
+                <input type="password" required autoComplete="new-password"
+                  value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="register-password"
                   className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
               </div>
               {consent}

@@ -2148,14 +2148,16 @@ export default function AffiliateDashboard() {
               {!pwLess && (
                 <label className="block mb-3">
                   <span className="font-data text-xs text-glacier">{L("Mot de passe actuel", "Current password")}</span>
-                  <input type="password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })}
+                  <input type="password" autoComplete="current-password"
+                    value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })}
                     data-testid="affiliate-pw-current"
                     className="mt-1 w-full rounded-lg border border-ash px-4 py-3 font-data text-sm text-nordfjord focus:border-nova outline-none" />
                 </label>
               )}
               <label className="block mb-3">
                 <span className="font-data text-xs text-glacier">{L("Nouveau mot de passe", "New password")}</span>
-                <input type="password" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })}
+                <input type="password" autoComplete="new-password"
+                  value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })}
                   data-testid="affiliate-pw-new"
                   className="mt-1 w-full rounded-lg border border-ash px-4 py-3 font-data text-sm text-nordfjord focus:border-nova outline-none" />
                 <span className="block mt-1 text-[10px] text-glacier/80">
@@ -2165,7 +2167,8 @@ export default function AffiliateDashboard() {
               </label>
               <label className="block mb-5">
                 <span className="font-data text-xs text-glacier">{L("Confirmer le mot de passe", "Confirm password")}</span>
-                <input type="password" value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
+                <input type="password" autoComplete="new-password"
+                  value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
                   data-testid="affiliate-pw-confirm"
                   className="mt-1 w-full rounded-lg border border-ash px-4 py-3 font-data text-sm text-nordfjord focus:border-nova outline-none" />
               </label>

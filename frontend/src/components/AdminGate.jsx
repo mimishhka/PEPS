@@ -58,6 +58,7 @@ export default function AdminGate({ children }) {
         </p>
         <input
           type="password"
+          autoComplete="current-password"
           value={code}
           onChange={(e) => setCode(e.target.value)}
           autoFocus

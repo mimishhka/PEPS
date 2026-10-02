@@ -322,7 +322,8 @@ function ProfileTab({ t, user, refresh }) {
             {!pwLess && (
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
-                <input type="password" required value={emailForm.current_password}
+                <input type="password" required autoComplete="current-password"
+                  value={emailForm.current_password}
                   onChange={(e) => setEmailForm({ ...emailForm, current_password: e.target.value })} data-testid="email-change-password"
                   className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
               </div>
@@ -556,20 +557,23 @@ function SecurityTab({ t, user, logout, navigate }) {
         {!pwLess && (
           <div>
             <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
-            <input type="password" required value={pw.current_password} data-testid="password-current"
+            <input type="password" required autoComplete="current-password"
+              value={pw.current_password} data-testid="password-current"
               onChange={(e) => setPw({ ...pw, current_password: e.target.value })}
               className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
           </div>
         )}
         <div>
           <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.newPassword")}</label>
-          <input type="password" required minLength={8} value={pw.new_password} data-testid="password-new"
+          <input type="password" required minLength={8} autoComplete="new-password"
+            value={pw.new_password} data-testid="password-new"
             onChange={(e) => setPw({ ...pw, new_password: e.target.value })}
             className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
         </div>
         <div>
           <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.confirmPassword")}</label>
-          <input type="password" required minLength={8} value={pw.confirm} data-testid="password-confirm"
+          <input type="password" required minLength={8} autoComplete="new-password"
+            value={pw.confirm} data-testid="password-confirm"
             onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
             className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
         </div>
@@ -600,7 +604,8 @@ function SecurityTab({ t, user, logout, navigate }) {
             {!pwLess && (
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
-                <input type="password" required value={delPassword} data-testid="delete-account-password"
+                <input type="password" required autoComplete="current-password"
+                  value={delPassword} data-testid="delete-account-password"
                   onChange={(e) => setDelPassword(e.target.value)}
                   className="w-full border border-error px-5 py-3 bg-white text-nordfjord outline-none" style={{ borderRadius: "var(--r-m)" }} />
               </div>

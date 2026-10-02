@@ -171,7 +171,8 @@ export default function Login() {
                 </p>
                 <div>
                   <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
-                  <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-magic-email"
+                  <input type="email" required autoComplete="username"
+                    value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-magic-email"
                     className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
                 </div>
                 <button type="submit" disabled={busy} data-testid="login-magic-submit" className="w-full btn-pill btn-nova disabled:opacity-50">
@@ -190,12 +191,14 @@ export default function Login() {
               )}
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
-                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-email"
+                <input type="email" required autoComplete="username"
+                  value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-email"
                   className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
               </div>
               <div>
                 <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.password")}</label>
-                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} data-testid="login-password"
+                <input type="password" required autoComplete="current-password"
+                  value={password} onChange={(e) => setPassword(e.target.value)} data-testid="login-password"
                   className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
                 {!isAdminLogin && (
                   <div className="text-right mt-2">
