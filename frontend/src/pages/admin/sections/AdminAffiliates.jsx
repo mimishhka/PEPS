@@ -1628,6 +1628,31 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const [aliasBusy, setAliasBusy] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [customersLoading, setCustomersLoading] = useState(false);
+  /* POUR UN AUDIT, ON CHERCHE UN SOUS-ENSEMBLE.
+     « Montrez-moi toutes mes commandes remboursées » est la demande la plus
+     frequente d'un affilie qui conteste, et il fallait la lire a l'oeil dans
+     une table de cinq cents lignes. */
+  const [filtreCommission, setFiltreCommission] = useState("tous");
+  /* LE DETAIL D'UN VERSEMENT, ouvrable depuis la fiche. Mireille : « le detail
+     complet de chaque paiement ». Il existait, mais seulement depuis l'ecran
+     Paiements : repondre a « c'etait quelles commandes ? » obligeait a quitter
+     la fiche et a retrouver le versement dans une autre liste. */
+  const [versement, setVersement] = useState(null);
+  const [versementLoading, setVersementLoading] = useState(false);
+
+  const ouvrirVersement = async (payoutId) => {
+    setVersementLoading(true);
+    setVersement(null);
+    try {
+      const { data: d } = await api.get(
+        `/admin/affiliates/payouts/${payoutId}/detail`);
+      setVersement(d);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setVersementLoading(false);
+    }
+  };
   // INDISPENSABLE, et pas seulement pratique : sans ce crochet, `confirm` dans
   // ce composant designerait le `window.confirm` du navigateur. Il recevrait
   // notre objet d'options, l'afficherait « [object Object] », et aucun controle
@@ -2111,6 +2136,14 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 ...(a.closed_at
                   ? [[L("Fermé le", "Closed"), fmtDate(a.closed_at)],
                      [L("Motif", "Reason"), a.closed_reason || "-"]] : []),
+                /* LES CONDITIONS ACCEPTEES. Elles etaient dans les donnees et
+                   affichees NULLE PART — zero occurrence dans tout l'ecran.
+                   C'est pourtant la premiere piece qu'on sort quand un affilie
+                   conteste une clause : laquelle a-t-il signee, et quand. */
+                [L("Conditions acceptées", "Terms accepted"),
+                 a.terms_version
+                   ? `${a.terms_version}${a.terms_accepted_at ? ` · ${fmtDate(a.terms_accepted_at)}` : ""}`
+                   : L("jamais", "never")],
               ].map(([libelle, valeur]) => (
                 <div key={libelle}>
                   <dt className="text-[9.5px] uppercase tracking-[0.12em] text-glacier/70">{libelle}</dt>
@@ -2118,6 +2151,18 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 </div>
               ))}
             </dl>
+
+            {/* UNE REVISION NON SIGNEE SE DIT, elle ne se deduit pas.
+                Comparer deux numeros de version de tete, au moment ou quelqu'un
+                contexte une clause, c'est exactement ce qu'on rate. */}
+            {data.terms_version_required
+              && a.terms_version !== data.terms_version_required && (
+              <p className="text-[12px] text-warning mt-2 leading-relaxed"
+                 data-testid="conditions-en-attente">
+                {L(`Une révision est en attente de sa signature : il a accepté ${a.terms_version || "aucune version"}, la version en vigueur est ${data.terms_version_required}.`,
+                   `A revision is awaiting their signature: they accepted ${a.terms_version || "no version"}, the current version is ${data.terms_version_required}.`)}
+              </p>
+            )}
 
 
 
@@ -2457,35 +2502,245 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                   <Download size={11} /> {L("Exporter CSV", "Export CSV")}
                 </a>
               </div>
+              {/* LE FILTRE. Les comptes viennent des lignes chargees, pas
+                  d'un calcul separe : deux nombres qui ne concordent pas sur
+                  un ecran d'audit valent moins que pas de nombre du tout. */}
+              {data.referrals?.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2" data-testid="filtre-commissions">
+                  {[
+                    ["tous", L("Toutes", "All"), data.referrals.length],
+                    ["paid", L("Payées", "Paid"),
+                     data.referrals.filter((r) => r.status === "paid").length],
+                    ["approved", L("À verser", "To pay"),
+                     data.referrals.filter((r) => r.status === "approved").length],
+                    ["pending", L("En attente", "Pending"),
+                     data.referrals.filter((r) => r.status === "pending").length],
+                    ["reprises", L("Remboursées", "Refunded"),
+                     data.referrals.filter((r) => r.status === "reversed").length],
+                  ].filter(([cle, , n]) => cle === "tous" || n > 0)
+                   .map(([cle, libelle, n]) => (
+                    <button key={cle} onClick={() => setFiltreCommission(cle)}
+                      data-testid={`filtre-${cle}`}
+                      className={`px-2.5 h-7 rounded-full font-data text-[10px] uppercase
+                                  tracking-[0.08em] transition-colors ${
+                        filtreCommission === cle
+                          ? "bg-nordfjord text-white"
+                          : "border border-ash text-glacier hover:bg-clinical"}`}>
+                      {libelle} · {n}
+                    </button>
+                  ))}
+                </div>
+              )}
               {data.referrals?.length ? (
                 <div className="overflow-x-auto rounded-lg border border-ash">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-left text-glacier border-b border-ash">
-                        <Th>{L("Date", "Date")}</Th>
                         <Th>{L("Commande", "Order")}</Th>
+                        <Th>{L("Passée le", "Placed")}</Th>
+                        {/* LA DATE D'APPROBATION, et non seulement celle de la
+                            commande. C'est elle qui rend la commission payable
+                            et qui decide de son mois : « vous dites septembre,
+                            mais ma commande est du 29 aout » est une question
+                            qu'on ne pouvait pas trancher ici. */}
+                        <Th>{L("Approuvée le", "Approved")}</Th>
                         <Th>{L("Base", "Base")}</Th>
                         <Th>{L("Commission", "Commission")}</Th>
-                        <Th>{L("Statut", "Status")}</Th>
+                        <Th>{L("Sort", "Outcome")}</Th>
                       </tr>
                     </thead>
                     <tbody>
-                      {data.referrals.map((r) => (
-                        <tr key={r.id} className="border-b border-ash/60">
-                          <td className="px-3 py-2 text-glacier tabular-nums">{(r.created_at || "").slice(0, 10) || "-"}</td>
+                      {data.referrals
+                        .filter((r) => filtreCommission === "tous"
+                          || (filtreCommission === "reprises" && r.status === "reversed")
+                          || r.status === filtreCommission)
+                        .map((r) => {
+                        const reprise = r.status === "reversed";
+                        const versement = (data.payouts || []).find((p) => p.id === r.payout_id);
+                        return (
+                        <tr key={r.id}
+                            className={`border-b border-ash/60 ${reprise ? "bg-warning/[0.05]" : ""}`}
+                            data-testid={`commission-${r.order_number || r.id}`}>
                           <td className="px-3 py-2 text-nordfjord">{r.order_number || "-"}</td>
-                          <td className="px-3 py-2">{money(r.base_amount)}</td>
-                          <td className="px-3 py-2">{money(r.commission_amount)}</td>
-                          <td className="px-3 py-2"><StatutCommission statut={r.status} L={L} lang={lang} />
+                          <td className="px-3 py-2 text-glacier tabular-nums">{(r.created_at || "").slice(0, 10) || "-"}</td>
+                          <td className="px-3 py-2 text-glacier tabular-nums">{(r.approved_at || "").slice(0, 10) || "-"}</td>
+                          <td className="px-3 py-2 tabular-nums">{money(r.base_amount)}</td>
+                          <td className={`px-3 py-2 tabular-nums ${reprise ? "text-glacier line-through" : ""}`}>
+                            {money(r.commission_amount)}
+                          </td>
+                          <td className="px-3 py-2">
+                            <StatutCommission statut={r.status} L={L} lang={lang} />
                             {r.excluded_reason ? ` · ${r.excluded_reason}` : ""}
                             {r.self_order && <span className="ml-1 inline-block text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-nova/15 text-nova">{L("auto-achat", "self-order")}</span>}
+                            {/* LE VERSEMENT QUI L'A PAYEE. Le lien existait
+                                dans les donnees (`payout_id`) et n'etait
+                                affiche nulle part : « quand ai-je ete paye pour
+                                cette commande » obligeait a comparer des dates
+                                de tete entre deux tableaux. */}
+                            {versement && (
+                              <button onClick={() => ouvrirVersement(versement.id)}
+                                className="ml-1 text-[10px] text-nova hover:underline"
+                                data-testid={`commission-versement-${r.order_number || r.id}`}>
+                                {L("versé", "paid")}
+                                {versement.paid_at ? ` ${jourLisible(versement.paid_at, lang)}` : ""}
+                              </button>
+                            )}
+                            {/* LE REMBOURSEMENT, dit en entier : quand, et si
+                                l'argent etait deja parti. La pastille disait
+                                « récupérée » et s'arretait la. */}
+                            {reprise && (
+                              <span className="block text-[10px] text-warning mt-0.5"
+                                    data-testid={`commission-reprise-${r.order_number || r.id}`}>
+                                {r.reversed_at
+                                  ? L(`remboursée le ${jourLisible(r.reversed_at, lang)}`,
+                                      `refunded ${jourLisible(r.reversed_at, lang)}`)
+                                  : L("remboursée", "refunded")}
+                                {r.reversed_after_payout
+                                  && L(" · après versement", " · after payout")}
+                                {r.clawback_pending
+                                  && L(` · ${money(r.clawback_amount)} à récupérer`,
+                                       ` · ${money(r.clawback_amount)} to claw back`)}
+                              </span>
+                            )}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               ) : <p className="text-sm text-glacier">{L("Aucune commande.", "No orders.")}</p>}
+            </div>
+          </div>
+        )}
+
+        {/* LE DETAIL COMPLET D'UN VERSEMENT, sans quitter la fiche.
+            Mireille : « le détail complet de chaque paiement ». Il existait,
+            mais seulement depuis l'écran Paiements : répondre à « ce versement,
+            c'était quelles commandes ? » obligeait à quitter le dossier de
+            l'affilié et à retrouver le versement dans une autre liste. On perd
+            le fil d'un audit en changeant d'écran. */}
+        {(versementLoading || versement) && (
+          <div className="fixed inset-0 flex items-center justify-center px-4 py-6"
+               style={{ zIndex: "var(--z-modal)", background: "rgba(11,46,79,.72)" }}
+               onClick={() => { setVersement(null); setVersementLoading(false); }}
+               data-testid="fiche-versement">
+            <div className="w-full max-w-2xl max-h-full bg-white rounded-xl border border-ash
+                            flex flex-col overflow-hidden shadow-2xl"
+                 role="dialog" aria-modal="true"
+                 onClick={(e) => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-ash flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-data text-[11px] uppercase tracking-[0.2em] text-nova">
+                    {L("Détail du versement", "Payout detail")}
+                  </p>
+                  {versement?.payout && (
+                    <>
+                      <p className="font-display text-lg font-bold text-nordfjord tabular-nums mt-0.5">
+                        {money(versement.payout_amount_cad)} CAD
+                      </p>
+                      <p className="text-[11px] text-glacier">
+                        {periodeLisible(versement.payout.periode_couverte, lang,
+                                        moisLisible(versement.payout.period, lang))}
+                        {versement.payout.paid_at
+                          && ` · ${L("payé le", "paid")} ${jourLisible(versement.payout.paid_at, lang)}`}
+                      </p>
+                      {versement.payout.reference && (
+                        <p className="font-data text-[10px] text-glacier/80 mt-0.5 break-all">
+                          {L("réf ", "ref ")}
+                          <code className="select-all">{versement.payout.reference}</code>
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+                <button onClick={() => { setVersement(null); setVersementLoading(false); }}
+                        className="shrink-0 -mr-1 -mt-1 w-10 h-10 flex items-center justify-center
+                                   rounded-full text-glacier hover:text-nordfjord hover:bg-clinical
+                                   transition-colors active:scale-[0.97]"
+                        style={{ touchAction: "manipulation" }}
+                        aria-label={L("Fermer", "Close")}
+                        data-testid="fiche-versement-fermer">
+                  <span aria-hidden="true" className="text-xl leading-none">×</span>
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-5 py-4"
+                   style={{ overscrollBehavior: "contain" }}>
+                {versementLoading && (
+                  <p className="text-sm text-glacier py-8 text-center">
+                    {L("Chargement…", "Loading…")}
+                  </p>
+                )}
+                {versement && !versement.lines?.length && (
+                  <p className="text-sm text-glacier py-8 text-center">
+                    {L("Aucune ligne rattachée à ce versement.",
+                       "No lines attached to this payout.")}
+                  </p>
+                )}
+                {versement?.lines?.length > 0 && (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-glacier border-b border-ash">
+                        <Th>{L("Commande", "Order")}</Th>
+                        <Th>{L("Base", "Base")}</Th>
+                        <Th>{L("Commission", "Commission")}</Th>
+                        <Th>{L("Sort", "Outcome")}</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {versement.lines.map((l) => {
+                        const reprise = l.status === "reversed";
+                        return (
+                          <tr key={l.id}
+                              className={`border-b border-ash/60 ${reprise ? "bg-warning/[0.05]" : ""}`}
+                              data-testid={`versement-ligne-${l.order_number || l.id}`}>
+                            <td className="px-3 py-2 text-nordfjord">{l.order_number || "-"}</td>
+                            <td className="px-3 py-2 tabular-nums">{money(l.base_amount)}</td>
+                            <td className={`px-3 py-2 tabular-nums ${reprise ? "text-glacier line-through" : ""}`}>
+                              {money(l.commission_amount)}
+                            </td>
+                            <td className="px-3 py-2 text-[11px]">
+                              {reprise ? (
+                                <span className="text-warning">
+                                  {L("remboursée", "refunded")}
+                                  {l.reversed_at && ` ${jourLisible(l.reversed_at, lang)}`}
+                                  {l.reversed_after_payout
+                                    && L(" · après versement", " · after payout")}
+                                </span>
+                              ) : (
+                                <span className="text-glacier">{L("payée", "paid")}</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {versement?.lines?.length > 0 && (
+                <div className="px-5 py-3 border-t border-ash flex items-baseline justify-between gap-3">
+                  <span className="font-data text-[10px] uppercase tracking-[0.14em] text-glacier">
+                    {L(`${versement.lines_count} commande(s)`,
+                       `${versement.lines_count} order(s)`)}
+                  </span>
+                  <span className="font-display font-bold text-nordfjord tabular-nums">
+                    {money(versement.lines_sum_cad)} CAD
+                  </span>
+                </div>
+              )}
+              {/* L'ECART EST MONTRE, PAS TU. Il doit valoir zéro : une reprise
+                  change le statut d'une ligne, jamais son montant. S'il ne vaut
+                  pas zéro, c'est la première chose à expliquer dans un audit. */}
+              {versement && Math.abs(Number(versement.difference || 0)) >= 0.01 && (
+                <p className="px-5 pb-3 text-[11px] text-warning"
+                   data-testid="fiche-versement-ecart">
+                  {L(`Écart de ${money(versement.difference)} entre les lignes et le montant versé.`,
+                     `${money(versement.difference)} gap between the lines and the amount paid.`)}
+                </p>
+              )}
             </div>
           </div>
         )}

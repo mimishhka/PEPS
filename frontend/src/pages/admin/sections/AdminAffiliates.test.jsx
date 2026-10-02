@@ -684,3 +684,178 @@ describe("l'invitation d'un affilie", () => {
     expect(screen.getByTestId("invite-submit")).toBeInTheDocument();
   });
 });
+
+// ===========================================================================
+// LA FICHE COMME PIECE D'AUDIT
+//
+// MIREILLE, 02/10/2026 : « je veux que tu optimises la fiche de l'affilié [...]
+// il faut penser à toutes les questions que pourrait me poser un affilié s'il
+// demande un audit de son compte, de ses paiements, du détail complet de chaque
+// paiement, d'absolument tout ».
+//
+// Toutes les données étaient DÉJÀ dans la réponse du serveur — la fiche renvoie
+// le document entier de l'affilié et de chaque commission. Rien ne manquait en
+// base : c'est l'écran qui n'en montrait qu'une partie, et qui laissait donc
+// sans réponse des questions auxquelles les données répondaient.
+// ===========================================================================
+
+describe("AdminAffiliates — répondre à un audit", () => {
+  const ouvrirFiche = async () => {
+    render(<AdminAffiliates />);
+    const ligne = (await screen.findByText(/4 commandes/)).closest("button");
+    await userEvent.click(ligne);
+    await screen.findByTestId("affiliate-figures");
+  };
+
+  /* Les commissions d'un audit : une payée et rattachée à un versement, une
+     remboursée APRÈS que l'argent soit parti. */
+  const COMMISSIONS_AUDIT = [
+    { id: "a-1", order_number: "FN-1001", created_at: "2026-08-29T10:00:00",
+      approved_at: "2026-09-05T10:00:00", base_amount: 500, commission_amount: 60,
+      status: "paid", payout_id: "pay-1" },
+    { id: "a-2", order_number: "FN-1002", created_at: "2026-09-10T10:00:00",
+      approved_at: "2026-09-17T10:00:00", base_amount: 687.5, commission_amount: 82.5,
+      status: "reversed", payout_id: "pay-1",
+      reversed_at: "2026-10-28T09:00:00", reversed_after_payout: true,
+      clawback_pending: true, clawback_amount: 82.5 },
+  ];
+
+  const VERSEMENTS = [
+    { id: "pay-1", period: "2026-10", amount_cad: 142.5, currency: "usdt",
+      status: "paid_manual", reference: "0xabc", paid_at: "2026-10-03T14:00:00",
+      periode_couverte: { debut: "2026-09", fin: "2026-09", multi: false } },
+  ];
+
+  const fiche = (extra = {}) => {
+    api.get.mockImplementation(async (url) => {
+      if (url === "/admin/affiliates/overview") return { data: APERCU };
+      if (url === "/admin/affiliates") return { data: [AFFILIE] };
+      if (url === "/admin/affiliates/risk") return { data: null };
+      if (url.includes("/payouts/pay-1/detail")) {
+        return { data: {
+          payout: VERSEMENTS[0], lines: COMMISSIONS_AUDIT,
+          lines_count: 2, lines_sum_cad: 142.5,
+          payout_amount_cad: 142.5, difference: 0,
+        } };
+      }
+      if (url.startsWith("/admin/affiliates/aff-1")) {
+        return { data: {
+          affiliate: { ...AFFILIE, terms_version: "2026-08-25b",
+                       terms_accepted_at: "2026-09-14T11:00:00", ...extra.affiliate },
+          terms_version_required: extra.requise ?? "2026-08-25b",
+          referrals: COMMISSIONS_AUDIT, payouts: VERSEMENTS,
+          metrics: { cumulative_revenue: 1187.5, rolling12_revenue: 1187.5,
+                     pending_commission: 0, approved_commission: 0,
+                     paid_commission: 142.5, reversed_commission: 82.5,
+                     excluded_commission: 0, quarter_revenue: 0,
+                     commission_rate: 0.12, payout_min_cad: 50 },
+          series: [], last_notice: null } };
+      }
+      return { data: {} };
+    });
+  };
+
+  it("dit QUELLES conditions il a acceptées, et quand", async () => {
+    /* Zéro occurrence de `terms_version` dans tout l'écran avant : la première
+     * pièce qu'on sort quand un affilié conteste une clause n'était nulle
+     * part, alors qu'elle arrivait déjà du serveur. */
+    fiche();
+    await ouvrirFiche();
+
+    const dossier = screen.getByTestId("affiliate-detail-modal");
+    expect(dossier).toHaveTextContent("2026-08-25b");
+    expect(dossier).toHaveTextContent(/conditions accept/i);
+  });
+
+  it("ANNONCE qu'une révision attend sa signature", async () => {
+    // Comparer deux numéros de version de tête, au moment où quelqu'un
+    // conteste une clause, c'est exactement ce qu'on rate.
+    fiche({ requise: "2026-10-01a" });
+    await ouvrirFiche();
+
+    const avis = await screen.findByTestId("conditions-en-attente");
+    expect(avis).toHaveTextContent("2026-08-25b");
+    expect(avis).toHaveTextContent("2026-10-01a");
+  });
+
+  it("ne crie pas quand la version signée est la bonne", async () => {
+    fiche();
+    await ouvrirFiche();
+
+    expect(screen.queryByTestId("conditions-en-attente")).not.toBeInTheDocument();
+  });
+
+  it("montre la date d'APPROBATION, et pas seulement celle de la commande", async () => {
+    /* « Vous dites septembre, mais ma commande est du 29 août » : c'est
+     * l'approbation qui rend la commission payable et qui décide de son mois.
+     * La table ne montrait que `created_at`. */
+    fiche();
+    await ouvrirFiche();
+
+    const ligne = screen.getByTestId("commission-FN-1001");
+    expect(ligne).toHaveTextContent("2026-08-29");
+    expect(ligne).toHaveTextContent("2026-09-05");
+  });
+
+  it("DIT TOUT d'une commande remboursée : quand, et si l'argent était parti", async () => {
+    /* La pastille disait « récupérée » et s'arrêtait là. Pour un audit, la
+     * question est : quand, et restait-il quelque chose à récupérer. */
+    fiche();
+    await ouvrirFiche();
+
+    const reprise = screen.getByTestId("commission-reprise-FN-1002");
+    expect(reprise).toHaveTextContent(/rembours/i);
+    expect(reprise).toHaveTextContent(/28/);
+    expect(reprise).toHaveTextContent(/après versement/i);
+    expect(reprise).toHaveTextContent("82.50");
+  });
+
+  it("relie chaque commission AU VERSEMENT qui l'a payée", async () => {
+    /* `payout_id` existait dans les données et n'était affiché nulle part :
+     * « quand ai-je été payé pour cette commande » obligeait à comparer des
+     * dates de tête entre deux tableaux. */
+    fiche();
+    await ouvrirFiche();
+
+    expect(screen.getByTestId("commission-versement-FN-1001")).toBeInTheDocument();
+  });
+
+  it("OUVRE LE DÉTAIL COMPLET d'un versement sans quitter la fiche", async () => {
+    // « Le détail complet de chaque paiement ». Il existait, mais seulement
+    // depuis l'écran Paiements : on perd le fil d'un audit en changeant d'écran.
+    fiche();
+    await ouvrirFiche();
+
+    await userEvent.click(screen.getByTestId("commission-versement-FN-1001"));
+
+    const panneau = await screen.findByTestId("fiche-versement");
+    expect(panneau).toHaveTextContent("142.50");
+    expect(panneau).toHaveTextContent("0xabc");
+    expect(screen.getByTestId("versement-ligne-FN-1001")).toBeInTheDocument();
+    expect(screen.getByTestId("versement-ligne-FN-1002"))
+      .toHaveTextContent(/rembours/i);
+  });
+
+  it("laisse filtrer sur ce qu'on cherche vraiment", async () => {
+    /* « Montrez-moi toutes mes commandes remboursées » est la demande la plus
+     * fréquente d'un affilié qui conteste, et il fallait la lire à l'œil dans
+     * une table de cinq cents lignes. */
+    fiche();
+    await ouvrirFiche();
+
+    await userEvent.click(screen.getByTestId("filtre-reprises"));
+
+    expect(screen.getByTestId("commission-FN-1002")).toBeInTheDocument();
+    expect(screen.queryByTestId("commission-FN-1001")).not.toBeInTheDocument();
+  });
+
+  it("les compteurs du filtre viennent des lignes affichées", async () => {
+    // Deux nombres qui ne concordent pas sur un écran d'audit valent moins
+    // que pas de nombre du tout.
+    fiche();
+    await ouvrirFiche();
+
+    expect(screen.getByTestId("filtre-tous")).toHaveTextContent("2");
+    expect(screen.getByTestId("filtre-reprises")).toHaveTextContent("1");
+  });
+});

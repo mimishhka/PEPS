@@ -14456,6 +14456,13 @@ async def admin_affiliate_detail(affiliate_id: str,
     # l'affilié nomment le même mois. Une seule requête pour la liste.
     await _attacher_periode_couverte(payouts)
     return {"affiliate": aff, "metrics": metrics,
+            # LA VERSION ATTENDUE DES CONDITIONS.
+            #
+            # La fiche portait `terms_version` — celle que l'affilie a signee —
+            # sans jamais la comparer a celle en vigueur. On ne pouvait donc
+            # pas repondre a « a-t-il accepte la revision ? », qui est la
+            # premiere question d'un litige sur une clause.
+            "terms_version_required": AFFILIATE_TERMS_VERSION,
             "referrals": referrals,
             # Le total EXACT, pour que l'ecran puisse dire « 50 sur 12 430 »
             # au lieu de laisser croire qu'il montre tout.
