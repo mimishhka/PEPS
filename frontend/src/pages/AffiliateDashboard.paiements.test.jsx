@@ -42,9 +42,11 @@ jest.mock("../contexts/LanguageContext", () => ({ useLang: () => ({ lang: "fr", 
 jest.mock("../hooks/useDocumentHead", () => ({ __esModule: true, default: () => {} }));
 
 let mockFiche = null;
+let mockErreur = null;
 jest.mock("../hooks/useAffiliate", () => ({
   __esModule: true,
-  default: () => ({ affiliate: mockFiche, loading: false, error: null, mutate: jest.fn() }),
+  default: () => ({ affiliate: mockFiche, loading: false, error: mockErreur,
+                    mutate: jest.fn() }),
 }));
 jest.mock("../hooks/useChartColors", () => ({ __esModule: true, default: () => ({}) }));
 jest.mock("../components/ThemeToggle", () => ({ __esModule: true, default: () => null }));
@@ -142,6 +144,7 @@ const ouvrir = async (options) => {
 beforeEach(() => {
   jest.clearAllMocks();
   window.localStorage.clear();
+  mockErreur = null;
 });
 
 jest.setTimeout(30000);
@@ -632,5 +635,150 @@ describe("la créance sur le prochain versement", () => {
 
     expect(screen.queryByTestId("cycle-creance")).not.toBeInTheDocument();
     expect(screen.queryByTestId("cycle-creance-reportee")).not.toBeInTheDocument();
+  });
+});
+
+// ===========================================================================
+// LES ÉTATS QUI S'AFFICHAIENT COMME UN AUTRE
+//
+// Relevés en repassant en revue tous les états possibles d'un compte affilié
+// et de sa fiche, le 02/10/2026. Chacun existait dans la base, et l'écran en
+// montrait un autre.
+// ===========================================================================
+
+describe("un dossier FERMÉ", () => {
+  const refus = (code) => {
+    mockErreur = { response: { status: 403, data: { detail: { code } } } };
+  };
+
+  test("LE DÉFAUT : il lisait « Accès sur invitation »", async () => {
+    /* Le programme disait à quelqu'un qu'il venait de fermer qu'il n'avait
+     * jamais été invité. Un dossier ne se ferme que depuis « suspendu » ou
+     * « invité » : depuis « suspendu », la personne a un compte, se connecte,
+     * et lit ce message. */
+    refus("closed");
+    brancher();
+    render(<AffiliateDashboard />);
+
+    expect(await screen.findByTestId("affiliate-closed")).toBeInTheDocument();
+    expect(screen.queryByTestId("affiliate-not-member")).not.toBeInTheDocument();
+  });
+
+  test("et il affirme que tout a été payé, parce que c'est vrai", async () => {
+    /* La fermeture est REFUSÉE tant qu'il reste des commissions non versées.
+     * On peut donc l'affirmer sans réserve — et c'est exactement la question
+     * que se pose quelqu'un dont le dossier vient de fermer. */
+    refus("closed");
+    brancher();
+    render(<AffiliateDashboard />);
+
+    const ecran = await screen.findByTestId("affiliate-closed");
+    expect(ecran).toHaveTextContent(/vers/i);
+    expect(screen.getByTestId("closed-support")).toBeInTheDocument();
+    expect(screen.getByTestId("closed-logout")).toBeInTheDocument();
+  });
+
+  test("un compte SUSPENDU garde son propre écran", async () => {
+    // La distinction qui existait déjà ne doit pas avoir été perdue.
+    refus("suspended");
+    brancher();
+    render(<AffiliateDashboard />);
+
+    expect(await screen.findByTestId("affiliate-suspended")).toBeInTheDocument();
+    expect(screen.queryByTestId("affiliate-closed")).not.toBeInTheDocument();
+  });
+
+  test("et un vrai inconnu lit toujours « programme privé »", async () => {
+    mockErreur = { response: { status: 403, data: { detail: "Not an affiliate" } } };
+    brancher();
+    render(<AffiliateDashboard />);
+
+    expect(await screen.findByTestId("affiliate-not-member")).toBeInTheDocument();
+    expect(screen.queryByTestId("affiliate-closed")).not.toBeInTheDocument();
+  });
+});
+
+describe("un versement ÉCHOUÉ", () => {
+  test("dit où est parti l'argent, au lieu de le laisser deviner", async () => {
+    /* L'échec remet `payout_id` à None sur les lignes approuvées : elles
+     * repartent dans le cycle suivant. Sans cette phrase, l'affilié voyait un
+     * versement « en vérification » ET le même montant recompté dans son
+     * prochain cycle — deux fois le même argent à l'écran, ce qui ressemble à
+     * une erreur même quand il n'y en a pas. */
+    await ouvrir({ versements: [{ ...VERSEMENT_PAYE, status: "failed",
+                                  paid_at: null }] });
+
+    const note = await screen.findAllByTestId("payout-rendu-au-cycle");
+    expect(note.length).toBeGreaterThan(0);
+    expect(note[0]).toHaveTextContent(/prochain versement/i);
+    expect(note[0]).toHaveTextContent(/perdu/i);
+  });
+
+  test("un versement payé n'affiche rien de tel", async () => {
+    await ouvrir();
+
+    expect(screen.queryByTestId("payout-rendu-au-cycle")).not.toBeInTheDocument();
+  });
+
+  test("un versement en vérification non plus — ses commissions sont ENCORE là", async () => {
+    /* `review` et `failed` partagent le libellé « en vérification », mais pas
+     * la conséquence : un versement en revue garde ses commissions
+     * rattachées, un humain doit trancher. Promettre qu'elles sont reparties
+     * serait faux. */
+    await ouvrir({ versements: [{ ...VERSEMENT_PAYE, status: "review",
+                                  paid_at: null }] });
+
+    await screen.findByTestId("affiliate-payments");
+    expect(screen.queryByTestId("payout-rendu-au-cycle")).not.toBeInTheDocument();
+  });
+});
+
+describe("l'adresse de paiement manquante", () => {
+  const CYCLE_DU = {
+    period: "2026-09", current_period: "2026-10", due_now: 250.0,
+    acquis: 250.0, creance: 0, creance_reportee: 0, current_cycle: 40,
+    due_by: "2026-10-06T04:00:00Z", days_left: 4, overdue: false,
+  };
+
+  test("LE DÉFAUT : le versement était bloqué en silence", async () => {
+    /* L'envoi crée le versement puis le saute — « missing address or
+     * unsupported currency » — et l'affilié lisait « En cours »
+     * indéfiniment. La visite guidée l'explique UNE fois, au tout début ;
+     * après, plus rien. L'administration, elle, a un compteur
+     * `no_payout_address` : la seule personne qui peut régler le problème
+     * était la seule à ne pas le savoir. */
+    await ouvrir({ fiche: { ...FICHE, payout_cycle: CYCLE_DU,
+                            payout_address: "" } });
+
+    const bloc = await screen.findByTestId("cycle-sans-adresse");
+    expect(bloc).toHaveTextContent(/adresse de paiement/i);
+    expect(screen.getByTestId("cycle-aller-reglages")).toBeInTheDocument();
+  });
+
+  test("il dit que rien n'est perdu, parce que rien ne l'est", async () => {
+    await ouvrir({ fiche: { ...FICHE, payout_cycle: CYCLE_DU,
+                            payout_address: "" } });
+
+    expect(await screen.findByTestId("cycle-sans-adresse"))
+      .toHaveTextContent(/acquises/i);
+  });
+
+  test("avec une adresse, rien n'apparaît", async () => {
+    await ouvrir({ fiche: { ...FICHE, payout_cycle: CYCLE_DU,
+                            payout_address: "0xabc123" } });
+
+    await screen.findByTestId("cycle-versement");
+    expect(screen.queryByTestId("cycle-sans-adresse")).not.toBeInTheDocument();
+  });
+
+  test("SANS RIEN À VERSER, on se tait : le bruit fait ignorer le signal", async () => {
+    /* Annoncer « ajoutez votre adresse » à quelqu'un qui n'a encore rien
+     * gagné est du bruit — et le bruit fait ignorer l'avertissement le jour
+     * où il compte vraiment. */
+    await ouvrir({ fiche: { ...FICHE, payout_address: "",
+                            payout_cycle: { ...CYCLE_DU, due_now: 0 } } });
+
+    await screen.findByTestId("cycle-versement");
+    expect(screen.queryByTestId("cycle-sans-adresse")).not.toBeInTheDocument();
   });
 });

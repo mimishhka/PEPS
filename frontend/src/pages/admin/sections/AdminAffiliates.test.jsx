@@ -15,7 +15,7 @@
 //
 // Ni le lint ni le build ni les tests backend ne voyaient l'un ou l'autre. Il a
 // fallu ouvrir la page et cliquer.
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import AdminAffiliates from "./AdminAffiliates";
@@ -744,7 +744,7 @@ describe("AdminAffiliates — répondre à un audit", () => {
           affiliate: { ...AFFILIE, terms_version: "2026-08-25b",
                        terms_accepted_at: "2026-09-14T11:00:00", ...extra.affiliate },
           terms_version_required: extra.requise ?? "2026-08-25b",
-          referrals: COMMISSIONS_AUDIT, payouts: VERSEMENTS,
+          referrals: COMMISSIONS_AUDIT, payouts: extra.payouts || VERSEMENTS,
           metrics: { cumulative_revenue: 1187.5, rolling12_revenue: 1187.5,
                      pending_commission: 0, approved_commission: 0,
                      paid_commission: 142.5, reversed_commission: 82.5,
@@ -877,6 +877,94 @@ describe("AdminAffiliates — répondre à un audit", () => {
 
     expect(screen.queryByTestId("fiche-versement-creance")).not.toBeInTheDocument();
     expect(screen.queryByTestId("fiche-versement-ecart")).not.toBeInTheDocument();
+  });
+
+
+  // -------------------------------------------------------------------------
+  // LE STATUT D'UN VERSEMENT, DANS LA FICHE
+  //
+  // Il s'affichait en JETON BRUT :
+  //     {p.status === "paid_manual" ? L("Payé (manuel)") : p.status}
+  // Donc `ready`, `failed`, `review`, `dispatching`, `queued_manual` tels
+  // quels — en anglais, dans une interface française — et une seule couleur
+  // orange pour tout ce qui n'était pas payé : un versement ÉCHOUÉ s'y lisait
+  // comme un versement en traitement.
+  //
+  // Le vocabulaire complet existait déjà dans l'écran Paiements. Il est
+  // maintenant partagé (`lib/statutVersement.js`).
+  //
+  // MIREILLE, 01/10/2026 : « Affiliate endpoint in admin some data is missing
+  // and of just not well built — same for payout the history and down it is
+  // confusing ». C'était ça, littéralement.
+  // -------------------------------------------------------------------------
+
+  const avecVersement = (status) => ({
+    payouts: [{ id: "pay-1", period: "2026-10", amount_cad: 142.5,
+                currency: "usdt", status, reference: "0xabc",
+                periode_couverte: { debut: "2026-09", fin: "2026-09",
+                                    multi: false } }],
+  });
+
+  it("LE DÉFAUT : plus aucun jeton anglais brut dans la fiche", async () => {
+    for (const brut of ["ready", "failed", "review", "dispatching",
+                        "queued_manual", "creating", "processing"]) {
+      fiche(avecVersement(brut));
+      await ouvrirFiche();
+
+      const badge = screen.getByTestId("fiche-statut-versement-pay-1");
+      expect(badge.textContent.trim()).not.toBe(brut);
+      expect(badge.textContent.trim()).toBeTruthy();
+
+      cleanup();
+      jest.clearAllMocks();
+    }
+  });
+
+  it("un versement ÉCHOUÉ est rouge, pas orange", async () => {
+    /* La couleur était binaire : vert si payé, orange pour tout le reste. Un
+     * échec se lisait donc comme un traitement en cours — et c'est la seule
+     * ligne de cet écran qui demande un geste. */
+    fiche(avecVersement("failed"));
+    await ouvrirFiche();
+
+    const badge = screen.getByTestId("fiche-statut-versement-pay-1");
+    expect(badge.textContent).toMatch(/chou/i);
+    expect(badge.className).toMatch(/error/);
+  });
+
+  it("et un versement en traitement ne l'est pas", async () => {
+    fiche(avecVersement("processing"));
+    await ouvrirFiche();
+
+    const badge = screen.getByTestId("fiche-statut-versement-pay-1");
+    expect(badge.className).not.toMatch(/error/);
+  });
+
+  it("les statuts sont nommés par le GESTE qu'ils demandent", async () => {
+    /* « 2FA requis » et « à payer à la main » ne se traitent pas pareil :
+     * c'est ce que l'opératrice doit lire, pas le nom de la variable. */
+    fiche(avecVersement("creating"));
+    await ouvrirFiche();
+    expect(screen.getByTestId("fiche-statut-versement-pay-1"))
+      .toHaveTextContent("2FA");
+
+    cleanup();
+    jest.clearAllMocks();
+
+    fiche(avecVersement("queued_manual"));
+    await ouvrirFiche();
+    expect(screen.getByTestId("fiche-statut-versement-pay-1"))
+      .toHaveTextContent(/main/i);
+  });
+
+  it("un versement payé reste vert et lisible", async () => {
+    // La seule chose que l'écran faisait bien ne doit pas avoir été perdue.
+    fiche();
+    await ouvrirFiche();
+
+    const badge = screen.getByTestId("fiche-statut-versement-pay-1");
+    expect(badge).toHaveTextContent(/manuel/i);
+    expect(badge.className).toMatch(/success/);
   });
 
   it("laisse filtrer sur ce qu'on cherche vraiment", async () => {

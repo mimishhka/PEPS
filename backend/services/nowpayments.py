@@ -637,14 +637,15 @@ async def nowpayments_payout_ipn(request: Request):
         # `payout_id`, elles restaient rattachees a un versement mort : le
         # generateur filtre sur `payout_id: None` et ne les aurait jamais
         # reprises. L'argent du etait immobilise sans qu'aucun ecran ne le dise.
+        #
+        # Le geste est maintenant partage avec les deux echecs du niveau
+        # requete, qui ne le faisaient PAS : la regle etait ecrite ici seule,
+        # et deux autres chemins laissaient des commissions orphelines.
         await s.db.affiliate_payouts.update_many(
             {"id": {"$in": ids}},
             {"$set": {"status": "failed", "np_status": np_status, "updated_at": now}},
         )
-        await s.db.affiliate_referrals.update_many(
-            {"payout_id": {"$in": ids}, "status": "approved"},
-            {"$set": {"payout_id": None}},
-        )
+        await s._liberer_commissions_du_versement(ids)
     else:
         await s.db.affiliate_payouts.update_many(
             {"id": {"$in": ids}},

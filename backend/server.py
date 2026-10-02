@@ -11554,6 +11554,23 @@ async def get_current_affiliate(request: Request) -> dict:
         {"_id": 0},
     )
     if not aff:
+        # LE CHEMIN NORMAL N'A PAS CHANGE : une seule requete, filtree. Ce
+        # second appel ne se produit QUE sur le refus, donc jamais sur une
+        # requete servie -- un dossier ferme est rare, et le cout de le nommer
+        # correctement ne doit pas peser sur les autres.
+        #
+        # Sans lui, un dossier FERME lisait « Acces sur invitation » : le
+        # programme disait a quelqu'un qu'il venait de fermer qu'il n'avait
+        # jamais ete invite. Un dossier ne se ferme que depuis « suspended »
+        # ou « invited » ; depuis « suspended », la personne a un compte et
+        # peut donc se connecter et lire ce message.
+        ferme = await db.affiliates.find_one(
+            {"user_id": user["id"], "status": "closed"}, {"_id": 0, "id": 1})
+        if ferme:
+            raise HTTPException(
+                status_code=403,
+                detail={"message": "Affiliate account closed", "code": "closed"},
+            )
         raise HTTPException(403, "Not an affiliate")
     if aff.get("status") == "suspended":
         # Le front a besoin de savoir POURQUOI on le refuse : un compte
@@ -12760,6 +12777,44 @@ async def _solder_creance(lignes: list, budget: float,
             solde = round(solde + restant, 2)
             restant = 0.0
     return solde
+
+
+async def _liberer_commissions_du_versement(payout_ids) -> int:
+    """Detache les commissions d'un versement MORT, pour que le prochain run
+    les reprenne. Rend le nombre de lignes liberees.
+
+    POURQUOI CE GESTE EXISTE, et pourquoi il est partage.
+
+    Le generateur ne selectionne que `{"status": "approved", "payout_id":
+    None}`. Une commission rattachee a un versement echoue reste donc
+    `approved` avec un `payout_id` qui ne menera jamais nulle part : aucun run
+    futur ne la verra, et l'affilie est creancier d'une somme que rien ne
+    paiera. Aucun ecran ne le dit, et aucun rattrapage ne balaye ce cas.
+
+    Le webhook le faisait deja, avec le bon commentaire. Les deux echecs du
+    niveau requete ne le faisaient pas -- la lecon etait ecrite a un endroit et
+    pas appliquee aux deux autres. D'ou cette fonction : le prochain chemin
+    d'echec appellera la meme, ou n'existera pas.
+
+    SEULES LES LIGNES `approved` SONT LIBEREES. Une ligne deja `paid` a ete
+    reglee par ailleurs (reprise d'un versement en double, regularisation
+    manuelle) et la detacher la rendrait payable une seconde fois. Une ligne
+    `reversed` n'a plus rien a verser.
+    """
+    ids = [payout_ids] if isinstance(payout_ids, str) else list(payout_ids)
+    if not ids:
+        return 0
+    res = await db.affiliate_referrals.update_many(
+        {"payout_id": {"$in": ids}, "status": "approved"},
+        {"$set": {"payout_id": None}},
+    )
+    liberees = int(getattr(res, "modified_count", 0) or 0)
+    if liberees:
+        logging.warning(
+            "[payouts] versement(s) %s en echec : %d commission(s) rendues au "
+            "prochain cycle", ",".join(ids), liberees,
+        )
+    return liberees
 
 
 def _cycle_versement(maintenant: Optional[datetime] = None) -> dict:
@@ -17167,12 +17222,21 @@ async def admin_payout_execute(payout_id: str, admin: dict = Depends(get_admin_u
     except NowPaymentsPayoutError as e:
         await db.affiliate_payouts.update_one({"id": payout_id},
             {"$set": {"status": "failed", "np_error": "NOWPayments payout request failed", "updated_at": datetime.now(timezone.utc).isoformat()}})
+        # L'ENVOI N'A PAS EU LIEU : les commissions retournent au pot commun.
+        # Sans cette ligne elles restaient `approved` avec le `payout_id` d'un
+        # versement mort, et le generateur -- qui filtre sur `payout_id: None`
+        # -- ne les aurait JAMAIS reprises. Le webhook le faisait deja ; ce
+        # chemin-ci ne le faisait pas.
+        await _liberer_commissions_du_versement(payout_id)
         raise HTTPException(502, "NOWPayments payout request failed") from e
 
     batch_id = str(resp.get("id") or resp.get("batch_withdrawal_id") or "")
     if not batch_id:
         await db.affiliate_payouts.update_one({"id": payout_id},
             {"$set": {"status": "failed", "np_error": "NOWPayments n'a pas renvoyé d'identifiant de payout.", "updated_at": datetime.now(timezone.utc).isoformat()}})
+        # Sans identifiant de lot, aucun webhook ne viendra jamais conclure ce
+        # versement : il est mort sur place. Meme liberation que ci-dessus.
+        await _liberer_commissions_du_versement(payout_id)
         raise HTTPException(502, "NOWPayments n'a pas renvoyé d'identifiant de payout.")
     # L'identifiant PROPRE du versement, en plus de celui du lot. La reponse
     # documentee porte les deux :

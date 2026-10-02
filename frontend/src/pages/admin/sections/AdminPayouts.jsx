@@ -10,6 +10,7 @@ import { useLang } from "../../../contexts/LanguageContext";
 // troisieme copie, apres celles qui vivaient dans AffiliateDashboard et
 // AdminAffiliates et qui y ont deja ete regroupees.
 import { jourLisible } from "../../../lib/periode";
+import { LIBELLE_VERSEMENT_OPS } from "../../../lib/statutVersement";
 
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
 
@@ -43,17 +44,11 @@ const dateHeure = (iso) => {
  * `paid_manual` affiche « Paye » comme `paid` : pour qui lit l'ecran, c'est le
  * meme fait. La distinction sert a l'audit, elle est dans la ligne de detail.
  */
-const STATUS = {
-  ready:        { fr: "Pret", en: "Ready", cls: "bg-warning/15 text-warning border border-warning/30" },
-  creating:     { fr: "2FA requis", en: "2FA required", cls: "bg-nova/15 text-nova border border-nova/30" },
-  dispatching:  { fr: "Envoi en cours", en: "Dispatching", cls: "bg-nova/15 text-nova border border-nova/30" },
-  processing:   { fr: "En traitement", en: "Processing", cls: "bg-glacier/15 text-glacier border border-glacier/30" },
-  paid:         { fr: "Paye", en: "Paid", cls: "bg-success/15 text-success border border-success/30" },
-  paid_manual:  { fr: "Paye (manuel)", en: "Paid (manual)", cls: "bg-success/15 text-success border border-success/30" },
-  failed:       { fr: "Echoue", en: "Failed", cls: "bg-error/10 text-error border border-error/25" },
-  queued_manual:{ fr: "A payer a la main", en: "Manual queue", cls: "bg-glacier/15 text-glacier border border-glacier/30" },
-  review:       { fr: "A verifier", en: "Needs review", cls: "bg-error/10 text-error border border-error/25" },
-};
+/* Le dictionnaire vit desormais dans `lib/statutVersement.js`, partage avec
+   l'ecran de l'affilie et la FICHE — qui n'en avait aucun et affichait le
+   jeton brut. Le nom local est conserve : il est lu a trois endroits ici, et
+   le renommer ajouterait du bruit a un diff dont ce n'est pas le sujet. */
+const STATUS = LIBELLE_VERSEMENT_OPS;
 
 /* Types de runs de paiement (traçabilité NP-…) : un envoi groupé (batch),
  * un envoi unitaire (single), une régularisation manuelle (manual) ou un lot

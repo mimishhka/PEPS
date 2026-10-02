@@ -15,6 +15,7 @@ import api, { API_BASE, formatApiError } from "../../../lib/api";
 // AffiliateDashboard, a un detail pres chacune.
 import { moisLisible, jourLisible, periodeLisible }
   from "../../../lib/periode";
+import { libelleVersementOps } from "../../../lib/statutVersement";
 import { useConfirm } from "../../../components/ConfirmDialog";
 import { useLang } from "../../../contexts/LanguageContext";
 import { Th, Num, Identity, TierBadge, TIER_TONE } from "../ui";
@@ -2412,9 +2413,24 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                           {" · "}{money(p.amount)}{" "}
                           <span className="uppercase text-xs text-glacier">{p.currency}</span>
                         </span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${["paid", "paid_manual"].includes(p.status) ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>
-                          {p.status === "paid_manual" ? L("Payé (manuel)", "Paid (manual)") : p.status}
-                        </span>
+                        {/* LE JETON BRUT S'AFFICHAIT ICI.
+                            `{p.status === "paid_manual" ? … : p.status}` rendait
+                            `ready`, `failed`, `review`, `dispatching`,
+                            `queued_manual` tels quels — en anglais, dans une
+                            interface française — et une seule couleur orange
+                            pour tout ce qui n'était pas payé : un versement
+                            ÉCHOUÉ s'y lisait comme un versement en traitement.
+                            Le vocabulaire d'opération existait déjà dans
+                            l'écran Paiements ; il est maintenant partagé. */}
+                        {(() => {
+                          const st = libelleVersementOps(p.status, lang);
+                          return (
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${st.cls}`}
+                                  data-testid={`fiche-statut-versement-${p.id}`}>
+                              {st.texte}
+                            </span>
+                          );
+                        })()}
                       </div>
                       {["ready", "failed"].includes(p.status) && (
                         <p className="text-[11px] text-glacier mt-1">

@@ -15,6 +15,8 @@ import api, { formatApiError } from "../lib/api";
 // `_periode_lisible` cote serveur, qui sert aux courriels.
 import { moisLisible, jourLisible, momentLisible, periodeLisible }
   from "../lib/periode";
+import { libelleVersement, commissionsRenduesAuCycle }
+  from "../lib/statutVersement";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import { DashboardSkeleton } from "../components/LoadingSkeletons";
@@ -621,7 +623,47 @@ export default function AffiliateDashboard() {
     // distinguer : sinon un compte suspendu lirait « programme privé » comme
     // s'il n'avait jamais rejoint, ce qui masquerait la raison réelle.
     const detail403 = affiliateError.response.data?.detail;
-    const suspendu = detail403 && (typeof detail403 === "object" ? detail403.code : detail403) === "suspended";
+    const code403 = detail403 && (typeof detail403 === "object" ? detail403.code : detail403);
+    const suspendu = code403 === "suspended";
+    const ferme = code403 === "closed";
+
+    if (ferme) {
+      /* UN DOSSIER FERME N'EST PAS UN INCONNU.
+         Il lisait « Accès sur invitation » : le programme disait à quelqu'un
+         qu'il venait de fermer qu'il n'avait jamais été invité. Et la
+         fermeture est refusée tant qu'il reste des commissions non versées —
+         donc on peut l'affirmer ici sans réserve, ce qui est précisément ce
+         qu'on veut lui dire. */
+      return (
+        <div className="bg-clinical min-h-screen">
+          <div className="max-w-2xl mx-auto px-6 py-24 text-center" data-testid="affiliate-closed">
+            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-glacier mb-3">
+              {L("DOSSIER FERMÉ", "ACCOUNT CLOSED")}
+            </p>
+            <h1 className="font-display text-[32px] font-bold text-nordfjord mb-4">
+              {L("Votre dossier d'affilié est fermé", "Your affiliate account is closed")}
+            </h1>
+            <p className="text-glacier leading-relaxed mb-2">
+              {L("Votre participation au programme d'affiliation a pris fin. Toutes vos commissions acquises ont été versées avant la fermeture — un dossier ne se ferme pas tant qu'il reste quelque chose à payer.",
+                 "Your participation in the affiliate program has ended. All earned commissions were paid before closing — an account cannot be closed while anything remains payable.")}
+            </p>
+            <p className="text-glacier leading-relaxed mb-8">
+              {L("Votre compte client et vos commandes ne changent pas. Écrivez-nous si vous souhaitez revenir.",
+                 "Your customer account and orders are unaffected. Write to us if you would like to come back.")}
+            </p>
+            <div className="flex items-center justify-center gap-3 flex-wrap">
+              <a href="mailto:info@fironova.com"
+                className="btn-pill btn-nova" data-testid="closed-support">
+                {L("Nous écrire", "Write to us")}
+              </a>
+              <button onClick={logout} className="btn-pill btn-outline" data-testid="closed-logout">
+                {L("Se déconnecter", "Log out")}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     if (suspendu) {
       return (
@@ -1564,6 +1606,8 @@ export default function AffiliateDashboard() {
                 total pour deux échéances ne dit ni quand ni combien. */}
             {data?.payout_cycle && (
               <CycleVersement cycle={data.payout_cycle} seuil={data?.payout_min_cad}
+                              adresse={data?.payout_address}
+                              onReglages={() => setTab("settings")}
                               L={L} lang={lang} />
             )}
 
@@ -1803,7 +1847,7 @@ export default function AffiliateDashboard() {
                             </div>
 
                             <div className="flex items-center gap-2 flex-wrap mt-1.5">
-                              <PayoutStatus status={p.status} L={L} />
+                              <PayoutStatus status={p.status} lang={lang} />
                               {v.paye && (
                                 <span className="font-data text-[11px] text-glacier">
                                   {L(`payé le ${v.paye}`, `paid ${v.paye}`)}
@@ -1904,7 +1948,7 @@ export default function AffiliateDashboard() {
                                   : <span className="text-glacier/50">-</span>}
                               </td>
                               <td className="px-6 py-3 align-top">
-                                <PayoutStatus status={p.status} L={L} />
+                                <PayoutStatus status={p.status} lang={lang} />
                               </td>
                               <td className="px-6 py-3 font-data text-[11px] text-glacier break-all max-w-[200px] align-top">
                                 {p.reference
@@ -2424,11 +2468,22 @@ function SourceBars({ rows, fmt, L }) {
 // décoder ; écrit en toutes lettres, il se lit.
 // Ce qui doit partir, et ce qui attend. La couleur ne sert qu'au retard :
 // partout ailleurs, la hiérarchie passe par la taille et le blanc.
-function CycleVersement({ cycle, seuil, L, lang }) {
+function CycleVersement({ cycle, seuil, adresse, onReglages, L, lang }) {
   const du = Number(cycle?.due_now || 0);
   const enCours = Number(cycle?.current_cycle || 0);
   const retard = !!cycle?.overdue && du > 0;
   const sousLeSeuil = seuil != null && du > 0 && du < Number(seuil);
+  /* SANS ADRESSE, RIEN NE PART — et personne ne le disait.
+     L'envoi cree bien le versement, puis le saute : « missing address or
+     unsupported currency ». L'affilie lisait « En cours » indefiniment. La
+     visite guidee l'explique une fois, au tout debut ; apres, plus rien. Et
+     l'administration a un compteur `no_payout_address` : la seule personne
+     qui peut regler le probleme etait la seule a ne pas le savoir.
+
+     Conditionne a `du > 0` : annoncer « ajoutez votre adresse » a quelqu'un
+     qui n'a encore rien gagne est du bruit, et le bruit fait ignorer le
+     signal le jour ou il compte. */
+  const sansAdresse = du > 0 && !String(adresse || "").trim();
 
   return (
     <div className="bg-white rounded-xl border border-ash p-6" data-testid="cycle-versement">
@@ -2486,6 +2541,29 @@ function CycleVersement({ cycle, seuil, L, lang }) {
               {L(`Il reste ${money(cycle.creance_reportee)} à reporter sur le cycle suivant.`,
                  `${money(cycle.creance_reportee)} remains to carry to the next cycle.`)}
             </p>
+          )}
+        </div>
+      )}
+
+      {sansAdresse && (
+        <div className="mt-3 rounded-lg border border-error/35 bg-error/[0.06] p-3"
+             data-testid="cycle-sans-adresse">
+          <p className="font-data text-[11px] font-semibold text-error leading-relaxed">
+            {L("Ce versement ne pourra pas partir : il manque votre adresse de paiement.",
+               "This payout cannot go out: your payout address is missing.")}
+          </p>
+          <p className="font-data text-[11px] text-glacier mt-1 leading-relaxed">
+            {L("Vos commissions restent acquises et s'accumulent — mais sans adresse de portefeuille, nous n'avons aucun moyen de vous les envoyer.",
+               "Your commissions stay earned and keep adding up — but without a wallet address we have no way to send them to you.")}
+          </p>
+          {onReglages && (
+            <button onClick={onReglages} type="button"
+              className="mt-2.5 px-3 py-1.5 rounded-md bg-nordfjord text-white font-data
+                         text-[11px] font-semibold active:scale-[0.97] transition-transform"
+              style={{ touchAction: "manipulation" }}
+              data-testid="cycle-aller-reglages">
+              {L("Ajouter mon adresse", "Add my address")}
+            </button>
           )}
         </div>
       )}
@@ -2693,20 +2771,9 @@ function ReferralStatus({ status, lang }) {
  * L'écran faisait exactement l'inverse : du jargon sur ce qui ne le concerne
  * pas, et du silence sur ce qui le concerne.
  */
-const ETATS_VERSEMENT = {
-  paid: "paye", paid_manual: "paye",
-  creating: "en_cours", ready: "en_cours", queued_manual: "en_cours",
-  dispatching: "en_cours", processing: "en_cours",
-  review: "retenu", failed: "retenu",
-  reversed: "annule",
-};
-
-const LIBELLE_VERSEMENT = {
-  paye: { fr: "Payé", en: "Paid", cls: "bg-success/15 text-success" },
-  en_cours: { fr: "En cours", en: "In progress", cls: "bg-nova/15 text-nordfjord" },
-  retenu: { fr: "En vérification", en: "Under review", cls: "bg-warning/15 text-warning" },
-  annule: { fr: "Annulé", en: "Reversed", cls: "bg-error/15 text-error" },
-};
+/* La projection et les libellés vivent dans `lib/statutVersement.js` : la
+   même table existait ici, dans AdminPayouts, et NULLE PART dans la fiche —
+   qui affichait donc le jeton anglais brut. Voir l'en-tête du module. */
 
 /**
  * Les champs d'un versement, préparés UNE fois pour les deux rendus.
@@ -2736,16 +2803,38 @@ function versementLisible(p, lang) {
   };
 }
 
-function PayoutStatus({ status, L }) {
-  // UN ÉTAT INCONNU VAUT « EN COURS », jamais « Prêt ». Affirmer un état
-  // précis à partir de rien est précisément ce qui a fait annoncer « Prêt »
-  // pour un versement en vérification.
-  const m = LIBELLE_VERSEMENT[ETATS_VERSEMENT[status] || "en_cours"];
+function PayoutStatus({ status, lang }) {
+  // UN ÉTAT INCONNU VAUT « EN COURS », jamais « Prêt » — la règle est dans
+  // `etatVersement`. Affirmer un état précis à partir de rien est précisément
+  // ce qui a fait annoncer « Prêt » pour un versement en vérification.
+  const m = libelleVersement(status, lang);
+  /* UN ECHEC A DEJA RENDU SES COMMISSIONS, et le taire se lisait comme une
+     erreur. Le webhook remet `payout_id` a None sur les lignes approuvees :
+     elles repartent donc dans le cycle suivant. Sans cette phrase, l'affilie
+     voyait un versement « en vérification » ET le meme montant recompte dans
+     son prochain cycle — deux fois le meme argent a l'ecran, ce qui ressemble
+     a une erreur meme quand il n'y en a pas.
+
+     La note est ici, dans le badge, parce que l'historique se rend DEUX fois
+     (cartes sous `sm`, table au-dela) : l'ecrire dans chaque balisage, c'est
+     garantir qu'un jour l'un la dira et l'autre pas. `basis-full` la fait
+     tomber a la ligne dans la rangee en flex de la carte. */
+  const rendues = commissionsRenduesAuCycle(status);
   return (
-    <span className={`px-2.5 py-1 rounded-full font-data text-[10px] font-semibold ${m.cls}`}
-          data-testid="payout-status">
-      {L(m.fr, m.en)}
-    </span>
+    <>
+      <span className={`px-2.5 py-1 rounded-full font-data text-[10px] font-semibold ${m.cls}`}
+            data-testid="payout-status">
+        {m.texte}
+      </span>
+      {rendues && (
+        <p className="basis-full font-data text-[11px] text-glacier mt-1 leading-relaxed"
+           data-testid="payout-rendu-au-cycle">
+          {lang === "fr"
+            ? "L'envoi n'a pas abouti. Ces commissions sont reparties dans votre prochain versement : rien n'est perdu."
+            : "The transfer did not go through. These commissions went back into your next payout: nothing is lost."}
+        </p>
+      )}
+    </>
   );
 }
 
