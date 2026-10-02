@@ -115,3 +115,7 @@ frontend/node_modules/.cache/default-development/12.pack
 # Le moteur binaire dImpeccable (15 Mo) : il reste local, et se
 # retélécharge, vérifié par SHA-256, la première fois quil manque.
 .claude/skills/impeccable/scripts/bin/
+
+# Etat du detecteur de design (cache de hook + config locale) : outillage,
+# pas du code. Le cache se regenere, et `config.local.json` est par machine.
+.impeccable/
