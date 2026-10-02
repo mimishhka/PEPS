@@ -232,8 +232,15 @@ async def admin_affiliate_cycles(admin: dict = Depends(s.get_admin_user),
 
 
 @router.get("/admin/affiliates/{affiliate_id}")
-async def admin_affiliate_detail(affiliate_id: str, admin: dict = Depends(s.get_admin_user)):
-    return await s.admin_affiliate_detail(affiliate_id, admin)
+async def admin_affiliate_detail(affiliate_id: str,
+                                 ref_page: int = 1, ref_taille: int = 500,
+                                 admin: dict = Depends(s.get_admin_user)):
+    # Les arguments sont NOMMES. L'appel etait positionnel — `(affiliate_id,
+    # admin)` — et l'ajout de deux parametres pagines au milieu de la signature
+    # aurait lie `admin` a `ref_page` en silence : la fiche se serait ouverte
+    # sans administrateur, et la pagination aurait recu un dictionnaire.
+    return await s.admin_affiliate_detail(
+        affiliate_id, ref_page=ref_page, ref_taille=ref_taille, admin=admin)
 
 
 @router.put("/admin/affiliates/{affiliate_id}")

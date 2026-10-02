@@ -14230,7 +14230,91 @@ def _affiliate_serie_mensuelle(rows: list, nb_mois: int = 12) -> list:
     return serie
 
 
+async def _serie_mensuelle_agregee(affiliate_id: str, nb_mois: int = 12) -> list:
+    """Meme resultat que `_affiliate_serie_mensuelle`, calcule par la BASE.
+
+    MIREILLE, 01/10/2026 : « tout le site doit etre concu pour une expansion
+    possible, quelle que soit l'information ».
+
+    La version Python lisait TOUTES les commissions d'un affilie — `to_list(None)`
+    — pour en tirer douze lignes. A dix mille commissions, c'est dix mille
+    documents transportes et parcourus a chaque ouverture de la fiche, pour un
+    resultat qui en fait douze.
+
+    LE MEME TRAVAIL AVAIT DEJA ETE FAIT DE L'AUTRE COTE. `affiliate_performance`
+    — l'ecran de l'affilie — a ete converti en `$facet`/`$group` il y a
+    longtemps, avec cette note dans sa docstring : « Le regroupement par mois se
+    faisait en Python. Il se fait maintenant dans la base, qui ne renvoie qu'une
+    ligne par mois. » La conversion a ete faite la, et jamais ici.
+
+    DEUX DETAILS QUI DECIDENT DE L'EQUIVALENCE EXACTE, et que le test garde :
+
+    1. AUCUN filtre de statut sur le `$match`. La version Python batissait la
+       liste des mois a partir de TOUTES les lignes — y compris `pending` et
+       `excluded` — puis ne sommait que les valides. Un mois qui n'a que des
+       commissions en attente apparait donc, a zero. Filtrer sur
+       `approved|paid|reversed` ferait disparaitre ce mois : moins de lignes, et
+       un affilie qui a vendu ce mois-la ne le verrait plus du tout.
+
+    2. `payee` est date du mois GAGNE, pas du virement. C'est la correction
+       demandee la veille — « ce que je veux voir c'est que la commission du
+       mois a ete versee » — et elle est reprise telle quelle ici.
+    """
+    valide = {"$in": ["$status", ["approved", "paid"]]}
+    pipeline = [
+        {"$match": {"affiliate_id": affiliate_id}},
+        {"$facet": {
+            "activite": [
+                {"$group": {
+                    "_id": _mois_de("approved_at", "created_at"),
+                    "ca_valide": {"$sum": {"$cond": [
+                        valide, {"$ifNull": ["$base_amount", 0.0]}, 0.0]}},
+                    "commissions": {"$sum": {"$cond": [
+                        valide, {"$ifNull": ["$commission_amount", 0.0]}, 0.0]}},
+                    "payee": {"$sum": {"$cond": [
+                        {"$eq": ["$status", "paid"]},
+                        {"$ifNull": ["$commission_amount", 0.0]}, 0.0]}},
+                }},
+            ],
+            # Une reprise reste datee de SA date : « en octobre, 45 $ ont ete
+            # annules ». Les deux ecrans la datent ainsi, pour raconter la
+            # meme histoire du meme programme.
+            "annule": [
+                {"$match": {"status": "reversed"}},
+                {"$group": {
+                    "_id": _mois_de("reversed_at"),
+                    "recuperee": {"$sum": {"$ifNull": ["$commission_amount", 0.0]}},
+                }},
+            ],
+        }},
+    ]
+    try:
+        facettes = await db.affiliate_referrals.aggregate(pipeline).to_list(1)
+    except Exception as e:
+        logging.warning("[affilie] serie mensuelle indisponible : %s",
+                        type(e).__name__)
+        return []
+    f = facettes[0] if facettes else {}
+    activite = {r["_id"]: r for r in (f.get("activite") or []) if r.get("_id")}
+    annule = {r["_id"]: r for r in (f.get("annule") or []) if r.get("_id")}
+
+    mois_ordonnes = sorted(set(activite) | set(annule))[-nb_mois:]
+    serie = []
+    for mois in mois_ordonnes:
+        a = activite.get(mois, {})
+        n = annule.get(mois, {})
+        serie.append({
+            "mois": mois,
+            "ca_valide": round(float(a.get("ca_valide", 0.0)), 2),
+            "commissions": round(float(a.get("commissions", 0.0)), 2),
+            "payee": round(float(a.get("payee", 0.0)), 2),
+            "recuperee": round(float(n.get("recuperee", 0.0)), 2),
+        })
+    return serie
+
+
 async def admin_affiliate_detail(affiliate_id: str,
+                                 ref_page: int = 1, ref_taille: int = 500,
                                  admin: dict = Depends(get_admin_user)):  # noqa: F821
     aff = await db.affiliates.find_one(
         {"id": affiliate_id}, {"_id": 0, "invite_token_hash": 0}
@@ -14242,14 +14326,32 @@ async def admin_affiliate_detail(affiliate_id: str,
     # mais jamais renvoyé : l'admin voyait « — » et concluait que la sauvegarde
     # avait échoué. Le coût est nul — c'est le détail d'UN affilié.
     metrics = await _affiliate_compute_metrics(affiliate_id)
-    # On lit TOUT l'historique pour la serie mensuelle — un calcul tronque a
-    # 500 lignes aurait perdu les premiers mois en silence. La table affichee,
-    # elle, reste plafonnee aux 500 plus recentes.
-    toutes = await db.affiliate_referrals.find(
+    # LA SERIE SE CALCULE DANS LA BASE, qui ne renvoie qu'une ligne par mois.
+    # Elle lisait l'historique ENTIER — `to_list(None)` — pour en tirer douze
+    # lignes : a dix mille commissions, dix mille documents transportes a
+    # chaque ouverture de la fiche.
+    series = await _serie_mensuelle_agregee(affiliate_id)
+
+    # LA TABLE DES COMMISSIONS EST PAGINEE, et annonce son total.
+    #
+    # Elle etait plafonnee a 500 sans le dire : au-dela, l'ecran montrait les
+    # 500 plus recentes et se taisait sur le reste. Un plafond muet est pire
+    # qu'une lenteur — l'ecran a l'air juste, et il ment.
+    ref_page = max(1, int(ref_page))
+    # LE PLAFOND RESTE CELUI D'AUJOURD'HUI (500) dans ce lot : l'ecran ne sait
+    # pas encore demander de page, et le baisser ferait disparaitre des lignes
+    # sans que rien ne les remplace. Ce qui change des maintenant, c'est que le
+    # TOTAL exact accompagne la page : l'ecran peut dire « 500 sur 12 430 » au
+    # lieu de laisser croire qu'il montre tout. La navigation par pages vient
+    # au lot suivant, et il suffira alors de baisser ce chiffre.
+    ref_taille = min(max(1, int(ref_taille)), 500)
+    ref_total = await db.affiliate_referrals.count_documents(
+        {"affiliate_id": affiliate_id})
+    referrals = await db.affiliate_referrals.find(
         {"affiliate_id": affiliate_id}, {"_id": 0}
-    ).sort("created_at", -1).to_list(None)
-    series = _affiliate_serie_mensuelle(toutes)
-    referrals = toutes[:500]
+    ).sort("created_at", -1).skip(
+        (ref_page - 1) * ref_taille).limit(ref_taille).to_list(ref_taille)
+
     payouts = await db.affiliate_payouts.find(
         {"affiliate_id": affiliate_id}, {"_id": 0}
     ).sort("created_at", -1).to_list(200)
@@ -14257,7 +14359,13 @@ async def admin_affiliate_detail(affiliate_id: str,
     # l'affilié nomment le même mois. Une seule requête pour la liste.
     await _attacher_periode_couverte(payouts)
     return {"affiliate": aff, "metrics": metrics,
-            "referrals": referrals, "payouts": payouts,
+            "referrals": referrals,
+            # Le total EXACT, pour que l'ecran puisse dire « 50 sur 12 430 »
+            # au lieu de laisser croire qu'il montre tout.
+            "referrals_total": ref_total,
+            "referrals_page": ref_page,
+            "referrals_page_size": ref_taille,
+            "payouts": payouts,
             "series": series,
             # LE DERNIER AVIS ENVOYE. La colonne des cycles dit combien
             # d'affilies ont ete prevenus ; elle ne dit pas LESQUELS. Quand
