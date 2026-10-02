@@ -6,6 +6,10 @@ import { toast } from "sonner";
 import api, { formatApiError } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
 import { useLang } from "../../../contexts/LanguageContext";
+// `jourLisible` vient du lib partage : ce fichier en aurait fait une
+// troisieme copie, apres celles qui vivaient dans AffiliateDashboard et
+// AdminAffiliates et qui y ont deja ete regroupees.
+import { jourLisible } from "../../../lib/periode";
 
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
 
@@ -106,6 +110,11 @@ export default function AdminPayouts() {
   // Fiche de reconstitution (Pilier B) : payout + lignes de commission.
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  /* L'AUDIT D'UN LOT. Mireille : « facile de tracer quelles sont les commandes
+     payées dans les lots [...] tout ce sur quoi je pourrais me faire poser des
+     questions si un affilié veut que j'audite un paiement ». */
+  const [lot, setLot] = useState(null);
+  const [lotLoading, setLotLoading] = useState(false);
   const [detailOpen, setDetailOpen] = useState(null);
   // Les cycles passes. L'ecran montrait les versements un par un et les runs
   // un par un ; nulle part la seule chose qui engage : est-ce que le mois
@@ -191,6 +200,19 @@ export default function AdminPayouts() {
   }, [cleFiltre]);
 
   // Fiche de reconstitution (Pilier B) : payout + lignes + contrôles.
+  const ouvrirLot = async (runId) => {
+    setLotLoading(true);
+    setLot(null);
+    try {
+      const { data } = await api.get(`/admin/affiliates/payments/runs/${runId}`);
+      setLot(data);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setLotLoading(false);
+    }
+  };
+
   const ouvrirDetail = async (p) => {
     setDetailOpen(p.id);
     setDetailLoading(true);
@@ -896,10 +918,15 @@ export default function AdminPayouts() {
                     // savoir LESQUELS. Le numero de lot est ecrit sur chaque
                     // versement ; il suffisait de pouvoir le chercher. Cliquer
                     // filtre donc la liste ci-dessus sur ce seul lot.
+                    // CLIQUER OUVRE L'AUDIT, et non plus un filtre.
+                    // Filtrer la liste donnait les VERSEMENTS du lot ; il
+                    // fallait ensuite ouvrir chacun pour voir ses commandes.
+                    // Trente affiliés, trente ouvertures, et aucun total.
                     <tr key={r.run_id}
-                        onClick={() => { setQ(r.run_id); setQDebounced(r.run_id); }}
+                        onClick={() => ouvrirLot(r.run_id)}
                         data-testid={`run-open-${r.run_id}`}
-                        title={L("Voir les versements de ce lot", "Show this batch's payouts")}
+                        title={L("Auditer ce lot : toutes ses commandes",
+                                 "Audit this batch : all its orders")}
                         className={`border-b border-ash/60 last:border-0 cursor-pointer transition ${
                           q === r.run_id ? "bg-nova/10" : "hover:bg-clinical"}`}>
                       <td className="px-5 py-2.5 font-data font-bold text-nordfjord whitespace-nowrap">{r.run_id}</td>
@@ -955,6 +982,146 @@ export default function AdminPayouts() {
           n'est pas un montant isolé mais la somme de commissions approuvées.
           L'écart éventuel entre la somme des lignes et le montant du payout est
           affiché, pas caché. */}
+      {(lotLoading || lot) && (
+        <Modal title={lot ? `${L("Audit du lot", "Batch audit")} ${lot.run?.run_id || ""}`
+                          : L("Chargement…", "Loading…")}
+               onClose={() => { setLot(null); setLotLoading(false); }}>
+          {lotLoading && (
+            <p className="text-sm text-glacier py-8 text-center">{L("Chargement…", "Loading…")}</p>
+          )}
+          {lot && (
+            <div className="space-y-4" data-testid="lot-audit">
+              {/* LES CHIFFRES QU'ON VIENT CHERCHER, en tête : combien de
+                  commandes, combien de commission, et combien ont été
+                  remboursées DEPUIS le versement. C'est la question qu'un
+                  affilié pose, et celle qu'il faut pouvoir trancher. */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="rounded-lg border border-ash p-3">
+                  <p className="font-data text-[10px] uppercase tracking-wider text-glacier">
+                    {L("Commandes", "Orders")}
+                  </p>
+                  <p className="font-display font-bold text-nordfjord tabular-nums"
+                     data-testid="lot-commandes">{lot.totaux.commandes}</p>
+                </div>
+                <div className="rounded-lg border border-ash p-3">
+                  <p className="font-data text-[10px] uppercase tracking-wider text-glacier">
+                    {L("Commission", "Commission")}
+                  </p>
+                  <p className="font-display font-bold text-nordfjord tabular-nums">
+                    {money(lot.totaux.commission)} CAD
+                  </p>
+                </div>
+                <div className={`rounded-lg border p-3 ${
+                  lot.totaux.reprises ? "border-warning/40 bg-warning/5" : "border-ash"}`}>
+                  <p className="font-data text-[10px] uppercase tracking-wider text-glacier">
+                    {L("Remboursées depuis", "Refunded since")}
+                  </p>
+                  <p className="font-display font-bold text-nordfjord tabular-nums"
+                     data-testid="lot-reprises">
+                    {lot.totaux.reprises} · {money(lot.totaux.commission_reprise)}
+                  </p>
+                </div>
+                <div className={`rounded-lg border p-3 ${
+                  lot.totaux.creance ? "border-error/40 bg-error/5" : "border-ash"}`}>
+                  <p className="font-data text-[10px] uppercase tracking-wider text-glacier">
+                    {L("À récupérer", "To claw back")}
+                  </p>
+                  <p className="font-display font-bold text-nordfjord tabular-nums"
+                     data-testid="lot-creance">{money(lot.totaux.creance)} CAD</p>
+                </div>
+              </div>
+
+              {lot.totaux.reprises_apres_versement > 0 && (
+                /* La distinction qui change tout pour un audit : repris AVANT
+                   que l'argent parte, ou APRES. Le second laisse une créance. */
+                <p className="rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error"
+                   data-testid="lot-apres-versement">
+                  {L(`${lot.totaux.reprises_apres_versement} commande(s) remboursée(s) APRÈS le versement : l'argent était déjà parti.`,
+                     `${lot.totaux.reprises_apres_versement} order(s) refunded AFTER the payout : the money had already gone out.`)}
+                </p>
+              )}
+
+              <div>
+                <p className="font-data text-[11px] uppercase tracking-wider text-nova mb-2">
+                  {L("Versements du lot", "Batch payouts")} ({lot.payouts.length})
+                </p>
+                <div className="overflow-x-auto rounded-lg border border-ash">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {lot.payouts.map((v) => (
+                        <tr key={v.id} className="border-b border-ash/50 last:border-0">
+                          <td className="px-3 py-2 font-data font-bold text-nordfjord">{v.affiliate_code}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{money(v.amount_cad)} CAD</td>
+                          <td className="px-3 py-2 font-data text-[11px] text-glacier break-all">
+                            {v.reference || "-"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <p className="font-data text-[11px] uppercase tracking-wider text-nova mb-2">
+                  {L("Commandes payées", "Orders paid")} ({lot.lines_count})
+                </p>
+                <div className="overflow-x-auto rounded-lg border border-ash">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left font-data text-[10px] uppercase tracking-wider text-glacier border-b border-ash bg-clinical">
+                        <th className="px-3 py-2">{L("Commande", "Order")}</th>
+                        <th className="px-3 py-2">{L("Affilié", "Affiliate")}</th>
+                        <th className="px-3 py-2 text-right">{L("Base", "Base")}</th>
+                        <th className="px-3 py-2 text-right">{L("Commission", "Commission")}</th>
+                        <th className="px-3 py-2">{L("Sort", "Outcome")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lot.lines.map((r) => {
+                        const reprise = r.status === "reversed";
+                        return (
+                          <tr key={r.id}
+                              className={`border-b border-ash/50 last:border-0 ${
+                                reprise ? "bg-warning/5" : ""}`}
+                              data-testid={`lot-ligne-${r.order_number}`}>
+                            <td className="px-3 py-2 font-data text-nordfjord">{r.order_number || "-"}</td>
+                            <td className="px-3 py-2 font-data text-[11px] text-glacier">{r.affiliate_code}</td>
+                            <td className="px-3 py-2 text-right tabular-nums">{money(r.base_amount)}</td>
+                            <td className={`px-3 py-2 text-right font-semibold tabular-nums ${
+                              reprise ? "text-glacier line-through" : ""}`}>
+                              {money(r.commission_amount)}
+                            </td>
+                            <td className="px-3 py-2 text-[11px]">
+                              {reprise ? (
+                                <span className="text-warning">
+                                  {L("Remboursée", "Refunded")}
+                                  {r.reversed_at && ` ${jourLisible(r.reversed_at, lang)}`}
+                                  {r.reversed_after_payout
+                                    && L(" · après versement", " · after payout")}
+                                </span>
+                              ) : (
+                                <span className="text-glacier">{L("Payée", "Paid")}</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {lot.lines_count > lot.lines.length && (
+                  <p className="font-data text-[11px] text-glacier mt-2">
+                    {L(`${lot.lines.length} sur ${lot.lines_count} — affinez ou exportez pour la suite.`,
+                       `${lot.lines.length} of ${lot.lines_count} — refine or export for the rest.`)}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
+
       {detailOpen && (
         <Modal onClose={() => { setDetailOpen(null); setDetail(null); }}
           title={L("Reconstitution du versement", "Payout breakdown")}>

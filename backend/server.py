@@ -16029,6 +16029,115 @@ async def _create_payout_run(run_type: str, payout_ids, meta: dict = None):
         return None
 
 
+async def admin_affiliate_run_detail(run_id: str, page: int = 1,
+                                     page_size: int = 100,
+                                     admin: dict = Depends(get_admin_user)):  # noqa: F821
+    """TOUT ce qu'un lot de paiement contient, pour pouvoir l'auditer.
+
+    MIREILLE, 02/10/2026 : « je t'avais dit que je voulais que ce soit facile de
+    tracer quelles sont les commandes payées dans les lots. Donc facile de
+    revoir ce qui est passé, les commandes annulées, remboursées — tout ce sur
+    quoi je pourrais me faire poser des questions si un affilié veut que
+    j'audite un paiement. »
+
+    CE QU'IL FALLAIT FAIRE AVANT. Cliquer sur un lot filtrait la liste des
+    versements, puis il fallait ouvrir CHAQUE versement un par un pour voir ses
+    commandes. Un lot de trente affiliés demandait trente ouvertures, et rien
+    ne totalisait quoi que ce soit : impossible de repondre a « combien de
+    commandes dans ce paiement, et combien ont ete remboursees depuis ».
+
+    LA CHAINE EXISTAIT DEJA, ENTIERE. Le lot stocke ses versements (`run_id`
+    pose sur chacun), chaque versement porte ses commissions (`payout_id`), et
+    chaque commission porte son numero de commande. Il n'y avait aucun endroit
+    pour la parcourir d'un bout a l'autre.
+
+    LES REMBOURSEMENTS SONT LE CŒUR DE CET ECRAN, pas un detail. Une commission
+    reprise garde son `payout_id` — `affiliate_on_order_reversed` ne l'efface
+    jamais — donc la ligne est encore la, avec sa date de reprise et, quand
+    l'argent etait deja parti, la creance correspondante. C'est exactement ce
+    qu'on cherche quand quelqu'un conteste un versement six mois plus tard.
+
+    LES TOTAUX SONT CALCULES PAR LA BASE SUR L'ENSEMBLE DU LOT, pas sur la page
+    affichee. Un total qui ne porterait que sur la page repondrait a une
+    question que personne ne pose.
+    """
+    run = await db.affiliate_payment_runs.find_one({"run_id": run_id}, {"_id": 0})
+    if not run:
+        raise HTTPException(404, "Run not found")
+
+    page = max(1, int(page))
+    page_size = min(max(1, int(page_size)), 200)
+
+    # Les versements du lot. Leur nombre est borne par les affilies payes dans
+    # un cycle : quelques dizaines, pas des milliers.
+    versements = await db.affiliate_payouts.find(
+        {"run_id": run_id},
+        {"_id": 0, "id": 1, "affiliate_id": 1, "affiliate_code": 1,
+         "amount_cad": 1, "amount": 1, "currency": 1, "status": 1,
+         "reference": 1, "paid_at": 1, "period": 1, "np_batch_id": 1},
+    ).sort("amount_cad", -1).to_list(500)
+    await _attacher_periode_couverte(versements)
+    ids = [v["id"] for v in versements if v.get("id")]
+
+    if not ids:
+        return {"run": run, "payouts": versements, "lines": [],
+                "lines_count": 0, "page": page, "page_size": page_size,
+                "totaux": {"commandes": 0, "commission": 0.0,
+                           "reprises": 0, "commission_reprise": 0.0,
+                           "reprises_apres_versement": 0, "creance": 0.0}}
+
+    selection = {"payout_id": {"$in": ids}}
+    total_lignes = await db.affiliate_referrals.count_documents(selection)
+    lignes = await db.affiliate_referrals.find(
+        selection,
+        {"_id": 0, "id": 1, "affiliate_code": 1, "order_number": 1,
+         "base_amount": 1, "commission_amount": 1, "order_total": 1,
+         "status": 1, "approved_at": 1, "created_at": 1, "payout_id": 1,
+         # CE QUI REND L'AUDIT POSSIBLE : quand la commande a ete remboursee,
+         # si l'argent etait deja parti, et combien reste du.
+         "reversed_at": 1, "reversed_after_payout": 1,
+         "clawback_pending": 1, "clawback_amount": 1},
+    ).sort("created_at", -1).skip(
+        (page - 1) * page_size).limit(page_size).to_list(page_size)
+
+    # Les totaux portent sur TOUT le lot, et sont calcules par la base.
+    reprise = {"$eq": ["$status", "reversed"]}
+    apres = {"$eq": ["$reversed_after_payout", True]}
+    resume = await db.affiliate_referrals.aggregate([
+        {"$match": selection},
+        {"$group": {
+            "_id": None,
+            "commandes": {"$sum": 1},
+            "commission": {"$sum": {"$ifNull": ["$commission_amount", 0.0]}},
+            "reprises": {"$sum": {"$cond": [reprise, 1, 0]}},
+            "commission_reprise": {"$sum": {"$cond": [
+                reprise, {"$ifNull": ["$commission_amount", 0.0]}, 0.0]}},
+            "reprises_apres_versement": {"$sum": {"$cond": [apres, 1, 0]}},
+            "creance": {"$sum": {"$cond": [
+                {"$eq": ["$clawback_pending", True]},
+                {"$ifNull": ["$clawback_amount", 0.0]}, 0.0]}},
+        }},
+    ]).to_list(1)
+    t = resume[0] if resume else {}
+
+    return {
+        "run": run,
+        "payouts": versements,
+        "lines": lignes,
+        "lines_count": total_lignes,
+        "page": page,
+        "page_size": page_size,
+        "totaux": {
+            "commandes": int(t.get("commandes", 0)),
+            "commission": round(float(t.get("commission", 0.0)), 2),
+            "reprises": int(t.get("reprises", 0)),
+            "commission_reprise": round(float(t.get("commission_reprise", 0.0)), 2),
+            "reprises_apres_versement": int(t.get("reprises_apres_versement", 0)),
+            "creance": round(float(t.get("creance", 0.0)), 2),
+        },
+    }
+
+
 async def admin_affiliate_payment_runs(admin: dict = Depends(get_admin_user),  # noqa: F821
                                        limit: int = 50):
     """Historique des runs de paiement (batch / single / manual / queued) avec

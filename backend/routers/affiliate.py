@@ -374,6 +374,19 @@ async def affiliate_change_password(payload: s.PasswordChangeIn, response: Respo
     return await s.affiliate_change_password(payload, response, request, aff)
 
 
+# L'AUDIT D'UN LOT. Mireille : « facile de tracer quelles sont les commandes
+# payees dans les lots [...] tout ce sur quoi je pourrais me faire poser des
+# questions si un affilie veut que j'audite un paiement ». Declaree AVANT la
+# route de liste serait sans effet — les chemins different — mais elle doit
+# rester avant toute route `/{...}` eventuelle sur ce prefixe.
+@router.get("/admin/affiliates/payments/runs/{run_id}")
+async def admin_affiliate_run_detail(run_id: str, page: int = 1,
+                                     page_size: int = 100,
+                                     admin: dict = Depends(s.get_admin_user)):
+    return await s.admin_affiliate_run_detail(
+        run_id, page=page, page_size=page_size, admin=admin)
+
+
 @router.get("/admin/affiliates/payments/runs")
 async def admin_affiliate_payment_runs(admin: dict = Depends(s.get_admin_user),
                                        limit: int = 50):

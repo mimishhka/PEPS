@@ -42,11 +42,38 @@ const RUN = {
   created_at: "2026-08-14T21:20:48.474350+00:00",
 };
 
+const LOT_AUDIT = {
+  run: { run_id: "NP-000001", type: "batch", count: 1, total_cad: 28.5 },
+  payouts: [{ id: "p-1", affiliate_code: "FITNES70",
+              amount_cad: 28.5, reference: "0xaaa" }],
+  lines: [
+    { id: "r-1", order_number: "FN-1001", affiliate_code: "FITNES70",
+      base_amount: 100, commission_amount: 12, status: "paid" },
+    { id: "r-2", order_number: "FN-1002", affiliate_code: "FITNES70",
+      base_amount: 137.5, commission_amount: 16.5, status: "reversed",
+      reversed_at: "2026-10-28T09:00:00Z", reversed_after_payout: true },
+  ],
+  lines_count: 2, page: 1, page_size: 100,
+  totaux: { commandes: 2, commission: 28.5, reprises: 1,
+            commission_reprise: 16.5, reprises_apres_versement: 1,
+            creance: 16.5 },
+};
+
 function reponses({ payouts = [], runs = [], paymentRuns = [RUN], listeBlanche = [],
-                    cycles = [] } = {}) {
+                    cycles = [], lot = null } = {}) {
   // Les URL exactes du composant : « payouts/all » pour la liste,
   // « payouts/runs » pour les generations, « payments/runs » pour les envois.
   api.get.mockImplementation(async (url) => {
+    // L'AUDIT D'UN LOT EN PREMIER. Son URL est « payments/runs/<id> », donc le
+    // `startsWith` de la LISTE l'attrapait aussi et lui rendait `{runs: […]}`.
+    // L'ordre n'est pas cosmetique : la route la plus precise d'abord.
+    if (/\/admin\/affiliates\/payments\/runs\/.+/.test(url)) {
+      return { data: lot || { run: { run_id: "NP-000001" }, payouts: [], lines: [],
+                              lines_count: 0, page: 1, page_size: 100,
+                              totaux: { commandes: 0, commission: 0, reprises: 0,
+                                        commission_reprise: 0,
+                                        reprises_apres_versement: 0, creance: 0 } } };
+    }
     if (url.startsWith("/admin/affiliates/payouts/all")) return { data: payouts };
     // Les deux historiques repondent { runs: [...] }, pas un tableau nu.
     if (url.startsWith("/admin/affiliates/payouts/runs")) return { data: { runs } };
@@ -192,26 +219,59 @@ describe("AdminPayouts", () => {
       expect(screen.getByTestId("batch-send")).toBeInTheDocument();
     });
   });
-  it("ouvre le contenu d'un lot quand on clique dessus", async () => {
-    // La ligne annoncait « 2 versements » sans aucun moyen de savoir LESQUELS.
-    // Le numero de lot est ecrit sur chaque versement ; il fallait pouvoir le
-    // chercher — c'est ce qui rend un lot verifiable.
-    reponses({ payouts: [{
-      id: "p-1", status: "paid", affiliate_code: "FITNES70", period: "2026-08",
-      amount_cad: 28.5, amount: 20.52, currency: "usdt", referral_count: 4,
-      payout_address: "0xabc", run_id: "NP-000001",
-    }] });
+  it("AUDITE un lot quand on clique dessus, au lieu de filtrer une liste", async () => {
+    /* MIREILLE, 02/10/2026 : « je voulais que ce soit facile de tracer quelles
+     * sont les commandes payees dans les lots. Donc facile de revoir ce qui
+     * est passe, les commandes annulees, remboursees — tout ce sur quoi je
+     * pourrais me faire poser des questions si un affilie veut que j'audite un
+     * paiement. »
+     *
+     * CE QUE CE TEST GARDAIT AVANT, et qui ne suffisait pas : cliquer filtrait
+     * la liste sur les VERSEMENTS du lot. Il fallait ensuite ouvrir chacun
+     * pour voir ses commandes — trente affilies, trente ouvertures, et aucun
+     * total. On ne pouvait pas repondre a « combien de commandes dans ce
+     * paiement, et combien ont ete remboursees depuis ». */
+    reponses({
+      payouts: [{
+        id: "p-1", status: "paid", affiliate_code: "FITNES70", period: "2026-08",
+        amount_cad: 28.5, amount: 20.52, currency: "usdt", referral_count: 4,
+        payout_address: "0xabc", run_id: "NP-000001",
+      }],
+      lot: LOT_AUDIT,
+    });
     render(<AdminPayouts />);
     await screen.findByTestId("admin-payouts");
 
     await userEvent.click(await screen.findByTestId("run-open-NP-000001"));
 
-    // La liste se filtre sur ce lot, et l'ecran le DIT — sinon on croirait que
-    // les autres versements ont disparu.
-    expect(await screen.findByTestId("payouts-filtre-lot")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(api.get).toHaveBeenCalledWith("/admin/affiliates/payouts/all",
-                                           { params: { q: "NP-000001" } }));
+    const audit = await screen.findByTestId("lot-audit");
+    // LES COMMANDES, directement — sans ouvrir chaque versement.
+    expect(screen.getByTestId("lot-ligne-FN-1001")).toBeInTheDocument();
+    expect(screen.getByTestId("lot-ligne-FN-1002")).toBeInTheDocument();
+    // LES TOTAUX qui repondent aux questions qu'on pose.
+    expect(screen.getByTestId("lot-commandes")).toHaveTextContent("2");
+    expect(screen.getByTestId("lot-reprises")).toHaveTextContent("16.50");
+    expect(screen.getByTestId("lot-creance")).toHaveTextContent("16.50");
+    expect(audit).toHaveTextContent(/FITNES70/);
+  });
+
+  it("dit quand une commande a ete remboursee APRES le versement", async () => {
+    /* La distinction qui change tout pour un audit : repris avant que l'argent
+     * parte, ou apres. Le second laisse une creance, et c'est exactement ce
+     * qu'un affilie conteste. */
+    reponses({
+      payouts: [{ id: "p-1", status: "paid", affiliate_code: "FITNES70",
+                  period: "2026-08", amount_cad: 28.5, run_id: "NP-000001" }],
+      lot: LOT_AUDIT,
+    });
+    render(<AdminPayouts />);
+    await screen.findByTestId("admin-payouts");
+    await userEvent.click(await screen.findByTestId("run-open-NP-000001"));
+
+    expect(await screen.findByTestId("lot-apres-versement"))
+      .toHaveTextContent(/apr[eè]s le versement/i);
+    expect(screen.getByTestId("lot-ligne-FN-1002"))
+      .toHaveTextContent(/rembours/i);
   });
 
   it("nomme les deux historiques par ce qu'ils contiennent", async () => {
