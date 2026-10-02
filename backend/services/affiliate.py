@@ -707,6 +707,26 @@ async def _affiliate_compute_metrics(affiliate_id: str,
             "status": 1,
             "base": {"$ifNull": ["$base_amount", 0.0]},
             "comm": {"$ifNull": ["$commission_amount", 0.0]},
+            # LES TROIS CHAMPS DE LA CREANCE, SANS QUOI LE $group LES LIT VIDES.
+            #
+            # Trouve le 02/10/2026 en interrogeant le compte LOLA10 : son
+            # `payout_cycle` annoncait une dette de 137,71 $ et ses metriques
+            # repondaient 0 $ pour la meme dette. Deux surfaces, deux reponses.
+            #
+            # La cause : un `$project` ne laisse passer QUE ce qu'il nomme. Les
+            # accumulateurs `reprise_apres_versement`, `creance` et
+            # `creance_lignes` ont ete ajoutes au `$group` sans que ces trois
+            # champs soient projetes — ils evaluaient donc contre du vide.
+            # `reprise_apres_versement` valait toujours zero, `creance` aussi,
+            # et `reprise_avant_versement` absorbait toutes les reprises.
+            #
+            # Les blocs `depuis-creance` (tableau de bord) et `fiche-creance`
+            # (administration) sont conditionnes a `creance > 0` : ils etaient
+            # morts en silence. Seul le cycle de versement fonctionnait, parce
+            # qu'il interroge la collection directement.
+            "clawback_pending": 1,
+            "clawback_amount": 1,
+            "reversed_after_payout": 1,
             # Date effective = approved_at sinon created_at (replie sur null).
             # `case`, SANS dollar. MongoDB attend {case, then} dans les branches
             # d'un $switch ; `$case` en fait un nom de champ inconnu et
