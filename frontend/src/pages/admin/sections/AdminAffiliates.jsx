@@ -2786,7 +2786,11 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                       {L("Retenu (remboursements apres versement)",
                          "Withheld (refunds after payout)")}
                     </span>
-                    <span className="font-data text-[12px] text-warning tabular-nums">
+                    {/* `shrink-0` : l'etiquette francaise est longue, et dans
+                        une fenetre etroite le flex serrait le NOMBRE plutot
+                        que le texte. C'est le chiffre qu'on vient lire. */}
+                    <span className="font-data text-[12px] text-warning tabular-nums
+                                     whitespace-nowrap shrink-0">
                       −{money(versement.creance_absorbee)} CAD
                     </span>
                   </div>
@@ -2794,7 +2798,8 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     <span className="font-data text-[10px] uppercase tracking-[0.14em] text-nordfjord">
                       {L("Verse", "Paid")}
                     </span>
-                    <span className="font-display font-bold text-nordfjord tabular-nums">
+                    <span className="font-display font-bold text-nordfjord tabular-nums
+                                     whitespace-nowrap shrink-0">
                       {money(versement.payout_amount_cad)} CAD
                     </span>
                   </div>
