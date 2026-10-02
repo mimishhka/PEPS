@@ -133,19 +133,34 @@ def test_un_affilie_inconnu_refuse_net(server_module, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_la_serie_mensuelle_repartit_ce_qui_est_du_et_ce_qui_est_verse(server_module):
-    """Le retour en arriere demande : trois sommes par mois, chacune a SA date.
+    """Trois sommes par mois, TOUTES sur le mois gagne.
 
-    Une commission approuvee en septembre mais VERSEE en octobre compte dans
-    le CA et les commissions de septembre (date effective), et dans les
-    « versees » d'octobre (paid_at). Melanger les deux rendrait la
-    conciliation fausse d'un mois.
+    ATTENTION AVANT DE « CORRIGER » CE TEST. Il affirmait l'inverse jusqu'au
+    01/10/2026 : « payee » etait datee de `paid_at`, le jour du virement. Ce
+    n'est plus la regle, et le changement vient d'elle, capture a l'appui.
+
+    MIREILLE, 01/10/2026 : « paid amount not on the good line ». Puis,
+    precisant : « ce que je veux voir c'est que la commission du mois a ete
+    versee (mais c'est vrai que c'est aussi important d'avoir la date et le
+    lot de celui-ci peut etre pas sur ce tableau mais ailleur dans la
+    fiche) ».
+
+    Sur sa capture, septembre affichait 500,40 $ de commissions et « 0,00 $
+    verse », tandis qu'octobre affichait 500,40 $ verses sans rapport avec ses
+    56,69 $ de commissions. Les trois autres colonnes repondent a « qu'a fait
+    ce mois-la » ; celle-la repondait a « combien est parti ce mois-la ». Deux
+    questions sur une ligne, et la ligne devient illisible.
+
+    La question « combien est parti en octobre » garde sa reponse ailleurs :
+    la liste des versements EST une liste de virements avec leur date, et la
+    fiche porte la date et le lot de chaque commission.
     """
     lignes = [
-        # Approuvee en septembre, versee en octobre.
+        # Gagnee en septembre, le VIREMENT est parti en octobre.
         {"order_number": "FN-1", "base_amount": 100, "commission_amount": 16,
          "status": "paid", "approved_at": "2026-09-10T10:00:00",
          "created_at": "2026-09-09T10:00:00", "paid_at": "2026-10-05T10:00:00"},
-        # Approuvee et versee dans le meme mois.
+        # Gagnee et versee dans le meme mois.
         {"order_number": "FN-2", "base_amount": 50, "commission_amount": 8,
          "status": "paid", "approved_at": "2026-10-02T10:00:00",
          "created_at": "2026-10-01T10:00:00", "paid_at": "2026-10-03T10:00:00"},
@@ -155,10 +170,63 @@ def test_la_serie_mensuelle_repartit_ce_qui_est_du_et_ce_qui_est_verse(server_mo
          "created_at": "2026-09-15T10:00:00"},
     ]
     serie = server_module._affiliate_serie_mensuelle(lignes)
+
+    # `paid_at` d'octobre ne cree PAS un mois d'octobre pour la ligne de
+    # septembre : un virement n'est pas une activite.
     assert [s["mois"] for s in serie] == ["2026-09", "2026-10"]
     sept, octo = serie
-    assert sept["ca_valide"] == 100 and sept["commissions"] == 16 and sept["payee"] == 0
-    assert octo["ca_valide"] == 50 and octo["commissions"] == 8 and octo["payee"] == 24
+
+    # SEPTEMBRE : 16 de commission, et cette commission A ETE versee. C'est
+    # exactement la phrase qu'elle veut lire sur la ligne de septembre.
+    assert sept["ca_valide"] == 100
+    assert sept["commissions"] == 16
+    assert sept["payee"] == 16
+
+    # OCTOBRE : ses propres 8, et RIEN de septembre. Avant, octobre portait
+    # 24 — ses 8 plus les 16 de septembre — sans rapport avec ses commissions.
+    assert octo["ca_valide"] == 50
+    assert octo["commissions"] == 8
+    assert octo["payee"] == 8
+
+
+def test_LE_VERSE_NE_PEUT_JAMAIS_DEPASSER_LE_GAGNE(server_module):
+    """L'invariant qui tient la regle, et que l'ancien test n'avait pas.
+
+    Les quatre colonnes etant desormais sur le MEME axe — le mois gagne —
+    « verse » est un sous-ensemble de « commissions » par construction. Si un
+    mois affiche plus de verse que de commissions, c'est que les deux axes se
+    sont remelanges : c'est le defaut d'origine, et il se verrait ici avant
+    d'arriver a l'ecran.
+    """
+    lignes = [
+        {"order_number": "FN-1", "base_amount": 100, "commission_amount": 16,
+         "status": "paid", "approved_at": "2026-09-10T10:00:00",
+         "created_at": "2026-09-09T10:00:00", "paid_at": "2026-10-05T10:00:00"},
+        {"order_number": "FN-2", "base_amount": 50, "commission_amount": 8,
+         "status": "paid", "approved_at": "2026-10-02T10:00:00",
+         "created_at": "2026-10-01T10:00:00", "paid_at": "2026-10-03T10:00:00"},
+        # Approuvee, pas encore versee : elle compte dans « commissions »,
+        # pas dans « payee ».
+        {"order_number": "FN-3", "base_amount": 200, "commission_amount": 32,
+         "status": "approved", "approved_at": "2026-10-20T10:00:00",
+         "created_at": "2026-10-19T10:00:00"},
+        # Un virement PARTI deux mois plus tard : la tentation de le compter
+        # au mois du transfert est exactement ce qu'on interdit.
+        {"order_number": "FN-4", "base_amount": 300, "commission_amount": 48,
+         "status": "paid", "approved_at": "2026-08-05T10:00:00",
+         "created_at": "2026-08-04T10:00:00", "paid_at": "2026-10-05T10:00:00"},
+    ]
+    serie = server_module._affiliate_serie_mensuelle(lignes)
+
+    for mois in serie:
+        assert mois["payee"] <= mois["commissions"], mois["mois"]
+
+    # Et le mois d'aout porte bien SON versement, pas octobre.
+    aout = [m for m in serie if m["mois"] == "2026-08"][0]
+    octo = [m for m in serie if m["mois"] == "2026-10"][0]
+    assert aout["payee"] == 48
+    assert octo["payee"] == 8          # ses 8 seulement
+    assert octo["commissions"] == 40   # 8 verses + 32 approuves
 
 
 def test_une_commission_annulee_par_remboursement_est_tracee(server_module):

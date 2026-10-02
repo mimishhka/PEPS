@@ -120,11 +120,28 @@ class _Curseur:
         return self._lignes[:limit]
 
 
-def _brancher(server_module, ligne):
-    vu = {}
+def _brancher(server_module, ligne, dette=None):
+    """Double qui DISTINGUE les deux agregations.
+
+    `_commissions_par_cycle` en lance deux depuis que la creance sort du
+    montant annonce : les commissions du cycle, puis les dettes en cours. Le
+    double n'en gardait qu'une — la DERNIERE — et deux tests lisaient donc le
+    pipeline de la creance en croyant lire celui des commissions. Ils
+    echouaient sur un `KeyError: 'status'`, ce qui est la bonne facon
+    d'echouer : le piege aurait ete qu'ils continuent de passer en verifiant
+    le mauvais appel.
+
+    Le tri se fait sur le `$match` plutot que sur l'ordre d'appel : un jour ou
+    l'ordre changera, les tests resteront justes.
+    """
+    vu = {"pipelines": []}
 
     class Referrals:
         def aggregate(self, pipeline):
+            vu["pipelines"].append(pipeline)
+            if "clawback_pending" in pipeline[0].get("$match", {}):
+                vu["creance"] = pipeline
+                return _Curseur([dette] if dette else [])
             vu["pipeline"] = pipeline
             return _Curseur([ligne] if ligne else [])
 
@@ -519,3 +536,102 @@ def test_le_pouls_porte_le_compteur_des_avis_bloques(server_module, monkeypatch)
     out = asyncio.run(server_module.admin_dashboard_pulse({}))
 
     assert out["ops"]["affiliate_notices_stuck"] == 2
+
+
+# ------------------------------------------------------- la creance du cycle -
+#
+# La seconde agregation de `_commissions_par_cycle`. Elle a ete ajoutee le
+# 02/10/2026 et rien ne la testait -- c'est elle qui a casse les deux tests
+# au-dessus, en ecrasant le pipeline capture par le double.
+#
+# Le defaut qu'elle pourrait porter sans que personne le voie : un
+# `affiliate_id` oublie dans son filtre ferait remonter la dette de TOUT le
+# programme sur l'ecran d'un seul affilie, et son « a verser » tomberait a
+# zero sans raison lisible.
+
+
+def test_LA_CREANCE_EST_LIMITEE_A_L_AFFILIE(server_module):
+    """Le test qui compte le plus ici.
+
+    Sans `affiliate_id` dans ce filtre, un affilie verrait son versement
+    diminue de la dette de quelqu'un d'autre.
+    """
+    vu = _brancher(server_module, None)
+    asyncio.run(server_module._commissions_par_cycle("a-1"))
+
+    selection = vu["creance"][0]["$match"]
+    assert selection["affiliate_id"] == "a-1"
+    assert selection["clawback_pending"] is True
+
+
+def test_sans_affilie_la_creance_porte_sur_tout_le_programme(server_module):
+    """La vue de celle qui paie : la dette totale, sans filtre de dossier."""
+    vu = _brancher(server_module, None)
+    asyncio.run(server_module._commissions_par_cycle())
+
+    assert "affiliate_id" not in vu["creance"][0]["$match"]
+
+
+def test_les_DEUX_agregations_sont_lancees(server_module):
+    """Si une disparait, le montant annonce redevient brut — c'est-a-dire
+    faux, et dans le sens qui promet de l'argent."""
+    vu = _brancher(server_module, None)
+    asyncio.run(server_module._commissions_par_cycle("a-1"))
+
+    assert len(vu["pipelines"]) == 2
+
+
+def test_LE_MONTANT_ANNONCE_EST_NET_DE_LA_DETTE(server_module):
+    """Mireille : « the commission to be paid is not updated, that does not
+    make sense since we have to get back some of what was overpaid in a
+    previous payout ». Le run deduit ; ce bloc doit annoncer la meme somme."""
+    vu = _brancher(
+        server_module,
+        {"due_now": 250.0, "due_count": 4, "current_cycle": 40.0,
+         "current_count": 1},
+        dette={"montant": 100.0, "n": 2},
+    )
+    assert vu is not None
+
+    out = asyncio.run(server_module._commissions_par_cycle(
+        "a-1", _le("2026-09-03T16:00:00+00:00")))
+
+    assert out["acquis"] == 250.0      # ce qui est gagne
+    assert out["creance"] == 100.0     # ce qui est repris
+    assert out["creance_lignes"] == 2
+    assert out["due_now"] == 150.0     # ce qui partira
+    assert out["creance_reportee"] == 0
+
+
+def test_une_dette_PLUS_GRANDE_que_l_acquis_ne_rend_pas_un_du_negatif(
+        server_module):
+    """Un versement negatif n'existe pas. Rien ne part, et le reste suit."""
+    _brancher(
+        server_module,
+        {"due_now": 30.0, "due_count": 1, "current_cycle": 0.0,
+         "current_count": 0},
+        dette={"montant": 100.0, "n": 3},
+    )
+
+    out = asyncio.run(server_module._commissions_par_cycle(
+        "a-1", _le("2026-09-03T16:00:00+00:00")))
+
+    assert out["due_now"] == 0
+    assert out["creance_reportee"] == 70.0
+
+
+def test_sans_dette_le_montant_est_INCHANGE(server_module):
+    """La correction ne doit rien changer au cas courant."""
+    _brancher(
+        server_module,
+        {"due_now": 250.0, "due_count": 4, "current_cycle": 40.0,
+         "current_count": 1},
+        dette=None,
+    )
+
+    out = asyncio.run(server_module._commissions_par_cycle(
+        "a-1", _le("2026-09-03T16:00:00+00:00")))
+
+    assert out["due_now"] == 250.0
+    assert out["creance"] == 0
+    assert out["creance_reportee"] == 0
