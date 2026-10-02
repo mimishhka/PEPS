@@ -183,6 +183,15 @@ export default function AffiliateDashboard() {
   const [insights, setInsights] = useState(null);
   const [sources, setSources] = useState(null);
   const [activity, setActivity] = useState([]);
+  /* LE CYCLE DE VERSEMENT VIENT DU TABLEAU DE BORD, PAS DE LA FICHE.
+     Il était lu sur `data` — la réponse de `/affiliate/me` — qui ne l'a jamais
+     porté : il n'existe que dans `/affiliate/dashboard`. La condition
+     `{data?.payout_cycle && …}` n'a donc JAMAIS été vraie, et tout le bloc
+     « prochain versement » — le seuil, l'échéance, la créance, l'avertissement
+     d'adresse manquante — n'a jamais été rendu, sur aucun compte.
+     Constaté le 02/10/2026 sur LOLA10 : le serveur annonçait `due_now: 0` et
+     une dette de 137,71 $, l'écran affichait 56,69 $ sans un mot. */
+  const [cycle, setCycle] = useState(null);
   // L'onglet initial peut venir de l'URL : la page FAQ renvoie vers
   // /affiliate?tab=payments quand on quitte le menu par un bouton.
   const [menuCompteOuvert, setMenuCompteOuvert] = useState(false);
@@ -258,6 +267,7 @@ export default function AffiliateDashboard() {
       setInsights(data?.insights || null);
       setSources(data?.clicks_sources || null);
       setActivity(Array.isArray(data?.activity) ? data.activity : []);
+      setCycle(data?.payout_cycle || null);
       setCustomers(Array.isArray(data?.customers?.customers) ? data.customers.customers : []);
       const perfSeries = data?.performance?.series || [];
       setSeries(perfSeries.map((s) => ({
@@ -1633,8 +1643,8 @@ export default function AffiliateDashboard() {
                 choses : l'argent du mois clos, qui part dans les jours qui
                 viennent, et celui du mois en cours, qui attendra. Un seul
                 total pour deux échéances ne dit ni quand ni combien. */}
-            {data?.payout_cycle && (
-              <CycleVersement cycle={data.payout_cycle} seuil={data?.payout_min_cad}
+            {cycle && (
+              <CycleVersement cycle={cycle} seuil={data?.payout_min_cad}
                               adresse={data?.payout_address}
                               onReglages={() => setTab("settings")}
                               L={L} lang={lang} />

@@ -104,9 +104,22 @@ const DETAIL = {
   lines_count: 2, lines_sum_cad: 142.5, payout_amount_cad: 142.5, difference: 0,
 };
 
+/* LE CYCLE VIENT DU TABLEAU DE BORD, PAS DE LA FICHE.
+   Ces tests le passaient par `fiche.payout_cycle` — c'est-à-dire par le
+   chemin CASSÉ : le composant lisait `data.payout_cycle` sur la réponse de
+   `/affiliate/me`, qui ne l'a jamais porté. Les tests passaient pendant que le
+   bloc ne s'affichait sur AUCUN compte. Ils le nourrissent désormais là où le
+   serveur le met vraiment. */
 const brancher = ({ versements = [VERSEMENT_PAYE], dernier = VERSEMENT_PAYE,
-                    detail = DETAIL, fiche = FICHE } = {}) => {
-  mockFiche = fiche;
+                    detail = DETAIL, fiche = FICHE, cycle } = {}) => {
+  const cycleEffectif = cycle !== undefined ? cycle : fiche?.payout_cycle ?? null;
+  /* ET LA FICHE NE LE PORTE PLUS DU TOUT.
+     Sans cette ligne, `payout_cycle` resterait disponible sur les DEUX
+     chemins : le composant pourrait recommencer à le lire sur la fiche et ces
+     tests passeraient encore, exactement comme ils ont passé pendant que le
+     bloc ne s'affichait nulle part. Le tableau de bord est la seule source. */
+  const { payout_cycle: _ignore, ...ficheSansCycle } = fiche || {};
+  mockFiche = ficheSansCycle;
   api.get.mockImplementation(async (url) => {
     const u = String(url);
     if (u.includes("/affiliate/payouts/")) return { data: detail };
@@ -118,6 +131,7 @@ const brancher = ({ versements = [VERSEMENT_PAYE], dernier = VERSEMENT_PAYE,
         insights: { current_month: { revenue: 0 } },
         clicks_sources: null, activity: [],
         customers: { customers: [] },
+        payout_cycle: cycleEffectif,
         performance: { series: [
           { month: "2026-09", revenue: 1100, commission: 110, orders: 11, reversed: 0 },
           { month: "2026-10", revenue: 1200, commission: 120, orders: 12, reversed: 0 },
