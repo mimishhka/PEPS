@@ -148,3 +148,96 @@ describe("le dernier palier, SANS entente", () => {
       .toHaveTextContent(/aucun montant à reconduire/i);
   });
 });
+
+// ===========================================================================
+// LE REPÈRE DE LA PRÉVISION
+//
+// MIREILLE, 01/10/2026, capture à l'appui : « je pense que ça devrait être de
+// l'autre côté du tableau, avec "vos ventes au 1er novembre" — ça a plus de
+// sens, à moins que tu me dises que ce n'est pas une bonne idée ».
+//
+// Elle avait raison : la date était écrite DEUX FOIS sur la même carte — sous
+// le curseur de la barre, et comme titre du panneau qui porte le montant
+// projeté. L'étiquette flottante coûtait en plus 34 px de vide sous la barre,
+// uniquement pour lui faire de la place.
+//
+// Le code la défendait comme « le seul pont entre les deux colonnes ». C'était
+// vrai, et c'est pourquoi elle n'est pas simplement supprimée : le même trait,
+// de la même couleur, passe devant le titre du panneau. L'œil apparie les deux
+// repères au lieu de relire la même date.
+// ===========================================================================
+
+describe("la prévision et son repère", () => {
+  test("LE CAS DE MIREILLE : la date n'est plus écrite qu'UNE fois", () => {
+    afficher(BAREME);
+
+    // « 1 nov. » / « Nov 1 » — quel que soit le format court retenu, il ne
+    // doit apparaître qu'à un seul endroit de la carte.
+    const titre = screen.getByTestId("carte-titre-projection");
+    const date = titre.textContent.replace(/Vos ventes au\s*/i, "").trim();
+    expect(date).toBeTruthy();
+
+    const partout = screen.getByTestId("affiliate-tier-badge")
+      .closest("[data-testid]").ownerDocument.body.textContent;
+    const occurrences = partout.split(date).length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  test("le curseur n'a plus d'étiquette visible, mais reste décrit", () => {
+    /* Il a perdu son texte : sans description, ce serait un trait muet pour
+     * qui n'voit pas la carte. L'étiquette accessible ne coûte aucun pixel et
+     * dit la chose entière — la date ET le montant. */
+    afficher(BAREME);
+
+    const curseur = screen.getByTestId("carte-curseur-projection");
+    expect(curseur.textContent).toBe("");
+    expect(curseur).toHaveAttribute("role", "img");
+    expect(curseur.getAttribute("aria-label")).toMatch(/12800|12 800/);
+  });
+
+  test("le repère du titre existe, et porte LA MÊME teinte que le curseur", () => {
+    /* C'est lui qui remplace la date répétée : l'appariement se fait sur la
+     * forme et la couleur, pas sur le texte. Si les deux teintes divergent, le
+     * pont entre les deux colonnes casse sans que rien ne le dise.
+     *
+     * L'assertion porte sur `data-teinte` et non sur `style.background` :
+     * jsdom ne sait pas lire la syntaxe `rgb(240 151 126)` — sans virgules —
+     * et SUPPRIME la propriété. Les deux `style.background` reviendraient
+     * vides, donc égaux, et le test passerait quelle que soit la couleur. */
+    afficher(BAREME);
+
+    const repere = screen.getByTestId("carte-repere-projection");
+    const curseur = screen.getByTestId("carte-curseur-projection");
+
+    expect(repere.getAttribute("data-teinte")).toBeTruthy();
+    expect(repere.getAttribute("data-teinte"))
+      .toBe(curseur.getAttribute("data-teinte"));
+  });
+
+  test("la teinte change quand la prévision BAISSE", () => {
+    // Une prévision qui descend sous le total actuel n'est pas la même
+    // nouvelle qu'une qui monte : la couleur le dit avant le chiffre.
+    const { unmount } = afficher(BAREME);
+    const monte = screen.getByTestId("carte-curseur-projection")
+      .getAttribute("data-teinte");
+    unmount();
+
+    afficher({ ...BAREME, projection_prochaine_periode: 500 });
+    const baisse = screen.getByTestId("carte-curseur-projection")
+      .getAttribute("data-teinte");
+
+    expect(baisse).not.toBe(monte);
+    // Et le repère du titre suit, puisqu'ils lisent la même source.
+    expect(screen.getByTestId("carte-repere-projection").getAttribute("data-teinte"))
+      .toBe(baisse);
+  });
+
+  test("sans barre, pas de repère — il ne relierait rien", () => {
+    // Au dernier palier il n'y a plus d'échelle à parcourir.
+    afficher({ ...BAREME, maintien_montant: null, atteinte_montant: null,
+               next_tier: null });
+
+    expect(screen.queryByTestId("carte-curseur-projection")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("carte-repere-projection")).not.toBeInTheDocument();
+  });
+});

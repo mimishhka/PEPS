@@ -63,6 +63,11 @@ import { moisLisible, periodeLisible } from "../lib/periode";
 /* `decale` : nombre de mois à retirer de la FIN de la série. Seul « mois
    dernier » l'utilise — c'est le seul à nommer un mois clos plutôt qu'une
    fenêtre qui court jusqu'à aujourd'hui. */
+/* EN DESSOUS DE TROIS MOIS, PAS DE FRISE. Deux barres ne dessinent aucune
+   tendance : elles répètent en couleur ce que le montant dit déjà en chiffres,
+   et occupent la place d'un graphique sans en être un. */
+const MOIS_MIN_GRAPHE = 3;
+
 const FENETRES = [
   { cle: "tout", mois: null, decale: 0, fr: "Depuis le début", en: "All time" },
   { cle: "m12", mois: 12, decale: 0, fr: "12 mois", en: "12 months" },
@@ -195,7 +200,15 @@ export default function DepuisLeDebut({ data, series, L, money, lang }) {
 
       {!vide && toutLeTemps && (
         <>
-          {/* La barre : trois états, une seule lecture. */}
+          {/* LA BARRE NE SERT QU'À PARTIR DE DEUX SEGMENTS.
+              Mireille : « c'est surdimensionné, ça n'a aucun sens ». Elle
+              regardait un compte dont tout est versé : un seul segment, donc
+              une barre pleine sur toute la largeur. Une barre de proportion
+              qui n'a rien à comparer n'est plus une proportion, c'est un
+              aplat — et la légende juste en dessous dit déjà le montant et
+              son état. */}
+          {SEGMENTS.length > 1 && (
+          /* La barre : trois états, une seule lecture. */
           <div className="flex h-2.5 w-full overflow-hidden mt-5"
                style={{ borderRadius: "var(--r-s)", background: "rgb(var(--fn-ash))" }}
                role="img"
@@ -208,6 +221,7 @@ export default function DepuisLeDebut({ data, series, L, money, lang }) {
                    style={{ width: `${(s.valeur / gagneTotal) * 100}%`, background: s.ton }} />
             ))}
           </div>
+          )}
 
           <ul className="flex flex-wrap gap-x-5 gap-y-2 mt-3.5">
             {SEGMENTS.map((s) => (
@@ -231,9 +245,21 @@ export default function DepuisLeDebut({ data, series, L, money, lang }) {
           donc il rend partout — y compris dans les tests — et s'adapte sans
           point de rupture. Les mois hors fenêtre s'estompent au lieu de
           disparaître : on voit ce que le filtre exclut. */}
-      {sommet > 0 && (
-        <div className="mt-5" data-testid="depuis-graphe">
-          <div className="flex items-end gap-[3px] h-16" role="img"
+      {sommet > 0 && mensuel.length >= MOIS_MIN_GRAPHE && (
+        /* LA LARGEUR SUIT LE NOMBRE DE MOIS.
+           Mes barres étaient en `flex-1` : à douze mois c'est une frise, à
+           deux mois chacune prend la moitié de l'écran et le bloc devient un
+           mur de couleur. Je n'avais testé qu'avec douze.
+           Le conteneur est désormais borné à ~46 px par mois : la frise
+           grandit avec l'historique au lieu de s'étirer pour remplir.
+
+           `max-width` et non `width: min(...)`, pour deux raisons. C'est
+           l'expression idiomatique de « au plus ceci, sinon remplis », et
+           jsdom n'évalue ni `min()` ni `calc()` — React retire alors la
+           propriété, et le test ne porterait plus que sur son absence. */
+        <div className="mt-5" data-testid="depuis-graphe"
+             style={{ maxWidth: `${mensuel.length * 46}px` }}>
+          <div className="flex items-end gap-[3px] h-12" role="img"
                aria-label={L(`Commission par mois sur ${mensuel.length} mois`,
                              `Commission per month over ${mensuel.length} months`)}>
             {mensuel.map((m) => {
@@ -256,10 +282,14 @@ export default function DepuisLeDebut({ data, series, L, money, lang }) {
               );
             })}
           </div>
-          <div className="flex justify-between font-data text-[10px] text-glacier/70 mt-1.5">
-            <span>{moisLisible(mensuel[0]?.month, lang)}</span>
-            <span>{moisLisible(mensuel[mensuel.length - 1]?.month, lang)}</span>
-          </div>
+          {/* UNE seule légende, alignée à gauche. Deux libellés aux
+              extrémités supposaient que la frise occupe toute la largeur :
+              depuis qu'elle est bornée, le second flottait dans le vide. */}
+          <p className="font-data text-[10px] text-glacier/70 mt-1.5"
+             data-testid="depuis-graphe-periode">
+            {periodeLisible({ debut: mensuel[0]?.month,
+                              fin: mensuel[mensuel.length - 1]?.month }, lang, "")}
+          </p>
         </div>
       )}
 

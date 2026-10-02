@@ -312,7 +312,8 @@ describe("les filtres de periode", () => {
     await userEvent.click(screen.getByTestId("depuis-filtre-m6"));
     // 110 + 120 seulement.
     expect(screen.getByTestId("depuis-gagne")).toHaveTextContent("230.00");
-    expect(screen.getAllByTestId(/^depuis-barre-/)).toHaveLength(2);
+    // Et a deux mois il n'y a pas de frise : voir plus bas.
+    expect(screen.queryByTestId("depuis-graphe")).not.toBeInTheDocument();
   });
 
   test("la moyenne par commande suit la fenetre", async () => {
@@ -340,6 +341,7 @@ describe("le graphique mensuel", () => {
 
   test("la hauteur est proportionnelle, et un mois a zero reste visible", () => {
     const avecZero = [
+      { month: "2026-08", revenue: 600, commission: 60, orders: 6 },
       { month: "2026-09", revenue: 0, commission: 0, orders: 0 },
       { month: "2026-10", revenue: 1200, commission: 120, orders: 12 },
     ];
@@ -375,5 +377,80 @@ describe("le graphique mensuel", () => {
     afficher(ACTIF, SERIE);
     const frise = screen.getByTestId("depuis-graphe").querySelector('[role="img"]');
     expect(frise.getAttribute("aria-label")).toMatch(/12/);
+  });
+});
+
+// ===========================================================================
+// CE QUI ETAIT SURDIMENSIONNE
+//
+// MIREILLE, 01/10/2026, capture a l'appui : « c'est surdimensionne, ca n'a
+// aucun sens ». Elle regardait un compte a 500,40 $ entierement verses, avec
+// deux mois d'historique. Deux blocs occupaient la moitie de l'ecran sans rien
+// apprendre : une barre pleine sur toute la largeur, et une frise de deux
+// barres geantes.
+// ===========================================================================
+
+describe("la barre de repartition", () => {
+  test("LE CAS DE MIREILLE : un seul etat, donc pas de barre", () => {
+    /* Tout est verse : un seul segment, donc une barre a 100 %. Une barre de
+     * proportion qui n'a rien a comparer n'est plus une proportion, c'est un
+     * aplat decoratif — et la legende juste en dessous dit deja le montant et
+     * son etat. */
+    afficher({ paid_commission: 500.40, approved_commission: 0,
+               pending_commission: 0, reversed_commission: 0,
+               cumulative_revenue: 4170, validated_orders: 12 });
+
+    expect(screen.queryByTestId("depuis-barre")).not.toBeInTheDocument();
+    // Le montant et son etat restent dits, par la legende.
+    expect(screen.getByTestId("depuis-legende-versee")).toHaveTextContent("500.40");
+    expect(screen.getByTestId("depuis-gagne")).toHaveTextContent("500.40");
+  });
+
+  test("des qu'il y a deux etats, elle revient", () => {
+    // La proportion redevient une information : c'est tout ce qui justifie la
+    // place qu'elle prend.
+    afficher({ ...ACTIF, pending_commission: 0 });
+
+    expect(screen.getByTestId("depuis-barre")).toBeInTheDocument();
+    expect(screen.getByTestId("depuis-segment-versee")).toBeInTheDocument();
+    expect(screen.getByTestId("depuis-segment-a-verser")).toBeInTheDocument();
+  });
+});
+
+describe("la taille de la frise", () => {
+  test("LE CAS DE MIREILLE : deux mois ne font pas un graphique", () => {
+    /* Deux barres ne dessinent aucune tendance : elles repetent en couleur ce
+     * que le montant dit deja en chiffres, et en `flex-1` chacune prenait la
+     * moitie de l'ecran. */
+    afficher(ACTIF, SERIE.slice(-2));
+    expect(screen.queryByTestId("depuis-graphe")).not.toBeInTheDocument();
+  });
+
+  test("a trois mois, elle apparait", () => {
+    afficher(ACTIF, SERIE.slice(-3));
+    expect(screen.getByTestId("depuis-graphe")).toBeInTheDocument();
+    expect(screen.getAllByTestId(/^depuis-barre-20/)).toHaveLength(3);
+  });
+
+  test("LA LARGEUR SUIT LE NOMBRE DE MOIS, elle ne s'etire pas pour remplir", () => {
+    /* C'est la correction de fond : bornee a ~46 px par mois et plafonnee a
+     * la largeur disponible, la frise GRANDIT avec l'historique au lieu de
+     * s'etaler. Un nouvel affilie voit une petite frise, pas un mur. */
+    const { unmount } = afficher(ACTIF, SERIE.slice(-3));
+    expect(screen.getByTestId("depuis-graphe").style.maxWidth).toBe("138px");
+    unmount();
+
+    afficher(ACTIF, SERIE);
+    expect(screen.getByTestId("depuis-graphe").style.maxWidth).toBe("552px");
+  });
+
+  test("une seule legende, et elle nomme la periode couverte", () => {
+    // Deux libelles aux extremites supposaient que la frise occupe toute la
+    // largeur : depuis qu'elle est bornee, le second flottait dans le vide.
+    afficher(ACTIF, SERIE);
+
+    const legende = screen.getByTestId("depuis-graphe-periode");
+    expect(legende).toHaveTextContent("2025");
+    expect(legende).toHaveTextContent("2026");
   });
 });

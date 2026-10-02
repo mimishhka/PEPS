@@ -80,26 +80,57 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {tiers.map((t) => {
           const meta = TIER_META[t.name] || {};
+          /* LES COULEURS VIENNENT DU JETON. Ce fichier lisait encore
+             `meta.color` — un champ que la jetonisation des paliers a remplacé
+             par `jeton`, sans repasser ici. Les CINQ lectures rendaient donc
+             `undefined` : les six symboles tombaient sur `currentColor` et
+             sortaient gris, la bordure du palier courant disparaissait, et le
+             fond de la pastille « vous » valait la chaîne « undefined1f ».
+             CarteAffilie avait été converti, celui-ci non.
+
+             Deux teintes, et c'est tout l'intérêt des canaux : le TRAIT plein
+             pour le texte, le VOILE pour un fond. C'est exactement ce que le
+             commentaire de TIER_META annonce — une couleur déjà composée
+             obligeait à coller « 1f » au bout, ce qui n'a aucun sens sur un
+             `rgb(var(...))`. */
+          const jeton = meta.jeton || "--fn-palier-defaut";
+          const trait = `rgb(var(${jeton}))`;
+          const voile = `rgb(var(${jeton}) / 0.12)`;
+          /* LE SYMBOLE N'A PAS LE MÊME SEUIL QUE LE TEXTE : 4,5:1 vaut pour du
+             texte, 3:1 suffit à un objet graphique. `--fn-vif-*` est calibré
+             pour le second. Durcir le symbole au seuil du texte l'éteint sans
+             raison — même décision que les cartes de l'onglet Performance. */
+          const vif = `rgb(var(${jeton.replace("--fn-palier-", "--fn-vif-")}))`;
           const ici = t.name === actuel;
           const atteint = rolling12 >= t.floor;
+          /* `data-jeton` ET `data-jeton-vif` SONT LÀ POUR ÊTRE VÉRIFIABLES.
+             jsdom rejette `rgb(var(--x))` comme valeur invalide et SUPPRIME la
+             propriété : `style.color` revient vide et l'attribut `style` vaut
+             `null`. Une assertion `toHaveStyle("color: rgb(var(...)")` compare
+             donc deux absences et passe quoi qu'il arrive — elle aurait laissé
+             passer le défaut même qu'on corrige ici. Ces deux attributs rendent
+             le CHOIX du jeton observable sans rien changer au rendu, comme
+             `data-dedans` sur les barres de la frise. */
           return (
             <div key={t.name}
                  data-testid={`ladder-${t.name}`}
+                 data-jeton={jeton}
+                 data-jeton-vif={jeton.replace("--fn-palier-", "--fn-vif-")}
                  className={`rounded-xl border p-3 transition ${
                    ici ? "bg-clinical" : "bg-white border-ash"}`}
-                 style={ici ? { borderColor: meta.color, boxShadow: `0 0 0 1px ${meta.color}` }
+                 style={ici ? { borderColor: trait, boxShadow: `0 0 0 1px ${trait}` }
                             : undefined}>
               <div className="flex items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.5 font-data text-[10px]
                                  uppercase tracking-[0.14em] font-semibold"
-                      style={{ color: meta.color }}>
-                  <TierMark tier={t.name} color={meta.color} size={18} />
+                      style={{ color: trait }}>
+                  <TierMark tier={t.name} color={vif} size={18} />
                   {meta[lang] || t.name}
                 </span>
                 {ici && (
                   <span className="font-data text-[10px] uppercase tracking-[0.12em] px-1.5 py-0.5
                                    rounded-full"
-                        style={{ background: `${meta.color}1f`, color: meta.color }}>
+                        style={{ background: voile, color: trait }}>
                     {L("vous", "you")}
                   </span>
                 )}
@@ -119,7 +150,7 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
               </p>
               {t.floor > 0 && (
                 <p className="font-data text-[10px] mt-0.5"
-                   style={{ color: atteint ? undefined : meta.color }}>
+                   style={{ color: atteint ? undefined : trait }}>
                   {atteint
                     ? L("palier atteint", "tier reached")
                     : L(`encore ${money(t.floor - rolling12)} de ventes`,

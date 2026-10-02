@@ -110,6 +110,13 @@ export default function CarteAffilie({
   const position = pct(Math.max(total, projection));
   const positionProjetee = pct(projection);
   const descend = projection < total;
+  /* UNE SEULE SOURCE POUR LA TEINTE DE LA PRÉVISION.
+     Elle sert à deux endroits — le curseur sur la barre, et le repère devant
+     le titre du panneau — et c'est leur APPARIEMENT qui remplace la date
+     qu'on répétait. Deux littéraux identiques recopiés auraient fini par
+     diverger, et le jour où ils divergent le pont entre les deux colonnes
+     casse sans que rien ne le signale. */
+  const teinteProjection = descend ? "rgb(240 151 126)" : "rgb(45 191 176)";
 
   // ---------------------------------------------------------------- paliers
   const maintien = data?.maintien_montant;
@@ -322,25 +329,36 @@ export default function CarteAffilie({
                 <div className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-700 ease-out"
                      style={{ width: `${position}%`, background: teinte }} />
               </div>
-              {/* LE CURSEUR : ou la prevision atterrit le 1er, une fois le
-                  vieux mois sorti et le mois courant entre. Seul pont entre
-                  les deux colonnes. */}
+              {/* LE CURSEUR : où la prévision atterrit le 1er, une fois le
+                  vieux mois sorti et le mois courant entré.
+                  MIREILLE, 01/10/2026 : « je pense que ça devrait être de
+                  l'autre côté du tableau, avec "vos ventes au 1er novembre" —
+                  ça a plus de sens, à moins que tu me dises que ce n'est pas
+                  une bonne idée ».
+                  Elle a raison, et la capture le rend évident : la date était
+                  écrite DEUX FOIS sur la même carte — ici, et comme titre du
+                  panneau de droite qui porte le montant projeté. L'étiquette
+                  coûtait en plus 34 px de vide sous la barre, uniquement pour
+                  lui faire de la place.
+                  Le code disait que c'était « le seul pont entre les deux
+                  colonnes ». C'était vrai, mais un pont ne se bâtit pas en
+                  répétant la date : il se bâtit en faisant CORRESPONDRE le
+                  repère. Le même trait se retrouve devant le titre du panneau,
+                  l'œil relie trait à trait, et la date n'est dite qu'une fois.
+                  Le curseur garde une description complète pour qui ne voit
+                  pas la carte — elle ne coûte aucun pixel. */}
               <div className="absolute -top-[7px] w-[2px] h-[21px] rounded-[2px]"
                    style={{
                      left: `${positionProjetee}%`,
-                     background: descend ? "rgb(240 151 126)" : "rgb(45 191 176)",
+                     background: teinteProjection,
                    }}
-                   data-testid="carte-curseur-projection">
-                <span className={`absolute top-[25px] whitespace-nowrap font-data text-[11px]
-                                  tracking-[0.07em] uppercase ${
-                                  positionProjetee < 18 ? "left-0"
-                                    : positionProjetee > 82 ? "right-0"
-                                    : "left-1/2 -translate-x-1/2"}`}
-                      style={{ color: descend ? "rgb(240 151 126)" : "rgb(45 191 176)" }}>
-                  {L("au ", "on ")}{jourCourt(data?.prochaine_periode_debut)}
-                </span>
-              </div>
-              <div className="flex flex-wrap justify-between gap-y-1 mt-[34px] font-data text-[11px]
+                   role="img"
+                   data-teinte={teinteProjection}
+                   aria-label={L(
+                     `Prévision au ${jourCourt(data?.prochaine_periode_debut)} : ${money(projection)}`,
+                     `Forecast on ${jourCourt(data?.prochaine_periode_debut)}: ${money(projection)}`)}
+                   data-testid="carte-curseur-projection" />
+              <div className="flex flex-wrap justify-between gap-y-1 mt-3 font-data text-[11px]
                               tracking-[0.05em] text-white/65 tabular-nums">
                 <span>{money(plancher)} · {tierLabel}</span>
                 <span>{money(plafond)} · {suivant ? tierNom(suivant.tier, L) : ""}</span>
@@ -360,9 +378,22 @@ export default function CarteAffilie({
         <div className="relative px-4 sm:px-7 pt-4 sm:pt-5 pb-5 sm:pb-6
                         border-t border-white/12 sm:border-t-0"
              data-testid="affiliate-paliers-prix">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em]
-                        text-nova pb-2.5 mb-3 border-b border-dashed border-white/20">
-            {L("Vos ventes au ", "Your sales on ")}{jourCourt(data?.prochaine_periode_debut)}
+          <p className="flex items-center gap-2 font-data text-[11px] font-semibold uppercase
+                        tracking-[0.2em] text-nova pb-2.5 mb-3
+                        border-b border-dashed border-white/20"
+             data-testid="carte-titre-projection">
+            {/* LE MÊME TRAIT QUE LE CURSEUR DE LA BARRE, et de la même
+                couleur. C'est lui qui remplace la date qu'on répétait sous le
+                curseur : l'œil apparie les deux repères, et la date n'est
+                écrite qu'ici. Masqué quand il n'y a pas de barre — un repère
+                sans contrepartie ne relie rien. */}
+            {etendue > 0 && (
+              <span aria-hidden="true" className="w-[2px] h-[13px] rounded-[1px] shrink-0"
+                    style={{ background: teinteProjection }}
+                    data-teinte={teinteProjection}
+                    data-testid="carte-repere-projection" />
+            )}
+            <span>{L("Vos ventes au ", "Your sales on ")}{jourCourt(data?.prochaine_periode_debut)}</span>
           </p>
           <p className="font-display text-[26px] sm:text-[30px] font-bold leading-none
                         tracking-[-0.03em] tabular-nums">
