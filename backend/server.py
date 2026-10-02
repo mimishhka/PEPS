@@ -6217,66 +6217,163 @@ async def admin_audit_log(limit: int = 200, admin: dict = Depends(get_admin_user
     return entries
 
 
-async def admin_customers(_admin: dict = Depends(require_area("customers", "view"))):
-    """Clients enrichis : dépenses cumulées, nb de commandes payées, dernière commande,
-    et segment de rétention déterministe (nouveau / actif / fidèle / à risque / inactif)."""
-    users = await _cursor_all(db.users.find(
-        {"role": {"$ne": "admin"}},
-        {"_id": 0, "password_hash": 0, "token_version": 0},
-    ).sort("created_at", -1))
+def _segment_clients(maintenant: datetime) -> dict:
+    """L'expression Mongo qui attribue son segment a un client.
 
-    # Agrégation des commandes payées par email (une seule passe)
-    agg = db.orders.aggregate([
-        {"$match": {"payment_status": "paid", "email": {"$ne": None}}},
-        {"$group": {
-            "_id": "$email",
-            "orders": {"$sum": 1},
-            "spent": {"$sum": "$total"},
-            "last_order": {"$max": "$created_at"},
+    PAS D'ARITHMETIQUE DE DATES DANS LA BASE, et c'est delibere. Les dates de ce
+    depot sont des CHAINES ISO, qui se comparent lexicographiquement : « plus
+    recent que 45 jours » s'ecrit donc `last_order_at >= <date d'il y a 45
+    jours>`, sans `$dateFromString` ni `$dateDiff`.
+
+    Ce n'est pas qu'une simplification. `$dateFromString` sur une chaine abimee
+    fait ECHOUER toute l'agregation, la ou la version Python attrapait
+    l'exception et retombait sur 999 jours. Comparer des chaines ne peut pas
+    lever.
+
+    Un `last_order_at` NUL se classe avant toute chaine dans l'ordre BSON : les
+    comparaisons sont donc fausses, et le client tombe sur « a risque » ou
+    « dormant » — exactement ce que donnait `days = 999`.
+    """
+    seuil_45 = (maintenant - timedelta(days=45)).isoformat()
+    seuil_120 = (maintenant - timedelta(days=120)).isoformat()
+    return {"$switch": {
+        "branches": [
+            {"case": {"$eq": ["$orders_count", 0]}, "then": "prospect"},
+            {"case": {"$gte": ["$orders_count", 3]},
+             "then": {"$cond": [{"$gte": ["$last_order_at", seuil_120]},
+                                "loyal", "at_risk"]}},
+            {"case": {"$gte": ["$last_order_at", seuil_45]}, "then": "active"},
+            {"case": {"$gte": ["$last_order_at", seuil_120]}, "then": "cooling"},
+        ],
+        "default": "dormant",
+    }}
+
+
+async def admin_customers(page: int = 1, page_size: int = 50,
+                          segment: Optional[str] = None,
+                          q: Optional[str] = None,
+                          tri: str = "spent",
+                          _admin: dict = Depends(require_area("customers", "view"))):
+    """Clients enrichis : dépenses cumulées, nb de commandes payées, dernière
+    commande, et segment de rétention déterministe.
+
+    MIREILLE, 01/10/2026 : « tout le site doit etre concu pour une expansion
+    possible, quelle que soit l'information ».
+
+    CE QUE CET ECRAN FAISAIT. Il chargeait TOUS les utilisateurs via
+    `_cursor_all`, PLUS une agregation sur TOUTES les commandes payees groupees
+    par courriel, puis joignait et segmentait les deux en Python. A cinquante
+    mille clients, c'est cinquante mille documents et autant de lignes
+    d'agregation en memoire — a chaque ouverture de l'ecran, pour en afficher
+    cinquante.
+
+    TOUT DESCEND DANS LA BASE. Une seule requete, qui renvoie la page demandee,
+    les comptes par segment et le total exact. Rien d'autre ne remonte.
+
+    LA JOINTURE SE FAIT SUR L'ADRESSE BRUTE, et non en minuscules comme le
+    faisait Python. Les deux cotes sont normalises a l'ECRITURE — l'inscription
+    pose `payload.email.lower().strip()`, et la commande reprend soit
+    `user["email"]` soit `payload.email.lower()`. Un utilisateur dont l'adresse
+    serait en majuscules ne pourrait d'ailleurs jamais se connecter, puisque la
+    connexion cherche la version minuscule. Le `.lower()` de Python etait donc
+    defensif, et s'en passer permet a l'index `orders.email` de servir.
+
+    CE QUI RESTE EN O(clients), ET POURQUOI JE L'ASSUME ICI. Les comptes par
+    segment portent sur TOUS les clients, pas sur la page : la base doit donc
+    toucher chaque client, meme si elle ne renvoie que cinquante lignes. Le
+    jour ou cela ne suffira plus, la vraie reponse est de denormaliser
+    `orders_count`, `total_spent` et `last_order_at` SUR le document client, mis
+    a jour au paiement d'une commande — la liste devient alors un simple find
+    pagine, sans jointure. C'est une migration et un changement du chemin
+    d'ecriture : ce n'est pas le bon moment, mais c'est la suite.
+    """
+    page = max(1, int(page))
+    page_size = min(max(1, int(page_size)), 200)
+
+    filtre: dict = {"role": {"$ne": "admin"}}
+    if q and q.strip():
+        # Recherche cote SERVEUR. L'ecran filtrait un tableau complet en
+        # JavaScript, ce qui suppose d'avoir deja tout telecharge.
+        motif = re.escape(q.strip())
+        filtre["$or"] = [
+            {"email": {"$regex": motif, "$options": "i"}},
+            {"name": {"$regex": motif, "$options": "i"}},
+        ]
+
+    maintenant = datetime.now(timezone.utc)
+    etapes = [
+        {"$match": filtre},
+        {"$project": {"_id": 0, "password_hash": 0, "token_version": 0}},
+        # Les statistiques de commandes, calculees par la base. Le sous-pipeline
+        # filtre sur `payment_status: paid` AVANT de grouper : sans lui, il
+        # faudrait remonter toutes les commandes de chaque client pour les
+        # filtrer ensuite.
+        {"$lookup": {
+            "from": "orders",
+            "let": {"courriel": "$email"},
+            "pipeline": [
+                {"$match": {"$expr": {"$eq": ["$email", "$$courriel"]},
+                            "payment_status": "paid"}},
+                {"$group": {"_id": None,
+                            "orders": {"$sum": 1},
+                            "spent": {"$sum": {"$ifNull": ["$total", 0]}},
+                            "last_order": {"$max": "$created_at"}}},
+            ],
+            "as": "_stats",
         }},
-    ])
-    stats = {}
-    async for row in agg:
-        if row["_id"]:
-            stats[row["_id"].lower()] = row
+        {"$set": {
+            "orders_count": {"$ifNull": [{"$first": "$_stats.orders"}, 0]},
+            "total_spent": {"$round": [
+                {"$ifNull": [{"$first": "$_stats.spent"}, 0.0]}, 2]},
+            "last_order_at": {"$ifNull": [{"$first": "$_stats.last_order"}, None]},
+        }},
+        {"$unset": "_stats"},
+        {"$set": {"segment": _segment_clients(maintenant)}},
+    ]
+    # Le filtre par segment s'applique APRES le calcul, forcement — mais les
+    # COMPTES, eux, doivent porter sur l'ensemble : sinon le filtre choisi
+    # ferait disparaitre les autres chiffres de la barre.
+    apres_segment = ([{"$match": {"segment": segment}}]
+                     if segment and segment.strip() else [])
 
-    now = datetime.now(timezone.utc)
+    # LE TRI AUSSI DESCEND DANS LA BASE. L'ecran triait le tableau complet en
+    # JavaScript : trier cote client suppose d'avoir deja tout telecharge, ce
+    # qui est precisement ce qu'on cesse de faire. `total_spent`,
+    # `orders_count` et `last_order_at` n'existent qu'apres le `$set` — ce tri
+    # ne pourrait pas se faire plus tot.
+    TRIS = {
+        "spent": [("total_spent", -1)],
+        "orders": [("orders_count", -1)],
+        "recent": [("last_order_at", -1)],
+        "created": [("created_at", -1)],
+    }
+    # Un tri inconnu retombe sur la depense, et ne fait pas echouer l'ecran.
+    ordre = dict(TRIS.get(tri, TRIS["spent"]))
 
-    def _segment(orders, last_iso):
-        if orders == 0:
-            return "prospect"
-        days = 999
-        if last_iso:
-            try:
-                days = (now - datetime.fromisoformat(last_iso.replace("Z", "+00:00"))).days
-            except Exception:
-                days = 999
-        if orders >= 3:
-            return "loyal" if days <= 120 else "at_risk"
-        if days <= 45:
-            return "active"
-        if days <= 120:
-            return "cooling"
-        return "dormant"
+    etapes.append({"$facet": {
+        "page": apres_segment + [
+            {"$sort": ordre},
+            {"$skip": (page - 1) * page_size},
+            {"$limit": page_size},
+        ],
+        "comptes": [{"$group": {"_id": "$segment", "n": {"$sum": 1}}}],
+        "total": apres_segment + [{"$count": "n"}],
+    }})
 
-    out = []
-    for u in users:
-        st = stats.get((u.get("email") or "").lower())
-        orders = st["orders"] if st else 0
-        spent = round(st["spent"], 2) if st else 0.0
-        last_order = st["last_order"] if st else None
-        u["orders_count"] = orders
-        u["total_spent"] = spent
-        u["last_order_at"] = last_order
-        u["segment"] = _segment(orders, last_order)
-        out.append(u)
+    try:
+        facettes = await db.users.aggregate(etapes).to_list(1)
+    except Exception as e:
+        logging.warning("[clients] agregation indisponible : %s", type(e).__name__)
+        return {"customers": [], "segment_counts": {}, "total": 0,
+                "page": page, "page_size": page_size}
 
-    # Compte par segment (pour les filtres UI)
-    seg_counts = {}
-    for u in out:
-        seg_counts[u["segment"]] = seg_counts.get(u["segment"], 0) + 1
-
-    return {"customers": out, "segment_counts": seg_counts, "total": len(out)}
+    f = facettes[0] if facettes else {}
+    comptes = {r["_id"]: r["n"] for r in (f.get("comptes") or []) if r.get("_id")}
+    total = (f.get("total") or [{}])[0].get("n", 0) if f.get("total") else 0
+    return {"customers": f.get("page") or [],
+            "segment_counts": comptes,
+            "total": total,
+            "page": page, "page_size": page_size}
 
 
 async def admin_list_subscribers(status: Optional[str] = None, _admin: dict = Depends(require_area("subscribers", "view"))):

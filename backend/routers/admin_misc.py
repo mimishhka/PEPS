@@ -53,8 +53,16 @@ async def admin_audit_log(limit: int = 200, _admin: dict = Depends(s.get_admin_u
 
 
 @router.get("/admin/customers")
-async def admin_customers(_admin: dict = Depends(s.require_area("customers", "view"))):
-    return await s.admin_customers(_admin)
+async def admin_customers(page: int = 1, page_size: int = 50,
+                          segment: Optional[str] = None,
+                          q: Optional[str] = None,
+                          tri: str = "spent",
+                          _admin: dict = Depends(s.require_area("customers", "view"))):
+    # Arguments NOMMES : l'appel etait positionnel, et inserer des parametres
+    # pagines avant `_admin` l'aurait lie a `page` en silence.
+    return await s.admin_customers(page=page, page_size=page_size,
+                                   segment=segment, q=q, tri=tri,
+                                   _admin=_admin)
 
 
 @router.get("/admin/subscribers")

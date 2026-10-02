@@ -24,4 +24,3 @@ server.py|orders|_cursor_all : materialise TOUTE la collection = 3
 server.py|orders|ni .limit() ni to_list(n) : lecture non bornee = 8
 server.py|orders|to_list(None) : sans borne = 1
 server.py|subscribers|_cursor_all : materialise TOUTE la collection = 1
-server.py|users|_cursor_all : materialise TOUTE la collection = 1

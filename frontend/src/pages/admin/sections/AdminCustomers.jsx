@@ -1,6 +1,6 @@
 // frontend/src/pages/admin/sections/AdminCustomers.jsx
 // Clients & rétention : segments, dépenses cumulées, historique, réengagement.
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import { Users, Search, X, Mail, TrendingUp, ShoppingBag, Clock } from "lucide-react";
 import api, { formatApiError } from "../../../lib/api";
@@ -23,6 +23,10 @@ export default function AdminCustomers() {
 
   const [rows, setRows] = useState([]);
   const [segCounts, setSegCounts] = useState({});
+  // Le nombre REEL de clients correspondant au filtre, renvoye par le serveur.
+  // La page recue n'en contient que cinquante : deduire le total de sa taille
+  // ferait dire a l'ecran qu'il montre tout.
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [seg, setSeg] = useState("all");
@@ -34,15 +38,23 @@ export default function AdminCustomers() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get("/admin/customers");
+      const { data } = await api.get("/admin/customers", {
+        params: { page, page_size: PAGE_SIZE, tri: sort,
+                  segment: seg === "all" ? undefined : seg,
+                  q: q.trim() || undefined },
+      });
       setRows(data.customers || []);
       setSegCounts(data.segment_counts || {});
+      setTotal(data.total || 0);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+    // LES FILTRES SONT DES DEPENDANCES, puisqu'ils partent au serveur. Avec un
+    // tableau vide, changer de page ou de segment n'aurait rien recharge :
+    // l'ecran serait reste sur la premiere page, en silence.
+  }, [page, seg, q, sort]);
   useEffect(() => { load(); }, [load]);
 
   const openDetail = async (id) => {
@@ -58,25 +70,18 @@ export default function AdminCustomers() {
     }
   };
 
-  const filtered = useMemo(() => {
-    let r = rows;
-    if (seg !== "all") r = r.filter((c) => c.segment === seg);
-    if (q.trim()) {
-      const s = q.toLowerCase();
-      r = r.filter((c) => (c.name || "").toLowerCase().includes(s) || (c.email || "").toLowerCase().includes(s));
-    }
-    const sorted = [...r];
-    if (sort === "spent") sorted.sort((a, b) => (b.total_spent || 0) - (a.total_spent || 0));
-    else if (sort === "orders") sorted.sort((a, b) => (b.orders_count || 0) - (a.orders_count || 0));
-    else if (sort === "recent") sorted.sort((a, b) => (b.last_order_at || "").localeCompare(a.last_order_at || ""));
-    else sorted.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
-    return sorted;
-  }, [rows, seg, q, sort]);
+  /* LE FILTRAGE, LE TRI ET LA PAGINATION SONT PARTIS AU SERVEUR.
+     Mireille : « tout le site doit etre concu pour une expansion possible ».
+     Filtrer et trier ici supposait d'avoir deja telecharge TOUS les clients —
+     exactement ce qu'on cesse de faire. `rows` est desormais la page que le
+     serveur a choisie, deja filtree et deja triee. */
+  const pageRows = rows;
 
   const money = (n) => `$${Number(n || 0).toFixed(2)}`;
   const dateShort = (iso) => (iso ? iso.slice(0, 10) : "-");
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageRows = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // Le TOTAL vient du serveur : c'est le nombre reel de clients qui
+  // correspondent au filtre, et non la taille de la page recue.
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useEffect(() => { setPage(1); }, [q, seg, sort]);
 
@@ -157,7 +162,7 @@ export default function AdminCustomers() {
                   </tr>
                 );
               })}
-              {!filtered.length && (
+              {!pageRows.length && (
                 <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-glacier">
                   {L("Aucun client", "No customers")}
                 </td></tr>
