@@ -305,5 +305,26 @@ def test_me_sanitizes_internal_fields(server_module):
 
     assert result["id"] == "u1"
     assert "permissions" not in result
-    assert "passwordless" not in result
     assert "password_hash" not in result
+    # Il etait dans le fixture et rien ne le verifiait.
+    assert "token_version" not in result
+
+    # `passwordless` N'EST PAS UN SECRET, et ce test le rangeait avec deux
+    # secrets reels.
+    #
+    # MIREILLE, 01/10/2026 : « pour etablir la premiere fois le mot de passe ca
+    # demande l'ancien mot de passe — chose impossible lorsque la personne n'a
+    # pas cree son compte avec un mot de passe ».
+    #
+    # Ce drapeau est un ETAT D'INTERFACE : l'ecran du compte s'en sert pour
+    # masquer le champ « mot de passe actuel », et le serveur n'exige rien de ce
+    # champ pour un compte passwordless. En le retirant ici, QUATRE parcours
+    # devenaient impossibles — definir un mot de passe depuis le compte, le
+    # definir depuis le tableau de bord affilie, changer d'adresse courriel,
+    # supprimer son compte.
+    #
+    # Il ne se divulgue a personne : `me()` ne renvoie jamais que la session en
+    # cours, et la personne sait deja comment elle s'est connectee.
+    # `password_hash` et `token_version` restent retires, eux : ce sont des
+    # secrets, et c'est exactement la distinction que ce test avait manquee.
+    assert result["passwordless"] is True
