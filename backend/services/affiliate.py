@@ -1177,6 +1177,13 @@ def _affiliate_public(aff: dict, metrics: Optional[dict] = None, lang: str = "fr
         "terms_ok": aff.get("terms_version") == s.AFFILIATE_TERMS_VERSION,
         "terms_version_required": s.AFFILIATE_TERMS_VERSION,
         "terms_accepted_at": aff.get("terms_accepted_at", ""),
+        # LA VERSION QU'IL A ACCEPTEE, et pas seulement celle qu'on exige.
+        # La fiche admin la porte depuis le 01/10 — c'est la premiere piece
+        # qu'on sort quand un affilie conteste une clause. L'affilie, lui, ne
+        # pouvait PAS savoir a quoi il s'etait engage : son ecran de conformite
+        # ne disait ni quelle version, ni quand. Une partie au contrat voyait
+        # le contrat, l'autre non.
+        "terms_version": aff.get("terms_version", ""),
         "coupon_percent": (float(aff["coupon_percent"])
                            if aff.get("coupon_percent") is not None
                            else float(s.AFFILIATE_COUPON_PERCENT)),

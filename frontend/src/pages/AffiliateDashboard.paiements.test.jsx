@@ -782,3 +782,31 @@ describe("l'adresse de paiement manquante", () => {
     expect(screen.queryByTestId("cycle-sans-adresse")).not.toBeInTheDocument();
   });
 });
+
+describe("« déjà versé » et « dernier versement »", () => {
+  test("LE CAS DE LOLA : l'écart entre les deux est nommé", async () => {
+    /* Vu sur son compte le 02/10/2026 : « LAST PAYOUT 500,40 $ » en haut de
+     * l'onglet, « Déjà versé 306,00 $ depuis le début » quelques centimètres
+     * plus bas. Les deux sont justes — le premier est l'argent parti, le
+     * second les commissions encore valides ET payées — mais un écart de
+     * 194,40 $ sur sa propre page se lit comme une erreur.
+     *
+     * L'écart EST la reprise d'après versement. */
+    await ouvrir({ fiche: { ...FICHE, paid_commission: 306,
+                            reprise_apres_versement: 194.40 } });
+
+    const ligne = await screen.findByTestId("payout-flow-ecart");
+    expect(ligne).toHaveTextContent("500.40");   // ce qui est parti
+    expect(ligne).toHaveTextContent("194.40");   // l'écart, expliqué
+    expect(ligne).toHaveTextContent(/rembours/i);
+  });
+
+  test("sans reprise après versement, rien n'apparaît", async () => {
+    // Les deux chiffres concordent : il n'y a rien à réconcilier.
+    await ouvrir({ fiche: { ...FICHE, paid_commission: 306,
+                            reprise_apres_versement: 0 } });
+    await screen.findByTestId("affiliate-payments");
+
+    expect(screen.queryByTestId("payout-flow-ecart")).not.toBeInTheDocument();
+  });
+});

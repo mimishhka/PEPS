@@ -241,3 +241,69 @@ describe("la prévision et son repère", () => {
     expect(screen.queryByTestId("carte-repere-projection")).not.toBeInTheDocument();
   });
 });
+
+// ---------------------------------------------------------------------------
+// ONZE COLONNES VIDES ET UNE BARRE
+//
+// Vu sur le compte LOLA10 le 02/10/2026, membre depuis septembre : la fenêtre
+// de douze mois est juste, les données aussi — mais un affilié qui vient
+// d'arriver lit un graphique qui a l'air cassé, et c'est son tout premier
+// écran.
+// ---------------------------------------------------------------------------
+
+describe("les mois d'avant l'arrivée", () => {
+  const DOUZE_MOIS = [
+    "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04",
+    "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10",
+  ].map((mois) => ({ mois, montant: mois === "2026-09" ? 3060 : 0 }));
+
+  test("LE CAS DE LOLA : on dit pourquoi les colonnes sont vides", () => {
+    afficher({ ...BAREME, mensuel: DOUZE_MOIS,
+               activated_at: "2026-09-12T14:00:00+00:00" });
+
+    const note = screen.getByTestId("carte-avant-arrivee");
+    expect(note).toHaveTextContent(/septembre 2026/i);
+    expect(note).toHaveTextContent(/pas encore affili/i);
+  });
+
+  test("`created_at` sert de repli pour les dossiers anciens", () => {
+    afficher({ ...BAREME, mensuel: DOUZE_MOIS,
+               created_at: "2026-09-01T14:00:00+00:00" });
+
+    expect(screen.getByTestId("carte-avant-arrivee")).toBeInTheDocument();
+  });
+
+  test("un affilié installé depuis longtemps ne lit rien de tel", () => {
+    // Le dire à quelqu'un dont la fenêtre est pleine serait du bruit.
+    afficher({ ...BAREME, mensuel: DOUZE_MOIS,
+               activated_at: "2024-03-01T14:00:00+00:00" });
+
+    expect(screen.queryByTestId("carte-avant-arrivee")).not.toBeInTheDocument();
+  });
+
+  test("sans date d'arrivée, on n'invente rien", () => {
+    afficher({ ...BAREME, mensuel: DOUZE_MOIS });
+
+    expect(screen.queryByTestId("carte-avant-arrivee")).not.toBeInTheDocument();
+  });
+
+  test("et sans série, il n'y a rien à expliquer", () => {
+    afficher({ ...BAREME, mensuel: [],
+               activated_at: "2026-09-12T14:00:00+00:00" });
+
+    expect(screen.queryByTestId("carte-avant-arrivee")).not.toBeInTheDocument();
+  });
+});
+
+describe("les deux blocs « vos ventes »", () => {
+  test("celui de gauche dit ce qu'il décide, au lieu de « vos ventes » tout court", () => {
+    /* Vu sur LOLA10 : deux blocs titrés « Vos ventes » côte à côte, 3 060,00 $
+     * et 3 532,43 $, et seul celui de droite portait sa date. Les sous-titres
+     * les distinguaient — mais c'est le gros titre qu'on lit. */
+    afficher(BAREME);
+
+    expect(screen.getByText(/vos ventes aujourd'hui/i)).toBeInTheDocument();
+    // Et plus aucun « Vos ventes » nu : c'est l'ambiguïté qu'on retirait.
+    expect(screen.queryByText(/^vos ventes$/i)).not.toBeInTheDocument();
+  });
+});

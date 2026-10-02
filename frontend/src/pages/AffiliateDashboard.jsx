@@ -1392,6 +1392,23 @@ export default function AffiliateDashboard() {
                            value={money(insights?.avg_order_value)} />
             </div>
 
+            {/* ZÉRO CLIC À CÔTÉ DE MILLIERS DE DOLLARS DE VENTES.
+                Vu sur le compte LOLA10 : « Clics 0 », « Taux de conversion — »,
+                « Clients amenés 0 », et juste à côté quatre commandes pour
+                3 532 $. C'est exact — un contact peut saisir le code sans
+                jamais passer par le lien — mais rien ne le disait, et trois
+                zéros encadrant de vraies ventes se lisent comme un compteur
+                cassé. On ne l'explique QUE dans ce cas-là : le dire toujours
+                serait du bruit. */}
+            {Number(insights?.clicks || 0) === 0
+              && Number(insights?.validated_orders || 0) > 0 && (
+              <p className="font-data text-[11px] text-glacier leading-relaxed -mt-2"
+                 data-testid="insights-sans-clic">
+                {L("Aucun clic n'a été enregistré, et vos commandes sont bien là : vos contacts ont saisi votre code directement au paiement, sans passer par votre lien. La commission suit le CODE — elle vous revient dans les deux cas.",
+                   "No clicks were recorded, and your orders are there all the same: your contacts entered your code at checkout without going through your link. Commission follows the CODE — it is yours either way.")}
+              </p>
+            )}
+
             {/* Échelle des paliers et simulateur. Masquée sous entente : le
                 barème ne s'applique pas à ces comptes, leur montrer une échelle
                 qu'ils ne gravissent pas serait une fausse promesse : et cela
@@ -1559,10 +1576,22 @@ export default function AffiliateDashboard() {
             </div>
 
             <div className="bg-white rounded-xl border border-ash overflow-hidden">
-              <div className="px-6 py-4 border-b border-ash flex items-center justify-between">
-                <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
-                  {L("COMMANDES VALIDÉES", "VALIDATED ORDERS")}
-                </p>
+              {/* LE MÊME TITRE DÉSIGNAIT DEUX CHOSES, sur le même écran.
+                  Vu sur le compte LOLA10 : la vignette « Commandes validées »
+                  affichait 2 — approuvées et payées — et ce tableau, titré
+                  pareil, en listait QUATRE, remboursements compris. Le compteur
+                  était fidèle à son nom ; c'est le tableau qui s'appropriait un
+                  mot plus étroit que son contenu. */}
+              <div className="px-6 py-4 border-b border-ash flex items-center justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+                    {L("TOUTES VOS COMMANDES", "ALL YOUR ORDERS")}
+                  </p>
+                  <p className="font-data text-[10px] text-glacier mt-0.5 leading-relaxed">
+                    {L("Y compris celles qui ont été remboursées ou annulées : la vignette « Commandes validées » ci-dessus ne compte que celles qui tiennent.",
+                       "Including those refunded or cancelled: the “Validated orders” figure above counts only the ones that hold.")}
+                  </p>
+                </div>
                 <button onClick={exportReferrals}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical transition">
                   <Download size={13} /> CSV
@@ -1710,6 +1739,23 @@ export default function AffiliateDashboard() {
                     </div>
                   ))}
                 </div>
+
+                {/* « DÉJÀ VERSÉ » ET « DERNIER VERSEMENT » NE DISAIENT PAS LE
+                    MÊME CHIFFRE, sur le même écran.
+                    Vu sur le compte LOLA10 : « LAST PAYOUT 500,40 $ » en haut,
+                    « Déjà versé 306,00 $ depuis le début » ici. Les deux sont
+                    justes — le premier est l'argent parti, le second les
+                    commissions encore valides ET payées — mais l'affiliée ne
+                    peut pas les réconcilier seule, et un écart de 194,40 $ sur
+                    sa propre page se lit comme une erreur.
+                    L'écart EST la reprise d'après versement. On la nomme. */}
+                {Number(data?.reprise_apres_versement || 0) > 0 && (
+                  <p className="font-data text-[11px] text-glacier mt-3 leading-relaxed"
+                     data-testid="payout-flow-ecart">
+                    {L(`${money(Number(data.paid_commission || 0) + Number(data.reprise_apres_versement))} sont effectivement partis depuis le début. L'écart de ${money(data.reprise_apres_versement)} portait sur des commandes remboursées depuis : ce montant avait été versé, il sera déduit d'un prochain versement.`,
+                       `${money(Number(data.paid_commission || 0) + Number(data.reprise_apres_versement))} actually went out since the start. The ${money(data.reprise_apres_versement)} difference was on orders refunded since: that amount had been paid out, and will be deducted from a future payout.`)}
+                  </p>
+                )}
 
                 <p className="font-data text-[11px] text-glacier mt-3">
                   {dueNow >= payoutMin
@@ -2022,6 +2068,39 @@ export default function AffiliateDashboard() {
               <span className={`inline-flex px-3 py-1.5 rounded-full font-data text-xs font-semibold ${comp.cls}`}>
                 {comp.dot} {comp[lang]}
               </span>
+
+              {/* CE À QUOI IL S'EST ENGAGÉ, ET QUAND.
+                  La fiche d'administration porte la version des conditions et
+                  sa date depuis le 01/10 : c'est la première pièce qu'on sort
+                  quand un affilié conteste une clause. Lui ne l'avait nulle
+                  part — une partie au contrat voyait le contrat, l'autre non.
+                  C'est aussi la seule page qui dit ce qui peut suspendre son
+                  compte : elle doit dire sur quel texte. */}
+              {data?.terms_accepted_at && (
+                <div className="mt-4 pt-3.5 border-t border-ash" data-testid="conformite-conditions">
+                  <p className="font-data text-[11px] text-glacier leading-relaxed">
+                    {L("Conditions du programme acceptées le ", "Program terms accepted on ")}
+                    <b className="text-nordfjord">{momentLisible(data.terms_accepted_at, lang)}</b>
+                    {data?.terms_version && (
+                      <>
+                        {L(" — version ", " — version ")}
+                        <b className="text-nordfjord">{data.terms_version}</b>
+                      </>
+                    )}
+                    {"."}
+                  </p>
+                  {/* PAS D'AVERTISSEMENT « une version plus récente existe ».
+                      On l'avait ajouté, et un test l'a montré INATTEIGNABLE :
+                      `terms_ok === false` rend l'écran d'acceptation à la place
+                      de tout le tableau de bord, donc personne n'arrive ici
+                      avec une version périmée. Le texte aurait vécu sans
+                      jamais s'afficher. */}
+                  <a href="/compliance" className="inline-block mt-2 font-data text-[11px]
+                                                   text-nova underline underline-offset-2">
+                    {L("Relire les conditions du programme", "Read the program terms again")}
+                  </a>
+                </div>
+              )}
             </div>
             <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
@@ -2682,14 +2761,39 @@ function ActivityRow({ e, L, lang, money, fmtDateTime }) {
       <span className="w-8 h-8 rounded-lg bg-warning/10 text-warning grid place-items-center shrink-0">
         <Wallet size={15} />
       </span>
+      {/* LA LIGNE QUI AFFICHAIT UN MONTANT FAUX.
+          Vue sur le compte LOLA10 : un versement de 500,40 $ CAD s'affichait
+          « $352.77 » — la quantité d'USDT, avec un signe dollar, au milieu de
+          commandes chiffrées en CAD. Sous l'étiquette « 2026-10 », qui est le
+          mois du VIREMENT, pour des commissions de septembre. Et la mention
+          « PAID_MANUAL », le jeton brut.
+          Trois erreurs sur une ligne, toutes sur de l'argent. */}
       <div className="flex-1 min-w-0">
         <p className="text-sm text-nordfjord">
-          {L("Paiement", "Payout")} <span className="font-semibold">{e.label || "-"}</span>
+          {L("Paiement", "Payout")}{" "}
+          <span className="font-semibold">
+            {periodeLisible(e.periode_couverte, lang, moisLisible(e.label, lang))}
+          </span>
         </p>
-        <p className="text-[11px] text-glacier uppercase">{e.status}</p>
+        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold
+                          ${libelleVersement(e.status, lang).cls}`}
+              data-testid="activite-statut-versement">
+          {libelleVersement(e.status, lang).texte}
+        </span>
       </div>
       <div className="text-right shrink-0">
-        <p className="text-sm font-semibold text-nordfjord tabular-nums">{money(e.amount)}</p>
+        <p className="text-sm font-semibold text-nordfjord tabular-nums"
+           data-testid="activite-montant-versement">
+          {money(e.amount)}
+        </p>
+        {/* La quantité de jetons n'a de sens qu'avec sa devise : un nombre nu,
+            sur un écran où tout est en dollars, se lit comme un second montant
+            canadien — c'est exactement ce qui se passait. */}
+        {e.jetons > 0 && e.devise && (
+          <p className="font-data text-[10px] text-glacier tabular-nums">
+            {`${e.jetons} ${String(e.devise).toUpperCase()}`}
+          </p>
+        )}
         <p className="text-[11px] text-glacier">{fmtDateTime(e.at, lang)}</p>
       </div>
     </div>

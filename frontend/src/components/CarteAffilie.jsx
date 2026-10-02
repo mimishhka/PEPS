@@ -1,5 +1,6 @@
 import TierMark from "./TierMark";
 import ChiffreAnime from "./ChiffreAnime";
+import { moisLisible } from "../lib/periode";
 
 /**
  * LA CARTE DE L'AFFILIE — l'argent, puis deux moments separes.
@@ -84,6 +85,11 @@ export default function CarteAffilie({
 
   // ---------------------------------------------------------------- graphique
   const serie = Array.isArray(data?.mensuel) ? data.mensuel : [];
+  /* Le mois d'arrivée, « AAAA-MM ». `activated_at` est posé au moment où
+     l'invitation est acceptée ; `created_at` sert de repli pour les dossiers
+     anciens. Sert uniquement à expliquer les colonnes vides d'avant. */
+  const moisArrivee = String(data?.activated_at || data?.created_at || "").slice(0, 7)
+    || null;
   const plancher = Number(data?.palier_plancher || 0);
   // Standard n'a pas de plancher : sa reference est le palier AU-DESSUS,
   // sinon la ligne vaudrait zero et ne dirait rien.
@@ -233,7 +239,14 @@ export default function CarteAffilie({
              data-testid="affiliate-periode-graph">
           <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em]
                         text-nova pb-2.5 mb-3 border-b border-dashed border-white/20">
-            {L("Vos ventes", "Your sales")}
+            {/* DEUX BLOCS TITRÉS « VOS VENTES », CÔTE À CÔTE, avec deux
+                montants. Vu sur le compte LOLA10 : 3 060,00 $ à gauche,
+                3 532,43 $ à droite, et seul celui de droite portait sa date.
+                Les deux fenêtres sont justes et les sous-titres les
+                distinguent — mais c'est le gros titre qu'on lit, et il
+                promettait « vos ventes » tout court. Celui de gauche dit
+                maintenant ce qu'il décide : le taux d'aujourd'hui. */}
+            {L("Vos ventes aujourd'hui", "Your sales today")}
           </p>
           <p className="font-display text-[26px] sm:text-[30px] font-bold leading-none
                         tracking-[-0.03em] tabular-nums" data-testid="affiliate-periode-total">
@@ -307,6 +320,20 @@ export default function CarteAffilie({
                   </span>
                 ))}
               </div>
+              {/* ONZE COLONNES VIDES ET UNE BARRE.
+                  Vu sur le compte LOLA10, membre depuis septembre : la fenêtre
+                  de douze mois est juste, les données aussi — mais un affilié
+                  qui vient d'arriver lit un graphique qui a l'air cassé, et
+                  c'est son tout premier écran. Le dire coûte une ligne, et
+                  seulement tant que la fenêtre déborde son arrivée. */}
+              {moisArrivee && serie.length > 0 && serie[0].mois < moisArrivee && (
+                <p className="font-data text-[11px] tracking-[0.05em] text-mist mt-3
+                              leading-relaxed" data-testid="carte-avant-arrivee">
+                  {L(`Les mois antérieurs à ${moisLisible(moisArrivee, "fr")} sont vides : vous n'étiez pas encore affilié. La fenêtre se remplira d'elle-même.`,
+                     `Months before ${moisLisible(moisArrivee, "en")} are empty: you had not joined yet. The window fills in on its own.`)}
+                </p>
+              )}
+
               {Number(data?.mois_sortant_montant || 0) > 0 && (
                 <p className="flex items-center gap-2 font-data text-[11px] tracking-[0.05em]
                               text-mist mt-3" data-testid="carte-mois-sortant">

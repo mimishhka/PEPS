@@ -22,7 +22,7 @@
 //
 // Aucun test ne couvrait cet onglet.
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import AffiliateDashboard from "./AffiliateDashboard";
@@ -112,7 +112,7 @@ const CLIENT = {
   orders_count: 4, revenue_validated: 820, commission_total: 98.4,
 };
 
-const brancher = (fiche) => {
+const brancher = (fiche, extra = {}) => {
   mockFiche = fiche;
   api.get.mockImplementation(async (url) => {
     if (String(url).includes("/affiliate/dashboard")) {
@@ -125,6 +125,7 @@ const brancher = (fiche) => {
         clicks_sources: null, activity: [],
         customers: { customers: [CLIENT] },
         performance: { series: [{ month: "2026-09", revenue: 900, commission: 108, reversed: 0 }] },
+        ...extra,
       } };
     }
     if (String(url).includes("/affiliate/top-products")) return { data: { items: [] } };
@@ -138,8 +139,8 @@ const brancher = (fiche) => {
 };
 
 /** Rend le tableau de bord et ouvre un onglet. */
-const ouvrir = async (onglet, fiche = FICHE_BAREME) => {
-  brancher(fiche);
+const ouvrir = async (onglet, fiche = FICHE_BAREME, extra = {}) => {
+  brancher(fiche, extra);
   render(<AffiliateDashboard />);
   await userEvent.click(await screen.findByTestId(`affiliate-tab-${onglet}`));
   return screen.findByTestId(`affiliate-${onglet === "payments" ? "payments" : onglet}`);
@@ -247,5 +248,220 @@ describe("un affilié sous entente, dans Performance", () => {
     expect(screen.getByTestId("affiliate-kpis")).toBeInTheDocument();
     expect(screen.getByTestId("attached-customers-table")).toBeInTheDocument();
     expect(screen.getByText(/VENTES VALIDÉES : 12 DERNIERS MOIS/i)).toBeInTheDocument();
+  });
+});
+
+// ===========================================================================
+// CE QUI A ÉTÉ VU À L'ÉCRAN, SUR LE COMPTE LOLA10
+//
+// Mireille, 02/10/2026 : « j'ai ouvert le compte d'un affilié sur le
+// navigateur, voyage sur tous les endpoint de ce compte et constate par toi
+// même ce qui ne fonctionne pas en fonction de ce que l'affilié voit et
+// comprend ».
+//
+// Chaque test ci-dessous porte un défaut relevé sur l'écran réel, pas un cas
+// imaginé. Les chiffres sont les siens.
+// ===========================================================================
+
+describe("le flux d'activité", () => {
+  const VERSEMENT_ACTIVITE = {
+    type: "payout", at: "2026-10-01T14:39:00Z",
+    label: "2026-10",                                   // l'étiquette du LOT
+    periode_couverte: { debut: "2026-09", fin: "2026-09", multi: false },
+    status: "paid_manual",
+    amount: 500.40,                                     // CAD
+    jetons: 352.77, devise: "usdt",
+  };
+
+  test("LE MONTANT AFFICHÉ EST CELUI EN DOLLARS CANADIENS", async () => {
+    /* Le défaut le plus grave de la visite : la ligne affichait « $352.77 »
+     * — la quantité d'USDT — à côté de commandes chiffrées en CAD. Elle avait
+     * reçu 500,40 $. Un montant faux, plus bas que la réalité, sur sa propre
+     * page. */
+    await ouvrir("performance", FICHE_BAREME, { activity: [VERSEMENT_ACTIVITE] });
+
+    expect(await screen.findByTestId("activite-montant-versement"))
+      .toHaveTextContent("500.40");
+  });
+
+  test("et la quantité de jetons reste lisible, AVEC sa devise", async () => {
+    // Un nombre nu, sur un écran où tout est en dollars, se lit comme un
+    // second montant canadien.
+    await ouvrir("performance", FICHE_BAREME, { activity: [VERSEMENT_ACTIVITE] });
+    await screen.findByTestId("activite-montant-versement");
+
+    expect(screen.getByText(/352\.77 USDT/)).toBeInTheDocument();
+  });
+
+  test("le statut est traduit, plus jamais « PAID_MANUAL »", async () => {
+    await ouvrir("performance", FICHE_BAREME, { activity: [VERSEMENT_ACTIVITE] });
+
+    const badge = await screen.findByTestId("activite-statut-versement");
+    expect(badge).toHaveTextContent(/pay/i);
+    expect(badge.textContent).not.toMatch(/paid_manual/i);
+  });
+
+  test("et l'étiquette dit la période COUVERTE, pas le mois du virement", async () => {
+    /* « Payout 2026-10 » pour des commissions de septembre : c'est la plainte
+     * d'origine, corrigée dans l'historique et oubliée ici. */
+    await ouvrir("performance", FICHE_BAREME, { activity: [VERSEMENT_ACTIVITE] });
+    await screen.findByTestId("activite-montant-versement");
+
+    expect(screen.getByText(/septembre 2026/i)).toBeInTheDocument();
+  });
+
+  test("sans période couverte, l'étiquette de lot reste — mieux qu'un vide", async () => {
+    await ouvrir("performance", FICHE_BAREME, {
+      activity: [{ ...VERSEMENT_ACTIVITE, periode_couverte: null }] });
+    await screen.findByTestId("activite-montant-versement");
+
+    expect(screen.getByText(/octobre 2026/i)).toBeInTheDocument();
+  });
+});
+
+describe("les compteurs à zéro à côté de vraies ventes", () => {
+  test("zéro clic ET des commandes : on explique au lieu de laisser deviner", async () => {
+    /* Vu sur LOLA10 : « Clics 0 », « Taux de conversion — », et juste à côté
+     * quatre commandes pour 3 532 $. C'est exact — le code peut être saisi
+     * sans passer par le lien — mais trois zéros encadrant de vraies ventes se
+     * lisent comme un compteur cassé. */
+    await ouvrir("performance", FICHE_BAREME, {
+      insights: { current_month: { revenue: 0 }, clicks: 0,
+                  conversion_rate: null, validated_orders: 2,
+                  avg_order_value: 1766.21 } });
+
+    expect(await screen.findByTestId("insights-sans-clic"))
+      .toHaveTextContent(/code/i);
+  });
+
+  test("avec des clics, on se tait", async () => {
+    await ouvrir("performance");
+    await screen.findByTestId("affiliate-performance");
+
+    expect(screen.queryByTestId("insights-sans-clic")).not.toBeInTheDocument();
+  });
+
+  test("zéro clic et AUCUNE commande : rien à expliquer non plus", async () => {
+    // Un compte neuf n'a pas besoin d'une explication sur une contradiction
+    // qui n'existe pas encore.
+    await ouvrir("performance", FICHE_BAREME, {
+      insights: { current_month: { revenue: 0 }, clicks: 0,
+                  conversion_rate: null, validated_orders: 0,
+                  avg_order_value: 0 } });
+    await screen.findByTestId("affiliate-performance");
+
+    expect(screen.queryByTestId("insights-sans-clic")).not.toBeInTheDocument();
+  });
+});
+
+describe("le tableau des commandes", () => {
+  test("ne s'appelle plus comme la vignette qui compte autre chose", async () => {
+    /* Vu sur LOLA10 : la vignette « Commandes validées » affichait 2, et ce
+     * tableau, titré pareil, en listait QUATRE — remboursements compris. Le
+     * même mot pour deux ensembles, sur le même écran. */
+    await ouvrir("performance");
+    await screen.findByTestId("affiliate-performance");
+
+    expect(screen.getByText(/toutes vos commandes/i)).toBeInTheDocument();
+    // Et il dit, SOUS SON TITRE, ce qu'il contient de plus que la vignette.
+    // `getAllByText` : « remboursé » apparaît ailleurs sur l'onglet.
+    const entete = screen.getByText(/toutes vos commandes/i).closest("div");
+    expect(entete).toHaveTextContent(/rembours/i);
+    expect(entete).toHaveTextContent(/commandes valid/i);
+  });
+});
+
+describe("la distance jusqu'au palier suivant", () => {
+  test("LE CAS DE MIREILLE : un seul chiffre, pas deux", async () => {
+    /* Vu sur LOLA10 : l'aperçu annonçait « 1 468,57 $ → Silver », l'échelle de
+     * Performance « 1 941,00 $ of sales to go ». Deux réponses à la même
+     * question, à un onglet d'écart.
+     *
+     * Celle qui compte est la base du cliquet — onze mois + le mois en cours —
+     * parce que c'est elle qui fait monter le taux tout de suite. */
+    await ouvrir("performance", {
+      ...FICHE_BAREME,
+      tier: "bronze", commission_rate: 0.12,
+      rolling12_revenue: 3060,
+      projection_prochaine_periode: 3532.43,
+    });
+
+    /* 5 001 − 3 532,43 = 1 468,57. Et surtout : PAS 1 941,00.
+       `findAllByText` : l'échelle se rend en deux variantes, étroite et
+       large — les deux doivent dire le même chiffre, ce qui est justement
+       le sujet de ce test. */
+    expect((await screen.findAllByText(/1,468\.57/)).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/1,941\.00/)).toHaveLength(0);
+  });
+
+  test("un mois en cours plus faible ne fait pas RECULER la distance", async () => {
+    /* Le plus haut des deux, comme la jauge de l'aperçu : un affilié qui a
+     * déjà franchi le seuil sur la fenêtre close ne doit pas lire une distance
+     * plus grande parce que son mois courant démarre lentement. */
+    await ouvrir("performance", {
+      ...FICHE_BAREME,
+      tier: "bronze", commission_rate: 0.12,
+      rolling12_revenue: 4000,
+      projection_prochaine_periode: 3100,
+    });
+
+    // 5 001 − 4 000 = 1 001, et non 5 001 − 3 100 = 1 901.
+    expect((await screen.findAllByText(/1,001\.00/)).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/1,901\.00/)).toHaveLength(0);
+  });
+});
+
+describe("l'onglet Conformité", () => {
+  test("DIT À QUOI IL S'EST ENGAGÉ, et quand", async () => {
+    /* La fiche d'administration porte la version des conditions et sa date
+     * depuis le 01/10 : c'est la première pièce qu'on sort quand un affilié
+     * conteste une clause. Lui ne l'avait nulle part — une partie au contrat
+     * voyait le contrat, l'autre non. Et c'est la seule page qui dit ce qui
+     * peut suspendre son compte : elle doit dire sur quel texte. */
+    await ouvrir("compliance", {
+      ...FICHE_BAREME,
+      terms_accepted_at: "2026-09-14T11:00:00+00:00",
+      terms_version: "2026-08-25b",
+      terms_version_required: "2026-08-25b",
+      terms_ok: true,
+    });
+
+    const bloc = await screen.findByTestId("conformite-conditions");
+    expect(bloc).toHaveTextContent("2026-08-25b");
+    expect(bloc).toHaveTextContent(/14 sept/i);
+  });
+
+  test("UNE VERSION PERIMEE N'ARRIVE JAMAIS JUSQU'ICI", async () => {
+    /* Le test qui a supprimé du code.
+     *
+     * On avait ajouté, dans ce bloc, un avertissement « une version plus
+     * récente vous sera présentée ». Ce test montre qu'il était
+     * INATTEIGNABLE : `terms_ok === false` rend l'écran d'acceptation à la
+     * place de TOUT le tableau de bord — pas en surcouche, pour que rien ne
+     * se referme sans avoir été lu. Personne n'atteint donc l'onglet
+     * Conformité avec une version périmée.
+     *
+     * Il est consigné ici pour que personne ne le réécrive. */
+    brancher({
+      ...FICHE_BAREME,
+      terms_accepted_at: "2026-09-14T11:00:00+00:00",
+      terms_version: "2026-08-25b",
+      terms_version_required: "2026-10-01a",
+      terms_ok: false,
+    });
+    render(<AffiliateDashboard />);
+
+    // Pas d'onglets du tout : l'écran d'acceptation a pris la page.
+    await waitFor(() =>
+      expect(screen.queryByTestId("affiliate-tab-compliance")).not.toBeInTheDocument());
+  });
+
+  test("et sans acceptation enregistrée, on n'invente pas une date", async () => {
+    /* Un dossier ancien peut ne rien porter. Afficher « accepté le — »
+     * vaudrait moins que de se taire. */
+    await ouvrir("compliance", FICHE_BAREME);
+    await screen.findByTestId("affiliate-compliance");
+
+    expect(screen.queryByTestId("conformite-conditions")).not.toBeInTheDocument();
   });
 });

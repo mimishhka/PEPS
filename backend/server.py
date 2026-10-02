@@ -13428,15 +13428,39 @@ async def affiliate_activity(request: Request, limit: int = 20, aff: Optional[di
             "base": round(float(r.get("base_amount") or 0), 2),
         })
 
+    # TROIS DEFAUTS TENAIENT DANS CETTE PROJECTION, vus a l'ecran le
+    # 02/10/2026 sur le compte LOLA10 : un versement de 500,40 $ CAD
+    # s'affichait « $352.77 », sous l'etiquette « 2026-10 », avec la mention
+    # « PAID_MANUAL ».
+    #
+    # 1. `amount` EST LA QUANTITE DE JETONS, pas un montant canadien. Le flux
+    #    d'activite l'affichait avec un signe dollar, a cote de commandes
+    #    chiffrees en CAD : l'affiliee lisait un montant faux, plus bas que ce
+    #    qu'elle avait recu, sur sa propre page. `amount_cad` est la somme due ;
+    #    la quantite de jetons part a cote, avec sa devise, comme dans
+    #    l'historique.
+    # 2. `period` EST L'ETIQUETTE DU LOT — le mois ou NOUS avons paye. La
+    #    periode couverte se deduit des commissions, en une seule requete pour
+    #    toute la liste.
+    # 3. Le statut partait brut et l'ecran l'affichait tel quel. Il reste brut
+    #    ici — c'est de la donnee — mais l'ecran le traduit desormais.
     payouts = await db.affiliate_payouts.find(
         {"affiliate_id": aff["id"]},
-        {"_id": 0, "period": 1, "status": 1, "amount": 1, "created_at": 1},
+        {"_id": 0, "id": 1, "period": 1, "status": 1, "amount": 1,
+         "amount_cad": 1, "currency": 1, "created_at": 1},
     ).sort("created_at", -1).to_list(limit)
+    await _attacher_periode_couverte(payouts)
     for p in payouts:
         events.append({
             "type": "payout", "at": p.get("created_at"),
-            "label": str(p.get("period") or ""), "status": p.get("status"),
-            "amount": round(float(p.get("amount") or 0), 2),
+            # L'etiquette de lot reste, en dernier recours : mieux vaut un mois
+            # approximatif qu'une case vide sur un releve d'argent.
+            "label": str(p.get("period") or ""),
+            "periode_couverte": p.get("periode_couverte"),
+            "status": p.get("status"),
+            "amount": round(float(p.get("amount_cad") or p.get("amount") or 0), 2),
+            "jetons": round(float(p.get("amount") or 0), 2),
+            "devise": str(p.get("currency") or ""),
         })
 
     events.sort(key=lambda e: str(e.get("at") or ""), reverse=True)

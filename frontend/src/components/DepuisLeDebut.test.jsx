@@ -84,6 +84,17 @@ describe("la question qu'on se pose en ouvrant la page", () => {
     afficher(ACTIF);
     expect(screen.getByTestId("depuis-ventes")).toHaveTextContent("33.74");
   });
+
+  test("et ce chiffre se nomme COMMISSION, pas panier moyen", () => {
+    /* Vu sur le compte LOLA10 le 02/10/2026 : cette ligne affichait « 181,35 $
+     * par commande en moyenne » juste apres un montant de VENTES, pendant que
+     * l'onglet Performance chiffrait le panier moyen a 1 766,21 $. Deux
+     * « moyennes par commande » a deux onglets d'ecart, dont une etait une
+     * commission. Le mot manquant valait la contradiction. */
+    afficher(ACTIF);
+    expect(screen.getByTestId("depuis-ventes"))
+      .toHaveTextContent(/de commission par commande/i);
+  });
 });
 
 describe("les trois états de la commission", () => {

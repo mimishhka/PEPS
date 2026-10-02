@@ -28,7 +28,24 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
   // `tier_basis: calendar_12m`) : c'est LUI qui détermine le
   // palier, pas le montant simulé au curseur. Les deux nombres coexistent sur
   // ce panneau, et les confondre est l'erreur qu'il doit éviter.
-  const rolling12 = Number(data?.rolling12_revenue || 0);
+  /* LA DISTANCE SE MESURE SUR LA BASE QUI FAIT MONTER, pas sur le plancher.
+   *
+   * Vu sur le compte LOLA10 le 02/10/2026 : l'aperçu annonçait « 1 468,57 $ →
+   * Silver », cette échelle « 1 941,00 $ of sales to go ». Deux réponses à la
+   * même question, à un onglet d'écart.
+   *
+   * Les deux fenêtres existent et la FAQ les explique : douze mois CLOS fixent
+   * le plancher du mois, onze mois + le mois en cours décident d'une montée.
+   * Mais une seule répond à « combien me manque-t-il pour gagner plus » —
+   * `CarteAffilie` le dit déjà de son côté : « la prévision [...] est AUSSI la
+   * base du cliquet : un seuil franchi sur cette base paie tout de suite ».
+   *
+   * Même règle que la jauge de l'aperçu : le plus haut des deux. Un affilié
+   * qui a déjà franchi le seuil sur la fenêtre close ne doit pas lire une
+   * distance plus grande parce que son mois en cours est plus faible. */
+  const douzeMoisClos = Number(data?.rolling12_revenue || 0);
+  const projection = Number(data?.projection_prochaine_periode || 0);
+  const rolling12 = Math.max(douzeMoisClos, projection);
   const rabais = Number(data?.coupon_percent ?? 10) / 100;
   // Base commissionnable : le rabais du contact est déduit avant le calcul.
   // L'afficher autrement promettrait plus que ce que le versement contient.

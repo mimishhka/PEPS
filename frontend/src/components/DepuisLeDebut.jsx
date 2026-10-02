@@ -308,7 +308,14 @@ export default function DepuisLeDebut({ data, series, L, money, lang }) {
               <b className="font-display font-bold text-nordfjord tabular-nums">
                 {money(parCommande)}
               </b>
-              {L(" par commande en moyenne", " per order on average")}
+              {/* « par commande en moyenne », placé juste après un montant de
+                  VENTES, se lisait comme le panier moyen — que l'onglet
+                  Performance chiffre à 1 766,21 $ pour le même compte, quand
+                  cette ligne affichait 181,35 $. Deux « moyennes par commande »
+                  à deux onglets d'écart, dont une était une COMMISSION. Le mot
+                  manquant valait la contradiction. */}
+              {L(" de commission par commande en moyenne",
+                 " in commission per order on average")}
             </>
           )}
         </p>
