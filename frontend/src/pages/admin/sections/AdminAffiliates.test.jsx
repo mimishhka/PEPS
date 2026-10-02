@@ -736,6 +736,7 @@ describe("AdminAffiliates — répondre à un audit", () => {
           payout: VERSEMENTS[0], lines: COMMISSIONS_AUDIT,
           lines_count: 2, lines_sum_cad: 142.5,
           payout_amount_cad: 142.5, difference: 0,
+          ...extra.versement,
         } };
       }
       if (url.startsWith("/admin/affiliates/aff-1")) {
@@ -834,6 +835,48 @@ describe("AdminAffiliates — répondre à un audit", () => {
     expect(screen.getByTestId("versement-ligne-FN-1001")).toBeInTheDocument();
     expect(screen.getByTestId("versement-ligne-FN-1002"))
       .toHaveTextContent(/rembours/i);
+  });
+
+  it("LA RETENUE est nommee dans le versement, et ce n'est pas une alerte", async () => {
+    /* Le jour ou le versement est devenu NET de la creance, `amount_cad` s'est
+     * mis a valoir moins que la somme de ses lignes — legitimement. L'ecart
+     * brut valait alors −creance, et ce panneau annoncait « ecart entre les
+     * lignes et le montant verse » sur un versement juste. Dans un audit,
+     * c'est la premiere question posee : pourquoi 102,50 et pas 142,50. */
+    fiche({ versement: { lines_sum_cad: 142.5, creance_absorbee: 40,
+                         attendu_cad: 102.5, payout_amount_cad: 102.5,
+                         difference: 0 } });
+    await ouvrirFiche();
+    await userEvent.click(screen.getByTestId("commission-versement-FN-1001"));
+    await screen.findByTestId("fiche-versement");
+
+    const bloc = screen.getByTestId("fiche-versement-creance");
+    expect(bloc).toHaveTextContent("40.00");    // retenu
+    expect(bloc).toHaveTextContent("102.50");   // verse
+    expect(screen.queryByTestId("fiche-versement-ecart")).not.toBeInTheDocument();
+  });
+
+  it("un VRAI ecart alerte encore, retenue ou pas", async () => {
+    // 142,50 de lignes, 40 retenus, donc 102,50 attendus — mais 90 verses.
+    fiche({ versement: { lines_sum_cad: 142.5, creance_absorbee: 40,
+                         attendu_cad: 102.5, payout_amount_cad: 90,
+                         difference: -12.5 } });
+    await ouvrirFiche();
+    await userEvent.click(screen.getByTestId("commission-versement-FN-1001"));
+    await screen.findByTestId("fiche-versement");
+
+    expect(screen.getByTestId("fiche-versement-creance")).toBeInTheDocument();
+    expect(screen.getByTestId("fiche-versement-ecart")).toHaveTextContent("12.50");
+  });
+
+  it("sans retenue, le panneau est inchange", async () => {
+    fiche();
+    await ouvrirFiche();
+    await userEvent.click(screen.getByTestId("commission-versement-FN-1001"));
+    await screen.findByTestId("fiche-versement");
+
+    expect(screen.queryByTestId("fiche-versement-creance")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("fiche-versement-ecart")).not.toBeInTheDocument();
   });
 
   it("laisse filtrer sur ce qu'on cherche vraiment", async () => {

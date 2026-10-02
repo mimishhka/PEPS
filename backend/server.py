@@ -12563,17 +12563,36 @@ async def affiliate_payout_detail(payout_id: str, request: Request,
                       for l in lignes), 2)
     montant = round(float(payout.get("amount_cad")
                           or payout.get("amount") or 0.0), 2)
+    # LA DÉDUCTION EST UNE LIGNE DU RAPPROCHEMENT, PAS UN ÉCART.
+    #
+    # `amount_cad` est NET depuis que la créance est recouvrée : un versement
+    # qui a absorbé une dette vaut MOINS que la somme de ses lignes, et c'est
+    # juste. L'écart brut vaudrait alors −créance, et cet écran annoncerait
+    # « écart avec le montant versé — écrivez-nous » sur un versement
+    # parfaitement correct. Une fausse alarme sur de l'argent coûte la
+    # confiance qu'elle était censée produire.
+    #
+    # Le rapprochement devient donc : lignes − déduction = versé.
+    creance = round(float(payout.get("creance_absorbee") or 0.0), 2)
+    attendu = round(somme - creance, 2)
     return {
         "payout": payout,
         "lines": lignes,
         "lines_count": len(lignes),
         "lines_sum_cad": somme,
         "payout_amount_cad": montant,
-        # L'ÉCART EST RENDU, PAS TU. Il doit valoir zéro : une reprise change
-        # le statut d'une ligne, jamais son `commission_amount`. S'il ne vaut
-        # pas zéro, c'est que le versement et ses lignes ont divergé — et
-        # l'affilié mérite de le voir plutôt que de nous croire sur parole.
-        "difference": round(montant - somme, 2),
+        # Ce qui a été retenu sur CE versement, pour des commandes remboursées
+        # après un versement antérieur. Sans ce chiffre, un versement plus bas
+        # que les commissions de sa période reste inexplicable — c'est la
+        # question « pourquoi 150 et pas 250 » dix-huit mois plus tard.
+        "creance_absorbee": creance,
+        "attendu_cad": attendu,
+        # L'ÉCART EST RENDU, PAS TU — mais il ne mesure plus que l'inexpliqué.
+        # Une reprise change le statut d'une ligne, jamais son
+        # `commission_amount` ; une déduction est nommée juste au-dessus. Ce
+        # qui reste après les deux n'a aucune explication, et l'affilié mérite
+        # de le voir plutôt que de nous croire sur parole.
+        "difference": round(montant - attendu, 2),
     }
 
 
@@ -16416,6 +16435,11 @@ async def admin_affiliate_payout_detail(payout_id: str, admin: dict):
     lines_sum = round(sum(float(l.get("commission_amount") or 0.0) for l in lines), 2)
     payout_amount = round(float(payout.get("amount_cad") or payout.get("amount") or 0.0), 2)
     payout["periode_couverte"] = await _periode_couverte(payout_id)
+    # MÊME RAPPROCHEMENT QUE L'ÉCRAN DE L'AFFILIÉ, aux mêmes trois nombres :
+    # lignes − déduction = versé. Les deux écrans doivent raconter la même
+    # histoire du même versement, sinon l'audit oppose deux chiffres justes.
+    creance_absorbee = round(float(payout.get("creance_absorbee") or 0.0), 2)
+    attendu = round(lines_sum - creance_absorbee, 2)
     return {
         "payout": payout,
         "affiliate": aff_info,
@@ -16423,7 +16447,9 @@ async def admin_affiliate_payout_detail(payout_id: str, admin: dict):
         "lines_count": len(lines),
         "lines_sum_cad": lines_sum,
         "payout_amount_cad": payout_amount,
-        "difference": round(payout_amount - lines_sum, 2),
+        "creance_absorbee": creance_absorbee,
+        "attendu_cad": attendu,
+        "difference": round(payout_amount - attendu, 2),
     }
 
 # ===== FIRONOVA_AFFILIATE_BLOCK_END =====

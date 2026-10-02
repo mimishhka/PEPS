@@ -1153,7 +1153,17 @@ export default function AdminPayouts() {
                 </div>
               </div>
 
-              {detail.difference !== 0 && (
+              {Number(detail.creance_absorbee || 0) > 0 && (
+                /* Le rapprochement du lot : lignes − retenue = verse. Sans
+                   cette ligne, les deux cases ci-dessus se contredisent. */
+                <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm text-nordfjord"
+                     data-testid="lot-detail-creance">
+                  {L(`Dont ${money(detail.creance_absorbee)} CAD retenus sur des commandes remboursées après un versement précédent : ${money(detail.lines_sum_cad)} − ${money(detail.creance_absorbee)} = ${money(detail.attendu_cad)} CAD.`,
+                     `Including ${money(detail.creance_absorbee)} CAD withheld for orders refunded after an earlier payout: ${money(detail.lines_sum_cad)} − ${money(detail.creance_absorbee)} = ${money(detail.attendu_cad)} CAD.`)}
+                </div>
+              )}
+
+              {Math.abs(Number(detail.difference || 0)) >= 0.01 && (
                 <div className={`rounded-lg border p-3 text-sm ${detail.difference < 0 ? "border-error/30 bg-error/5 text-error" : "border-warning/30 bg-warning/5 text-warning"}`}>
                   {L(`Écart de ${money(Math.abs(detail.difference))} CAD entre les lignes et le montant du versement. Vérifiez la référence (${detail.payout?.reference || "-"}).`,
                      `Difference of ${money(Math.abs(detail.difference))} CAD between lines and payout amount. Check the reference (${detail.payout?.reference || "-"}).`)}

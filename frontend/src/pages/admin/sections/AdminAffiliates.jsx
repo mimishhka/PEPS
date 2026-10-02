@@ -2759,9 +2759,36 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                   </span>
                 </div>
               )}
-              {/* L'ECART EST MONTRE, PAS TU. Il doit valoir zéro : une reprise
-                  change le statut d'une ligne, jamais son montant. S'il ne vaut
-                  pas zéro, c'est la première chose à expliquer dans un audit. */}
+              {/* LA RETENUE, avant l'ecart : elle explique un versement plus
+                  bas que les commissions de sa periode. Dans un audit, c'est
+                  la premiere question posee, et la reponse doit etre lisible
+                  sans ouvrir la base. */}
+              {Number(versement?.creance_absorbee || 0) > 0 && (
+                <div className="px-5 pb-3" data-testid="fiche-versement-creance">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="font-data text-[10px] uppercase tracking-[0.14em] text-glacier">
+                      {L("Retenu (remboursements apres versement)",
+                         "Withheld (refunds after payout)")}
+                    </span>
+                    <span className="font-data text-[12px] text-warning tabular-nums">
+                      −{money(versement.creance_absorbee)} CAD
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3 mt-1">
+                    <span className="font-data text-[10px] uppercase tracking-[0.14em] text-nordfjord">
+                      {L("Verse", "Paid")}
+                    </span>
+                    <span className="font-display font-bold text-nordfjord tabular-nums">
+                      {money(versement.payout_amount_cad)} CAD
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* L'ECART EST MONTRE, PAS TU — mais apres la retenue ci-dessus.
+                  Une reprise change le statut d'une ligne, jamais son montant.
+                  Ce qui reste inexplique est la premiere chose a eclaircir
+                  dans un audit. */}
               {versement && Math.abs(Number(versement.difference || 0)) >= 0.01 && (
                 <p className="px-5 pb-3 text-[11px] text-warning"
                    data-testid="fiche-versement-ecart">

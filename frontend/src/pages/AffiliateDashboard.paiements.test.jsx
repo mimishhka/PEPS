@@ -369,6 +369,68 @@ describe("le détail d'un versement", () => {
     expect(await screen.findByTestId("detail-ecart")).toHaveTextContent("12.50");
   });
 
+  // -------------------------------------------------------------------------
+  // LA RETENUE N'EST PAS UN ÉCART
+  //
+  // Le jour où le versement est devenu NET de la créance, `amount_cad` s'est
+  // mis à valoir moins que la somme des lignes — légitimement. L'écart brut
+  // valait alors −créance, et cette fenêtre annonçait « écart avec le montant
+  // versé — écrivez-nous » sur un versement parfaitement correct.
+  //
+  // Une fausse alarme sur de l'argent coûte exactement la confiance qu'elle
+  // était censée produire.
+  // -------------------------------------------------------------------------
+
+  const DETAIL_RETENUE = {
+    ...DETAIL,
+    // 142,50 gagnés, 40 retenus, 102,50 versés. Écart : zéro.
+    lines_sum_cad: 142.5, creance_absorbee: 40, attendu_cad: 102.5,
+    payout_amount_cad: 102.5, difference: 0,
+  };
+
+  test("LA RETENUE est nommée, et ce n'est pas une alerte", async () => {
+    await ouvrir({ detail: DETAIL_RETENUE });
+    await userEvent.click(screen.getByTestId("detail-bouton-table-pay-1"));
+
+    const bloc = await screen.findByTestId("detail-creance");
+    expect(bloc).toHaveTextContent("40.00");    // ce qui a été retenu
+    expect(bloc).toHaveTextContent("102.50");   // ce qui est parti
+    expect(bloc).toHaveTextContent(/rembours/i);
+    // ET SURTOUT : aucune alerte. C'est ici que le bug se voyait.
+    expect(screen.queryByTestId("detail-ecart")).not.toBeInTheDocument();
+  });
+
+  test("le rapprochement se refait de tête : 142,50 − 40 = 102,50", async () => {
+    /* La question d'un audit sur un versement de 102,50 quand les commissions
+     * du mois font 142,50, c'est « pourquoi 102,50 ». Les trois nombres
+     * doivent être sur le même écran. */
+    await ouvrir({ detail: DETAIL_RETENUE });
+    await userEvent.click(screen.getByTestId("detail-bouton-table-pay-1"));
+
+    const total = await screen.findByTestId("detail-total");
+    expect(total).toHaveTextContent("142.50");
+    expect(total).toHaveTextContent("40.00");
+    expect(total).toHaveTextContent("102.50");
+  });
+
+  test("un VRAI écart alerte encore, retenue ou pas", async () => {
+    // 142,50 de lignes, 40 retenus, donc 102,50 attendus — mais 90 versés.
+    await ouvrir({ detail: { ...DETAIL_RETENUE, payout_amount_cad: 90,
+                             difference: -12.5 } });
+    await userEvent.click(screen.getByTestId("detail-bouton-table-pay-1"));
+
+    expect(await screen.findByTestId("detail-creance")).toBeInTheDocument();
+    expect(screen.getByTestId("detail-ecart")).toHaveTextContent("12.50");
+  });
+
+  test("sans retenue, rien de nouveau n'apparaît", async () => {
+    await ouvrir();
+    await userEvent.click(screen.getByTestId("detail-bouton-table-pay-1"));
+    await screen.findByTestId("detail-total");
+
+    expect(screen.queryByTestId("detail-creance")).not.toBeInTheDocument();
+  });
+
   test("Échap ferme la fenêtre", async () => {
     await ouvrir();
     await userEvent.click(screen.getByTestId("detail-bouton-table-pay-1"));

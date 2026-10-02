@@ -209,11 +209,39 @@ export default function DetailVersement({ payoutId, L, money, lang, onClose }) {
                 {money(detail.lines_sum_cad)}
               </span>
             </div>
-            {/* L'ÉCART EST MONTRÉ, PAS TU. Il doit valoir zéro : une reprise
-                change le statut d'une ligne, jamais son montant. S'il ne vaut
-                pas zéro, l'affilié mérite de le voir plutôt que de nous croire
-                sur parole — c'est ce qui rend ce total une preuve et non une
-                affirmation. */}
+            {/* CE QUI A ÉTÉ RETENU SUR CE VERSEMENT, nommé ici et pas
+                ailleurs : c'est la seule page où l'affilié voit les commandes
+                de ce versement, donc la seule où « 250 de commandes, 150
+                versés » peut se refermer. Sans cette ligne, l'écart se
+                lisait comme une erreur de notre part. */}
+            {Number(detail.creance_absorbee || 0) > 0 && (
+              <div className="mt-2 pt-2 border-t border-ash/60" data-testid="detail-creance">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="font-data text-[11px] text-glacier">
+                    {L("Retenu sur des commandes remboursées après un versement précédent",
+                       "Withheld for orders refunded after an earlier payout")}
+                  </span>
+                  <span className="font-data text-[12px] text-warning tabular-nums whitespace-nowrap">
+                    −{money(detail.creance_absorbee)}
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between gap-3 mt-1.5">
+                  <span className="font-data text-[11px] uppercase tracking-[0.14em] text-nordfjord">
+                    {L("Versé", "Paid")}
+                  </span>
+                  <span className="font-display text-base font-bold text-nordfjord tabular-nums">
+                    {money(detail.payout_amount_cad)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* L'ÉCART EST MONTRÉ, PAS TU — mais après la déduction ci-dessus.
+                Une reprise change le statut d'une ligne, jamais son montant ;
+                une retenue est nommée. Ce qui reste après les deux n'a aucune
+                explication, et l'affilié mérite de le voir plutôt que de nous
+                croire sur parole — c'est ce qui rend ce total une preuve et
+                non une affirmation. */}
             {Math.abs(Number(detail.difference || 0)) >= 0.01 && (
               <p className="text-[11px] text-warning mt-1.5 leading-relaxed"
                  data-testid="detail-ecart">

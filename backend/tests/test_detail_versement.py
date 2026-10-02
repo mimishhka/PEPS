@@ -378,3 +378,80 @@ def test_une_liste_vide_ne_declenche_aucune_requete(server_module):
     _brancher(server_module, versements=[], lignes=[])
 
     assert asyncio.run(server_module.affiliate_payouts(None, aff=AFF)) == []
+
+
+# ===========================================================================
+# LA RETENUE N'EST PAS UN ECART
+#
+# Le jour ou le versement est devenu NET de la creance, `amount_cad` s'est mis
+# a valoir moins que la somme des lignes du versement -- legitimement. L'ecart
+# brut valait alors -creance, et les TROIS ecrans qui le lisent annoncaient
+# « le versement et ses lignes ont diverge », dont un en rouge, sur un
+# versement parfaitement correct.
+#
+# Une fausse alarme sur de l'argent coute exactement la confiance qu'elle
+# etait censee produire. Ces tests tiennent les deux bouts : la retenue est
+# nommee, et l'ecart ne mesure plus que l'inexplique.
+# ===========================================================================
+
+VERSEMENT_AVEC_RETENUE = {
+    **VERSEMENT,
+    # 142,50 de commissions, 40 retenus pour une commande remboursee apres un
+    # versement ANTERIEUR : 102,50 sont partis.
+    "amount_cad": 102.50,
+    "acquis_cad": 142.50,
+    "creance_absorbee": 40.0,
+    "creance_restante": 0.0,
+}
+
+
+def test_LA_RETENUE_N_EST_PAS_UN_ECART(server_module):
+    """Le test qui manquait : sans lui, trois ecrans criaient a tort."""
+    _brancher(server_module, versements=[VERSEMENT_AVEC_RETENUE])
+
+    detail = asyncio.run(server_module.affiliate_payout_detail(
+        "pay-1", None, aff=AFF))
+
+    assert detail["lines_sum_cad"] == 142.50     # ce qui a ete gagne
+    assert detail["creance_absorbee"] == 40.0    # ce qui a ete retenu
+    assert detail["attendu_cad"] == 102.50       # ce qui devait partir
+    assert detail["payout_amount_cad"] == 102.50  # ce qui est parti
+    assert detail["difference"] == 0.0            # rien d'inexplique
+
+
+def test_la_retenue_est_RENDUE_pas_seulement_soustraite(server_module):
+    """Un rapprochement ou la deduction est invisible ne se refait pas :
+    l'ecran ne peut pas ecrire « 142,50 - 40 = 102,50 » sans le 40."""
+    _brancher(server_module, versements=[VERSEMENT_AVEC_RETENUE])
+
+    detail = asyncio.run(server_module.affiliate_payout_detail(
+        "pay-1", None, aff=AFF))
+
+    assert "creance_absorbee" in detail
+    assert "attendu_cad" in detail
+
+
+def test_un_VRAI_ecart_alerte_encore(server_module):
+    """La retenue explique une partie de la difference, pas n'importe
+    laquelle. Ce qui reste apres elle n'a aucune explication."""
+    # 142,50 de lignes, 40 retenus, donc 102,50 attendus -- mais 90 verses.
+    _brancher(server_module, versements=[
+        {**VERSEMENT_AVEC_RETENUE, "amount_cad": 90.0}])
+
+    detail = asyncio.run(server_module.affiliate_payout_detail(
+        "pay-1", None, aff=AFF))
+
+    assert detail["difference"] == -12.50
+
+
+def test_sans_retenue_le_rapprochement_est_INCHANGE(server_module):
+    """La correction ne doit rien changer au cas courant : un versement sans
+    creance se rapproche exactement comme avant."""
+    _brancher(server_module)
+
+    detail = asyncio.run(server_module.affiliate_payout_detail(
+        "pay-1", None, aff=AFF))
+
+    assert detail["creance_absorbee"] == 0.0
+    assert detail["attendu_cad"] == detail["lines_sum_cad"]
+    assert detail["difference"] == 0.0

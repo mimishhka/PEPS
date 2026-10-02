@@ -60,7 +60,7 @@ const LOT_AUDIT = {
 };
 
 function reponses({ payouts = [], runs = [], paymentRuns = [RUN], listeBlanche = [],
-                    cycles = [], lot = null } = {}) {
+                    cycles = [], lot = null, detailVersement = null } = {}) {
   // Les URL exactes du composant : « payouts/all » pour la liste,
   // « payouts/runs » pour les generations, « payments/runs » pour les envois.
   api.get.mockImplementation(async (url) => {
@@ -73,6 +73,18 @@ function reponses({ payouts = [], runs = [], paymentRuns = [RUN], listeBlanche =
                               totaux: { commandes: 0, commission: 0, reprises: 0,
                                         commission_reprise: 0,
                                         reprises_apres_versement: 0, creance: 0 } } };
+    }
+    // Le DETAIL d'un versement, avant la liste : son URL est
+    // « payouts/<id>/detail », que le `startsWith` de la liste ne prend pas,
+    // mais l'ordre reste explicite pour la meme raison que ci-dessus.
+    if (/\/admin\/affiliates\/payouts\/.+\/detail/.test(url)) {
+      return { data: detailVersement || {
+        payout: { id: "p-9", period: "2026-10", status: "paid_manual",
+                  reference: "0xbbb" },
+        affiliate: { code: "FITNES70" },
+        lines: [], lines_count: 0, lines_sum_cad: 0,
+        creance_absorbee: 0, attendu_cad: 0,
+        payout_amount_cad: 0, difference: 0 } };
     }
     if (url.startsWith("/admin/affiliates/payouts/all")) return { data: payouts };
     // Les deux historiques repondent { runs: [...] }, pas un tableau nu.
@@ -468,5 +480,69 @@ describe("AdminPayouts — les avis envoyés", () => {
 
     expect(await screen.findByTestId("cycle-avis-2026-08"))
       .toHaveTextContent("0/3 annoncé");
+  });
+
+  // -------------------------------------------------------------------------
+  // LA RETENUE N'EST PAS UN ECART
+  //
+  // Le jour ou le versement est devenu NET de la creance, `amount_cad` s'est
+  // mis a valoir moins que la somme de ses lignes — legitimement. L'ecart brut
+  // valait alors −creance, et cet ecran le colorait en ROUGE (`difference < 0`)
+  // avec « verifiez la reference » : une fausse alarme, sur un versement juste,
+  // dans la couleur reservee aux vrais problemes d'argent.
+  // -------------------------------------------------------------------------
+
+  const VERSEMENT_LISTE = {
+    id: "p-9", affiliate_code: "FITNES70", affiliate_id: "aff-1",
+    period: "2026-10", amount_cad: 102.5, status: "paid_manual",
+    reference: "0xbbb", created_at: "2026-10-03T14:00:00+00:00",
+  };
+
+  const DETAIL_RETENUE = {
+    payout: { ...VERSEMENT_LISTE },
+    affiliate: { code: "FITNES70" },
+    lines: [], lines_count: 0,
+    lines_sum_cad: 142.5, creance_absorbee: 40, attendu_cad: 102.5,
+    payout_amount_cad: 102.5, difference: 0,
+  };
+
+  const ouvrirLeDetail = async () => {
+    render(<AdminPayouts />);
+    await screen.findByTestId("admin-payouts");
+    await userEvent.click(await screen.findByTestId("detail-p-9"));
+  };
+
+  it("LA RETENUE est nommee, et le rouge reste pour les vrais problemes", async () => {
+    reponses({ payouts: [VERSEMENT_LISTE], detailVersement: DETAIL_RETENUE });
+    await ouvrirLeDetail();
+
+    const bloc = await screen.findByTestId("lot-detail-creance");
+    // Le rapprochement se refait de tete : 142,50 − 40 = 102,50.
+    expect(bloc).toHaveTextContent("142.50");
+    expect(bloc).toHaveTextContent("40.00");
+    expect(bloc).toHaveTextContent("102.50");
+    expect(bloc).toHaveTextContent(/rembours/i);
+    expect(bloc.className).not.toMatch(/error/);
+  });
+
+  it("un VRAI ecart alerte encore, retenue ou pas", async () => {
+    reponses({ payouts: [VERSEMENT_LISTE],
+               detailVersement: { ...DETAIL_RETENUE, payout_amount_cad: 90,
+                                  difference: -12.5 } });
+    await ouvrirLeDetail();
+
+    expect(await screen.findByTestId("lot-detail-creance")).toBeInTheDocument();
+    expect(screen.getByText(/entre les lignes et le montant du versement/))
+      .toHaveTextContent("12.50");
+  });
+
+  it("sans retenue, aucun bloc en trop", async () => {
+    reponses({ payouts: [VERSEMENT_LISTE],
+               detailVersement: { ...DETAIL_RETENUE, lines_sum_cad: 102.5,
+                                  creance_absorbee: 0, attendu_cad: 102.5 } });
+    await ouvrirLeDetail();
+
+    await screen.findByText(/Somme des lignes/);
+    expect(screen.queryByTestId("lot-detail-creance")).not.toBeInTheDocument();
   });
 });
