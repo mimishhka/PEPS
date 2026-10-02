@@ -1,5 +1,15 @@
 {
-  "description": "Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop.",
+  "permissions": {
+    "allow": [
+      "Bash(python -)",
+      "Bash(python -c \"import ast,io; ast.parse\\(io.open\\('backend/server.py',encoding='utf-8'\\).read\\(\\)\\); print\\('syntaxe ok'\\)\")",
+      "Bash(npx craco *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(rm -f .git/MSG_PERIODE)",
+      "Bash(git push *)"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {
@@ -26,5 +36,6 @@
         ]
       }
     ]
-  }
+  },
+  "description": "Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop."
 }
