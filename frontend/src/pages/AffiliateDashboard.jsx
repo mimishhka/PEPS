@@ -1660,8 +1660,17 @@ export default function AffiliateDashboard() {
               <div className="bg-white rounded-xl border border-ash p-5 transition-[transform,box-shadow]
                               duration-200 ease-out hover:-translate-y-0.5"
                    style={{ boxShadow: "var(--ombre-leve)" }} data-testid="payout-estimate">
+                {/* CE BLOC NE DIT PLUS « VOTRE PROCHAIN VERSEMENT ».
+                    Le bloc du cycle, juste au-dessus, repond deja a cette
+                    question — et il repond 0,00 $ quand une creance mange le
+                    montant, pendant que celui-ci annoncait 56,69 $. Deux
+                    « prochain versement » qui se contredisent sur le meme
+                    ecran.
+                    Celui-ci repond en realite a « ou j'en suis par rapport au
+                    seuil, et dans quelle monnaie je serai paye ». Il le dit
+                    maintenant. */}
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
-                  {L("VOTRE PROCHAIN VERSEMENT", "YOUR NEXT PAYOUT")}
+                  {L("VOS COMMISSIONS VALIDÉES", "YOUR VALIDATED COMMISSIONS")}
                 </p>
                 <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                   <p className="font-display text-2xl font-bold text-nordfjord tabular-nums">
@@ -1767,12 +1776,21 @@ export default function AffiliateDashboard() {
                   </p>
                 )}
 
+                {/* ET IL N'AFFIRME PLUS QU'UN VERSEMENT VA PARTIR quand une
+                    creance le retient. Il lisait « Seuil atteint : le
+                    versement part au prochain cycle » pendant que le cycle, a
+                    cote, annoncait 0,00 $. Le seuil EST atteint — ce n'est
+                    pas lui qui bloque — et c'est justement pour ca que la
+                    phrase etait trompeuse sans etre fausse. */}
                 <p className="font-data text-[11px] text-glacier mt-3">
-                  {dueNow >= payoutMin
-                    ? L("Seuil atteint : le versement part au prochain cycle mensuel.",
-                        "Threshold met : the payout goes out at the next monthly cycle.")
-                    : L("Rien n'est perdu sous le seuil : vos commissions restent à votre crédit et s'ajoutent au mois suivant.",
-                        "Nothing is lost below the threshold: your commissions stay to your credit and carry over.")}
+                  {Number(cycle?.creance || 0) > 0 && Number(cycle?.due_now || 0) <= 0
+                    ? L("Le seuil est atteint, mais rien ne part ce cycle-ci : le montant est absorbé par ce qui avait été versé sur des commandes remboursées depuis.",
+                        "The threshold is met, but nothing goes out this cycle: the amount is absorbed by what had been paid on orders refunded since.")
+                    : dueNow >= payoutMin
+                      ? L("Seuil atteint : le versement part au prochain cycle mensuel.",
+                          "Threshold met : the payout goes out at the next monthly cycle.")
+                      : L("Rien n'est perdu sous le seuil : vos commissions restent à votre crédit et s'ajoutent au mois suivant.",
+                          "Nothing is lost below the threshold: your commissions stay to your credit and carry over.")}
                 </p>
                 {/* La conversion s'affiche meme a solde nul. Elle ne servait
                     d'abord qu'a chiffrer un montant ; c'est en realite une
@@ -2572,7 +2590,15 @@ function CycleVersement({ cycle, seuil, adresse, onReglages, L, lang }) {
      Conditionne a `du > 0` : annoncer « ajoutez votre adresse » a quelqu'un
      qui n'a encore rien gagne est du bruit, et le bruit fait ignorer le
      signal le jour ou il compte. */
-  const sansAdresse = du > 0 && !String(adresse || "").trim();
+  /* IL REGARDAIT LE MAUVAIS MONTANT.
+     La condition etait `du > 0` — ce qui part CE cycle-ci. Sur le compte de
+     lola, ce montant vaut 0 parce qu'une creance l'absorbe : l'avertissement
+     se taisait alors qu'elle n'a toujours aucune adresse et que 56,69 $
+     arrivent au cycle suivant. Le silence tombait exactement sur le cas ou
+     l'affiliee a le plus de temps pour y remedier.
+     Ce qui compte, c'est qu'il y ait de l'argent EN ROUTE, maintenant ou au
+     cycle suivant. */
+  const sansAdresse = (du > 0 || enCours > 0) && !String(adresse || "").trim();
 
   return (
     <div className="bg-white rounded-xl border border-ash p-6" data-testid="cycle-versement">

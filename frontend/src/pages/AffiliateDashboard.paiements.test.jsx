@@ -785,12 +785,26 @@ describe("l'adresse de paiement manquante", () => {
     expect(screen.queryByTestId("cycle-sans-adresse")).not.toBeInTheDocument();
   });
 
-  test("SANS RIEN À VERSER, on se tait : le bruit fait ignorer le signal", async () => {
+  test("LE CAS DE LOLA : rien ne part ce cycle-ci, et on avertit quand même", async () => {
+    /* Le defaut trouve a l'ecran le 02/10/2026. La condition regardait
+     * `due_now` — ce qui part CE cycle-ci. Chez lola il vaut 0 parce qu'une
+     * creance l'absorbe : l'avertissement se taisait alors qu'elle n'a
+     * toujours aucune adresse et que 56,69 $ arrivent au cycle suivant.
+     *
+     * Le silence tombait exactement sur le cas ou elle a le plus de temps
+     * pour y remedier. */
+    await ouvrir({ cycle: { ...CYCLE_DU, due_now: 0, current_cycle: 56.69 },
+                   fiche: { ...FICHE, payout_address: "" } });
+
+    expect(await screen.findByTestId("cycle-sans-adresse")).toBeInTheDocument();
+  });
+
+  test("SANS RIEN EN ROUTE, on se tait : le bruit fait ignorer le signal", async () => {
     /* Annoncer « ajoutez votre adresse » à quelqu'un qui n'a encore rien
      * gagné est du bruit — et le bruit fait ignorer l'avertissement le jour
-     * où il compte vraiment. */
-    await ouvrir({ fiche: { ...FICHE, payout_address: "",
-                            payout_cycle: { ...CYCLE_DU, due_now: 0 } } });
+     * où il compte vraiment. Ni ce cycle-ci, ni le suivant. */
+    await ouvrir({ cycle: { ...CYCLE_DU, due_now: 0, current_cycle: 0 },
+                   fiche: { ...FICHE, payout_address: "" } });
 
     await screen.findByTestId("cycle-versement");
     expect(screen.queryByTestId("cycle-sans-adresse")).not.toBeInTheDocument();
@@ -822,5 +836,74 @@ describe("« déjà versé » et « dernier versement »", () => {
     await screen.findByTestId("affiliate-payments");
 
     expect(screen.queryByTestId("payout-flow-ecart")).not.toBeInTheDocument();
+  });
+});
+
+
+// ===========================================================================
+// DEUX BLOCS « PROCHAIN VERSEMENT » QUI SE CONTREDISAIENT
+//
+// Vu a l'ecran le 02/10/2026, une fois le bloc du cycle enfin branche :
+//
+//     NEXT PAYOUT        $0.00     ← net de la creance
+//     YOUR NEXT PAYOUT   $56.69    ← ignorait la creance
+//
+// Tant que le bloc du cycle ne s'affichait JAMAIS, personne ne voyait la
+// contradiction. La reparation l'a rendue visible — et c'est exactement le
+// genre de chose qui epuise : deux reponses a la meme question, sur le meme
+// ecran, a quelques centimetres.
+// ===========================================================================
+
+describe("les deux blocs du prochain versement", () => {
+  const CYCLE_RETENU = {
+    period: "2026-09", current_period: "2026-10",
+    due_now: 0, acquis: 0, creance: 137.71, creance_lignes: 1,
+    creance_reportee: 137.71, current_cycle: 56.69,
+    due_by: "2026-10-06T04:00:00Z", days_left: 3, overdue: false,
+  };
+
+  test("UN SEUL dit « prochain versement », et c'est celui qui est net", async () => {
+    await ouvrir({ cycle: CYCLE_RETENU,
+                   fiche: { ...FICHE, approved_commission: 56.69 } });
+
+    const cycle = await screen.findByTestId("cycle-versement");
+    expect(cycle).toHaveTextContent(/prochain versement/i);
+    // L'autre bloc dit desormais ce qu'il montre vraiment : le seuil.
+    expect(screen.getByTestId("payout-estimate"))
+      .not.toHaveTextContent(/prochain versement/i);
+    expect(screen.getByTestId("payout-estimate"))
+      .toHaveTextContent(/commissions valid/i);
+  });
+
+  test("et il n'affirme plus qu'un versement part quand la dette le retient", async () => {
+    /* Il lisait « Seuil atteint : le versement part au prochain cycle »
+     * pendant que le cycle, a cote, annoncait 0,00 $. Le seuil EST atteint —
+     * ce n'est pas lui qui bloque — et c'est pour ca que la phrase etait
+     * trompeuse sans etre fausse. */
+    await ouvrir({ cycle: CYCLE_RETENU,
+                   fiche: { ...FICHE, approved_commission: 56.69 } });
+
+    const bloc = await screen.findByTestId("payout-estimate");
+    expect(bloc).toHaveTextContent(/rien ne part ce cycle/i);
+    expect(bloc).toHaveTextContent(/rembours/i);
+  });
+
+  test("sans dette, la phrase du seuil est INCHANGEE", async () => {
+    // La correction ne doit rien changer au cas courant.
+    await ouvrir({ cycle: { ...CYCLE_RETENU, due_now: 56.69, creance: 0,
+                            creance_reportee: 0 },
+                   fiche: { ...FICHE, approved_commission: 56.69 } });
+
+    expect(await screen.findByTestId("payout-estimate"))
+      .toHaveTextContent(/seuil atteint/i);
+  });
+
+  test("et sous le seuil, elle l'est aussi", async () => {
+    await ouvrir({ cycle: { ...CYCLE_RETENU, due_now: 10, creance: 0,
+                            creance_reportee: 0 },
+                   fiche: { ...FICHE, approved_commission: 10 } });
+
+    expect(await screen.findByTestId("payout-estimate"))
+      .toHaveTextContent(/rien n'est perdu sous le seuil/i);
   });
 });
