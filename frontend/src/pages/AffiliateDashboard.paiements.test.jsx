@@ -111,7 +111,7 @@ const DETAIL = {
    bloc ne s'affichait sur AUCUN compte. Ils le nourrissent désormais là où le
    serveur le met vraiment. */
 const brancher = ({ versements = [VERSEMENT_PAYE], dernier = VERSEMENT_PAYE,
-                    detail = DETAIL, fiche = FICHE, cycle } = {}) => {
+                    detail = DETAIL, fiche = FICHE, cycle, activite = [] } = {}) => {
   const cycleEffectif = cycle !== undefined ? cycle : fiche?.payout_cycle ?? null;
   /* ET LA FICHE NE LE PORTE PLUS DU TOUT.
      Sans cette ligne, `payout_cycle` resterait disponible sur les DEUX
@@ -129,7 +129,7 @@ const brancher = ({ versements = [VERSEMENT_PAYE], dernier = VERSEMENT_PAYE,
         payouts: { items: versements, total: versements.length,
                    dernier_paye: dernier },
         insights: { current_month: { revenue: 0 } },
-        clicks_sources: null, activity: [],
+        clicks_sources: null, activity: activite,
         customers: { customers: [] },
         payout_cycle: cycleEffectif,
         performance: { series: [
@@ -862,17 +862,23 @@ describe("les deux blocs du prochain versement", () => {
     due_by: "2026-10-06T04:00:00Z", days_left: 3, overdue: false,
   };
 
-  test("UN SEUL dit « prochain versement », et c'est celui qui est net", async () => {
+  test("UN SEUL titre, celui de la date, et un seul chiffre en gros", async () => {
+    /* « Prochain versement » a laissé la place à « Ce qui part le 6 octobre » :
+     * la question porte la réponse (quand), et le montant en gros est le NET.
+     * L'ancien second bloc, titré « vos commissions validées » avec son propre
+     * 56,69 $, est absorbé : il n'a plus de titre ni de chiffre en gros. */
     await ouvrir({ cycle: CYCLE_RETENU,
                    fiche: { ...FICHE, approved_commission: 56.69 } });
 
     const cycle = await screen.findByTestId("cycle-versement");
-    expect(cycle).toHaveTextContent(/prochain versement/i);
-    // L'autre bloc dit desormais ce qu'il montre vraiment : le seuil.
-    expect(screen.getByTestId("payout-estimate"))
-      .not.toHaveTextContent(/prochain versement/i);
-    expect(screen.getByTestId("payout-estimate"))
-      .toHaveTextContent(/commissions valid/i);
+    expect(cycle).toHaveTextContent(/ce qui part le/i);
+    expect(cycle).toHaveTextContent(/6 octobre/i);
+    // L'ancien TITRE « vos commissions validées » a disparu : la ligne de
+    // créance dit légitimement « de commissions validées », mais plus aucun
+    // bloc ne s'intitule ainsi.
+    expect(screen.queryByText(/vos commissions valid/i)).not.toBeInTheDocument();
+    // Plus qu'un seul « prochain versement » sur tout l'écran : aucun.
+    expect(screen.queryAllByText(/prochain versement/i)).toHaveLength(0);
   });
 
   test("et il n'affirme plus qu'un versement part quand la dette le retient", async () => {
@@ -905,5 +911,150 @@ describe("les deux blocs du prochain versement", () => {
 
     expect(await screen.findByTestId("payout-estimate"))
       .toHaveTextContent(/rien n'est perdu sous le seuil/i);
+  });
+});
+
+// ===========================================================================
+// LE JOURNAL D'ACTIVITÉ — une ligne par fait, quatre filtres
+//
+// Mireille, 02/10/2026 : « chaque activité doit avoir sa propre ligne [...]
+// le remboursement et la commande doivent être deux lignes distinctes avec
+// leurs propres dates », « reversed n'est peut-être pas le bon terme — plutôt
+// commande remboursée », et « il faut qu'il y ait un filtre ».
+// ===========================================================================
+
+describe("le journal d'activité", () => {
+  const JOURNAL = [
+    { type: "commande", legacy_type: "referral", at: "2026-09-29T20:43:00Z",
+      label: "FN-260930-53AC39A3", status: "reversed",
+      amount: 194.40, base: 1620.0 },
+    { type: "remboursement", legacy_type: "referral", at: "2026-10-18T09:00:00Z",
+      label: "FN-260930-53AC39A3", status: "reversed",
+      amount: -194.40, base: 1620.0, apres_versement: true },
+    { type: "versement", legacy_type: "payout", at: "2026-10-01T14:39:00Z",
+      label: "2026-10",
+      periode_couverte: { debut: "2026-09", fin: "2026-09", multi: false },
+      status: "paid_manual", amount: 500.40, jetons: 352.77, devise: "usdt" },
+    { type: "clic", legacy_type: "click", at: "2026-10-02T10:00:00Z",
+      label: "/catalog", device: "mobile" },
+  ];
+
+  test("LA COMMANDE ET LE REMBOURSEMENT SONT DEUX LIGNES, chacune datée", async () => {
+    /* Avant : une seule ligne, datée de la COMMANDE, avec « Reversed » collé
+     * dessus — le remboursement du 18 octobre n'existait nulle part. */
+    await ouvrir({ activite: JOURNAL });
+
+    const commandes = await screen.findAllByText(/FN-260930-53AC39A3/);
+    expect(commandes.length).toBe(2);
+    // Deux dates différentes, une par fait.
+    expect(screen.getByText(/29 sept/i)).toBeInTheDocument();
+    expect(screen.getByText(/18 oct/i)).toBeInTheDocument();
+    // Et le mot brut a disparu : on dit « commande remboursée ».
+    expect(screen.queryByText(/reversed/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/commande remboursée/i)).toBeInTheDocument();
+  });
+
+  test("le remboursement porte un montant NÉGATIF, et dit si l'argent était parti", async () => {
+    await ouvrir({ activite: JOURNAL });
+
+    const ligne = await screen.findByTestId("activite-remboursement-FN-260930-53AC39A3");
+    expect(ligne).toHaveTextContent("-194.40");
+    // Versée PUIS remboursée : ce n'est pas le même fait qu'un remboursement
+    // avant versement, et c'est ce montant-là qui se déduit.
+    expect(ligne).toHaveTextContent(/déjà été versée/i);
+  });
+
+  test("chaque filtre ne laisse que son type, et son compteur est juste", async () => {
+    await ouvrir({ activite: JOURNAL });
+
+    // Les compteurs viennent des lignes chargées.
+    expect(await screen.findByTestId("journal-filtre-remboursements"))
+      .toHaveTextContent("1");
+    expect(screen.getByTestId("journal-filtre-commandes")).toHaveTextContent("1");
+    expect(screen.getByTestId("journal-filtre-versements")).toHaveTextContent("1");
+    expect(screen.getByTestId("journal-filtre-clics")).toHaveTextContent("1");
+    expect(screen.getByTestId("journal-filtre-tout")).toHaveTextContent("4");
+
+    await userEvent.click(screen.getByTestId("journal-filtre-remboursements"));
+
+    expect(screen.getByTestId("activite-remboursement-FN-260930-53AC39A3"))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/352\.77 USDT/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/clic sur votre lien/i)).not.toBeInTheDocument();
+    // Le compteur égale le nombre de lignes affichées.
+    expect(screen.getByTestId("journal-lignes").children.length).toBe(1);
+  });
+
+  test("sans ligne d'un type, sa puce disparaît", async () => {
+    await ouvrir({ activite: JOURNAL.filter((e) => e.type !== "clic") });
+
+    await screen.findByTestId("journal-filtres");
+    expect(screen.queryByTestId("journal-filtre-clics")).not.toBeInTheDocument();
+    expect(screen.getByTestId("journal-filtre-tout")).toBeInTheDocument();
+  });
+
+  test("rien du tout : l'état vide, sans puces", async () => {
+    await ouvrir({ activite: [] });
+    await screen.findByTestId("affiliate-payments");
+
+    expect(screen.queryByTestId("journal-filtres")).not.toBeInTheDocument();
+    expect(screen.getByText(/aucune activité pour l'instant/i)).toBeInTheDocument();
+  });
+});
+
+// ===========================================================================
+// UN CHIFFRE, UNE FOIS — le test qui tient la réorganisation
+//
+// Avant : 56,69 $ quatre fois, 306 $ deux fois, 137,71 $ trois fois, et
+// l'histoire du remboursement racontée deux fois en entier. Les bornes
+// ci-dessous sont celles que le design garantit désormais ; une borne
+// dépassée signifie qu'un doublon est revenu.
+// ===========================================================================
+
+describe("chaque chiffre ne se répète pas au-delà de son rôle", () => {
+  const COMPTE = {
+    ...FICHE,
+    paid_commission: 306, approved_commission: 56.69,
+    pending_commission: 0, reversed_commission: 227.15,
+    reprise_apres_versement: 194.40, creance: 137.71,
+    cumulative_revenue: 3532.43, validated_orders: 2,
+  };
+  const CYCLE_LOLA = {
+    period: "2026-09", current_period: "2026-10",
+    due_now: 0, acquis: 0, creance: 137.71, creance_lignes: 1,
+    creance_reportee: 137.71, current_cycle: 56.69,
+    due_by: "2026-10-06T04:00:00Z", days_left: 3, overdue: false,
+  };
+
+  const occurrences = (motif) =>
+    (document.body.textContent.match(new RegExp(motif, "g")) || []).length;
+
+  test("LE CAS DE LOLA : plus de quadruple pour 56,69 $", async () => {
+    await ouvrir({ fiche: COMPTE, cycle: CYCLE_LOLA });
+
+    // Trio « Validé », mois en cours, ligne de conversion : trois rôles,
+    // trois lectures — plus les quatre d'avant, dont un sous un titre
+    // concurrent.
+    expect(occurrences("56\\.69")).toBeLessThanOrEqual(3);
+  });
+
+  test("306 $ n'est plus dit que par le trio", async () => {
+    await ouvrir({ fiche: COMPTE, cycle: CYCLE_LOLA });
+
+    // La légende de « Depuis le début » répétait le montant : elle ne porte
+    // plus que les noms.
+    expect(occurrences("306\\.00")).toBeLessThanOrEqual(2);
+    expect(screen.queryByText(/to pay out/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/paid out/i)).not.toBeInTheDocument();
+  });
+
+  test("plus aucun titre concurrent « vos commissions validées »", async () => {
+    await ouvrir({ fiche: COMPTE, cycle: CYCLE_LOLA });
+
+    // La ligne de créance dit légitimement « de commissions validées » ;
+    // ce qui a disparu, c'est le BLOC entier qui s'intitulait ainsi avec son
+    // propre gros chiffre.
+    expect(screen.queryByText(/vos commissions valid/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/your validated commissions/i)).not.toBeInTheDocument();
   });
 });

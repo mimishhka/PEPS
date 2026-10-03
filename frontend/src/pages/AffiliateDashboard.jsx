@@ -8,7 +8,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip,
 import { QRCodeSVG } from "qrcode.react";
 import {
   MousePointerClick, ShoppingBag, Wallet, Download,
-  MessageCircle, Send, Mail, Check, User } from "lucide-react";
+  MessageCircle, Send, Mail, Check, User, RotateCcw } from "lucide-react";
 import api, { formatApiError } from "../lib/api";
 // Extraites dans lib/periode : ces fonctions vivaient en double ici et
 // dans AdminAffiliates. `periodeLisible` est le pendant de
@@ -956,12 +956,6 @@ export default function AffiliateDashboard() {
 
   const payoutMin = Number(data?.payout_min_cad || 0);
   const dueNow = Number(data?.approved_commission || 0);
-  // Le cycle de versement part le 1er du mois suivant : l'annoncer dit a
-  // l'affilie QUAND son argent partira, pas seulement combien.
-  const prochainCycle = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1)
-    .toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA",
-      { year: "numeric", month: "long", day: "numeric" });
-  const payoutPct = payoutMin > 0 ? Math.min(100, Math.round((dueNow / payoutMin) * 100)) : null;
 
   // La date d'adhesion, pour l'en-tete. Replie sur vide quand la fiche n'a
   // pas de date : une etiquette sans valeur vaut mieux qu'une date inventee.
@@ -1427,23 +1421,11 @@ export default function AffiliateDashboard() {
               <TierLadder data={data} L={L} lang={lang} money={money} TIER_META={TIER_META} />
             )}
 
-            {/* Activité récente */}
-            <div className="bg-white rounded-xl border border-ash p-6">
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
-                {L("ACTIVITÉ RÉCENTE", "RECENT ACTIVITY")}
-              </p>
-              {activity.length === 0 ? (
-                <p className="text-glacier text-sm py-6 text-center">
-                  {L("Aucune activité pour l'instant.", "No activity yet.")}
-                </p>
-              ) : (
-                <div className="space-y-1">
-                  {activity.slice(0, 8).map((e, i) => (
-                    <ActivityRow key={i} e={e} L={L} lang={lang} money={money} fmtDateTime={fmtDateTime} />
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* L'ACTIVITÉ A REJOINT PAIEMENTS. La chronologie des commandes,
+                des remboursements et des virements est la preuve derrière
+                l'argent, pas une statistique de vente : elle se lit à côté du
+                tableau des commandes, pas entre le graphique et les sources
+                de clics. */}
 
             <div className="bg-white rounded-xl border border-ash p-6">
               <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
@@ -1585,32 +1567,8 @@ export default function AffiliateDashboard() {
               )}
             </div>
 
-            <div className="bg-white rounded-xl border border-ash overflow-hidden">
-              {/* LE MÊME TITRE DÉSIGNAIT DEUX CHOSES, sur le même écran.
-                  Vu sur le compte LOLA10 : la vignette « Commandes validées »
-                  affichait 2 — approuvées et payées — et ce tableau, titré
-                  pareil, en listait QUATRE, remboursements compris. Le compteur
-                  était fidèle à son nom ; c'est le tableau qui s'appropriait un
-                  mot plus étroit que son contenu. */}
-              <div className="px-6 py-4 border-b border-ash flex items-center justify-between gap-3 flex-wrap">
-                <div className="min-w-0">
-                  <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
-                    {L("TOUTES VOS COMMANDES", "ALL YOUR ORDERS")}
-                  </p>
-                  <p className="font-data text-[10px] text-glacier mt-0.5 leading-relaxed">
-                    {L("Y compris celles qui ont été remboursées ou annulées : la vignette « Commandes validées » ci-dessus ne compte que celles qui tiennent.",
-                       "Including those refunded or cancelled: the “Validated orders” figure above counts only the ones that hold.")}
-                  </p>
-                </div>
-                <button onClick={exportReferrals}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical transition">
-                  <Download size={13} /> CSV
-                </button>
-              </div>
-              <ReferralTable rows={refPageRows} lang={lang} L={L} money={money} loading={refLoading} />
-              <Pagination page={refPage} total={refTotal} pageSize={PAGE_SIZE}
-                onChange={goRefPage} L={L} />
-            </div>
+            {/* LE TABLEAU DES COMMANDES A REJOINT PAIEMENTS : c'est la preuve
+                derrière l'argent, pas une statistique de vente. */}
           </div>
         )}
 
@@ -1643,89 +1601,27 @@ export default function AffiliateDashboard() {
                 choses : l'argent du mois clos, qui part dans les jours qui
                 viennent, et celui du mois en cours, qui attendra. Un seul
                 total pour deux échéances ne dit ni quand ni combien. */}
+            {/* UN SEUL BLOC POUR « CE QUI PART ».
+                L'ancien bloc « vos commissions validées » a été absorbé : il
+                montrait 56,69 $ sous son propre titre pendant que le cycle
+                annonçait 0,00 $. Ce qu'il apportait de vrai — le seuil, la
+                devise, le taux, le parcours de l'argent — descend sous le
+                montant net, en lignes secondaires. Une question, un titre, un
+                chiffre en gros. */}
             {cycle && (
-              <CycleVersement cycle={cycle} seuil={data?.payout_min_cad}
-                              adresse={data?.payout_address}
-                              onReglages={() => setTab("settings")}
-                              L={L} lang={lang} />
-            )}
-
-            {/* Prochain versement. Affiche meme a zero : c'est justement quand
-                rien n'est accumule qu'un affilie doit connaitre le seuil. La
-                version precedente se cachait dans ce cas, et un solde bloque
-                sous le minimum ressemblait alors a une retenue inexpliquee. */}
-            {/* Le prochain versement est une ACTION a venir, pas une archive :
-                il se leve d'un cran au-dessus de la reference. */}
-            {payoutMin > 0 && (
-              <div className="bg-white rounded-xl border border-ash p-5 transition-[transform,box-shadow]
-                              duration-200 ease-out hover:-translate-y-0.5"
+              <div className="bg-white rounded-xl border border-ash p-5 sm:p-6
+                              transition-[transform,box-shadow] duration-200 ease-out
+                              hover:-translate-y-0.5"
                    style={{ boxShadow: "var(--ombre-leve)" }} data-testid="payout-estimate">
-                {/* CE BLOC NE DIT PLUS « VOTRE PROCHAIN VERSEMENT ».
-                    Le bloc du cycle, juste au-dessus, repond deja a cette
-                    question — et il repond 0,00 $ quand une creance mange le
-                    montant, pendant que celui-ci annoncait 56,69 $. Deux
-                    « prochain versement » qui se contredisent sur le meme
-                    ecran.
-                    Celui-ci repond en realite a « ou j'en suis par rapport au
-                    seuil, et dans quelle monnaie je serai paye ». Il le dit
-                    maintenant. */}
-                <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
-                  {L("VOS COMMISSIONS VALIDÉES", "YOUR VALIDATED COMMISSIONS")}
-                </p>
-                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                  <p className="font-display text-2xl font-bold text-nordfjord tabular-nums">
-                    {money(dueNow)}
-                    <span className="text-sm font-medium text-glacier ml-1.5">
-                      {L(`sur ${money(payoutMin)} requis`, `of ${money(payoutMin)} required`)}
-                    </span>
-                  </p>
-                  {/* Jeton de conversion, TOUJOURS visible dès que le taux est
-                      connu : y compris à zéro. C'est justement avant le premier
-                      versement qu'on doit comprendre qu'on sera payé dans une
-                      autre devise ; le conditionner au solde le faisait
-                      disparaître exactement pour qui l'ignorait encore.
-                      Sa couleur le distingue des montants en dollars canadiens
-                      qui l'entourent : trois « $ » de suite sur un écran, dont
-                      un qui n'est pas la même monnaie, se confondent. */}
-                  {data?.fx_rate_cad_to_usd > 0 && (
-                    <span className="font-data text-[12px] tabular-nums rounded-lg px-2.5 py-1.5
-                                     border whitespace-nowrap"
-                          data-testid="payout-conversion"
-                          style={{
-                            color: "rgb(var(--fn-palier-diamant))",
-                            background: "rgba(124,92,214,.09)",
-                            borderColor: "rgba(124,92,214,.28)",
-                          }}>
-                      ≈ {(dueNow * Number(data.fx_rate_cad_to_usd)).toFixed(2)}
-                      <span className="uppercase ml-1">{data.payout_currency || "usdt"}</span>
-                    </span>
-                  )}
-                </div>
-                <div className="h-3 rounded-full bg-ash overflow-hidden mt-2">
-                  <div className="h-full rounded-full transition-all"
-                       style={{ width: `${payoutPct || 0}%`, background: "rgb(var(--fn-nova))" }} />
-                </div>
-
-                {/* La regle du cycle, sans mystere : rien accumule, sous le
-                    seuil (differe), ou verse a telle date. Et ce qui est
-                    encore en maturation, separement : ce n'est PAS de
-                    l'argent du, pas encore. */}
-                <p className="font-data text-[11px] text-glacier mt-2" data-testid="payout-cycle">
-                  {dueNow <= 0
-                    ? L("Rien d'accumulé pour l'instant : vos gains du mois en cours restent visibles ci-dessus.",
-                        "Nothing accumulated yet : this month's earnings stay visible above.")
-                    : dueNow < payoutMin
-                    ? L(`Sous le seuil de ${money(payoutMin)} : versé au premier cycle qui l'atteint.`,
-                        `Below the ${money(payoutMin)} threshold: paid in the first cycle that reaches it.`)
-                    : L(`Versement au cycle du ${prochainCycle}.`,
-                        `Paid in the cycle of ${prochainCycle}.`)}
-                </p>
-                {Number(data?.pending_commission || 0) > 0 && (
-                  <p className="font-data text-[11px] text-warning mt-1" data-testid="payout-maturing">
-                    {L(`En maturation : ${money(data.pending_commission)}`,
-                       `Maturing: ${money(data.pending_commission)}`)}
-                  </p>
-                )}
+                <CycleVersement cycle={cycle} seuil={data?.payout_min_cad}
+                                adresse={data?.payout_address}
+                                onReglages={() => setTab("settings")}
+                                L={L} lang={lang} />
+                {payoutMin > 0 && (
+                  <>
+                {/* La conversion vit maintenant en UNE ligne, plus bas : le
+                    montant en gros est celui du cycle, et le chip de conversion
+                    répétait une troisième fois le solde. */}
 
                 {/* Le parcours complet de l'argent. Ce panneau n'affichait que
                     le montant validé, sans dire d'où il venait ni où il allait :
@@ -1822,6 +1718,8 @@ export default function AffiliateDashboard() {
                       " : at the official Bank of Canada rate on payout day.")
                   )}
                 </p>
+                  </>
+                )}
               </div>
             )}
 
@@ -1833,6 +1731,36 @@ export default function AffiliateDashboard() {
                 lectures des mêmes chiffres sur un même écran, c'est ce qui
                 fait qu'on finit par n'en croire aucune. */}
             <DepuisLeDebut data={data} series={series} L={L} money={money} lang={lang} />
+
+            {/* LA PREUVE DERRIÈRE L'ARGENT.
+                Mireille, 02/10/2026 : « peut-être que les commandes avec le
+                détail des commissions ne se trouvent pas au bon endroit non
+                plus ». Elles étaient dans Performance, à un onglet de distance
+                du montant qu'elles justifient : vérifier un versement
+                demandait de changer d'écran au milieu du calcul. */}
+            <div className="bg-white rounded-xl border border-ash overflow-hidden">
+              <div className="px-6 py-4 border-b border-ash flex items-center justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+                    {L("TOUTES VOS COMMANDES", "ALL YOUR ORDERS")}
+                  </p>
+                  <p className="font-data text-[10px] text-glacier mt-0.5 leading-relaxed">
+                    {L("Chaque commande passée avec votre code, et la commission qu'elle a produite : y compris celles qui ont été remboursées ou annulées.",
+                       "Every order placed with your code, and the commission it produced: including those refunded or cancelled.")}
+                  </p>
+                </div>
+                <button onClick={exportReferrals}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-ash text-xs text-nordfjord hover:bg-clinical transition">
+                  <Download size={13} /> CSV
+                </button>
+              </div>
+              <ReferralTable rows={refPageRows} lang={lang} L={L} money={money} loading={refLoading} />
+              <Pagination page={refPage} total={refTotal} pageSize={PAGE_SIZE}
+                onChange={goRefPage} L={L} />
+            </div>
+
+            <JournalActivite activity={activity} L={L} lang={lang}
+                             money={money} fmtDateTime={fmtDateTime} />
             <div className="bg-white rounded-xl border border-ash overflow-hidden">
               <div className="px-6 py-4 border-b border-ash flex items-center justify-between">
                 <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
@@ -2601,9 +2529,10 @@ function CycleVersement({ cycle, seuil, adresse, onReglages, L, lang }) {
   const sansAdresse = (du > 0 || enCours > 0) && !String(adresse || "").trim();
 
   return (
-    <div className="bg-white rounded-xl border border-ash p-6" data-testid="cycle-versement">
+    <div className="mb-4" data-testid="cycle-versement">
       <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">
-        {L("PROCHAIN VERSEMENT", "NEXT PAYOUT")}
+        {L(`Ce qui part le ${jourLisible(cycle?.due_by, lang)}`,
+           `What goes out on ${jourLisible(cycle?.due_by, lang)}`)}
       </p>
 
       <div className="flex items-baseline justify-between gap-6 flex-wrap">
@@ -2752,8 +2681,98 @@ function SourcesGrid({ sources, L, lang }) {
   );
 }
 
+/* LES QUATRE AXES DU JOURNAL.
+   Mireille : « il faut qu'il y ait un filtre ». Les anciens noms de type
+   restent acceptes le temps d'une version — le serveur les envoie encore en
+   parallele, et un flux a moitie rendu serait pire que pas de filtre. */
+const FILTRES_ACTIVITE = [
+  { cle: "tout", types: null, fr: "Tout", en: "All" },
+  { cle: "commandes", types: ["commande", "referral"], fr: "Commandes", en: "Orders" },
+  { cle: "remboursements", types: ["remboursement"], fr: "Remboursements", en: "Refunds" },
+  { cle: "versements", types: ["versement", "payout"], fr: "Versements", en: "Payouts" },
+  { cle: "clics", types: ["clic", "click"], fr: "Clics", en: "Clicks" },
+];
+
+/**
+ * Le journal de ce qui est arrivé au compte, le plus récent d'abord.
+ *
+ * Il vivait dans l'onglet Performance, entre le graphique des ventes et les
+ * sources de clics. Il suit désormais l'argent : c'est la chronologie des
+ * commandes, des remboursements et des virements, donc elle appartient à
+ * Paiements, à côté du tableau qui en porte le détail.
+ */
+function JournalActivite({ activity, L, lang, money, fmtDateTime }) {
+  const [filtre, setFiltre] = useState("tout");
+
+  const pourCle = (cle) => {
+    const f = FILTRES_ACTIVITE.find((x) => x.cle === cle);
+    return !f || !f.types ? activity : activity.filter((e) => f.types.includes(e.type));
+  };
+  const visibles = pourCle(filtre);
+
+  /* LES COMPTEURS VIENNENT DES LIGNES CHARGÉES, comme les puces de la fiche
+     d'administration. Deux nombres qui ne concordent pas sur un écran
+     d'argent valent moins que pas de nombre du tout. */
+  const puces = FILTRES_ACTIVITE
+    .map((f) => [f, f.types ? pourCle(f.cle).length : activity.length])
+    .filter(([f, n]) => f.cle === "tout" || n > 0);
+
+  return (
+    <div className="bg-white rounded-xl border border-ash p-6" data-testid="journal-activite">
+      <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
+        {L("VOTRE ACTIVITÉ", "YOUR ACTIVITY")}
+      </p>
+
+      {activity.length === 0 ? (
+        <p className="text-glacier text-sm py-6 text-center">
+          {L("Aucune activité pour l'instant.", "No activity yet.")}
+        </p>
+      ) : (
+        <>
+          {/* Même rail que les filtres de période de « Depuis le début » :
+              défilement horizontal sur mobile plutôt qu'un retour à la ligne
+              qui pousse le journal hors de l'écran. */}
+          <div className="-mx-6 px-6 mb-3 overflow-x-auto scrollbar-none snap-x snap-mandatory">
+            <div className="flex gap-1.5 w-max" role="group"
+                 aria-label={L("Type d'activité", "Activity type")}
+                 data-testid="journal-filtres">
+              {puces.map(([f, n]) => (
+                <button key={f.cle} type="button"
+                  onClick={() => setFiltre(f.cle)}
+                  aria-pressed={filtre === f.cle}
+                  className={`snap-start shrink-0 px-3 h-8 rounded-full font-data text-[10px]
+                              font-semibold uppercase tracking-[0.08em] transition-colors
+                              active:scale-[0.97] ${filtre === f.cle
+                                ? "bg-nordfjord text-white"
+                                : "text-glacier border border-ash hover:text-nordfjord hover:bg-clinical"}`}
+                  style={{ touchAction: "manipulation" }}
+                  data-testid={`journal-filtre-${f.cle}`}>
+                  {L(f.fr, f.en)}<span className="opacity-60">{` · ${n}`}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {visibles.length === 0 ? (
+            <p className="text-glacier text-sm py-6 text-center" data-testid="journal-vide">
+              {L("Rien de ce type pour l'instant.", "Nothing of this kind yet.")}
+            </p>
+          ) : (
+            <div className="space-y-1" data-testid="journal-lignes">
+              {visibles.slice(0, 12).map((e, i) => (
+                <ActivityRow key={`${e.type}-${e.label}-${e.at}-${i}`} e={e}
+                             L={L} lang={lang} money={money} fmtDateTime={fmtDateTime} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function ActivityRow({ e, L, lang, money, fmtDateTime }) {
-  if (e.type === "click") {
+  if (e.type === "clic" || e.type === "click") {
     return (
       <div className="flex items-center gap-3 py-2 border-b border-ash/40 last:border-0">
         <span className="w-8 h-8 rounded-lg bg-nova/10 text-nova grid place-items-center shrink-0">
@@ -2769,8 +2788,54 @@ function ActivityRow({ e, L, lang, money, fmtDateTime }) {
       </div>
     );
   }
-  if (e.type === "referral") {
-    const m = REFERRAL_STATUS_META[e.status] || REFERRAL_STATUS_META.pending;
+  if (e.type === "remboursement") {
+    /* LA LIGNE QUI N'EXISTAIT PAS.
+       MIREILLE, 02/10/2026 : « le remboursement et la commande doivent être
+       deux lignes distinctes avec leurs propres dates », et « reversed n'est
+       peut-être pas le bon terme — plutôt commande remboursée ».
+       Avant, la commande du 29 septembre s'affichait « Reversed » avec son
+       icône verte de vente réussie, et le remboursement du 18 octobre
+       n'apparaissait nulle part. Deux faits, une seule date, et le plus
+       récent invisible. */
+    return (
+      <div className="flex items-center gap-3 py-2 border-b border-ash/40 last:border-0"
+           data-testid={`activite-remboursement-${e.label}`}>
+        <span className="w-8 h-8 rounded-lg bg-error/10 text-error grid place-items-center shrink-0">
+          <RotateCcw size={15} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-nordfjord">
+            {L("Commande remboursée", "Order refunded")}{" "}
+            <span className="font-semibold">{e.label || "-"}</span>
+          </p>
+          {e.apres_versement && (
+            /* L'argent était DÉJÀ parti : ce n'est pas le même fait qu'un
+               remboursement avant versement, et c'est celui-là qui se
+               déduira d'un prochain virement. */
+            <p className="font-data text-[11px] text-glacier leading-relaxed mt-0.5">
+              {L("La commission avait déjà été versée : elle sera déduite d'un prochain versement.",
+                 "The commission had already been paid out: it will be deducted from a future payout.")}
+            </p>
+          )}
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-sm font-semibold text-error tabular-nums">
+            {money(e.amount)}
+          </p>
+          <p className="text-[11px] text-glacier">{fmtDateTime(e.at, lang)}</p>
+        </div>
+      </div>
+    );
+  }
+  if (e.type === "commande" || e.type === "referral") {
+    /* UN JOURNAL DIT CE QUI S'EST PASSE CE JOUR-LA, pas l'etat
+       d'aujourd'hui. La pastille « Annulé » n'a plus sa place ici : le
+       29 septembre, la commission a bien ete acquise — c'est la ligne de
+       remboursement, a sa propre date, qui raconte la suite. L'etat courant
+       d'une commande se lit dans le tableau juste au-dessus. */
+    const m = e.status === "reversed"
+      ? null
+      : (REFERRAL_STATUS_META[e.status] || REFERRAL_STATUS_META.pending);
     return (
       <div className="flex items-center gap-3 py-2 border-b border-ash/40 last:border-0">
         <span className="w-8 h-8 rounded-lg bg-success/10 text-success grid place-items-center shrink-0">
@@ -2781,9 +2846,11 @@ function ActivityRow({ e, L, lang, money, fmtDateTime }) {
             {L("Commande", "Order")} <span className="font-semibold">{e.label || "-"}</span>
             {e.base != null ? <span className="text-glacier"> · {money(e.base)}</span> : null}
           </p>
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${m.cls}`}>
-            {lang === "fr" ? m.fr : m.en}
-          </span>
+          {m && (
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${m.cls}`}>
+              {lang === "fr" ? m.fr : m.en}
+            </span>
+          )}
         </div>
         <div className="text-right shrink-0">
           <p className="text-sm font-semibold text-nordfjord tabular-nums">{money(e.amount)}</p>

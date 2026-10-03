@@ -64,11 +64,15 @@ LIGNES = [
      "base_amount": 3060.0, "status": "paid",
      "approved_at": "2026-09-29T20:38:00+00:00",
      "created_at": "2026-09-29T20:38:00+00:00"},
+    # LA LIGNE QUI COMPTE : commandee le 29 septembre, remboursee le 18
+    # octobre, apres que l'argent soit parti. Deux faits, deux dates.
     {"id": "r-2", "payout_id": "pay-1", "affiliate_id": "aff-1",
      "order_number": "FN-260930-53AC39A3", "commission_amount": 194.40,
      "base_amount": 1620.0, "status": "reversed",
      "approved_at": "2026-09-29T20:43:00+00:00",
-     "created_at": "2026-09-29T20:43:00+00:00"},
+     "created_at": "2026-09-29T20:43:00+00:00",
+     "reversed_at": "2026-10-18T09:00:00+00:00",
+     "reversed_after_payout": True},
 ]
 
 
@@ -132,7 +136,7 @@ def _brancher(server, versements=None, lignes=None, clics=None):
 def _versement(server, **kw):
     _brancher(server, **kw)
     flux = asyncio.run(server.affiliate_activity(None, aff=AFF))
-    return [e for e in flux if e["type"] == "payout"][0]
+    return [e for e in flux if e["type"] == "versement"][0]
 
 
 # ===========================================================================
@@ -211,7 +215,7 @@ def test_les_commandes_gardent_leur_montant_de_COMMISSION(server_module):
     la commission, pas la base."""
     _brancher(server_module)
     flux = asyncio.run(server_module.affiliate_activity(None, aff=AFF))
-    commandes = [e for e in flux if e["type"] == "referral"]
+    commandes = [e for e in flux if e["type"] == "commande"]
 
     assert {c["label"]: c["amount"] for c in commandes} == {
         "FN-260930-3951A21A": 306.0, "FN-260930-53AC39A3": 194.40}
@@ -236,3 +240,130 @@ def test_UNE_SEULE_requete_pour_les_periodes_de_toute_la_liste(server_module):
     asyncio.run(server_module.affiliate_activity(None, aff=AFF))
 
     assert len(appels) == 1
+
+
+# ===========================================================================
+# UN FAIT, UNE LIGNE, UNE DATE
+#
+# MIREILLE, 02/10/2026 : « chaque activite doit avoir sa propre ligne [...] le
+# remboursement et la commande doivent etre deux lignes distinctes avec leurs
+# propres dates ».
+#
+# Une commission remboursee ne produisait QU'UN evenement, date de
+# `created_at` — le jour de la commande — avec le statut « reversed » colle
+# dessus. Sur LOLA10 : la commande du 29 septembre s'affichait « Reversed », et
+# le remboursement du 2 octobre n'apparaissait nulle part. Deux faits, une
+# seule date, et le plus recent invisible.
+# ===========================================================================
+
+def _flux(server, **kw):
+    _brancher(server, **kw)
+    return asyncio.run(server.affiliate_activity(None, aff=AFF))
+
+
+def test_UNE_COMMISSION_REMBOURSEE_DONNE_DEUX_LIGNES(server_module):
+    flux = _flux(server_module)
+    lignes = [e for e in flux if e["label"] == "FN-260930-53AC39A3"]
+
+    assert len(lignes) == 2
+    assert sorted(e["type"] for e in lignes) == ["commande", "remboursement"]
+
+
+def test_et_CHACUNE_PORTE_SA_PROPRE_DATE(server_module):
+    """Le coeur de sa demande. La commande est du 29 septembre, le
+    remboursement du 18 octobre : deux faits, deux dates."""
+    flux = _flux(server_module)
+    par_type = {e["type"]: e for e in flux if e["label"] == "FN-260930-53AC39A3"}
+
+    assert par_type["commande"]["at"].startswith("2026-09-29")
+    assert par_type["remboursement"]["at"].startswith("2026-10-18")
+
+
+def test_le_remboursement_porte_un_montant_NEGATIF(server_module):
+    """Sans le signe, deux lignes au meme montant se lisent comme deux
+    commissions gagnees."""
+    flux = _flux(server_module)
+    par_type = {e["type"]: e for e in flux if e["label"] == "FN-260930-53AC39A3"}
+
+    assert par_type["commande"]["amount"] == 194.40
+    assert par_type["remboursement"]["amount"] == -194.40
+
+
+def test_et_il_dit_si_l_argent_etait_DEJA_PARTI(server_module):
+    """Rembourse APRES versement, l'argent doit etre repris : ce n'est pas le
+    meme fait qu'un remboursement avant versement."""
+    flux = _flux(server_module)
+    remb = [e for e in flux if e["type"] == "remboursement"][0]
+
+    assert remb["apres_versement"] is True
+
+
+def test_une_commande_NON_remboursee_ne_donne_qu_une_ligne(server_module):
+    flux = _flux(server_module)
+    lignes = [e for e in flux if e["label"] == "FN-260930-3951A21A"]
+
+    assert len(lignes) == 1
+    assert lignes[0]["type"] == "commande"
+
+
+def test_un_statut_reversed_SANS_date_ne_fabrique_pas_de_ligne(server_module):
+    """Une donnee heritee peut porter le statut sans la date. Mieux vaut une
+    ligne de moins qu'une ligne datee de rien, qui se trierait n'importe ou."""
+    sans_date = [{k: v for k, v in LIGNES[1].items() if k != "reversed_at"}]
+    flux = _flux(server_module, lignes=[LIGNES[0]] + sans_date)
+
+    assert [e["type"] for e in flux if e["type"] == "remboursement"] == []
+
+
+# ===========================================================================
+# LES QUATRE AXES DE FILTRE
+# ===========================================================================
+
+def test_chaque_evenement_porte_son_type_de_filtre(server_module):
+    flux = _flux(server_module, clics=[{"affiliate_id": "aff-1",
+                                        "created_at": "2026-10-01T09:00:00+00:00",
+                                        "page": "/catalog", "device": "mobile"}])
+    types = {e["type"] for e in flux}
+
+    assert types == {"commande", "remboursement", "versement", "clic"}
+
+
+def test_et_l_ancien_nom_reste_le_temps_d_une_version(server_module):
+    """Rien ne doit casser chez un appelant qui filtrerait sur l'ancien type."""
+    flux = _flux(server_module, clics=[{"affiliate_id": "aff-1",
+                                        "created_at": "2026-10-01T09:00:00+00:00",
+                                        "page": "/catalog", "device": "mobile"}])
+    anciens = {e["type"]: e.get("legacy_type") for e in flux}
+
+    assert anciens == {"commande": "referral", "remboursement": "referral",
+                       "versement": "payout", "clic": "click"}
+
+
+# ===========================================================================
+# LA COUPE NE DOIT AFFAMER PERSONNE
+# ===========================================================================
+
+def test_LES_CLICS_NE_CHASSENT_PLUS_L_ARGENT_DU_FLUX(server_module):
+    """Chaque source rend jusqu'a `limit` lignes. Un affilie avec beaucoup de
+    clics RECENTS voyait donc ses commandes et ses versements chasses du flux :
+    l'ecran qui doit raconter son argent ne montrait que des visites. Et un
+    filtre cote ecran ne peut rien pour ce qui n'a jamais ete envoye."""
+    clics = [{"affiliate_id": "aff-1",
+              "created_at": "2026-11-%02dT09:00:00+00:00" % (j + 1),
+              "page": "/catalog", "device": "mobile"} for j in range(30)]
+    _brancher(server_module, clics=clics)
+
+    flux = asyncio.run(server_module.affiliate_activity(None, limit=5, aff=AFF))
+
+    assert len(flux) == 5
+    # Les clics sont tous PLUS RECENTS que l'argent, et pourtant l'argent est la.
+    assert {e["type"] for e in flux} & {"commande", "remboursement", "versement"}
+
+
+def test_le_flux_reste_trie_du_plus_recent_au_plus_ancien(server_module):
+    flux = _flux(server_module, clics=[{"affiliate_id": "aff-1",
+                                        "created_at": "2026-10-20T09:00:00+00:00",
+                                        "page": "/catalog", "device": "mobile"}])
+    dates = [str(e["at"]) for e in flux]
+
+    assert dates == sorted(dates, reverse=True)

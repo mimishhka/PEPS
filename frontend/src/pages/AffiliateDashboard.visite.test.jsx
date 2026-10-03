@@ -103,6 +103,13 @@ const brancher = (fiche) => {
         clicks_sources: null, activity: [],
         customers: { customers: [] },
         performance: { series: [] },
+        // Le serveur renvoie TOUJOURS le cycle : le bloc « ce qui part » (et
+        // donc la cible payout-estimate de la visite) vit derrière cette
+        // donnée. Sans elle, le fixture décrit un serveur qui n'existe pas.
+        payout_cycle: { period: "2026-09", current_period: "2026-10",
+                        due_now: 0, current_cycle: 0, creance: 0,
+                        due_by: "2026-10-06T04:00:00Z", days_left: 5,
+                        overdue: false },
       } };
     }
     if (String(url).includes("/affiliate/top-products")) return { data: { items: [] } };

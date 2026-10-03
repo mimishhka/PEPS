@@ -273,12 +273,16 @@ describe("le flux d'activité", () => {
     jetons: 352.77, devise: "usdt",
   };
 
+  /* LE JOURNAL VIT DÉSORMAIS DANS PAIEMENTS. Ces tests ouvrent donc cet
+     onglet : c'est là que la chronologie de l'argent se lit, à côté du
+     tableau des commandes. */
+
   test("LE MONTANT AFFICHÉ EST CELUI EN DOLLARS CANADIENS", async () => {
     /* Le défaut le plus grave de la visite : la ligne affichait « $352.77 »
      * — la quantité d'USDT — à côté de commandes chiffrées en CAD. Elle avait
      * reçu 500,40 $. Un montant faux, plus bas que la réalité, sur sa propre
      * page. */
-    await ouvrir("performance", FICHE_BAREME, { activity: [VERSEMENT_ACTIVITE] });
+    await ouvrir("payments", FICHE_BAREME, { activity: [VERSEMENT_ACTIVITE] });
 
     expect(await screen.findByTestId("activite-montant-versement"))
       .toHaveTextContent("500.40");
@@ -287,14 +291,14 @@ describe("le flux d'activité", () => {
   test("et la quantité de jetons reste lisible, AVEC sa devise", async () => {
     // Un nombre nu, sur un écran où tout est en dollars, se lit comme un
     // second montant canadien.
-    await ouvrir("performance", FICHE_BAREME, { activity: [VERSEMENT_ACTIVITE] });
+    await ouvrir("payments", FICHE_BAREME, { activity: [VERSEMENT_ACTIVITE] });
     await screen.findByTestId("activite-montant-versement");
 
     expect(screen.getByText(/352\.77 USDT/)).toBeInTheDocument();
   });
 
   test("le statut est traduit, plus jamais « PAID_MANUAL »", async () => {
-    await ouvrir("performance", FICHE_BAREME, { activity: [VERSEMENT_ACTIVITE] });
+    await ouvrir("payments", FICHE_BAREME, { activity: [VERSEMENT_ACTIVITE] });
 
     const badge = await screen.findByTestId("activite-statut-versement");
     expect(badge).toHaveTextContent(/pay/i);
@@ -304,14 +308,14 @@ describe("le flux d'activité", () => {
   test("et l'étiquette dit la période COUVERTE, pas le mois du virement", async () => {
     /* « Payout 2026-10 » pour des commissions de septembre : c'est la plainte
      * d'origine, corrigée dans l'historique et oubliée ici. */
-    await ouvrir("performance", FICHE_BAREME, { activity: [VERSEMENT_ACTIVITE] });
+    await ouvrir("payments", FICHE_BAREME, { activity: [VERSEMENT_ACTIVITE] });
     await screen.findByTestId("activite-montant-versement");
 
     expect(screen.getByText(/septembre 2026/i)).toBeInTheDocument();
   });
 
   test("sans période couverte, l'étiquette de lot reste — mieux qu'un vide", async () => {
-    await ouvrir("performance", FICHE_BAREME, {
+    await ouvrir("payments", FICHE_BAREME, {
       activity: [{ ...VERSEMENT_ACTIVITE, periode_couverte: null }] });
     await screen.findByTestId("activite-montant-versement");
 
@@ -355,19 +359,29 @@ describe("les compteurs à zéro à côté de vraies ventes", () => {
 });
 
 describe("le tableau des commandes", () => {
-  test("ne s'appelle plus comme la vignette qui compte autre chose", async () => {
-    /* Vu sur LOLA10 : la vignette « Commandes validées » affichait 2, et ce
-     * tableau, titré pareil, en listait QUATRE — remboursements compris. Le
-     * même mot pour deux ensembles, sur le même écran. */
+  test("il est dans PAIEMENTS : la preuve à côté de l'argent", async () => {
+    /* Il vivait dans Performance, à un onglet de distance du montant qu'il
+     * justifie : vérifier un versement demandait de changer d'écran au milieu
+     * du calcul. Il s'est déplacé, avec son CSV et sa pagination. */
+    await ouvrir("payments");
+    await screen.findByTestId("affiliate-payments");
+
+    expect(screen.getByText(/toutes vos commandes/i)).toBeInTheDocument();
+    // Et son sous-titre dit ce qu'il contient de plus que la vignette
+    // « Commandes validées », restée dans Performance.
+    const entete = screen.getByText(/toutes vos commandes/i).closest("div");
+    expect(entete).toHaveTextContent(/rembours/i);
+    expect(entete).toHaveTextContent(/commission/i);
+  });
+
+  test("et Performance n'a plus de tableau de commandes", async () => {
+    /* Performance répond à « comment je vends » : clics, conversion, panier,
+     * paliers, graphique, sources, clients. La preuve des montants n'y est
+     * plus. */
     await ouvrir("performance");
     await screen.findByTestId("affiliate-performance");
 
-    expect(screen.getByText(/toutes vos commandes/i)).toBeInTheDocument();
-    // Et il dit, SOUS SON TITRE, ce qu'il contient de plus que la vignette.
-    // `getAllByText` : « remboursé » apparaît ailleurs sur l'onglet.
-    const entete = screen.getByText(/toutes vos commandes/i).closest("div");
-    expect(entete).toHaveTextContent(/rembours/i);
-    expect(entete).toHaveTextContent(/commandes valid/i);
+    expect(screen.queryByText(/toutes vos commandes/i)).not.toBeInTheDocument();
   });
 });
 

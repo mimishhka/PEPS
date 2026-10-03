@@ -13411,22 +13411,59 @@ async def affiliate_activity(request: Request, limit: int = 20, aff: Optional[di
     ).sort("created_at", -1).to_list(limit)
     for c in clicks:
         events.append({
-            "type": "click", "at": c.get("created_at"),
+            "type": "clic", "legacy_type": "click", "at": c.get("created_at"),
             "label": str(c.get("page") or ""), "device": str(c.get("device") or ""),
         })
 
+    # UN FAIT, UNE LIGNE, UNE DATE.
+    #
+    # MIREILLE, 02/10/2026 : « chaque activité doit avoir sa propre ligne [...]
+    # le remboursement et la commande doivent être deux lignes distinctes avec
+    # leurs propres dates ».
+    #
+    # Une commission remboursée ne produisait QU'UN événement, daté de
+    # `created_at` — le jour de la commande — avec le statut « reversed » collé
+    # dessus. Sur le compte LOLA10 : la commande du 29 septembre s'affichait
+    # « Reversed », et le remboursement du 2 octobre n'apparaissait nulle part.
+    # Deux faits, une seule date, et le plus récent invisible.
+    #
+    # La reprise devient donc son propre événement, daté de `reversed_at`, et
+    # portant un montant NÉGATIF : c'est de l'argent qui s'en va.
     referrals = await db.affiliate_referrals.find(
         {"affiliate_id": aff["id"], "status": {"$ne": "excluded"}},
         {"_id": 0, "order_number": 1, "status": 1, "commission_amount": 1,
-         "base_amount": 1, "created_at": 1},
+         "base_amount": 1, "created_at": 1, "reversed_at": 1,
+         "reversed_after_payout": 1},
     ).sort("created_at", -1).to_list(limit)
     for r in referrals:
+        commission = round(float(r.get("commission_amount") or 0), 2)
         events.append({
-            "type": "referral", "at": r.get("created_at"),
+            # `commande` est le nom de l'axe de filtre ; `referral` reste le
+            # temps d'une version pour ne rien casser chez un appelant qui
+            # filtrerait dessus.
+            "type": "commande", "legacy_type": "referral",
+            "at": r.get("created_at"),
             "label": str(r.get("order_number") or ""), "status": r.get("status"),
-            "amount": round(float(r.get("commission_amount") or 0), 2),
+            "amount": commission,
             "base": round(float(r.get("base_amount") or 0), 2),
         })
+        if r.get("status") == "reversed" and r.get("reversed_at"):
+            events.append({
+                "type": "remboursement", "legacy_type": "referral",
+                "at": r.get("reversed_at"),
+                "label": str(r.get("order_number") or ""),
+                "status": "reversed",
+                # NÉGATIF : la ligne dit une sortie, pas une entrée. Sans le
+                # signe, deux lignes au même montant se lisent comme deux
+                # commissions gagnées.
+                "amount": -commission,
+                "base": round(float(r.get("base_amount") or 0), 2),
+                # Remboursée APRÈS versement : l'argent était déjà parti, et
+                # il sera repris. Ce n'est pas le même fait qu'un
+                # remboursement avant versement, et le journal le distingue
+                # comme le font déjà les blocs de créance.
+                "apres_versement": bool(r.get("reversed_after_payout")),
+            })
 
     # TROIS DEFAUTS TENAIENT DANS CETTE PROJECTION, vus a l'ecran le
     # 02/10/2026 sur le compte LOLA10 : un versement de 500,40 $ CAD
@@ -13452,7 +13489,8 @@ async def affiliate_activity(request: Request, limit: int = 20, aff: Optional[di
     await _attacher_periode_couverte(payouts)
     for p in payouts:
         events.append({
-            "type": "payout", "at": p.get("created_at"),
+            "type": "versement", "legacy_type": "payout",
+            "at": p.get("created_at"),
             # L'etiquette de lot reste, en dernier recours : mieux vaut un mois
             # approximatif qu'une case vide sur un releve d'argent.
             "label": str(p.get("period") or ""),
@@ -13463,8 +13501,26 @@ async def affiliate_activity(request: Request, limit: int = 20, aff: Optional[di
             "devise": str(p.get("currency") or ""),
         })
 
+    # LE TRI D'ABORD, LA COUPE ENSUITE — et la coupe ne doit pas affamer un
+    # type au profit d'un autre.
+    #
+    # Chaque source rend jusqu'a `limit` lignes, donc jusqu'a 3 x limit
+    # candidats, ramenes a `limit` ici. Un affilie avec beaucoup de clics
+    # voyait donc ses commandes et ses versements chasses du flux par des
+    # clics plus recents : l'ecran qui doit raconter son argent ne montrait
+    # que des visites.
+    #
+    # Les lignes d'ARGENT passent donc en premier a budget egal : on garde la
+    # moitie du budget pour elles, puis on complete avec le reste par date.
+    # Un filtre cote ecran ne peut rien pour ce qui n'a jamais ete envoye.
     events.sort(key=lambda e: str(e.get("at") or ""), reverse=True)
-    return events[:limit]
+    argent = [e for e in events if e.get("type") != "clic"]
+    reste = [e for e in events if e.get("type") == "clic"]
+    garde = argent[:limit]
+    if len(garde) < limit:
+        garde += reste[:limit - len(garde)]
+    garde.sort(key=lambda e: str(e.get("at") or ""), reverse=True)
+    return garde
 
 
 async def affiliate_dashboard(request: Request, ref_page: int = 1, pay_page: int = 1,

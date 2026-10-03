@@ -98,17 +98,17 @@ describe("la question qu'on se pose en ouvrant la page", () => {
 });
 
 describe("les trois états de la commission", () => {
-  test("chacun a son montant et son libellé", () => {
-    /* Ils ne valent pas la meme chose : « versee » est dans le portefeuille,
-     * « a verser » arrive le 1er, « en attente » peut encore disparaitre si
-     * une commande est remboursee. Les confondre en un seul total cacherait
-     * precisement ce qui distingue l'argent acquis de l'argent espere. */
+  test("chacun garde son nom, sans répéter le montant", () => {
+    /* Les montants ne sont plus ici : le trio « En attente / Validé / Déjà
+     * versé » du bloc de paiement les porte déjà, juste au-dessus. Les dire
+     * deux fois — 820 $ ici ET là-haut — c'est deux lectures du même chiffre
+     * sur le même onglet. La légende n'explique plus que les couleurs. */
     afficher(ACTIF);
 
-    expect(screen.getByTestId("depuis-legende-versee")).toHaveTextContent("820.00");
     expect(screen.getByTestId("depuis-legende-versee")).toHaveTextContent(/versée/i);
-    expect(screen.getByTestId("depuis-legende-a-verser")).toHaveTextContent("310.50");
-    expect(screen.getByTestId("depuis-legende-en-attente")).toHaveTextContent("118.00");
+    expect(screen.getByTestId("depuis-legende-versee")).not.toHaveTextContent("820.00");
+    expect(screen.getByTestId("depuis-legende-a-verser")).toHaveTextContent(/à verser/i);
+    expect(screen.getByTestId("depuis-legende-en-attente")).toHaveTextContent(/en attente/i);
   });
 
   test("la barre montre la proportion, pas seulement les montants", () => {
@@ -412,8 +412,10 @@ describe("la barre de repartition", () => {
                cumulative_revenue: 4170, validated_orders: 12 });
 
     expect(screen.queryByTestId("depuis-barre")).not.toBeInTheDocument();
-    // Le montant et son etat restent dits, par la legende.
-    expect(screen.getByTestId("depuis-legende-versee")).toHaveTextContent("500.40");
+    // Le total reste dit, et la légende garde les NOMS sans répéter le montant
+    // que le trio de l'onglet porte déjà.
+    expect(screen.getByTestId("depuis-legende-versee")).toHaveTextContent(/versée/i);
+    expect(screen.getByTestId("depuis-legende-versee")).not.toHaveTextContent(/\$/);
     expect(screen.getByTestId("depuis-gagne")).toHaveTextContent("500.40");
   });
 

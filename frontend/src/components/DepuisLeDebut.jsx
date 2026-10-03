@@ -223,15 +223,18 @@ export default function DepuisLeDebut({ data, series, L, money, lang }) {
           </div>
           )}
 
+          {/* LA LÉGENDE DONNE LES NOMS, PLUS LES MONTANTS.
+              Ils étaient répétés ici ET dans le trio « En attente / Validé /
+              Déjà versé » du bloc juste au-dessus — 306 $ dits deux fois,
+              56,69 $ dits quatre fois sur le même onglet. Le trio les porte
+              désormais seul ; la légende ne fait qu'expliquer les couleurs de
+              la barre. */}
           <ul className="flex flex-wrap gap-x-5 gap-y-2 mt-3.5">
             {SEGMENTS.map((s) => (
               <li key={s.cle} className="flex items-baseline gap-2"
                   data-testid={`depuis-legende-${s.cle}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 translate-y-[-1px]"
                       style={{ background: s.ton }} aria-hidden="true" />
-                <span className="font-display text-[15px] font-bold tabular-nums text-nordfjord">
-                  {money(s.valeur)}
-                </span>
                 <span className="font-data text-[11px] uppercase tracking-[0.1em] text-glacier">
                   {L(s.fr, s.en)}
                 </span>
@@ -336,12 +339,15 @@ export default function DepuisLeDebut({ data, series, L, money, lang }) {
             a rien à récupérer, la ligne ci-dessus suffit. Remboursée APRÈS, le
             montant était déjà dans son compte — et il sera déduit du prochain
             versement. Confondre les deux, c'est laisser découvrir une
-            déduction sans l'avoir annoncée. */}
+            déduction sans l'avoir annoncée.
+            L'explication complète vit dans le bloc « Ce qui part le … »
+            juste au-dessus : la répéter ici, c'est raconter deux fois la même
+            histoire. */}
         {toutLeTemps && Number(data?.creance || 0) > 0 && (
           <p className="text-[12px] text-warning mt-2 leading-relaxed"
              data-testid="depuis-creance">
-            {L(`Dont ${money(data.creance)} déjà versés avant le remboursement : ce montant sera déduit de votre prochain versement.`,
-               `Of which ${money(data.creance)} had already been paid out before the refund: that amount will be deducted from your next payout.`)}
+            {L(`Dont ${money(data.creance)} déjà versés avant le remboursement : déduits de votre prochain versement — le détail est dans le bloc « Ce qui part » ci-dessus.`,
+               `Of which ${money(data.creance)} had already been paid out before the refund: deducted from your next payout — the detail is in the “What goes out” block above.`)}
           </p>
         )}
       </div>
