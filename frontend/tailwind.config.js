@@ -34,7 +34,9 @@ module.exports = {
         ink: "rgb(var(--fn-ink) / <alpha-value>)",               // deep footer ground
         card: "rgb(var(--fn-card) / <alpha-value>)",             // card surface
         success: "rgb(var(--fn-success) / <alpha-value>)",
+        "success-text": "rgb(var(--fn-success-text) / <alpha-value>)",
         warning: "rgb(var(--fn-warning) / <alpha-value>)",
+        "warning-text": "rgb(var(--fn-warning-text) / <alpha-value>)",
         error: "rgb(var(--fn-error) / <alpha-value>)",
         compliance: "rgb(var(--fn-compliance) / <alpha-value>)", // RUO / regulatory
         mist: "rgb(var(--fn-mist) / <alpha-value>)",               // secondary text on nordfjord surfaces

@@ -140,7 +140,7 @@ export default function ProductCard({ product, index = 0 }) {
               <span className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{lang === "fr" ? "dès" : "from"}</span>
             )}
           </div>
-          <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock && !stockBas ? "text-success" : "text-warning"}`}>
+          <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock && !stockBas ? "text-success-text" : "text-warning-text"}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${inStock && !stockBas ? "bg-success" : "bg-warning"}`} />
             {anyPreorder && !inStock ? (lang === "fr" ? "Précommande" : "Pre-order")
               : inStock ? (stockBas ? `${lang === "fr" ? "Stock bas" : "Low stock"} · ${stockN}` : (lang === "fr" ? "En stock" : "In stock"))

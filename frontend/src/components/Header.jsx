@@ -129,16 +129,17 @@ export default function Header() {
               data-testid="lang-toggle"
               onClick={toggle}
               className="relative font-data text-xs font-semibold uppercase tracking-[0.18em] border border-ash px-3 py-1.5 hover:border-nova transition-colors inline-flex items-center gap-1.5 after:absolute after:inset-x-0 after:-inset-y-2 after:content-[''] sm:after:hidden" style={{ borderRadius: "var(--r-m)" }}
-              aria-label="Toggle language"
+              aria-label={`FR EN, ${lang === "fr" ? "passer à l'anglais" : "switch to French"}`}
               title={lang === "fr" ? "Passer à l'anglais" : "Switch to French"}
             >
-              <span className={lang === "fr" ? "text-nordfjord" : "text-glacier/60"} data-testid="lang-fr">FR</span>
+              <span className={lang === "fr" ? "text-nordfjord" : "text-glacier"} data-testid="lang-fr">FR</span>
               <span className="text-ash">·</span>
-              <span className={lang === "en" ? "text-nordfjord" : "text-glacier/60"} data-testid="lang-en">EN</span>
+              <span className={lang === "en" ? "text-nordfjord" : "text-glacier"} data-testid="lang-en">EN</span>
             </button>
             <button
               data-testid="cart-button"
               onClick={() => setOpen(true)}
+              aria-label={t("nav.cart")}
               className="relative font-data text-xs font-semibold uppercase tracking-[0.18em] flex items-center gap-2 text-nordfjord hover:text-nova-texte transition-colors"
             >
               <span className="relative inline-flex">
