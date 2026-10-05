@@ -184,8 +184,14 @@ async def admin_affiliates_risk(admin: dict = Depends(s.get_admin_user)):
 
 @router.get("/admin/affiliates/{affiliate_id}/customers")
 async def admin_affiliate_customers(affiliate_id: str,
-                                     admin: dict = Depends(s.get_admin_user)):
-    return await s.admin_affiliate_customers(affiliate_id, admin)
+                                    page: int = 1, taille: int = 10,
+                                    filtre: str = "tous",
+                                    admin: dict = Depends(s.get_admin_user)):
+    # MOTS-CLES, pas de position : un argument positionnel `admin` se lierait
+    # au parametre `page` et paginerait avec un dictionnaire.
+    return await s.admin_affiliate_customers(affiliate_id, admin=admin,
+                                             page=page, taille=taille,
+                                             filtre=filtre)
 
 
 # Billets d'assistance. Déclarés sous /admin/affiliate-tickets et non
@@ -233,14 +239,19 @@ async def admin_affiliate_cycles(admin: dict = Depends(s.get_admin_user),
 
 @router.get("/admin/affiliates/{affiliate_id}")
 async def admin_affiliate_detail(affiliate_id: str,
-                                 ref_page: int = 1, ref_taille: int = 500,
+                                 ref_page: int = 1, ref_taille: int = 10,
+                                 ref_filtre: str = "tous",
+                                 pay_page: int = 1, pay_taille: int = 10,
+                                 pay_filtre: str = "tous",
                                  admin: dict = Depends(s.get_admin_user)):
     # Les arguments sont NOMMES. L'appel etait positionnel — `(affiliate_id,
     # admin)` — et l'ajout de deux parametres pagines au milieu de la signature
     # aurait lie `admin` a `ref_page` en silence : la fiche se serait ouverte
     # sans administrateur, et la pagination aurait recu un dictionnaire.
     return await s.admin_affiliate_detail(
-        affiliate_id, ref_page=ref_page, ref_taille=ref_taille, admin=admin)
+        affiliate_id, ref_page=ref_page, ref_taille=ref_taille,
+        ref_filtre=ref_filtre, pay_page=pay_page, pay_taille=pay_taille,
+        pay_filtre=pay_filtre, admin=admin)
 
 
 @router.put("/admin/affiliates/{affiliate_id}")

@@ -138,7 +138,9 @@ describe("AdminAffiliates — classement des top affiliés", () => {
     // La fenetre de detail ne s'ouvre que si l'identifiant est parvenu jusqu'au
     // gestionnaire de clic. Avec `id` absent, rien ne se passait.
     await waitFor(() => {
-      expect(api.get).toHaveBeenCalledWith(expect.stringContaining("/admin/affiliates/aff-1"));
+      // DEUX arguments désormais : l'URL et les paramètres de page/filtre.
+      expect(api.get).toHaveBeenCalledWith(
+        expect.stringContaining("/admin/affiliates/aff-1"), expect.anything());
     });
   });
 
@@ -727,7 +729,12 @@ describe("AdminAffiliates — répondre à un audit", () => {
   ];
 
   const fiche = (extra = {}) => {
-    api.get.mockImplementation(async (url) => {
+    api.get.mockImplementation(async (url, config) => {
+      // LES PARAMETRES DE PAGE ET DE FILTRE, lus comme le serveur les lirait.
+      extra.ref_filtre = (config && config.params && config.params.ref_filtre)
+        || extra.ref_filtre || "tous";
+      extra.pay_filtre = (config && config.params && config.params.pay_filtre)
+        || extra.pay_filtre || "tous";
       if (url === "/admin/affiliates/overview") return { data: APERCU };
       if (url === "/admin/affiliates") return { data: [AFFILIE] };
       if (url === "/admin/affiliates/risk") return { data: null };
@@ -744,7 +751,31 @@ describe("AdminAffiliates — répondre à un audit", () => {
           affiliate: { ...AFFILIE, terms_version: "2026-08-25b",
                        terms_accepted_at: "2026-09-14T11:00:00", ...extra.affiliate },
           terms_version_required: extra.requise ?? "2026-08-25b",
-          referrals: COMMISSIONS_AUDIT, payouts: extra.payouts || VERSEMENTS,
+          // LE FILTRE EST SERVEUR : le double l'applique comme le ferait la
+          // base, sinon le test ne prouverait rien du tout.
+          referrals: (() => {
+            const f = extra.ref_filtre ?? "tous";
+            if (f === "tous") return COMMISSIONS_AUDIT;
+            if (f === "reprises") return COMMISSIONS_AUDIT.filter((r) => r.status === "reversed");
+            return COMMISSIONS_AUDIT.filter((r) => r.status === f);
+          })(), payouts: extra.payouts || VERSEMENTS,
+          // LA FICHE EST PAGINEE ET FILTREE COTE SERVEUR : le fixture porte
+          // donc les totaux, les facettes et la page, comme le serveur.
+          referrals_total: extra.referrals_total ?? COMMISSIONS_AUDIT.length,
+          referrals_page: 1, referrals_page_size: 10,
+          referrals_facettes: extra.referrals_facettes ?? {
+            tous: COMMISSIONS_AUDIT.length,
+            paid: COMMISSIONS_AUDIT.filter((r) => r.status === "paid").length,
+            approved: COMMISSIONS_AUDIT.filter((r) => r.status === "approved").length,
+            pending: COMMISSIONS_AUDIT.filter((r) => r.status === "pending").length,
+            reprises: COMMISSIONS_AUDIT.filter((r) => r.status === "reversed").length,
+          },
+          payouts_total: (extra.payouts || VERSEMENTS).length,
+          payouts_page: 1, payouts_page_size: 10,
+          payouts_facettes: extra.payouts_facettes ?? {
+            tous: (extra.payouts || VERSEMENTS).length, payes: 1,
+            echec: 0, attente: 0,
+          },
           metrics: { cumulative_revenue: 1187.5, rolling12_revenue: 1187.5,
                      pending_commission: 0, approved_commission: 0,
                      paid_commission: 142.5, reversed_commission: 82.5,

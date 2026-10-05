@@ -1628,12 +1628,24 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
   const [resending, setResending] = useState(false);
   const [aliasBusy, setAliasBusy] = useState(null);
   const [customers, setCustomers] = useState([]);
+  const [clientsMeta, setClientsMeta] = useState({ total: 0, page: 1 });
   const [customersLoading, setCustomersLoading] = useState(false);
   /* POUR UN AUDIT, ON CHERCHE UN SOUS-ENSEMBLE.
      « Montrez-moi toutes mes commandes remboursées » est la demande la plus
      frequente d'un affilie qui conteste, et il fallait la lire a l'oeil dans
      une table de cinq cents lignes. */
   const [filtreCommission, setFiltreCommission] = useState("tous");
+  /* PAGINATION ET FILTRES DE LA FICHE — coté SERVEUR.
+     Mireille, 02/10/2026 : « historique des donnees dans le dossier affilie,
+     pas plus que dix affiche, donc les vues doivent etre paginees doivent
+     avoir des filtres ». Filtrer dans le navigateur une page de dix lignes
+     n'est pas filtrer, c'est cacher le reste : le filtre part au serveur, et
+     la page change avec lui. */
+  const [refPage, setRefPage] = useState(1);
+  const [payPage, setPayPage] = useState(1);
+  const [payFiltre, setPayFiltre] = useState("tous");
+  const [clientPage, setClientPage] = useState(1);
+  const [clientFiltre, setClientFiltre] = useState("tous");
   /* LE DETAIL D'UN VERSEMENT, ouvrable depuis la fiche. Mireille : « le detail
      complet de chaque paiement ». Il existait, mais seulement depuis l'ecran
      Paiements : repondre a « c'etait quelles commandes ? » obligeait a quitter
@@ -1719,7 +1731,10 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
 
   const load = useCallback(async () => {
     try {
-      const { data } = await api.get(`/admin/affiliates/${affiliateId}`);
+      const { data } = await api.get(`/admin/affiliates/${affiliateId}`, {
+        params: { ref_page: refPage, ref_filtre: filtreCommission,
+                  pay_page: payPage, pay_filtre: payFiltre },
+      });
       setData(data);
       const a = data.affiliate || {};
       setForm({
@@ -1737,14 +1752,21 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
       // que si le lien ou le code est utilisé sur la commande.
       setCustomersLoading(true);
       try {
-        const cr = await api.get(`/admin/affiliates/${affiliateId}/customers`);
+        const cr = await api.get(`/admin/affiliates/${affiliateId}/customers`, {
+          params: { page: clientPage, filtre: clientFiltre },
+        });
         setCustomers(cr.data?.customers || []);
+        setClientsMeta({
+          total: cr.data?.total ?? cr.data?.count ?? 0,
+          page: cr.data?.page ?? 1,
+        });
       } catch { setCustomers([]); }
       finally { setCustomersLoading(false); }
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     }
-  }, [affiliateId]);
+  }, [affiliateId, refPage, filtreCommission, payPage, payFiltre,
+      clientPage, clientFiltre]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -2394,7 +2416,31 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
 
             <div>
               <p className="text-xs uppercase tracking-wider text-glacier mb-2">{L("Relevés de paiement", "Payouts")}</p>
+              {/* MÊME RÈGLE QUE LES COMMISSIONS : filtre serveur, facettes qui
+                  valent pour toute la collection, page de dix. */}
+              {Number(data.payouts_total || 0) > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2" data-testid="filtre-versements">
+                  {[
+                    ["tous", L("Tous", "All"), data.payouts_facettes?.tous ?? data.payouts_total],
+                    ["payes", L("Payés", "Paid"), data.payouts_facettes?.payes ?? 0],
+                    ["attente", L("En attente", "Pending"), data.payouts_facettes?.attente ?? 0],
+                    ["echec", L("Échecs", "Failed"), data.payouts_facettes?.echec ?? 0],
+                  ].filter(([cle, , n]) => cle === "tous" || Number(n) > 0)
+                   .map(([cle, libelle, n]) => (
+                    <button key={cle} onClick={() => { setPayFiltre(cle); setPayPage(1); }}
+                      data-testid={`filtre-versement-${cle}`}
+                      className={`px-2.5 h-7 rounded-full font-data text-[10px] uppercase
+                                  tracking-[0.08em] transition-colors ${
+                        payFiltre === cle
+                          ? "bg-nordfjord text-white"
+                          : "border border-ash text-glacier hover:bg-clinical"}`}>
+                      {libelle} · {n}
+                    </button>
+                  ))}
+                </div>
+              )}
               {data.payouts?.length ? (
+                <>
                 <div className="space-y-2">
                   {data.payouts.map((p) => (
                     <div key={p.id} className="rounded-lg border border-ash p-3 text-sm">
@@ -2460,7 +2506,10 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     </div>
                   ))}
                 </div>
-              ) : <p className="text-sm text-glacier">{L("Aucun relevé.", "No payouts.")}</p>}
+                <AdminPagination page={data.payouts_page ?? 1}
+                                 total={data.payouts_total ?? 0}
+                                 onChange={(p) => setPayPage(p)} L={L} />
+              </> ) : <p className="text-sm text-glacier">{L("Aucun relevé.", "No payouts.")}</p>}
             </div>
 
             <TitreSection>{L("Clients et commandes", "Customers and orders")}</TitreSection>
@@ -2478,10 +2527,32 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                   {L("Clients apportés (historique)", "Customers brought in (record)")}
                 </p>
                 <span className="text-[11px] font-data text-glacier" data-testid="admin-attached-customers-count">
-                  {customersLoading ? L("chargement…", "loading…") : `${customers.length}`}
+                  {customersLoading ? L("chargement…", "loading…")
+                    : `${clientsMeta.total || customers.length}`}
                 </span>
               </div>
+              {/* FILTRE SERVEUR, comme les deux vues au-dessus. */}
+              {Number(clientsMeta.total || customers.length) > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2" data-testid="filtre-clients">
+                  {[
+                    ["tous", L("Tous", "All")],
+                    ["compte", L("Avec compte", "With account")],
+                    ["invite", L("Sans compte", "No account")],
+                  ].map(([cle, libelle]) => (
+                    <button key={cle} onClick={() => { setClientFiltre(cle); setClientPage(1); }}
+                      data-testid={`filtre-client-${cle}`}
+                      className={`px-2.5 h-7 rounded-full font-data text-[10px] uppercase
+                                  tracking-[0.08em] transition-colors ${
+                        clientFiltre === cle
+                          ? "bg-nordfjord text-white"
+                          : "border border-ash text-glacier hover:bg-clinical"}`}>
+                      {libelle}
+                    </button>
+                  ))}
+                </div>
+              )}
               {customers.length ? (
+                <>
                 <div className="overflow-x-auto rounded-lg border border-ash">
                   <table className="w-full text-xs" data-testid="admin-attached-customers-table">
                     <thead>
@@ -2522,6 +2593,10 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     </tbody>
                   </table>
                 </div>
+                <AdminPagination page={clientsMeta.page ?? 1}
+                                 total={clientsMeta.total ?? 0}
+                                 onChange={(p) => setClientPage(p)} L={L} />
+              </>
               ) : (
                 <p className="text-sm text-glacier">
                   {L("Aucun client apporté.", "No customers brought in.")}
@@ -2546,24 +2621,23 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                   <Download size={11} /> {L("Exporter CSV", "Export CSV")}
                 </a>
               </div>
-              {/* LE FILTRE. Les comptes viennent des lignes chargees, pas
-                  d'un calcul separe : deux nombres qui ne concordent pas sur
-                  un ecran d'audit valent moins que pas de nombre du tout. */}
-              {data.referrals?.length > 0 && (
+              {/* LE FILTRE, SERVEUR. Les comptes viennent des FACETTES, qui
+                  valent pour toute la collection — une puce qui annonce
+                  « Reprises · 1 » parce que la page en contient une, alors
+                  qu'il y en a quarante ailleurs, c'est un compteur qui ment.
+                  La page revient a 1 a chaque changement : changer de filtre
+                  n'a pas de sens en gardant la page precedente. */}
+              {Number(data.referrals_total || 0) > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2" data-testid="filtre-commissions">
                   {[
-                    ["tous", L("Toutes", "All"), data.referrals.length],
-                    ["paid", L("Payées", "Paid"),
-                     data.referrals.filter((r) => r.status === "paid").length],
-                    ["approved", L("À verser", "To pay"),
-                     data.referrals.filter((r) => r.status === "approved").length],
-                    ["pending", L("En attente", "Pending"),
-                     data.referrals.filter((r) => r.status === "pending").length],
-                    ["reprises", L("Remboursées", "Refunded"),
-                     data.referrals.filter((r) => r.status === "reversed").length],
-                  ].filter(([cle, , n]) => cle === "tous" || n > 0)
+                    ["tous", L("Toutes", "All"), data.referrals_facettes?.tous ?? data.referrals_total],
+                    ["paid", L("Payées", "Paid"), data.referrals_facettes?.paid ?? 0],
+                    ["approved", L("À verser", "To pay"), data.referrals_facettes?.approved ?? 0],
+                    ["pending", L("En attente", "Pending"), data.referrals_facettes?.pending ?? 0],
+                    ["reprises", L("Remboursées", "Refunded"), data.referrals_facettes?.reprises ?? 0],
+                  ].filter(([cle, , n]) => cle === "tous" || Number(n) > 0)
                    .map(([cle, libelle, n]) => (
-                    <button key={cle} onClick={() => setFiltreCommission(cle)}
+                    <button key={cle} onClick={() => { setFiltreCommission(cle); setRefPage(1); }}
                       data-testid={`filtre-${cle}`}
                       className={`px-2.5 h-7 rounded-full font-data text-[10px] uppercase
                                   tracking-[0.08em] transition-colors ${
@@ -2576,6 +2650,7 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                 </div>
               )}
               {data.referrals?.length ? (
+                <>
                 <div className="overflow-x-auto rounded-lg border border-ash">
                   <table className="w-full text-xs">
                     <thead>
@@ -2594,13 +2669,8 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.referrals
-                        .filter((r) => filtreCommission === "tous"
-                          || (filtreCommission === "reprises" && r.status === "reversed")
-                          || r.status === filtreCommission)
-                        .map((r) => {
+                      {data.referrals.map((r) => {
                         const reprise = r.status === "reversed";
-                        const versement = (data.payouts || []).find((p) => p.id === r.payout_id);
                         return (
                         <tr key={r.id}
                             className={`border-b border-ash/60 ${reprise ? "bg-warning/[0.05]" : ""}`}
@@ -2621,12 +2691,16 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                                 affiche nulle part : « quand ai-je ete paye pour
                                 cette commande » obligeait a comparer des dates
                                 de tete entre deux tableaux. */}
-                            {versement && (
-                              <button onClick={() => ouvrirVersement(versement.id)}
+                            {r.payout_id && (
+                              /* LE LIEN PORTE LE VERSEMENT DE LA COMMISSION,
+                                 pas celui d'une liste affichee a cote : la
+                                 preuve vient du serveur (`payout_paid_at`),
+                                 qui la joint a la ligne elle-meme. */
+                              <button onClick={() => ouvrirVersement(r.payout_id)}
                                 className="ml-1 text-[10px] text-nova hover:underline"
                                 data-testid={`commission-versement-${r.order_number || r.id}`}>
                                 {L("versé", "paid")}
-                                {versement.paid_at ? ` ${jourLisible(versement.paid_at, lang)}` : ""}
+                                {r.payout_paid_at ? ` ${jourLisible(r.payout_paid_at, lang)}` : ""}
                               </button>
                             )}
                             {/* LE REMBOURSEMENT, dit en entier : quand, et si
@@ -2653,7 +2727,10 @@ function DetailModal({ affiliateId, L, lang, onClose, onChange }) {
                     </tbody>
                   </table>
                 </div>
-              ) : <p className="text-sm text-glacier">{L("Aucune commande.", "No orders.")}</p>}
+                <AdminPagination page={data.referrals_page ?? 1}
+                                 total={data.referrals_total ?? 0}
+                                 onChange={(p) => setRefPage(p)} L={L} />
+              </> ) : <p className="text-sm text-glacier">{L("Aucune commande.", "No orders.")}</p>}
             </div>
           </div>
         )}

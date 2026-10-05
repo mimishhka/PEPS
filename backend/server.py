@@ -13024,7 +13024,9 @@ async def affiliate_customers(request: Request, aff: Optional[dict] = None):
     return await _compute_affiliate_customers(aff["id"])
 
 
-async def admin_affiliate_customers(affiliate_id: str, admin: dict):
+async def admin_affiliate_customers(affiliate_id: str, page: int = 1,
+                                    taille: int = 10, filtre: str = "tous",
+                                    admin: dict = None):
     """Version admin — même agrégation, accessible par ID d'affilié."""
     aff = await db.affiliates.find_one({"id": affiliate_id}, {"_id": 0, "id": 1})
     if not aff:
@@ -13032,7 +13034,9 @@ async def admin_affiliate_customers(affiliate_id: str, admin: dict):
     # masquer=False : l'administration gère les comptes clients, elle a déjà
     # accès aux courriels partout ailleurs. C'est la transmission à l'AFFILIÉ
     # qui posait question, pas la lecture interne.
-    return await _compute_affiliate_customers(affiliate_id, masquer=False)
+    return await _compute_affiliate_customers(affiliate_id, masquer=False,
+                                              page=page, taille=taille,
+                                              filtre=filtre)
 
 
 def _masquer_courriel(email: str) -> str:
@@ -13063,7 +13067,9 @@ def _cle_client(email: str) -> str:
     return hashlib.sha256((email or "").strip().lower().encode("utf-8")).hexdigest()[:16]
 
 
-async def _compute_affiliate_customers(affiliate_id: str, masquer: bool = True) -> dict:
+async def _compute_affiliate_customers(affiliate_id: str, masquer: bool = True,
+                                       page: int = 1, taille: int = None,
+                                       filtre: str = "tous") -> dict:
     """`masquer` : l'AFFILIÉ ne reçoit que des adresses masquées, l'admin non.
 
     Le masquage vivait uniquement dans le navigateur : le serveur envoyait
@@ -13075,13 +13081,28 @@ async def _compute_affiliate_customers(affiliate_id: str, masquer: bool = True) 
     base juridique que rien n'établit ici. La donnée ne quitte donc plus le
     serveur pour l'affilié ; l'écran d'administration, lui, garde l'accès
     complet, qui relève d'un tout autre régime.
+
+    LA FICHE PAGINE : « pas plus que dix affiche ». L'admin passe `taille`
+    (10 par défaut) et reçoit `total` ; le chemin de l'AFFILIÉ (`taille=None`)
+    garde son plafond historique — son écran ne sait pas encore demander une
+    page, et le tronquer sans navigation serait le plafond muet qu'on corrige
+    ailleurs.
     """
+    LIMITE = 500 if taille is None else min(max(1, int(taille)), 100)
+    selection = {"affiliate_id": affiliate_id}
+    if filtre == "compte":
+        selection["user_id"] = {"$ne": None}
+    elif filtre == "invite":
+        selection["user_id"] = None
+    total = await db.affiliate_bindings.count_documents(selection)
     bindings = await db.affiliate_bindings.find(
-        {"affiliate_id": affiliate_id},
+        selection,
         {"_id": 0, "email": 1, "bound_at": 1, "source": 1, "user_id": 1},
-    ).sort("bound_at", -1).to_list(500)
+    ).sort("bound_at", -1).skip(
+        max(0, (page - 1) * LIMITE)).limit(LIMITE).to_list(LIMITE)
     if not bindings:
-        return {"count": 0, "customers": []}
+        return {"count": 0, "total": total, "page": page,
+                "page_size": LIMITE, "customers": []}
 
     emails = [b["email"] for b in bindings if b.get("email")]
     pipeline = [
@@ -13144,7 +13165,8 @@ async def _compute_affiliate_customers(affiliate_id: str, masquer: bool = True) 
             "commission_validated": s_data.get("commission_validated", 0.0),
             "last_order_at": s_data.get("last_order_at"),
         })
-    return {"count": len(customers), "customers": customers}
+    return {"count": len(customers), "total": total, "page": page,
+            "page_size": LIMITE, "customers": customers}
 
 
 # ===========================================================================
@@ -14664,7 +14686,10 @@ async def _serie_mensuelle_agregee(affiliate_id: str, nb_mois: int = 12) -> list
 
 
 async def admin_affiliate_detail(affiliate_id: str,
-                                 ref_page: int = 1, ref_taille: int = 500,
+                                 ref_page: int = 1, ref_taille: int = 10,
+                                 ref_filtre: str = "tous",
+                                 pay_page: int = 1, pay_taille: int = 10,
+                                 pay_filtre: str = "tous",
                                  admin: dict = Depends(get_admin_user)):  # noqa: F821
     aff = await db.affiliates.find_one(
         {"id": affiliate_id}, {"_id": 0, "invite_token_hash": 0}
@@ -14682,32 +14707,106 @@ async def admin_affiliate_detail(affiliate_id: str,
     # chaque ouverture de la fiche.
     series = await _serie_mensuelle_agregee(affiliate_id)
 
-    # LA TABLE DES COMMISSIONS EST PAGINEE, et annonce son total.
+    # LA FICHE NE MONTRE JAMAIS PLUS DE DIX LIGNES PAR VUE.
     #
-    # Elle etait plafonnee a 500 sans le dire : au-dela, l'ecran montrait les
-    # 500 plus recentes et se taisait sur le reste. Un plafond muet est pire
-    # qu'une lenteur — l'ecran a l'air juste, et il ment.
+    # Mireille, 02/10/2026 : « historique des donnees dans le dossier affilie,
+    # pas plus que dix affiche, donc les vues doivent etre paginees doivent
+    # avoir des filtres ».
+    #
+    # C'est le lot suivant de la pagination de la fiche, annonce dans le code :
+    # la page existait deja cote serveur, mais l'ecran ne savait pas la
+    # demander, et la taille par defaut restait 500. Les vues passent a DIX
+    # lignes, avec navigation et filtres SERVEUR — filtrer dans le navigateur
+    # une page de dix lignes n'est pas filtrer, c'est cacher le reste.
+    FILTRES_COMMISSIONS = {
+        "tous": {},
+        "paid": {"status": "paid"},
+        "approved": {"status": "approved"},
+        "pending": {"status": "pending"},
+        "reprises": {"status": "reversed"},
+    }
+    FILTRES_VERSEMENTS = {
+        "tous": {},
+        "payes": {"status": {"$in": ["paid", "paid_manual"]}},
+        "attente": {"status": {"$nin": ["paid", "paid_manual", "failed", "reversed"]}},
+        "echec": {"status": "failed"},
+    }
     ref_page = max(1, int(ref_page))
-    # LE PLAFOND RESTE CELUI D'AUJOURD'HUI (500) dans ce lot : l'ecran ne sait
-    # pas encore demander de page, et le baisser ferait disparaitre des lignes
-    # sans que rien ne les remplace. Ce qui change des maintenant, c'est que le
-    # TOTAL exact accompagne la page : l'ecran peut dire « 500 sur 12 430 » au
-    # lieu de laisser croire qu'il montre tout. La navigation par pages vient
-    # au lot suivant, et il suffira alors de baisser ce chiffre.
-    ref_taille = min(max(1, int(ref_taille)), 500)
-    ref_total = await db.affiliate_referrals.count_documents(
-        {"affiliate_id": affiliate_id})
+    ref_taille = min(max(1, int(ref_taille)), 100)
+    selection = {"affiliate_id": affiliate_id,
+                 **FILTRES_COMMISSIONS.get(ref_filtre, {})}
+    ref_total = await db.affiliate_referrals.count_documents(selection)
     referrals = await db.affiliate_referrals.find(
-        {"affiliate_id": affiliate_id}, {"_id": 0}
+        selection, {"_id": 0}
     ).sort("created_at", -1).skip(
         (ref_page - 1) * ref_taille).limit(ref_taille).to_list(ref_taille)
+    # LE LIEN « VERSÉ LE… » NE DÉPEND PLUS DE LA PAGE DES VERSEMENTS.
+    #
+    # L'écran cherchait le versement de chaque commission dans la LISTE des
+    # versements de la fiche. Cette liste est maintenant paginée à dix : le
+    # versement d'une commission plus ancienne n'y est plus, et le lien
+    # disparaissait — pas parce que la commission n'a pas été payée, mais
+    # parce que son versement n'était pas sur la page affichée. Le renvoi ne
+    # vaut que si sa preuve est indépendante de ce qu'on regarde.
+    ids_payouts = [r.get("payout_id") for r in referrals if r.get("payout_id")]
+    if ids_payouts:
+        paye_par = await db.affiliate_payouts.find(
+            {"id": {"$in": ids_payouts}},
+            {"_id": 0, "id": 1, "paid_at": 1, "status": 1},
+        ).to_list(len(ids_payouts))
+        dates = {p.get("id"): p.get("paid_at") for p in paye_par}
+        for r in referrals:
+            if r.get("payout_id") in dates:
+                r["payout_paid_at"] = dates[r["payout_id"]]
+    # LES FACETTES POUR LES PUCES DE FILTRE : des compteurs qui valent pour
+    # TOUTE la collection, pas pour la page affichee. Une puce qui annonce
+    # « Reprises · 1 » parce que la page en contient une, alors qu'il y en a
+    # quarante ailleurs, c'est un compteur qui ment.
+    facettes = await db.affiliate_referrals.aggregate([
+        {"$match": {"affiliate_id": affiliate_id}},
+        {"$group": {"_id": "$status", "n": {"$sum": 1}}},
+    ]).to_list(20)
+    par_statut = {f.get("_id"): int(f.get("n", 0)) for f in facettes}
+    referrals_facettes = {
+        "tous": sum(par_statut.values()),
+        "paid": par_statut.get("paid", 0),
+        "approved": par_statut.get("approved", 0),
+        "pending": par_statut.get("pending", 0),
+        "reprises": par_statut.get("reversed", 0),
+    }
 
+    # LA LISTE DES VERSEMENTS, paginee elle aussi. Elle etait plafonnee a 200
+    # sans le dire : le meme mensonge muet que les commissions avant leur
+    # pagination.
+    pay_page = max(1, int(pay_page))
+    pay_taille = min(max(1, int(pay_taille)), 100)
+    pay_selection = {"affiliate_id": affiliate_id,
+                     **FILTRES_VERSEMENTS.get(pay_filtre, {})}
+    pay_total = await db.affiliate_payouts.count_documents(pay_selection)
     payouts = await db.affiliate_payouts.find(
-        {"affiliate_id": affiliate_id}, {"_id": 0}
-    ).sort("created_at", -1).to_list(200)
+        pay_selection, {"_id": 0}
+    ).sort("created_at", -1).skip(
+        (pay_page - 1) * pay_taille).limit(pay_taille).to_list(pay_taille)
     # La période réellement couverte, pour que le tiroir OPS et l'écran de
     # l'affilié nomment le même mois. Une seule requête pour la liste.
     await _attacher_periode_couverte(payouts)
+    pay_facettes = await db.affiliate_payouts.aggregate([
+        {"$match": {"affiliate_id": affiliate_id}},
+        {"$group": {"_id": None,
+                    "payes": {"$sum": {"$cond": [
+                        {"$in": ["$status", ["paid", "paid_manual"]]}, 1, 0]}},
+                    "echec": {"$sum": {"$cond": [
+                        {"$eq": ["$status", "failed"]}, 1, 0]}},
+                    "tout": {"$sum": 1}}},
+    ]).to_list(1)
+    pf = pay_facettes[0] if pay_facettes else {}
+    payouts_facettes = {
+        "tous": int(pf.get("tout", 0)),
+        "payes": int(pf.get("payes", 0)),
+        "echec": int(pf.get("echec", 0)),
+        "attente": max(0, int(pf.get("tout", 0)) - int(pf.get("payes", 0))
+                       - int(pf.get("echec", 0))),
+    }
     return {"affiliate": aff, "metrics": metrics,
             # LA VERSION ATTENDUE DES CONDITIONS.
             #
@@ -14722,7 +14821,12 @@ async def admin_affiliate_detail(affiliate_id: str,
             "referrals_total": ref_total,
             "referrals_page": ref_page,
             "referrals_page_size": ref_taille,
+            "referrals_facettes": referrals_facettes,
             "payouts": payouts,
+            "payouts_total": pay_total,
+            "payouts_page": pay_page,
+            "payouts_page_size": pay_taille,
+            "payouts_facettes": payouts_facettes,
             "series": series,
             # LE DERNIER AVIS ENVOYE. La colonne des cycles dit combien
             # d'affilies ont ete prevenus ; elle ne dit pas LESQUELS. Quand
