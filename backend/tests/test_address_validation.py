@@ -89,3 +89,157 @@ class TestAddressValidation:
         assert isinstance(detail, dict), f"detail should be dict, got {type(detail)}"
         assert detail.get("code") == "invalid_shipping_address"
         assert isinstance(detail.get("suggestions"), list)
+
+
+def test_google_maps_validation_accepts_plausible_confirm_address(monkeypatch):
+    """Une adresse canadienne plausible avec action Google `CONFIRM` doit passer."""
+    import asyncio
+    import httpx
+    import server
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+        def json(self):
+            return self._payload
+        status_code = 200
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+        async def post(self, *args, **kwargs):
+            return FakeResponse({
+                "result": {
+                    "verdict": {
+                        "addressComplete": True,
+                        "hasUnconfirmedComponents": True,
+                        "possibleNextAction": "CONFIRM",
+                    },
+                    "address": {
+                        "formattedAddress": "1 Main Street, East York, ON M5H2N2, Canada",
+                        "postalAddress": {"regionCode": "CA", "administrativeArea": "ON"},
+                        "unconfirmedComponentTypes": ["street_number", "postal_code"],
+                    },
+                },
+                "responseId": "abc123",
+            })
+
+    monkeypatch.setenv("GOOGLE_MAPS_API_KEY", "test-google-key")
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+
+    result = asyncio.run(server._validate_shipping_address_google({
+        "address1": "1 Main",
+        "city": "Toronto",
+        "province": "ON",
+        "postal_code": "M5H2N2",
+        "country": "CA",
+    }))
+
+    assert result["valid"] is True
+    assert result["provider"] == "google_maps"
+
+
+def test_google_maps_validation_accepts_subpremise_only_prompt(monkeypatch):
+    """Un manque d'appartement seul ne doit pas bloquer une adresse valide."""
+    import asyncio
+    import httpx
+    import server
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+        def json(self):
+            return self._payload
+        status_code = 200
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+        async def post(self, *args, **kwargs):
+            return FakeResponse({
+                "result": {
+                    "verdict": {
+                        "addressComplete": False,
+                        "hasUnconfirmedComponents": True,
+                        "possibleNextAction": "CONFIRM_ADD_SUBPREMISES",
+                    },
+                    "address": {
+                        "formattedAddress": "1450 Rue Peel, Montréal, QC H3A 1T1, Canada",
+                        "missingComponentTypes": ["subpremise"],
+                    },
+                },
+                "responseId": "apt123",
+            })
+
+    monkeypatch.setenv("GOOGLE_MAPS_API_KEY", "test-google-key")
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+
+    result = asyncio.run(server._validate_shipping_address_google({
+        "address1": "1450 Rue Peel",
+        "city": "Montreal",
+        "province": "QC",
+        "postal_code": "H3A 1T1",
+        "country": "CA",
+    }))
+
+    assert result["valid"] is True
+    assert result["provider"] == "google_maps"
+
+
+def test_google_maps_validation_rejects_missing_route(monkeypatch):
+    """Une adresse avec rue manquante doit rester rejetée."""
+    import asyncio
+    import httpx
+    import server
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+        def json(self):
+            return self._payload
+        status_code = 200
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+        async def post(self, *args, **kwargs):
+            return FakeResponse({
+                "result": {
+                    "verdict": {
+                        "addressComplete": False,
+                        "hasUnconfirmedComponents": True,
+                        "possibleNextAction": "FIX",
+                    },
+                    "address": {
+                        "formattedAddress": "C, QC A1A1A1, Canada",
+                        "missingComponentTypes": ["route", "street_number"],
+                    },
+                },
+                "responseId": "bad456",
+            })
+
+    monkeypatch.setenv("GOOGLE_MAPS_API_KEY", "test-google-key")
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+
+    result = asyncio.run(server._validate_shipping_address_google({
+        "address1": "1",
+        "city": "C",
+        "province": "QC",
+        "postal_code": "A1A1A1",
+        "country": "CA",
+    }))
+
+    assert result["valid"] is False
+    assert result["reason"] in {"non_confirme", "manque_appartement"}

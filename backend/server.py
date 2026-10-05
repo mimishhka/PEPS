@@ -4078,10 +4078,20 @@ async def _validate_shipping_address_google(addr: dict) -> dict:
     result = data.get("result", {})
     verdict = result.get("verdict", {})
     normalized = result.get("address")
+    next_action = (verdict.get("possibleNextAction") or "").upper()
+    missing = set((normalized or {}).get("missingComponentTypes") or [])
+    # Google renvoie parfois `ACCEPT`/`CONFIRM` ou `CONFIRM_ADD_SUBPREMISES`
+    # quand l'adresse est globalement bonne mais qu'il manque seulement le
+    # numéro d'appartement. Ce n'est pas un cas d'invalidité métier ; c'est
+    # une adresse canadienne plausible qui mérite d'être acceptée. On ne bloque
+    # que si des composants critiques manquent encore, par exemple la rue ou le
+    # numéro, ou si Google demande explicitement de corriger.
+    critical_missing = missing & {"route", "street_number", "premise"}
+    apartment_only_gap = bool(missing) and missing <= {"subpremise"}
     is_ok = (
-        verdict.get("addressComplete") is True
-        and not verdict.get("hasUnconfirmedComponents", False)
-        and verdict.get("possibleNextAction") == "ACCEPT"
+        (verdict.get("addressComplete") is True or apartment_only_gap)
+        and next_action in {"ACCEPT", "CONFIRM", "CONFIRM_ADD_SUBPREMISES"}
+        and not critical_missing
     )
     out = {
         "valid": is_ok,
