@@ -7,6 +7,7 @@ import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { prix } from "../lib/prix";
 import { dosage } from "../lib/dosage";
+import { jourLisible } from "../lib/periode";
 import useAffiliate from "../hooks/useAffiliate";
 import { useCart } from "../contexts/CartContext";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -185,6 +186,11 @@ export default function ProductDetail() {
   const coaUrl = selectedVariant?.coa_url ? resolveAssetUrl(selectedVariant.coa_url) : "";
   const coaAvailable = coaStatus === "available" && !!coaUrl;
   const coaPending = coaStatus === "pending";
+  // Les pieces du certificat : le lot et la date d'analyse, pris sur la
+  // variante choisie et repliant sur le produit pour les fiches anciennes.
+  const coaLot = selectedVariant?.coa_lot || product.coa_lot || "";
+  const coaDate = selectedVariant?.coa_date || selectedVariant?.coa_tested_at
+    || product.coa_date || "";
   // Pas de resolveAssetUrl pour l'image : ProductImage s'en charge lui-meme,
   // et gere en plus le repli sur le visuel de marque si le fichier manque.
 
@@ -246,11 +252,20 @@ export default function ProductDetail() {
                         disabled={(v.badge_coming_soon && !v.preorder_enabled) || outNoPre}
                         data-testid={`variant-${v.name}`}
                         className={`border-[1px] px-4 py-2.5 text-left transition-colors ${isActive ? "border-nova bg-nova/5" : "border-ash hover:border-nova"} disabled:opacity-40 disabled:cursor-not-allowed`} style={{ borderRadius: "var(--r-m)" }}>
+                        {/* LE SELECTEUR NE DIT QUE LE DOSAGE ET LE PRIX.
+                            Audit du 06/10/2026, point 2 : « le dosage 10 mg est
+                            affiché avec COA PENDING dans le même bloc que le
+                            prix ». C'est de là que venait la contradiction la
+                            plus visible de la fiche : le sélecteur annonçait
+                            « COA pending » pour UNE variante pendant que le
+                            bouton de téléchargement, plus bas, décrivait la
+                            variante SÉLECTIONNÉE. Deux variantes différentes
+                            racontées dans la même vue.
+                            L'état du certificat vit maintenant dans un seul
+                            endroit, sous les données techniques, et il parle
+                            toujours de la variante choisie. */}
                         <span className="font-display font-bold text-nordfjord">{dosage(v.name, lang)}</span>
                         <span className="font-data text-[11px] text-glacier ml-2">{prix(vPrice, lang)}</span>
-                        {v.coa_status === "pending" && (
-                          <span className="block font-data text-[10px] uppercase tracking-[0.14em] text-warning mt-0.5">{lang === "fr" ? "COA à venir" : "COA pending"}</span>
-                        )}
                       </button>
                     );
                   })}
@@ -359,10 +374,27 @@ export default function ProductDetail() {
             )}
 
             {coaAvailable && (
-              <a href={coaUrl} target="_blank" rel="noopener noreferrer" data-testid="download-coa"
-                className="mt-4 flex items-center justify-center gap-2 btn-pill btn-outline w-full">
-                <FileText size={14} /> {t("product.labReport")} ↓
-              </a>
+              /* LE CERTIFICAT SE PRESENTE AVEC SES PIECES.
+                 Audit, point 2 : « Si le COA existe : afficher le n° de lot et
+                 la date d'analyse ». Un bouton seul demande de faire confiance ;
+                 le lot et la date laissent verifier avant meme d'ouvrir le PDF,
+                 et c'est exactement le geste d'un acheteur de reactifs. */
+              <div className="mt-4" data-testid="bloc-certificat">
+                <a href={coaUrl} target="_blank" rel="noopener noreferrer" data-testid="download-coa"
+                  className="flex items-center justify-center gap-2 btn-pill btn-outline w-full">
+                  <FileText size={14} /> {t("product.labReport")} ↓
+                </a>
+                {(coaLot || coaDate) && (
+                  <p className="font-data text-[11px] text-glacier mt-2 text-center leading-relaxed"
+                     data-testid="coa-provenance">
+                    {coaLot && (lang === "fr" ? `Lot ${coaLot}` : `Lot ${coaLot}`)}
+                    {coaLot && coaDate && " · "}
+                    {coaDate && (lang === "fr"
+                      ? `analysé le ${jourLisible(coaDate, lang)}`
+                      : `analysed ${jourLisible(coaDate, lang)}`)}
+                  </p>
+                )}
+              </div>
             )}
 
             {isOutOfStock && (

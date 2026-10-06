@@ -166,3 +166,79 @@ describe("rupture sans précommande", () => {
     expect(bouton()).toHaveTextContent(/Rupture/i);
   });
 });
+
+// ===========================================================================
+// UN SEUL STATUT PAR CARTE — audit du 06/10/2026, point 2
+//
+// « BPC-157 affiche à la fois le badge PRE-ORDER et • IN STOCK. Contradiction
+// directe : le client ne sait pas s'il recevra le produit maintenant. »
+//
+// Les deux étaient vrais séparément. Le badge regardait `anyPreorder` — une
+// variante QUELCONQUE —, le statut regardait `cheapest` — la variante que le
+// bouton ajoute vraiment. Sur BPC-157 : le 10 mg attend son COA, le 5 mg est
+// en stock. Résultat : les deux s'affichaient, sur l'élément le plus regardé
+// de la carte.
+//
+// Le code portait déjà la bonne intuition pour la fenêtre de confirmation
+// (`ajoutEstUnePrecommande`), avec un commentaire décrivant ce piège exact.
+// Elle n'avait simplement jamais été appliquée à l'affichage.
+// ===========================================================================
+
+describe("un seul statut par carte", () => {
+  const badge = () => screen.queryByTestId("preorder-badge-bpc-157");
+  const statut = () => screen.queryByTestId("card-stock-bpc-157");
+
+  test("LE CAS DE L'AUDIT : la moins chère est en stock, une autre est en précommande", () => {
+    /* Le bouton ajoute le 5 mg, qui est en stock. La carte doit donc dire
+     * « En stock » — et PAS « Précommande » en même temps. */
+    render(<ProductCard product={produit([EN_STOCK, PRECOMMANDE])} />);
+
+    expect(statut()).toHaveTextContent(/en stock/i);
+    expect(badge()).not.toBeInTheDocument();
+  });
+
+  test("la moins chère EST la précommande : le badge sort, le statut se tait", () => {
+    /* « Tirzepatide : PRE-ORDER écrit 3 fois (badge, statut sur 2 lignes,
+     * bouton) ». Le badge et le bouton suffisent. */
+    render(<ProductCard product={produit([PRECOMMANDE])} />);
+
+    expect(badge()).toBeInTheDocument();
+    expect(statut()).not.toBeInTheDocument();
+    expect(bouton()).toHaveTextContent(/précommander/i);
+  });
+
+  test("« précommande » n'est jamais écrit deux fois", () => {
+    render(<ProductCard product={produit([PRECOMMANDE])} />);
+
+    const occurrences = (document.body.textContent.match(/précommand/gi) || []).length;
+    expect(occurrences).toBeLessThanOrEqual(2);  // badge + bouton
+  });
+
+  test("le stock bas garde son compte — c'est lui seul qui le dit", () => {
+    render(<ProductCard product={produit([{ ...EN_STOCK, stock: 3 }])} />);
+
+    expect(statut()).toHaveTextContent("3");
+    expect(statut()).toHaveTextContent(/stock bas/i);
+    expect(badge()).not.toBeInTheDocument();
+  });
+
+  test("une rupture sans précommande le dit, sans badge", () => {
+    render(<ProductCard product={produit([{ ...EN_STOCK, stock: 0 }])} />);
+
+    expect(statut()).toHaveTextContent(/rupture/i);
+    expect(badge()).not.toBeInTheDocument();
+  });
+
+  test("un COA en attente sur la variante la moins chère vaut précommande", () => {
+    /* La règle métier n'a pas changé : `preorder_enabled && (stock <= 0 ||
+     * COA à venir)`. Ce qui change, c'est que l'affichage la suit au lieu de
+     * la contredire — un produit vendu en précommande ne s'annonce plus
+     * « En stock » parce qu'il lui reste des flacons. */
+    render(<ProductCard product={produit([
+      { ...EN_STOCK, preorder_enabled: true, badge_coa_pending: true },
+    ])} />);
+
+    expect(badge()).toBeInTheDocument();
+    expect(statut()).not.toBeInTheDocument();
+  });
+});

@@ -114,8 +114,20 @@ export default function ProductCard({ product, index = 0 }) {
               {lang === "fr" ? "PROMO" : "SALE"}
             </span>
           )}
-          {anyPreorder && (
-            /* DEBORDEMENT A 360 px (rapport E2E NF-001) : « PRÉCOMMANDE » en
+          {ajoutEstUnePrecommande && (
+            /* LE BADGE DECRIT LA VARIANTE QUE LE BOUTON AJOUTE, pas « une
+               variante quelconque ».
+               Audit du 06/10/2026, point 2 : « BPC-157 affiche à la fois le
+               badge PRE-ORDER et • IN STOCK ». Les deux etaient vrais
+               separement — le badge regardait `anyPreorder` (le 10 mg, dont le
+               COA est en attente), le statut regardait `cheapest` (le 5 mg, en
+               stock). Ensemble ils se contredisent, sur l'element le plus
+               regarde de la carte.
+               Le prix affiche est celui de `cheapest`, le bouton ajoute
+               `cheapest`, la confirmation parle de `cheapest` : le badge le
+               suit. L'etat des autres variantes se lit sur la fiche.
+
+               DEBORDEMENT A 360 px (rapport E2E NF-001) : « PRÉCOMMANDE » en
                chasse large ne peut pas se couper, et poussait la grille a
                408 px. La chasse se resserre sur mobile et le mot peut passer
                a la ligne plutot que d'elargir la carte. */
@@ -140,12 +152,22 @@ export default function ProductCard({ product, index = 0 }) {
               <span className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{lang === "fr" ? "dès" : "from"}</span>
             )}
           </div>
-          <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock && !stockBas ? "text-success-text" : "text-warning-text"}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${inStock && !stockBas ? "bg-success" : "bg-warning"}`} />
-            {anyPreorder && !inStock ? (lang === "fr" ? "Précommande" : "Pre-order")
-              : inStock ? (stockBas ? `${lang === "fr" ? "Stock bas" : "Low stock"} · ${stockN}` : (lang === "fr" ? "En stock" : "In stock"))
-              : (lang === "fr" ? "Rupture" : "Out")}
-          </span>
+          {/* ET LE STATUT NE REPETE PAS LE BADGE.
+              Audit, point 2 : « Tirzepatide : PRE-ORDER écrit 3 fois (badge,
+              statut sur 2 lignes, bouton) ». Sur une precommande, le badge en
+              haut et le bouton en bas le disent deja — ce troisieme libelle
+              n'ajoutait rien et passait sur deux lignes (« PRE- / ORDER »).
+              Il ne reste donc que pour ce qu'il est seul a dire : en stock,
+              stock bas avec son compte, ou rupture. */}
+          {!ajoutEstUnePrecommande && (
+            <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock && !stockBas ? "text-success-text" : "text-warning-text"}`}
+                  data-testid={`card-stock-${product.slug}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${inStock && !stockBas ? "bg-success" : "bg-warning"}`} />
+              {inStock
+                ? (stockBas ? `${lang === "fr" ? "Stock bas" : "Low stock"} · ${stockN}` : (lang === "fr" ? "En stock" : "In stock"))
+                : (lang === "fr" ? "Rupture" : "Out")}
+            </span>
+          )}
         </div>
       </div>
 
