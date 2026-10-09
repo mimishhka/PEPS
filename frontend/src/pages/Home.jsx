@@ -7,6 +7,7 @@ import { useLang } from "../contexts/LanguageContext";
 import ProductCard from "../components/ProductCard.jsx";
 import { MolecularMesh, NovaSpark, Reveal } from "../components/brand";
 import ProductImage from "../components/ProductImage";
+import { TAILLES } from "../lib/derivees";
 
 
 export default function Home() {
@@ -145,6 +146,7 @@ export default function Home() {
               imgClassName="w-full h-full object-cover"
               loading="eager"
               fetchPriority="high"
+              sizes={TAILLES.hero}
             />
           ) : (
             <MolecularMesh opacity={0.4} />

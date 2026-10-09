@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
 import ProductImage from "./ProductImage";
+import { TAILLES } from "../lib/derivees";
 import { prix } from "../lib/prix";
 import { dosage } from "../lib/dosage";
 
@@ -56,6 +57,7 @@ export default function CartDrawer() {
                         src={it.image_url}
                         slug={it.slug}
                         alt={name}
+                        sizes={TAILLES.vignette}
                         className="w-full h-full"
                         imgClassName="w-full h-full object-cover"
                       />

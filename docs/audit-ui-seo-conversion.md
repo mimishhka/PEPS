@@ -341,7 +341,8 @@ l'application a révélé qui n'était pas dans le relevé.
 |---|---|---|---|
 | 2 | **Fait** | `7361e18` | Un seul statut par produit, et le certificat avec ses pièces. Le badge suit désormais la variante que le bouton ajoute (`cheapest`), pas « une variante quelconque » : c'est la contradiction « PRE-ORDER + IN STOCK » de BPC-157. |
 | 3 | **Reporté** | — | Décision de Mireille, 06/10/2026 : « pas le ops pour l'instant étant donné que je suis toujours en mode test ». L'accès OPS reste visible le temps des essais. |
-| 4 | **Fait** | *(ce commit)* | Voir ci-dessous : le relevé citait un champ en 15 px, il y en avait vingt et un. |
+| 4 | **Fait** | `1348f82` | Voir ci-dessous : le relevé citait un champ en 15 px, il y en avait vingt et un. |
+| 1 | **Fait** | *(ce commit)* | Dérivées WebP en 400 / 800 / 1400 px, fabriquées **à la demande** par le serveur. 2,78 Mo → 5,5 Ko sur la plus lourde. |
 
 ### Ce que le point 4 a révélé
 
@@ -383,6 +384,51 @@ on le touche. S'y ajoute un piège que la bascule portait seule — un client
 arrivé dans la mauvaise langue qui rate son premier tap et recommence
 revenait d'où il partait. Deux boutons n'ont pas ce défaut : EN donne
 l'anglais, qu'on y soit déjà ou non. Deux tests le vérifient.
+
+### Ce que le point 1 a donné
+
+**Mesure du 09/10/2026** : `backend/uploads/images` pèse 29,4 Mo pour
+19 fichiers convertibles, dont trois à 2,78 Mo — affichés en 154 px sur une
+carte de catalogue.
+
+Mesuré ensuite sur le chemin de service réel, avec la plus lourde :
+
+| Taille demandée | Poids servi | Gain | Fabrication |
+|---|---|---|---|
+| original (PNG 1380 px) | 2,78 Mo | — | — |
+| 400 px | 5,5 Ko | **514 ×** | 0,40 s, une seule fois |
+| 800 px | 13,5 Ko | 211 × | 0,41 s |
+| 1400 px | 26,9 Ko | 106 × | 1,17 s |
+
+L'écart visuel se mesure aussi : 1,8 sur 255 en moyenne par canal entre la
+dérivée et un redimensionnement de référence. L'étiquette du flacon reste
+lisible.
+
+**Pourquoi à la demande et non au téléversement.** Fabriquer les dérivées à
+l'envoi n'aurait soigné que les images futures ; les 29,4 Mo déjà en place
+seraient restés entiers jusqu'à ce qu'un script de reprise tourne sur le
+serveur. Et tant qu'il n'a pas tourné, le frontend ne peut pas émettre de
+`srcset` sans risquer un candidat en 404 — **ce qui casse l'image entière**,
+pas seulement la taille manquante. Fabriquée au service, la dérivée existe
+pour toute image dont l'original existe : ancienne ou nouvelle, sans reprise,
+sans drapeau en base, sans schéma à faire évoluer. **Tu n'as rien à lancer.**
+
+**Deux pièges trouvés en chemin, et corrigés :**
+
+- la première version refusait de fabriquer quand l'original était plus
+  étroit que la cible, et servait l'original. Ça paraissait économe : c'était
+  un piège, parce que la plus grande photo fait 1380 px et qu'un navigateur
+  sur grand écran demande 1400. Il recevait donc le PNG de 2,78 Mo — sur
+  l'écran où l'image compte le plus. Une image plus étroite est désormais
+  convertie à sa largeur native ;
+- les largeurs sont une **liste fermée**. Sans cette garde, mille URL
+  différentes font mille redimensionnements d'une photo de 2,9 Mo. Une
+  largeur hors liste rend 404 et ne fabrique rien.
+
+**Ce qui reste.** Les images sont en double dans le stockage : trois fichiers
+identiques à 2 914 804 octets, quatre à 1 272 108, trois à 1 310 543. Rien ne
+casse — chacun a ses propres dérivées — mais c'est du stockage payé plusieurs
+fois. À regarder un jour, pas en passant.
 
 ### Ce qui reste du point 4
 

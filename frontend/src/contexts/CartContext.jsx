@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useMemo, u
 import { toast } from "sonner";
 import api from "../lib/api";
 import ProductImage from "../components/ProductImage";
+import { TAILLES } from "../lib/derivees";
 
 const CartContext = createContext(null);
 
@@ -175,6 +176,7 @@ export function CartProvider({ children }) {
               src={product.image_url}
               slug={product.slug}
               alt=""
+              sizes={TAILLES.vignette}
               className="w-full h-full"
               imgClassName="w-full h-full object-cover"
             />

@@ -1372,7 +1372,7 @@ async def _register_webhook_event(provider: str, signature: str, raw_body: bytes
 # Implementation lives in services/nowpayments.py; re-exported so existing call
 # sites (routers/, other server helpers) keep resolving these names here.
 try:
-    from services import object_storage  # noqa: F401
+    from services import object_storage, vignettes  # noqa: F401
     from services.nowpayments import (  # noqa: F401
         _verify_nowpayments_signature, _nowpayments_create, nowpayments_ipn, crypto_status,
         _refresh_np_jwt, NowPaymentsPayoutError, _np_auth_token, _np_create_payout,
@@ -1380,7 +1380,7 @@ try:
         _np_balance, _np_solde_suffisant, _np_valider_adresse,
     )
 except ImportError:  # package-relative import (uvicorn backend.server:app)
-    from backend.services import object_storage  # noqa: F401
+    from backend.services import object_storage, vignettes  # noqa: F401
     from backend.services.nowpayments import (  # noqa: F401
         _verify_nowpayments_signature, _nowpayments_create, nowpayments_ipn, crypto_status,
         _refresh_np_jwt, NowPaymentsPayoutError, _np_auth_token, _np_create_payout,
@@ -2948,6 +2948,50 @@ _UPLOAD_KIND_TO_LEGACY_DIR = {
 _UPLOAD_FILENAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
+def _fabriquer_derivee(filename: str, legacy_dir) -> tuple[bytes, str] | None:
+    """Fabrique une derivee d'image manquante a partir de son original.
+
+    Audit du 06/10/2026, point 1 : trois largeurs en WebP, servies par
+    `srcset`. Voir `services/vignettes.py` pour le choix de les fabriquer ici
+    plutot qu'au televersement — en resume : une derivee fabriquee a l'envoi
+    n'existerait que pour les images futures, et un candidat `srcset` en 404
+    casse l'image ENTIERE, pas seulement la taille manquante.
+
+    Tout est synchrone (stockage distant + Pillow) : l'appelant l'execute dans
+    un fil, jamais dans la boucle d'evenements.
+    """
+    analyse = vignettes.analyser_nom(filename)
+    if analyse is None:
+        return None
+    base, largeur = analyse
+
+    # Le nom de la derivee ne dit pas l'extension de l'original : on essaie
+    # les formats convertibles, dans l'ordre.
+    original = None
+    for nom_source in vignettes.extensions_sources(base):
+        original = object_storage.load_bytes("images", nom_source, legacy_dir=legacy_dir)
+        if original is not None:
+            break
+    if original is None:
+        return None
+
+    derivee = vignettes.fabriquer(original[0], largeur)
+    if derivee is None:
+        # L'original est deja plus etroit que la cible, ou ne se convertit pas
+        # (GIF). On le sert tel quel : il est plus leger que la derivee ne
+        # l'aurait ete, et le navigateur a bien une image a afficher.
+        return original
+
+    # On range la derivee pour que la requete suivante la lise au lieu de la
+    # refaire. Un echec d'ecriture n'est PAS une erreur de service : l'image
+    # part quand meme, et la prochaine requete retentera.
+    try:
+        object_storage.put_object("images", filename, derivee, "image/webp")
+    except Exception as e:
+        logging.warning("Derivee %s non rangee (elle sera refaite) : %s", filename, e)
+    return derivee, "image/webp"
+
+
 async def _serve_upload(kind: str, filename: str) -> Response:
     legacy_dir = _UPLOAD_KIND_TO_LEGACY_DIR.get(kind)
     if legacy_dir is None or not _UPLOAD_FILENAME_RE.fullmatch(filename or ""):
@@ -2961,6 +3005,10 @@ async def _serve_upload(kind: str, filename: str) -> Response:
     # rend la main a la boucle et transforme ce gel global en attente locale.
     got = await run_in_threadpool(
         object_storage.load_bytes, kind, filename, legacy_dir=legacy_dir)
+    if got is None and kind == "images":
+        # Pas en stock : c'est peut-etre une derivee qui n'a jamais ete
+        # fabriquee. Pillow est aussi bloquant que le stockage — meme fil.
+        got = await run_in_threadpool(_fabriquer_derivee, filename, legacy_dir)
     if got is None:
         raise HTTPException(404, "File not found")
     content, content_type = got

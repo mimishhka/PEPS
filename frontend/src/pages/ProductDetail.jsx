@@ -12,6 +12,7 @@ import useAffiliate from "../hooks/useAffiliate";
 import { useCart } from "../contexts/CartContext";
 import { useConfirm } from "../components/ConfirmDialog";
 import ProductImage from "../components/ProductImage";
+import { TAILLES } from "../lib/derivees";
 import { ProductDetailSkeleton } from "../components/LoadingSkeletons";
 
 function hueFor(slug = "") {
@@ -221,6 +222,7 @@ export default function ProductDetail() {
                 height={1000}
                 loading="eager"
                 fetchPriority="high"
+                sizes={TAILLES.fiche}
                 className="w-full h-full"
                 imgClassName="w-full h-full object-cover"
               />
