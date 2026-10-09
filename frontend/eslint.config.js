@@ -161,6 +161,18 @@ module.exports = [
         beforeAll: "readonly",
         afterAll: "readonly",
         jest: "readonly",
+
+        /* Jest enveloppe chaque fichier de test dans un module CommonJS :
+         * `require` et `__dirname` y existent vraiment, et seulement la.
+         *
+         * Deux tests s'en servent pour LIRE une source plutot que pour la
+         * rendre — le plancher de 16 px vit dans index.css, que jsdom
+         * n'applique pas, et les liens du pied de page dependent d'un appel
+         * reseau et de trois contextes qu'il serait absurde de monter pour
+         * verifier deux classes. Dans les deux cas le test porte sur la
+         * recette, pas sur le rendu, et il n'a pas d'autre moyen de la voir. */
+        require: "readonly",
+        __dirname: "readonly",
       },
     },
   },

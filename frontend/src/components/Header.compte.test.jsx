@@ -45,7 +45,10 @@ jest.mock("../contexts/AuthContext", () => ({
   useAuth: () => ({ user: null, logout: jest.fn() }),
 }));
 jest.mock("../contexts/LanguageContext", () => ({
-  useLang: () => ({ lang: "fr", toggle: jest.fn(), t: (k) => k }),
+  // setLang autant que toggle : le sélecteur de langue est passé de la
+  // bascule à deux boutons, et une doublure incomplète rend un `undefined`
+  // que le composant appellerait au clic.
+  useLang: () => ({ lang: "fr", setLang: jest.fn(), toggle: jest.fn(), t: (k) => k }),
 }));
 jest.mock("../contexts/CartContext", () => ({
   useCart: () => ({ count: 0, setOpen: jest.fn() }),

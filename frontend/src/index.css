@@ -437,3 +437,43 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='b'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23b)'/%3E%3C/svg%3E");
   }
 }
+
+/* ============================================================================
+ * LE PLANCHER DE 16 PX, LA OU IL NE PEUT PLUS ETRE CONTOURNE
+ * ==========================================================================*/
+/* Il existe deja une regle `input, textarea, select { font-size: 16px }` dans
+ * @layer base. Elle ne sert a rien : une CLASSE l'emporte sur un selecteur de
+ * balise, et toutes nos classes Tailwind sont ecrites apres. `text-sm` ou
+ * `text-[15px]` sur un champ gagne donc a chaque fois.
+ *
+ * Audit du 06/10/2026, section 1 : « Champ e-mail en 15 px — sur iPhone,
+ * Safari zoome automatiquement la page des qu'on touche un champ en dessous
+ * de 16 px. La mise en page saute. » Et le zoom ne repart pas en quittant le
+ * champ : la cliente reste devant une page recadree, decalee, dont elle doit
+ * se depatouiller a deux doigts.
+ *
+ * Le rapport citait un champ. Un balayage du code en a trouve VINGT ET UN,
+ * tous cotes client : la recherche du catalogue, le code promo DE LA CAISSE,
+ * les trois champs du laboratoire (lot, commande, courriel de suivi),
+ * l'infolettre, l'avis de reapprovisionnement, les deux champs de demande de
+ * remboursement, l'adresse et la devise de versement de l'affiliee, ses trois
+ * champs de mot de passe, les quatre champs de billet de soutien, et les
+ * primitives partagees `ui/input.jsx` et `ui/textarea.jsx`.
+ *
+ * On ne corrige pas vingt et un appels un par un : le vingt-deuxieme serait
+ * ecrit demain, et c'est exactement le defaut qui vient de se produire —
+ * la regle de @layer base existait, elle etait juste battue en silence.
+ * On pose donc le plancher hors de toute couche, en `!important`, et
+ * UNIQUEMENT sur pointeur grossier : le doigt. Sur un ecran de bureau, le
+ * design garde les tailles qu'il a choisies ; sur un telephone, aucune classe
+ * ne peut plus faire zoomer la page.
+ *
+ * Les cases a cocher, boutons radio et curseurs sont exclus : leur taille ne
+ * vient pas de `font-size`, et l'y forcer les deforme. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}

@@ -125,13 +125,13 @@ export default function Footer() {
         {columns.map((col) => (
           <div key={col.key} data-testid={`footer-col-${col.key}`}>
             <div className="font-data text-[11px] uppercase tracking-[0.24em] mb-5 text-nova-texte">{col.title}</div>
-            <ul className="space-y-2.5 text-sm">
+            <ul className="text-sm">
               {col.links.map((l) => (
                 <li key={l.to + l.label}>
                   {l.newTab ? (
-                    <a href={l.to} target="_blank" rel="noopener noreferrer" className="text-glacier hover:text-nordfjord transition-colors">{l.label}</a>
+                    <a href={l.to} target="_blank" rel="noopener noreferrer" className="block py-3 text-glacier hover:text-nordfjord transition-colors">{l.label}</a>
                   ) : (
-                    <Link to={l.to} className="text-glacier hover:text-nordfjord transition-colors">{l.label}</Link>
+                    <Link to={l.to} className="block py-3 text-glacier hover:text-nordfjord transition-colors">{l.label}</Link>
                   )}
                 </li>
               ))}

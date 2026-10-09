@@ -237,9 +237,20 @@ export default function Home() {
                       data-testid="newsletter-submit">{t("home.subscribe")}</button>
                   </div>
                 </div>
-                <label className="flex items-start gap-3 text-[12px] text-glacier cursor-pointer select-none">
+                {/* LA CASE DE CONSENTEMENT EST UNE CASE, PAS UN DÉTAIL.
+                    Audit, section 1 : les cibles sous 44 px font rater le
+                    tap. 16 px de côté, c'était la plus petite du site — et
+                    c'est la case qui décide si l'infolettre part ou non.
+                    Elle passe à 24 px (`accent-color` la peint, donc elle
+                    grandit sans se déformer), et le `<label>` l'englobe
+                    déjà : toute la ligne de texte est cliquable, ce qui
+                    donne une rangée de 44 px de haut sur toute sa largeur.
+                    `items-center` plutôt que `items-start` : à 24 px, une
+                    case alignée sur le haut d'un texte de deux lignes
+                    flottait au-dessus de lui. */}
+                <label className="flex items-center gap-3 py-1.5 text-[12px] text-glacier cursor-pointer select-none">
                   <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
-                    className="mt-0.5 accent-[#00B8D4] w-4 h-4" data-testid="newsletter-consent" />
+                    className="shrink-0 accent-[#00B8D4] w-6 h-6" data-testid="newsletter-consent" />
                   {t("home.newsletterConsent")}
                 </label>
               </form>

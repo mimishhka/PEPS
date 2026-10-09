@@ -328,3 +328,70 @@ aucun. Les deux liens existants sont marqués `coa_status: "available"`, donc le
 bouton se rend et fonctionne.
 
 **À traiter avec le point 2.**
+
+---
+
+## Suivi d'application
+
+Le tableau du plan reste tel quel : c'est le relevé d'origine, et il vaut
+mieux qu'il ne bouge pas. Ce qui suit note ce qui a été appliqué, et ce que
+l'application a révélé qui n'était pas dans le relevé.
+
+| # | État | Commit | Ce qu'il faut savoir |
+|---|---|---|---|
+| 2 | **Fait** | `7361e18` | Un seul statut par produit, et le certificat avec ses pièces. Le badge suit désormais la variante que le bouton ajoute (`cheapest`), pas « une variante quelconque » : c'est la contradiction « PRE-ORDER + IN STOCK » de BPC-157. |
+| 3 | **Reporté** | — | Décision de Mireille, 06/10/2026 : « pas le ops pour l'instant étant donné que je suis toujours en mode test ». L'accès OPS reste visible le temps des essais. |
+| 4 | **Fait** | *(ce commit)* | Voir ci-dessous : le relevé citait un champ en 15 px, il y en avait vingt et un. |
+
+### Ce que le point 4 a révélé
+
+**Le champ e-mail n'était pas seul.** Le relevé citait « Champ e-mail en
+15 px ». Un balayage du code en a trouvé **vingt et un**, tous côté client :
+la recherche du catalogue, le **code promo de la caisse**, les trois champs du
+laboratoire (lot, commande, courriel de suivi), l'infolettre, l'avis de
+réapprovisionnement, les deux champs de demande de remboursement, l'adresse et
+la devise de versement de l'affiliée, ses trois champs de mot de passe, les
+quatre champs de billet de soutien, et les primitives partagées
+`ui/input.jsx` / `ui/textarea.jsx`.
+
+Une règle `input { font-size: 16px }` existait **déjà** dans `@layer base`.
+Elle ne servait à rien : une classe l'emporte sur un sélecteur de balise, et
+toutes les classes Tailwind sont écrites après. `text-sm` ou `text-[15px]`
+gagnait à chaque fois, en silence. Le plancher est désormais posé hors de
+toute couche, en `!important`, et uniquement sur pointeur grossier — le
+bureau garde les tailles voulues par le design, le doigt ne fait plus zoomer
+la page. Six tests gardent ces deux propriétés, parce que ce sont elles, et
+non la règle, qui avaient été perdues.
+
+**L'en-tête ne pouvait pas tout porter, et il a fallu le mesurer.** Les
+cibles du point 4 réclament 186 px dans l'en-tête (deux boutons de langue à
+44, le panier à 48, le menu à 48). Mesure du 09/10/2026 avec les polices
+réelles : le mot « FIRONOVA » fait 109,5 px, le logo entier 151,5 px. Total
+337,5 px — sans une seule gouttière — contre 312 px disponibles sur un
+téléphone de 360 px entre les marges `px-6`. La rangée débordait de 23,5 px,
+et de 8,5 px encore sur un iPhone de 375.
+
+Deux cessions, dans cet ordre : la marge de l'en-tête passe à 16 px sous
+`sm`, et **le mot de la marque se retire sous 430 px** — la largeur du plus
+grand téléphone courant en portrait. Au-delà, il revient. La marque FN reste
+toujours, elle ramène à l'accueil, et le lien porte déjà
+`aria-label="FIRONOVA"`.
+
+**FR · EN est devenu deux boutons, comme le relevé le demandait**, et pour la
+raison qu'il donne : un bloc qui bascule ne dit pas ce qui va se passer quand
+on le touche. S'y ajoute un piège que la bascule portait seule — un client
+arrivé dans la mauvaise langue qui rate son premier tap et recommence
+revenait d'où il partait. Deux boutons n'ont pas ce défaut : EN donne
+l'anglais, qu'on y soit déjà ou non. Deux tests le vérifient.
+
+### Ce qui reste du point 4
+
+Rien d'ouvert sur les cibles elles-mêmes. Deux voisins repérés en passant,
+qui appartiennent à d'autres points du plan :
+
+- le **point de 8 × 8 px** du pied de page (relevé, section « pied de page »)
+  est la porte d'administration cachée. Il relève du point 3, reporté ;
+- `hoverOnlyWhenSupported` n'est pas activé dans la configuration Tailwind :
+  les classes `hover:` **restent collées après un tap** sur téléphone. Ce
+  n'est pas dans le relevé, le correctif est d'une ligne, et il touche toute
+  l'application — donc à faire seul, pas en passant.

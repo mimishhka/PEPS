@@ -171,12 +171,25 @@ export default function ProductCard({ product, index = 0 }) {
         </div>
       </div>
 
+      {/* LE BOUTON QUI RAPPORTE L'ARGENT PASSE AU PLANCHER TACTILE.
+          Audit du 06/10/2026, section 1 : « Boutons ADD TO ORDER : 30 px de
+          haut. Sous le minimum de 44–48 px. Ce sont les boutons qui
+          rapportent de l'argent. »
+          `btn-pill` fait bien 48 px (13 px de marge + 14 px sur 1,6) —
+          c'est CETTE carte qui l'annulait avec `!py-1.5 !text-[11px]` pour
+          gagner en densité. On garde la densité (le libellé reste petit) et
+          on repose le plancher avec `min-h` : là où le libellé tient sur une
+          ligne, le bouton fait 48 ; là où il passe à deux, il fait sa hauteur
+          naturelle, déjà au-delà.
+          Le remplissage horizontal descend de 22 à 12 px : sur une grille à
+          deux colonnes à 360 px, le libellé ne disposait que de 108 px et se
+          coupait en deux presque toujours. Il en a 128. */}
       <div className="pt-3 px-0.5">
         <button
           data-testid={`add-to-cart-${product.slug}`}
           onClick={ajouter}
           disabled={!achetable}
-          className={`w-full btn-pill btn-nova !py-1.5 !text-[11px] !tracking-[0.06em] ${!achetable ? "opacity-45 cursor-not-allowed" : ""}`}
+          className={`w-full btn-pill btn-nova !py-1.5 !px-3 !text-[11px] !tracking-[0.06em] min-h-[48px] ${!achetable ? "opacity-45 cursor-not-allowed" : ""}`}
         >
           {!achetable
             ? (lang === "fr" ? "Rupture" : "Out of stock")
