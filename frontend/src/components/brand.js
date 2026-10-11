@@ -53,11 +53,20 @@ export function NovaSpark({ size = 20, color = NOVA, className = "" }) {
  * trois propositions. Exprime en proportion et non en pixels, il se tient a
  * toutes les tailles : l'enseigne et l'en-tete gardent la meme silhouette.
  *
- * UN INTERLETTRAGE DE 0,84 em. « RESEARCH » ne fait que huit lettres, comme
- * « FIRONOVA », mais a un sixieme de la taille il serait six fois plus court.
- * L'espacement rattrape la largeur : c'est ce calage qui fait lire les deux
- * lignes comme UN SEUL objet, et non comme deux lignes empilees. Exprime en
- * em, il suit la taille du descripteur, donc la proportion est stable.
+ * UN INTERLETTRAGE DE 0,30 em, ET PAS PLUS.
+ *
+ * J'avais d'abord mis 0,84 em, pour que « RESEARCH » egale la largeur de
+ * « FIRONOVA ». MIREILLE, le meme jour, devant le resultat : « TOO MUCH
+ * SPACING ». Elle avait raison, et le raisonnement etait faux a la racine :
+ * au plancher de 6 px le descripteur n'atteint de toute facon pas la largeur
+ * du mot (75 px contre 109), donc l'espacement ecartait les lettres SANS
+ * rien gagner. « R E S E A R C H » cessait de se lire comme un mot pour
+ * devenir une suite de lettres.
+ *
+ * Un descripteur de logo n'a pas a egaler la largeur du mot : il a a se
+ * LIRE. 0,30 em donne l'air espace des petites capitales sans desassembler
+ * le mot. Exprime en em, il suit la taille du descripteur, donc la
+ * proportion reste stable a toutes les tailles.
  *
  * LE PLANCHER DE 6 PX N'EST PAS DECORATIF. Dans l'en-tete le mot fait 19 px,
  * donc un sixieme donnerait 3,2 px : un trait gris, pas un mot. A 6 px le
@@ -66,7 +75,7 @@ export function NovaSpark({ size = 20, color = NOVA, className = "" }) {
  * Mieux vaut un bloc un peu plus etroit qu'un mot illisible.
  */
 const PROPORTION_DESCRIPTEUR = 1 / 6;
-const INTERLETTRAGE_DESCRIPTEUR = 0.84;
+const INTERLETTRAGE_DESCRIPTEUR = 0.30;
 const PLANCHER_DESCRIPTEUR = 6;
 
 export function Wordmark({ size = 22, color = NORDFJORD, descripteur = "" }) {
@@ -78,27 +87,52 @@ export function Wordmark({ size = 22, color = NORDFJORD, descripteur = "" }) {
   if (!descripteur) return mot;
 
   const taille = Math.max(PLANCHER_DESCRIPTEUR, size * PROPORTION_DESCRIPTEUR);
+  /* LE DESCRIPTEUR NE PESE PAS DANS LA HAUTEUR DU BLOC.
+   *
+   * MIREILLE, 11/10/2026 : « FIRONOVA need to be aligned with the logo, is
+   * it slightly above ». Il l'etait.
+   *
+   * Les deux surfaces qui portent le logo alignent la marque et le mot avec
+   * `items-center`. Des que le mot est devenu un bloc de DEUX lignes, c'est
+   * ce bloc entier qui s'est centre sur l'hexagone — donc « FIRONOVA » est
+   * monte de la moitie de ce que le descripteur occupe, et la marque ne
+   * regardait plus le mot mais l'espace entre les deux lignes.
+   *
+   * Le descripteur passe donc en position absolue sous le mot : le bloc
+   * reprend exactement la hauteur de « FIRONOVA », et tout alignement
+   * vertical retombe sur le mot, partout, sans que l'appelant ait a le
+   * savoir. Un logotype ne doit rien changer a la mise en page ou on le
+   * depose.
+   */
+  const styleDescripteur = {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    fontSize: taille,
+    fontWeight: 500,
+    /* L'interlettrage ajoute un espace APRES la derniere lettre : sans ce
+       retrait, le mot parait decale d'un demi-espace vers la gauche sous
+       celui du dessus. Le defaut est discret et constant — c'est le genre
+       qu'on ne nomme pas mais qu'on voit. */
+    letterSpacing: `${INTERLETTRAGE_DESCRIPTEUR}em`,
+    textIndent: `${INTERLETTRAGE_DESCRIPTEUR}em`,
+    lineHeight: 1,
+    marginTop: Math.max(3, size * 0.16),
+    color,
+    whiteSpace: "nowrap",
+  };
+
+  /* L'objet de style sort de la balise, et ce n'est pas que du rangement : la
+     sonde `balises` lit le fichier LIGNE PAR LIGNE. Une balise ouvrante
+     etalee sur vingt lignes lui echappe, et elle compte alors deux
+     fermetures pour une ouverture. Elle a raison de ne pas savoir analyser
+     du JSX — c'est a moi de ne pas lui tendre le piege. */
   return (
-    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "center" }}>
+    <span style={{ display: "inline-block", position: "relative", lineHeight: 1 }}>
       {mot}
-      <span
-        className="font-display"
-        style={{
-          fontSize: taille,
-          fontWeight: 500,
-          /* L'interlettrage ajoute un espace APRES la derniere lettre : sans
-             ce retrait, le mot parait decale d'un demi-espace vers la gauche
-             sous celui du dessus. */
-          letterSpacing: `${INTERLETTRAGE_DESCRIPTEUR}em`,
-          textIndent: `${INTERLETTRAGE_DESCRIPTEUR}em`,
-          lineHeight: 1,
-          marginTop: Math.max(4, size * 0.24),
-          color,
-          whiteSpace: "nowrap",
-        }}
-      >
-        {descripteur}
-      </span>
+      <span className="font-display" style={styleDescripteur}>{descripteur}</span>
     </span>
   );
 }

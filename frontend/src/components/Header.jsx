@@ -149,8 +149,14 @@ export default function Header() {
 
                 Audit du 06/10/2026, section 1 : « Sélecteur FR · EN : 29 px.
                 Pour FR/EN, deux boutons séparés de 44 × 44 px au lieu d'un
-                seul bloc. » Le rapport a raison sur le fond autant que sur la
-                taille : un bloc « FR · EN » qui bascule ne dit pas ce qui va
+                seul bloc. »
+
+                MIREILLE, 11/10/2026 : « les toggle buttons sont trop gros ».
+                Ils descendent donc à 38 × 36, comme les pastilles de dosage.
+                C'est un écart assumé avec les 44 px du rapport, et le même
+                que sur la carte produit : on reste très au-dessus des 29 px
+                qu'il signalait. Le rapport a raison sur le fond autant que
+                sur la taille : un bloc « FR · EN » qui bascule ne dit pas ce qui va
                 se passer quand on le touche. On touche maintenant la langue
                 qu'on veut, et celle où l'on est se voit.
 
@@ -173,7 +179,7 @@ export default function Header() {
                   aria-pressed={lang === code}
                   aria-label={code === "fr" ? "Français" : "English"}
                   title={code === "fr" ? "Français" : "English"}
-                  className={`font-data text-xs font-semibold uppercase tracking-[0.18em] min-w-[44px] min-h-[44px] inline-flex items-center justify-center transition-colors ${
+                  className={`font-data text-[11px] font-semibold uppercase tracking-[0.14em] min-w-[38px] min-h-[36px] inline-flex items-center justify-center transition-colors ${
                     lang === code ? "text-nordfjord bg-ash/40" : "text-glacier hover:text-nordfjord"
                   }`}
                 >

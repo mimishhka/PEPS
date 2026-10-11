@@ -151,19 +151,41 @@ export default function Home() {
           ) : (
             <MolecularMesh opacity={0.4} />
           )}
-          <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(11,46,79,.38) 0%, rgba(11,46,79,.08) 45%, rgba(11,46,79,.72) 100%)" }} />
+          {/* LE VOILE, ET POURQUOI IL EST PLUS APPUYE EN BAS.
+              MIREILLE, 11/10/2026 : « ici le texte n'est pas lisible ».
+              Le texte est pose en BAS du hero (`justify-end`), mais le voile
+              n'y montait qu'a 0,72 et restait a 0,08 au milieu : sur une
+              photo claire, le blanc du texte se posait sur du presque blanc.
+              Le degrade garde le haut aere — la photo du flacon doit se voir
+              — et descend franchement sur le tiers bas, la ou la copie vit.
+              Audit du 06/10, point 8 : « voile sous le hero ». */}
+          <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(11,46,79,.40) 0%, rgba(11,46,79,.14) 30%, rgba(11,46,79,.62) 68%, rgba(11,46,79,.90) 100%)" }} />
         </div>
         <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 flex flex-col justify-end" style={{ minHeight: "inherit" }}>
           <div className="pt-14 lg:pt-20 pb-16 lg:pb-24">
             <Reveal>
-              <p className="font-data text-[10.5px] uppercase tracking-[0.26em] text-nova mb-4">
+              {/* LE CYAN DE L'ACCROCHE N'EST PAS CELUI DU TITRE, ET C'EST
+                  VOULU. Nova pur (#00B8D4) sur le voile donne environ 3:1 :
+                  cela suffit pour le titre, qui fait 34 px — les grandes
+                  tailles demandent 3:1 — mais pas pour ces 10,5 px en
+                  capitales, qui en demandent 4,5. Le cyan pale du bandeau de
+                  conformite, deja employe sur fond marine, en donne 5. La
+                  couleur d'accent se module donc selon la TAILLE du texte,
+                  ce qui est exactement ce que la regle de contraste dit. */}
+              <p className="font-data text-[10.5px] uppercase tracking-[0.26em] mb-4" style={{ color: "#9FD9E8" }}>
                 {heroEyebrow}
               </p>
-              <h1 className="font-display font-medium leading-[1.2] tracking-[-0.01em] max-w-[26ch]" style={{ fontSize: "clamp(24px,3.4vw,34px)" }} data-testid="hero-title">
+              {/* LE TITRE ETAIT LE SEUL TEXTE SOMBRE PARMI DES TEXTES CLAIRS.
+                  Sans classe de couleur, il heritait du bleu marine du corps
+                  de page pendant que l'accroche, le texte et le lien second
+                  etaient en blanc. Sur fond clair le titre se lisait et le
+                  reste disparaissait ; sur fond sombre, l'inverse. Aucune
+                  photo ne pouvait rendre les quatre lisibles ensemble. */}
+              <h1 className="font-display font-medium leading-[1.2] tracking-[-0.01em] max-w-[26ch] text-clinical" style={{ fontSize: "clamp(24px,3.4vw,34px)" }} data-testid="hero-title">
                 {heroTitle.a}{" "}
                 <span className="text-nova">{heroTitle.b}</span>
               </h1>
-              <p className="text-sm max-w-[44ch] leading-relaxed mt-3" style={{ color: "rgba(247,250,252,.8)" }}>{heroLede}</p>
+              <p className="text-sm max-w-[44ch] leading-relaxed mt-3" style={{ color: "rgba(247,250,252,.92)" }}>{heroLede}</p>
               <div className="mt-5 flex items-center gap-5">
                 <Link to="/catalog" data-testid="hero-cta-catalog"
                   className="inline-block bg-white text-nordfjord text-[13px] font-medium tracking-[0.04em] px-6 py-3 hover:bg-nova hover:text-white transition-colors" style={{ borderRadius: "var(--r-m)" }}>
@@ -172,7 +194,7 @@ export default function Home() {
                 {/* Le second geste reste, mais comme un lien discret : le hero
                     n'a qu'un bouton, le texte porte le reste. */}
                 <Link to="/about" data-testid="hero-cta-lab"
-                  className="text-white/70 text-[13px] hover:text-nova transition-colors">
+                  className="text-white/90 text-[13px] hover:text-nova transition-colors">
                   {ctaSecondary}
                 </Link>
               </div>

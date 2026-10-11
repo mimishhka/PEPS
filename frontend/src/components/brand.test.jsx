@@ -9,7 +9,7 @@
 // apparaîtrait par défaut les changerait tous d'un coup, dont deux sur fond
 // marine où la place est comptée. Il ne se rend que si on le demande.
 
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 
 import { Wordmark } from "./brand";
 
@@ -58,14 +58,42 @@ describe("avec descripteur", () => {
     expect(descripteur(scene).style.fontSize).toBe("6px");
   });
 
-  test("l'interlettrage rattrape la largeur, et se compense à droite", () => {
-    // « RESEARCH » fait huit lettres comme « FIRONOVA », mais six fois plus
-    // petites : sans espacement il serait six fois plus court. Le retrait
-    // annule l'espace que l'interlettrage ajoute après la dernière lettre,
-    // qui décalerait le mot vers la gauche.
+  test("L'INTERLETTRAGE RESTE SOUS 0,35 em — sinon le mot se désassemble", () => {
+    /* Premier jet : 0,84 em, pour que « RESEARCH » égale la largeur de
+     * « FIRONOVA ». MIREILLE, devant le résultat : « TOO MUCH SPACING ».
+     * Le raisonnement était faux à la racine — au plancher de 6 px le
+     * descripteur n'atteint pas la largeur du mot de toute façon, donc
+     * l'espacement écartait les lettres sans rien gagner, et
+     * « R E S E A R C H » cessait de se lire comme un mot.
+     *
+     * Le test porte sur une BORNE et non sur la valeur exacte : c'est le
+     * désassemblage qu'on interdit, pas un chiffre précis. */
     const scene = render(<Wordmark size={46} descripteur="RESEARCH" />);
-    expect(descripteur(scene).style.letterSpacing).toBe("0.84em");
-    expect(descripteur(scene).style.textIndent).toBe("0.84em");
+    const espacement = parseFloat(descripteur(scene).style.letterSpacing);
+    expect(espacement).toBeLessThanOrEqual(0.35);
+    expect(espacement).toBeGreaterThan(0.1);
+    // Le retrait annule l'espace ajouté après la dernière lettre, qui
+    // décalerait le mot d'un demi-espace vers la gauche.
+    expect(descripteur(scene).style.textIndent).toBe(descripteur(scene).style.letterSpacing);
+  });
+
+  test("LE DESCRIPTEUR NE PESE PAS DANS LA HAUTEUR DU BLOC", () => {
+    /* MIREILLE, 11/10/2026 : « FIRONOVA need to be aligned with the logo, is
+     * it slightly above ». Il l'était.
+     *
+     * Les deux surfaces qui portent le logo alignent la marque et le mot
+     * avec `items-center`. Dès que le mot est devenu un bloc de DEUX lignes,
+     * c'est ce bloc entier qui s'est centré sur l'hexagone : « FIRONOVA » est
+     * monté de la moitié de ce que le descripteur occupe, et la marque ne
+     * regardait plus le mot mais l'espace entre les deux lignes.
+     *
+     * jsdom ne calcule aucune mise en page : on vérifie le MÉCANISME qui
+     * garantit l'alignement — le descripteur est hors flux, donc le bloc fait
+     * exactement la hauteur du mot, partout, sans que l'appelant le sache. */
+    const scene = render(<Wordmark size={19} descripteur="RESEARCH" />);
+    expect(descripteur(scene).style.position).toBe("absolute");
+    expect(descripteur(scene).style.top).toBe("100%");
+    expect(mot(scene).parentElement.style.position).toBe("relative");
   });
 
   test("il hérite de la couleur du mot", () => {

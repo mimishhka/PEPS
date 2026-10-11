@@ -105,12 +105,19 @@ describe("les cibles tactiles de l'en-tête", () => {
     expect(pixelsMinimum(menu, "h")).toBeGreaterThanOrEqual(48);
   });
 
-  test("chaque bouton de langue tient 44 px dans les deux sens", () => {
+  test("chaque bouton de langue fait 38 × 36, et c'est un écart assumé", () => {
+    /* MIREILLE, 11/10/2026 : « les toggle buttons sont trop gros ». Ils
+     * étaient à 44 × 44, comme le rapport le demandait. Ils descendent à
+     * 38 × 36, la taille des pastilles de dosage — sous le minimum d'Apple,
+     * mais très au-dessus des 29 px que ce même rapport signalait.
+     *
+     * Le test fige les chiffres plutôt qu'un seuil : c'est un arbitrage, et
+     * il doit se voir s'il bouge. */
     render(<Header />);
     for (const code of ["fr", "en"]) {
       const bouton = screen.getByTestId(`lang-${code}`);
-      expect(pixelsMinimum(bouton, "w")).toBeGreaterThanOrEqual(44);
-      expect(pixelsMinimum(bouton, "h")).toBeGreaterThanOrEqual(44);
+      expect(pixelsMinimum(bouton, "w")).toBe(38);
+      expect(pixelsMinimum(bouton, "h")).toBe(36);
     }
   });
 
