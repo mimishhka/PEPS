@@ -1,11 +1,22 @@
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useLang } from "../contexts/LanguageContext";
 import { useCart } from "../contexts/CartContext";
 import ProductImage from "./ProductImage";
 import { prix } from "../lib/prix";
+import { dosage } from "../lib/dosage";
 import { avertirCoa, estPrecommande } from "../lib/precommande";
 import AvertissementCoa from "./AvertissementCoa";
 import { useConfirm } from "./ConfirmDialog";
+
+/* Une variante qu'on ne peut ni acheter ni precommander. La fiche produit
+ * desactive exactement celles-la ; la carte en fait autant, pour que le meme
+ * flacon ne soit pas selectionnable ici et grise la-bas. */
+function indisponible(v) {
+  if (!v) return true;
+  if (v.badge_coming_soon && !v.preorder_enabled) return true;
+  return Number(v.stock ?? 0) <= 0 && !v.preorder_enabled && !v.badge_coming_soon;
+}
 
 export default function ProductCard({ product, index = 0 }) {
   const { lang } = useLang();
@@ -13,18 +24,45 @@ export default function ProductCard({ product, index = 0 }) {
   const confirm = useConfirm();
   const name = lang === "fr" ? product.name_fr : product.name_en;
 
-  const variants = product.variants || [];
-  const priced = variants.map((v) => {
+  const variants = useMemo(() => product.variants || [], [product.variants]);
+  const priced = useMemo(() => variants.map((v) => {
     const isPre = estPrecommande(v, 1);
     const sale = v.sale_price && v.sale_price < v.price;
     const eff = isPre && v.preorder_price ? v.preorder_price : sale ? v.sale_price : v.price;
     return { ...v, eff, isPre, sale };
-  });
-  const cheapest = priced.length ? priced.reduce((m, v) => (v.eff < m.eff ? v : m), priced[0]) : null;
-  const displayPrice = cheapest ? cheapest.eff : product.price_cad;
-  const displayOriginal = cheapest && cheapest.eff < cheapest.price ? cheapest.price : null;
-  const anyPreorder = priced.some((v) => v.isPre);
-  const anySale = priced.some((v) => v.sale && !v.isPre);
+  }), [variants]);
+
+  /* LE DOSAGE SE CHOISIT SUR LA CARTE, ET LE PRIX SUIT.
+   *
+   * MIREILLE, 11/10/2026 : « add this buttons without prices on the catalog
+   * on the product tile », puis « change the price according to the
+   * selection of dosage ».
+   *
+   * La carte annoncait jusqu'ici le prix de la variante la MOINS CHERE, suivi
+   * de « dès ». Pour acheter le 10 mg il fallait ouvrir la fiche. Elle porte
+   * maintenant le meme selecteur que la fiche — sans les prix, qui seraient
+   * redondants puisque le prix affiche est celui du dosage choisi — et le
+   * bouton ajoute ce dosage-la.
+   *
+   * Le defaut tombe sur la moins chere DISPONIBLE, et non sur la moins chere
+   * tout court : ouvrir le catalogue sur une pastille grisee, avec un bouton
+   * « Rupture » juste dessous, serait un mauvais premier regard alors qu'un
+   * autre dosage est en tablette.
+   */
+  const parDefaut = useMemo(() => {
+    const candidats = priced.filter((v) => !indisponible(v));
+    const liste = candidats.length ? candidats : priced;
+    return liste.length ? liste.reduce((m, v) => (v.eff < m.eff ? v : m), liste[0]).id : null;
+  }, [priced]);
+
+  const [choisiId, setChoisiId] = useState(null);
+  const choisie = priced.find((v) => v.id === (choisiId ?? parDefaut))
+    || priced.find((v) => v.id === parDefaut)
+    || priced[0]
+    || null;
+
+  const displayPrice = choisie ? choisie.eff : product.price_cad;
+  const displayOriginal = choisie && choisie.eff < choisie.price ? choisie.price : null;
 
   /* UNE PRECOMMANDE NE S'AJOUTE PAS EN SILENCE.
    *
@@ -41,20 +79,20 @@ export default function ProductCard({ product, index = 0 }) {
    * annonce. La pastille « Precommande » de la carte ne suffisait pas : elle
    * informe celui qui la cherche, pas celui qui clique.
    *
-   * Le test porte sur `cheapest` et non sur `anyPreorder` : c'est CETTE
-   * variante que le bouton ajoute. Une fiche dont une variante est en stock et
-   * une autre en precommande annoncerait « En stock » tout en ajoutant la
-   * precommande.
+   * Le test porte sur la variante CHOISIE et non sur « une variante
+   * quelconque » : c'est celle-la que le bouton ajoute. Une carte dont une
+   * variante est en stock et une autre en precommande annoncerait « En
+   * stock » tout en ajoutant la precommande.
    */
-  const ajoutEstUnePrecommande = !!cheapest?.isPre;
+  const ajoutEstUnePrecommande = !!choisie?.isPre;
 
   const ajouter = async () => {
     if (!ajoutEstUnePrecommande) {
-      add(product, 1, cheapest);
+      add(product, 1, choisie);
       return;
     }
-    const delai = cheapest?.preorder_delay_message
-      ? ` ${lang === "fr" ? "Délai annoncé" : "Announced delay"} : ${cheapest.preorder_delay_message}.`
+    const delai = choisie?.preorder_delay_message
+      ? ` ${lang === "fr" ? "Délai annoncé" : "Announced delay"} : ${choisie.preorder_delay_message}.`
       : "";
     if (await confirm({
       title: lang === "fr" ? "Précommander ce produit ?" : "Pre-order this product?",
@@ -63,26 +101,21 @@ export default function ProductCard({ product, index = 0 }) {
         : `This product is out of stock : it ships when the next batch arrives.${delai} If your order also contains available items, those ship right away, at no extra shipping cost.`,
       confirmLabel: lang === "fr" ? "Précommander" : "Pre-order",
     })) {
-      add(product, 1, cheapest);
+      add(product, 1, choisie);
     }
   };
 
-  const stockN = cheapest ? (cheapest.stock ?? 0) : (product.stock ?? 0);
+  const stockN = choisie ? (choisie.stock ?? 0) : (product.stock ?? 0);
   const inStock = stockN > 0;
-  // E2E CA-007 : le bouton restait actif quand tout est a zero sans
-  // precommande. Il ne s'ouvre que s'il reste du stock quelque part, ou
-  // qu'une precommande prend le relais.
-  const unStock = priced.some((v) => Number(v.stock) > 0);
-  const achetable = unStock || anyPreorder;
+  /* E2E CA-007 : le bouton restait actif quand tout est a zero sans
+   * precommande. Il regarde desormais la variante CHOISIE : c'est elle qu'il
+   * ajoute, donc c'est sa disponibilite a elle qui decide. Les autres dosages
+   * restent atteignables par leur pastille. */
+  const achetable = !!choisie && !indisponible(choisie);
   // E2E CA-008 : aucun indicateur de stock bas. Le seuil vient de la fiche
   // (ou 10 par defaut), et le libelle devient « Stock bas · N ».
   const seuilStock = Number(product.low_stock_threshold ?? 10);
   const stockBas = inStock && stockN <= seuilStock;
-
-  const specLine = [
-    product.dosage_mg ? `${product.dosage_mg} mg` : null,
-    lang === "fr" ? "Lyophilisé" : "Lyophilized",
-  ].filter(Boolean).join(" · ");
 
   return (
     <div
@@ -102,15 +135,21 @@ export default function ProductCard({ product, index = 0 }) {
         />
       </Link>
 
+      {/* TROIS LIGNES SONT PARTIES DE LA CARTE le 11/10/2026, a sa demande.
+          « USAGE RECHERCHE UNIQUEMENT » se lisait douze fois sur une grille de
+          douze produits, alors que le bandeau de l'en-tete le dit deja sur
+          chaque page et que la fiche le repete. L'audit du 06/10 le demandait
+          aussi : « Réduire FOR RESEARCH USE ONLY aux 4 endroits utiles ».
+          « 5 mg · Lyophilisé » redisait un dosage que les pastilles portent
+          maintenant, et un mot identique sur tous les produits.
+          « dès » n'a plus d'objet : le prix n'est plus un minimum, c'est celui
+          du dosage choisi. */}
       <div className="pt-3 px-0.5 flex flex-col gap-1 sm:gap-1.5 flex-1">
-        <div className="font-data text-[10px] uppercase tracking-[0.12em] sm:tracking-[0.2em] text-compliance">
-          {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT" : "FOR RESEARCH USE ONLY"}
-        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Link to={`/product/${product.slug}`} className="font-display text-[13.5px] font-medium text-nordfjord hover:text-nova-texte transition-colors leading-snug">
             {name}
           </Link>
-          {anySale && (
+          {choisie?.sale && !choisie?.isPre && (
             <span className="font-data text-[9.5px] font-semibold uppercase tracking-[0.14em] border border-nova text-nova-texte px-1.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`sale-badge-${product.slug}`}>
               {lang === "fr" ? "PROMO" : "SALE"}
             </span>
@@ -120,13 +159,9 @@ export default function ProductCard({ product, index = 0 }) {
                variante quelconque ».
                Audit du 06/10/2026, point 2 : « BPC-157 affiche à la fois le
                badge PRE-ORDER et • IN STOCK ». Les deux etaient vrais
-               separement — le badge regardait `anyPreorder` (le 10 mg, dont le
-               COA est en attente), le statut regardait `cheapest` (le 5 mg, en
-               stock). Ensemble ils se contredisent, sur l'element le plus
-               regarde de la carte.
-               Le prix affiche est celui de `cheapest`, le bouton ajoute
-               `cheapest`, la confirmation parle de `cheapest` : le badge le
-               suit. L'etat des autres variantes se lit sur la fiche.
+               separement — le badge regardait « une variante quelconque », le
+               statut regardait celle que le bouton ajoutait. Ensemble ils se
+               contredisent, sur l'element le plus regarde de la carte.
 
                DEBORDEMENT A 360 px (rapport E2E NF-001) : « PRÉCOMMANDE » en
                chasse large ne peut pas se couper, et poussait la grille a
@@ -137,12 +172,44 @@ export default function ProductCard({ product, index = 0 }) {
             </span>
           )}
         </div>
-        <div className="font-data text-[11px] text-glacier">{specLine}</div>
+
         {/* Le lot est en stock et part tout de suite : on le dit ici plutot
             que de le deguiser en precommande, ce que la regle faisait avant
             le 11/10/2026. */}
-        {avertirCoa(cheapest, 1) && (
+        {avertirCoa(choisie, 1) && (
           <AvertissementCoa compact testId={`card-coa-${product.slug}`} />
+        )}
+
+        {priced.length > 0 && (
+          /* LES PASTILLES NE PORTENT PAS LE PRIX, contrairement a celles de la
+             fiche : le prix est juste en dessous, et il change avec la
+             selection. L'ecrire deux fois ferait douter de l'un des deux.
+             `min-h-[44px]` : ce sont des cibles tactiles au meme titre que le
+             bouton d'achat (audit du 06/10, point 4). Deux pastilles de
+             « 5 mg » tiennent dans les 154 px d'une carte sur une grille a
+             deux colonnes a 360 px ; au-dela elles passent a la ligne. */
+          <div className="flex flex-wrap gap-1.5 pt-1" data-testid={`card-dosages-${product.slug}`}>
+            {priced.map((v) => {
+              const actif = v.id === choisie?.id;
+              const hors = indisponible(v);
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setChoisiId(v.id)}
+                  disabled={hors}
+                  aria-pressed={actif}
+                  data-testid={`card-dosage-${product.slug}-${v.name}`}
+                  className={`font-display text-[13px] font-semibold px-3 min-h-[44px] inline-flex items-center justify-center border transition-colors ${
+                    actif ? "border-nova bg-nova/5 text-nordfjord" : "border-ash text-nordfjord hover:border-nova"
+                  } disabled:opacity-40 disabled:cursor-not-allowed`}
+                  style={{ borderRadius: "var(--r-m)" }}
+                >
+                  {dosage(v.name, lang)}
+                </button>
+              );
+            })}
+          </div>
         )}
 
         <div className="flex items-center justify-between pt-3 mt-auto">
@@ -155,9 +222,6 @@ export default function ProductCard({ product, index = 0 }) {
             <span className={`font-data text-[13.5px] font-medium tabular-nums ${displayOriginal ? "text-nova-texte" : "text-nordfjord"}`} data-testid={`card-price-${product.slug}`}>
               {prix(displayPrice ?? 0, lang)}
             </span>
-            {variants.length > 1 && (
-              <span className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">{lang === "fr" ? "dès" : "from"}</span>
-            )}
           </div>
           {/* ET LE STATUT NE REPETE PAS LE BADGE.
               Audit, point 2 : « Tirzepatide : PRE-ORDER écrit 3 fois (badge,
