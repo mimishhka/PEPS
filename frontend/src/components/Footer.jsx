@@ -92,10 +92,10 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
         <div className="border-t border-ash px-8 lg:px-14 py-14 relative overflow-hidden">
           <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 w-full h-full opacity-[.12]" aria-hidden="true">
-            <g stroke="#00B8D4" strokeWidth="1" fill="none">
+            <g stroke="#087A63" strokeWidth="1" fill="none">
               <line x1="30" y1="50" x2="140" y2="110" /><line x1="140" y1="110" x2="250" y2="60" /><line x1="250" y1="60" x2="370" y2="130" />
             </g>
-            <g fill="#00B8D4">
+            <g fill="#087A63">
               <circle cx="30" cy="50" r="4" /><circle cx="140" cy="110" r="5" /><circle cx="250" cy="60" r="4" /><circle cx="370" cy="130" r="4" />
             </g>
           </svg>
@@ -116,8 +116,8 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-16 grid grid-cols-2 md:grid-cols-4 gap-10">
         <div className="col-span-2">
           <div className="flex items-center gap-3">
-            <FnMark size={30} frame="#0B2E4F" spark="#00B8D4" />
-            <Wordmark size={20} color="#0B2E4F" descripteur="RESEARCH" />
+            <FnMark size={30} frame="#142634" spark="#087A63" />
+            <Wordmark size={20} color="#142634" descripteur="RESEARCH" />
           </div>
           <p className="mt-4 text-sm text-glacier max-w-sm leading-relaxed">{t("footer.tagline")}</p>
           <p className="mt-6 fn-ruo inline-block">FOR RESEARCH USE ONLY · USAGE RECHERCHE UNIQUEMENT</p>
