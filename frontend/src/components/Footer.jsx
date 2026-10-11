@@ -117,7 +117,7 @@ export default function Footer() {
         <div className="col-span-2">
           <div className="flex items-center gap-3">
             <FnMark size={30} frame="#0B2E4F" spark="#00B8D4" />
-            <Wordmark size={20} color="#0B2E4F" />
+            <Wordmark size={20} color="#0B2E4F" descripteur="RESEARCH" />
           </div>
           <p className="mt-4 text-sm text-glacier max-w-sm leading-relaxed">{t("footer.tagline")}</p>
           <p className="mt-6 fn-ruo inline-block">FOR RESEARCH USE ONLY · USAGE RECHERCHE UNIQUEMENT</p>

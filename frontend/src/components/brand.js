@@ -41,10 +41,64 @@ export function NovaSpark({ size = 20, color = NOVA, className = "" }) {
   );
 }
 
-export function Wordmark({ size = 22, color = NORDFJORD }) {
-  return (
+/* LE DESCRIPTEUR, SOUS LE MOT.
+ *
+ * MIREILLE, 11/10/2026 : « il faut ajouter RESEARCH », « un peu comme le site
+ * de Align », « en dessous de FIRONOVA mais vraiment plus petite ».
+ *
+ * Align pose « BIOSCIENCES » sous « ALIGN », en petites capitales tres
+ * espacees. Le meme principe ici, avec deux reglages qui font tout :
+ *
+ * UN SIXIEME DE LA TAILLE DU MOT. C'est le rapport qu'elle a choisi entre
+ * trois propositions. Exprime en proportion et non en pixels, il se tient a
+ * toutes les tailles : l'enseigne et l'en-tete gardent la meme silhouette.
+ *
+ * UN INTERLETTRAGE DE 0,84 em. « RESEARCH » ne fait que huit lettres, comme
+ * « FIRONOVA », mais a un sixieme de la taille il serait six fois plus court.
+ * L'espacement rattrape la largeur : c'est ce calage qui fait lire les deux
+ * lignes comme UN SEUL objet, et non comme deux lignes empilees. Exprime en
+ * em, il suit la taille du descripteur, donc la proportion est stable.
+ *
+ * LE PLANCHER DE 6 PX N'EST PAS DECORATIF. Dans l'en-tete le mot fait 19 px,
+ * donc un sixieme donnerait 3,2 px : un trait gris, pas un mot. A 6 px le
+ * descripteur devient plus court que le mot au lieu de l'egaler — il est
+ * alors centre dessous, ce qui reste une mise en page de logo correcte.
+ * Mieux vaut un bloc un peu plus etroit qu'un mot illisible.
+ */
+const PROPORTION_DESCRIPTEUR = 1 / 6;
+const INTERLETTRAGE_DESCRIPTEUR = 0.84;
+const PLANCHER_DESCRIPTEUR = 6;
+
+export function Wordmark({ size = 22, color = NORDFJORD, descripteur = "" }) {
+  const mot = (
     <span className="font-display font-bold" style={{ fontSize: size, letterSpacing: "0.14em", color }}>
       FIRONOVA
+    </span>
+  );
+  if (!descripteur) return mot;
+
+  const taille = Math.max(PLANCHER_DESCRIPTEUR, size * PROPORTION_DESCRIPTEUR);
+  return (
+    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "center" }}>
+      {mot}
+      <span
+        className="font-display"
+        style={{
+          fontSize: taille,
+          fontWeight: 500,
+          /* L'interlettrage ajoute un espace APRES la derniere lettre : sans
+             ce retrait, le mot parait decale d'un demi-espace vers la gauche
+             sous celui du dessus. */
+          letterSpacing: `${INTERLETTRAGE_DESCRIPTEUR}em`,
+          textIndent: `${INTERLETTRAGE_DESCRIPTEUR}em`,
+          lineHeight: 1,
+          marginTop: Math.max(4, size * 0.24),
+          color,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {descripteur}
+      </span>
     </span>
   );
 }

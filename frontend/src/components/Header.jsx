@@ -107,7 +107,7 @@ export default function Header() {
                 déjà `aria-label="FIRONOVA"` : rien n'est perdu pour qui
                 n'y voit pas. */}
             <span className="hidden min-[430px]:inline" data-testid="header-wordmark">
-              <Wordmark size={19} color="currentColor" />
+              <Wordmark size={19} color="currentColor" descripteur="RESEARCH" />
             </span>
           </Link>
           <nav className="hidden md:flex items-center gap-8">
