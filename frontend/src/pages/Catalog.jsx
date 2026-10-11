@@ -1,15 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, SlidersHorizontal } from "lucide-react";
 import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import ProductCard from "../components/ProductCard.jsx";
 
-// Les catégories thématiques ont été retirées de la boutique : leurs libellés
-// (« Healing & Recovery », « Weight Management »…) décrivaient un effet
-// physiologique, ce qui rattache un composé à un usage humain. Le catalogue
-// présente désormais l'ensemble des produits, avec recherche et tri sur des
-// critères objectifs (nom, séquence, CAS, prix).
 export default function Catalog() {
   const { lang } = useLang();
   useDocumentHead({ title: lang === "fr" ? "Catalogue" : "Catalog", description: "Browse Fironova research peptides. Certificate-of-analysis documentation. For Research Use Only.", path: "/catalog" });
@@ -21,12 +16,14 @@ export default function Catalog() {
   const [query, setQuery] = useState("");
 
   useEffect(() => {
+    let active = true;
     setLoading(true);
     setLoadError(false);
     api.get("/products")
-      .then((r) => setProducts(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setLoadError(true))
-      .finally(() => setLoading(false));
+      .then((r) => { if (active) setProducts(Array.isArray(r.data) ? r.data : []); })
+      .catch(() => { if (active) setLoadError(true); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [activeRetry]);
 
   const sorted = useMemo(() => {
@@ -58,108 +55,41 @@ export default function Catalog() {
     return arr;
   }, [products, sort, query]);
 
+  const resultCount = sorted.length;
+  const sortOptions = [
+    ["name", lang === "fr" ? "Nom" : "Name"],
+    ["price-asc", lang === "fr" ? "Prix croissant" : "Price: low to high"],
+    ["price-desc", lang === "fr" ? "Prix décroissant" : "Price: high to low"],
+  ];
+
   return (
-    <div data-testid="catalog-page" className="bg-clinical min-h-screen">
-      <div className="max-w-7xl mx-auto px-6 lg:px-8 pt-16 pb-10">
-        {/* Le titre porte seul ; l'etiquette devient une marque de coin,
-            comme sur le bandeau d'infolettre : le meme geste partout. */}
-        <div className="relative">
-          <h1 className="font-display text-[26px] sm:text-[32px] font-semibold text-nordfjord leading-[1.1] tracking-[-0.01em]">
-            {lang === "fr" ? "La bibliothèque complète" : "The full library"}
-          </h1>
-          <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte mb-2 lg:absolute lg:top-0 lg:right-0 lg:mb-0">
-            {lang === "fr" ? "CATALOGUE" : "CATALOG"}
-          </p>
+    <div className="fresh-catalog bg-clinical min-h-screen" data-testid="catalog-page">
+      <div className="fresh-catalog__intro">
+        <div className="fresh-container">
+          <p className="fresh-kicker">{lang === "fr" ? "FIRONOVA · CATALOGUE" : "FIRONOVA · CATALOG"}</p>
+          <h1 className="font-display">{lang === "fr" ? "La bibliothèque complète" : "The full library"}</h1>
+          <p>{lang === "fr" ? "Recherchez par nom, séquence ou numéro CAS." : "Search by name, sequence, or CAS number."}</p>
         </div>
       </div>
-
-      <div className="max-w-7xl mx-auto px-6 lg:px-8 pb-24">
-        <section>
-          <div className="flex flex-col sm:flex-row gap-3 mb-8">
-            <div className="flex-1 flex items-center gap-2.5 bg-white border border-ash px-5 py-3" style={{ borderRadius: "var(--r-m)" }}>
-              <Search size={16} className="text-glacier shrink-0" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={lang === "fr" ? "Rechercher un composé, un SKU…" : "Search compounds, SKU…"}
-                data-testid="catalog-search"
-                className="flex-1 bg-transparent outline-none text-nordfjord text-[15px] placeholder:text-glacier"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setSort("price-asc")}
-                data-testid="catalog-sort-price-asc"
-                className={`font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border transition-colors ${sort === "price-asc" ? "border-nova text-nova-texte" : "border-ash text-glacier hover:border-nova hover:text-nova-texte"}`} style={{ borderRadius: "var(--r-m)" }}
-              >
-                {lang === "fr" ? "Prix ↑" : "Price ↑"}
-              </button>
-              <button
-                onClick={() => setSort("price-desc")}
-                data-testid="catalog-sort-price-desc"
-                className={`font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border transition-colors ${sort === "price-desc" ? "border-nova text-nova-texte" : "border-ash text-glacier hover:border-nova hover:text-nova-texte"}`} style={{ borderRadius: "var(--r-m)" }}
-              >
-                {lang === "fr" ? "Prix ↓" : "Price ↓"}
-              </button>
-              <button
-                onClick={() => setSort("name")}
-                data-testid="catalog-sort-name"
-                className={`font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border transition-colors ${sort === "name" ? "border-nova text-nova-texte" : "border-ash text-glacier hover:border-nova hover:text-nova-texte"}`} style={{ borderRadius: "var(--r-m)" }}
-              >
-                {lang === "fr" ? "Nom" : "Name"}
-              </button>
-            </div>
+      <main className="fresh-container fresh-catalog__main">
+        <div className="fresh-catalog__tools">
+          <label className="fresh-catalog__search" htmlFor="catalog-query"><Search size={18} aria-hidden="true" /><input id="catalog-query" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={lang === "fr" ? "Rechercher un composé, un SKU…" : "Search compounds, SKU…"} data-testid="catalog-search" /></label>
+          <div className="fresh-catalog__sort" role="group" aria-label={lang === "fr" ? "Trier les produits" : "Sort products"}>
+            <span className="fresh-catalog__sort-label"><SlidersHorizontal size={15} aria-hidden="true" />{lang === "fr" ? "Trier" : "Sort"}</span>
+            {sortOptions.map(([value, label]) => <button type="button" key={value} onClick={() => setSort(value)} aria-pressed={sort === value} data-testid={value === "name" ? "catalog-sort-name" : value === "price-asc" ? "catalog-sort-price-asc" : "catalog-sort-price-desc"} className={sort === value ? "fresh-sort-button is-active" : "fresh-sort-button"}>{label}</button>)}
           </div>
-
-          {loading ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-5 lg:gap-6" data-testid="catalog-loading">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="border border-ash bg-white overflow-hidden animate-pulse" style={{ borderRadius: "var(--r-m)" }}>
-                  <div className="aspect-square bg-clinical" />
-                  <div className="p-5 space-y-3">
-                    <div className="h-4 bg-clinical rounded w-3/4" />
-                    <div className="h-3 bg-clinical rounded w-1/2" />
-                    <div className="h-6 bg-clinical rounded w-1/3 mt-4" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : loadError ? (
-            <div className="py-20 text-center" data-testid="catalog-error">
-              <p className="text-nordfjord font-display text-lg font-semibold mb-2">
-                {lang === "fr" ? "Impossible de charger le catalogue" : "Couldn't load the catalog"}
-              </p>
-              <p className="text-glacier text-sm mb-6">
-                {lang === "fr" ? "Vérifiez votre connexion et réessayez." : "Check your connection and try again."}
-              </p>
-              <button onClick={() => setActiveRetry((n) => n + 1)}
-                className="btn-pill btn-nova" data-testid="catalog-retry">
-                {lang === "fr" ? "Réessayer" : "Retry"}
-              </button>
-            </div>
-          ) : sorted.length === 0 ? (
-            <div className="py-20 text-center" data-testid="catalog-empty">
-              <p className="text-nordfjord font-display text-lg font-semibold mb-2">
-                {query.trim()
-                  ? (lang === "fr" ? `Aucun résultat pour « ${query.trim()} »` : `No results for “${query.trim()}”`)
-                  : (lang === "fr" ? "Aucun composé disponible" : "No compounds available")}
-              </p>
-              <p className="text-glacier text-sm mb-6">
-                {lang === "fr" ? "Essayez un autre terme ou parcourez tout le catalogue." : "Try another term or browse the full catalog."}
-              </p>
-              <button
-                onClick={() => setQuery("")}
-                className="btn-pill btn-outline" data-testid="catalog-reset">
-                {lang === "fr" ? "Effacer la recherche" : "Clear search"}
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-5 lg:gap-6">
-              {sorted.map((p, i) => <ProductCard product={p} key={p.id} index={i} />)}
-            </div>
-          )}
-        </section>
-      </div>
+        </div>
+        {!loading && !loadError && <p className="fresh-catalog__count" aria-live="polite">{lang === "fr" ? resultCount + " produit" + (resultCount === 1 ? "" : "s") : resultCount + " product" + (resultCount === 1 ? "" : "s")}</p>}
+        {loading ? (
+          <div className="fresh-products" data-testid="catalog-loading" aria-label={lang === "fr" ? "Chargement" : "Loading"}>{Array.from({ length: 6 }).map((_, i) => <div key={i} className="fresh-catalog__skeleton"><div /><span /><span /></div>)}</div>
+        ) : loadError ? (
+          <div className="fresh-catalog__message" role="alert" data-testid="catalog-error"><p className="fresh-catalog__message-title">{lang === "fr" ? "Impossible de charger le catalogue" : "Couldn't load the catalog"}</p><p>{lang === "fr" ? "Vérifiez votre connexion et réessayez." : "Check your connection and try again."}</p><button type="button" className="fresh-button" onClick={() => setActiveRetry((n) => n + 1)} data-testid="catalog-retry">{lang === "fr" ? "Réessayer" : "Retry"}<Search size={15} aria-hidden="true" /></button></div>
+        ) : resultCount === 0 ? (
+          <div className="fresh-catalog__message" data-testid="catalog-empty"><p className="fresh-catalog__message-title">{query.trim() ? (lang === "fr" ? "Aucun résultat pour « " + query.trim() + " »" : "No results for “" + query.trim() + "”") : (lang === "fr" ? "Aucun composé disponible" : "No compounds available")}</p><p>{lang === "fr" ? "Essayez un autre terme ou parcourez tout le catalogue." : "Try another term or browse the full catalog."}</p><button type="button" className="btn-pill btn-outline px-4 py-2" onClick={() => setQuery("")} data-testid="catalog-reset">{lang === "fr" ? "Effacer la recherche" : "Clear search"}</button></div>
+        ) : (
+          <div className="fresh-products" data-testid="catalog-grid">{sorted.map((product, index) => <ProductCard product={product} key={product.id || product.slug} index={index} />)}</div>
+        )}
+      </main>
     </div>
   );
 }
