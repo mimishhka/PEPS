@@ -1,282 +1,124 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight, Check, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import ProductCard from "../components/ProductCard.jsx";
-import { MolecularMesh, NovaSpark, Reveal } from "../components/brand";
 import ProductImage from "../components/ProductImage";
 import { TAILLES } from "../lib/derivees";
 
-
 export default function Home() {
   const { t, lang } = useLang();
-  // `coaPageEnabled` n'est PAS lu ici : la page d'accueil ne renvoie jamais
-  // vers /lab. Seul Header.jsx en a besoin, pour masquer l'entree de menu.
   const [products, setProducts] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState(false);
+  const [reloadFeatured, setReloadFeatured] = useState(0);
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
   const [subBusy, setSubBusy] = useState(false);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
+    let active = true;
+    setProductsLoading(true);
+    setProductsError(false);
     api.get("/products", { params: { featured: true } })
-      // L'ACCUEIL MONTRE CE QUE L'ADMIN A MARQUE (rapport E2E #20). Une
-      // coupe a quatre ignorait deux des six produits vedettes : le site
-      // contredisait la configuration sans le dire. La borne a huit reste
-      // par prudence — deux rangees pleines sur grand ecran — pour qu'un
-      // marquage massif ne transforme pas l'accueil en catalogue.
-      .then((r) => setProducts(r.data.slice(0, 8)))
-      .catch(() => {});
-  }, []);
+      .then((r) => {
+        if (!active) return;
+        if (!Array.isArray(r.data)) throw new Error("Invalid featured products response");
+        setProducts(r.data.slice(0, 8));
+      })
+      .catch(() => { if (active) setProductsError(true); })
+      .finally(() => { if (active) setProductsLoading(false); });
+    return () => { active = false; };
+  }, [reloadFeatured]);
 
   const subscribe = async (e) => {
     e.preventDefault();
-    if (!consent) {
-      toast.error(t("home.newsletterConsentRequired"));
-      return;
-    }
+    if (!consent) { toast.error(t("home.newsletterConsentRequired")); return; }
     setSubBusy(true);
     try {
-      const { data } = await api.post("/newsletter/subscribe", {
-        email: email.trim(),
-        consent,
-        lang,
-        source: "home",
-      });
+      const { data } = await api.post("/newsletter/subscribe", { email: email.trim(), consent, lang, source: "home" });
       toast.success(data.already_subscribed ? t("home.newsletterAlready") : t("home.newsletterOk"));
-      setEmail("");
-      setConsent(false);
-      setDone(true);
+      setEmail(""); setConsent(false); setDone(true);
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || t("home.newsletterError"));
-    } finally {
-      setSubBusy(false);
-    }
+    } finally { setSubBusy(false); }
   };
 
   const trustItems = [t("home.trustTested"), t("home.trustCanada"), t("home.trustPurity"), t("home.trustDiscreet")];
-
-
-  const heroTitle = lang === "fr"
-    ? { a: "Peptides de précision", b: "pour la recherche." }
-    : { a: "Precision peptides", b: "for research." };
-  const heroEyebrow = lang === "fr" ? "PEPTIDES DE RECHERCHE CANADIENS" : "CANADIAN RESEARCH PEPTIDES";
-  // La phrase « Sobriete nordique, conformite bilingue complete » a ete
-  // retiree le 2026-09-22. « Sobriete nordique » est un mot de CHARTE
-  // GRAPHIQUE : la palette s'appelle nordfjord, glacier, nova : et il
-  // decrivait donc a quoi ressemble le site, a quelqu'un qui est deja en
-  // train de le regarder. Il ne disait rien du produit.
-  //
-  // « Conformite bilingue » est une obligation legale au Quebec : tous les
-  // concurrents y sont tenus, ce n'est pas une raison d'acheter ici.
-  //
-  // Restent deux affirmations verifiables, que la troisieme diluait.
+  const heroTitle = lang === "fr" ? { a: "Peptides de précision", b: "pour la recherche." } : { a: "Precision peptides", b: "for research." };
   const heroLede = lang === "fr"
     ? "Testés par HPLC en laboratoire indépendant. Certificat d'analyse fourni pour les lots documentés."
     : "HPLC-tested by an independent lab. Certificate of analysis provided for documented lots.";
   const ctaPrimary = lang === "fr" ? "Voir le catalogue" : "Browse the catalog";
   const ctaSecondary = lang === "fr" ? "Nos standards" : "Our standards";
-
-  // CINQ CHOSES EMPILEES, RETIREES ENSEMBLE le 2026-09-22.
-  //
-  // « 01 : » numerotait une liste d'UN SEUL element : il n'y avait ni 02
-  // ni 03. De la structure decorative, qui imite un sommaire sans en etre
-  // un.
-  //
-  // « Une purete documentee » ne titrait pas ce qu'il surplombait : une
-  // GRILLE DE PRODUITS. Quelqu'un qui balaie la page veut savoir ce qu'il
-  // regarde, et lisait une qualite abstraite.
-  //
-  // « Aucun bruit » est du vocabulaire de design : pas de bruit VISUEL.
-  // Dans un catalogue de peptides, quel bruit ? Et « chaque compose gagne
-  // sa place » personnifie ce qui ne gagne rien.
-  //
-  // Surtout : la section REPETAIT le hero, qui annonce deja HPLC,
-  // laboratoire independant et certificat par lot. La meme affirmation
-  // deux fois dans le meme ecran de defilement n'ajoute pas, elle affaiblit
-  // la premiere : on comprend que c'est du remplissage.
-  //
-  // Reste l'intitule. Les produits se lisent tout seuls.
   const featTitle = lang === "fr" ? "Composés en vedette" : "Featured compounds";
   const featAll = lang === "fr" ? "Voir tout le catalogue" : "View full catalog";
-  // L'en-tete etait ecrit EN DUR en anglais : « Newsletter » s'affichait tel
-  // quel sur la version francaise, sur un commerce quebecois bilingue.
-  const newsEyebrow = lang === "fr" ? "INFOLETTRE" : "NEWSLETTER";
-  const newsTitle = lang === "fr" ? "Sorties de lots & notes de recherche" : "Lot releases & research notes";
-  // AUCUNE FREQUENCE N'EST PROMISE.
-  //
-  // Le texte annoncait « un courriel precis par mois ». C'est la phrase qui
-  // rassure le plus : et celle qu'on regrette le plus tot : le mois ou il y a
-  // trois lots a annoncer, ou le mois ou il n'y a rien, la promesse est
-  // rompue. Une promesse tenue au hasard vaut moins que pas de promesse.
-  //
-  // « Conforme a la LCAP » est parti aussi : la case de consentement porte
-  // deja toute l'obligation legale, et l'acronyme rassure un juriste, pas une
-  // acheteuse.
-  //
-  // « rapports de lots » devient « certificats d'analyse » : c'est le mot que
-  // le reste du site emploie. Deux mots pour la meme chose sur une page, c'en
-  // est un de trop.
+  const newsTitle = lang === "fr" ? "Notes de recherche et nouveautés" : "Research notes & new releases";
   const newsLede = lang === "fr"
-    ? "Nouveaux lots, certificats d'analyse, r\u00e9assorts. D\u00e9sabonnez-vous \u00e0 tout moment."
-    : "New lots, certificates of analysis, restocks. Unsubscribe at any time.";
+    ? "Nouveaux lots, certificats d'analyse et réassorts. Désabonnez-vous à tout moment."
+    : "New lots, certificates of analysis, and restocks. Unsubscribe at any time.";
   const newsLabel = lang === "fr" ? "Adresse courriel" : "Email address";
-  // E2E AU-015 : le message laissait croire que l'inscription etait deja
-  // confirmee, alors que la regle est le double opt-in : la confirmation
-  // arrive PAR COURRIEL.
-  const newsDone = lang === "fr"
-    ? "Vérifiez votre courriel pour confirmer votre inscription."
-    : "Check your inbox to confirm your subscription.";
+  const newsDone = lang === "fr" ? "Vérifiez votre courriel pour confirmer votre inscription." : "Check your inbox to confirm your subscription.";
+  const featuredProduct = products[0];
+  const featuredName = featuredProduct
+    ? (lang === "fr" ? featuredProduct.name_fr || featuredProduct.name : featuredProduct.name_en || featuredProduct.name)
+    : "";
 
   return (
-    <div data-testid="home-page">
-      {/* HERO : « image d'abord » : la photo du produit vedette porte la
-          page, le texte est pose dessus, discret. Sans image disponible, la
-          maille moleculaire de la marque prend le relais. */}
-      <section className="relative overflow-hidden texture-bruit" data-testid="hero-section" style={{ minHeight: "min(78vh, 640px)" }}>
-        <div className="absolute inset-0">
-          {products[0] ? (
-            <ProductImage
-              src={products[0].image_url}
-              slug={products[0].slug}
-              alt={products[0].name_fr || "FIRONOVA"}
-              className="w-full h-full"
-              imgClassName="w-full h-full object-cover"
-              loading="eager"
-              fetchPriority="high"
-              sizes={TAILLES.hero}
-            />
-          ) : (
-            <MolecularMesh opacity={0.4} />
-          )}
-          {/* LE VOILE, ET POURQUOI IL EST PLUS APPUYE EN BAS.
-              MIREILLE, 11/10/2026 : « ici le texte n'est pas lisible ».
-              Le texte est pose en BAS du hero (`justify-end`), mais le voile
-              n'y montait qu'a 0,72 et restait a 0,08 au milieu : sur une
-              photo claire, le blanc du texte se posait sur du presque blanc.
-              Le degrade garde le haut aere — la photo du flacon doit se voir
-              — et descend franchement sur le tiers bas, la ou la copie vit.
-              Audit du 06/10, point 8 : « voile sous le hero ». */}
-          <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgba(11,46,79,.40) 0%, rgba(11,46,79,.14) 30%, rgba(11,46,79,.62) 68%, rgba(11,46,79,.90) 100%)" }} />
+    <div className="fresh-home" data-testid="home-page">
+      <section className="fresh-hero" data-testid="hero-section">
+        <div className="fresh-hero__copy">
+          <p className="fresh-kicker">FIRONOVA <span>·</span> {lang === "fr" ? "Approvisionnement de recherche" : "Research supply"}</p>
+          <h1 className="font-display" data-testid="hero-title"><span>{heroTitle.a}</span><span className="fresh-accent">{heroTitle.b}</span></h1>
+          <p className="fresh-hero__lede">{heroLede}</p>
+          <div className="fresh-actions">
+            <Link to="/catalog" className="fresh-button" data-testid="hero-cta-catalog">{ctaPrimary}<ArrowRight size={17} aria-hidden="true" /></Link>
+            <Link to="/about" className="fresh-text-link" data-testid="hero-cta-lab">{ctaSecondary}</Link>
+          </div>
+          <p className="fresh-hero__note">For research use only · Usage recherche uniquement</p>
         </div>
-        <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 flex flex-col justify-end" style={{ minHeight: "inherit" }}>
-          <div className="pt-14 lg:pt-20 pb-16 lg:pb-24">
-            <Reveal>
-              {/* LE CYAN DE L'ACCROCHE N'EST PAS CELUI DU TITRE, ET C'EST
-                  VOULU. Nova pur (#00B8D4) sur le voile donne environ 3:1 :
-                  cela suffit pour le titre, qui fait 34 px — les grandes
-                  tailles demandent 3:1 — mais pas pour ces 10,5 px en
-                  capitales, qui en demandent 4,5. Le cyan pale du bandeau de
-                  conformite, deja employe sur fond marine, en donne 5. La
-                  couleur d'accent se module donc selon la TAILLE du texte,
-                  ce qui est exactement ce que la regle de contraste dit. */}
-              <p className="font-data text-[10.5px] uppercase tracking-[0.26em] mb-4" style={{ color: "#9FD9E8" }}>
-                {heroEyebrow}
-              </p>
-              {/* LE TITRE ETAIT LE SEUL TEXTE SOMBRE PARMI DES TEXTES CLAIRS.
-                  Sans classe de couleur, il heritait du bleu marine du corps
-                  de page pendant que l'accroche, le texte et le lien second
-                  etaient en blanc. Sur fond clair le titre se lisait et le
-                  reste disparaissait ; sur fond sombre, l'inverse. Aucune
-                  photo ne pouvait rendre les quatre lisibles ensemble. */}
-              <h1 className="font-display font-medium leading-[1.2] tracking-[-0.01em] max-w-[26ch] text-clinical" style={{ fontSize: "clamp(24px,3.4vw,34px)" }} data-testid="hero-title">
-                {heroTitle.a}{" "}
-                <span className="text-nova">{heroTitle.b}</span>
-              </h1>
-              <p className="text-sm max-w-[44ch] leading-relaxed mt-3" style={{ color: "rgba(247,250,252,.92)" }}>{heroLede}</p>
-              <div className="mt-5 flex items-center gap-5">
-                <Link to="/catalog" data-testid="hero-cta-catalog"
-                  className="inline-block bg-white text-nordfjord text-[13px] font-medium tracking-[0.04em] px-6 py-3 hover:bg-nova hover:text-white transition-colors" style={{ borderRadius: "var(--r-m)" }}>
-                  {ctaPrimary}
-                </Link>
-                {/* Le second geste reste, mais comme un lien discret : le hero
-                    n'a qu'un bouton, le texte porte le reste. */}
-                <Link to="/about" data-testid="hero-cta-lab"
-                  className="text-white/90 text-[13px] hover:text-nova transition-colors">
-                  {ctaSecondary}
-                </Link>
-              </div>
-            </Reveal>
+        <div className="fresh-hero__visual" aria-label={lang === "fr" ? "Produit en vedette" : "Featured product"}>
+          {featuredProduct ? (
+            <ProductImage src={featuredProduct.image_url} slug={featuredProduct.slug} alt={featuredProduct.name_fr || featuredProduct.name || "FIRONOVA"} className="fresh-hero__image" imgClassName="w-full h-full object-contain" loading="eager" fetchPriority="high" sizes={TAILLES.hero} />
+          ) : <div className="fresh-hero__placeholder" aria-hidden="true">F</div>}
+          {featuredProduct && <div className="fresh-product-label"><small>{lang === "fr" ? "En vedette" : "Featured"}</small><strong>{featuredName}</strong></div>}
+        </div>
+      </section>
+
+      <section className="fresh-trust" data-testid="trust-marquee" aria-label={lang === "fr" ? "Nos engagements" : "Our standards"}>
+        {trustItems.map((item, index) => <div className="fresh-trust__item" key={index + "-" + item}><Check size={17} strokeWidth={2.4} className="fresh-trust__icon" aria-hidden="true" /><span>{item}</span></div>)}
+      </section>
+
+      <section className="fresh-section" data-testid="featured-products">
+        <div className="fresh-container">
+          <div className="fresh-section__head">
+            <div><h2>{featTitle}</h2><p>{lang === "fr" ? "Parcourez les produits actuellement mis en avant." : "Browse the products currently featured."}</p></div>
+            <Link to="/catalog" className="btn-pill btn-outline group inline-flex items-center gap-2 px-5 py-3" data-testid="view-all-catalog">{featAll}<ArrowRight size={16} aria-hidden="true" /></Link>
+          </div>
+          <div className="fresh-products">
+            {productsLoading ? <div className="fresh-status" role="status" data-testid="featured-loading">{lang === "fr" ? "Chargement des produits…" : "Loading products…"}</div>
+              : productsError ? <div className="fresh-status" role="alert" data-testid="featured-error"><p>{lang === "fr" ? "Les produits n'ont pas pu être chargés." : "We couldn't load the products."}</p><button type="button" className="btn-pill btn-outline inline-flex items-center gap-2 px-4 py-2" onClick={() => setReloadFeatured((n) => n + 1)}><RotateCw size={15} aria-hidden="true" />{lang === "fr" ? "Réessayer" : "Try again"}</button></div>
+                : products.length ? products.map((product, index) => <ProductCard key={product.id || product.slug} product={product} index={index} />)
+                  : <div className="fresh-status" data-testid="featured-empty">{lang === "fr" ? "Aucun produit en vedette pour le moment." : "No featured products right now."}</div>}
           </div>
         </div>
       </section>
 
-      {/* BANDE DE CONFIANCE : statique, chaque affirmation une fois. Le
-          defilement perpetuel de 24 items violait WCAG 2.2.2 (mouvement non
-          controlable) et le monde (un seul geste de mouvement par page). */}
-      <section className="border-y border-ash" data-testid="trust-marquee">
-        <div className="max-w-7xl mx-auto py-4 flex flex-wrap gap-x-10 gap-y-2">
-          {trustItems.map((it, i) => (
-            <span key={i} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "12px", fontWeight: 500, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--glacier)", whiteSpace: "nowrap" }}>
-              <NovaSpark size={13} /> {it}
-            </span>
-          ))}
-        </div>
-      </section>
-
-      {/* PRODUITS EN VEDETTE : un seul message, pas d etiquette au-dessus. */}
-      <section className="py-20 lg:py-32" data-testid="featured-products">
-        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-end justify-between gap-6 mb-12">
-            <h2 className="font-display text-[22px] sm:text-[26px] font-semibold text-nordfjord leading-[1.1] tracking-[-0.01em]">{featTitle}</h2>
-            <Link to="/catalog" data-testid="view-all-catalog" className="btn-pill btn-outline group">
-              {featAll} <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-5 lg:gap-6">
-            {products.map((p, i) => (
-              <ProductCard key={p.id} product={p} index={i} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* INFOLETTRE : section claire a filet : une page, un theme. Le
-          bandeau sombre isole etait une rupture de theme que le skill
-          interdit ; le contenu, lui, ne change pas. */}
-      <section className="py-20 lg:py-28 border-t border-ash" data-testid="newsletter-section">
-        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
-          <div className="relative max-w-2xl">
-            <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte mb-2 lg:absolute lg:top-0 lg:right-0 lg:mb-0">{newsEyebrow}</p>
-            <h2 className="font-display text-[22px] sm:text-[26px] font-semibold text-nordfjord mb-3 tracking-[-0.01em]">{newsTitle}</h2>
-            <p className="text-glacier text-[14px] mb-8 max-w-[52ch]">{newsLede}</p>
-            {done ? (
-              <p className="inline-flex items-center gap-2.5 text-nova-texte font-semibold"><Check size={18} /> {newsDone}</p>
-            ) : (
-              <form onSubmit={subscribe} className="space-y-4" data-testid="newsletter-form">
-                <div>
-                  <label htmlFor="newsletter-email" className="block text-[13px] font-semibold text-nordfjord mb-2">
-                    {newsLabel}
-                  </label>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                      placeholder={t("home.newsletterPlaceholder")}
-                      className="flex-1 bg-white border border-ash text-nordfjord px-5 py-3 outline-none text-[15px]"
-                      style={{ borderRadius: "var(--r-m)" }}
-                      id="newsletter-email" data-testid="newsletter-input" />
-                    <button type="submit" disabled={subBusy}
-                      className="btn-pill btn-nova disabled:opacity-40 disabled:pointer-events-none"
-                      data-testid="newsletter-submit">{t("home.subscribe")}</button>
-                  </div>
+      <section className="fresh-newsletter" data-testid="newsletter-section">
+        <div className="fresh-container">
+          <div className="fresh-newsletter__panel">
+            <div><p className="fresh-kicker">{lang === "fr" ? "Infolettre" : "Newsletter"}</p><h2>{newsTitle}</h2><p>{newsLede}</p></div>
+            {done ? <div className="fresh-newsletter__success" role="status"><Check size={20} aria-hidden="true" /><span>{newsDone}</span></div> : (
+              <form onSubmit={subscribe} data-testid="newsletter-form">
+                <label htmlFor="newsletter-email">{newsLabel}</label>
+                <div className="fresh-newsletter__field">
+                  <input id="newsletter-email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("home.newsletterPlaceholder")} data-testid="newsletter-input" />
+                  <button type="submit" disabled={subBusy} data-testid="newsletter-submit">{subBusy ? (lang === "fr" ? "Envoi…" : "Sending…") : t("home.subscribe")}</button>
                 </div>
-                {/* LA CASE DE CONSENTEMENT EST UNE CASE, PAS UN DÉTAIL.
-                    Audit, section 1 : les cibles sous 44 px font rater le
-                    tap. 16 px de côté, c'était la plus petite du site — et
-                    c'est la case qui décide si l'infolettre part ou non.
-                    Elle passe à 24 px (`accent-color` la peint, donc elle
-                    grandit sans se déformer), et le `<label>` l'englobe
-                    déjà : toute la ligne de texte est cliquable, ce qui
-                    donne une rangée de 44 px de haut sur toute sa largeur.
-                    `items-center` plutôt que `items-start` : à 24 px, une
-                    case alignée sur le haut d'un texte de deux lignes
-                    flottait au-dessus de lui. */}
-                <label className="flex items-center gap-3 py-1.5 text-[12px] text-glacier cursor-pointer select-none">
-                  <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
-                    className="shrink-0 accent-[#00B8D4] w-6 h-6" data-testid="newsletter-consent" />
-                  {t("home.newsletterConsent")}
-                </label>
+                <label className="fresh-newsletter__consent"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} data-testid="newsletter-consent" /><span>{t("home.newsletterConsent")}</span></label>
               </form>
             )}
           </div>
