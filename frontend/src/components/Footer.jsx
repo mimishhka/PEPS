@@ -12,6 +12,9 @@ const FALLBACK_COLS = [
     { to: "/catalog", labelKey: "nav.catalog" },
     { to: "/about", labelKey: "nav.about" },
     { to: "/lab", labelKey: "nav.lab" },
+    // « Lire un COA » vit a cote du laboratoire et non dans la colonne
+    // juridique : c'est de la documentation produit, pas une condition.
+    { to: "/certificats", labelKey: "footer.certificats" },
   ]},
   { key: "legal", titleKey: "footer.legal", links: [
     { to: "/compliance", labelKey: "footer.terms" },

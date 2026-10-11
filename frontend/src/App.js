@@ -41,6 +41,7 @@ const About = lazy(() => import("./pages/About"));
 const Lab = lazy(() => import("./pages/Lab"));
 const Compliance = lazy(() => import("./pages/Compliance"));
 const Privacy = lazy(() => import("./pages/Privacy"));
+const Certificats = lazy(() => import("./pages/Certificats"));
 const Faq = lazy(() => import("./pages/Faq"));
 const AffiliateDashboard = lazy(() => import("./pages/AffiliateDashboard"));
 const AffiliateJoin = lazy(() => import("./pages/AffiliateJoin"));
@@ -159,6 +160,7 @@ function AppRoutes() {
       <Route path="/lab" element={<LabRoute />} />
       <Route path="/compliance" element={<Compliance />} />
       <Route path="/privacy" element={<Privacy />} />
+      <Route path="/certificats" element={<Certificats />} />
       <Route path="/faq" element={<Faq />} />
       <Route path="/affiliate/join" element={<AffiliateJoin />} />
       {/* Sans garde de session, mais PAS publique pour autant : la page ne
