@@ -72,7 +72,7 @@ export default function Header() {
           pâle écrit dessus, parfait sur bleu marine, disparaissait alors sur
           fond blanc. La nuit, le texte passe donc à l'encre sombre : c'est la
           paire fond/texte qui porte le contraste, pas la valeur. */}
-      <div className="bg-nordfjord text-center py-2 px-4 font-data text-[11px] font-semibold uppercase tracking-[0.22em] text-[#9FD9E8] dark:text-clinical">
+      <div className="bg-nordfjord text-center py-2 px-4 font-data text-[11px] font-semibold uppercase tracking-[0.22em] text-[#BFE6D8] dark:text-clinical">
         <span data-testid="header-compliance-band">{t("footer.compliance")}</span>
       </div>
       <header className="sticky top-0 z-40 bg-clinical/85 backdrop-blur border-b border-ash/70">
@@ -96,7 +96,7 @@ export default function Header() {
               valeur s'inverse. L'étoile garde son Nova Cyan : c'est l'accent
               unique, et il tient sur les deux fonds. */}
           <Link to="/" data-testid="header-logo" className="flex items-center gap-2 sm:gap-3 group text-nordfjord shrink-0" aria-label="FIRONOVA">
-            <FnMark size={30} frame="currentColor" spark="#00B8D4" className="transition-transform duration-500 group-hover:rotate-[30deg]" />
+            <FnMark size={30} frame="currentColor" spark="#087A63" className="transition-transform duration-500 group-hover:rotate-[30deg]" />
             {/* SOUS 430 PX, LA MARQUE PORTE SEULE LE LOGO.
                 430 px est la largeur du plus grand téléphone courant en
                 portrait : au-delà on est sur une tablette ou un ordinateur,
