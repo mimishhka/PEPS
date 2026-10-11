@@ -109,6 +109,28 @@
   --error:     rgb(var(--fn-error));
   --compliance:rgb(var(--fn-compliance));
 
+  /* LE TEXTE POSE SUR UN VOILE FIXE, ET POURQUOI IL NE S'INVERSE PAS.
+   *
+   * Le hero pose sa copie sur un degrade code en dur — rgba(11,46,79,...) —
+   * qui reste bleu marine dans les deux modes. Un jeton ordinaire y serait un
+   * piege : `--fn-clinical` vaut #F7FAFC le jour et #0A0F14 la nuit, donc un
+   * titre « clair » deviendrait presque noir sur un fond reste marine.
+   *
+   * C'est exactement le defaut que Mireille a signale le 11/10/2026 (« ici le
+   * texte n'est pas lisible »), et je l'ai reintroduit dans l'autre mode en le
+   * corrigeant : le verificateur de coherence l'a attrape avant la cliente.
+   *
+   * Ces trois valeurs sont donc STABLES d'un mode a l'autre, par construction,
+   * et n'apparaissent pas dans le bloc nuit plus bas. Fond fixe, texte fixe :
+   * la regle tient tant que le voile est code en dur.
+   *
+   * L'accent est le cyan pale et non Nova : a 10,5 px en capitales il faut
+   * 4,5:1, or Nova sur ce voile en donne 3. Nova reste bon pour le titre, qui
+   * fait 34 px et n'en demande que 3. */
+  --sur-voile:        #F7FAFC;
+  --sur-voile-doux:   rgba(247, 250, 252, 0.92);
+  --sur-voile-accent: #9FD9E8;
+
   --sp: 8px;
 
   /* ECHELLE DE RAYON — « Fiche de laboratoire » (2026-09-23).
@@ -344,6 +366,11 @@
   .font-display { font-family: var(--display); }
   .font-body    { font-family: var(--body); }
   .font-data    { font-family: var(--data); font-variant-numeric: tabular-nums; }
+
+  /* Le texte pose sur le voile du hero. Voir les jetons `--sur-voile`. */
+  .sur-voile        { color: var(--sur-voile); }
+  .sur-voile-doux   { color: var(--sur-voile-doux); }
+  .sur-voile-accent { color: var(--sur-voile-accent); }
 
   /* eyebrow label — nova tick + tracked caps */
   .eyebrow {

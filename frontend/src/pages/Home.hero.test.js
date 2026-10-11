@@ -52,7 +52,41 @@ describe("tout le texte du hero va dans le même sens", () => {
     // fermee. Elle a raison de ne pas savoir distinguer les deux.
     const titre = hero().match(new RegExp(`<${"h1"}[^>]*data-testid="hero-title"`, "s"));
     expect(titre).not.toBeNull();
-    expect(titre[0]).toMatch(/text-clinical|text-white/);
+    expect(titre[0]).toMatch(/sur-voile/);
+  });
+
+  test("LA COULEUR DU TITRE NE S'INVERSE PAS LA NUIT", () => {
+    /* Le piège que j'ai tendu en corrigeant le premier, et que le
+     * vérificateur de cohérence a attrapé avant la cliente.
+     *
+     * Le voile du hero est codé en dur — rgba(11,46,79,…) — donc il reste
+     * bleu marine dans les deux modes. `text-clinical` vaut #F7FAFC le jour
+     * et #0A0F14 la nuit : un titre « clair » serait devenu presque noir sur
+     * un fond resté marine. Le même défaut, dans l'autre mode.
+     *
+     * Fond fixe, texte fixe : c'est la règle, et `--sur-voile` la tient par
+     * construction — ces jetons n'apparaissent pas dans le bloc nuit. */
+    const titre = hero().match(new RegExp(`<${"h1"}[^>]*data-testid="hero-title"`, "s"));
+    expect(titre[0]).not.toMatch(/text-clinical|text-nordfjord/);
+
+    /* Le bloc nuit est borne par son SELECTEUR et son accolade fermante, et
+     * non par une ligne reperee au jugé. Le premier jet découpait depuis
+     * « --fn-clinical: 10 15 20 » : une redefinition placée une ligne plus
+     * haut passait au travers, et la mutation de contrôle l'a prouvé — elle
+     * n'a fait tomber aucun test. Un filet qui dépend de l'ordre des lignes
+     * n'est pas un filet. */
+    const css = fs.readFileSync(path.join(__dirname, "..", "index.css"), "utf8");
+    const ouverture = css.indexOf(".dark {");
+    expect(ouverture).toBeGreaterThan(-1);
+    // Le bloc ne contient que des déclarations, jamais de règle imbriquée :
+    // la première accolade fermante est bien la sienne.
+    const nuit = css.slice(ouverture, css.indexOf("}", ouverture) + 1);
+    expect(nuit).toContain("--fn-clinical");
+
+    for (const jeton of ["--sur-voile:", "--sur-voile-doux:", "--sur-voile-accent:"]) {
+      expect(css).toContain(jeton);
+      expect(nuit).not.toContain(jeton);
+    }
   });
 
   test("l'accroche n'est pas en Nova pur : 10,5 px en demandent 4,5:1", () => {
@@ -64,11 +98,11 @@ describe("tout le texte du hero va dans le même sens", () => {
     const accroche = hero().match(/<p className="font-data text-\[10\.5px\][^>]*>/s);
     expect(accroche).not.toBeNull();
     expect(accroche[0]).not.toMatch(/text-nova\b/);
-    expect(accroche[0]).toMatch(/#9FD9E8/i);
+    expect(accroche[0]).toMatch(/sur-voile-accent/);
   });
 
   test("le texte d'accroche et le lien second restent lisibles", () => {
-    expect(hero()).toMatch(/rgba\(247,250,252,\.9\d?\)/);
+    expect(hero()).toMatch(/sur-voile-doux/);
     expect(SOURCE).not.toMatch(/text-white\/70/);
   });
 });

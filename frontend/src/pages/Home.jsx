@@ -172,7 +172,7 @@ export default function Home() {
                   conformite, deja employe sur fond marine, en donne 5. La
                   couleur d'accent se module donc selon la TAILLE du texte,
                   ce qui est exactement ce que la regle de contraste dit. */}
-              <p className="font-data text-[10.5px] uppercase tracking-[0.26em] mb-4" style={{ color: "#9FD9E8" }}>
+              <p className="font-data text-[10.5px] uppercase tracking-[0.26em] mb-4 sur-voile-accent">
                 {heroEyebrow}
               </p>
               {/* LE TITRE ETAIT LE SEUL TEXTE SOMBRE PARMI DES TEXTES CLAIRS.
@@ -181,11 +181,11 @@ export default function Home() {
                   etaient en blanc. Sur fond clair le titre se lisait et le
                   reste disparaissait ; sur fond sombre, l'inverse. Aucune
                   photo ne pouvait rendre les quatre lisibles ensemble. */}
-              <h1 className="font-display font-medium leading-[1.2] tracking-[-0.01em] max-w-[26ch] text-clinical" style={{ fontSize: "clamp(24px,3.4vw,34px)" }} data-testid="hero-title">
+              <h1 className="font-display font-medium leading-[1.2] tracking-[-0.01em] max-w-[26ch] sur-voile" style={{ fontSize: "clamp(24px,3.4vw,34px)" }} data-testid="hero-title">
                 {heroTitle.a}{" "}
                 <span className="text-nova">{heroTitle.b}</span>
               </h1>
-              <p className="text-sm max-w-[44ch] leading-relaxed mt-3" style={{ color: "rgba(247,250,252,.92)" }}>{heroLede}</p>
+              <p className="text-sm max-w-[44ch] leading-relaxed mt-3 sur-voile-doux">{heroLede}</p>
               <div className="mt-5 flex items-center gap-5">
                 <Link to="/catalog" data-testid="hero-cta-catalog"
                   className="inline-block bg-white text-nordfjord text-[13px] font-medium tracking-[0.04em] px-6 py-3 hover:bg-nova hover:text-white transition-colors" style={{ borderRadius: "var(--r-m)" }}>
