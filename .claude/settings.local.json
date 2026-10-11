@@ -7,7 +7,8 @@
       "Bash(git add *)",
       "Bash(git commit *)",
       "Bash(rm -f .git/MSG_PERIODE)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(awk 'NR>=1380 && NR<=1435 && \\(/tab === \"/ || /ACTIVIT/\\)' frontend/src/pages/AffiliateDashboard.jsx)"
     ]
   },
   "hooks": {

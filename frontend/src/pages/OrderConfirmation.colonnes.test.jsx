@@ -81,9 +81,15 @@ const rendre = (commande) => {
 };
 
 describe("sans instructions de paiement, le récapitulatif a toute la largeur", () => {
-  /* Les quatre états où la cliente n'a plus rien à payer. Le cas de Mireille
-   * est « refunded » ; les trois autres étaient tout aussi écrasés. */
-  const ETATS_SANS_PAIEMENT = ["paid", "refunded", "cancelled", "failed"];
+  /* Les états où la colonne de gauche n'a rien à montrer : plus rien à
+   * payer, et pas de suivi non plus — une commande remboursée, annulée ou
+   * échouée n'est pas en route, la frise mentirait.
+   *
+   * « paid » EST SORTI DE CETTE LISTE le 11/10/2026, et c'est un progrès et
+   * non un recul : depuis l'audit de l'espace client, une commande payée
+   * affiche son suivi à gauche. La colonne n'est plus vide parce qu'on y a
+   * mis ce qui manquait — voir le groupe suivant. */
+  const ETATS_SANS_PAIEMENT = ["refunded", "cancelled", "failed"];
 
   test.each(ETATS_SANS_PAIEMENT)("« %s » : pas de grille à deux colonnes", (statut) => {
     rendre({ payment_status: statut });
@@ -112,6 +118,36 @@ describe("sans instructions de paiement, le récapitulatif a toute la largeur", 
     expect(screen.queryByTestId("crypto-instructions")).toBeNull();
     // Et le détail est bien là, pas perdu en route.
     expect(recap()).toHaveTextContent(/BPC-157/);
+  });
+});
+
+describe("une commande payée montre son suivi à gauche", () => {
+  /* Audit de l'espace client du 06/10/2026, sections 2, 5 et 6 : la colonne
+   * de gauche était vide sur la page la plus consultée après achat, et le
+   * suivi — étapes, adresse, numéro — n'était nulle part. Les deux constats
+   * n'en font qu'un. */
+  test("la grille à deux colonnes revient", () => {
+    rendre({ payment_status: "paid" });
+    expect(grille().className).toMatch(/grid-cols-\[1\.25fr_\.75fr\]/);
+    expect(grille().children).toHaveLength(2);
+  });
+
+  test("et la colonne de gauche porte bien le suivi", () => {
+    rendre({ payment_status: "paid" });
+    expect(screen.getByTestId("suivi-commande")).toBeInTheDocument();
+    expect(grille().children[0]).toContainElement(screen.getByTestId("suivi-commande"));
+  });
+
+  test("UNE COMMANDE REMBOURSÉE N'AFFICHE PAS DE FRISE", () => {
+    // Elle n'est pas en route : des étapes « Expédiée → Livrée » y seraient
+    // un mensonge, et c'est le cas exact que Mireille avait sous les yeux.
+    rendre({ payment_status: "refunded", refund_status: "processed" });
+    expect(screen.queryByTestId("suivi-commande")).toBeNull();
+  });
+
+  test("ni une commande qui attend encore son paiement", () => {
+    rendre({ payment_status: "awaiting_etransfer", payment_info: INSTRUCTIONS_INTERAC });
+    expect(screen.queryByTestId("suivi-commande")).toBeNull();
   });
 });
 

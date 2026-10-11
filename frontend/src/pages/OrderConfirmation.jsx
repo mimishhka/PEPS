@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useParams, useLocation, Link } from "react-router-dom";
-import { Copy, Check, X, Landmark, Wallet, ShieldCheck, CircleCheck, TriangleAlert, Clock, Package } from "lucide-react";
+import { Copy, Check, X, Landmark, Wallet, ShieldCheck, TriangleAlert, Clock, Package } from "lucide-react";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import { useConfirm } from "../components/ConfirmDialog";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { prix } from "../lib/prix";
+import SuiviCommande from "../components/SuiviCommande";
+import { suiviPertinent } from "../lib/suivi";
 import { delaiLisible, resteLisible } from "../lib/delais";
 import ModuleCrypto from "../components/ModuleCrypto";
 
@@ -201,6 +203,22 @@ export default function OrderConfirmation() {
    */
   const instructionsDePaiement = !!(interac || np);
 
+  /* « OÙ EN EST MA COMMANDE ? » — LA COLONNE DE GAUCHE A ENFIN UNE RÉPONSE.
+   *
+   * Audit de l'espace client du 06/10/2026, @mishka, section 5 : « Aucun
+   * indicateur d'étape. La page commande n'affiche ni l'adresse de
+   * livraison, ni le numéro de suivi. C'est pourtant la raison n°1 pour
+   * laquelle un client ouvre son compte. » Et sections 2 et 6 : « Page
+   * commande sur grand écran : la moitié gauche est vide. Suivi à gauche,
+   * articles à droite. »
+   *
+   * Les deux constats n'en font qu'un : la colonne était vide PARCE QUE le
+   * suivi n'existait pas. On la remplit de ce qui manquait plutôt que de
+   * l'escamoter — c'est l'information attendue qui prend la place, pas du
+   * remplissage. */
+  const montrerSuivi = suiviPertinent(order);
+  const colonneGauche = instructionsDePaiement || montrerSuivi;
+
   // L'ÉTAT DU PAIEMENT N'EST PAS UN BINAIRE.
   //
   // La page ne connaissait que « payée » ou « pas payée ». Or une commande
@@ -212,28 +230,28 @@ export default function OrderConfirmation() {
   // normal d'une commande fraîche.
   const ETATS_PAIEMENT = {
     paid: {
-      bandeau: lang === "fr" ? "// COMMANDE CONFIRMÉE" : "// ORDER CONFIRMED",
+      bandeau: lang === "fr" ? "COMMANDE CONFIRMÉE" : "ORDER CONFIRMED",
       titre: lang === "fr" ? "Commande confirmée" : "Order confirmed",
       phrase: lang === "fr"
         ? "Merci ! Votre paiement est confirmé et votre commande est en préparation."
         : "Thank you! Your payment is confirmed and your order is being prepared.",
     },
     refunded: {
-      bandeau: lang === "fr" ? "// COMMANDE REMBOURSÉE" : "// ORDER REFUNDED",
+      bandeau: lang === "fr" ? "COMMANDE REMBOURSÉE" : "ORDER REFUNDED",
       titre: lang === "fr" ? "Commande remboursée" : "Order refunded",
       phrase: lang === "fr"
         ? "Le remboursement a été effectué. Il n'y a rien à payer."
         : "The refund has been issued. There is nothing to pay.",
     },
     cancelled: {
-      bandeau: lang === "fr" ? "// COMMANDE ANNULÉE" : "// ORDER CANCELLED",
+      bandeau: lang === "fr" ? "COMMANDE ANNULÉE" : "ORDER CANCELLED",
       titre: lang === "fr" ? "Commande annulée" : "Order cancelled",
       phrase: lang === "fr"
         ? "Cette commande a été annulée. Il n'y a rien à payer."
         : "This order was cancelled. There is nothing to pay.",
     },
     failed: {
-      bandeau: lang === "fr" ? "// PAIEMENT ÉCHOUÉ" : "// PAYMENT FAILED",
+      bandeau: lang === "fr" ? "PAIEMENT ÉCHOUÉ" : "PAYMENT FAILED",
       titre: lang === "fr" ? "Paiement échoué" : "Payment failed",
       phrase: lang === "fr"
         ? "Le paiement n'a pas abouti. Écrivez-nous et nous reprenons la commande avec vous."
@@ -241,7 +259,7 @@ export default function OrderConfirmation() {
     },
   };
   const etatPaiement = ETATS_PAIEMENT[order.payment_status] || {
-    bandeau: lang === "fr" ? "// COMMANDE REÇUE : PAIEMENT EN ATTENTE" : "// ORDER RECEIVED : AWAITING PAYMENT",
+    bandeau: lang === "fr" ? "COMMANDE REÇUE : PAIEMENT EN ATTENTE" : "ORDER RECEIVED : AWAITING PAYMENT",
     titre: lang === "fr" ? "Commande reçue" : "Order received",
     phrase: lang === "fr"
       ? "Conservez votre numéro de commande : il vous sera nécessaire pour compléter le paiement."
@@ -251,13 +269,12 @@ export default function OrderConfirmation() {
   // E2E CO-006/PM-007 : la page restait sur « en preparation » meme apres
   // l'expedition — le suivi saisi n'apparaissait nulle part. Une commande
   // PAYEE prend le statut reel de l'expedition, et le suivi s'affiche.
-  const exp = order.shipping_info || {};
   const statutExp = order.fulfillment_status;
   const etatAffiche = order.payment_status === "paid" && (statutExp === "shipped" || statutExp === "delivered")
     ? {
         bandeau: lang === "fr"
-          ? (statutExp === "delivered" ? "// COMMANDE LIVRÉE" : "// COMMANDE EXPÉDIÉE")
-          : (statutExp === "delivered" ? "// ORDER DELIVERED" : "// ORDER SHIPPED"),
+          ? (statutExp === "delivered" ? "COMMANDE LIVRÉE" : "COMMANDE EXPÉDIÉE")
+          : (statutExp === "delivered" ? "ORDER DELIVERED" : "ORDER SHIPPED"),
         titre: lang === "fr"
           ? (statutExp === "delivered" ? "Commande livrée" : "Commande expédiée")
           : (statutExp === "delivered" ? "Order delivered" : "Order shipped"),
@@ -294,12 +311,6 @@ export default function OrderConfirmation() {
             </h1>
             <p className="text-sm text-glacier mt-1.5 leading-relaxed">
               {etatAffiche.phrase}
-              {exp.tracking && (
-                <span className="block mt-2 font-data text-[12px] text-nova">
-                  {lang === "fr" ? "Suivi : " : "Tracking: "}
-                  <span className="tabular-nums text-nordfjord font-semibold">{exp.tracking}</span>
-                </span>
-              )}
             </p>
           </div>
           <div className="mt-4 sm:mt-0 sm:text-right shrink-0">
@@ -311,25 +322,7 @@ export default function OrderConfirmation() {
         </div>
       </div>
 
-      {order.payment_status === "paid" && (
-        <div className="mt-5 border border-success bg-success/5 px-4 py-3.5 flex items-start gap-3"
-          style={{ borderRadius: "var(--r-m)" }} data-testid="payment-paid-banner">
-          {/* Le « ✓ » etait un glyphe en guise d'icone, et la bordure de 2 px
-              avec sa couleur en dur ignorait le mode nuit. */}
-          <CircleCheck size={17} className="text-success shrink-0 mt-0.5" aria-hidden="true" />
-          <div className="min-w-0">
-            <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-success">
-              {lang === "fr" ? "Paiement reçu" : "Payment received"}
-            </div>
-            <p className="mt-1 text-sm text-glacier leading-relaxed">
-              {lang === "fr"
-                ? "Merci ! Votre paiement a été confirmé et votre commande est en cours de préparation."
-                : "Thank you! Your payment has been confirmed and your order is now being prepared."}
-            </p>
-          </div>
-        </div>
-      )}
-
+      
       {/* LES BANDEAUX D'ETAT RESTENT PLEINE LARGEUR : une echeance de
           paiement concerne toute la page, pas une colonne. */}
       {/* TROIS PHRASES DISAIENT LA MEME CHOSE : le titre annoncait le delai,
@@ -429,9 +422,10 @@ export default function OrderConfirmation() {
           document prend le relais : payer d'abord, verifier ensuite. C'est le
           bon ordre sur telephone — on ne fait pas defiler un recapitulatif
           pour trouver comment payer. */}
-      <div className={`mt-5 ${instructionsDePaiement ? "grid lg:grid-cols-[1.25fr_.75fr] lg:items-start gap-5 lg:gap-6" : ""}`}>
-        {instructionsDePaiement && (
+      <div className={`mt-5 ${colonneGauche ? "grid lg:grid-cols-[1.25fr_.75fr] lg:items-start gap-5 lg:gap-6" : ""}`}>
+        {colonneGauche && (
         <div className="min-w-0 space-y-5">
+      {montrerSuivi && <SuiviCommande order={order} />}
       {interac && (
         <div className="border border-ash bg-white overflow-hidden" data-testid="interac-instructions" style={{ borderRadius: "var(--r-l)" }}>
           {/* L'eclair « ⚡ » etait un caractere Unicode qui imite une icone :
@@ -563,7 +557,7 @@ export default function OrderConfirmation() {
             remboursement en dessous : une seule colonne, trois blocs alignes.
             C'est la seule elevation de la page — elle flotte, donc son ombre
             porte une information reelle. */}
-        <aside className={`min-w-0 space-y-5 ${instructionsDePaiement ? "lg:sticky lg:top-6" : ""}`} data-testid="confirmation-recap">
+        <aside className={`min-w-0 space-y-5 ${colonneGauche ? "lg:sticky lg:top-6" : ""}`} data-testid="confirmation-recap">
       <div className="border border-ash bg-white p-5" style={{ borderRadius: "var(--r-m)", boxShadow: "var(--ombre)" }}>
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-glacier mb-3">{lang === "fr" ? "ARTICLES" : "ITEMS"}</div>
         <ul className="divide-y divide-nordfjord/10">

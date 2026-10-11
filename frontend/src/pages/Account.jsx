@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
+import { lienSuiviPostesCanada } from "../lib/suivi";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
@@ -194,7 +195,7 @@ function OrderCard({ o, t, lang }) {
           {new Date(o.created_at).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { year: "numeric", month: "short", day: "numeric" })}
           {" · "}{o.items.length} {o.items.length > 1 ? (lang === "fr" ? "articles" : "items") : (lang === "fr" ? "article" : "item")}
           {pin ? (
-            <> · <a href={`https://www.canadapost-postescanada.ca/track-reperage/${lang === "fr" ? "fr" : "en"}#/resultList?searchFor=${pin}`}
+            <> · <a href={lienSuiviPostesCanada(pin, lang)}
               target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
               className="text-nova-texte underline" data-testid={`order-tracking-${o.order_number}`}>{lang === "fr" ? "suivi" : "track"}</a></>
           ) : fl ? <> · {lang === "fr" ? fl.fr : fl.en}</> : null}
