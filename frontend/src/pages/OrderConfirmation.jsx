@@ -182,6 +182,25 @@ export default function OrderConfirmation() {
   const interac = awaitingPayment && order.payment_info?.type === "interac" ? order.payment_info.instructions : null;
   const np = awaitingPayment && order.payment_info?.type === "nowpayments" ? order.payment_info.provider_response : null;
 
+  /* DEUX COLONNES SEULEMENT QUAND IL Y A DEUX COLONNES.
+   *
+   * MIREILLE, 11/10/2026, devant une commande remboursée sur son ordinateur :
+   * « pourquoi le détail est comprimé sur la droite ? »
+   *
+   * La grille était fixe : `1.25fr` pour les instructions de paiement,
+   * `.75fr` pour le récapitulatif. Or `interac` et `np` exigent tous deux
+   * `awaitingPayment`, qui ne vaut que pour « awaiting_etransfer » et
+   * « awaiting_crypto ». Dès que la commande est PAYÉE — donc sur toute
+   * commande aboutie, remboursée ou annulée — la colonne de gauche était un
+   * div vide, et le récapitulatif se retrouvait écrasé dans 410 px sur les
+   * 1152 de la page, avec 690 px de blanc à côté.
+   *
+   * Ce n'était donc pas un défaut des commandes remboursées : c'était le cas
+   * NORMAL de la page après paiement, et il touchait toutes les commandes
+   * sauf celles qui attendent encore d'être réglées.
+   */
+  const instructionsDePaiement = !!(interac || np);
+
   // L'ÉTAT DU PAIEMENT N'EST PAS UN BINAIRE.
   //
   // La page ne connaissait que « payée » ou « pas payée ». Or une commande
@@ -410,7 +429,8 @@ export default function OrderConfirmation() {
           document prend le relais : payer d'abord, verifier ensuite. C'est le
           bon ordre sur telephone — on ne fait pas defiler un recapitulatif
           pour trouver comment payer. */}
-      <div className="mt-5 grid lg:grid-cols-[1.25fr_.75fr] lg:items-start gap-5 lg:gap-6">
+      <div className={`mt-5 ${instructionsDePaiement ? "grid lg:grid-cols-[1.25fr_.75fr] lg:items-start gap-5 lg:gap-6" : ""}`}>
+        {instructionsDePaiement && (
         <div className="min-w-0 space-y-5">
       {interac && (
         <div className="border border-ash bg-white overflow-hidden" data-testid="interac-instructions" style={{ borderRadius: "var(--r-l)" }}>
@@ -532,12 +552,18 @@ export default function OrderConfirmation() {
       )}
 
         </div>
+        )}
 
-        {/* LA COLONNE DE REFERENCE. Collante sur grand ecran : elle accompagne
-            la lecture des instructions au lieu de disparaitre des qu'on
-            defile. C'est la seule elevation de la page — elle flotte, donc
-            son ombre porte une information reelle. */}
-        <aside className="min-w-0 lg:sticky lg:top-6 space-y-5" data-testid="confirmation-recap">
+        {/* LA COLONNE DE REFERENCE. Collante sur grand ecran TANT QU'IL Y A
+            QUELQUE CHOSE A COTE : elle accompagne alors la lecture des
+            instructions au lieu de disparaitre des qu'on defile. Seule, elle
+            n'a rien a accompagner — et un bloc collant sans voisin reste
+            simplement fige en haut, sans raison visible. Elle reprend donc
+            toute la largeur, comme le bandeau au-dessus et la carte de
+            remboursement en dessous : une seule colonne, trois blocs alignes.
+            C'est la seule elevation de la page — elle flotte, donc son ombre
+            porte une information reelle. */}
+        <aside className={`min-w-0 space-y-5 ${instructionsDePaiement ? "lg:sticky lg:top-6" : ""}`} data-testid="confirmation-recap">
       <div className="border border-ash bg-white p-5" style={{ borderRadius: "var(--r-m)", boxShadow: "var(--ombre)" }}>
         <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-glacier mb-3">{lang === "fr" ? "ARTICLES" : "ITEMS"}</div>
         <ul className="divide-y divide-nordfjord/10">
