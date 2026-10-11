@@ -62,10 +62,14 @@ const pixelsMinimum = (element, axe) => {
 };
 
 describe("le bouton d'achat de la carte produit", () => {
-  test("il tient 48 px de haut, malgré la densité de la carte", () => {
+  test("il tient 44 px de haut, malgré la densité de la carte", () => {
+    /* Descendu de 48 à 44 le 11/10/2026 : « add to order too big (too much
+     * space and empty spaces) ». 44 px est le minimum d'Apple, et on le
+     * garde ICI parce que c'est le bouton qui rapporte l'argent — c'est la
+     * seule cible de la carte qui ne descend pas plus bas. */
     render(<ProductCard product={produit} />);
     const bouton = screen.getByTestId("add-to-cart-bpc-157");
-    expect(pixelsMinimum(bouton, "h")).toBeGreaterThanOrEqual(48);
+    expect(pixelsMinimum(bouton, "h")).toBeGreaterThanOrEqual(44);
   });
 
   test("le plancher tient aussi quand le produit est en rupture", () => {
@@ -75,7 +79,7 @@ describe("le bouton d'achat de la carte produit", () => {
     render(<ProductCard product={{ ...produit, slug: "epuise", variants: [{ dosage_mg: 5, price: 60, stock: 0 }] }} />);
     const bouton = screen.getByTestId("add-to-cart-epuise");
     expect(bouton).toBeDisabled();
-    expect(pixelsMinimum(bouton, "h")).toBeGreaterThanOrEqual(48);
+    expect(pixelsMinimum(bouton, "h")).toBeGreaterThanOrEqual(44);
   });
 });
 

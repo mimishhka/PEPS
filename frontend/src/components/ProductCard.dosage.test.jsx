@@ -75,9 +75,16 @@ describe("les pastilles de dosage", () => {
     expect(pastille("10 mg").textContent).toBe("10 mg");
   });
 
-  test("elles tiennent la cible tactile de 44 px", () => {
+  test("elles font 36 px de haut, et c'est un écart assumé", () => {
+    /* MIREILLE, 11/10/2026 : « the block for the dosage is too big ».
+     *
+     * 36 px est SOUS le minimum de 44 px que l'audit du 06/10 demande pour
+     * une cible tactile. C'est un arbitrage, pas un oubli : trois fois la
+     * hauteur du texte, et très au-dessus des 29 px que ce même audit
+     * signalait. Le test fige le chiffre pour que l'écart reste visible et
+     * se rediscute si un tap rate. */
     render(<ProductCard product={produit([CINQ, DIX])} />);
-    expect(pastille("5 mg").className).toMatch(/min-h-\[44px\]/);
+    expect(pastille("5 mg").className).toMatch(/min-h-\[36px\]/);
   });
 
   test("un produit à une seule variante garde sa pastille", () => {
@@ -137,10 +144,19 @@ describe("le statut suit aussi la sélection", () => {
   const SANS_COA = { id: "v2", name: "10 mg", price: 100, stock: 8, coa_status: "pending" };
 
   test("le stock affiché est celui du dosage choisi", async () => {
-    render(<ProductCard product={produit([CINQ, { ...DIX, stock: 2 }])} />);
+    // Le 5 mg est en tablette, le 10 mg est épuisé mais précommandable :
+    // la pastille de statut doit basculer avec la sélection.
+    render(<ProductCard product={produit([CINQ, PRECO])} />);
     expect(screen.getByTestId("card-stock-bpc-157")).toHaveTextContent(/En stock/);
     await userEvent.click(pastille("10 mg"));
-    expect(screen.getByTestId("card-stock-bpc-157")).toHaveTextContent(/Stock bas · 2/);
+    expect(screen.queryByTestId("card-stock-bpc-157")).toBeNull();
+    expect(screen.getByTestId("preorder-badge-bpc-157")).toBeInTheDocument();
+  });
+
+  test("et il ne chiffre jamais rien", async () => {
+    render(<ProductCard product={produit([CINQ, { ...DIX, stock: 2 }])} />);
+    await userEvent.click(pastille("10 mg"));
+    expect(screen.getByTestId("card-stock-bpc-157").textContent).not.toMatch(/\d/);
   });
 
   test("LE BADGE ET LE STATUT NE SE CONTREDISENT JAMAIS", () => {
@@ -158,11 +174,15 @@ describe("le statut suit aussi la sélection", () => {
     expect(screen.queryByTestId("card-stock-bpc-157")).toBeNull();
   });
 
-  test("l'avertissement de certificat suit la sélection", async () => {
+  test("AUCUNE MENTION DE CERTIFICAT SUR LA CARTE", async () => {
+    /* MIREILLE, 11/10/2026 : « mention of coa not necessary on the card ».
+     * Elle y était depuis le matin même. Elle reste sur la fiche produit,
+     * juste au-dessus du bouton, là où la décision se prend vraiment — une
+     * grille de catalogue n'est pas le bon endroit pour une nuance. */
     render(<ProductCard product={produit([CINQ, SANS_COA])} />);
     expect(screen.queryByTestId("card-coa-bpc-157")).toBeNull();
     await userEvent.click(pastille("10 mg"));
-    expect(screen.getByTestId("card-coa-bpc-157")).toBeInTheDocument();
+    expect(screen.queryByTestId("card-coa-bpc-157")).toBeNull();
   });
 
   test("un dosage épuisé sans précommande n'est pas sélectionnable", () => {

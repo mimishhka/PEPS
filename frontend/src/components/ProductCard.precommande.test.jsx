@@ -217,12 +217,30 @@ describe("un seul statut par carte", () => {
     expect(occurrences).toBeLessThanOrEqual(2);  // badge + bouton
   });
 
-  test("le stock bas garde son compte — c'est lui seul qui le dit", () => {
+  test("LE STOCK NE SE CHIFFRE PLUS, ET « BAS » NE SE DIT PLUS", () => {
+    /* MIREILLE, 11/10/2026 : « never mention low stock and the amount in
+     * stock ».
+     *
+     * Ce test exigeait l'inverse jusqu'au 11/10/2026 : « Stock bas · 3 ».
+     * Il a été corrigé, pas contourné — c'est une décision de commerçante.
+     * Ces deux mentions disaient ce qu'une boutique n'a pas à dire :
+     * combien il lui reste, et qu'elle est à court. */
     render(<ProductCard product={produit([{ ...EN_STOCK, stock: 3 }])} />);
 
-    expect(statut()).toHaveTextContent("3");
-    expect(statut()).toHaveTextContent(/stock bas/i);
+    expect(statut()).toHaveTextContent(/en stock/i);
+    expect(statut()).not.toHaveTextContent("3");
+    expect(statut()).not.toHaveTextContent(/stock bas|low stock/i);
     expect(badge()).not.toBeInTheDocument();
+  });
+
+  test("AUCUN CHIFFRE DE STOCK NE FUIT, QUEL QUE SOIT LE COMPTE", () => {
+    // Le filet large : c'est l'invariant qu'elle a demandé, pas un cas.
+    for (const stock of [1, 2, 3, 7, 9, 10, 11, 48, 250]) {
+      const { unmount } = render(<ProductCard product={produit([{ ...EN_STOCK, stock }])} />);
+      expect(statut()).toHaveTextContent(/en stock/i);
+      expect(statut().textContent).not.toMatch(/\d/);
+      unmount();
+    }
   });
 
   test("une rupture sans précommande le dit, sans badge", () => {
@@ -247,7 +265,10 @@ describe("un seul statut par carte", () => {
 
     expect(badge()).not.toBeInTheDocument();
     expect(statut()).toHaveTextContent(/en stock|stock bas/i);
-    expect(screen.getByTestId("card-coa-bpc-157")).toBeInTheDocument();
+    // Et PAS de mention de certificat sur la carte : « mention of coa not
+    // necessary on the card » (11/10/2026). Elle reste sur la fiche, là où
+    // la décision se prend vraiment.
+    expect(screen.queryByTestId("card-coa-bpc-157")).toBeNull();
   });
 
   test("sans stock, le certificat ne change rien : la précommande reste", () => {

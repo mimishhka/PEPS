@@ -161,9 +161,11 @@ export default function ProductDetail() {
   const isOutOfStock = !!(selectedVariant && selectedVariant.stock <= 0
     && !selectedVariant.preorder_enabled && !selectedVariant.badge_coming_soon);
   const stockN = selectedVariant?.stock ?? product.stock ?? 0;
-  // E2E CA-008 : l'indicateur de stock bas manquait sur la fiche.
-  const seuilStock = Number(product.low_stock_threshold ?? 10);
-  const stockBas = stockN > 0 && stockN <= seuilStock;
+  /* LE STOCK NE SE CHIFFRE PLUS, ET « BAS » NE SE DIT PLUS.
+   * MIREILLE, 11/10/2026 : « never mention low stock and the amount in
+   * stock ». Voir le meme commentaire dans ProductCard : ce sont deux
+   * informations d'inventaire, dont l'une presse la cliente sans qu'elle
+   * l'ait demande. `low_stock_threshold` garde son role cote OPS. */
 
   const submitNotify = async () => {
     if (!/^\S+@\S+\.\S+$/.test(notifyEmail)) {
@@ -200,14 +202,33 @@ export default function ProductDetail() {
   // Pas de resolveAssetUrl pour l'image : ProductImage s'en charge lui-meme,
   // et gere en plus le repli sur le visuel de marque si le fichier manque.
 
-  const specs = [
-    { k: lang === "fr" ? "PURETÉ (HPLC)" : "PURITY (HPLC)", v: product.purity },
-    { k: lang === "fr" ? "LOT ACTUEL" : "CURRENT LOT", v: selectedVariant?.coa_lot || product.coa_lot || "-" },
-    { k: lang === "fr" ? "MASSE MOLAIRE" : "MOLAR MASS", v: product.molecular_weight ? `${product.molecular_weight} g/mol` : "-" },
-    { k: "SKU", v: selectedVariant?.sku || "-" },
+  /* CE QUI AIDE A DECIDER RESTE EN HAUT ; LE RESTE DESCEND.
+   *
+   * MIREILLE, 11/10/2026 : « on product page I do not know if all the detail
+   * are necessary (maybe keep the more important and move the rest at the
+   * bottom) ».
+   *
+   * La colonne de droite faisait passer la sequence puis SIX lignes de
+   * specifications AVANT le prix et le bouton. Il fallait defiler devant des
+   * donnees de reference pour atteindre la seule chose qu'on est venu faire.
+   * L'audit du 06/10 le demandait aussi, point 10 : « bouton d'achat
+   * au-dessus de la ligne de flottaison ».
+   *
+   * La purete reste en haut : c'est le seul chiffre qui pese dans la
+   * decision d'achat pour ce type de produit. Sequence, masse molaire, SKU,
+   * CAS et lot descendent sous le bouton, sous leur propre titre.
+   *
+   * ET LES LIGNES VIDES DISPARAISSENT. « LOT ACTUEL : - » occupait une ligne
+   * entiere pour dire qu'on ne sait pas. Une donnee absente ne se montre
+   * pas. */
+  const purete = String(product.purity || "").trim();
+  const donneesTechniques = [
+    { k: lang === "fr" ? "LOT ACTUEL" : "CURRENT LOT", v: selectedVariant?.coa_lot || product.coa_lot },
+    { k: lang === "fr" ? "MASSE MOLAIRE" : "MOLAR MASS", v: product.molecular_weight ? `${product.molecular_weight} g/mol` : "" },
+    { k: "SKU", v: selectedVariant?.sku },
     { k: lang === "fr" ? "FORME" : "FORM", v: lang === "fr" ? "Lyophilisé" : "Lyophilized" },
-    { k: "CAS", v: product.cas_number || "-" },
-  ];
+    { k: "CAS", v: product.cas_number },
+  ].filter((s) => String(s.v || "").trim());
 
   return (
     <div data-testid="product-detail-page" className="bg-clinical min-h-screen">
@@ -280,24 +301,15 @@ export default function ProductDetail() {
               </div>
             )}
 
-            {product.sequence && (
-              <div className="border border-ash bg-white px-5 py-4 mb-4" style={{ borderRadius: "var(--r-m)" }}>
-                <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-1.5">{lang === "fr" ? "SÉQUENCE" : "SEQUENCE"}</div>
-                <div className="font-data text-sm text-nordfjord break-all">{product.sequence}</div>
+            {purete && (
+              <div className="flex items-baseline justify-between gap-6 py-3 border-y border-ash mb-6"
+                   data-testid="purete-en-tete">
+                <span className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">
+                  {lang === "fr" ? "PURETÉ (HPLC)" : "PURITY (HPLC)"}
+                </span>
+                <span className="font-data text-[13px] text-nordfjord text-right font-medium">{purete}</span>
               </div>
             )}
-
-            {/* La fiche : les specifications en lignes fines, comme un rapport
-                de laboratoire calme : etiquette a gauche, valeur en mono a
-                droite, un filet sous chaque ligne. */}
-            <div className="border-t border-ash mb-8">
-              {specs.map((s) => (
-                <div key={s.k} className="flex items-baseline justify-between gap-6 py-3 border-b border-ash">
-                  <span className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">{s.k}</span>
-                  <span className="font-data text-[13px] text-nordfjord break-all text-right font-medium">{s.v}</span>
-                </div>
-              ))}
-            </div>
 
             <div className="flex items-end justify-between gap-6 flex-wrap mb-6">
               <div>
@@ -316,8 +328,8 @@ export default function ProductDetail() {
                   <div className="font-data text-[11px] text-warning mt-1" data-testid="preorder-note">{selectedVariant.preorder_note}</div>
                 )}
               </div>
-              <span data-testid="stock-state" className={`font-data text-[12px] uppercase tracking-[0.14em] flex items-center gap-2 ${stockN > 0 && !stockBas ? "text-success" : "text-warning"}`}>
-                <span className={`w-2 h-2 rounded-full ${stockN > 0 && !stockBas ? "bg-success" : "bg-warning"}`} />
+              <span data-testid="stock-state" className={`font-data text-[12px] uppercase tracking-[0.14em] flex items-center gap-2 ${stockN > 0 ? "text-success" : "text-warning"}`}>
+                <span className={`w-2 h-2 rounded-full ${stockN > 0 ? "bg-success" : "bg-warning"}`} />
                 {/* En precommande on annonce AUSSI la rupture : « Precommande »
                     seul laisse croire que le flacon part demain, alors qu'il n'y
                     en a pas un seul en tablette. */}
@@ -325,7 +337,6 @@ export default function ProductDetail() {
                   : isVariantPreorder ? (stockN > 0
                       ? (lang === "fr" ? "Précommande" : "Pre-order")
                       : (lang === "fr" ? "Rupture · Précommande" : "Out of stock · Pre-order"))
-                  : stockBas ? `${lang === "fr" ? "Stock bas" : "Low stock"} · ${stockN}`
                   : stockN > 0 ? (lang === "fr" ? "En stock" : "In stock")
                   : (lang === "fr" ? "Rupture" : "Out of stock")}
               </span>
@@ -428,6 +439,37 @@ export default function ProductDetail() {
                       </button>
                     </div>
                   </>
+                )}
+              </div>
+            )}
+
+            {/* LES DONNEES DE REFERENCE, SOUS LE BOUTON ET NON AU-DESSUS.
+                Elles ne disparaissent pas : elles cessent de s'interposer
+                entre la cliente et son achat. Lignes fines, comme un rapport
+                de laboratoire calme : etiquette a gauche, valeur en mono a
+                droite, un filet sous chaque ligne. */}
+            {(product.sequence || donneesTechniques.length > 0) && (
+              <div className="mt-10" data-testid="donnees-techniques">
+                <h2 className="font-data text-[11px] uppercase tracking-[0.2em] text-compliance mb-4">
+                  {lang === "fr" ? "Données techniques" : "Technical data"}
+                </h2>
+
+                {product.sequence && (
+                  <div className="border border-ash bg-white px-5 py-4 mb-4" style={{ borderRadius: "var(--r-m)" }}>
+                    <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-1.5">{lang === "fr" ? "SÉQUENCE" : "SEQUENCE"}</div>
+                    <div className="font-data text-sm text-nordfjord break-all">{product.sequence}</div>
+                  </div>
+                )}
+
+                {donneesTechniques.length > 0 && (
+                  <div className="border-t border-ash">
+                    {donneesTechniques.map((s) => (
+                      <div key={s.k} className="flex items-baseline justify-between gap-6 py-3 border-b border-ash">
+                        <span className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">{s.k}</span>
+                        <span className="font-data text-[13px] text-nordfjord break-all text-right font-medium">{s.v}</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}

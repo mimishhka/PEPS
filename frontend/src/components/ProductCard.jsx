@@ -5,8 +5,7 @@ import { useCart } from "../contexts/CartContext";
 import ProductImage from "./ProductImage";
 import { prix } from "../lib/prix";
 import { dosage } from "../lib/dosage";
-import { avertirCoa, estPrecommande } from "../lib/precommande";
-import AvertissementCoa from "./AvertissementCoa";
+import { estPrecommande } from "../lib/precommande";
 import { useConfirm } from "./ConfirmDialog";
 
 /* Une variante qu'on ne peut ni acheter ni precommander. La fiche produit
@@ -112,10 +111,19 @@ export default function ProductCard({ product, index = 0 }) {
    * ajoute, donc c'est sa disponibilite a elle qui decide. Les autres dosages
    * restent atteignables par leur pastille. */
   const achetable = !!choisie && !indisponible(choisie);
-  // E2E CA-008 : aucun indicateur de stock bas. Le seuil vient de la fiche
-  // (ou 10 par defaut), et le libelle devient « Stock bas · N ».
-  const seuilStock = Number(product.low_stock_threshold ?? 10);
-  const stockBas = inStock && stockN <= seuilStock;
+  /* LE STOCK NE SE CHIFFRE PLUS, ET « BAS » NE SE DIT PLUS.
+   *
+   * MIREILLE, 11/10/2026 : « never mention low stock and the amount in
+   * stock ».
+   *
+   * La carte annoncait « Stock bas · 10 » des que le compte passait sous le
+   * seuil de la fiche (E2E CA-008). Ca disait deux choses qu'une boutique n'a
+   * pas a dire : combien il lui reste, et qu'elle est a court. La premiere
+   * est une information d'inventaire ; la seconde presse la cliente sans
+   * qu'elle l'ait demande.
+   *
+   * Il ne reste que le fait : en stock, ou non. Le seuil `low_stock_threshold`
+   * garde tout son role cote OPS, ou il sert a reapprovisionner. */
 
   return (
     <div
@@ -173,22 +181,19 @@ export default function ProductCard({ product, index = 0 }) {
           )}
         </div>
 
-        {/* Le lot est en stock et part tout de suite : on le dit ici plutot
-            que de le deguiser en precommande, ce que la regle faisait avant
-            le 11/10/2026. */}
-        {avertirCoa(choisie, 1) && (
-          <AvertissementCoa compact testId={`card-coa-${product.slug}`} />
-        )}
 
         {priced.length > 0 && (
           /* LES PASTILLES NE PORTENT PAS LE PRIX, contrairement a celles de la
              fiche : le prix est juste en dessous, et il change avec la
              selection. L'ecrire deux fois ferait douter de l'un des deux.
-             `min-h-[44px]` : ce sont des cibles tactiles au meme titre que le
-             bouton d'achat (audit du 06/10, point 4). Deux pastilles de
-             « 5 mg » tiennent dans les 154 px d'une carte sur une grille a
-             deux colonnes a 360 px ; au-dela elles passent a la ligne. */
-          <div className="flex flex-wrap gap-1.5 pt-1" data-testid={`card-dosages-${product.slug}`}>
+             MIREILLE, 11/10/2026 : « the block for the dosage is too big ».
+             Elles descendent de 44 a 36 px de haut et de 12 a 10 px de
+             remplissage. C'est un ECART ASSUME avec le minimum de 44 px que
+             l'audit demande pour les cibles tactiles : 36 px reste trois fois
+             la hauteur du texte et tres au-dessus des 29 px que ce meme audit
+             signalait, mais c'est sous le seuil d'Apple. A redire si un tap
+             rate. */
+          <div className="flex flex-wrap gap-1.5" data-testid={`card-dosages-${product.slug}`}>
             {priced.map((v) => {
               const actif = v.id === choisie?.id;
               const hors = indisponible(v);
@@ -200,7 +205,7 @@ export default function ProductCard({ product, index = 0 }) {
                   disabled={hors}
                   aria-pressed={actif}
                   data-testid={`card-dosage-${product.slug}-${v.name}`}
-                  className={`font-display text-[13px] font-semibold px-3 min-h-[44px] inline-flex items-center justify-center border transition-colors ${
+                  className={`font-display text-[12px] font-semibold px-2.5 min-h-[36px] inline-flex items-center justify-center border transition-colors ${
                     actif ? "border-nova bg-nova/5 text-nordfjord" : "border-ash text-nordfjord hover:border-nova"
                   } disabled:opacity-40 disabled:cursor-not-allowed`}
                   style={{ borderRadius: "var(--r-m)" }}
@@ -231,11 +236,11 @@ export default function ProductCard({ product, index = 0 }) {
               Il ne reste donc que pour ce qu'il est seul a dire : en stock,
               stock bas avec son compte, ou rupture. */}
           {!ajoutEstUnePrecommande && (
-            <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock && !stockBas ? "text-success-text" : "text-warning-text"}`}
+            <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock ? "text-success-text" : "text-warning-text"}`}
                   data-testid={`card-stock-${product.slug}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${inStock && !stockBas ? "bg-success" : "bg-warning"}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${inStock ? "bg-success" : "bg-warning"}`} />
               {inStock
-                ? (stockBas ? `${lang === "fr" ? "Stock bas" : "Low stock"} · ${stockN}` : (lang === "fr" ? "En stock" : "In stock"))
+                ? (lang === "fr" ? "En stock" : "In stock")
                 : (lang === "fr" ? "Rupture" : "Out")}
             </span>
           )}
@@ -254,13 +259,18 @@ export default function ProductCard({ product, index = 0 }) {
           naturelle, déjà au-delà.
           Le remplissage horizontal descend de 22 à 12 px : sur une grille à
           deux colonnes à 360 px, le libellé ne disposait que de 108 px et se
-          coupait en deux presque toujours. Il en a 128. */}
-      <div className="pt-3 px-0.5">
+          coupait en deux presque toujours. Il en a 128.
+
+          MIREILLE, 11/10/2026 : « add to order too big (too much space and
+          empty spaces) ». Le plancher passe de 48 à 44 px — le minimum
+          d'Apple, qu'on garde ici parce que c'est LE bouton qui rapporte — et
+          la gouttière au-dessus se resserre. */}
+      <div className="pt-2 px-0.5">
         <button
           data-testid={`add-to-cart-${product.slug}`}
           onClick={ajouter}
           disabled={!achetable}
-          className={`w-full btn-pill btn-nova !py-1.5 !px-3 !text-[11px] !tracking-[0.06em] min-h-[48px] ${!achetable ? "opacity-45 cursor-not-allowed" : ""}`}
+          className={`w-full btn-pill btn-nova !py-1.5 !px-3 !text-[11px] !tracking-[0.06em] min-h-[44px] ${!achetable ? "opacity-45 cursor-not-allowed" : ""}`}
         >
           {!achetable
             ? (lang === "fr" ? "Rupture" : "Out of stock")
