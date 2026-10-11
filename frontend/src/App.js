@@ -61,11 +61,12 @@ const Admin = lazy(() => import("./pages/admin/AdminLayout"));
 const ADMIN_PATH = "/ops-portal-fn7k2q";
 
 import "./index.css";
+import "./fresh-design.css";
 
 function Shell({ children }) {
   return (
     <ConfirmProvider>
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
+    <div className="min-h-screen flex flex-col bg-background text-foreground fn-clean">
       <AgeGate />
       <Header />
       <CartDrawer />
