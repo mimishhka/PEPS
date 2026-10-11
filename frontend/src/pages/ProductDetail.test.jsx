@@ -70,6 +70,30 @@ const afficher = async (variante) => {
   await waitFor(() => expect(screen.getByTestId("product-detail-page")).toBeInTheDocument());
 };
 
+/* DEUX variantes, uniquement pour les cas qui portent sur le sélecteur :
+ * il n'est rendu que si `variants.length > 1`. Le premier jet de ces tests
+ * utilisait le lot à une variante : le sélecteur n'existait pas, l'assertion
+ * était sautée, et le test passait sans rien vérifier. */
+const ficheDeuxDosages = () => ({
+  ...fiche({ stock: 12 }),
+  variants: [
+    { id: "v-1", name: "5.0mg", sku: "BPC-157-5MG", price: 64.99, stock: 12,
+      sale_price: null, preorder_price: 55, badge_coming_soon: false,
+      preorder_note: "", coa_url: "" },
+    { id: "v-2", name: "10.0mg", sku: "BPC-157-10MG", price: 100, stock: 8,
+      sale_price: null, preorder_price: 85, badge_coming_soon: false,
+      preorder_note: "", coa_url: "" },
+  ],
+});
+
+const afficherDeuxDosages = async () => {
+  api.get.mockImplementation((url) => Promise.resolve({
+    data: url.includes("/related") ? [] : ficheDeuxDosages(),
+  }));
+  render(<ProductDetail />);
+  await waitFor(() => expect(screen.getByTestId("product-detail-page")).toBeInTheDocument());
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
 });
@@ -163,4 +187,59 @@ test("la note de précommande reste affichable quand l'admin en écrit une", asy
   });
 
   expect(screen.getByTestId("preorder-note")).toHaveTextContent("Expédié dès le 15 novembre");
+});
+
+describe("ce que la colonne de droite montre, et dans quel ordre", () => {
+  /* MIREILLE, 11/10/2026 : « pas besoin du prix sur la carte de dosage.
+   * ensuite les fonts de prix et des quantités sont beaucoup trop grandes ??
+   * ou c'est moi qui rêve ». Elle ne rêvait pas : le prix était en 28 px de
+   * chasse fixe, ce qui occupe la largeur d'un titre et passait devant le nom
+   * du produit. */
+
+  test("LE PRIX NE SE REPETE PAS SUR LA PASTILLE DE DOSAGE", async () => {
+    // Il est juste en dessous et suit la sélection : l'écrire deux fois
+    // ferait douter de l'un des deux. Même règle que sur la carte.
+    await afficherDeuxDosages();
+    const selecteur = screen.getByTestId("variant-selector");
+    expect(selecteur).toHaveTextContent("5 mg");
+    expect(selecteur).toHaveTextContent("10 mg");
+    expect(selecteur.textContent).not.toMatch(/\$|\d+[.,]\d{2}/);
+  });
+
+  test("et le prix affiché reste bien celui du dosage choisi", async () => {
+    await afficherDeuxDosages();
+    expect(screen.getByTestId("product-price")).toHaveTextContent(/64/);
+  });
+
+  test("le prix ne crie plus plus fort que le nom du produit", async () => {
+    // 24 px, contre 28 px au nom sur téléphone. Le test fige le chiffre :
+    // c'est un arbitrage visuel, et il doit se voir s'il change.
+    await afficher({ stock: 12 });
+    expect(screen.getByTestId("product-price").className).toMatch(/text-\[24px\]/);
+  });
+
+  test("LA PURETE RESTE AU-DESSUS DU BOUTON, le reste descend", async () => {
+    /* La colonne faisait passer la séquence puis six lignes de
+     * spécifications AVANT le prix : il fallait défiler devant des données de
+     * référence pour atteindre ce qu'on était venu faire. */
+    await afficher({ stock: 12, sku: "BPC-157-10MG" });
+    const page = screen.getByTestId("product-detail-page");
+    const purete = screen.getByTestId("purete-en-tete");
+    const bouton = screen.getByTestId("product-add-to-cart");
+    const technique = screen.getByTestId("donnees-techniques");
+
+    const position = (el) => [...page.querySelectorAll("*")].indexOf(el);
+    expect(position(purete)).toBeLessThan(position(bouton));
+    expect(position(technique)).toBeGreaterThan(position(bouton));
+  });
+
+  test("une donnée absente ne laisse plus une ligne « - »", async () => {
+    // « LOT ACTUEL : - » occupait une ligne entière pour dire qu'on ne sait
+    // pas. La forme, elle, est connue pour tous les produits et reste.
+    await afficher({ stock: 12, sku: "" });
+    const technique = screen.getByTestId("donnees-techniques");
+    expect(technique).not.toHaveTextContent(/SKU/);
+    expect(technique).not.toHaveTextContent(/LOT ACTUEL/);
+    expect(technique).toHaveTextContent(/FORME/);
+  });
 });

@@ -270,17 +270,13 @@ export default function ProductDetail() {
                 <div className="flex flex-wrap gap-2">
                   {variants.map((v) => {
                     const isActive = v.id === variantId;
-                    const vCoaComing = v.badge_coming_soon;
-                    const vPre = v.preorder_enabled && (vCoaComing || v.stock < qty);
-                    const vSale = v.sale_price && v.sale_price < v.price;
-                    const vPrice = vPre && v.preorder_price ? v.preorder_price : vSale ? v.sale_price : v.price;
                     const outNoPre = v.stock <= 0 && !v.preorder_enabled && !v.badge_coming_soon;
                     return (
                       <button key={v.id} type="button" onClick={() => setVariantId(v.id)}
                         disabled={(v.badge_coming_soon && !v.preorder_enabled) || outNoPre}
                         data-testid={`variant-${v.name}`}
                         className={`border-[1px] px-4 py-2.5 text-left transition-colors ${isActive ? "border-nova bg-nova/5" : "border-ash hover:border-nova"} disabled:opacity-40 disabled:cursor-not-allowed`} style={{ borderRadius: "var(--r-m)" }}>
-                        {/* LE SELECTEUR NE DIT QUE LE DOSAGE ET LE PRIX.
+                        {/* LE SELECTEUR NE DIT QUE LE DOSAGE.
                             Audit du 06/10/2026, point 2 : « le dosage 10 mg est
                             affiché avec COA PENDING dans le même bloc que le
                             prix ». C'est de là que venait la contradiction la
@@ -288,12 +284,16 @@ export default function ProductDetail() {
                             « COA pending » pour UNE variante pendant que le
                             bouton de téléchargement, plus bas, décrivait la
                             variante SÉLECTIONNÉE. Deux variantes différentes
-                            racontées dans la même vue.
-                            L'état du certificat vit maintenant dans un seul
-                            endroit, sous les données techniques, et il parle
-                            toujours de la variante choisie. */}
+                            racontées dans la même vue. L'état du certificat vit
+                            maintenant dans un seul endroit, et il parle toujours
+                            de la variante choisie.
+
+                            MIREILLE, 11/10/2026 : « pas besoin du prix sur la
+                            carte de dosage ». Le prix est juste en dessous et
+                            il suit la sélection : l'écrire deux fois ferait
+                            douter de l'un des deux. Même règle que sur la
+                            carte du catalogue. */}
                         <span className="font-display font-bold text-nordfjord">{dosage(v.name, lang)}</span>
-                        <span className="font-data text-[11px] text-glacier ml-2">{prix(vPrice, lang)}</span>
                       </button>
                     );
                   })}
@@ -314,12 +314,25 @@ export default function ProductDetail() {
             <div className="flex items-end justify-between gap-6 flex-wrap mb-6">
               <div>
                 <div className="flex items-baseline gap-3 flex-wrap">
+                  {/* MIREILLE, 11/10/2026 : « les fonts de prix et des
+                      quantités sont beaucoup trop grandes ?? ou c'est moi qui
+                      rêve ».
+                      Elle ne rêvait pas. Le prix etait en 28 px de CHASSE
+                      FIXE : a taille egale, une monospace occupe bien plus de
+                      largeur qu'une proportionnelle, et « 100,00 $ » y prenait
+                      la place d'un titre. Il passait ainsi devant le nom du
+                      produit (28 px sur telephone), alors que le nom doit
+                      rester le premier mot de la page.
+                      24 px le laisse largement dominer la purete (13 px) et
+                      l'etat du stock (12 px) sans concurrencer le titre. Le
+                      prix barre suit : en 24 px display gras il etait DEVENU
+                      plus gros que le prix reel. */}
                   {showOriginal && (
-                    <span className="font-display text-2xl font-bold line-through text-glacier" data-testid="product-original-price">
+                    <span className="font-data text-base line-through text-glacier" data-testid="product-original-price">
                       {prix(selectedVariant.price, lang)}
                     </span>
                   )}
-                  <span className={`font-data text-[28px] font-medium leading-none ${showOriginal ? "text-nova-texte" : "text-nordfjord"}`} data-testid="product-price">
+                  <span className={`font-data text-[24px] font-medium leading-none ${showOriginal ? "text-nova-texte" : "text-nordfjord"}`} data-testid="product-price">
                     {prix(effectivePrice, lang)}
                   </span>
                   <span className="font-data text-sm text-glacier">CAD</span>
@@ -347,7 +360,7 @@ export default function ProductDetail() {
             <div className="flex items-stretch gap-3 mb-4">
               <div className="flex items-center gap-1 border border-ash bg-white px-2" style={{ borderRadius: "var(--r-m)" }}>
                 <button onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label={lang === "fr" ? "Diminuer la quantité" : "Decrease quantity"} className="w-9 h-9 flex items-center justify-center text-nordfjord hover:text-nova-texte" data-testid="product-qty-dec"><Minus size={15} /></button>
-                <span className="font-data font-semibold w-8 text-center text-nordfjord" data-testid="product-qty">{qty}</span>
+                <span className="font-data text-[14px] font-medium w-8 text-center text-nordfjord" data-testid="product-qty">{qty}</span>
                 <button onClick={() => setQty((q) => q + 1)} aria-label={lang === "fr" ? "Augmenter la quantité" : "Increase quantity"} className="w-9 h-9 flex items-center justify-center text-nordfjord hover:text-nova-texte" data-testid="product-qty-inc"><Plus size={15} /></button>
               </div>
               <button
