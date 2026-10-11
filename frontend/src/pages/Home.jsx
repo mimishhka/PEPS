@@ -4,7 +4,7 @@ import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
-import CartePleinsFeux from "../components/CartePleinsFeux";
+import ProductCard from "../components/ProductCard.jsx";
 import { MolecularMesh, NovaSpark, Reveal } from "../components/brand";
 import ProductImage from "../components/ProductImage";
 import { TAILLES } from "../lib/derivees";
@@ -22,27 +22,12 @@ export default function Home() {
 
   useEffect(() => {
     api.get("/products", { params: { featured: true } })
-      /* QUATRE, ET LE CONTRAT CHANGE AVEC LE CHIFFRE.
-       *
-       * MIREILLE, 11/10/2026 : « pleins feux avec un maximum de 4 produits
-       * vedettes ».
-       *
-       * Cette borne etait a HUIT, et le commentaire qu'elle remplace disait
-       * pourquoi : « une coupe a quatre ignorait deux des six produits
-       * vedettes : le site contredisait la configuration sans le dire »
-       * (rapport E2E #20). La critique etait juste pour une grille qui se
-       * presentait comme « les composes en vedette » — une liste qui dit
-       * etre complete doit l'etre.
-       *
-       * Ce n'est plus une liste : c'est une SELECTION, et elle le dit. Quatre
-       * cartes en pleins feux, puis « voir tout le catalogue ». Un visiteur
-       * ne peut plus croire qu'il voit tout ce qui est marque.
-       *
-       * A SAVOIR AVANT D'EN MARQUER CINQ : `/products` trie par `name_en`,
-       * donc ce sont les quatre PREMIERS ALPHABETIQUEMENT qui sortent. Il n'y
-       * a pas d'ordre de mise en avant cote OPS — c'est ce qu'il faudrait
-       * ajouter le jour ou le choix des quatre devra se piloter. */
-      .then((r) => setProducts(r.data.slice(0, 4)))
+      // L'ACCUEIL MONTRE CE QUE L'ADMIN A MARQUE (rapport E2E #20). Une
+      // coupe a quatre ignorait deux des six produits vedettes : le site
+      // contredisait la configuration sans le dire. La borne a huit reste
+      // par prudence — deux rangees pleines sur grand ecran — pour qu'un
+      // marquage massif ne transforme pas l'accueil en catalogue.
+      .then((r) => setProducts(r.data.slice(0, 8)))
       .catch(() => {});
   }, []);
 
@@ -114,8 +99,7 @@ export default function Home() {
   // la premiere : on comprend que c'est du remplissage.
   //
   // Reste l'intitule. Les produits se lisent tout seuls.
-  const featEyebrow = lang === "fr" ? "PLEINS FEUX" : "SPOTLIGHT";
-  const featTitle = lang === "fr" ? "Quatre composés à regarder de près" : "Four compounds worth a closer look";
+  const featTitle = lang === "fr" ? "Composés en vedette" : "Featured compounds";
   const featAll = lang === "fr" ? "Voir tout le catalogue" : "View full catalog";
   // L'en-tete etait ecrit EN DUR en anglais : « Newsletter » s'affichait tel
   // quel sur la version francaise, sur un commerce quebecois bilingue.
@@ -232,26 +216,18 @@ export default function Home() {
         </div>
       </section>
 
-      {/* PLEINS FEUX : quatre composes, en grand, qui ouvrent une porte.
-          L'etiquette au-dessus du titre n'est ecrite QU'UNE FOIS — les
-          cartes, elles, portent leurs dosages, qui sont differents pour
-          chacune. Repeter « pleins feux » quatre fois serait le meme bruit
-          que « usage recherche uniquement » douze fois sur une grille. */}
+      {/* PRODUITS EN VEDETTE : un seul message, pas d etiquette au-dessus. */}
       <section className="py-20 lg:py-32" data-testid="featured-products">
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-end justify-between gap-6 mb-10">
-            <div>
-              <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte mb-2"
-                 data-testid="pleins-feux-etiquette">{featEyebrow}</p>
-              <h2 className="font-display text-[22px] sm:text-[26px] font-semibold text-nordfjord leading-[1.1] tracking-[-0.01em]">{featTitle}</h2>
-            </div>
+          <div className="flex flex-wrap items-end justify-between gap-6 mb-12">
+            <h2 className="font-display text-[22px] sm:text-[26px] font-semibold text-nordfjord leading-[1.1] tracking-[-0.01em]">{featTitle}</h2>
             <Link to="/catalog" data-testid="view-all-catalog" className="btn-pill btn-outline group">
               {featAll} <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
             </Link>
           </div>
-          <div className="grid gap-4 lg:grid-cols-2 lg:gap-6" data-testid="pleins-feux-grille">
-            {products.map((p) => (
-              <CartePleinsFeux key={p.id} product={p} />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-5 lg:gap-6">
+            {products.map((p, i) => (
+              <ProductCard key={p.id} product={p} index={i} />
             ))}
           </div>
         </div>
