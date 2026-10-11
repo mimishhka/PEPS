@@ -2399,11 +2399,7 @@ async def cart_revalidate(payload: CartRevalidateIn, request: Request):
         # « bientot » ou « COA en attente » force la precommande, de meme
         # qu'un stock insuffisant pour la quantite demandee.
         qte = max(1, int(getattr(ligne, "qty", 1) or 1))
-        stock_v = int((v or {}).get("stock", produit.get("stock", 0)) or 0)
-        coa_bientot = bool((v or {}).get("badge_coa_pending")
-                           or (v or {}).get("badge_coming_soon"))
-        est_precommande = bool(
-            (v or {}).get("preorder_enabled") and (coa_bientot or stock_v < qte))
+        est_precommande = precommande_requise(v, qte)
         if not est_precommande and not v and produit.get("preorder_allowed"):
             est_precommande = True
 
@@ -3037,6 +3033,50 @@ async def _root_upload_proxy(kind: str, filename: str) -> Response:
 # ---------------------------------------------------------------------------
 # Order / Checkout
 # ---------------------------------------------------------------------------
+def coa_en_attente(v: dict) -> bool:
+    """Le certificat d'analyse de ce lot n'est pas encore publie."""
+    v = v or {}
+    return bool(v.get("badge_coa_pending") or (v.get("coa_status") == "pending"))
+
+
+def precommande_requise(v: dict, qte: int) -> bool:
+    """Cette ligne doit-elle partir en precommande ?
+
+    MIREILLE, 11/10/2026 : « j'ai rajoute du BPC-157 mais pour lequel je n'ai
+    pas encore de COA. Il sort en precommande comme s'il n'etait pas en stock
+    [...] on veut permettre a ceux qui ne se soucient pas du COA de commander,
+    mais il faut un avertissement, et il ne faut pas que la commande soit
+    traitee comme une precommande. »
+
+    UN CERTIFICAT MANQUANT N'EST PAS UNE RUPTURE DE STOCK. La regle
+    confondait les deux : `badge_coa_pending` forcait la precommande au meme
+    titre qu'un stock insuffisant. Les consequences allaient bien au-dela de
+    l'etiquette affichee :
+
+      - le prix de precommande remplacait le prix normal ;
+      - la commande etait SCINDEE en deux (`_scinder_precommande`), ce qui
+        fabrique la sous-commande « -P » a 0,00 $ que le client prend pour une
+        erreur de facturation ;
+      - le stock n'etait pas debite ;
+      - et surtout, la verification de liberation (« all_ready ») refusait de
+        laisser partir l'envoi TANT QUE LE CERTIFICAT N'ETAIT PAS TELEVERSE,
+        meme avec le stock en main. Le colis ne serait jamais parti.
+
+    Le certificat ne decide donc plus de rien ici. Il devient ce qu'il est :
+    une information a donner avant l'achat, portee par l'ecran et gelee sur la
+    ligne de commande (`coa_pending_at_purchase`).
+
+    « Bientot disponible » (`badge_coming_soon`) reste, lui, une vraie raison
+    de precommande : le produit n'existe pas encore en tablette.
+    """
+    v = v or {}
+    qte = max(1, int(qte or 1))
+    stock = int(v.get("stock", 0) or 0)
+    if v.get("preorder_enabled") and v.get("badge_coming_soon"):
+        return True
+    return bool(v.get("preorder_enabled")) and stock < qte
+
+
 def _resolve_variant(p: dict, variant_id: Optional[str]) -> dict:
     """Return the selected variant subdoc. Falls back to first variant or builds a synthetic one from legacy fields."""
     variants = p.get("variants") or []
@@ -3328,10 +3368,7 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
 
         v = _resolve_variant(p, it.variant_id)
         is_preorder = False
-        # badge_coa_pending (COA not yet available) also forces preorder path,
-        # matching the frontend rule (badge_coa_pending || badge_coming_soon).
-        coa_coming = bool(v.get("badge_coming_soon") or v.get("badge_coa_pending"))
-        if v.get("preorder_enabled") and (coa_coming or v.get("stock", 0) < it.qty):
+        if precommande_requise(v, it.qty):
             is_preorder = True
             has_preorder = True
         elif v.get("stock", 0) < it.qty:
@@ -3357,6 +3394,10 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
             "line_total": line_total,
             "image_url": p.get("image_url", ""),
             "preorder": is_preorder,
+            # CE QUE LA CLIENTE SAVAIT EN ACHETANT, fige comme le poids.
+            # Le certificat peut etre televerse la semaine suivante ; la
+            # commande doit garder trace de ce qui lui a ete annonce.
+            "coa_pending_at_purchase": coa_en_attente(v),
             # Poids figé à l'achat : l'étiquette doit refléter ce qui a été vendu,
             # même si la fiche produit change ensuite. Les commandes antérieures
             # sans ce champ retombent sur POIDS_PRODUIT_DEFAUT_G dans _order_weight_kg().
@@ -10723,8 +10764,16 @@ async def _unpaid_orders_watchdog():
 
 
 async def _release_ready_preorder_orders() -> int:
-    """Flip paid preorder orders to processing once every preorder line has
-    stock >= qty and no coming-soon / COA-pending badge. Idempotent."""
+    """Libere une commande en precommande des que chaque ligne a son stock.
+
+    « COA-pending » a disparu de cette condition le 11/10/2026, et c'est la
+    correction la plus importante du lot : un certificat non televerse
+    retenait ici un colis dont le stock etait pourtant arrive. La commande
+    restait « en attente » indefiniment, sans qu'aucun ecran ne dise
+    pourquoi. Voir precommande_requise.
+
+    « Bientot disponible » reste bloquant : le produit n'existe pas encore.
+    Idempotente."""
     released = 0
     cursor = db.orders.find(
         {"payment_status": "paid", "fulfillment_status": "preorder"},
@@ -10747,7 +10796,11 @@ async def _release_ready_preorder_orders() -> int:
             else:
                 v = None
             stock = int((v or p).get("stock", 0)) if (v or p) else 0
-            if v and (v.get("badge_coming_soon") or v.get("badge_coa_pending")):
+            # LE CERTIFICAT NE RETIENT PLUS LE COLIS. Un `badge_coa_pending`
+            # bloquait ici la liberation d'un envoi dont le stock etait
+            # pourtant arrive : la commande restait en attente indefiniment,
+            # jusqu'au televersement du certificat. Voir precommande_requise.
+            if v and v.get("badge_coming_soon"):
                 all_ready = False
                 break
             if stock < it.get("qty", 1):

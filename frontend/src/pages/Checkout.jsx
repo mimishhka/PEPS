@@ -124,7 +124,7 @@ export default function Checkout() {
           const plein = Number(v.price);
           const promo = Number(v.sale_price);
           const isPre = v.preorder_enabled
-            && (v.badge_coa_pending || v.badge_coming_soon || Number(v.stock) < Number(it.qty));
+            && (v.badge_coming_soon || Number(v.stock) < Number(it.qty));
           const prix = (isPre && Number(v.preorder_price))
             ? Number(v.preorder_price)
             : (promo > 0 && promo < plein ? promo : plein);

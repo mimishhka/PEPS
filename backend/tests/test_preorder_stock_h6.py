@@ -109,3 +109,71 @@ def test_preorder_release_decrements_stock_atomically(server_module, monkeypatch
 
     assert released == 1
     assert product_col.variants[0]["stock"] == 7
+
+def _liberation(server_module, monkeypatch, variante, qte=3):
+    """Monte une commande en precommande sur UNE variante et tente sa
+    liberation. Rend (nombre libere, stock restant)."""
+    product_col = DummyProductsCollection()
+    product_col.variants = [dict(variante)]
+    orders_col = DummyOrdersCollection()
+    server_module.db = types.SimpleNamespace(products=product_col, orders=orders_col)
+
+    async def fake_find_one(*args, **kwargs):
+        return {"id": "p1", "stock": 10, "variants": product_col.variants}
+
+    class _Cursor:
+        def __init__(self):
+            self._yielded = False
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if self._yielded:
+                raise StopAsyncIteration
+            self._yielded = True
+            return {"id": "o1", "order_number": "FN-001",
+                    "items": [{"product_id": "p1", "variant_id": "v1",
+                               "qty": qte, "preorder": True}]}
+
+    monkeypatch.setattr(server_module.db.products, "find_one", fake_find_one)
+    monkeypatch.setattr(server_module.db.orders, "find", lambda *a, **k: _Cursor())
+
+    libere = asyncio.run(server_module._release_ready_preorder_orders())
+    return libere, product_col.variants[0]["stock"]
+
+
+def test_UN_CERTIFICAT_MANQUANT_NE_RETIENT_PLUS_LE_COLIS(server_module, monkeypatch):
+    """La correction la plus importante du 11/10/2026, et la plus silencieuse.
+
+    MIREILLE : « il ne faut pas que la commande soit traitee comme une
+    precommande ». La consequence qu'elle n'avait pas encore vue : cette
+    verification refusait de liberer un envoi tant que le certificat n'etait
+    pas televerse, STOCK EN MAIN. La commande serait restee en attente
+    indefiniment, sans qu'aucun ecran ne dise pourquoi — ni erreur, ni
+    message, juste un colis qui ne part pas.
+
+    Ce site n'avait aucun test. Il en a un.
+    """
+    libere, reste = _liberation(
+        server_module, monkeypatch,
+        {"id": "v1", "stock": 10, "badge_coa_pending": True, "coa_status": "pending"})
+    assert libere == 1, "le colis doit partir : le stock est la"
+    assert reste == 7, "et le stock doit bien etre debite"
+
+
+def test_bientot_disponible_retient_toujours_le_colis(server_module, monkeypatch):
+    # L'autre badge reste bloquant : le produit n'existe pas encore en
+    # tablette, le liberer n'aurait aucun sens.
+    libere, reste = _liberation(
+        server_module, monkeypatch,
+        {"id": "v1", "stock": 10, "badge_coming_soon": True})
+    assert libere == 0
+    assert reste == 10, "rien ne part, donc rien n'est debite"
+
+
+def test_un_stock_insuffisant_retient_toujours_le_colis(server_module, monkeypatch):
+    libere, reste = _liberation(
+        server_module, monkeypatch, {"id": "v1", "stock": 1}, qte=3)
+    assert libere == 0
+    assert reste == 1

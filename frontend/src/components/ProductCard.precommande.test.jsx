@@ -22,6 +22,9 @@ const mockConfirm = jest.fn();
 jest.mock("react-router-dom", () => ({
   Link: ({ to, children, ...reste }) => <a href={String(to)} {...reste}>{children}</a>,
 }));
+jest.mock("lucide-react", () => new Proxy({}, {
+  get: (cible, nom) => (nom === "__esModule" ? true : () => null),
+}));
 jest.mock("../contexts/LanguageContext", () => ({ useLang: () => ({ lang: "fr" }) }));
 jest.mock("../contexts/CartContext", () => ({ useCart: jest.fn() }));
 jest.mock("./ConfirmDialog", () => ({ useConfirm: jest.fn() }));
@@ -229,16 +232,31 @@ describe("un seul statut par carte", () => {
     expect(badge()).not.toBeInTheDocument();
   });
 
-  test("un COA en attente sur la variante la moins chère vaut précommande", () => {
-    /* La règle métier n'a pas changé : `preorder_enabled && (stock <= 0 ||
-     * COA à venir)`. Ce qui change, c'est que l'affichage la suit au lieu de
-     * la contredire — un produit vendu en précommande ne s'annonce plus
-     * « En stock » parce qu'il lui reste des flacons. */
+  test("UN COA EN ATTENTE SUR UN LOT EN STOCK N'EST PLUS UNE PRÉCOMMANDE", () => {
+    /* MIREILLE, 11/10/2026 : « il sort en précommande comme s'il n'était pas
+     * en stock [...] il ne faut pas que la commande soit traitée comme une
+     * précommande. »
+     *
+     * Ce test affirmait le contraire jusqu'au 11/10/2026. Il a été corrigé,
+     * pas contourné : la règle métier a changé. Un certificat manquant n'est
+     * pas une rupture de stock — le lot part tout de suite, et c'est
+     * l'avertissement qui porte l'information, pas une fausse pastille. */
     render(<ProductCard product={produit([
       { ...EN_STOCK, preorder_enabled: true, badge_coa_pending: true },
     ])} />);
 
+    expect(badge()).not.toBeInTheDocument();
+    expect(statut()).toHaveTextContent(/en stock|stock bas/i);
+    expect(screen.getByTestId("card-coa-bpc-157")).toBeInTheDocument();
+  });
+
+  test("sans stock, le certificat ne change rien : la précommande reste", () => {
+    render(<ProductCard product={produit([
+      { ...EN_STOCK, stock: 0, preorder_enabled: true, badge_coa_pending: true },
+    ])} />);
+
     expect(badge()).toBeInTheDocument();
-    expect(statut()).not.toBeInTheDocument();
+    // Pas d'avertissement par-dessus : le délai d'arrivée est déjà le sujet.
+    expect(screen.queryByTestId("card-coa-bpc-157")).toBeNull();
   });
 });

@@ -8,6 +8,8 @@ import useDocumentHead from "../hooks/useDocumentHead";
 import { prix } from "../lib/prix";
 import { dosage } from "../lib/dosage";
 import { jourLisible } from "../lib/periode";
+import { avertirCoa, estPrecommande } from "../lib/precommande";
+import AvertissementCoa from "../components/AvertissementCoa";
 import useAffiliate from "../hooks/useAffiliate";
 import { useCart } from "../contexts/CartContext";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -146,15 +148,18 @@ export default function ProductDetail() {
   const name = lang === "fr" ? product.name_fr : product.name_en;
   const variants = product.variants || [];
   const selectedVariant = variants.find((v) => v.id === variantId) || variants[0] || null;
-  const coaComing = !!(selectedVariant && (selectedVariant.badge_coa_pending || selectedVariant.badge_coming_soon));
-  const isVariantPreorder = !!(selectedVariant && selectedVariant.preorder_enabled && (coaComing || selectedVariant.stock < qty));
+  const isVariantPreorder = estPrecommande(selectedVariant, qty);
+  // L'avertissement remplace la precommande : le lot EST en stock, seul son
+  // certificat manque. Voir lib/precommande.
+  const avertirCertificat = avertirCoa(selectedVariant, qty);
   const hasSale = !!(selectedVariant && selectedVariant.sale_price && selectedVariant.sale_price < selectedVariant.price);
   const effectivePrice = selectedVariant
     ? (isVariantPreorder && selectedVariant.preorder_price ? selectedVariant.preorder_price : hasSale ? selectedVariant.sale_price : selectedVariant.price)
     : product.price_cad;
   const showOriginal = !!(selectedVariant && effectivePrice < selectedVariant.price);
   const isComingSoon = !!(selectedVariant && selectedVariant.badge_coming_soon && !selectedVariant.preorder_enabled);
-  const isOutOfStock = !!(selectedVariant && selectedVariant.stock <= 0 && !selectedVariant.preorder_enabled && !coaComing);
+  const isOutOfStock = !!(selectedVariant && selectedVariant.stock <= 0
+    && !selectedVariant.preorder_enabled && !selectedVariant.badge_coming_soon);
   const stockN = selectedVariant?.stock ?? product.stock ?? 0;
   // E2E CA-008 : l'indicateur de stock bas manquait sur la fiche.
   const seuilStock = Number(product.low_stock_threshold ?? 10);
@@ -244,7 +249,7 @@ export default function ProductDetail() {
                 <div className="flex flex-wrap gap-2">
                   {variants.map((v) => {
                     const isActive = v.id === variantId;
-                    const vCoaComing = v.badge_coa_pending || v.badge_coming_soon;
+                    const vCoaComing = v.badge_coming_soon;
                     const vPre = v.preorder_enabled && (vCoaComing || v.stock < qty);
                     const vSale = v.sale_price && v.sale_price < v.price;
                     const vPrice = vPre && v.preorder_price ? v.preorder_price : vSale ? v.sale_price : v.price;
@@ -325,6 +330,8 @@ export default function ProductDetail() {
                   : (lang === "fr" ? "Rupture" : "Out of stock")}
               </span>
             </div>
+
+            {avertirCertificat && <AvertissementCoa className="mb-4" />}
 
             <div className="flex items-stretch gap-3 mb-4">
               <div className="flex items-center gap-1 border border-ash bg-white px-2" style={{ borderRadius: "var(--r-m)" }}>

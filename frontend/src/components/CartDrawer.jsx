@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useCart } from "../contexts/CartContext";
 import { useLang } from "../contexts/LanguageContext";
 import ProductImage from "./ProductImage";
+import AvertissementCoa from "./AvertissementCoa";
 import { TAILLES } from "../lib/derivees";
 import { prix } from "../lib/prix";
 import { dosage } from "../lib/dosage";
@@ -80,6 +81,16 @@ export default function CartDrawer() {
                         >
                           {lang === "fr" ? "Précommande · envoi séparé" : "Pre-order · ships separately"}
                         </div>
+                      )}
+                      {/* LE CERTIFICAT N'EST PAS UNE PRECOMMANDE. Le lot
+                          part tout de suite ; c'est son certificat qui suit.
+                          `!it.preorder` : sur une precommande, le delai
+                          d'arrivee est deja le sujet et le certificat
+                          viendra avec le lot. Deux mentions au meme endroit
+                          s'annulent. */}
+                      {it.coa_pending && !it.preorder && (
+                        <AvertissementCoa compact className="mt-0.5"
+                          testId={`cart-coa-${it.slug}`} />
                       )}
                       <div className="flex items-center gap-2 mt-2">
                         <button

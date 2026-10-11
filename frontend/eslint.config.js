@@ -149,7 +149,9 @@ module.exports = [
     // Les fichiers de test tournent sous Jest, qui injecte ses propres globaux.
     // Sans ce bloc, no-undef signalait 14 fois describe, it et expect —
     // du bruit pur, dans les deux seuls fichiers de test du projet.
-    files: ["src/**/*.test.{js,jsx}", "src/**/__tests__/**/*.{js,jsx}"],
+    // setupTests.js est charge par Jest avant chaque suite : il y vit les
+    // memes globaux, sans porter « .test. » dans son nom.
+    files: ["src/**/*.test.{js,jsx}", "src/**/__tests__/**/*.{js,jsx}", "src/setupTests.js"],
     languageOptions: {
       globals: {
         describe: "readonly",

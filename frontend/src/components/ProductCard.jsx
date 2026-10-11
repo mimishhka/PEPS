@@ -3,6 +3,8 @@ import { useLang } from "../contexts/LanguageContext";
 import { useCart } from "../contexts/CartContext";
 import ProductImage from "./ProductImage";
 import { prix } from "../lib/prix";
+import { avertirCoa, estPrecommande } from "../lib/precommande";
+import AvertissementCoa from "./AvertissementCoa";
 import { useConfirm } from "./ConfirmDialog";
 
 export default function ProductCard({ product, index = 0 }) {
@@ -13,8 +15,7 @@ export default function ProductCard({ product, index = 0 }) {
 
   const variants = product.variants || [];
   const priced = variants.map((v) => {
-    const coaComing = v.badge_coa_pending || v.badge_coming_soon;
-    const isPre = v.preorder_enabled && (v.stock <= 0 || coaComing);
+    const isPre = estPrecommande(v, 1);
     const sale = v.sale_price && v.sale_price < v.price;
     const eff = isPre && v.preorder_price ? v.preorder_price : sale ? v.sale_price : v.price;
     return { ...v, eff, isPre, sale };
@@ -137,6 +138,12 @@ export default function ProductCard({ product, index = 0 }) {
           )}
         </div>
         <div className="font-data text-[11px] text-glacier">{specLine}</div>
+        {/* Le lot est en stock et part tout de suite : on le dit ici plutot
+            que de le deguiser en precommande, ce que la regle faisait avant
+            le 11/10/2026. */}
+        {avertirCoa(cheapest, 1) && (
+          <AvertissementCoa compact testId={`card-coa-${product.slug}`} />
+        )}
 
         <div className="flex items-center justify-between pt-3 mt-auto">
           <div className="flex items-baseline gap-2">

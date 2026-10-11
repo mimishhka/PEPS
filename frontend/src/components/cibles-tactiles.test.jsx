@@ -39,6 +39,9 @@ jest.mock("./ProductImage", () => ({
   __esModule: true,
   default: () => null,
 }));
+jest.mock("lucide-react", () => new Proxy({}, {
+  get: (cible, nom) => (nom === "__esModule" ? true : () => null),
+}));
 
 const produit = {
   slug: "bpc-157",

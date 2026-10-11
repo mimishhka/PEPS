@@ -87,15 +87,48 @@ test("en précommande sans stock, la pastille annonce aussi la rupture", async (
   expect(screen.getByTestId("stock-state")).toHaveTextContent("Rupture · Précommande");
 });
 
-test("en précommande avec du stock, la rupture n'est pas annoncée à tort", async () => {
+test("UN CERTIFICAT MANQUANT N'EST PAS UNE RUPTURE DE STOCK", async () => {
+  /* MIREILLE, 11/10/2026 : « j'ai rajouté du BPC-157 mais pour lequel je n'ai
+   * pas encore de COA. Il sort en précommande comme s'il n'était pas en
+   * stock [...] il ne faut pas que la commande soit traitée comme une
+   * précommande. »
+   *
+   * Ce test disait l'inverse jusqu'au 11/10/2026 : il vérifiait que ce lot
+   * s'annonçait « Précommande ». Il a été corrigé, pas contourné — c'est la
+   * règle métier qui a changé, pas le code qui s'est mis à mentir. Le lot est
+   * en tablette : il s'annonce en stock, et l'avertissement dit ce qui
+   * manque vraiment. */
   await afficher({
     stock: 12, preorder_enabled: true,
     coa_status: "pending", badge_coa_pending: true,
   });
 
   const pastille = screen.getByTestId("stock-state");
-  expect(pastille).toHaveTextContent("Précommande");
+  expect(pastille).toHaveTextContent("En stock");
+  expect(pastille).not.toHaveTextContent("Précommande");
   expect(pastille).not.toHaveTextContent("Rupture");
+  expect(screen.getByTestId("avertissement-coa")).toBeInTheDocument();
+});
+
+test("et le bouton ajoute normalement, sans parler de précommande", async () => {
+  await afficher({
+    stock: 12, preorder_enabled: true,
+    coa_status: "pending", badge_coa_pending: true,
+  });
+  const bouton = screen.getByTestId("product-add-to-cart");
+  expect(bouton).toBeEnabled();
+  expect(bouton).not.toHaveTextContent(/PRÉCOMMANDE/i);
+});
+
+test("sans stock, le certificat ne change rien : c'est bien une précommande", async () => {
+  // La rupture, elle, reste une vraie raison. Et on n'y ajoute pas
+  // l'avertissement : le délai d'arrivée est déjà le sujet.
+  await afficher({
+    stock: 0, preorder_enabled: true,
+    coa_status: "pending", badge_coa_pending: true,
+  });
+  expect(screen.getByTestId("stock-state")).toHaveTextContent("Rupture · Précommande");
+  expect(screen.queryByTestId("avertissement-coa")).toBeNull();
 });
 
 test("hors précommande, la rupture se dit comme avant", async () => {

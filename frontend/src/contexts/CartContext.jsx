@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState, useCallback, useMemo, u
 import { toast } from "sonner";
 import api from "../lib/api";
 import ProductImage from "../components/ProductImage";
+import { coaEnAttente, estPrecommande } from "../lib/precommande";
+// coaEnAttente voyage avec la ligne : voir AvertissementCoa.
 import { TAILLES } from "../lib/derivees";
 
 const CartContext = createContext(null);
@@ -127,9 +129,10 @@ export function CartProvider({ children }) {
        * le DIRE.
        */
       let isPre = false;
+      let coaAttente = false;
       if (v) {
-        const coaComing = v.badge_coa_pending || v.badge_coming_soon;
-        isPre = !!(v.preorder_enabled && (coaComing || v.stock < mergedQty));
+        isPre = estPrecommande(v, mergedQty);
+        coaAttente = coaEnAttente(v);
         unit_price = isPre && v.preorder_price ? v.preorder_price
           : (v.sale_price && v.sale_price < v.price ? v.sale_price : unit_price);
       }
@@ -140,7 +143,7 @@ export function CartProvider({ children }) {
         // en precommande cote serveur, tandis que le panier continuait
         // d'afficher le prix et le statut d'un article disponible : le client
         // decouvrait l'ecart sur sa facture.
-        next[idx] = { ...next[idx], qty: mergedQty, price_cad: unit_price, preorder: isPre };
+        next[idx] = { ...next[idx], qty: mergedQty, price_cad: unit_price, preorder: isPre, coa_pending: coaAttente };
         return next;
       }
       return [
@@ -158,6 +161,7 @@ export function CartProvider({ children }) {
           name_fr: product.name_fr,
           price_cad: unit_price,
           preorder: isPre,
+          coa_pending: coaAttente,
           qty,
           image_url: product.image_url,
           dosage_mg: product.dosage_mg,
