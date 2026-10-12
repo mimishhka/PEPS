@@ -74,7 +74,7 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
 
       <div className="flex items-center gap-3 flex-wrap mb-5">
         <label htmlFor="sim-montant"
-               className="font-data text-[10px] uppercase tracking-[0.18em] text-glacier">
+               className="etiquette text-glacier">
           {L("Commande", "Order")}
         </label>
         <input id="sim-montant" type="number" min="20" max="5000" step="10"
@@ -138,15 +138,13 @@ export default function TierLadder({ data, L, lang, money, TIER_META }) {
                  style={ici ? { borderColor: trait, boxShadow: `0 0 0 1px ${trait}` }
                             : undefined}>
               <div className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 font-data text-[10px]
-                                 uppercase tracking-[0.14em] font-semibold"
+                <span className="inline-flex items-center gap-1.5 etiquette font-semibold"
                       style={{ color: trait }}>
                   <TierMark tier={t.name} color={vif} size={18} />
                   {meta[lang] || t.name}
                 </span>
                 {ici && (
-                  <span className="font-data text-[10px] uppercase tracking-[0.12em] px-1.5 py-0.5
-                                   rounded-full"
+                  <span className="etiquette px-1.5 py-0.5 rounded-full"
                         style={{ background: voile, color: trait }}>
                     {L("vous", "you")}
                   </span>

@@ -135,7 +135,7 @@ export default function DepuisLeDebut({ data, series, L, money, lang }) {
          data-testid="depuis-le-debut">
 
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em] text-nova-texte">
+        <p className="etiquette font-semibold text-nova-texte">
           {L(choisie.fr, choisie.en)}
         </p>
         {commandes > 0 && (
@@ -160,12 +160,7 @@ export default function DepuisLeDebut({ data, series, L, money, lang }) {
             {FENETRES.map((f) => (
               <button key={f.cle} onClick={() => setFenetre(f.cle)}
                 aria-pressed={fenetre === f.cle}
-                className={`snap-start shrink-0 px-3 h-9 rounded-full font-data text-[11px]
-                            font-semibold uppercase tracking-[0.08em] transition-colors
-                            active:scale-[0.97] ${
-                  fenetre === f.cle
-                    ? "bg-nordfjord text-white"
-                    : "text-glacier border border-ash hover:text-nordfjord hover:bg-clinical"}`}
+                className={`snap-start shrink-0 px-3 h-9 rounded-full etiquette-nav font-semibold transition-colors active:scale-[0.97] ${ fenetre === f.cle ? "bg-nordfjord text-white" : "text-glacier border border-ash hover:text-nordfjord hover:bg-clinical"}`}
                 style={{ touchAction: "manipulation" }}
                 data-testid={`depuis-filtre-${f.cle}`}>
                 {L(f.fr, f.en)}
@@ -235,7 +230,7 @@ export default function DepuisLeDebut({ data, series, L, money, lang }) {
                   data-testid={`depuis-legende-${s.cle}`}>
                 <span className="w-2 h-2 rounded-full shrink-0 translate-y-[-1px]"
                       style={{ background: s.ton }} aria-hidden="true" />
-                <span className="font-data text-[11px] uppercase tracking-[0.1em] text-glacier">
+                <span className="etiquette text-glacier">
                   {L(s.fr, s.en)}
                 </span>
               </li>

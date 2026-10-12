@@ -580,7 +580,7 @@ export default function Checkout() {
           icone, dont le trait et l'alignement n'appartiennent a aucun systeme.
           C'est une icone dessinee, au trait des autres. Et la carte n'avait
           aucun rayon — elle etait la seule forme a angle vif de la page. */}
-      <div className="font-data text-[10px] uppercase tracking-[0.2em] text-nova-texte mb-1 flex items-center gap-1.5">
+      <div className="etiquette text-nova-texte mb-1 flex items-center gap-1.5">
         {paymentMethod === id && <Check size={12} strokeWidth={2.5} aria-hidden="true" />}
         {paymentMethod === id ? (lang === "fr" ? "CHOISI" : "SELECTED") : (lang === "fr" ? "CHOISIR" : "SELECT")}
       </div>
@@ -620,7 +620,7 @@ export default function Checkout() {
           <Etape numero="2" id="etape-livraison" titre={lang === "fr" ? "Adresse de livraison" : "Shipping address"}>
             {savedAddresses.length > 0 && (
               <div className="mb-4">
-                <label className="block font-data text-[11px] uppercase tracking-[0.14em] text-glacier mb-1.5">
+                <label className="block etiquette text-glacier mb-1.5">
                   {lang === "fr" ? "Adresses enregistrées" : "Saved addresses"}
                 </label>
                 <select
@@ -748,7 +748,7 @@ export default function Checkout() {
                       <div className="text-xs text-glacier">{it.variant_name ? `${it.variant_name} · ` : ""}x{it.qty}</div>
                       {it.preorder && (
                         <div
-                          className="font-data text-[9.5px] font-semibold uppercase tracking-[0.14em] text-warning mt-0.5"
+                          className="etiquette font-semibold text-warning mt-0.5"
                           data-testid={`summary-preorder-${it.slug}`}
                         >
                           {lang === "fr" ? "Précommande" : "Pre-order"}
@@ -778,7 +778,7 @@ export default function Checkout() {
                 style={{ borderRadius: "var(--r-m)" }}
                 data-testid="checkout-preorder-split"
               >
-                <div className="font-data text-[10px] font-semibold uppercase tracking-[0.16em] text-warning">
+                <div className="etiquette font-semibold text-warning">
                   {lang === "fr" ? "Deux envois" : "Two shipments"}
                 </div>
                 <p className="text-xs text-glacier mt-1 leading-relaxed">
@@ -792,7 +792,7 @@ export default function Checkout() {
             <div className="mt-4">
               {coupon ? (
                 <div className="flex items-center justify-between rounded-xl bg-nova/5 border border-nova/20 px-3 py-2 text-sm">
-                  <span className="font-data text-nova-texte uppercase tracking-wide">{coupon.code}</span>
+                  <span className="etiquette text-nova-texte">{coupon.code}</span>
                   <button onClick={removeCoupon} className="text-xs text-glacier hover:text-compliance" data-testid="coupon-remove">
                     {lang === "fr" ? "Retirer" : "Remove"}
                   </button>
@@ -832,14 +832,14 @@ export default function Checkout() {
                 </span>
               </div>
               {shippingEst > 0 && (
-                <div className="font-data text-[10px] uppercase tracking-[0.14em] text-compliance" data-testid="free-shipping-hint">
+                <div className="etiquette text-compliance" data-testid="free-shipping-hint">
                   {lang === "fr"
                     ? `Livraison gratuite dès ${prix(seuilGratuit, "fr")} : plus que ${prix(seuilGratuit - Math.max(0, subtotal - discount), "fr")}`
                     : `Free shipping at ${prix(seuilGratuit, "en")} : only ${prix(seuilGratuit - Math.max(0, subtotal - discount), "en")} to go`}
                 </div>
               )}
               {coupon?.free_shipping && shippingEst === 0 && (
-                <div className="font-data text-[10px] uppercase tracking-[0.14em] text-nova-texte" data-testid="coupon-free-shipping">
+                <div className="etiquette text-nova-texte" data-testid="coupon-free-shipping">
                   {lang === "fr" ? "Livraison gratuite incluse dans le code promo" : "Free shipping included in your promo code"}
                 </div>
               )}
@@ -886,7 +886,7 @@ export default function Checkout() {
                 haut de page, au-dessus du titre — la ou personne n'hesite
                 encore. Il travaille sous le bouton, a l'instant ou l'on
                 s'engage. */}
-            <p className="mt-4 flex items-center gap-2 font-data text-[10px] uppercase tracking-[0.18em] text-compliance">
+            <p className="mt-4 flex items-center gap-2 etiquette text-compliance">
               <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" />
               {lang === "fr" ? "Paiement sécurisé" : "Secure checkout"}
             </p>
@@ -920,7 +920,7 @@ export default function Checkout() {
           </DialogHeader>
           {addrSuggestion?.suggestion?.formattedAddress && (
             <div className="rounded-xl bg-clinical/40 p-4 my-2 border border-nova/20">
-              <div className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance mb-1">
+              <div className="etiquette text-compliance mb-1">
                 {lang === "fr" ? "Suggestion" : "Suggestion"}
               </div>
               <div className="font-medium text-nordfjord" data-testid="address-suggestion-text">
@@ -1223,7 +1223,7 @@ function AddressForm({ value, setValue, lang, prefix, erreurs = {}, onClear }) {
         </span>
       )}
       <label className="sm:col-span-2 flex flex-col gap-1">
-        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Address", "Adresse")}</span>
+        <span className="etiquette text-compliance">{lbl("Address", "Adresse")}</span>
         <input value={value.line1} onChange={(e) => set("line1", e.target.value)}
           placeholder={lbl("Address line 1", "Adresse")} data-testid={`${prefix}-line1`}
           autoComplete="address-line1"
@@ -1233,7 +1233,7 @@ function AddressForm({ value, setValue, lang, prefix, erreurs = {}, onClear }) {
         )}
       </label>
       <label className="sm:col-span-2 flex flex-col gap-1">
-        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Apt / Suite (optional)", "Appartement (optionnel)")}</span>
+        <span className="etiquette text-compliance">{lbl("Apt / Suite (optional)", "Appartement (optionnel)")}</span>
         <input value={value.line2} onChange={(e) => set("line2", e.target.value)}
           placeholder={lbl("Address line 2 (optional)", "Appartement, suite (optionnel)")} data-testid={`${prefix}-line2`}
           autoComplete="address-line2"
@@ -1243,7 +1243,7 @@ function AddressForm({ value, setValue, lang, prefix, erreurs = {}, onClear }) {
       {/* Le code postal passe AVANT la ville et la province : c'est lui qui
           les renseigne, il doit donc se saisir en premier. */}
       <label className="flex flex-col gap-1">
-        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Postal / ZIP code", "Code postal")}</span>
+        <span className="etiquette text-compliance">{lbl("Postal / ZIP code", "Code postal")}</span>
         <input value={value.postal_code} onChange={(e) => majCodePostal(e.target.value)}
           placeholder={value.country === "CA" ? "A1A 1A1" : "12345"} data-testid={`${prefix}-postal`}
           autoComplete="postal-code" inputMode={value.country === "CA" ? "text" : "numeric"}
@@ -1258,7 +1258,7 @@ function AddressForm({ value, setValue, lang, prefix, erreurs = {}, onClear }) {
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("City", "Ville")}</span>
+        <span className="etiquette text-compliance">{lbl("City", "Ville")}</span>
         <input value={value.city} onChange={(e) => set("city", e.target.value)}
           placeholder={lbl("City", "Ville")} data-testid={`${prefix}-city`}
           autoComplete="address-level2"
@@ -1272,7 +1272,7 @@ function AddressForm({ value, setValue, lang, prefix, erreurs = {}, onClear }) {
           partaient tels quels : ni le serveur ni Postes Canada ne les
           corrigeaient, et l'étiquette était refusée des jours plus tard. */}
       <label className="flex flex-col gap-1">
-        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Province / State", "Province / État")}</span>
+        <span className="etiquette text-compliance">{lbl("Province / State", "Province / État")}</span>
         <select value={value.province} onChange={(e) => set("province", e.target.value)}
           data-testid={`${prefix}-province`} autoComplete="address-level1"
           className={`rounded border px-4 py-3 outline-none focus:border-nova bg-white ${desaccord ? "border-error" : "border-ash"}`}>
@@ -1292,7 +1292,7 @@ function AddressForm({ value, setValue, lang, prefix, erreurs = {}, onClear }) {
       </label>
 
       <label className="flex flex-col gap-1 sm:col-span-2">
-        <span className="font-data text-[10px] uppercase tracking-[0.18em] text-compliance">{lbl("Country", "Pays")}</span>
+        <span className="etiquette text-compliance">{lbl("Country", "Pays")}</span>
         <select value="CA" onChange={(e) => majPays(e.target.value)} data-testid={`${prefix}-country`}
           autoComplete="country"
           className="rounded border border-ash px-4 py-3 outline-none focus:border-nova bg-white">

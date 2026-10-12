@@ -75,7 +75,7 @@ export default function Account() {
               {(user?.name || "?").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="font-data text-[10px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-1">
+              <p className="etiquette font-semibold text-nova-texte mb-1">
                 {lang === "fr" ? "MON COMPTE" : "MY ACCOUNT"}
               </p>
               <h1 className="font-display text-2xl sm:text-3xl font-bold text-nordfjord leading-tight truncate" data-testid="account-name">{user?.name}</h1>
@@ -112,14 +112,14 @@ export default function Account() {
                 ★
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-data text-[10px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-1">
+                <p className="etiquette font-semibold text-nova-texte mb-1">
                   {lang === "fr" ? "PROGRAMME AFFILIÉ · ACTIF" : "AFFILIATE PROGRAM · ACTIVE"}
                 </p>
                 <p className="font-display text-lg font-bold text-nordfjord leading-tight">
                   {lang === "fr" ? "Mon programme affilié" : "My affiliate program"}
                 </p>
               </div>
-              <span className="hidden sm:inline font-data text-xs font-semibold uppercase tracking-[0.18em] text-nordfjord group-hover:text-nova-texte transition-colors shrink-0">
+              <span className="hidden sm:inline etiquette font-semibold text-nordfjord group-hover:text-nova-texte transition-colors shrink-0">
                 {lang === "fr" ? "Ouvrir" : "Open"} →
               </span>
             </div>
@@ -128,7 +128,7 @@ export default function Account() {
                 ? <>Code : <span className="text-nordfjord font-bold">{affiliate.code}</span> · Consultez vos revenus, clics et meilleurs produits</>
                 : <>Code: <span className="text-nordfjord font-bold">{affiliate.code}</span> · Track your earnings, clicks and best-selling products</>}
             </p>
-            <span className="inline-block sm:hidden mt-2.5 font-data text-xs font-semibold uppercase tracking-[0.18em] text-nordfjord group-hover:text-nova-texte transition-colors">
+            <span className="inline-block sm:hidden mt-2.5 etiquette font-semibold text-nordfjord group-hover:text-nova-texte transition-colors">
               {lang === "fr" ? "Ouvrir le tableau de bord" : "Open dashboard"} →
             </span>
           </Link>
@@ -156,9 +156,7 @@ export default function Account() {
               key={key}
               onClick={() => setTab(key)}
               data-testid={`account-tab-${key}`}
-              className={`font-data text-xs uppercase tracking-[0.18em] px-5 min-h-[44px] -mb-px border-b-2 transition-colors shrink-0 snap-start ${
-                tab === key ? "border-nova text-nordfjord font-bold" : "border-transparent text-glacier hover:text-nordfjord"
-              }`}
+              className={`etiquette-nav px-5 min-h-[44px] -mb-px border-b-2 transition-colors shrink-0 snap-start ${ tab === key ? "border-nova text-nordfjord font-bold" : "border-transparent text-glacier hover:text-nordfjord" }`}
             >
               {label}
             </button>
@@ -192,7 +190,7 @@ function OrderCard({ groupe, t, lang }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-display font-bold text-nordfjord text-sm truncate">{o.order_number}</span>
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold font-data uppercase tracking-[0.08em] ${badge.cls}`}>{badge.label}</span>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 etiquette font-semibold ${badge.cls}`}>{badge.label}</span>
           {/* UNE SEULE MENTION, NEUTRE, ET PLUS DEUX PASTILLES QUI SE
               CONTREDISENT. L'audit du 06/10 relevait « 2 SHIPMENTS » en
               orange et « FOLLOW-UP » en cyan pour une meme commande scindee :
@@ -200,7 +198,7 @@ function OrderCard({ groupe, t, lang }) {
               La scission est une mecanique d'EXPEDITION ; elle n'a aucune
               raison de ressembler a un probleme. */}
           {plusieursEnvois && (
-            <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold font-data uppercase tracking-[0.08em] bg-ash/50 text-glacier"
+            <span className="shrink-0 rounded-full px-2 py-0.5 etiquette font-semibold bg-ash/50 text-glacier"
               data-testid={`order-envois-${o.order_number}`}>
               {lang === "fr" ? `${groupe.envois.length} envois` : `${groupe.envois.length} shipments`}
             </span>
@@ -320,7 +318,7 @@ function ProfileTab({ t, user, refresh }) {
       <form onSubmit={saveName} className="rounded-xl border border-ash bg-white p-6 space-y-5 self-start" data-testid="profile-form">
         <h2 className="font-display text-lg font-bold text-nordfjord">{t("account.profile")}</h2>
         <div>
-          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.fullName")}</label>
+          <label className="block etiquette text-compliance mb-2">{t("account.fullName")}</label>
           <input required value={name} onChange={(e) => setName(e.target.value)} data-testid="profile-name"
             className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
         </div>
@@ -339,14 +337,14 @@ function ProfileTab({ t, user, refresh }) {
         ) : (
           <>
             <div>
-              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.newEmail")}</label>
+              <label className="block etiquette text-compliance mb-2">{t("account.newEmail")}</label>
               <input type="email" required value={emailForm.new_email}
                 onChange={(e) => setEmailForm({ ...emailForm, new_email: e.target.value })} data-testid="email-change-new"
                 className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
             </div>
             {!pwLess && (
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
+                <label className="block etiquette text-compliance mb-2">{t("account.currentPassword")}</label>
                 <input type="password" required autoComplete="current-password"
                   value={emailForm.current_password}
                   onChange={(e) => setEmailForm({ ...emailForm, current_password: e.target.value })} data-testid="email-change-password"
@@ -412,7 +410,7 @@ function AddressesTab({ t, lang }) {
   };
 
   if (addresses === null) {
-    return <p className="font-data text-xs uppercase tracking-[0.2em] text-glacier">{t("common.loading")}</p>;
+    return <p className="etiquette text-glacier">{t("common.loading")}</p>;
   }
 
   return (
@@ -437,7 +435,7 @@ function AddressesTab({ t, lang }) {
           <Field label={t("checkout.address2")} value={editing.address2} className="sm:col-span-2" onChange={(v) => setEditing({ ...editing, address2: v })} testid="address-address2" />
           <Field label={t("checkout.city")} value={editing.city} required onChange={(v) => setEditing({ ...editing, city: v })} testid="address-city" />
           <div>
-            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("checkout.province")}</label>
+            <label className="block etiquette text-compliance mb-2">{t("checkout.province")}</label>
             <select value={editing.province} data-testid="address-province"
               onChange={(e) => setEditing({ ...editing, province: e.target.value })}
               className="w-full border border-ash px-5 py-3 bg-white text-nordfjord focus:outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }}>
@@ -446,7 +444,7 @@ function AddressesTab({ t, lang }) {
           </div>
           <Field label={t("checkout.postal")} value={editing.postal_code} required onChange={(v) => setEditing({ ...editing, postal_code: v })} testid="address-postal" />
           <Field label={t("checkout.phone")} value={editing.phone} onChange={(v) => setEditing({ ...editing, phone: v })} testid="address-phone" />
-          <label className="flex items-center gap-2 font-data text-xs uppercase tracking-[0.14em] text-nordfjord sm:col-span-2">
+          <label className="flex items-center gap-2 etiquette text-nordfjord sm:col-span-2">
             <input type="checkbox" checked={editing.is_default} data-testid="address-default"
               onChange={(e) => setEditing({ ...editing, is_default: e.target.checked })} className="accent-[#00B8D4]" />
             {t("account.defaultAddress")}
@@ -471,7 +469,7 @@ function AddressesTab({ t, lang }) {
           {addresses.map((a) => (
             <div key={a.id} className={`rounded-xl border bg-white p-5 ${a.is_default ? "border-nova" : "border-ash"}`} data-testid={`address-card-${a.id}`}>
               <div className="flex items-start justify-between">
-                <div className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">
+                <div className="etiquette text-compliance">
                   {a.label || t("account.addressLabel")}
                   {a.is_default && <span className="ml-2 rounded-full bg-nordfjord text-white px-2 py-0.5">{t("account.default")}</span>}
                 </div>
@@ -482,7 +480,7 @@ function AddressesTab({ t, lang }) {
                 <div>{a.city}, {a.province} {a.postal_code}</div>
                 {a.phone && <div className="text-glacier">{a.phone}</div>}
               </div>
-              <div className="flex gap-4 mt-4 font-data text-[10px] uppercase tracking-[0.16em]">
+              <div className="flex gap-4 mt-4 etiquette">
                 <button onClick={() => setEditing(a)} className="text-glacier hover:text-nordfjord" data-testid={`address-edit-${a.id}`}>
                   {t("common.edit")}
                 </button>
@@ -506,7 +504,7 @@ function AddressesTab({ t, lang }) {
 function Field({ label, value, onChange, required = false, className = "", testid }) {
   return (
     <div className={className}>
-      <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{label}</label>
+      <label className="block etiquette text-compliance mb-2">{label}</label>
       <input required={required} value={value || ""} onChange={(e) => onChange(e.target.value)} data-testid={testid}
         className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
     </div>
@@ -581,7 +579,7 @@ function SecurityTab({ t, user, logout, navigate }) {
         )}
         {!pwLess && (
           <div>
-            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
+            <label className="block etiquette text-compliance mb-2">{t("account.currentPassword")}</label>
             <input type="password" required autoComplete="current-password"
               value={pw.current_password} data-testid="password-current"
               onChange={(e) => setPw({ ...pw, current_password: e.target.value })}
@@ -589,14 +587,14 @@ function SecurityTab({ t, user, logout, navigate }) {
           </div>
         )}
         <div>
-          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.newPassword")}</label>
+          <label className="block etiquette text-compliance mb-2">{t("account.newPassword")}</label>
           <input type="password" required minLength={8} autoComplete="new-password"
             value={pw.new_password} data-testid="password-new"
             onChange={(e) => setPw({ ...pw, new_password: e.target.value })}
             className="w-full border border-ash px-5 py-3 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
         </div>
         <div>
-          <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.confirmPassword")}</label>
+          <label className="block etiquette text-compliance mb-2">{t("account.confirmPassword")}</label>
           <input type="password" required minLength={8} autoComplete="new-password"
             value={pw.confirm} data-testid="password-confirm"
             onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
@@ -621,14 +619,14 @@ function SecurityTab({ t, user, logout, navigate }) {
         <p className="text-sm text-glacier mb-4">{t("account.deleteHint")}</p>
         {!showDelete ? (
           <button onClick={() => setShowDelete(true)} data-testid="delete-account-reveal"
-            className="border border-error text-error font-data text-xs uppercase tracking-[0.2em] px-6 py-3 hover:bg-error hover:text-white transition-colors" style={{ borderRadius: "var(--r-m)" }}>
+            className="border border-error text-error etiquette-nav px-6 py-3 hover:bg-error hover:text-white transition-colors" style={{ borderRadius: "var(--r-m)" }}>
             {t("account.deleteAccount")}
           </button>
         ) : (
           <form onSubmit={deleteAccount} className="space-y-4" data-testid="delete-account-form">
             {!pwLess && (
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("account.currentPassword")}</label>
+                <label className="block etiquette text-compliance mb-2">{t("account.currentPassword")}</label>
                 <input type="password" required autoComplete="current-password"
                   value={delPassword} data-testid="delete-account-password"
                   onChange={(e) => setDelPassword(e.target.value)}
@@ -637,7 +635,7 @@ function SecurityTab({ t, user, logout, navigate }) {
             )}
             <div className="flex gap-3">
               <button type="submit" disabled={delBusy} data-testid="delete-account-confirm"
-                className="bg-error text-white font-data text-xs uppercase tracking-[0.2em] px-6 py-3 disabled:opacity-50" style={{ borderRadius: "var(--r-m)" }}>
+                className="bg-error text-white etiquette-nav px-6 py-3 disabled:opacity-50" style={{ borderRadius: "var(--r-m)" }}>
                 {delBusy ? "…" : t("account.deleteForever")}
               </button>
               <button type="button" onClick={() => { setShowDelete(false); setDelPassword(""); }} className="btn-pill btn-outline">

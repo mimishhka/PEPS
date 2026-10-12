@@ -129,7 +129,7 @@ export default function ClocheAffilie({ L, onOuvrirParametres }) {
              style={{ boxShadow: "var(--ombre-flotte)" }}
              data-testid="affiliate-bell-panel">
           <div className="flex items-baseline justify-between px-4 pt-3 pb-2 border-b border-ash">
-            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.18em] text-nordfjord">
+            <p className="etiquette font-semibold text-nordfjord">
               {L("Notifications", "Notifications")}
             </p>
             {notifs.length > 0 && (

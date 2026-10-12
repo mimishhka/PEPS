@@ -161,7 +161,7 @@ export default function CarteAffilie({
       <div className="relative flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1
                       px-4 sm:px-7 py-2.5 bg-abyss/25 border-b border-white/10"
            data-testid="carte-periode">
-        <p className="font-data text-[11px] uppercase tracking-[0.17em] text-mist">
+        <p className="etiquette text-mist">
           {L("Aujourd'hui", "Today")}
         </p>
         <p className="font-data text-[12px] font-semibold tracking-[0.02em] text-clinical tabular-nums"
@@ -173,7 +173,7 @@ export default function CarteAffilie({
       {/* ═══════════ BANDE 1 · L'ARGENT ═══════════ */}
       <div className="relative flex flex-wrap items-center gap-x-4 sm:gap-x-7 gap-y-4 px-4 sm:px-7 py-5 sm:py-6">
         <div className="flex-1 min-w-[140px]">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em] text-nova">
+          <p className="etiquette font-semibold text-nova">
             {L("Gains du mois en cours", "This month's earnings")}
           </p>
           <ChiffreAnime
@@ -237,8 +237,7 @@ export default function CarteAffilie({
         {/* — CE MOIS-CI : la base du taux, sa preuve, la position. */}
         <div className="relative px-4 sm:px-7 pt-4 sm:pt-5 pb-5 sm:pb-6 sm:border-r border-white/12"
              data-testid="affiliate-periode-graph">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em]
-                        text-nova pb-2.5 mb-3 border-b border-dashed border-white/20">
+          <p className="etiquette font-semibold text-nova pb-2.5 mb-3 border-b border-dashed border-white/20">
             {/* DEUX BLOCS TITRÉS « VOS VENTES », CÔTE À CÔTE, avec deux
                 montants. Vu sur le compte LOLA10 : 3 060,00 $ à gauche,
                 3 532,43 $ à droite, et seul celui de droite portait sa date.
@@ -405,9 +404,7 @@ export default function CarteAffilie({
         <div className="relative px-4 sm:px-7 pt-4 sm:pt-5 pb-5 sm:pb-6
                         border-t border-white/12 sm:border-t-0"
              data-testid="affiliate-paliers-prix">
-          <p className="flex items-center gap-2 font-data text-[11px] font-semibold uppercase
-                        tracking-[0.2em] text-nova pb-2.5 mb-3
-                        border-b border-dashed border-white/20"
+          <p className="flex items-center gap-2 etiquette font-semibold text-nova pb-2.5 mb-3 border-b border-dashed border-white/20"
              data-testid="carte-titre-projection">
             {/* LE MÊME TRAIT QUE LE CURSEUR DE LA BARRE, et de la même
                 couleur. C'est lui qui remplace la date qu'on répétait sous le
@@ -433,8 +430,7 @@ export default function CarteAffilie({
 
           {!sousEntente ? (
             <>
-              <p className="font-data text-[11px] uppercase tracking-[0.14em]
-                            text-white/65 mt-5">
+              <p className="etiquette text-white/65 mt-5">
                 {L(`D'ici le ${echeance}`, `By ${echeance}`)}
               </p>
 
@@ -519,7 +515,7 @@ function Ligne({ montant, gros, nom, sous, sceau, teinte, fond, trait, testId })
         {montant}
       </p>
       <p className="font-data text-[13px] opacity-50 shrink-0" aria-hidden="true">→</p>
-      <p className="font-data text-[12px] uppercase tracking-[0.07em] leading-snug"
+      <p className="etiquette leading-snug"
          style={{ color: teinte }}>
         {nom}
         <em className="not-italic block text-[11px] text-mist normal-case tracking-[0.04em] mt-0.5">

@@ -247,8 +247,7 @@ export default function GuidedTour({ steps, onClose, onTab, L }) {
           {/* Étiquette de zone. Absente pour le ton neutre : une étiquette qui
               dirait « Info » n'apprendrait rien et volerait une ligne. */}
           {libelle && (
-            <span className="inline-flex items-center gap-1.5 font-data text-[10px]
-                             font-semibold uppercase tracking-[0.16em] mb-1.5"
+            <span className="inline-flex items-center gap-1.5 etiquette font-semibold mb-1.5"
                   style={{ color: ton.c }}>
               <Spark size={10} /> {libelle}
             </span>
@@ -274,19 +273,19 @@ export default function GuidedTour({ steps, onClose, onTab, L }) {
             </span>
             <div className="flex items-center gap-2">
               <button onClick={fermer} data-testid="tour-exit"
-                      className="font-data text-[11px] uppercase tracking-wider text-clinical/70 hover:text-clinical px-2 py-1.5">
+                      className="etiquette-nav text-clinical/70 hover:text-clinical px-2 py-1.5">
                 {L("Quitter", "Exit")}
               </button>
               {i > 0 && (
                 <button onClick={() => setI(i - 1)} data-testid="tour-prev"
-                        className="px-3 py-1.5 border border-clinical/30 font-data text-[11px] font-bold uppercase tracking-wider" style={{ borderRadius: "var(--r-m)" }}>
+                        className="px-3 py-1.5 border border-clinical/30 etiquette-nav font-bold" style={{ borderRadius: "var(--r-m)" }}>
                   {L("Précédent", "Back")}
                 </button>
               )}
               <button
                 onClick={() => (dernier ? fermer() : setI(i + 1))}
                 data-testid="tour-next"
-                className="px-3.5 py-1.5 bg-nova text-nordfjord font-data text-[11px] font-bold uppercase tracking-wider" style={{ borderRadius: "var(--r-m)" }}>
+                className="px-3.5 py-1.5 bg-nova text-nordfjord etiquette-nav font-bold" style={{ borderRadius: "var(--r-m)" }}>
                 {dernier ? L("Terminer", "Done") : L("Suivant", "Next")}
               </button>
             </div>

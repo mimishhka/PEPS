@@ -52,7 +52,7 @@ export default function AdminGate({ children }) {
           <FnMark size={44} frame="#0B2E4F" spark="#00B8D4" />
         </div>
         <h1 className="text-center font-display text-xl font-bold text-nordfjord tracking-[0.08em]">FIRONOVA OPS</h1>
-        <p className="text-center font-data text-[11px] uppercase tracking-[0.24em] text-nova-texte mt-2 mb-8">Restricted · Restreint</p>
+        <p className="text-center etiquette text-nova-texte mt-2 mb-8">Restricted · Restreint</p>
         <p className="text-center text-sm text-glacier mb-4">
           Gate code only. The admin password is entered on the next login screen.
         </p>
@@ -73,7 +73,7 @@ export default function AdminGate({ children }) {
         >
           {busy ? "…" : "Enter"}
         </button>
-        {error && <p className="mt-4 text-center font-data text-[10px] uppercase tracking-[0.2em] text-glacier">Invalid gate code.</p>}
+        {error && <p className="mt-4 text-center etiquette text-glacier">Invalid gate code.</p>}
       </form>
     </div>
   );

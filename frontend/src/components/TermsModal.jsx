@@ -109,7 +109,7 @@ export default function TermsModal({ L, lang, onClose }) {
             disabled={!bas}
             data-testid="terms-modal-close"
             title={bas ? undefined : L("Déroulez le texte jusqu'au bas.", "Scroll the text to the bottom.")}
-            className="px-5 py-2.5 bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider disabled:opacity-35 disabled:cursor-not-allowed whitespace-nowrap" style={{ borderRadius: "var(--r-m)" }}>
+            className="px-5 py-2.5 bg-nova text-nordfjord etiquette-nav font-bold disabled:opacity-35 disabled:cursor-not-allowed whitespace-nowrap" style={{ borderRadius: "var(--r-m)" }}>
             {L("J'ai lu", "I have read")}
           </button>
         </div>

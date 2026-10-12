@@ -35,7 +35,7 @@ export default function SuiviCommande({ order }) {
       style={{ borderRadius: "var(--r-l)" }}>
       <div className="px-6 py-4 flex items-center gap-2.5 border-b border-ash">
         <Truck size={15} className="text-nova-texte" aria-hidden="true" />
-        <span className="font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord">
+        <span className="etiquette text-nordfjord">
           {fr ? "Suivi de la commande" : "Order tracking"}
         </span>
       </div>
@@ -90,7 +90,7 @@ export default function SuiviCommande({ order }) {
 
         {pin && (
           <div className="mt-5 pt-5 border-t border-ash" data-testid="suivi-numero">
-            <div className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier mb-1.5">
+            <div className="etiquette text-glacier mb-1.5">
               {fr ? "Numéro de suivi" : "Tracking number"}
             </div>
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -106,7 +106,7 @@ export default function SuiviCommande({ order }) {
 
         {lignes.length > 0 && (
           <div className="mt-5 pt-5 border-t border-ash" data-testid="suivi-adresse">
-            <div className="font-data text-[11px] uppercase tracking-[0.2em] text-glacier mb-1.5 flex items-center gap-2">
+            <div className="etiquette text-glacier mb-1.5 flex items-center gap-2">
               <MapPin size={13} aria-hidden="true" />
               {fr ? "Livré à" : "Delivered to"}
             </div>

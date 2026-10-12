@@ -125,16 +125,44 @@ describe("LES ÉTIQUETTES EN MONO CAPITALES", () => {
    * 10 px, y compris la navigation et les deux boutons de la porte d'âge :
    * ç'aurait été échanger une incohérence contre une régression. */
 
-  const VITRINE = [
-    ["pages", "Home.jsx"], ["pages", "Catalog.jsx"], ["pages", "ProductDetail.jsx"],
-    ["pages", "Lab.jsx"], ["pages", "Certificats.jsx"],
-    ["components", "Header.jsx"], ["components", "Footer.jsx"],
-    ["components", "ProductCard.jsx"], ["components", "CartDrawer.jsx"],
-    ["components", "AgeGate.jsx"], ["components", "AvertissementCoa.jsx"],
-  ];
+  /* ON MARCHE TOUT `src`, SAUF LE PORTAIL D'ADMINISTRATION.
+   *
+   * La première version listait onze fichiers à la main — ceux de la vitrine.
+   * Une liste écrite à la main est une liste qui vieillit : le fichier ajouté
+   * demain n'y sera pas, et le filet le laissera passer sans rien dire.
+   *
+   * `pages/admin` est exclu, et c'est sa décision : « pas l'OPS pour l'instant
+   * étant donné que je suis toujours en mode test ». Le jour où il y passe, il
+   * suffit de retirer une ligne ici. */
+  const RACINE = path.join(__dirname, "..");
+
+  const parcourir = (dossier) => {
+    const sortie = [];
+    for (const e of fs.readdirSync(dossier, { withFileTypes: true })) {
+      const complet = path.join(dossier, e.name);
+      if (e.isDirectory()) {
+        if (e.name === "admin") continue;
+        sortie.push(...parcourir(complet));
+      } else if (e.name.endsWith(".jsx") && !e.name.includes(".test.")) {
+        sortie.push(complet);
+      }
+    }
+    return sortie;
+  };
+
+  const VITRINE = parcourir(RACINE).map((f) => [
+    path.relative(RACINE, path.dirname(f)),
+    path.basename(f),
+  ]);
 
   const lireVitrine = ([dossier, nom]) =>
-    fs.readFileSync(path.join(__dirname, "..", dossier, nom), "utf8");
+    fs.readFileSync(path.join(RACINE, dossier, nom), "utf8");
+
+  test("le parcours trouve bien des fichiers", () => {
+    // Sans ce garde-fou, une erreur de chemin rendrait une liste vide et le
+    // test suivant passerait au vert sans rien avoir lu.
+    expect(VITRINE.length).toBeGreaterThan(30);
+  });
 
   test("les deux niveaux existent", () => {
     expect(CSS).toMatch(/\.etiquette\s*\{/);
@@ -169,9 +197,15 @@ describe("LES ÉTIQUETTES EN MONO CAPITALES", () => {
       const formes = [/className="([^"]*)"/g, /className=\{`([^`]*)`\}/gs];
       for (const forme of formes) {
         for (const m of source.matchAll(forme)) {
-          const cls = m[1];
-          if (cls.includes("font-data") && cls.includes("uppercase")) {
-            fautifs.push(`${cible[1]} :: ${cls.slice(0, 80)}`);
+          /* DES JETONS NUS, PAS UNE RECHERCHE DE SOUS-CHAÎNE. Un champ de
+           * téléversement porte `file:font-data file:uppercase` : ces classes
+           * ne s'appliquent qu'au bouton interne du champ, pas à l'élément qui
+           * les déclare. Les compter comme une étiquette composée à la main
+           * était un faux signalement — et un filet qui crie à tort finit par
+           * se faire assouplir jusqu'à ne plus rien tenir. */
+          const jetons = new Set(m[1].split(/\s+/));
+          if (jetons.has("font-data") && jetons.has("uppercase")) {
+            fautifs.push(`${cible[1]} :: ${m[1].slice(0, 80)}`);
           }
         }
       }

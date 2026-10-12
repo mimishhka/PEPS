@@ -92,7 +92,7 @@ export default function AffiliateProgramme() {
 
             {state === "error" && (
               <div className="text-center py-6" data-testid="affiliate-programme-error">
-                <p className="font-data text-[11px] uppercase tracking-[0.2em] text-error mb-2">!</p>
+                <p className="etiquette text-error mb-2">!</p>
                 <h1 className="font-display text-[24px] font-bold text-nordfjord mb-2">
                   {L("Page inaccessible", "Page unavailable")}
                 </h1>
@@ -106,7 +106,7 @@ export default function AffiliateProgramme() {
 
             {state === "ready" && data && (
               <div>
-                <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte text-center">
+                <p className="etiquette text-nova-texte text-center">
                   {L("PROGRAMME D'AFFILIATION", "AFFILIATE PROGRAM")}
                 </p>
                 <h1 className="font-display text-[24px] sm:text-[32px] font-bold text-nordfjord text-center mt-2 mb-3 leading-tight">
@@ -122,7 +122,7 @@ export default function AffiliateProgramme() {
 
                 {data.agreed_rate != null && (
                   <div className="rounded-xl border border-nova bg-nova/10 p-5 mb-8 text-center">
-                    <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova-texte mb-1.5">
+                    <p className="etiquette text-nova-texte mb-1.5">
                       {L("VOTRE TAUX CONVENU", "YOUR AGREED RATE")}
                     </p>
                     <p className="font-display text-[32px] font-bold text-nordfjord leading-none">
@@ -167,13 +167,13 @@ export default function AffiliateProgramme() {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="bg-clinical">
-                            <th className="text-left px-4 py-2 font-data text-[10px] uppercase tracking-[0.14em] text-glacier font-medium">
+                            <th className="text-left px-4 py-2 etiquette text-glacier font-medium">
                               {L("Palier", "Tier")}
                             </th>
-                            <th className="text-right px-4 py-2 font-data text-[10px] uppercase tracking-[0.14em] text-glacier font-medium">
+                            <th className="text-right px-4 py-2 etiquette text-glacier font-medium">
                               {L("Ventes 12 mois", "Sales, 12 months")}
                             </th>
-                            <th className="text-right px-4 py-2 font-data text-[10px] uppercase tracking-[0.14em] text-glacier font-medium">
+                            <th className="text-right px-4 py-2 etiquette text-glacier font-medium">
                               {L("Commission", "Commission")}
                             </th>
                           </tr>

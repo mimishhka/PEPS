@@ -186,7 +186,7 @@ export function CartProvider({ children }) {
             />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-data text-[10px] uppercase tracking-[0.18em] text-nova mb-1">{fr ? "✓ Ajouté au panier" : "✓ Added to cart"}</p>
+            <p className="etiquette text-nova mb-1">{fr ? "✓ Ajouté au panier" : "✓ Added to cart"}</p>
             <p className="font-display font-bold text-nordfjord text-sm truncate">{line}</p>
             <p className="font-data text-[12px] text-glacier mt-0.5">${unit_price.toFixed(2)} CAD</p>
           </div>
@@ -194,13 +194,13 @@ export function CartProvider({ children }) {
         <div className="flex gap-2 mt-3">
           <button
             onClick={() => toast.dismiss(id)}
-            className="flex-1 rounded-full border border-ash px-3 py-2 font-data text-[11px] font-semibold uppercase tracking-[0.14em] text-nordfjord hover:border-nova hover:text-nova transition-colors"
+            className="flex-1 rounded-full border border-ash px-3 py-2 etiquette-nav font-semibold text-nordfjord hover:border-nova hover:text-nova transition-colors"
           >
             {fr ? "Continuer" : "Keep shopping"}
           </button>
           <button
             onClick={() => { toast.dismiss(id); setOpen(true); }}
-            className="flex-1 rounded-full bg-nova px-3 py-2 font-data text-[11px] font-semibold uppercase tracking-[0.14em] text-nordfjord hover:bg-nova-hover transition-colors"
+            className="flex-1 rounded-full bg-nova px-3 py-2 etiquette-nav font-semibold text-nordfjord hover:bg-nova-hover transition-colors"
           >
             {fr ? "Voir le panier" : "View cart"}
           </button>

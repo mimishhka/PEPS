@@ -52,7 +52,7 @@ export default function DernierVersement({ versement, L, money, lang }) {
       <span aria-hidden="true" className="absolute inset-x-0 top-0 h-[3px]"
             style={{ background: "linear-gradient(90deg, rgb(var(--fn-success)) 0%, transparent 85%)" }} />
 
-      <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em] text-nova-texte">
+      <p className="etiquette font-semibold text-nova-texte">
         {L("Dernier versement", "Last payout")}
       </p>
 

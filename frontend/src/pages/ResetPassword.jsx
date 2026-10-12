@@ -93,7 +93,7 @@ export default function ResetPassword() {
               </p>
               <form onSubmit={submit} className="space-y-5">
                 <div>
-                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
+                  <label className="block etiquette text-compliance mb-2">
                     {lang === "fr" ? "Nouveau mot de passe" : "New password"}
                   </label>
                   <input
@@ -108,7 +108,7 @@ export default function ResetPassword() {
                   />
                 </div>
                 <div>
-                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
+                  <label className="block etiquette text-compliance mb-2">
                     {lang === "fr" ? "Confirmer le mot de passe" : "Confirm password"}
                   </label>
                   <input

@@ -647,7 +647,7 @@ export default function AffiliateDashboard() {
       return (
         <div className="bg-clinical min-h-screen">
           <div className="max-w-2xl mx-auto px-6 py-24 text-center" data-testid="affiliate-closed">
-            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-glacier mb-3">
+            <p className="etiquette font-semibold text-glacier mb-3">
               {L("DOSSIER FERMÉ", "ACCOUNT CLOSED")}
             </p>
             <h1 className="font-display text-[32px] font-bold text-nordfjord mb-4">
@@ -679,7 +679,7 @@ export default function AffiliateDashboard() {
       return (
         <div className="bg-clinical min-h-screen">
           <div className="max-w-2xl mx-auto px-6 py-24 text-center" data-testid="affiliate-suspended">
-            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-error mb-3">
+            <p className="etiquette font-semibold text-error mb-3">
               {L("COMPTE SUSPENDU", "ACCOUNT SUSPENDED")}
             </p>
             <h1 className="font-display text-[32px] font-bold text-nordfjord mb-4">
@@ -714,7 +714,7 @@ export default function AffiliateDashboard() {
     return (
       <div className="bg-clinical min-h-screen">
         <div className="max-w-2xl mx-auto px-6 py-24 text-center" data-testid="affiliate-not-member">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
+          <p className="etiquette font-semibold text-nova mb-3">
             {L("PROGRAMME PRIVÉ", "PRIVATE PROGRAM")}
           </p>
           <h1 className="font-display text-[32px] font-bold text-nordfjord mb-4">
@@ -774,7 +774,7 @@ export default function AffiliateDashboard() {
     return (
       <div className="bg-clinical min-h-screen">
         <div className="max-w-2xl mx-auto px-6 py-24 text-center" data-testid="affiliate-unavailable">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
+          <p className="etiquette font-semibold text-nova mb-3">
             {L("DONNÉES INDISPONIBLES", "DATA UNAVAILABLE")}
           </p>
           <h1 className="font-display text-[32px] font-bold text-nordfjord mb-4">
@@ -996,7 +996,7 @@ export default function AffiliateDashboard() {
         {/* Header */}
         <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ash pb-6 mb-8">
           <div>
-            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">
+            <p className="etiquette font-semibold text-nova mb-2">
               {L("PROGRAMME D'AFFILIATION", "AFFILIATE PROGRAM")}
             </p>
             {/* Accueil par le PRÉNOM. On s'adresse à une personne, pas à une
@@ -1012,7 +1012,7 @@ export default function AffiliateDashboard() {
                 nom de qui elle touche ses commissions. Absente pour un
                 affilié particulier, la ligne disparaît entièrement. */}
             {data?.company && (
-              <p className="font-data text-[12px] uppercase tracking-[0.14em] text-glacier mt-1.5">
+              <p className="etiquette text-glacier mt-1.5">
                 {data.company}
               </p>
             )}
@@ -1149,7 +1149,7 @@ export default function AffiliateDashboard() {
                 a franchir : garde en permanence, il deviendrait du decor. */}
             {onboarding && (
               <div data-testid="affiliate-onboarding">
-                <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-glacier mb-3">
+                <p className="etiquette font-semibold text-glacier mb-3">
                   {L("VOS PROCHAINES ÉTAPES", "YOUR NEXT STEPS")}
                 </p>
                 <ol className="grid grid-cols-1 sm:grid-cols-3 gap-4 list-none p-0 m-0">
@@ -1159,7 +1159,7 @@ export default function AffiliateDashboard() {
                         className={`bg-white rounded-xl border p-5 transition-[transform,box-shadow,border-color]
                           duration-200 ease-out hover:-translate-y-0.5 hover:border-nova ${
                           i === nextStep ? "border-nova" : "border-ash"}`}>
-                      <p className="font-data text-[10px] uppercase tracking-[0.18em] text-glacier">
+                      <p className="etiquette text-glacier">
                         {st.done
                           ? L("Fait", "Done")
                           : `${L("Étape", "Step")} ${i + 1}`}
@@ -1178,7 +1178,7 @@ export default function AffiliateDashboard() {
             {/* Referral link */}
             <div className="bg-white rounded-xl border border-ash p-5 sm:p-6"
                  data-testid="affiliate-link-panel">
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
+              <p className="etiquette font-semibold text-nova mb-3">
                 {L("VOTRE LIEN", "YOUR LINK")}
               </p>
 
@@ -1191,7 +1191,7 @@ export default function AffiliateDashboard() {
                       {refLink}
                     </code>
                     <button onClick={copyLink} data-testid="affiliate-copy-link"
-                            className="px-5 py-3  bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition" style={{ borderRadius: "var(--r-m)" }}>
+                            className="px-5 py-3 bg-nova text-nordfjord etiquette-nav font-bold hover:opacity-90 transition" style={{ borderRadius: "var(--r-m)" }}>
                       {copied ? L("Copié ✓", "Copied ✓") : L("Copier", "Copy")}
                     </button>
                   </div>
@@ -1215,7 +1215,7 @@ export default function AffiliateDashboard() {
                     <div className="bg-white border border-ash rounded-xl p-3">
                       <QRCodeSVG value={refLink} size={120} level="M" fgColor="#0B2E4F" />
                     </div>
-                    <p className="font-data text-[10px] uppercase tracking-wider text-glacier">
+                    <p className="etiquette text-glacier">
                       {L("Scanner pour partager", "Scan to share")}
                     </p>
                   </div>
@@ -1233,7 +1233,7 @@ export default function AffiliateDashboard() {
             {topProducts.length > 0 && (refCode || "").length > 0 && (
               <div className="bg-white rounded-xl border border-ash p-5 sm:p-6" data-testid="affiliate-share-widget">
                 <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
-                  <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+                  <p className="etiquette font-semibold text-nova">
                     {personalTop
                       ? L("VOS MEILLEURS PRODUITS", "YOUR BEST-SELLING PRODUCTS")
                       : L("PRODUITS À METTRE EN AVANT", "PRODUCTS TO PROMOTE")}
@@ -1268,7 +1268,7 @@ export default function AffiliateDashboard() {
                               {lang === "fr" ? p.name_fr : p.name_en}
                             </p>
                           </div>
-                          <p className="font-data text-[10px] uppercase tracking-[0.16em] text-glacier">
+                          <p className="etiquette text-glacier">
                             {personalTop
                               ? `${p.qty || 0} ${
                                   (p.qty || 0) === 1
@@ -1285,7 +1285,7 @@ export default function AffiliateDashboard() {
                       <div className="mt-auto flex items-center gap-1.5 flex-wrap">
                         <button onClick={() => copyProduct(p.slug)}
                           data-testid={`share-copy-${p.slug}`}
-                          className="flex-1 px-3 py-2 rounded-lg bg-nova text-nordfjord font-data text-[10px] font-bold uppercase tracking-wider hover:opacity-90 transition">
+                          className="flex-1 px-3 py-2 rounded-lg bg-nova text-nordfjord etiquette-nav font-bold hover:opacity-90 transition">
                           {L("Copier", "Copy")}
                         </button>
                         <button onClick={() => shareProduct(p.slug, "whatsapp")}
@@ -1428,7 +1428,7 @@ export default function AffiliateDashboard() {
                 de clics. */}
 
             <div className="bg-white rounded-xl border border-ash p-6">
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
+              <p className="etiquette font-semibold text-nova mb-4">
                 {L("VENTES VALIDÉES : 12 DERNIERS MOIS", "VALIDATED SALES : LAST 12 MONTHS")}
               </p>
               <p className="font-data text-[11px] text-glacier mb-4 -mt-3">
@@ -1458,7 +1458,7 @@ export default function AffiliateDashboard() {
             </div>
 
             <div className="bg-white rounded-xl border border-ash p-6">
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+              <p className="etiquette font-semibold text-nova mb-1">
                 {L("SOURCES DE VOS CLICS", "WHERE YOUR CLICKS COME FROM")}
               </p>
               <p className="font-data text-[11px] text-glacier mb-4">
@@ -1484,7 +1484,7 @@ export default function AffiliateDashboard() {
                       commission que si le lien ou le code est utilisé POUR
                       ELLE. Laisser l'ancienne promesse ferait compter l'affilié
                       sur un revenu qui n'arrivera pas. */}
-                  <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+                  <p className="etiquette font-semibold text-nova">
                     {L("CLIENTS QUE VOUS AVEZ APPORTÉS", "CUSTOMERS YOU BROUGHT IN")}
                   </p>
                   <p className="font-data text-[10px] text-glacier mt-0.5">
@@ -1509,7 +1509,7 @@ export default function AffiliateDashboard() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm" data-testid="attached-customers-table">
                     <thead>
-                      <tr className="border-b border-ash text-glacier font-data text-[10px] uppercase tracking-[0.2em]">
+                      <tr className="border-b border-ash text-glacier etiquette">
                         <th className="text-left px-6 py-3">{L("Client", "Customer")}</th>
                         <th className="text-left px-4 py-3">{L("Rattaché le", "Attached")}</th>
                         <th className="text-left px-4 py-3">{L("Source", "Source")}</th>
@@ -1543,7 +1543,7 @@ export default function AffiliateDashboard() {
                             {c.bound_at ? new Date(c.bound_at).toLocaleDateString(lang) : "-"}
                           </td>
                           <td className="px-4 py-3">
-                            <span className="inline-block px-2 py-0.5  text-[10px] font-data uppercase tracking-wider bg-clinical text-nordfjord" style={{ borderRadius: "var(--r-m)" }}>
+                            <span className="inline-block px-2 py-0.5 etiquette bg-clinical text-nordfjord" style={{ borderRadius: "var(--r-m)" }}>
                               {c.source === "click" ? L("lien", "link")
                                 : c.source === "code" ? L("code", "code")
                                 : c.source === "binding" ? L("récurrent", "returning")
@@ -1641,7 +1641,7 @@ export default function AffiliateDashboard() {
                      L("depuis le début", "since the start")],
                   ].map(([titre, valeur, note], i) => (
                     <div key={i} data-testid={`payout-flow-${i}`}>
-                      <p className="font-data text-[10px] uppercase tracking-[0.14em] text-glacier">
+                      <p className="etiquette text-glacier">
                         {titre}
                       </p>
                       <p className={`font-data text-sm font-bold tabular-nums mt-0.5 ${
@@ -1741,7 +1741,7 @@ export default function AffiliateDashboard() {
             <div className="bg-white rounded-xl border border-ash overflow-hidden">
               <div className="px-6 py-4 border-b border-ash flex items-center justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
-                  <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+                  <p className="etiquette font-semibold text-nova">
                     {L("TOUTES VOS COMMANDES", "ALL YOUR ORDERS")}
                   </p>
                   <p className="font-data text-[10px] text-glacier mt-0.5 leading-relaxed">
@@ -1763,7 +1763,7 @@ export default function AffiliateDashboard() {
                              money={money} fmtDateTime={fmtDateTime} />
             <div className="bg-white rounded-xl border border-ash overflow-hidden">
               <div className="px-6 py-4 border-b border-ash flex items-center justify-between">
-                <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+                <p className="etiquette font-semibold text-nova">
                   {L("HISTORIQUE DES PAIEMENTS", "PAYMENT HISTORY")}
                 </p>
                 <button onClick={exportPayouts}
@@ -1878,10 +1878,7 @@ export default function AffiliateDashboard() {
                             {/* 44 px de hauteur, `touch-action` et un `:active` :
                                 un bouton de 24 px au doigt se rate. */}
                             <button onClick={() => setDetailVersement(p.id)}
-                              className="mt-2.5 w-full h-11 rounded-lg border border-ash
-                                         font-data text-[11px] font-semibold uppercase tracking-[0.1em]
-                                         text-nordfjord hover:bg-clinical transition-colors
-                                         active:scale-[0.98]"
+                              className="mt-2.5 w-full h-11 rounded-lg border border-ash etiquette-nav font-semibold text-nordfjord hover:bg-clinical transition-colors active:scale-[0.98]"
                               style={{ touchAction: "manipulation" }}
                               data-testid={`detail-bouton-${p.id}`}>
                               {L("Voir les commandes", "See the orders")}
@@ -1896,7 +1893,7 @@ export default function AffiliateDashboard() {
                   <div className="hidden sm:block overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-left font-data text-[11px] uppercase tracking-wider text-glacier border-b border-ash">
+                        <tr className="text-left etiquette text-glacier border-b border-ash">
                           {/* « Période COUVERTE » : le mot seul laissait lire
                               l'étiquette de run comme une période. */}
                           <th className="px-6 py-3">{L("Période couverte", "Period covered")}</th>
@@ -2018,7 +2015,7 @@ export default function AffiliateDashboard() {
               </p>
             </header>
             <div className="bg-white rounded-xl border border-ash p-6">
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
+              <p className="etiquette font-semibold text-nova mb-3">
                 {L("STATUT DE CONFORMITÉ", "COMPLIANCE STATUS")}
               </p>
               <span className={`inline-flex px-3 py-1.5 rounded-full font-data text-xs font-semibold ${comp.cls}`}>
@@ -2059,7 +2056,7 @@ export default function AffiliateDashboard() {
               )}
             </div>
             <div className="bg-white rounded-xl border border-ash p-6">
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-4">
+              <p className="etiquette font-semibold text-nova mb-4">
                 {L("DIRECTIVES DE CONFORMITÉ", "COMPLIANCE GUIDELINES")}
               </p>
               <ul className="space-y-3 text-sm text-nordfjord">
@@ -2096,7 +2093,7 @@ export default function AffiliateDashboard() {
               </p>
             </header>
             <div className="bg-white rounded-xl border border-ash p-6">
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-1">
+              <p className="etiquette font-semibold text-nova mb-1">
                 {L("PARAMÈTRES DE PAIEMENT : USDT / USDC", "PAYOUT SETTINGS : USDT / USDC")}
               </p>
               <p className="text-xs text-glacier mb-5 leading-relaxed">
@@ -2176,7 +2173,7 @@ export default function AffiliateDashboard() {
               </label>
               <button onClick={savePayout} disabled={savingPay}
                 data-testid="affiliate-save-payout"
-                className="px-6 py-3  bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50" style={{ borderRadius: "var(--r-m)" }}>
+                className="px-6 py-3 bg-nova text-nordfjord etiquette-nav font-bold hover:opacity-90 transition disabled:opacity-50" style={{ borderRadius: "var(--r-m)" }}>
                 {savingPay ? L("Enregistrement…", "Saving…") : L("Enregistrer", "Save")}
               </button>
               {/* Tron RETIRE de la liste des reseaux interdits : le backend
@@ -2193,7 +2190,7 @@ export default function AffiliateDashboard() {
               </p>
             </div>
             <div className="bg-white rounded-xl border border-ash p-6">
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">
+              <p className="etiquette font-semibold text-nova mb-2">
                 {L("COMPTE", "ACCOUNT")}
               </p>
               {/* Ici, contrairement à l'accueil, le nom COMPLET : c'est une
@@ -2211,7 +2208,7 @@ export default function AffiliateDashboard() {
               </p>
             </div>
             <div className="bg-white rounded-xl border border-ash p-6">
-              <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-2">
+              <p className="etiquette font-semibold text-nova mb-2">
                 {L("MOT DE PASSE", "PASSWORD")}
               </p>
               {pwLess ? (
@@ -2253,7 +2250,7 @@ export default function AffiliateDashboard() {
               </label>
               <button onClick={savePassword} disabled={savingPw}
                 data-testid="affiliate-save-password"
-                className="px-6 py-3  bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50" style={{ borderRadius: "var(--r-m)" }}>
+                className="px-6 py-3 bg-nova text-nordfjord etiquette-nav font-bold hover:opacity-90 transition disabled:opacity-50" style={{ borderRadius: "var(--r-m)" }}>
                 {savingPw ? L("Enregistrement…", "Saving…") : L("Enregistrer", "Save")}
               </button>
             </div>
@@ -2344,7 +2341,7 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
             le mécanisme de version, qui redemande l'accord dès que le texte
             change, rend ce cas ordinaire plutôt qu'exceptionnel. La date
             conservée par le serveur distingue les deux. */}
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova">
+        <p className="etiquette font-semibold text-nova">
           {dejaAccepte
             ? L("CONDITIONS MISES À JOUR", "TERMS UPDATED")
             : L("AVANT DE COMMENCER", "BEFORE YOU START")}
@@ -2399,11 +2396,11 @@ function AffiliateTermsGate({ L, lang, onDone, dejaAccepte }) {
 
         <div className="flex gap-3 pt-2">
           <Link to="/" data-testid="terms-decline"
-                className="flex-1 text-center px-5 py-3  border border-ash font-data text-xs font-bold uppercase tracking-wider text-glacier hover:border-glacier transition" style={{ borderRadius: "var(--r-m)" }}>
+                className="flex-1 text-center px-5 py-3 border border-ash etiquette-nav font-bold text-glacier hover:border-glacier transition" style={{ borderRadius: "var(--r-m)" }}>
             {L("Refuser", "Decline")}
           </Link>
           <button onClick={accepter} disabled={!complet || busy} data-testid="terms-submit"
-                  className="flex-[2] px-5 py-3  bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider disabled:opacity-40 transition" style={{ borderRadius: "var(--r-m)" }}>
+                  className="flex-[2] px-5 py-3 bg-nova text-nordfjord etiquette-nav font-bold disabled:opacity-40 transition" style={{ borderRadius: "var(--r-m)" }}>
             {busy ? L("Enregistrement…", "Saving…") : L("Accepter et continuer", "Accept and continue")}
           </button>
         </div>
@@ -2447,7 +2444,7 @@ function KpiCard({ label, value, sub, accent, valeurBrute, format, teinte }) {
         <span aria-hidden="true" className="absolute inset-x-0 top-0 h-[3px]"
               style={{ background: `linear-gradient(90deg, ${teinte} 0%, transparent 85%)` }} />
       )}
-      <p className={`font-data text-[10px] font-semibold uppercase tracking-[0.2em] mb-2 ${accent ? "text-nova" : "text-glacier"}`}>
+      <p className={`etiquette font-semibold mb-2 ${accent ? "text-nova" : "text-glacier"}`}>
         {label}
       </p>
       {valeurBrute != null && format ? (
@@ -2459,7 +2456,7 @@ function KpiCard({ label, value, sub, accent, valeurBrute, format, teinte }) {
       {/* Devise ou precision. Sans elle, rien ne distingue un montant en CAD
           d'un montant en USD sur un ecran ou les deux coexistent. */}
       {sub && (
-        <p className={`font-data text-[10px] uppercase tracking-[0.16em] mt-2 ${accent ? "text-mist" : "text-glacier"}`}>
+        <p className={`etiquette mt-2 ${accent ? "text-mist" : "text-glacier"}`}>
           {sub}
         </p>
       )}
@@ -2470,7 +2467,7 @@ function KpiCard({ label, value, sub, accent, valeurBrute, format, teinte }) {
 function MiniInsight({ label, value, fenetre }) {
   return (
     <div className="rounded-xl border border-ash bg-white px-4 py-3">
-      <p className="font-data text-[10px] font-semibold uppercase tracking-[0.18em] text-glacier mb-1">{label}</p>
+      <p className="etiquette font-semibold text-glacier mb-1">{label}</p>
       <p className="font-display text-xl font-bold text-nordfjord tabular-nums">{value}</p>
       {fenetre && (
         <p className="font-data text-[10px] text-glacier mt-0.5">{fenetre}</p>
@@ -2530,7 +2527,7 @@ function CycleVersement({ cycle, seuil, adresse, onReglages, L, lang }) {
 
   return (
     <div className="mb-4" data-testid="cycle-versement">
-      <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-5">
+      <p className="etiquette font-semibold text-nova mb-5">
         {L(`Ce qui part le ${jourLisible(cycle?.due_by, lang)}`,
            `What goes out on ${jourLisible(cycle?.due_by, lang)}`)}
       </p>
@@ -2541,7 +2538,7 @@ function CycleVersement({ cycle, seuil, adresse, onReglages, L, lang }) {
           {money(du)}
         </p>
         <div className="text-right">
-          <p className="font-data text-xs uppercase tracking-[0.14em] text-glacier">
+          <p className="etiquette text-glacier">
             {L(`À verser · ${moisLisible(cycle?.period, lang)}`,
                `To be paid · ${moisLisible(cycle?.period, lang)}`)}
           </p>
@@ -2624,7 +2621,7 @@ function CycleVersement({ cycle, seuil, adresse, onReglages, L, lang }) {
            data-testid="cycle-en-cours">
           {money(enCours)}
         </p>
-        <p className="font-data text-xs uppercase tracking-[0.14em] text-glacier text-right">
+        <p className="etiquette text-glacier text-right">
           {L(`En cours · ${moisLisible(cycle?.current_period, lang)} : versé au cycle suivant`,
              `In progress · ${moisLisible(cycle?.current_period, lang)} : paid next cycle`)}
         </p>
@@ -2645,21 +2642,21 @@ function SourcesGrid({ sources, L, lang }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div>
-        <p className="font-data text-[10px] uppercase tracking-wider text-glacier mb-2">
+        <p className="etiquette text-glacier mb-2">
           {L("PAGES D'ATTERRISSAGE", "LANDING PAGES")}
         </p>
         <SourceBars rows={sources.top_pages} L={L}
           fmt={(s) => (s === "direct" ? L("Accès direct", "Direct") : s)} />
       </div>
       <div>
-        <p className="font-data text-[10px] uppercase tracking-wider text-glacier mb-2">
+        <p className="etiquette text-glacier mb-2">
           {L("RÉFÉRENTS", "REFERRERS")}
         </p>
         <SourceBars rows={sources.top_referrers} L={L}
           fmt={(s) => (s === "direct" ? L("Accès direct", "Direct") : s)} />
       </div>
       <div>
-        <p className="font-data text-[10px] uppercase tracking-wider text-glacier mb-2">
+        <p className="etiquette text-glacier mb-2">
           {L("APPAREILS", "DEVICES")}
         </p>
         <div className="space-y-1.5">
@@ -2719,7 +2716,7 @@ function JournalActivite({ activity, L, lang, money, fmtDateTime }) {
 
   return (
     <div className="bg-white rounded-xl border border-ash p-6" data-testid="journal-activite">
-      <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova mb-3">
+      <p className="etiquette font-semibold text-nova mb-3">
         {L("VOTRE ACTIVITÉ", "YOUR ACTIVITY")}
       </p>
 
@@ -2740,11 +2737,7 @@ function JournalActivite({ activity, L, lang, money, fmtDateTime }) {
                 <button key={f.cle} type="button"
                   onClick={() => setFiltre(f.cle)}
                   aria-pressed={filtre === f.cle}
-                  className={`snap-start shrink-0 px-3 h-8 rounded-full font-data text-[10px]
-                              font-semibold uppercase tracking-[0.08em] transition-colors
-                              active:scale-[0.97] ${filtre === f.cle
-                                ? "bg-nordfjord text-white"
-                                : "text-glacier border border-ash hover:text-nordfjord hover:bg-clinical"}`}
+                  className={`snap-start shrink-0 px-3 h-8 rounded-full etiquette-nav font-semibold transition-colors active:scale-[0.97] ${filtre === f.cle ? "bg-nordfjord text-white" : "text-glacier border border-ash hover:text-nordfjord hover:bg-clinical"}`}
                   style={{ touchAction: "manipulation" }}
                   data-testid={`journal-filtre-${f.cle}`}>
                   {L(f.fr, f.en)}<span className="opacity-60">{` · ${n}`}</span>
@@ -2911,7 +2904,7 @@ function ReferralTable({ rows, lang, L, money, loading }) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left font-data text-[11px] uppercase tracking-wider text-glacier border-b border-ash">
+          <tr className="text-left etiquette text-glacier border-b border-ash">
             <th className="px-6 py-3">{L("Commande", "Order")}</th>
             <th className="px-6 py-3">{L("Base", "Base")}</th>
             <th className="px-6 py-3">{L("Commission", "Commission")}</th>

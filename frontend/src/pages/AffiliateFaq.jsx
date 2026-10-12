@@ -348,7 +348,7 @@ export default function AffiliateFaq() {
               navigate("/affiliate");
             }}
             data-testid="faq-restart-tour"
-            className="font-data text-[11px] font-bold uppercase tracking-wider text-glacier hover:text-nordfjord border border-ash hover:border-glacier px-4 py-2 transition" style={{ borderRadius: "var(--r-m)" }}>
+            className="etiquette-nav font-bold text-glacier hover:text-nordfjord border border-ash hover:border-glacier px-4 py-2 transition" style={{ borderRadius: "var(--r-m)" }}>
             {L("Revoir la visite guidée", "Replay the guided tour")}
           </button>
         </div>

@@ -294,7 +294,7 @@ export default function OrderConfirmation() {
     // sous la ligne de flottaison avant meme d avoir lu quoi que ce soit.
     <div className="max-w-6xl mx-auto px-5 sm:px-6 py-7 sm:py-12" data-testid="confirmation-page">
       <div className="border border-nordfjord/20 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 flex items-center justify-between font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord border-b border-ash">
+        <div className="px-6 py-4 flex items-center justify-between etiquette text-nordfjord border-b border-ash">
           <span>
             {etatAffiche.bandeau}
           </span>
@@ -432,7 +432,7 @@ export default function OrderConfirmation() {
               son trait et son alignement n'appartiennent a aucun systeme. */}
           <div className="px-6 py-4 flex items-center gap-2.5 border-b border-ash">
             <Landmark size={15} className="text-nova-texte" aria-hidden="true" />
-            <span className="font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord">
+            <span className="etiquette text-nordfjord">
               {t("confirmation.interacHeading")}
             </span>
           </div>
@@ -461,7 +461,7 @@ export default function OrderConfirmation() {
           {/* Le « ₿ » etait, lui aussi, un glyphe en guise d'icone. */}
           <div className="px-6 py-4 flex items-center gap-2.5 border-b border-ash">
             <Wallet size={15} className="text-nova-texte" aria-hidden="true" />
-            <span className="font-data text-[11px] uppercase tracking-[0.2em] text-nordfjord">
+            <span className="etiquette text-nordfjord">
               {t("confirmation.cryptoHeading")}
             </span>
           </div>

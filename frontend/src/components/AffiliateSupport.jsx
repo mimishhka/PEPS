@@ -129,7 +129,7 @@ export default function AffiliateSupport({
         </p>
         <form onSubmit={creer} className="space-y-3">
           <div>
-            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-1.5">
+            <label className="block etiquette text-compliance mb-1.5">
               {L("Sujet", "Subject")}
             </label>
             <input value={sujet} onChange={(e) => setSujet(e.target.value)}
@@ -139,7 +139,7 @@ export default function AffiliateSupport({
               className="w-full rounded-lg border border-ash px-4 py-2.5 text-sm text-nordfjord bg-white outline-none focus:border-nova" />
           </div>
           <div>
-            <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-1.5">
+            <label className="block etiquette text-compliance mb-1.5">
               {L("Votre question", "Your question")}
             </label>
             <textarea value={corps} onChange={(e) => setCorps(e.target.value)}
@@ -147,7 +147,7 @@ export default function AffiliateSupport({
               className="w-full rounded-lg border border-ash px-4 py-2.5 text-sm text-nordfjord bg-white outline-none focus:border-nova" />
           </div>
           <div>
-              <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-1.5">
+              <label className="block etiquette text-compliance mb-1.5">
                 {L("Photo (facultative)", "Photo (optional)")}
               </label>
               <input type="file" accept="image/*" data-testid="ticket-photo"
@@ -158,7 +158,7 @@ export default function AffiliateSupport({
               )}
           </div>
           <button type="submit" disabled={busy} data-testid="ticket-submit"
-            className="px-6 py-2.5 bg-nova text-nordfjord font-data text-xs font-bold uppercase tracking-wider disabled:opacity-40" style={{ borderRadius: "var(--r-m)" }}>
+            className="px-6 py-2.5 bg-nova text-nordfjord etiquette-nav font-bold disabled:opacity-40" style={{ borderRadius: "var(--r-m)" }}>
             {busy ? L("Envoi…", "Sending…") : L("Envoyer", "Send")}
           </button>
         </form>
@@ -193,7 +193,7 @@ export default function AffiliateSupport({
                       {t.messages?.length > 1 && ` · ${t.messages.length} ${L("messages", "messages")}`}
                     </span>
                   </span>
-                  <span className={`shrink-0 px-2.5 py-1 rounded-full font-data text-[10px] font-semibold uppercase tracking-wider ${etat.cls}`}>
+                  <span className={`shrink-0 px-2.5 py-1 rounded-full etiquette font-semibold ${etat.cls}`}>
                     {lang === "fr" ? etat.fr : etat.en}
                   </span>
                 </button>
@@ -206,7 +206,7 @@ export default function AffiliateSupport({
                           m.from === "admin"
                             ? "bg-clinical border border-ash text-nordfjord"
                             : "bg-nova/5 text-nordfjord"}`}>
-                        <p className="font-data text-[10px] uppercase tracking-wider text-glacier mb-1">
+                        <p className="etiquette text-glacier mb-1">
                           {m.from === "admin" ? "FIRONOVA" : L("Vous", "You")} · {quand(m.at, lang)}
                         </p>
                         <p className="whitespace-pre-wrap">{m.body}</p>
@@ -237,7 +237,7 @@ export default function AffiliateSupport({
                         </label>
                       <button onClick={() => repondre(t.id)} disabled={busy || !reponse.trim()}
                         data-testid="ticket-reply-send"
-                        className="px-4 py-2 rounded-lg bg-nordfjord text-clinical font-data text-[11px] font-bold uppercase tracking-wider disabled:opacity-40">
+                        className="px-4 py-2 rounded-lg bg-nordfjord text-clinical etiquette-nav font-bold disabled:opacity-40">
                         {L("Envoyer", "Send")}
                       </button>
                     </div>

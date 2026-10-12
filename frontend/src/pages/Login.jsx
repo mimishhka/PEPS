@@ -132,7 +132,7 @@ export default function Login() {
           {!isAdminLogin && mode === "magic" ? (
             magicSent ? (
               <div className="rounded-3xl border border-nova/40 bg-nova/5 p-6" data-testid="magic-sent">
-                <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova-texte mb-2">Fironova · Magic Link</p>
+                <p className="etiquette text-nova-texte mb-2">Fironova · Magic Link</p>
                 <h3 className="font-display text-[20px] font-bold text-nordfjord mb-2">
                   {t("auth.magicCheckTitle") || "Vérifiez votre boîte mail"}
                 </h3>
@@ -170,7 +170,7 @@ export default function Login() {
                   {t("auth.magicLinkSub") || "Connexion rapide et sans mot de passe pour clients Fironova."}
                 </p>
                 <div>
-                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
+                  <label className="block etiquette text-compliance mb-2">{t("auth.email")}</label>
                   <input type="email" required autoComplete="username"
                     value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-magic-email"
                     className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
@@ -190,13 +190,13 @@ export default function Login() {
                 </p>
               )}
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
+                <label className="block etiquette text-compliance mb-2">{t("auth.email")}</label>
                 <input type="email" required autoComplete="username"
                   value={email} onChange={(e) => setEmail(e.target.value)} data-testid="login-email"
                   className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
               </div>
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.password")}</label>
+                <label className="block etiquette text-compliance mb-2">{t("auth.password")}</label>
                 <input type="password" required autoComplete="current-password"
                   value={password} onChange={(e) => setPassword(e.target.value)} data-testid="login-password"
                   className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />

@@ -91,7 +91,7 @@ export default function DetailVersement({ payoutId, L, money, lang, onClose }) {
 
         <div className="px-5 sm:px-6 pt-5 pb-3.5 border-b border-ash flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.2em] text-nova-texte">
+            <p className="etiquette font-semibold text-nova-texte">
               {L("Détail du versement", "Payout detail")}
             </p>
             {versement && (
@@ -201,7 +201,7 @@ export default function DetailVersement({ payoutId, L, money, lang, onClose }) {
         {!chargement && !erreur && lignes.length > 0 && (
           <div className="px-5 sm:px-6 py-3.5 border-t border-ash" data-testid="detail-total">
             <div className="flex items-baseline justify-between gap-3">
-              <span className="font-data text-[11px] uppercase tracking-[0.14em] text-glacier">
+              <span className="etiquette text-glacier">
                 {L(`${detail.lines_count} commande${detail.lines_count > 1 ? "s" : ""}`,
                    `${detail.lines_count} order${detail.lines_count > 1 ? "s" : ""}`)}
               </span>
@@ -226,7 +226,7 @@ export default function DetailVersement({ payoutId, L, money, lang, onClose }) {
                   </span>
                 </div>
                 <div className="flex items-baseline justify-between gap-3 mt-1.5">
-                  <span className="font-data text-[11px] uppercase tracking-[0.14em] text-nordfjord">
+                  <span className="etiquette text-nordfjord">
                     {L("Versé", "Paid")}
                   </span>
                   <span className="font-display text-base font-bold text-nordfjord tabular-nums">

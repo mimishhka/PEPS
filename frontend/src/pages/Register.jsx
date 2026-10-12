@@ -134,7 +134,7 @@ export default function Register() {
 
           {mode === "password" && verifyPending ? (
             <div className="rounded-3xl border border-nova/40 bg-nova/5 p-6" data-testid="register-verify-pending">
-              <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova-texte mb-2">Fironova · Activation</p>
+              <p className="etiquette text-nova-texte mb-2">Fironova · Activation</p>
               <h3 className="font-display text-[20px] font-bold text-nordfjord mb-2">
                 {t("auth.magicCheckTitle") || "Vérifiez votre boîte mail"}
               </h3>
@@ -147,7 +147,7 @@ export default function Register() {
             </div>
           ) : mode === "magic" && magicSent ? (
             <div className="rounded-3xl border border-nova/40 bg-nova/5 p-6" data-testid="register-magic-sent">
-              <p className="font-data text-[10px] uppercase tracking-[0.2em] text-nova-texte mb-2">Fironova · Magic Link</p>
+              <p className="etiquette text-nova-texte mb-2">Fironova · Magic Link</p>
               <h3 className="font-display text-[20px] font-bold text-nordfjord mb-2">
                 {t("auth.magicCheckTitle") || "Vérifiez votre boîte mail"}
               </h3>
@@ -166,7 +166,7 @@ export default function Register() {
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
+                  <label className="block etiquette text-compliance mb-2">
                     {t("auth.firstName") || (lang === "fr" ? "Prénom" : "First name")}
                   </label>
                   <input required autoComplete="given-name" value={form.first_name}
@@ -175,7 +175,7 @@ export default function Register() {
                     className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
                 </div>
                 <div>
-                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
+                  <label className="block etiquette text-compliance mb-2">
                     {t("auth.lastName") || (lang === "fr" ? "Nom" : "Last name")}
                   </label>
                   <input required autoComplete="family-name" value={form.last_name}
@@ -185,7 +185,7 @@ export default function Register() {
                 </div>
               </div>
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
+                <label className="block etiquette text-compliance mb-2">{t("auth.email")}</label>
                 <input type="email" required autoComplete="username"
                   value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-magic-email"
                   className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
@@ -200,7 +200,7 @@ export default function Register() {
               <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" data-testid="honeypot" />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
+                  <label className="block etiquette text-compliance mb-2">
                     {t("auth.firstName") || (lang === "fr" ? "Prénom" : "First name")}
                   </label>
                   <input required autoComplete="given-name" value={form.first_name}
@@ -209,7 +209,7 @@ export default function Register() {
                     className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
                 </div>
                 <div>
-                  <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">
+                  <label className="block etiquette text-compliance mb-2">
                     {t("auth.lastName") || (lang === "fr" ? "Nom" : "Last name")}
                   </label>
                   <input required autoComplete="family-name" value={form.last_name}
@@ -219,13 +219,13 @@ export default function Register() {
                 </div>
               </div>
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.email")}</label>
+                <label className="block etiquette text-compliance mb-2">{t("auth.email")}</label>
                 <input type="email" required autoComplete="username"
                   value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="register-email"
                   className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />
               </div>
               <div>
-                <label className="block font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{t("auth.password")} (≥ 8)</label>
+                <label className="block etiquette text-compliance mb-2">{t("auth.password")} (≥ 8)</label>
                 <input type="password" required autoComplete="new-password"
                   value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="register-password"
                   className="w-full border border-ash px-5 py-3.5 bg-white text-nordfjord outline-none focus:border-nova" style={{ borderRadius: "var(--r-m)" }} />

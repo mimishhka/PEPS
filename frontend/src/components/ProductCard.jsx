@@ -175,7 +175,14 @@ export default function ProductCard({ product, index = 0 }) {
                chasse large ne peut pas se couper, et poussait la grille a
                408 px. La chasse se resserre sur mobile et le mot peut passer
                a la ligne plutot que d'elargir la carte. */
-            <span className="etiquette font-semibold sm:tracking-[0.14em] border border-nova text-nova-texte px-1.5 py-0.5 break-words min-w-0" style={{ borderRadius: "var(--r-s)" }} data-testid={`preorder-badge-${product.slug}`}>
+            /* L'EXCEPTION A L'ECHELLE, ECRITE PLUTOT QUE SUBIE.
+               `etiquette` pose 0,2 em. Ici la chasse revient a 0,06 em
+               jusqu'au premier palier, pour la raison dite juste au-dessus :
+               sur 408 px le mot debordait la carte. L'echelle decide de la
+               taille ; la largeur disponible garde son mot a dire.
+               (Commentaire JS et non `{…}` : on est dans une expression entre
+               parentheses, pas parmi des enfants JSX.) */
+            <span className="etiquette font-semibold tracking-[0.06em] sm:tracking-[0.14em] border border-nova text-nova-texte px-1.5 py-0.5 break-words min-w-0" style={{ borderRadius: "var(--r-s)" }} data-testid={`preorder-badge-${product.slug}`}>
               {lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"}
             </span>
           )}
