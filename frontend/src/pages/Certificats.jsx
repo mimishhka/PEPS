@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
+import { GHK, RET } from "../lib/certificat";
 
 /**
  * Comment lire un certificat d'analyse — sur ses vrais certificats.
@@ -45,32 +46,6 @@ import useDocumentHead from "../hooks/useDocumentHead";
  * Un exemple inventé se reconnaît, et il abîme la crédibilité de tout ce qui
  * l'entoure.
  */
-const GHK = {
-  compose: "GHK-Cu",
-  lot: "FN-OLW8W",
-  rapport: "COA-2026-SC-01688",
-  labo: "GHK-078",
-  recu: { fr: "21 août 2026", en: "21 August 2026" },
-  analyse: { fr: "27 août 2026", en: "27 August 2026" },
-  cas: "49557-75-7",
-  formule: "C14H22CuN6O4 · C2H4O2",
-  masse: { fr: "340,4 g/mol", en: "340.4 g/mol" },
-  purete: { spec: "≥ 98 %", res: { fr: "99,7 %", en: "99.7 %" } },
-  teneur: { spec: { fr: "100,00 mg", en: "100.00 mg" }, res: { fr: "105,32 mg", en: "105.32 mg" } },
-  exactitude: { spec: "≥ 90 %", res: { fr: "105,3 %", en: "105.3 %" } },
-  ion: "[M+H]+",
-  mz: { fr: "341,20 Da", en: "341.20 Da" },
-  rt: { fr: "1,199 min", en: "1.199 min" },
-};
-
-const RET = {
-  compose: "Retatrutide",
-  lot: "FN-ELBCJ",
-  masse: { fr: "4731,3 g/mol", en: "4731.3 g/mol" },
-  ion: "[M+5H]5+",
-  mz: { fr: "947,90 Da", en: "947.90 Da" },
-};
-
 function Puces({ items }) {
   return (
     <ul className="space-y-3 mt-5">

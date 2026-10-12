@@ -155,37 +155,39 @@ describe("le bloc de preuve, après les produits en vedette", () => {
     for (const motif of interdits) expect(preuve()).not.toMatch(motif);
   });
 
-  test("AUCUN CHIFFRE INVENTÉ sur un bloc qui parle de preuve", () => {
+  test("AUCUN CHIFFRE ÉCRIT EN DUR : ils viennent du certificat", () => {
     /* Align affiche « 25 composés ». Je n'ai aucun nombre que je puisse
      * affirmer sans le calculer — et un chiffre faux, ICI précisément,
      * détruirait ce que le bloc est censé établir.
      *
-     * Le premier jet cherchait un nombre entre deux chevrons. Il ne voyait
-     * pas « 25 composés analysés », parce que du texte suit les chiffres :
-     * la mutation de contrôle est passée sans rien casser. Il lit maintenant
-     * les PHRASES — les chaînes porteuses de texte visible — et refuse le
-     * moindre chiffre dedans.
+     * Ce test a d'abord refusé TOUT chiffre. Il avait tort sur l'intention :
+     * la feuille de certificat dessinée dans ce bloc porte de vrais chiffres,
+     * ceux du lot FN-OLW8W. Mais il avait raison sur le fond — je venais de
+     * recopier « 99,7 % » et « 105,32 mg » dans cette page alors que
+     * `Certificats.jsx` les portait déjà. Deux copies du même chiffre
+     * finissent toujours par diverger.
      *
-     * Si un nombre devient un jour légitime ici, ce test tombera et forcera
-     * une décision consciente. C'est le but. */
-    /* On retire les attributs de présentation AVANT d'extraire les phrases.
-     * Essayer de reconnaître une classe par son allure ne marche pas :
-     * « max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 » contient des espaces et des
-     * chiffres, et il a fait tomber le test. Il est plus sûr de couper ce
-     * qui ne peut pas être du texte visible. */
-    const sansPresentation = preuve()
-      .replace(/className=\{`[^`]*`\}/g, " ")
-      .replace(/className="[^"]*"/g, " ")
-      .replace(/style=\{\{[^}]*\}\}/g, " ")
-      .replace(/data-testid=\{?[`"][^`"]*[`"]\}?/g, " ");
+     * Il exige donc maintenant la SOURCE UNIQUE : les valeurs viennent de
+     * `lib/certificat`, pas de littéraux. */
+    expect(preuve()).toContain("GHK.purete.res");
+    expect(preuve()).toContain("GHK.teneur.res");
+    expect(preuve()).toContain("GHK.lot");
+    expect(SOURCE).toMatch(/import \{ GHK \} from "\.\.\/lib\/certificat"/);
 
-    const phrases = (sansPresentation.match(/"[^"]{12,}"/g) || [])
-      .map((x) => x.slice(1, -1))
-      .filter((x) => x.includes(" "));
-    expect(phrases.length).toBeGreaterThan(4);
-    for (const phrase of phrases) {
-      expect(phrase).not.toMatch(/\d/);
-    }
+    // Et aucune valeur recopiée à la main dans la section.
+    expect(preuve()).not.toMatch(/99,7|105,32|FN-OLW8W/);
+  });
+
+  test("le bloc montre un OBJET, pas seulement du texte", () => {
+    /* MIREILLE, 11/10/2026 : « pourquoi le design est simpliste. zéro image,
+     * zéro beauté, rien qu'un bloc ». Le panneau de droite était une liste à
+     * puces dans un cadre blanc.
+     *
+     * La réponse n'était pas d'aller chercher une photo : le document EST
+     * l'objet dont le bloc parle. */
+    expect(preuve()).toContain('data-testid="preuve-certificat"');
+    expect(preuve()).toContain("MolecularMesh");
+    expect(preuve()).toContain("<svg");
   });
 
   test("son texte clair ne s'inverse pas la nuit", () => {
