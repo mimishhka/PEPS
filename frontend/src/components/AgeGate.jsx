@@ -122,7 +122,7 @@ export default function AgeGate() {
           <p className="mt-4 text-sm leading-relaxed text-mist">
             {t("age.deniedBody")}
           </p>
-          <p className="mt-8 font-data text-[10px] uppercase tracking-[0.24em] text-compliance">
+          <p className="mt-8 etiquette text-compliance">
             {t("age.deniedNote")}
           </p>
         </div>
@@ -148,7 +148,7 @@ export default function AgeGate() {
 
       <div className="relative w-full max-w-lg rounded-xl overflow-hidden bg-white border border-ash shadow-2xl">
         {/* Top bar : Fironova nordfjord + nova accent */}
-        <div className="bg-nordfjord px-6 py-3 font-data text-[11px] uppercase tracking-[0.25em] text-white flex items-center justify-between">
+        <div className="bg-nordfjord px-6 py-3 etiquette text-white flex items-center justify-between">
           <span className="inline-flex items-center gap-2" data-testid="age-gate-tag">
             <ShieldCheck size={14} className="text-nova-texte" />
             RESTRICTED · FIRONOVA
@@ -168,7 +168,7 @@ export default function AgeGate() {
             <button
               data-testid="age-gate-confirm"
               onClick={confirm}
-              className="flex-1 bg-nordfjord text-white font-data text-xs uppercase tracking-[0.2em] py-4 hover:bg-nordfjord/90 transition inline-flex items-center justify-center gap-2" style={{ borderRadius: "var(--r-m)" }}
+              className="flex-1 bg-nordfjord text-white etiquette-nav py-4 hover:bg-nordfjord/90 transition inline-flex items-center justify-center gap-2" style={{ borderRadius: "var(--r-m)" }}
             >
               {t("age.confirm")}
               <span className="text-nova-texte" aria-hidden="true">→</span>
@@ -176,14 +176,14 @@ export default function AgeGate() {
             <button
               data-testid="age-gate-exit"
               onClick={exit}
-              className="flex-1 border border-ash text-nordfjord font-data text-xs uppercase tracking-[0.2em] py-4 hover:border-nova hover:text-nova-texte transition inline-flex items-center justify-center gap-2" style={{ borderRadius: "var(--r-m)" }}
+              className="flex-1 border border-ash text-nordfjord etiquette-nav py-4 hover:border-nova hover:text-nova-texte transition inline-flex items-center justify-center gap-2" style={{ borderRadius: "var(--r-m)" }}
             >
               <LogOut size={12} />
               {t("age.exit")}
             </button>
           </div>
 
-          <p className="mt-6 text-center font-data text-[10px] uppercase tracking-[0.28em] text-glacier">
+          <p className="mt-6 text-center etiquette text-glacier">
             FOR RESEARCH USE ONLY · USAGE RECHERCHE UNIQUEMENT
           </p>
         </div>

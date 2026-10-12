@@ -417,6 +417,42 @@
     color: rgb(var(--fn-nova-texte));
   }
 
+  /* L'ETIQUETTE — tout le reste des libelles en mono capitales.
+   *
+   * LE RELEVE AVANT CORRECTION : 192 etiquettes, 74 combinaisons de taille et
+   * d'espacement, dont 52 n'apparaissant QU'UNE SEULE FOIS. Ce n'etait pas une
+   * echelle, c'etaient 74 decisions separees — 8,5 px a cote de 12 px, un
+   * espacement de 0,06 em a cote d'un de 0,28.
+   *
+   * 10 px / 0,2 em l'emporte : c'est deja la combinaison la plus employee, et
+   * de loin, parce que c'est celle des mentions de conformite.
+   *
+   * ELLE NE PORTE NI COULEUR NI POIDS, et c'est deliberé. La couleur d'une
+   * etiquette dit quelque chose que l'echelle ne dit pas : conformite, accent,
+   * texte secondaire. La figer ici effacerait ce sens. L'echelle se decide une
+   * fois, la couleur se decide a chaque fois. */
+  .etiquette {
+    @apply font-data text-[10px] uppercase;
+    letter-spacing: 0.2em;
+  }
+
+  /* DEUX NIVEAUX, PAS UN SEUL — une legende et un bouton ne sont pas la meme
+   * chose.
+   *
+   * Le premier jet pliait tout sur 10 px, y compris la navigation de l'en-tete
+   * et les deux boutons de la porte d'age. Ils etaient a 12 px, deliberement :
+   * ce sont des cibles qu'on vise et des mots qu'on lit en passant, pas des
+   * mentions qu'on consulte. Les reduire aurait echange une incoherence contre
+   * une regression.
+   *
+   * La frontiere est nette dans le code existant : `text-xs` servait aux
+   * libelles INTERACTIFS, les tailles en pixels aux mentions. On garde cette
+   * frontiere, on la nomme. */
+  .etiquette-nav {
+    @apply font-data text-xs uppercase;
+    letter-spacing: 0.18em;
+  }
+
   /* Boutons — rectangles francs a 4 px, pas de pilule. La forme vient du
      monde « fiche de laboratoire » : un bouton s'aligne sur un formulaire,
      pas sur une capsule marketing. L'etat presse existe, le lancer au

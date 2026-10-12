@@ -72,7 +72,7 @@ export default function Header() {
           pâle écrit dessus, parfait sur bleu marine, disparaissait alors sur
           fond blanc. La nuit, le texte passe donc à l'encre sombre : c'est la
           paire fond/texte qui porte le contraste, pas la valeur. */}
-      <div className="bg-nordfjord text-center py-2 px-4 font-data text-[11px] font-semibold uppercase tracking-[0.22em] text-[#9FD9E8] dark:text-clinical">
+      <div className="bg-nordfjord text-center py-2 px-4 etiquette font-semibold text-[#9FD9E8] dark:text-clinical">
         <span data-testid="header-compliance-band">{t("footer.compliance")}</span>
       </div>
       <header className="sticky top-0 z-40 bg-clinical/85 backdrop-blur border-b border-ash/70">
@@ -135,7 +135,7 @@ export default function Header() {
             <button
               data-testid="admin-quick-access"
               onClick={enterAdmin}
-              className="hidden sm:inline-flex items-center gap-1.5 font-data text-[11px] font-semibold uppercase tracking-[0.2em] bg-nordfjord text-white px-3.5 py-1.5 hover:bg-glacier transition-colors" style={{ borderRadius: "var(--r-m)" }}
+              className="hidden sm:inline-flex items-center gap-1.5 etiquette font-semibold bg-nordfjord text-white px-3.5 py-1.5 hover:bg-glacier transition-colors" style={{ borderRadius: "var(--r-m)" }}
               aria-label="Ops"
             >
               <Lock size={11} strokeWidth={2} />
@@ -179,9 +179,7 @@ export default function Header() {
                   aria-pressed={lang === code}
                   aria-label={code === "fr" ? "Français" : "English"}
                   title={code === "fr" ? "Français" : "English"}
-                  className={`font-data text-[11px] font-semibold uppercase tracking-[0.14em] min-w-[38px] min-h-[36px] inline-flex items-center justify-center transition-colors ${
-                    lang === code ? "text-nordfjord bg-ash/40" : "text-glacier hover:text-nordfjord"
-                  }`}
+                  className={`etiquette font-semibold min-w-[38px] min-h-[36px] inline-flex items-center justify-center transition-colors ${ lang === code ? "text-nordfjord bg-ash/40" : "text-glacier hover:text-nordfjord" }`}
                 >
                   {libelle}
                 </button>
@@ -202,7 +200,7 @@ export default function Header() {
               data-testid="cart-button"
               onClick={() => setOpen(true)}
               aria-label={t("nav.cart")}
-              className="relative font-data text-xs font-semibold uppercase tracking-[0.18em] flex items-center justify-center gap-2 min-w-[48px] min-h-[48px] text-nordfjord hover:text-nova-texte transition-colors"
+              className="relative etiquette-nav font-semibold flex items-center justify-center gap-2 min-w-[48px] min-h-[48px] text-nordfjord hover:text-nova-texte transition-colors"
             >
               <span className="relative inline-flex">
                 <ShoppingBag size={18} strokeWidth={1.5} />
@@ -219,13 +217,13 @@ export default function Header() {
             </button>
             {user ? (
               <div className="hidden md:flex items-center gap-3">
-                <Link to="/account" data-testid="nav-account" className="font-data text-xs font-semibold uppercase tracking-[0.18em] flex items-center gap-1.5 min-h-[48px] text-nordfjord hover:text-nova-texte transition-colors">
+                <Link to="/account" data-testid="nav-account" className="etiquette-nav font-semibold flex items-center gap-1.5 min-h-[48px] text-nordfjord hover:text-nova-texte transition-colors">
                   <User size={16} strokeWidth={1.5} /> {user.name?.split(" ")[0] || t("nav.account")}
                 </Link>
                 <button
                   onClick={logout}
                   data-testid="nav-logout"
-                  className="font-data text-xs font-semibold uppercase tracking-[0.18em] min-h-[48px] text-glacier hover:text-nordfjord transition-colors"
+                  className="etiquette-nav font-semibold min-h-[48px] text-glacier hover:text-nordfjord transition-colors"
                 >
                   {t("nav.logout")}
                 </button>
@@ -235,7 +233,7 @@ export default function Header() {
                 to={loginHref}
                 data-testid="nav-login"
                 aria-label={t("nav.login")}
-                className="hidden md:inline-flex items-center justify-center gap-1.5 min-w-[48px] min-h-[48px] font-data text-xs font-semibold uppercase tracking-[0.18em] text-nordfjord hover:text-nova-texte transition-colors"
+                className="hidden md:inline-flex items-center justify-center gap-1.5 min-w-[48px] min-h-[48px] etiquette-nav font-semibold text-nordfjord hover:text-nova-texte transition-colors"
               >
                 <User size={16} strokeWidth={1.5} />
               </Link>
@@ -260,7 +258,7 @@ export default function Header() {
                   key={n.to}
                   to={n.to}
                   onClick={() => setMobileOpen(false)}
-                  className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-3.5 block text-nordfjord"
+                  className="etiquette-nav font-semibold py-3.5 block text-nordfjord"
                 >
                   {n.label}
                 </Link>
@@ -268,21 +266,21 @@ export default function Header() {
               <button
                 onClick={() => { setMobileOpen(false); enterAdmin(); }}
                 data-testid="admin-quick-access-mobile"
-                className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-3.5 mt-2 text-left bg-nordfjord text-white px-4 inline-flex items-center gap-2 w-fit" style={{ borderRadius: "var(--r-m)" }}
+                className="etiquette-nav font-semibold py-3.5 mt-2 text-left bg-nordfjord text-white px-4 inline-flex items-center gap-2 w-fit" style={{ borderRadius: "var(--r-m)" }}
               >
                 <Lock size={11} strokeWidth={2} /> OPS
               </button>
               {user ? (
                 <>
-                  <Link to="/account" onClick={() => setMobileOpen(false)} className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-3.5 block text-nordfjord">
+                  <Link to="/account" onClick={() => setMobileOpen(false)} className="etiquette-nav font-semibold py-3.5 block text-nordfjord">
                     {t("nav.account")}
                   </Link>
-                  <button onClick={() => { logout(); setMobileOpen(false); }} className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-3.5 text-left w-full text-nordfjord">
+                  <button onClick={() => { logout(); setMobileOpen(false); }} className="etiquette-nav font-semibold py-3.5 text-left w-full text-nordfjord">
                     {t("nav.logout")}
                   </button>
                 </>
               ) : (
-                <Link to={loginHref} onClick={() => setMobileOpen(false)} className="font-data text-xs font-semibold uppercase tracking-[0.18em] py-3.5 block text-nordfjord">
+                <Link to={loginHref} onClick={() => setMobileOpen(false)} className="etiquette-nav font-semibold py-3.5 block text-nordfjord">
                   {t("nav.login")} →
                 </Link>
               )}

@@ -68,7 +68,7 @@ export default function CartDrawer() {
                           la variante 10 mg, le panier montrait le SKU du 5 mg.
                           Les lignes ajoutees avant ce correctif n'ont pas de
                           variant_sku — elles retombent sur le slug. */}
-                      <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance">{it.variant_sku || it.slug}</div>
+                      <div className="etiquette text-compliance">{it.variant_sku || it.slug}</div>
                       <div className="font-display font-bold text-sm text-nordfjord">{name}</div>
                       <div className="font-data text-[10px] text-glacier">{it.variant_name ? dosage(it.variant_name, lang) : `${it.dosage_mg} mg`}</div>
                       {/* Le panier ne disait rien d'une precommande. Le client
@@ -76,7 +76,7 @@ export default function CartDrawer() {
                           ici, ni a la caisse, ni dans le courriel. */}
                       {it.preorder && (
                         <div
-                          className="font-data text-[9.5px] font-semibold uppercase tracking-[0.14em] text-warning"
+                          className="etiquette font-semibold text-warning"
                           data-testid={`cart-preorder-${it.slug}`}
                         >
                           {lang === "fr" ? "Précommande · envoi séparé" : "Pre-order · ships separately"}
@@ -127,10 +127,10 @@ export default function CartDrawer() {
         {items.length > 0 && (
           <div className="border-t border-ash p-6 space-y-4">
             <div className="flex justify-between items-baseline">
-              <span className="font-data text-xs uppercase tracking-[0.16em] text-glacier">{t("common.subtotal")}</span>
+              <span className="etiquette-nav text-glacier">{t("common.subtotal")}</span>
               <span className="font-display font-bold text-xl text-nordfjord" data-testid="cart-subtotal">{prix(subtotal, lang)} CAD</span>
             </div>
-            <p className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">
+            <p className="etiquette text-compliance">
               {lang === "fr" ? "TAXES ET LIVRAISON CALCULÉES AU PAIEMENT" : "TAXES & SHIPPING CALCULATED AT CHECKOUT"}
             </p>
             <button

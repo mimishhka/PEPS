@@ -64,13 +64,13 @@ function Encadre({ titre, lignes, testId }) {
   return (
     <div className="mt-5 border border-ash bg-white overflow-hidden" data-testid={testId}
          style={{ borderRadius: "var(--r-m)" }}>
-      <div className="px-5 py-3 border-b border-ash font-data text-[10px] uppercase tracking-[0.2em] text-compliance">
+      <div className="px-5 py-3 border-b border-ash etiquette text-compliance">
         {titre}
       </div>
       <dl className="px-5 py-3">
         {lignes.map(([k, v]) => (
           <div key={k} className="flex flex-wrap items-baseline justify-between gap-x-8 gap-y-1 py-2 border-b border-ash last:border-0">
-            <dt className="font-data text-[11px] uppercase tracking-[0.14em] text-glacier">{k}</dt>
+            <dt className="etiquette text-glacier">{k}</dt>
             <dd className="font-data text-[13px] text-nordfjord text-right break-all">{v}</dd>
           </div>
         ))}

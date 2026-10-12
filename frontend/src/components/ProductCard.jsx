@@ -158,7 +158,7 @@ export default function ProductCard({ product, index = 0 }) {
             {name}
           </Link>
           {choisie?.sale && !choisie?.isPre && (
-            <span className="font-data text-[9.5px] font-semibold uppercase tracking-[0.14em] border border-nova text-nova-texte px-1.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`sale-badge-${product.slug}`}>
+            <span className="etiquette font-semibold border border-nova text-nova-texte px-1.5 py-0.5" style={{ borderRadius: "var(--r-s)" }} data-testid={`sale-badge-${product.slug}`}>
               {lang === "fr" ? "PROMO" : "SALE"}
             </span>
           )}
@@ -175,7 +175,7 @@ export default function ProductCard({ product, index = 0 }) {
                chasse large ne peut pas se couper, et poussait la grille a
                408 px. La chasse se resserre sur mobile et le mot peut passer
                a la ligne plutot que d'elargir la carte. */
-            <span className="font-data text-[9.5px] font-semibold uppercase tracking-[0.06em] sm:tracking-[0.14em] border border-nova text-nova-texte px-1.5 py-0.5 break-words min-w-0" style={{ borderRadius: "var(--r-s)" }} data-testid={`preorder-badge-${product.slug}`}>
+            <span className="etiquette font-semibold sm:tracking-[0.14em] border border-nova text-nova-texte px-1.5 py-0.5 break-words min-w-0" style={{ borderRadius: "var(--r-s)" }} data-testid={`preorder-badge-${product.slug}`}>
               {lang === "fr" ? "PRÉCOMMANDE" : "PRE-ORDER"}
             </span>
           )}
@@ -236,7 +236,7 @@ export default function ProductCard({ product, index = 0 }) {
               Il ne reste donc que pour ce qu'il est seul a dire : en stock,
               stock bas avec son compte, ou rupture. */}
           {!ajoutEstUnePrecommande && (
-            <span className={`font-data text-[11px] uppercase tracking-[0.14em] flex items-center gap-1.5 ${inStock ? "text-success-text" : "text-warning-text"}`}
+            <span className={`etiquette flex items-center gap-1.5 ${inStock ? "text-success-text" : "text-warning-text"}`}
                   data-testid={`card-stock-${product.slug}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${inStock ? "bg-success" : "bg-warning"}`} />
               {inStock

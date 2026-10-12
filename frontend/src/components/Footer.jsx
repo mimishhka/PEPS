@@ -122,7 +122,7 @@ export default function Footer() {
             <p className="font-display text-2xl sm:text-3xl font-bold tracking-[-0.01em] leading-[1.2]" data-testid="footer-disclaimer">
               {t("footer.compliance")}
             </p>
-            <p className="font-data text-[11px] uppercase tracking-[0.18em] text-glacier leading-relaxed">
+            <p className="etiquette text-glacier leading-relaxed">
               {confirmText}
             </p>
           </div>
@@ -158,7 +158,7 @@ export default function Footer() {
         </div>
         {columns.map((col) => (
           <div key={col.key} data-testid={`footer-col-${col.key}`}>
-            <div className="font-data text-[11px] uppercase tracking-[0.24em] mb-5 text-nova-texte">{col.title}</div>
+            <div className="etiquette mb-5 text-nova-texte">{col.title}</div>
             <ul className="text-sm">
               {col.links.map((l) => (
                 <li key={l.to + l.label}>
@@ -176,7 +176,7 @@ export default function Footer() {
 
       <div className="bg-ink text-fog">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="font-data text-[11px] uppercase tracking-[0.18em]">
+          <p className="etiquette">
             © {new Date().getFullYear()} FIRONOVA · {t("footer.rights")}
           </p>
           <button

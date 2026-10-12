@@ -44,7 +44,7 @@ export default function AvertissementCoa({ compact = false, className = "", test
     >
       <FlaskConical size={17} className="text-nova-texte shrink-0 mt-0.5" aria-hidden="true" />
       <div className="min-w-0">
-        <div className="font-data text-[11px] uppercase tracking-[0.2em] text-nova-texte">
+        <div className="etiquette text-nova-texte">
           {fr ? "Certificat d'analyse à venir" : "Certificate of analysis to come"}
         </div>
         <p className="mt-1 text-sm text-glacier leading-relaxed">

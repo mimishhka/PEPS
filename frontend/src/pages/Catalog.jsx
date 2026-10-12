@@ -67,7 +67,7 @@ export default function Catalog() {
           <h1 className="titre-page text-nordfjord">
             {lang === "fr" ? "La bibliothèque complète" : "The full library"}
           </h1>
-          <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte mb-2 lg:absolute lg:top-0 lg:right-0 lg:mb-0">
+          <p className="etiquette text-nova-texte mb-2 lg:absolute lg:top-0 lg:right-0 lg:mb-0">
             {lang === "fr" ? "CATALOGUE" : "CATALOG"}
           </p>
         </div>
@@ -90,21 +90,21 @@ export default function Catalog() {
               <button
                 onClick={() => setSort("price-asc")}
                 data-testid="catalog-sort-price-asc"
-                className={`font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border transition-colors ${sort === "price-asc" ? "border-nova text-nova-texte" : "border-ash text-glacier hover:border-nova hover:text-nova-texte"}`} style={{ borderRadius: "var(--r-m)" }}
+                className={`etiquette font-semibold px-4 py-2.5 border transition-colors ${sort === "price-asc" ? "border-nova text-nova-texte" : "border-ash text-glacier hover:border-nova hover:text-nova-texte"}`} style={{ borderRadius: "var(--r-m)" }}
               >
                 {lang === "fr" ? "Prix ↑" : "Price ↑"}
               </button>
               <button
                 onClick={() => setSort("price-desc")}
                 data-testid="catalog-sort-price-desc"
-                className={`font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border transition-colors ${sort === "price-desc" ? "border-nova text-nova-texte" : "border-ash text-glacier hover:border-nova hover:text-nova-texte"}`} style={{ borderRadius: "var(--r-m)" }}
+                className={`etiquette font-semibold px-4 py-2.5 border transition-colors ${sort === "price-desc" ? "border-nova text-nova-texte" : "border-ash text-glacier hover:border-nova hover:text-nova-texte"}`} style={{ borderRadius: "var(--r-m)" }}
               >
                 {lang === "fr" ? "Prix ↓" : "Price ↓"}
               </button>
               <button
                 onClick={() => setSort("name")}
                 data-testid="catalog-sort-name"
-                className={`font-data text-[11px] font-semibold uppercase tracking-[0.16em] px-4 py-2.5 border transition-colors ${sort === "name" ? "border-nova text-nova-texte" : "border-ash text-glacier hover:border-nova hover:text-nova-texte"}`} style={{ borderRadius: "var(--r-m)" }}
+                className={`etiquette font-semibold px-4 py-2.5 border transition-colors ${sort === "name" ? "border-nova text-nova-texte" : "border-ash text-glacier hover:border-nova hover:text-nova-texte"}`} style={{ borderRadius: "var(--r-m)" }}
               >
                 {lang === "fr" ? "Nom" : "Name"}
               </button>

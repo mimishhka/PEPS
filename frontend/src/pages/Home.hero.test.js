@@ -89,13 +89,20 @@ describe("tout le texte du hero va dans le même sens", () => {
     }
   });
 
-  test("l'accroche n'est pas en Nova pur : 10,5 px en demandent 4,5:1", () => {
+  test("l'accroche n'est pas en Nova pur : 10 px en demandent 4,5:1", () => {
     /* Nova (#00B8D4) sur le voile donne environ 3:1 — assez pour un titre de
-     * 34 px, qui n'en demande que 3, pas pour des capitales de 10,5 px. Le
-     * cyan pâle du bandeau de conformité, déjà employé sur fond marine, en
-     * donne 5. L'accent se module selon la TAILLE, ce qui est exactement ce
-     * que dit la règle de contraste. */
-    const accroche = hero().match(/<p className="font-data text-\[10\.5px\][^>]*>/s);
+     * 34 px, qui n'en demande que 3, pas pour des capitales de 10 px. Le cyan
+     * pâle du bandeau de conformité, déjà employé sur fond marine, en donne 5.
+     * L'accent se module selon la TAILLE, ce qui est exactement ce que dit la
+     * règle de contraste.
+     *
+     * LE REPÈRE A CHANGÉ, PAS LA RÈGLE. Ce test cherchait la chaîne littérale
+     * « font-data text-[10.5px] » ; cette accroche portait une taille à elle
+     * seule — 10,5 px, une valeur qui n'existait nulle part ailleurs sur le
+     * site. Elle est passée sur l'échelle commune, et le test vise maintenant
+     * ce qu'il voulait vraiment dire : l'étiquette du hero, quelle que soit sa
+     * taille, ne se peint pas en Nova pur. */
+    const accroche = hero().match(/<p className="etiquette[^>]*>/s);
     expect(accroche).not.toBeNull();
     expect(accroche[0]).not.toMatch(/text-nova\b/);
     expect(accroche[0]).toMatch(/sur-voile-accent/);

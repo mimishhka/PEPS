@@ -177,7 +177,7 @@ export default function Home() {
                   conformite, deja employe sur fond marine, en donne 5. La
                   couleur d'accent se module donc selon la TAILLE du texte,
                   ce qui est exactement ce que la regle de contraste dit. */}
-              <p className="font-data text-[10.5px] uppercase tracking-[0.26em] mb-4 sur-voile-accent">
+              <p className="etiquette mb-4 sur-voile-accent">
                 {heroEyebrow}
               </p>
               {/* LE TITRE ETAIT LE SEUL TEXTE SOMBRE PARMI DES TEXTES CLAIRS.
@@ -274,7 +274,7 @@ export default function Home() {
                   Les mots sont les siens, et ils disent quelque chose
                   qu'eux ne disent pas — le numéro de lot, qui est ce qui
                   relie le papier au flacon. */}
-              <p className="relative font-data text-[10px] uppercase tracking-[0.24em] mb-4"
+              <p className="relative etiquette mb-4"
                  style={{ color: "var(--sur-voile-accent)" }}>
                 {lang === "fr" ? "CHAQUE LOT, SON RAPPORT" : "EVERY BATCH, ITS REPORT"}
               </p>
@@ -333,14 +333,14 @@ export default function Home() {
               <div className="relative w-[88%] max-w-[324px] bg-white border border-ash overflow-hidden"
                    style={{ borderRadius: "var(--r-m)", boxShadow: "var(--ombre)" }}>
                 <div className="bg-nordfjord px-4 py-3 flex items-center justify-between gap-3">
-                  <span className="font-data text-[8.5px] uppercase tracking-[0.2em] text-clinical/80">
+                  <span className="etiquette text-clinical/80">
                     {lang === "fr" ? "Certificat d'analyse" : "Certificate of analysis"}
                   </span>
                   <NovaSpark size={11} />
                 </div>
 
                 <div className="px-4 pt-4 pb-1">
-                  <div className="font-data text-[8.5px] uppercase tracking-[0.18em] text-compliance">
+                  <div className="etiquette text-compliance">
                     {lang === "fr" ? "Numéro de lot" : "Lot number"}
                   </div>
                   <div className="font-display text-[22px] font-bold text-nordfjord tracking-[-0.01em] leading-none mt-1">
@@ -362,7 +362,7 @@ export default function Home() {
                     [lang === "fr" ? "Identité" : "Identity", lang === "fr" ? "Confirmée" : "Confirmed"],
                   ].map(([k, v]) => (
                     <div key={k} className="flex items-baseline justify-between gap-4 py-1.5 border-b border-ash last:border-0">
-                      <dt className="font-data text-[9px] uppercase tracking-[0.14em] text-glacier">{k}</dt>
+                      <dt className="etiquette text-glacier">{k}</dt>
                       <dd className="font-data text-[11px] text-nordfjord">{v}</dd>
                     </div>
                   ))}
@@ -392,7 +392,7 @@ export default function Home() {
               remplissent la bande. Rien n'est retiré. */}
           <div className="grid lg:grid-cols-[1fr_minmax(0,34rem)] gap-8 lg:gap-16 items-center" data-testid="newsletter-grille">
             <div>
-            <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte mb-2">{newsEyebrow}</p>
+            <p className="etiquette text-nova-texte mb-2">{newsEyebrow}</p>
             <h2 className="titre-section text-nordfjord mb-3">{newsTitle}</h2>
             <p className="text-glacier text-[14px] max-w-[52ch]">{newsLede}</p>
             </div>

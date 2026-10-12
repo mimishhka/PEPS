@@ -273,7 +273,7 @@ export default function ProductDetail() {
   return (
     <div data-testid="product-detail-page" className="bg-clinical min-h-screen">
       <div className="max-w-7xl mx-auto px-6 lg:px-8 py-12">
-        <Link to="/catalog" data-testid="back-to-catalog" className="inline-flex items-center gap-2 font-data text-[12px] uppercase tracking-[0.16em] text-glacier hover:text-nordfjord transition-colors mb-8">
+        <Link to="/catalog" data-testid="back-to-catalog" className="inline-flex items-center gap-2 etiquette text-glacier hover:text-nordfjord transition-colors mb-8">
           ← {lang === "fr" ? "Retour au catalogue" : "Back to catalog"}
         </Link>
 
@@ -299,14 +299,14 @@ export default function ProductDetail() {
           </div>
 
           <div>
-            <p className="font-data text-[11px] uppercase tracking-[0.22em] text-compliance mb-3">
+            <p className="etiquette text-compliance mb-3">
               {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT" : "FOR RESEARCH USE ONLY"}
             </p>
             <h1 className="titre-page text-nordfjord mb-7" data-testid="product-name">{name}</h1>
 
             {variants.length > 1 && (
               <div data-testid="variant-selector" className="mb-6">
-                <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-2">{lang === "fr" ? "DOSAGE" : "DOSAGE"}</div>
+                <div className="etiquette text-compliance mb-2">{lang === "fr" ? "DOSAGE" : "DOSAGE"}</div>
                 <div className="flex flex-wrap gap-2">
                   {variants.map((v) => {
                     const isActive = v.id === variantId;
@@ -344,7 +344,7 @@ export default function ProductDetail() {
             {purete && (
               <div className="flex items-baseline justify-between gap-6 py-3 border-y border-ash mb-6"
                    data-testid="purete-en-tete">
-                <span className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">
+                <span className="etiquette text-compliance">
                   {lang === "fr" ? "PURETÉ (HPLC)" : "PURITY (HPLC)"}
                 </span>
                 <span className="font-data text-[13px] text-nordfjord text-right font-medium">{purete}</span>
@@ -381,7 +381,7 @@ export default function ProductDetail() {
                   <div className="font-data text-[11px] text-warning mt-1" data-testid="preorder-note">{selectedVariant.preorder_note}</div>
                 )}
               </div>
-              <span data-testid="stock-state" className={`font-data text-[12px] uppercase tracking-[0.14em] flex items-center gap-2 ${stockN > 0 ? "text-success" : "text-warning"}`}>
+              <span data-testid="stock-state" className={`etiquette flex items-center gap-2 ${stockN > 0 ? "text-success" : "text-warning"}`}>
                 <span className={`w-2 h-2 rounded-full ${stockN > 0 ? "bg-success" : "bg-warning"}`} />
                 {/* En precommande on annonce AUSSI la rupture : « Precommande »
                     seul laisse croire que le flacon part demain, alors qu'il n'y
@@ -416,7 +416,7 @@ export default function ProductDetail() {
               </button>
             </div>
 
-            <div className="bg-nordfjord text-clinical px-5 py-4 font-data text-[11px] uppercase tracking-[0.16em] leading-relaxed" data-testid="research-only-banner" style={{ borderRadius: "var(--r-m)" }}>
+            <div className="bg-nordfjord text-clinical px-5 py-4 etiquette leading-relaxed" data-testid="research-only-banner" style={{ borderRadius: "var(--r-m)" }}>
               {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT : NON DESTINÉ À LA CONSOMMATION HUMAINE" : "FOR RESEARCH USE ONLY : NOT INTENDED FOR HUMAN CONSUMPTION"}
             </div>
 
@@ -424,7 +424,7 @@ export default function ProductDetail() {
               <button
                 onClick={copyAffiliateLink}
                 data-testid="copy-affiliate-link"
-                className="mt-4 w-full flex items-center justify-center gap-2 border border-nova bg-nova/5 hover:bg-nova/10 px-4 py-3 font-data text-[11px] uppercase tracking-[0.18em] text-nova-texte transition-colors" style={{ borderRadius: "var(--r-m)" }}
+                className="mt-4 w-full flex items-center justify-center gap-2 border border-nova bg-nova/5 hover:bg-nova/10 px-4 py-3 etiquette text-nova-texte transition-colors" style={{ borderRadius: "var(--r-m)" }}
                 title={lang === "fr"
                   ? `Copie l'URL avec votre code ${affiliate.code}`
                   : `Copies the URL with your code ${affiliate.code}`}
@@ -438,7 +438,7 @@ export default function ProductDetail() {
             {coaPending && (
               <div data-testid="coa-pending-warning" className="mt-4 flex items-start gap-2.5 border border-warning/40 bg-warning/5 px-4 py-3" style={{ borderRadius: "var(--r-m)" }}>
                 <FileText size={15} className="text-warning mt-0.5 shrink-0" />
-                <p className="font-data text-[11px] uppercase tracking-[0.14em] text-nordfjord leading-relaxed">
+                <p className="etiquette text-nordfjord leading-relaxed">
                   {lang === "fr"
                     ? "Le certificat d'analyse de ce lot est à venir. Vous pouvez commander dès maintenant : le COA sera publié dès sa réception."
                     : "The certificate of analysis for this lot is coming. You can order now : the COA will be published as soon as it's received."}
@@ -473,12 +473,12 @@ export default function ProductDetail() {
             {isOutOfStock && (
               <div className="mt-6 border border-ash bg-white p-4" data-testid="notify-stock-block" style={{ borderRadius: "var(--r-m)" }}>
                 {notifyDone ? (
-                  <div className="flex items-center gap-2 font-data text-xs uppercase tracking-[0.16em] text-success">
+                  <div className="flex items-center gap-2 etiquette-nav text-success">
                     <Check size={14} /> {lang === "fr" ? "Nous vous écrirons dès le retour en stock." : "We'll email you when it's back."}
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2 font-data text-xs uppercase tracking-[0.16em] text-nordfjord mb-2">
+                    <div className="flex items-center gap-2 etiquette-nav text-nordfjord mb-2">
                       <BellRing size={14} /> {lang === "fr" ? "M'avertir du retour en stock" : "Notify me when back in stock"}
                     </div>
                     <div className="flex gap-2">
@@ -503,13 +503,13 @@ export default function ProductDetail() {
                 droite, un filet sous chaque ligne. */}
             {(product.sequence || donneesTechniques.length > 0) && (
               <div className="mt-10" data-testid="donnees-techniques">
-                <h2 className="font-data text-[11px] uppercase tracking-[0.2em] text-compliance mb-4">
+                <h2 className="etiquette text-compliance mb-4">
                   {lang === "fr" ? "Profil moléculaire" : "Molecular profile"}
                 </h2>
 
                 {product.sequence && (
                   <div className="border border-ash bg-white px-5 py-4 mb-4" style={{ borderRadius: "var(--r-m)" }}>
-                    <div className="font-data text-[10px] uppercase tracking-[0.2em] text-compliance mb-1.5">{lang === "fr" ? "SÉQUENCE" : "SEQUENCE"}</div>
+                    <div className="etiquette text-compliance mb-1.5">{lang === "fr" ? "SÉQUENCE" : "SEQUENCE"}</div>
                     <div className="font-data text-sm text-nordfjord break-all">{product.sequence}</div>
                   </div>
                 )}
@@ -518,7 +518,7 @@ export default function ProductDetail() {
                   <div className="border-t border-ash">
                     {donneesTechniques.map((s) => (
                       <div key={s.k} className="flex items-baseline justify-between gap-6 py-3 border-b border-ash">
-                        <span className="font-data text-[10px] uppercase tracking-[0.16em] text-compliance">{s.k}</span>
+                        <span className="etiquette text-compliance">{s.k}</span>
                         <span className="font-data text-[13px] text-nordfjord break-all text-right font-medium">{s.v}</span>
                       </div>
                     ))}

@@ -97,7 +97,7 @@ export default function Lab() {
             {result.found ? (
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <div className="font-data text-[10px] uppercase tracking-[0.2em] text-success mb-1">{isFr ? "LOT VÉRIFIÉ" : "LOT VERIFIED"}</div>
+                  <div className="etiquette text-success mb-1">{isFr ? "LOT VÉRIFIÉ" : "LOT VERIFIED"}</div>
                   <div className="font-display text-xl font-bold text-nordfjord">{result.name}</div>
                   <div className="font-data text-[12px] text-glacier mt-1">{result.lot} · {result.purity}</div>
                 </div>
@@ -106,7 +106,7 @@ export default function Lab() {
                     {isFr ? "Télécharger le COA" : "Download COA"} ↓
                   </a>
                 ) : (
-                  <span className="font-data text-[11px] uppercase tracking-[0.16em] text-warning">{isFr ? "COA à venir" : "COA pending"}</span>
+                  <span className="etiquette text-warning">{isFr ? "COA à venir" : "COA pending"}</span>
                 )}
               </div>
             ) : (
@@ -153,7 +153,7 @@ export default function Lab() {
               </div>
             ) : track.tracked ? (
               <div>
-                <div className="font-data text-[10px] uppercase tracking-[0.2em] text-success mb-1">{isFr ? "SUIVI ACTIF" : "TRACKING ACTIVE"}</div>
+                <div className="etiquette text-success mb-1">{isFr ? "SUIVI ACTIF" : "TRACKING ACTIVE"}</div>
                 <div className="font-data text-sm text-nordfjord">{track.status || track.description || (isFr ? "En transit" : "In transit")}</div>
                 {track.pin && <div className="font-data text-[12px] text-glacier mt-1">PIN · {track.pin}</div>}
               </div>
