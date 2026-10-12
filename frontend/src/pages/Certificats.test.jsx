@@ -32,21 +32,28 @@ jest.mock("../hooks/useDocumentHead", () => ({ __esModule: true, default: () => 
 const texte = () => screen.getByTestId("certificats-page").textContent;
 
 describe("la page explique ce qu'il faut expliquer", () => {
-  test("les six sections sont là", () => {
+  test("les sept sections sont là", () => {
     render(<Certificats />);
-    for (const id of ["ce-que-c-est", "numero-de-lot", "hplc", "spectrometrie",
-                      "autres-lignes", "ce-qu-il-ne-dit-pas"]) {
+    for (const id of ["ce-que-c-est", "numero-de-lot", "lcmsms", "hplc",
+                      "teneur", "spectrometrie", "ce-qu-il-ne-dit-pas"]) {
       expect(screen.getByTestId(`certificats-${id}`)).toBeInTheDocument();
     }
   });
 
-  test("elle distingue PURETÉ et IDENTITÉ, qui sont deux questions", () => {
-    // C'est la confusion la plus répandue : un pic unique et net peut
-    // appartenir à une molécule qui n'est pas celle qu'on attendait.
+  test("elle distingue PURETÉ et TENEUR NETTE, qui sont deux questions", () => {
+    /* La confusion la plus répandue, et celle que le certificat lui-même
+     * prend soin de dissiper dans sa note de bas de tableau : une proportion
+     * entre espèces détectées ne dit rien de la masse dans la fiole.
+     *
+     * La version précédente de ce test opposait pureté et IDENTITÉ, en
+     * supposant deux instruments séparés. Son laboratoire fait du LC-MS/MS :
+     * une seule analyse couplée. Le test a été corrigé parce que la réalité
+     * n'était pas celle que j'avais supposée. */
     render(<Certificats />);
-    const spectro = screen.getByTestId("certificats-spectrometrie");
-    expect(spectro).toHaveTextContent(/identité/i);
-    expect(spectro).toHaveTextContent(/deux instruments distincts/i);
+    const teneur = screen.getByTestId("certificats-teneur");
+    expect(teneur).toHaveTextContent(/proportion/i);
+    expect(teneur).toHaveTextContent(/masse/i);
+    expect(screen.getByTestId("certificats-hplc")).toHaveTextContent(/contre-ions/i);
   });
 
   test("elle dit ce que le pourcentage HPLC mesure vraiment", () => {
@@ -79,8 +86,21 @@ describe("LA LIGNE QUI NE SE FRANCHIT PAS", () => {
       /bienfait/i, /bénéfice/i, /efficacit/i, /traitement/i, /thérapeut/i,
       /perte de poids/i, /masse musculaire/i, /cicatrisation/i,
     ];
+    /* LE FILTRE NE LIT PAS LA SECTION QUI DÉMENT, et c'est une correction.
+     *
+     * Il interdisait « efficacité » partout. Or la page porte désormais
+     * l'avertissement du laboratoire : « n'est pas un certificat de qualité,
+     * de sécurité, d'EFFICACITÉ ni de conformité réglementaire ». Le mot y
+     * apparaît dans une NÉGATION, c'est-à-dire exactement l'inverse de ce
+     * qu'on veut interdire.
+     *
+     * Un interdit de mot ne distingue pas une promesse d'un démenti. La
+     * section des démentis est donc retirée du champ du filtre, et vérifiée
+     * séparément — par ce qu'elle DOIT contenir. */
     render(<Certificats />);
-    const t = texte();
+    const page = screen.getByTestId("certificats-page").textContent;
+    const demenis = screen.getByTestId("certificats-ce-qu-il-ne-dit-pas").textContent;
+    const t = page.replace(demenis, "");
     for (const motif of interdits) {
       expect(t).not.toMatch(motif);
     }
@@ -93,12 +113,90 @@ describe("LA LIGNE QUI NE SE FRANCHIT PAS", () => {
     const section = screen.getByTestId("certificats-ce-qu-il-ne-dit-pas");
     expect(section).toHaveTextContent(/stérilité/i);
     expect(section).toHaveTextContent(/endotoxine/i);
-    expect(section).toHaveTextContent(/aucune application/i);
+    // Les démentis du laboratoire, mot pour mot dans leur substance.
+    expect(section).toHaveTextContent(/n'est pas un certificat de qualité/i);
+    expect(section).toHaveTextContent(/d'efficacité/i);
+    expect(section).toHaveTextContent(/aucune administration humaine ou vétérinaire/i);
   });
 
   test("et elle rappelle le cadre, sur la page elle-même", () => {
     render(<Certificats />);
     expect(texte()).toMatch(/in vitro/i);
     expect(texte()).toMatch(/aucun usage humain ni vétérinaire/i);
+  });
+});
+
+describe("les exemples viennent de VRAIS certificats", () => {
+  /* MIREILLE, 11/10/2026 : « ça prend des exemples ». Elle a ensuite envoyé
+   * deux certificats — GHK-Cu lot FN-OLW8W et Retatrutide lot FN-ELBCJ,
+   * analysés le 27 août 2026 par SideChain Analytics.
+   *
+   * CE QUE LES DOCUMENTS ONT CORRIGÉ DANS MA PREMIÈRE VERSION :
+   *
+   *   1. J'avais décrit la HPLC et la spectrométrie comme DEUX analyses
+   *      séparées. Son laboratoire fait du LC-MS/MS : une seule analyse
+   *      couplée. Vrai en général, faux pour ses certificats.
+   *   2. J'avais parlé de teneur en eau par titrage Karl Fischer. Ses
+   *      certificats n'en rapportent pas, et leur note de bas de tableau dit
+   *      au contraire que la pureté ne borne PAS l'eau résiduelle.
+   *   3. J'avais inventé une masse d'exemple. Le réel était plus instructif :
+   *      une molécule de 340,4 se lit à 341,20, une de 4731,3 se lit à
+   *      947,90, et c'est la comparaison des deux qui explique les états de
+   *      charge.
+   *
+   * Ces tests figent les chiffres RÉELS. Un exemple inventé se reconnaît, et
+   * il abîme la crédibilité de tout ce qui l'entoure. */
+
+  test("les deux lots sont nommés, pas des lots plausibles", () => {
+    render(<Certificats />);
+    expect(texte()).toContain("FN-OLW8W");
+    expect(texte()).toContain("FN-ELBCJ");
+  });
+
+  test("LA MÉTHODE EST LC-MS/MS, pas deux analyses séparées", () => {
+    render(<Certificats />);
+    expect(screen.getByTestId("certificats-lcmsms")).toHaveTextContent(/LC-MS\/MS/);
+    expect(texte()).toMatch(/une seule analyse|une analyse couplée|en une/i);
+  });
+
+  test("les chiffres de pureté et de teneur sont ceux du certificat", () => {
+    render(<Certificats />);
+    const purete = screen.getByTestId("certificats-purete-resultat");
+    expect(purete).toHaveTextContent("99,7 %");
+    expect(purete).toHaveTextContent("≥ 98 %");
+    expect(purete).toHaveTextContent("Ph. Eur. 2.2.46");
+
+    const teneur = screen.getByTestId("certificats-teneur-resultat");
+    expect(teneur).toHaveTextContent("100,00 mg");
+    expect(teneur).toHaveTextContent("105,32 mg");
+    expect(teneur).toHaveTextContent("105,3 %");
+  });
+
+  test("LA COMPARAISON DES DEUX ÉTATS DE CHARGE est ce qui explique l'ion", () => {
+    // Une molécule de 340,4 lue à 341,20 : intuitif. Une de 4731,3 lue à
+    // 947,90 : incompréhensible seule. Les deux ensemble se passent de
+    // paragraphe.
+    const bloc = (render(<Certificats />), screen.getByTestId("certificats-comparaison-ions"));
+    expect(bloc).toHaveTextContent("[M+H]+");
+    expect(bloc).toHaveTextContent("[M+5H]5+");
+    expect(bloc).toHaveTextContent("341,20 Da");
+    expect(bloc).toHaveTextContent("947,90 Da");
+  });
+
+  test("le contre-ion est montré DANS la formule, pas décrit", () => {
+    // C14H22CuN6O4 · C2H4O2 : la seconde partie est l'acétate. C'est
+    // l'illustration de la teneur nette, et elle n'a rien d'inventé.
+    render(<Certificats />);
+    expect(screen.getByTestId("certificats-teneur")).toHaveTextContent("C2H4O2");
+  });
+
+  test("PLUS DE KARL FISCHER : ses certificats n'en rapportent pas", () => {
+    render(<Certificats />);
+    expect(texte()).not.toMatch(/karl fischer/i);
+  });
+
+  test("le chromatogramme porte le vrai temps de rétention", () => {
+    render(<Certificats />);
+    expect(screen.getByTestId("certificats-chromatogramme")).toHaveTextContent("1,199 min");
   });
 });

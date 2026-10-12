@@ -85,6 +85,8 @@ export default function AdminProducts() {
     slug: "", name_en: "", name_fr: "", category: "healing", sequence: "",
     purity: "≥ 99%", dosage_mg: 0, description_en: "", description_fr: "",
     price_cad: 0, stock: 0, low_stock_threshold: 10,
+    molecular_formula: "", molecular_weight: null, sequence_length: null,
+    cas_number: "", appearance: "", solubility: "", storage: "",
     image_url: "https://images.unsplash.com/photo-1576671081837-49000212a370?auto=format&fit=crop&w=800&q=80",
     lab_tested: true, active: true, featured: false, preorder_allowed: false,
     coa_url: "", coa_lot: "", coa_date: "",
@@ -347,6 +349,45 @@ function ProductEditor({ product, setProduct, onSave, onCancel }) {
               <F label="Sequence" value={product.sequence} onChange={(v) => setProduct({ ...product, sequence: v })} test="f-sequence" />
               <F label="Purity" value={product.purity} onChange={(v) => setProduct({ ...product, purity: v })} test="f-purity" />
             </Grid2>
+          </Section>
+
+          {/* LE PROFIL MOLECULAIRE, ENFIN SAISISSABLE.
+              MIREILLE, 11/10/2026 : « je ne vois pas les changements ». Elle
+              avait raison, et la cause etait de mon cote : j'avais publie
+              cinq champs sur la fiche produit en les croyant « endormis en
+              base ». Ils n'etaient pas endormis — ILS N'ONT JAMAIS ETE
+              SAISISSABLES. Cet editeur exposait la purete et la sequence, pas
+              l'apparence, la solubilite, la conservation, la formule ni la
+              longueur. Le profil moleculaire affichait donc cinq lignes
+              vides, et il ne pouvait rien afficher d'autre.
+              `molecular_weight` et `cas_number` rejoignent la liste : ils
+              s'affichent deja sur la fiche mais n'etaient modifiables par
+              aucun ecran — leurs valeurs venaient du chargement initial, et
+              une correction demandait une intervention en base. */}
+          <Section title="Molecular profile">
+            <Grid2>
+              <F label="Molecular formula (C62H98N16O22)" value={product.molecular_formula} onChange={(v) => setProduct({ ...product, molecular_formula: v })} test="f-molecular-formula" />
+              <F label="Molar mass (g/mol)" type="number" step="0.01" value={product.molecular_weight ?? ""} onChange={(v) => setProduct({ ...product, molecular_weight: v === "" ? null : parseFloat(v) })} test="f-molecular-weight" />
+              <F label="Sequence length (amino acids)" type="number" value={product.sequence_length ?? ""} onChange={(v) => setProduct({ ...product, sequence_length: v === "" ? null : parseInt(v, 10) })} test="f-sequence-length" />
+              <F label="CAS number" value={product.cas_number} onChange={(v) => setProduct({ ...product, cas_number: v })} test="f-cas-number" />
+              <F label="Appearance (white lyophilized powder)" value={product.appearance} onChange={(v) => setProduct({ ...product, appearance: v })} test="f-appearance" />
+              <F label="Solubility (water, 0.1% acetic acid)" value={product.solubility} onChange={(v) => setProduct({ ...product, solubility: v })} test="f-solubility" />
+              <F label="Storage (-20°C, protect from light)" value={product.storage} onChange={(v) => setProduct({ ...product, storage: v })} test="f-storage" />
+            </Grid2>
+            {/* MECHANISM ET RESEARCH_AREAS N'APPARAISSENT PAS ICI, ET CE N'EST
+                PAS UN OUBLI : « potentialise la liberation d'hormone de
+                croissance », « reparation tissulaire » sont des
+                REVENDICATIONS D'EFFET. La fiche publique refuse de les
+                afficher et un test l'exige ; leur donner un champ de saisie
+                inviterait a les remplir pour rien, ou pire, a les publier un
+                jour par reflexe. */}
+            <p className="font-mono text-[10px] text-foreground/40 leading-relaxed">
+              Material facts only : these appear on the public product page. Never describe an
+              effect, a dose or a use here.
+            </p>
+          </Section>
+
+          <Section title="Media & copy">
             <ImageUploader value={product.image_url} onChange={(v) => setProduct({ ...product, image_url: v })} test="f-image" />
             <TA label="Description EN (rich text)" value={product.description_en} onChange={(v) => setProduct({ ...product, description_en: v })} test="f-desc-en" />
             <TA label="Description FR (texte enrichi)" value={product.description_fr} onChange={(v) => setProduct({ ...product, description_fr: v })} test="f-desc-fr" />
