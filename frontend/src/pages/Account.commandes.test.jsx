@@ -79,26 +79,49 @@ beforeEach(() => {
   api.get.mockResolvedValue({ data: [] });
 });
 
-test("LE CAS DE MIREILLE : l'envoi de suite s'annonce comme tel", async () => {
+test("UNE COMMANDE, UNE LIGNE — même quand elle part en deux colis", async () => {
+  /* Ces deux tests disaient l'inverse jusqu'au 11/10/2026 : ils exigeaient
+   * DEUX lignes, chacune avec une pastille et un lien vers l'autre. C'était
+   * le mieux qu'on pouvait faire tant qu'on acceptait les deux lignes.
+   *
+   * Audit de l'espace client du 06/10, priorité 2 : « le client croit avoir
+   * passé deux commandes, dont une gratuite. 4 liens pour un seul achat. »
+   * La scission au paiement est une mécanique d'EXPÉDITION ; elle n'avait
+   * aucune raison de remonter jusqu'à l'écran de la cliente.
+   *
+   * Corrigés, pas contournés : c'est la règle d'affichage qui a changé. */
   commandes([MERE, ENFANT]);
   render(<Account />);
 
   await waitFor(() => {
-    expect(screen.getByTestId("order-suite-of-FN-1-P")).toBeInTheDocument();
+    expect(screen.getByTestId("order-row-FN-1")).toBeInTheDocument();
   });
-  // Et la commande d'origine dit qu'elle part en deux fois.
-  expect(screen.getByTestId("order-has-suite-FN-1")).toBeInTheDocument();
+  // La sous-commande n'a plus de ligne à elle.
+  expect(screen.queryByTestId("order-row-FN-1-P")).toBeNull();
+  // Et plus de pastilles concurrentes : une seule mention neutre.
+  expect(screen.getByTestId("order-envois-FN-1")).toHaveTextContent(/2 envois/i);
+  expect(screen.queryByTestId("order-has-suite-FN-1")).toBeNull();
 });
 
-test("chaque ligne mène à sa sœur", async () => {
-  // Sans le lien, il faut deviner que FN-1-P complète FN-1.
+test("les deux envois se lisent À L'INTÉRIEUR de la commande", async () => {
   commandes([MERE, ENFANT]);
   render(<Account />);
 
-  await waitFor(() => {
-    expect(screen.getByTestId("order-suite-link-FN-1")).toHaveAttribute("href", "/order/o-2");
-  });
-  expect(screen.getByTestId("order-suite-link-FN-1-P")).toHaveAttribute("href", "/order/o-1");
+  const detail = await screen.findByTestId("order-detail-envois-FN-1");
+  expect(detail).toHaveTextContent(/Envoi 1/);
+  expect(detail).toHaveTextContent(/Envoi 2/);
+  expect(detail).toHaveTextContent(/précommande/i);
+});
+
+test("QUATRE LIENS POUR UN ACHAT DEVIENNENT UN SEUL", async () => {
+  // Un lecteur d'écran annonçait la même commande deux fois, et il fallait
+  // maintenir deux composants pour une seule destination.
+  commandes([MERE, ENFANT]);
+  render(<Account />);
+
+  await waitFor(() => expect(screen.getByTestId("order-row-FN-1")).toBeInTheDocument());
+  expect(screen.queryByTestId("order-suite-link-FN-1")).toBeNull();
+  expect(screen.queryByTestId("order-suite-link-FN-1-P")).toBeNull();
 });
 
 test("l'envoi de suite reste identifié « Précommande » tant qu'il attend", async () => {
@@ -122,4 +145,44 @@ test("une commande ordinaire ne porte aucune de ces pastilles", async () => {
   expect(screen.queryByTestId("order-suite-of-FN-9")).not.toBeInTheDocument();
   expect(screen.queryByTestId("order-has-suite-FN-9")).not.toBeInTheDocument();
   expect(screen.queryByTestId("order-suite-link-FN-9")).not.toBeInTheDocument();
+});
+
+describe("les doublons et le pouce", () => {
+  /* Audit de l'espace client du 06/10/2026, sections 1 et 3. Deux défauts
+   * que la carte du compte portait seule. */
+
+  test("UNE SEULE DÉCONNEXION, et c'est celle de l'en-tête", async () => {
+    /* « Deux déconnexions : SIGN OUT dans l'en-tête du site et SIGN OUT →
+     * dans la carte My Account. Même action, deux boutons, deux styles. »
+     * Sur ordinateur, les deux étaient visibles EN MÊME TEMPS.
+     *
+     * Celle de l'en-tête reste : elle est atteignable depuis toutes les
+     * pages. Celle-ci faisait 16 px de haut, sous le minimum tactile, et
+     * n'ajoutait rien. */
+    commandes([]);
+    render(<Account />);
+    await waitFor(() => expect(screen.getByTestId("account-tabs")).toBeInTheDocument());
+    expect(screen.queryByTestId("account-logout")).toBeNull();
+  });
+
+  test("LES ONGLETS NE SE REPLIENT PLUS SUR DEUX LIGNES", async () => {
+    /* « Onglets sur deux lignes sur iPhone ; le trait de l'onglet actif
+     * n'est que sous la première ligne. On croit voir deux menus
+     * différents. » jsdom ne calcule aucune mise en page : on vérifie le
+     * MÉCANISME — plus de repli, un défilement horizontal à la place. */
+    commandes([]);
+    render(<Account />);
+    const barre = await screen.findByTestId("account-tabs");
+    expect(barre.className).not.toMatch(/flex-wrap/);
+    expect(barre.className).toMatch(/overflow-x-auto/);
+  });
+
+  test("et chaque onglet tient la cible tactile de 44 px", async () => {
+    commandes([]);
+    render(<Account />);
+    const onglet = await screen.findByTestId("account-tab-orders");
+    expect(onglet.className).toMatch(/min-h-\[44px\]/);
+    // `shrink-0` : sans lui, cinq onglets se compriment au lieu de défiler.
+    expect(onglet.className).toMatch(/shrink-0/);
+  });
 });

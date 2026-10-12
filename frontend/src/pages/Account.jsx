@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { lienSuiviPostesCanada } from "../lib/suivi";
+import { articlesDuGroupe, etatEnvoi, regrouperCommandes } from "../lib/envois";
 import { useAuth } from "../contexts/AuthContext";
 import { useLang } from "../contexts/LanguageContext";
 import useDocumentHead from "../hooks/useDocumentHead";
@@ -81,11 +82,17 @@ export default function Account() {
               <p className="font-data text-xs text-glacier mt-0.5 truncate">{user?.email}</p>
             </div>
           </div>
+          {/* LA DECONNEXION DE CETTE CARTE EST PARTIE.
+              Audit de l'espace client du 06/10/2026, section 3 : « deux
+              deconnexions : SIGN OUT dans l'en-tete du site et SIGN OUT →
+              dans la carte My Account. Meme action, deux boutons, deux
+              styles. » Sur ordinateur les deux etaient visibles EN MEME
+              TEMPS.
+              Celle de l'en-tete reste : elle est atteignable depuis toutes
+              les pages, pas seulement depuis le compte. Celle-ci faisait
+              16 px de haut, sous le minimum tactile, et n'ajoutait rien. */}
           <div className="flex items-center gap-3 shrink-0">
             <ThemeToggle />
-            <button onClick={logout} data-testid="account-logout" className="font-data text-xs uppercase tracking-[0.2em] text-glacier hover:text-error transition-colors">
-              {t("nav.logout")} →
-            </button>
           </div>
         </div>
 
@@ -127,7 +134,17 @@ export default function Account() {
           </Link>
         )}
 
-        <div className="flex flex-wrap gap-1 border-b border-ash mb-10" data-testid="account-tabs">
+        {/* LES ONGLETS TIENNENT SUR UNE LIGNE, ET ELLE GLISSE.
+            Audit de l'espace client du 06/10/2026, section 1 : « onglets
+            Orders / Profile / Addresses / Security / Help sur deux lignes sur
+            iPhone ; le trait de l'onglet actif n'est que sous la premiere
+            ligne. On croit voir deux menus differents ; on ne sait plus quel
+            onglet est actif. »
+            `flex-wrap` les repliait ; ils defilent desormais au doigt, avec
+            un accrochage pour qu'un onglet ne reste jamais coupe en deux.
+            `scrollbar-none` existe deja dans le depot pour le ruban du
+            tableau de bord affilie : meme geste, meme utilitaire. */}
+        <div className="flex gap-1 border-b border-ash mb-10 overflow-x-auto scrollbar-none snap-x snap-mandatory" data-testid="account-tabs">
           {[
             ["orders", t("account.orders")],
             ["profile", t("account.profile")],
@@ -139,7 +156,7 @@ export default function Account() {
               key={key}
               onClick={() => setTab(key)}
               data-testid={`account-tab-${key}`}
-              className={`font-data text-xs uppercase tracking-[0.18em] px-5 py-3 -mb-px border-b-2 transition-colors ${
+              className={`font-data text-xs uppercase tracking-[0.18em] px-5 min-h-[44px] -mb-px border-b-2 transition-colors shrink-0 snap-start ${
                 tab === key ? "border-nova text-nordfjord font-bold" : "border-transparent text-glacier hover:text-nordfjord"
               }`}
             >
@@ -159,10 +176,13 @@ export default function Account() {
 }
 
 /* Orders */
-function OrderCard({ o, t, lang }) {
+function OrderCard({ groupe, t, lang }) {
+  const o = groupe.principale;
   const badge = paymentBadge(o.payment_status, lang);
   const pin = (o.shipping_info || {}).tracking_number;
   const fl = FULFILL_LABEL[o.fulfillment_status];
+  const plusieursEnvois = groupe.envois.length > 1;
+  const articles = articlesDuGroupe(groupe);
   return (
     <Link
       to={`/order/${o.id}`}
@@ -173,44 +193,46 @@ function OrderCard({ o, t, lang }) {
         <div className="flex items-center gap-2">
           <span className="font-display font-bold text-nordfjord text-sm truncate">{o.order_number}</span>
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold font-data uppercase tracking-[0.08em] ${badge.cls}`}>{badge.label}</span>
-          {/* DEUX COMMANDES POUR UN SEUL PAIEMENT.
-              Une commande mixte est scindee au paiement : le disponible part
-              tout de suite, la precommande suit. Sans cette pastille, la
-              seconde ligne affiche « 0,00 $ » sans rien qui l'explique, et se
-              lit comme une erreur de facturation. */}
-          {o.suite_of_order_number && (
-            <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold font-data uppercase tracking-[0.08em] bg-nova/10 text-nova-texte"
-              data-testid={`order-suite-of-${o.order_number}`}>
-              {lang === "fr" ? "Envoi de suite" : "Follow-up"}
-            </span>
-          )}
-          {o.suite_order_number && (
-            <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold font-data uppercase tracking-[0.08em] bg-warning/10 text-warning"
-              data-testid={`order-has-suite-${o.order_number}`}>
-              {lang === "fr" ? "2 envois" : "2 shipments"}
+          {/* UNE SEULE MENTION, NEUTRE, ET PLUS DEUX PASTILLES QUI SE
+              CONTREDISENT. L'audit du 06/10 relevait « 2 SHIPMENTS » en
+              orange et « FOLLOW-UP » en cyan pour une meme commande scindee :
+              deux couleurs d'alerte pour une situation normale.
+              La scission est une mecanique d'EXPEDITION ; elle n'a aucune
+              raison de ressembler a un probleme. */}
+          {plusieursEnvois && (
+            <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold font-data uppercase tracking-[0.08em] bg-ash/50 text-glacier"
+              data-testid={`order-envois-${o.order_number}`}>
+              {lang === "fr" ? `${groupe.envois.length} envois` : `${groupe.envois.length} shipments`}
             </span>
           )}
         </div>
         <div className="font-data text-[11px] text-glacier mt-0.5 truncate">
           {new Date(o.created_at).toLocaleDateString(lang === "fr" ? "fr-CA" : "en-CA", { year: "numeric", month: "short", day: "numeric" })}
-          {" · "}{o.items.length} {o.items.length > 1 ? (lang === "fr" ? "articles" : "items") : (lang === "fr" ? "article" : "item")}
+          {" · "}{articles} {articles > 1 ? (lang === "fr" ? "articles" : "items") : (lang === "fr" ? "article" : "item")}
           {pin ? (
             <> · <a href={lienSuiviPostesCanada(pin, lang)}
               target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
               className="text-nova-texte underline" data-testid={`order-tracking-${o.order_number}`}>{lang === "fr" ? "suivi" : "track"}</a></>
           ) : fl ? <> · {lang === "fr" ? fl.fr : fl.en}</> : null}
-          {/* Le numero de la soeur, pour relier les deux lignes a la lecture.
-              La carte entiere est deja un lien : `stopPropagation` evite que
-              le clic sur celui-ci ouvre aussi la commande courante. */}
-          {(o.suite_of_order_number || o.suite_order_number) && (
-            <> · <Link to={`/order/${o.suite_of_order_id || o.suite_order_id}`}
-              onClick={(e) => e.stopPropagation()}
-              className="text-nova-texte underline"
-              data-testid={`order-suite-link-${o.order_number}`}>
-              {o.suite_of_order_number || o.suite_order_number}
-            </Link></>
-          )}
         </div>
+
+        {/* LES DEUX ENVOIS, A L'INTERIEUR DE LA COMMANDE.
+            Audit du 06/10, priorite 2 : « une seule commande dans
+            l'historique, avec deux envois a l'interieur ». Le lien croise
+            vers la soeur disparait avec elle : quatre liens pour un achat se
+            reduisent a un, et un lecteur d'ecran cesse d'annoncer la meme
+            commande deux fois. */}
+        {plusieursEnvois && (
+          <div className="font-data text-[11px] text-glacier mt-1 space-y-0.5"
+               data-testid={`order-detail-envois-${o.order_number}`}>
+            {groupe.envois.map((envoi, i) => (
+              <div key={envoi.id} className="truncate">
+                {lang === "fr" ? `Envoi ${i + 1}` : `Shipment ${i + 1}`}
+                {" · "}{etatEnvoi(envoi, lang)}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <div className="font-display font-bold text-nordfjord text-sm shrink-0">${o.total.toFixed(2)}</div>
     </Link>
@@ -248,7 +270,9 @@ function OrdersTab({ t, lang }) {
 
   return (
     <div className="space-y-2" data-testid="account-orders">
-      {orders.map((o) => <OrderCard key={o.id} o={o} t={t} lang={lang} />)}
+      {regrouperCommandes(orders).map((g) => (
+        <OrderCard key={g.principale.id} groupe={g} t={t} lang={lang} />
+      ))}
     </div>
   );
 }

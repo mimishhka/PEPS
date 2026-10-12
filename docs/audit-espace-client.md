@@ -184,10 +184,10 @@ réglage d'origine (sombre) après le test.
 | Priorité | État | Ce qu'il faut savoir |
 |---|---|---|
 | 1 — suivi de la commande | **Fait** | Le numéro de suivi n'était pas absent : la page le lisait dans `shipping_info.tracking`, que le serveur n'écrit jamais. Frise, adresse et lien Postes Canada ajoutés. |
-| 2 — une commande = une ligne | à faire | Touche la liste du compte ET la page commande (bandeaux « deux envois »). |
-| 3 — doublons de menu et de boutons | partiel | La partie OPS attend : « pas le ops pour l'instant étant donné que je suis toujours en mode test » (06/10/2026). Les trois « Sign out » et le « Account » en double restent à faire. |
+| 2 — une commande = une ligne | **Fait** | La scission au paiement est une mécanique d'expédition : elle n'avait aucune raison de remonter à l'écran. Une ligne, deux envois à l'intérieur, quatre liens réduits à un. L'orpheline reste visible. |
+| 3 — doublons de menu et de boutons | **Fait**, sauf OPS | La déconnexion de la carte du compte est retirée : celle de l'en-tête suffit, et elle est atteignable depuis toutes les pages. La partie OPS attend toujours : « pas le ops pour l'instant » (06/10/2026). |
 | 4 — un seul message de confirmation | **Fait** | L'encadré vert disait mot pour mot ce que l'en-tête venait de dire. Le préfixe « // » des étiquettes est retiré aussi. |
-| 5 — compte utilisable au pouce | à faire | Recoupe le point 4 de l'audit UI/UX, déjà appliqué à l'en-tête public, au pied de page et aux cartes produit. |
+| 5 — compte utilisable au pouce | **Fait** | Les onglets tiennent sur une ligne qui défile au doigt, avec accrochage, et chacun fait 44 px. Reste la dernière commande visible sans défiler, qui demande de raccourcir la carte du compte sur mobile. |
 
 ### Ce que la priorité 1 a révélé
 
