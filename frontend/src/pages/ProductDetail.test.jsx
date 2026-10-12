@@ -240,6 +240,71 @@ describe("ce que la colonne de droite montre, et dans quel ordre", () => {
     const technique = screen.getByTestId("donnees-techniques");
     expect(technique).not.toHaveTextContent(/SKU/);
     expect(technique).not.toHaveTextContent(/LOT ACTUEL/);
-    expect(technique).toHaveTextContent(/FORME/);
+    // L'apparence, elle, garde un repli : « Forme : Lyophilisé » était
+    // écrite en dur pour tous les produits, et une information présente
+    // depuis toujours ne doit pas disparaître parce qu'on a ajouté mieux
+    // à côté.
+    expect(technique).toHaveTextContent(/APPARENCE/);
+    expect(technique).toHaveTextContent(/lyophilis/i);
+  });
+});
+
+describe("le profil moléculaire montre la matière, jamais l'effet", () => {
+  /* MIREILLE, 11/10/2026 : « il n'y a rien dessus, aucune info ». Cinq
+   * champs dormaient en base — apparence, solubilité, conservation, formule,
+   * longueur de séquence. Ils avaient disparu EN MÊME TEMPS que la
+   * description libre et la catégorie, retirées parce que « leurs libellés
+   * décrivaient un effet ». La précaution visait juste, mais ratissait trop
+   * large. */
+
+  /* `fiche()` verse ce qu'on lui donne dans la VARIANTE, pas dans le produit.
+   * Le premier jet de ce test y a mis l'apparence et la solubilité, qui se
+   * lisent sur le PRODUIT : la fiche affichait le repli « Poudre
+   * lyophilisée » et le test a échoué en désignant le bon coupable. */
+  const MATIERE = {
+    appearance: "Poudre lyophilisée blanche",
+    solubility: "Soluble dans l'eau",
+    storage: "−20 °C, à l'abri de la lumière",
+    molecular_formula: "C62H98N16O22",
+    sequence_length: 15,
+  };
+
+  test("les champs de matière sortent enfin", async () => {
+    api.get.mockImplementation((url) => Promise.resolve({
+      data: url.includes("/related") ? [] : { ...fiche({ stock: 12 }), ...MATIERE },
+    }));
+    render(<ProductDetail />);
+    await waitFor(() => expect(screen.getByTestId("product-detail-page")).toBeInTheDocument());
+
+    const bloc = screen.getByTestId("donnees-techniques");
+    expect(bloc).toHaveTextContent("Poudre lyophilisée blanche");
+    expect(bloc).toHaveTextContent("Soluble dans l'eau");
+    expect(bloc).toHaveTextContent("−20 °C");
+    expect(bloc).toHaveTextContent("C62H98N16O22");
+    expect(bloc).toHaveTextContent("15 acides aminés");
+  });
+
+  test("MECHANISM ET RESEARCH_AREAS RESTENT DEHORS", async () => {
+    /* Le garde-fou qui compte. Ces deux champs vivent dans le même objet
+     * produit, à deux lignes des cinq qu'on vient de publier, et le réflexe
+     * d'ajouter « tant qu'à y être » est exactement ce qui ferait basculer
+     * la fiche d'une description de matière à une revendication d'effet. */
+    api.get.mockImplementation((url) => Promise.resolve({
+      data: url.includes("/related") ? [] : {
+        ...fiche({ stock: 12 }),
+        ...MATIERE,
+        mechanism: "Potentialise la libération d'hormone de croissance",
+        research_areas: ["Réparation tissulaire", "Anti-inflammatoire"],
+        description_fr: "Favorise la guérison des tendons",
+      },
+    }));
+    render(<ProductDetail />);
+    await waitFor(() => expect(screen.getByTestId("product-detail-page")).toBeInTheDocument());
+
+    const page = screen.getByTestId("product-detail-page").textContent;
+    expect(page).not.toMatch(/Potentialise/i);
+    expect(page).not.toMatch(/Réparation tissulaire/i);
+    expect(page).not.toMatch(/Anti-inflammatoire/i);
+    expect(page).not.toMatch(/guérison/i);
   });
 });

@@ -222,12 +222,52 @@ export default function ProductDetail() {
    * entiere pour dire qu'on ne sait pas. Une donnee absente ne se montre
    * pas. */
   const purete = String(product.purity || "").trim();
+  /* LE PROFIL MOLÉCULAIRE : CINQ CHAMPS QUI DORMAIENT EN BASE.
+   *
+   * MIREILLE, 11/10/2026 : « je réalise que finalement il n'y a rien dessus,
+   * aucune info, rien ». Une partie de ce qui manquait était déjà saisie et
+   * simplement invisible.
+   *
+   * `appearance`, `solubility`, `storage`, `molecular_formula` et
+   * `sequence_length` existent dans le modèle depuis le début et ne
+   * sortaient nulle part. Ils ont disparu de la fiche EN MÊME TEMPS que la
+   * description libre et la catégorie, retirées parce que « leurs libellés
+   * décrivaient un effet ». La précaution était juste — elle visait
+   * `mechanism` (« potentialise la libération d'hormone de croissance ») et
+   * `research_areas` (« réparation tissulaire, anti-inflammatoire »), qui
+   * sont bien des revendications. Mais elle a ratissé trop large et emporté
+   * cinq champs qui ne décrivent QUE DE LA MATIÈRE.
+   *
+   * « Poudre lyophilisée blanche », « soluble dans l'eau », « −20 °C à
+   * l'abri de la lumière » : rien là-dedans ne promet quoi que ce soit à
+   * personne. Ce sont les faits qu'un laboratoire a besoin de connaître
+   * avant de commander, et ce sont exactement ceux qu'Align publie sous
+   * « Molecular Profile ».
+   *
+   * MECHANISM ET RESEARCH_AREAS RESTENT DEHORS, et un test l'exige : ils
+   * vivent dans le même objet produit, à deux lignes d'ici, et le réflexe
+   * d'ajouter « tant qu'à y être » est précisément ce contre quoi ce
+   * commentaire existe.
+   */
   const donneesTechniques = [
     { k: lang === "fr" ? "LOT ACTUEL" : "CURRENT LOT", v: selectedVariant?.coa_lot || product.coa_lot },
+    { k: lang === "fr" ? "FORMULE" : "FORMULA", v: product.molecular_formula },
     { k: lang === "fr" ? "MASSE MOLAIRE" : "MOLAR MASS", v: product.molecular_weight ? `${product.molecular_weight} g/mol` : "" },
-    { k: "SKU", v: selectedVariant?.sku },
-    { k: lang === "fr" ? "FORME" : "FORM", v: lang === "fr" ? "Lyophilisé" : "Lyophilized" },
+    { k: lang === "fr" ? "LONGUEUR" : "LENGTH",
+      v: product.sequence_length
+        ? `${product.sequence_length} ${lang === "fr" ? "acides aminés" : "amino acids"}`
+        : "" },
     { k: "CAS", v: product.cas_number },
+    /* `appearance` dit mieux que l'ancienne ligne « Forme : Lyophilisé »,
+       qui était écrite en dur pour tous les produits : il porte aussi la
+       couleur, et c'est ce qu'on compare au flacon reçu. Mais il peut être
+       vide en base, et une information présente depuis toujours ne doit pas
+       disparaître parce qu'on a ajouté mieux à côté. */
+    { k: lang === "fr" ? "APPARENCE" : "APPEARANCE",
+      v: product.appearance || (lang === "fr" ? "Poudre lyophilisée" : "Lyophilized powder") },
+    { k: lang === "fr" ? "SOLUBILITÉ" : "SOLUBILITY", v: product.solubility },
+    { k: lang === "fr" ? "CONSERVATION" : "STORAGE", v: product.storage },
+    { k: "SKU", v: selectedVariant?.sku },
   ].filter((s) => String(s.v || "").trim());
 
   return (
@@ -464,7 +504,7 @@ export default function ProductDetail() {
             {(product.sequence || donneesTechniques.length > 0) && (
               <div className="mt-10" data-testid="donnees-techniques">
                 <h2 className="font-data text-[11px] uppercase tracking-[0.2em] text-compliance mb-4">
-                  {lang === "fr" ? "Données techniques" : "Technical data"}
+                  {lang === "fr" ? "Profil moléculaire" : "Molecular profile"}
                 </h2>
 
                 {product.sequence && (
