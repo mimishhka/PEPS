@@ -149,6 +149,18 @@ describe("le bloc de preuve, après les produits en vedette", () => {
     expect(preuve()).toContain('to="/lab"');
   });
 
+  test("MAIS LE RENVOI VERS /lab ATTEND QUE LA PAGE EXISTE", () => {
+    /* MIREILLE, 11/10/2026 : « pourquoi je ne vois pas la page qui permet de
+     * faire une recherche pour les COA ». Elle est derrière COA_PAGE_ENABLED,
+     * et quand ce drapeau est à `false` la route renvoie à l'accueil.
+     *
+     * Trois endroits renvoyaient vers elle sans le vérifier — ce bloc, la page
+     * des certificats, le pied de page. L'en-tête, lui, le vérifiait depuis le
+     * début : la règle était écrite, à un seul des quatre endroits. */
+    expect(preuve()).toMatch(/\{coaPageEnabled && \(/);
+    expect(SOURCE).toMatch(/import \{ useSiteConfig \} from "\.\.\/contexts\/SiteConfigContext"/);
+  });
+
   test("et il ne promet aucun effet", () => {
     const interdits = [/bienfait/i, /efficacit/i, /thérapeut/i, /traitement/i,
                        /dose/i, /guéri/i, /meilleur/i, /garanti/i];

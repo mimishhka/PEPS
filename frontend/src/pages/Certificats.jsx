@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useLang } from "../contexts/LanguageContext";
+import { useSiteConfig } from "../contexts/SiteConfigContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { GHK, RET } from "../lib/certificat";
 
@@ -133,6 +134,7 @@ export default function Certificats() {
       "Lire un certificat d'analyse LC-MS/MS : numéro de lot, pureté chromatographique, teneur nette en peptide, ion précurseur, et ce qu'un certificat ne couvre pas.",
   });
   const { lang } = useLang();
+  const { coaPageEnabled } = useSiteConfig();
   const fr = lang === "fr";
   const L = (o) => (fr ? o.fr : o.en);
 
@@ -332,12 +334,23 @@ export default function Certificats() {
           </Section>
         </div>
 
+        {/* DEUX LIENS, DEUX DÉFAUTS QU'ELLE A VUS AVANT MOI.
+            « Pourquoi je ne vois pas la page qui permet de faire une recherche
+            pour les COA » : /lab n'est servie que si COA_PAGE_ENABLED vaut
+            `true` côté serveur, sinon la route renvoie à l'accueil. Le bouton
+            était donc bien là, et il ne menait nulle part. Il ne s'affiche
+            plus que lorsque la page existe.
+            « Le lien qui renvoie à l'entreposage ne me conduit qu'à la page
+            des FAQ » : il visait /faq sans ancre. Il vise désormais la section
+            `storage`, et ScrollToTop sait enfin y descendre. */}
         <div className="mt-16 border-t border-ash pt-10 flex flex-wrap items-center gap-4"
              data-testid="certificats-suite">
-          <Link to="/lab" className="btn-pill btn-nova" data-testid="certificats-vers-lab">
-            {fr ? "Vérifier un lot" : "Check a lot"}
-          </Link>
-          <Link to="/faq" className="text-[13px] text-nova-texte underline" data-testid="certificats-vers-faq">
+          {coaPageEnabled && (
+            <Link to="/lab" className="btn-pill btn-nova" data-testid="certificats-vers-lab">
+              {fr ? "Vérifier un lot" : "Check a lot"}
+            </Link>
+          )}
+          <Link to="/faq#storage" className="text-[13px] text-nova-texte underline" data-testid="certificats-vers-faq">
             {fr ? "Conservation et manipulation" : "Storage and handling"}
           </Link>
         </div>

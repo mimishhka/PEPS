@@ -29,6 +29,11 @@ jest.mock("react-router-dom", () => ({
 jest.mock("../contexts/LanguageContext", () => ({ useLang: () => ({ lang: "fr" }) }));
 jest.mock("../hooks/useDocumentHead", () => ({ __esModule: true, default: () => {} }));
 
+const mockConfig = { coaPageEnabled: true };
+jest.mock("../contexts/SiteConfigContext", () => ({ useSiteConfig: () => mockConfig }));
+
+beforeEach(() => { mockConfig.coaPageEnabled = true; });
+
 const texte = () => screen.getByTestId("certificats-page").textContent;
 
 describe("la page explique ce qu'il faut expliquer", () => {
@@ -70,6 +75,33 @@ describe("la page explique ce qu'il faut expliquer", () => {
   test("elle mène au laboratoire pour vérifier un lot", () => {
     render(<Certificats />);
     expect(screen.getByTestId("certificats-vers-lab")).toHaveAttribute("href", "/lab");
+  });
+
+  test("MAIS PAS QUAND /lab N'EST PAS SERVIE", () => {
+    /* MIREILLE, 11/10/2026 : « pourquoi je ne vois pas la page qui permet de
+     * faire une recherche pour les COA ».
+     *
+     * Elle est derrière COA_PAGE_ENABLED, absent de son .env, donc à `false` :
+     * la route renvoie à l'accueil. Le bouton était bien là, bien visible, et
+     * ramenait à la page qu'on venait de quitter — ce qui ne ressemble pas à
+     * un lien cassé mais à un clic ignoré. Le pire des deux. */
+    mockConfig.coaPageEnabled = false;
+    render(<Certificats />);
+    expect(screen.queryByTestId("certificats-vers-lab")).toBeNull();
+    // Et la page garde sa suite : l'autre lien, lui, ne dépend de rien.
+    expect(screen.getByTestId("certificats-vers-faq")).toBeInTheDocument();
+  });
+
+  test("LE LIEN D'ENTREPOSAGE VISE LA SECTION, PAS LE HAUT DE LA FAQ", () => {
+    /* MIREILLE : « le lien qui renvoie à l'entreposage ne me conduit qu'à la
+     * page des FAQ ». Il visait /faq sans ancre, et la FAQ compte dix-huit
+     * questions : on arrivait en haut, à charge d'aller chercher.
+     *
+     * L'ancre seule ne suffisait pas — voir ScrollToTop.test.jsx, où le vrai
+     * défaut se trouvait. */
+    render(<Certificats />);
+    expect(screen.getByTestId("certificats-vers-faq"))
+      .toHaveAttribute("href", "/faq#storage");
   });
 });
 

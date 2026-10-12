@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
+import { useSiteConfig } from "../contexts/SiteConfigContext";
 import { FnMark, Wordmark } from "./brand";
 
 const FALLBACK_COLS = [
@@ -26,6 +27,7 @@ const FALLBACK_COLS = [
 
 export default function Footer() {
   const { t, lang } = useLang();
+  const { coaPageEnabled } = useSiteConfig();
   const [cols, setCols] = useState(null);
 
   useEffect(() => {
@@ -66,7 +68,19 @@ export default function Footer() {
   // doit plus apparaître dans le pied de page public. On retire la colonne
   // « program » quelle que soit sa source (fallback ou menu semé en base), et
   // on ne l'ajoute plus d'office comme c'était le cas auparavant.
-  const columns = baseColumns.filter((c) => c.key !== "program");
+  //
+  // ET /lab TOMBE AVEC SON DRAPEAU. L'en-tête filtrait déjà cette entrée sur
+  // `coaPageEnabled` ; le pied de page, lui, l'affichait toujours — la règle
+  // existait, à un seul des deux endroits qui en avaient besoin. Quand le
+  // drapeau est à `false`, la route renvoie à l'accueil : le lien était visible
+  // et ne menait nulle part.
+  const columns = baseColumns
+    .filter((c) => c.key !== "program")
+    .map((c) => ({
+      ...c,
+      links: c.links.filter((l) => (l.to === "/lab" ? coaPageEnabled : true)),
+    }))
+    .filter((c) => c.links.length);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -97,12 +111,21 @@ export default function Footer() {
               <circle cx="30" cy="50" r="4" /><circle cx="140" cy="110" r="5" /><circle cx="250" cy="60" r="4" /><circle cx="370" cy="130" r="4" />
             </g>
           </svg>
-          <p className="relative font-display text-2xl sm:text-3xl font-bold tracking-[-0.01em] leading-[1.2] max-w-4xl" data-testid="footer-disclaimer">
-            {t("footer.compliance")}
-          </p>
-          <p className="relative mt-6 font-data text-[11px] uppercase tracking-[0.18em] text-glacier max-w-3xl leading-relaxed">
-            {confirmText}
-          </p>
+          {/* MEME RAISON QUE L'INFOLETTRE : ces deux paragraphes occupaient
+              896 px et 768 px dans une bande de 1216, empiles l'un sous
+              l'autre et cales a gauche. Mis cote a cote, ils remplissent la
+              bande et la declaration garde sa justesse de lecture.
+              `items-end` et non `items-start` : les deux blocs n'ont pas la
+              meme hauteur, et c'est la DERNIERE ligne de chacun qui doit
+              s'aligner pour que le pave paraisse pose, pas tombe. */}
+          <div className="relative grid lg:grid-cols-[1.3fr_1fr] gap-8 lg:gap-14 lg:items-end" data-testid="footer-conformite">
+            <p className="font-display text-2xl sm:text-3xl font-bold tracking-[-0.01em] leading-[1.2]" data-testid="footer-disclaimer">
+              {t("footer.compliance")}
+            </p>
+            <p className="font-data text-[11px] uppercase tracking-[0.18em] text-glacier leading-relaxed">
+              {confirmText}
+            </p>
+          </div>
           {/* LES TROIS PASTILLES SONT PARTIES, a sa demande du 11/10/2026.
               « Usage recherche uniquement », « Age verifie 19+ » et « Loi 25 /
               PIPEDA » redisaient en petit ce que le titre au-dessus dit en

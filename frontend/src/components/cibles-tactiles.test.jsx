@@ -49,7 +49,10 @@ const produit = {
   name_en: "BPC-157",
   price_cad: 60,
   dosage_mg: 5,
-  variants: [{ dosage_mg: 5, price: 60, stock: 12 }],
+  // La variante porte un `id`, comme en vrai : le serveur en pose un a chaque
+  // ecriture (`_ensure_variant_ids`), et toute la selection de dosage compare
+  // ce champ. Une maquette sans id rendait une liste React sans cle.
+  variants: [{ id: "v1", dosage_mg: 5, price: 60, stock: 12 }],
 };
 
 const pixelsMinimum = (element, axe) => {
@@ -76,7 +79,7 @@ describe("le bouton d'achat de la carte produit", () => {
     // Le bouton désactivé reste un bouton : on le touche quand même, et
     // c'est là qu'on lit « Rupture ». Un plancher qui ne s'appliquerait
     // qu'au cas vendeur laisserait l'autre à 30 px.
-    render(<ProductCard product={{ ...produit, slug: "epuise", variants: [{ dosage_mg: 5, price: 60, stock: 0 }] }} />);
+    render(<ProductCard product={{ ...produit, slug: "epuise", variants: [{ id: "v1", dosage_mg: 5, price: 60, stock: 0 }] }} />);
     const bouton = screen.getByTestId("add-to-cart-epuise");
     expect(bouton).toBeDisabled();
     expect(pixelsMinimum(bouton, "h")).toBeGreaterThanOrEqual(44);
@@ -143,6 +146,33 @@ describe("les liens du pied de page", () => {
     expect(SOURCE).not.toMatch(/grid grid-cols-2 md:grid-cols-4 gap-10/);
   });
 
+  test("L'ENTRÉE /lab TOMBE AVEC SON DRAPEAU, ICI AUSSI", () => {
+    /* L'en-tête filtrait déjà cette entrée sur `coaPageEnabled`. Le pied de
+     * page l'affichait toujours : la règle existait, à un seul des deux
+     * endroits qui en avaient besoin.
+     *
+     * Et la colonne vidée disparaît, sinon la grille garderait une colonne de
+     * titre sans liens — exactement le quart de page vide qu'on vient de
+     * corriger juste en dessous. */
+    expect(SOURCE).toMatch(/useSiteConfig/);
+    expect(SOURCE).toMatch(/l\.to === "\/lab" \? coaPageEnabled/);
+    expect(SOURCE).toMatch(/\.filter\(\(c\) => c\.links\.length\)/);
+  });
+
+  test("LA BANDE DE CONFORMITÉ REMPLIT SA LARGEUR", () => {
+    /* MIREILLE, 11/10/2026 : « tout ce qui est du côté gauche de la page
+     * n'a pas été modifié ». Mesuré sur un écran de 1920 : la déclaration
+     * occupait 896 px et la confirmation 768 px dans une bande de 1216, l'une
+     * sous l'autre, toutes deux calées à gauche.
+     *
+     * Les deux paragraphes ne portent plus de laisse de largeur : c'est la
+     * grille qui décide. Si l'une revient, ce test tombe. */
+    expect(SOURCE).toContain('data-testid="footer-conformite"');
+    expect(SOURCE).toMatch(/lg:grid-cols-\[1\.3fr_1fr\]/);
+    expect(SOURCE).not.toMatch(/max-w-4xl/);
+    expect(SOURCE).not.toMatch(/max-w-3xl/);
+  });
+
   test("l'écart vertical ne se cumule plus avec la marge des rangées", () => {
     // `space-y-2.5` par-dessus `py-3` aurait fait un pied de page à rallonge
     // pour rien : la respiration vient désormais des rangées elles-mêmes.
@@ -191,6 +221,28 @@ describe("la case de consentement de l'infolettre", () => {
     );
     expect(avant).toContain("<label");
     expect(avant).toMatch(/cursor-pointer/);
+  });
+
+  test("LE FORMULAIRE NE LAISSE PLUS LA MOITIÉ DROITE VIDE", () => {
+    /* C'est le bloc qui donnait vraiment l'impression d'une page poussée à
+     * gauche : 672 px de contenu dans un conteneur de 1280, soit 576 px de
+     * vide à sa droite — plus de place perdue que de place occupée.
+     *
+     * Et ce n'était pas un paragraphe qu'on laisse respirer : une boîte de
+     * saisie posée dans le coin supérieur gauche d'une bande vide se lit
+     * comme une page inachevée.
+     *
+     * Le test porte sur la DISPARITION de l'ancienne laisse autant que sur
+     * l'arrivée de la grille : ajouter la seconde sans retirer la première
+     * n'aurait rien changé à l'écran. */
+    expect(SOURCE).toContain('data-testid="newsletter-grille"');
+    expect(SOURCE).toMatch(/lg:grid-cols-\[1fr_minmax\(0,34rem\)\]/);
+    expect(SOURCE).not.toMatch(/relative max-w-2xl/);
+
+    // Et le formulaire vit DANS la grille, pas à côté d'elle.
+    expect(SOURCE.indexOf("newsletter-grille")).toBeLessThan(
+      SOURCE.indexOf("newsletter-form"),
+    );
   });
 
   test("le plancher de 16 px ne vient pas la déformer", () => {

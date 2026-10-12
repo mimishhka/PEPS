@@ -4,6 +4,7 @@ import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
+import { useSiteConfig } from "../contexts/SiteConfigContext";
 import ProductCard from "../components/ProductCard.jsx";
 import { MolecularMesh, NovaSpark, Reveal } from "../components/brand";
 import { GHK } from "../lib/certificat";
@@ -13,8 +14,11 @@ import { TAILLES } from "../lib/derivees";
 
 export default function Home() {
   const { t, lang } = useLang();
-  // `coaPageEnabled` n'est PAS lu ici : la page d'accueil ne renvoie jamais
-  // vers /lab. Seul Header.jsx en a besoin, pour masquer l'entree de menu.
+  // L'ACCUEIL RENVOIE MAINTENANT VERS /lab, donc il lit le drapeau comme
+  // Header.jsx. Le commentaire qui vivait ici disait le contraire, et il
+  // datait d'avant le bloc de preuve : un lien y avait ete ajoute sans que
+  // personne ne revienne corriger la phrase qui jurait qu'il n'y en avait pas.
+  const { coaPageEnabled } = useSiteConfig();
   const [products, setProducts] = useState([]);
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
@@ -290,11 +294,18 @@ export default function Home() {
                       style={{ borderRadius: "var(--r-m)" }}>
                   {lang === "fr" ? "Lire un certificat" : "Read a certificate"}
                 </Link>
-                <Link to="/lab" data-testid="preuve-vers-lab"
-                      className="text-[13px] hover:text-nova transition-colors"
-                      style={{ color: "var(--sur-voile-doux)" }}>
-                  {lang === "fr" ? "Vérifier un lot →" : "Check a lot →"}
-                </Link>
+                {/* CE LIEN NE S'AFFICHE QUE SI LA PAGE EXISTE. /lab est
+                    servie derrière COA_PAGE_ENABLED, et la route renvoie à
+                    l'accueil quand le drapeau est à `false` : un lien visible
+                    vers une page qui ramène à celle qu'on quitte est pire
+                    qu'un lien absent. */}
+                {coaPageEnabled && (
+                  <Link to="/lab" data-testid="preuve-vers-lab"
+                        className="text-[13px] hover:text-nova transition-colors"
+                        style={{ color: "var(--sur-voile-doux)" }}>
+                    {lang === "fr" ? "Vérifier un lot →" : "Check a lot →"}
+                  </Link>
+                )}
               </div>
             </div>
 
@@ -368,10 +379,24 @@ export default function Home() {
           interdit ; le contenu, lui, ne change pas. */}
       <section className="py-20 lg:py-28 border-t border-ash" data-testid="newsletter-section">
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
-          <div className="relative max-w-2xl">
-            <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte mb-2 lg:absolute lg:top-0 lg:right-0 lg:mb-0">{newsEyebrow}</p>
-            <h2 className="font-display text-[22px] sm:text-[26px] font-semibold text-nordfjord mb-3 tracking-[-0.01em]">{newsTitle}</h2>
-            <p className="text-glacier text-[14px] mb-8 max-w-[52ch]">{newsLede}</p>
+          {/* POURQUOI CE BLOC PARAISSAIT COLLÉ À GAUCHE.
+              MIREILLE, 11/10/2026 : « tout ce qui est du côté gauche de la
+              page n'a pas été modifié ».
+              Mesuré sur un écran de 1920 : le bloc faisait 672 px dans un
+              conteneur de 1280. 576 px de vide à sa droite — plus de place
+              perdue que de place occupée. Et ce n'était pas un paragraphe
+              qu'on laisse respirer, c'était un FORMULAIRE : une boîte de
+              saisie posée dans le coin supérieur gauche d'une bande vide se
+              lit comme une page inachevée.
+              Le texte et le formulaire sont désormais deux colonnes qui
+              remplissent la bande. Rien n'est retiré. */}
+          <div className="grid lg:grid-cols-[1fr_minmax(0,34rem)] gap-8 lg:gap-16 items-center" data-testid="newsletter-grille">
+            <div>
+            <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte mb-2">{newsEyebrow}</p>
+            <h2 className="font-display text-[22px] sm:text-[26px] lg:text-[30px] font-semibold text-nordfjord mb-3 tracking-[-0.01em]">{newsTitle}</h2>
+            <p className="text-glacier text-[14px] max-w-[52ch]">{newsLede}</p>
+            </div>
+            <div>
             {done ? (
               <p className="inline-flex items-center gap-2.5 text-nova-texte font-semibold"><Check size={18} /> {newsDone}</p>
             ) : (
@@ -410,6 +435,7 @@ export default function Home() {
                 </label>
               </form>
             )}
+            </div>
           </div>
         </div>
       </section>
