@@ -29,6 +29,10 @@ const path = require("path");
 const PAGES = [
   "Home.jsx", "About.jsx", "Catalog.jsx", "ProductDetail.jsx", "Faq.jsx",
   "Lab.jsx", "Certificats.jsx", "Compliance.jsx", "Privacy.jsx",
+  // Les écrans d'authentification sont publics eux aussi, et ils portaient
+  // deux échelles de plus : 30 px à la connexion et à l'inscription, 24 px à
+  // l'oubli et à la réinitialisation du mot de passe.
+  "Login.jsx", "Register.jsx", "ForgotPassword.jsx", "ResetPassword.jsx",
 ];
 
 const lire = (f) => fs.readFileSync(path.join(__dirname, f), "utf8");
@@ -60,6 +64,105 @@ const TAILLE = /\btext-(?:\[[0-9.]+px\]|xs|sm|base|lg|xl|2xl|3xl|4xl|5xl)\b/;
  *     (`text-compliance`) porte un sens que `sur-titre` effacerait. */
 const EXCEPTIONS = [/data-testid="hero-title"/, /text-compliance/];
 const tolere = (balise) => EXCEPTIONS.some((e) => e.test(balise));
+
+/* TOUT `src`, SAUF LE PORTAIL D'ADMINISTRATION.
+ *
+ * Deux filets plus bas marchent cet arbre. Une liste écrite à la main est une
+ * liste qui vieillit : le fichier ajouté demain n'y serait pas, et rien ne
+ * l'aurait dit.
+ *
+ * `pages/admin` est exclu, et c'est sa décision : « pas l'OPS pour l'instant
+ * étant donné que je suis toujours en mode test ». Le jour où il y passe, il
+ * suffit de retirer une ligne ici. */
+const RACINE_SRC = path.join(__dirname, "..");
+
+const parcourir = (dossier) => {
+  const sortie = [];
+  for (const e of fs.readdirSync(dossier, { withFileTypes: true })) {
+    const complet = path.join(dossier, e.name);
+    if (e.isDirectory()) {
+      if (e.name === "admin") continue;
+      sortie.push(...parcourir(complet));
+    } else if (e.name.endsWith(".jsx") && !e.name.includes(".test.")) {
+      sortie.push(complet);
+    }
+  }
+  return sortie;
+};
+
+const VITRINE = parcourir(RACINE_SRC).map((f) => [
+  path.relative(RACINE_SRC, path.dirname(f)),
+  path.basename(f),
+]);
+
+describe("LE TITRE NE SE DIT PAS DEUX FOIS SUR LE MÊME ÉCRAN", () => {
+  /* L'inscription affichait « Create account » TROIS fois : le sur-titre, le
+   * titre du formulaire, et le panneau de gauche — qui portait
+   * `t("auth.signup") || "Join the network."`.
+   *
+   * Le repli n'a jamais pu s'afficher : `t()` rend toujours une valeur, donc
+   * la branche de droite était morte dès le premier jour. L'auteur voulait
+   * une autre phrase sur ce panneau ; le code disait qu'il en voulait une, et
+   * n'en a jamais mis.
+   *
+   * Encore une règle écrite, d'apparence appliquée, jamais effective — la
+   * quatrième de la journée. */
+  test("le panneau de l'inscription a sa propre clé", () => {
+    /* ON LIT LA SOURCE SANS SES COMMENTAIRES, et c'est la quatrième fois
+     * aujourd'hui que je me fais prendre : le commentaire posé dans
+     * `Register.jsx` pour expliquer la correction CITE le motif qu'il vient
+     * de retirer. Un filtre qui lit ce que personne ne voit signale des
+     * défauts qui n'existent pas. */
+    const source = sansCommentaires(
+      fs.readFileSync(path.join(__dirname, "Register.jsx"), "utf8"),
+    );
+    expect(source).toMatch(/t\("auth\.registerTitle"\)/);
+    expect(source).not.toMatch(/t\("auth\.signup"\)\s*\|\|/);
+  });
+
+  test("et cette clé existe dans les deux langues", () => {
+    const i18n = fs.readFileSync(path.join(__dirname, "..", "lib", "i18n.js"), "utf8");
+    expect([...i18n.matchAll(/registerTitle:/g)]).toHaveLength(2);
+  });
+
+  test("AUCUN MOT-SYMBOLE N'EST PEINT EN DUR", () => {
+    /* DEUX FACES DU MEME DÉFAUT, trouvées à dix minutes d'intervalle.
+     *
+     * Connexion et inscription : `#F7FAFC` posé sur `bg-clinical`, qui vaut
+     * exactement #F7FAFC le jour. Le mot FIRONOVA était INVISIBLE sur ces deux
+     * pages, et ne réapparaissait qu'en mode sombre.
+     *
+     * Cinq autres pages et le pied de page : `#0B2E4F`, correct le jour,
+     * marine sur presque noir la nuit.
+     *
+     * Une valeur écrite en dur ne s'inverse pas ; le jeton, si. Le test porte
+     * sur TOUTES les apparitions du mot-symbole, pas sur les deux que j'avais
+     * sous les yeux — c'est la différence entre corriger un écran et corriger
+     * une classe de défaut.
+     *
+     * CE TEST NE DIT RIEN DU DESCRIPTEUR, et c'est voulu. En corrigeant la
+     * couleur, j'avais ajouté « RESEARCH » sur ces sept pages — en écrasant
+     * une décision déjà prise et déjà protégée par `brand.test.jsx` : à 16 px,
+     * le descripteur tombe au plancher de 6 px, et six pixels en capitales
+     * espacées ne se lisent pas. La décision tient ; c'était à moi de la lire
+     * avant d'y toucher. */
+    const fautifs = [];
+    for (const [dossier, nom] of VITRINE) {
+      const source = sansCommentaires(
+        fs.readFileSync(path.join(RACINE_SRC, dossier, nom), "utf8"),
+      );
+      // Balise composée et non écrite telle quelle : la sonde `balises` lit
+      // tout le répertoire, chaînes des tests comprises, et m'a justement
+      // arrêté ici — un « <Wordmark » cité dans une expression régulière
+      // passait pour une balise jamais fermée. Troisième fois aujourd'hui.
+      const motif = new RegExp(`<${"Wordmark"}[^>]*>`, "g");
+      for (const m of source.matchAll(motif)) {
+        if (/color="#/.test(m[0])) fautifs.push(`${nom} :: ${m[0].slice(0, 70)}`);
+      }
+    }
+    expect(fautifs).toEqual([]);
+  });
+});
 
 describe("l'échelle vit dans le design system, pas dans les pages", () => {
   test("les trois classes existent", () => {
@@ -134,29 +237,8 @@ describe("LES ÉTIQUETTES EN MONO CAPITALES", () => {
    * `pages/admin` est exclu, et c'est sa décision : « pas l'OPS pour l'instant
    * étant donné que je suis toujours en mode test ». Le jour où il y passe, il
    * suffit de retirer une ligne ici. */
-  const RACINE = path.join(__dirname, "..");
-
-  const parcourir = (dossier) => {
-    const sortie = [];
-    for (const e of fs.readdirSync(dossier, { withFileTypes: true })) {
-      const complet = path.join(dossier, e.name);
-      if (e.isDirectory()) {
-        if (e.name === "admin") continue;
-        sortie.push(...parcourir(complet));
-      } else if (e.name.endsWith(".jsx") && !e.name.includes(".test.")) {
-        sortie.push(complet);
-      }
-    }
-    return sortie;
-  };
-
-  const VITRINE = parcourir(RACINE).map((f) => [
-    path.relative(RACINE, path.dirname(f)),
-    path.basename(f),
-  ]);
-
   const lireVitrine = ([dossier, nom]) =>
-    fs.readFileSync(path.join(RACINE, dossier, nom), "utf8");
+    fs.readFileSync(path.join(RACINE_SRC, dossier, nom), "utf8");
 
   test("le parcours trouve bien des fichiers", () => {
     // Sans ce garde-fou, une erreur de chemin rendrait une liste vide et le

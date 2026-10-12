@@ -194,6 +194,10 @@ export const dict = {
       and: "and the",
       privacy: "privacy policy",
       ruoConsent: "I confirm I am 19+. Products for research use only (RUO).",
+      // Le panneau de gauche de l'inscription, pendant de `welcome` cote
+      // connexion. Il lui manquait sa propre cle : la page reprenait
+      // `auth.signup`, et « Create account » s'affichait trois fois.
+      registerTitle: "Your orders and your reports, in one place.",
       registerSub: "Create an account to checkout faster and view order history.",
     },
     account: {
@@ -476,6 +480,7 @@ export const dict = {
       and: "et la",
       privacy: "politique de confidentialité",
       ruoConsent: "Je confirme avoir 19 ans et plus. Produits pour la recherche uniquement (RUO).",
+      registerTitle: "Vos commandes et vos rapports au même endroit.",
       registerSub: "Créez un compte pour acheter plus rapidement et voir l'historique.",
     },
     account: {

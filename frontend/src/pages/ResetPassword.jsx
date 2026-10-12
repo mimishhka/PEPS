@@ -64,12 +64,12 @@ export default function ResetPassword() {
         <div className="relative">
           <div className="flex items-center justify-center gap-3 mb-8">
             <FnMark size={26} frame="#00B8D4" spark="#00B8D4" />
-            <Wordmark size={16} color="#0B2E4F" />
+            <Wordmark size={16} color="var(--nordfjord)" />
           </div>
 
           {!token ? (
             <div className="text-center" data-testid="reset-invalid">
-              <h1 className="font-display text-2xl font-bold text-nordfjord mb-3">
+              <h1 className="titre-page text-nordfjord mb-3">
                 {lang === "fr" ? "Lien invalide" : "Invalid link"}
               </h1>
               <p className="text-sm text-glacier leading-relaxed mb-8">
@@ -83,7 +83,7 @@ export default function ResetPassword() {
             </div>
           ) : (
             <>
-              <h1 className="font-display text-2xl font-bold text-nordfjord mb-2 text-center">
+              <h1 className="titre-page text-nordfjord mb-2 text-center">
                 {lang === "fr" ? "Nouveau mot de passe" : "New password"}
               </h1>
               <p className="text-sm text-glacier leading-relaxed mb-8 text-center">

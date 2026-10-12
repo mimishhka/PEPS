@@ -55,7 +55,7 @@ export default function AffiliateJoin() {
         <div className="relative">
           <div className="flex items-center justify-center gap-3 mb-8">
             <FnMark size={26} frame="#00B8D4" spark="#00B8D4" />
-            <Wordmark size={16} color="#0B2E4F" />
+            <Wordmark size={16} color="var(--nordfjord)" />
           </div>
 
           {status === "activating" && (

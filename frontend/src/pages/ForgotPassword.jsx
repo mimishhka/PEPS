@@ -38,12 +38,12 @@ export default function ForgotPassword() {
         <div className="relative">
           <div className="flex items-center justify-center gap-3 mb-8">
             <FnMark size={26} frame="#00B8D4" spark="#00B8D4" />
-            <Wordmark size={16} color="#0B2E4F" />
+            <Wordmark size={16} color="var(--nordfjord)" />
           </div>
 
           {sent ? (
             <div className="text-center" data-testid="forgot-password-sent">
-              <h1 className="font-display text-2xl font-bold text-nordfjord mb-3">
+              <h1 className="titre-page text-nordfjord mb-3">
                 {lang === "fr" ? "Vérifiez votre courriel" : "Check your email"}
               </h1>
               <p className="text-sm text-glacier leading-relaxed mb-8">
@@ -57,7 +57,7 @@ export default function ForgotPassword() {
             </div>
           ) : (
             <>
-              <h1 className="font-display text-2xl font-bold text-nordfjord mb-2 text-center">
+              <h1 className="titre-page text-nordfjord mb-2 text-center">
                 {lang === "fr" ? "Mot de passe oublié" : "Forgot password"}
               </h1>
               <p className="text-sm text-glacier leading-relaxed mb-8 text-center">

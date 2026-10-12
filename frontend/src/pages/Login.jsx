@@ -77,10 +77,13 @@ export default function Login() {
         <div className="relative h-full p-12 flex flex-col justify-between text-nordfjord">
           <div className="flex items-center gap-3">
             <FnMark size={28} frame="#00B8D4" spark="#00B8D4" />
-            <Wordmark size={17} color="#F7FAFC" />
+            {/* Meme defaut qu'a l'inscription : `#F7FAFC` sur `bg-clinical`,
+                qui vaut exactement #F7FAFC le jour. La marque etait invisible
+                sur cette page, et ne reapparaissait qu'en mode sombre. */}
+            <Wordmark size={17} color="var(--nordfjord)" />
           </div>
           <div>
-            <h2 className="font-display text-[28px] sm:text-[34px] font-semibold tracking-[-0.01em] leading-[1.1]">
+            <h2 className="titre-section">
               {isAdminLogin ? (lang === "fr" ? "Espace OPS." : "OPS access.") : (t("auth.welcome") || "Welcome back.")}
             </h2>
             <p className="mt-4 text-glacier max-w-md">
@@ -97,7 +100,7 @@ export default function Login() {
           {isAdminLogin && <Lock size={12} strokeWidth={2.2} />}
           {isAdminLogin ? (lang === "fr" ? "ACCÈS OPS" : "OPS ACCESS") : `01 · ${t("auth.signin")}`}
         </p>
-        <h1 className="font-display text-[30px] font-bold text-nordfjord mb-8">
+        <h1 className="titre-page text-nordfjord mb-8">
           {isAdminLogin ? "FIRONOVA OPS" : t("auth.welcome")}
         </h1>
 

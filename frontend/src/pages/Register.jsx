@@ -103,11 +103,26 @@ export default function Register() {
         <div className="relative h-full p-12 flex flex-col justify-between text-nordfjord">
           <div className="flex items-center gap-3">
             <FnMark size={28} frame="#00B8D4" spark="#00B8D4" />
-            <Wordmark size={17} color="#F7FAFC" />
+            {/* LE MOT ETAIT BLANC SUR UN FOND BLANC.
+                `#F7FAFC` sur `bg-clinical`, qui vaut exactement #F7FAFC le
+                jour : la marque etait invisible sur cette page. Elle ne
+                reapparaissait qu'en mode sombre, ou le fond s'inverse et pas
+                la valeur ecrite en dur.
+                `var(--nordfjord)` s'inverse avec le theme — c'est le jeton
+                prevu pour du texte sur `clinical`, dans les deux modes. */}
+            <Wordmark size={17} color="var(--nordfjord)" />
           </div>
           <div>
-            <h2 className="font-display text-[28px] sm:text-[34px] font-semibold tracking-[-0.01em] leading-[1.1]">
-              {t("auth.signup") || "Join the network."}
+            {/* « CREATE ACCOUNT » S'AFFICHAIT TROIS FOIS SUR CET ECRAN.
+                Le sur-titre, le titre du formulaire, et ce panneau — qui
+                portait `t("auth.signup") || "Join the network."`. Le repli
+                n'a jamais pu s'afficher : `t()` rend toujours une valeur, donc
+                la branche de droite etait morte des le premier jour. Encore
+                une regle ecrite, d'apparence appliquee, jamais effective.
+                Le panneau a desormais sa propre cle, pendant de `welcome` du
+                cote connexion. */}
+            <h2 className="titre-section">
+              {t("auth.registerTitle")}
             </h2>
             <p className="mt-4 text-glacier max-w-md">{t("auth.registerSub")}</p>
           </div>
@@ -118,7 +133,7 @@ export default function Register() {
         <p className="sur-titre mb-4">
           02 · {t("auth.signup")}
         </p>
-        <h1 className="font-display text-[30px] font-bold text-nordfjord mb-8">{t("auth.signup")}</h1>
+        <h1 className="titre-page text-nordfjord mb-8">{t("auth.signup")}</h1>
 
         <div className="max-w-md">
           <div className="inline-flex border border-ash bg-white p-1 mb-8" role="tablist" style={{ borderRadius: "var(--r-m)" }}>
