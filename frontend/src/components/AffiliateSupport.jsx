@@ -120,7 +120,7 @@ export default function AffiliateSupport({
   return (
     <div className="space-y-6" data-testid={testid}>
       <div className="bg-white rounded-xl border border-ash p-6">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-1">
+        <p className="sur-titre mb-1">
           {L("POSER UNE QUESTION", "ASK A QUESTION")}
         </p>
         <p className="text-sm text-glacier mb-4 leading-relaxed">
@@ -165,7 +165,7 @@ export default function AffiliateSupport({
       </div>
 
       <div className="bg-white rounded-xl border border-ash p-6">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-4">
+        <p className="sur-titre mb-4">
           {L("VOS DEMANDES", "YOUR REQUESTS")}
         </p>
 

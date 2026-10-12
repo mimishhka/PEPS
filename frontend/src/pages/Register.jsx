@@ -115,7 +115,7 @@ export default function Register() {
       </div>
 
       <div className="p-8 lg:p-16 flex flex-col justify-center">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-4">
+        <p className="sur-titre mb-4">
           02 · {t("auth.signup")}
         </p>
         <h1 className="font-display text-[30px] font-bold text-nordfjord mb-8">{t("auth.signup")}</h1>

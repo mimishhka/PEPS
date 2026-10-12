@@ -302,7 +302,7 @@ export default function ProductDetail() {
             <p className="font-data text-[11px] uppercase tracking-[0.22em] text-compliance mb-3">
               {lang === "fr" ? "USAGE RECHERCHE UNIQUEMENT" : "FOR RESEARCH USE ONLY"}
             </p>
-            <h1 className="font-display text-[28px] sm:text-[34px] font-semibold text-nordfjord leading-[1.1] mb-7" data-testid="product-name">{name}</h1>
+            <h1 className="titre-page text-nordfjord mb-7" data-testid="product-name">{name}</h1>
 
             {variants.length > 1 && (
               <div data-testid="variant-selector" className="mb-6">
@@ -531,7 +531,7 @@ export default function ProductDetail() {
 
         {related.length > 0 && (
           <div className="mt-16 border-t border-ash pt-10" data-testid="related-products">
-            <h2 className="font-display text-xl font-bold text-nordfjord tracking-tight mb-6">
+            <h2 className="titre-section text-nordfjord mb-6">
               {lang === "fr" ? "Souvent recherché avec" : "Often researched with"}
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

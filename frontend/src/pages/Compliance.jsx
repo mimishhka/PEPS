@@ -344,8 +344,8 @@ export default function Compliance() {
     <div className="bg-clinical min-h-screen">
       <div className="max-w-4xl mx-auto px-6 py-16 space-y-16" data-testid="compliance-page">
         <header className="border-b border-ash pb-6">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-3">FIRONOVA</p>
-          <h1 className="font-display text-[30px] sm:text-[36px] font-semibold text-nordfjord tracking-[-0.01em]">
+          <p className="sur-titre mb-3">FIRONOVA</p>
+          <h1 className="titre-page text-nordfjord">
             {isFr ? "Conditions Générales" : "Terms & Conditions"}
           </h1>
           <p className="mt-4 text-sm text-glacier">
@@ -358,7 +358,7 @@ export default function Compliance() {
         <section id="terms" data-testid="section-terms" className="space-y-12">
           {TERMS.map((s, i) => (
             <div key={s.id} id={s.id} data-testid={`terms-section-${s.id}`}>
-              <h2 className="font-display text-2xl sm:text-3xl font-bold text-nordfjord">
+              <h2 className="titre-section text-nordfjord">
                 <span className="font-data text-sm text-nova-texte mr-3">{String(i + 1).padStart(2, "0")}</span>
                 {isFr ? s.fr.title : s.en.title}
               </h2>
@@ -374,7 +374,7 @@ export default function Compliance() {
         </section>
 
         <section id="shipping" data-testid="section-shipping" className="border-t border-ash pt-12 space-y-10">
-          <h2 className="font-display text-3xl font-bold text-nordfjord">
+          <h2 className="titre-section text-nordfjord">
             {isFr ? "Politique d'expédition" : "Shipping Policy"}
           </h2>
           {SHIPPING.map((s) => (

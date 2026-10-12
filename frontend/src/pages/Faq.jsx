@@ -240,8 +240,8 @@ export default function Faq() {
     <div className="bg-clinical min-h-screen">
       <div className="max-w-4xl mx-auto px-6 py-16 space-y-16" data-testid="faq-page">
         <header className="border-b border-ash pb-6">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-3">FIRONOVA</p>
-          <h1 className="font-display text-[30px] sm:text-[36px] font-semibold text-nordfjord tracking-[-0.01em]">FAQ</h1>
+          <p className="sur-titre mb-3">FIRONOVA</p>
+          <h1 className="titre-page text-nordfjord">FAQ</h1>
           <p className="mt-4 text-sm text-glacier">
             {isFr
               ? "Les réponses ci-dessous reflètent nos Conditions Générales, notre Politique d'expédition et notre Politique de confidentialité. En cas de divergence, ces documents prévalent."
@@ -251,7 +251,7 @@ export default function Faq() {
 
         {GROUPS.map((g) => (
           <section key={g.id} id={g.id} data-testid={`faq-group-${g.id}`}>
-            <h2 className="font-display text-2xl sm:text-3xl font-bold text-nordfjord">
+            <h2 className="titre-section text-nordfjord">
               {isFr ? g.fr : g.en}
             </h2>
             <Accordion type="single" collapsible className="mt-4">
@@ -278,7 +278,7 @@ export default function Faq() {
         ))}
 
         <section className="border-t border-ash pt-10" data-testid="faq-contact">
-          <h2 className="font-display text-2xl font-bold text-nordfjord">
+          <h2 className="titre-section text-nordfjord">
             {isFr ? "Une autre question ?" : "Still have a question?"}
           </h2>
           <p className="mt-3 text-glacier leading-relaxed">

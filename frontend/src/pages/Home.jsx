@@ -225,7 +225,7 @@ export default function Home() {
       <section className="py-20 lg:py-32" data-testid="featured-products">
         <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-end justify-between gap-6 mb-12">
-            <h2 className="font-display text-[22px] sm:text-[26px] font-semibold text-nordfjord leading-[1.1] tracking-[-0.01em]">{featTitle}</h2>
+            <h2 className="titre-section text-nordfjord">{featTitle}</h2>
             <Link to="/catalog" data-testid="view-all-catalog" className="btn-pill btn-outline group">
               {featAll} <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
             </Link>
@@ -393,7 +393,7 @@ export default function Home() {
           <div className="grid lg:grid-cols-[1fr_minmax(0,34rem)] gap-8 lg:gap-16 items-center" data-testid="newsletter-grille">
             <div>
             <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte mb-2">{newsEyebrow}</p>
-            <h2 className="font-display text-[22px] sm:text-[26px] lg:text-[30px] font-semibold text-nordfjord mb-3 tracking-[-0.01em]">{newsTitle}</h2>
+            <h2 className="titre-section text-nordfjord mb-3">{newsTitle}</h2>
             <p className="text-glacier text-[14px] max-w-[52ch]">{newsLede}</p>
             </div>
             <div>

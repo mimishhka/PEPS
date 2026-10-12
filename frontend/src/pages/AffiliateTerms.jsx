@@ -359,7 +359,7 @@ export default function AffiliateTerms() {
     <div className="bg-clinical min-h-screen">
       <div className="max-w-4xl mx-auto px-6 py-16 space-y-16" data-testid="affiliate-terms-page">
         <header className="border-b border-ash pb-6">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-3">
+          <p className="sur-titre mb-3">
             FIRONOVA
           </p>
           <h1 className="font-display text-[28px] sm:text-[34px] font-semibold text-nordfjord tracking-[-0.01em]">

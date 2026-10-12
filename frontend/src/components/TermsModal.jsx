@@ -68,7 +68,7 @@ export default function TermsModal({ L, lang, onClose }) {
            onClick={(e) => e.stopPropagation()}>
 
         <div className="px-6 pt-5 pb-3 border-b border-ash">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte">
+          <p className="sur-titre">
             {L("VERSION", "VERSION")} {AFFILIATE_TERMS_VERSION}
           </p>
           <h2 className="font-display text-xl font-bold text-nordfjord mt-1">

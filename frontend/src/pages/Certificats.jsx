@@ -120,7 +120,7 @@ function Chromatogramme({ lang }) {
 function Section({ id, testId, titre, children }) {
   return (
     <section id={id} data-testid={testId}>
-      <h2 className="font-display text-xl sm:text-2xl font-bold text-nordfjord tracking-[-0.01em]">{titre}</h2>
+      <h2 className="titre-section text-nordfjord">{titre}</h2>
       {children}
     </section>
   );
@@ -142,10 +142,10 @@ export default function Certificats() {
     <div className="bg-clinical min-h-screen">
       <div className="max-w-4xl mx-auto px-6 py-16" data-testid="certificats-page">
         <header className="border-b border-ash pb-6">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-3">
+          <p className="sur-titre mb-3">
             {fr ? "ANALYSE DES LOTS" : "BATCH ANALYSIS"}
           </p>
-          <h1 className="font-display text-[30px] sm:text-[36px] font-semibold text-nordfjord tracking-[-0.01em]">
+          <h1 className="titre-page text-nordfjord">
             {fr ? "Lire un certificat d'analyse" : "Reading a certificate of analysis"}
           </h1>
           <p className="mt-4 text-sm text-glacier leading-relaxed max-w-[64ch]">

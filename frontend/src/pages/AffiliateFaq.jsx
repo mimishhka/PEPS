@@ -235,7 +235,7 @@ export default function AffiliateFaq() {
     return (
       <div className="bg-clinical min-h-screen grid place-items-center px-6">
         <div className="max-w-md text-center space-y-3" data-testid="faq-unavailable">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte">
+          <p className="sur-titre">
             {L("INDISPONIBLE", "UNAVAILABLE")}
           </p>
           <h1 className="font-display text-2xl font-bold text-nordfjord">
@@ -260,7 +260,7 @@ export default function AffiliateFaq() {
     return (
       <div className="bg-clinical min-h-screen grid place-items-center px-6">
         <div className="max-w-md text-center space-y-3">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte">
+          <p className="sur-titre">
             {L("RÉSERVÉ", "RESTRICTED")}
           </p>
           <h1 className="font-display text-2xl font-bold text-nordfjord">
@@ -287,7 +287,7 @@ export default function AffiliateFaq() {
         <OngletsAffilie actif="faq" L={L}
                         onTab={(k) => navigate(`/affiliate?tab=${k}`)} />
         <header className="border-b border-ash pb-6">
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-3">
+          <p className="sur-titre mb-3">
             {L("PROGRAMME D'AFFILIATION", "AFFILIATE PROGRAM")}
           </p>
           <h1 className="font-display text-[28px] sm:text-[34px] font-semibold text-nordfjord tracking-[-0.01em] leading-tight">

@@ -93,7 +93,7 @@ export default function Login() {
       </div>
 
       <div className="p-8 lg:p-16 flex flex-col justify-center">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-4 flex items-center gap-2">
+        <p className="sur-titre mb-4 flex items-center gap-2">
           {isAdminLogin && <Lock size={12} strokeWidth={2.2} />}
           {isAdminLogin ? (lang === "fr" ? "ACCÈS OPS" : "OPS ACCESS") : `01 · ${t("auth.signin")}`}
         </p>

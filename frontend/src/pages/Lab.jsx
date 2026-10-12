@@ -66,10 +66,10 @@ export default function Lab() {
   return (
     <div data-testid="lab-page" className="bg-clinical min-h-screen">
       <div className="max-w-3xl mx-auto px-6 lg:px-8 py-20">
-        <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-4 flex items-center gap-2">
+        <p className="sur-titre mb-4 flex items-center gap-2">
           <span className="inline-block w-8 h-px bg-nova" /> {isFr ? "LABO · LAB" : "LAB · LABO"}
         </p>
-        <h1 className="font-display text-[28px] sm:text-[34px] font-semibold text-nordfjord leading-tight mb-4">
+        <h1 className="titre-page text-nordfjord mb-4">
           {isFr ? "Vérification de certificat" : "Certificate verification"}
         </h1>
         <p className="text-lg text-glacier max-w-xl mb-8">
@@ -117,7 +117,10 @@ export default function Lab() {
           </div>
         )}
 
-        <h2 className="font-display text-[28px] font-semibold text-nordfjord mb-6">
+        {/* Ce sous-titre faisait 28 px : la taille du TITRE de la page
+            « A propos ». On ne nomme pas cet ecart, on le sent — on ne sait
+            plus a quel niveau on se trouve. */}
+        <h2 className="titre-section text-nordfjord mb-6">
           {isFr ? "Suivre votre commande" : "Track your order"}
         </h2>
         <div className="flex flex-col sm:flex-row gap-3 mb-3">

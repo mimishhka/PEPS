@@ -372,11 +372,49 @@
   .sur-voile-doux   { color: var(--sur-voile-doux); }
   .sur-voile-accent { color: var(--sur-voile-accent); }
 
-  /* eyebrow label — nova tick + tracked caps */
-  .eyebrow {
-    @apply inline-flex items-center gap-2.5 text-xs font-semibold uppercase;
-    letter-spacing: 0.18em;
-    color: var(--nova);
+  /* L'ECHELLE DES TITRES — UNE SEULE, POUR TOUT LE SITE PUBLIC.
+   *
+   * MIREILLE, 11/10/2026 : « pourquoi la police n'est pas constante d'un
+   * endpoint a l'autre ».
+   *
+   * Compte fait sur les neuf pages publiques : QUATRE echelles de titre
+   * (26/32, 28/34, 30/34, 30/36) et SIX de sous-titre. Aucune n'etait un
+   * choix — chaque page avait ete ecrite a la main, un peu plus tard que la
+   * precedente. Sur le Labo, un sous-titre faisait 28 px : la taille du TITRE
+   * d'une autre page. C'est ce genre d'ecart qu'on ne nomme pas et qu'on sent
+   * quand même : on ne sait plus a quel niveau on se trouve.
+   *
+   * 30/36 l'emporte parce que c'est deja la majorite (FAQ, Conformite,
+   * Confidentialite, Certificats) et que c'est l'echelle editoriale des pages
+   * qui portent du texte long.
+   *
+   * LE HERO DE L'ACCUEIL N'EN FAIT PAS PARTIE, et c'est voulu : il est pose
+   * sur une image, il porte ses propres jetons de couleur, et une vitrine a le
+   * droit d'ouvrir plus grand que ses pages interieures. */
+  .titre-page {
+    @apply font-display text-[30px] sm:text-[36px] font-semibold leading-[1.1] tracking-[-0.01em];
+  }
+
+  .titre-section {
+    @apply font-display text-[22px] sm:text-[26px] font-semibold leading-snug tracking-[-0.01em];
+  }
+
+  /* LE SUR-TITRE, et l'histoire de la classe qu'il remplace.
+   *
+   * `.eyebrow` vivait ici depuis le debut, avec ZERO utilisateur. Troisieme
+   * exemple aujourd'hui du meme defaut : une regle ecrite, d'apparence
+   * appliquee, jamais effective. Pendant ce temps chaque page composait son
+   * propre libelle — plus de 220 etiquettes en mono capitales reparties sur
+   * douze combinaisons de taille et d'espacement.
+   *
+   * Elle etait fausse en plus d'etre morte : `color: var(--nova)` donne du
+   * #00B8D4, environ 3:1 sur fond clair. Assez pour un titre, pas pour des
+   * capitales de 11 px, qui en demandent 4,5. `--nova-texte` est la variante
+   * assombrie prevue exactement pour ca. */
+  .sur-titre {
+    @apply font-data text-[11px] font-semibold uppercase;
+    letter-spacing: 0.24em;
+    color: rgb(var(--fn-nova-texte));
   }
 
   /* Boutons — rectangles francs a 4 px, pas de pilule. La forme vient du

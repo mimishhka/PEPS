@@ -19,12 +19,12 @@ export default function About() {
         <MolecularMesh opacity={0.26} />
         <div className="relative max-w-7xl mx-auto px-6 lg:px-8 py-24 lg:py-32">
           <Reveal>
-            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-5 flex items-center gap-2">
+            <p className="sur-titre mb-5 flex items-center gap-2">
               <span className="inline-block w-8 h-px bg-nova" /> {isFr ? "À PROPOS" : "ABOUT"}
             </p>
           </Reveal>
           <Reveal delay={90}>
-            <h1 className="font-display text-[28px] sm:text-[34px] font-semibold leading-[1.1] tracking-[-0.01em] max-w-3xl text-nordfjord">
+            <h1 className="titre-page max-w-3xl text-nordfjord">
               {isFr ? "Du nord. " : "From the north. "}<span className="text-nova-texte">{isFr ? "Pour la recherche." : "For research."}</span>
             </h1>
           </Reveal>
@@ -61,7 +61,7 @@ export default function About() {
       <section className="border-t border-ash bg-white">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 py-24">
           <Reveal>
-            <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-5 flex items-center gap-2">
+            <p className="sur-titre mb-5 flex items-center gap-2">
               <span className="inline-block w-8 h-px bg-nova" /> {isFr ? "CE QUI NOUS DÉFINIT" : "WHAT DEFINES US"}
             </p>
           </Reveal>
@@ -103,7 +103,7 @@ export default function About() {
       {/* NOS ENGAGEMENTS. Des faits verifiables, pas des slogans. */}
       <section className="max-w-7xl mx-auto px-6 lg:px-8 py-24">
         <Reveal>
-          <p className="font-data text-[11px] font-semibold uppercase tracking-[0.24em] text-nova-texte mb-5 flex items-center gap-2">
+          <p className="sur-titre mb-5 flex items-center gap-2">
             <span className="inline-block w-8 h-px bg-nova" /> {isFr ? "NOS ENGAGEMENTS" : "OUR COMMITMENTS"}
           </p>
         </Reveal>
