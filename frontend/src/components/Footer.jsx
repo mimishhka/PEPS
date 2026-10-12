@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
-import { FnMark, Wordmark, NovaSpark } from "./brand";
+import { FnMark, Wordmark } from "./brand";
 
 const FALLBACK_COLS = [
   // Les raccourcis par catégorie ont été retirés : leurs libellés décrivaient
@@ -85,11 +85,6 @@ export default function Footer() {
       ? "En accédant à ce site, vous confirmez être un chercheur qualifié et assumez l'entière responsabilité de la manipulation, du stockage et de l'élimination de ces composés, conformément à toutes les réglementations provinciales et fédérales applicables."
       : "By accessing this website you confirm you are a qualified researcher and assume full responsibility for the proper handling, storage, and disposal of these compounds in accordance with all applicable provincial and federal regulations.";
 
-  const badges =
-    lang === "fr"
-      ? ["Usage recherche uniquement", "Âge vérifié 19+", "Loi 25 / PIPEDA"]
-      : ["For Research Use Only", "19+ Age Verified", "Loi 25 / PIPEDA"];
-
   return (
     <footer className="mt-28" data-testid="footer">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
@@ -108,15 +103,28 @@ export default function Footer() {
           <p className="relative mt-6 font-data text-[11px] uppercase tracking-[0.18em] text-glacier max-w-3xl leading-relaxed">
             {confirmText}
           </p>
-          <div className="relative mt-8 flex flex-wrap gap-3">
-            {badges.map((b) => (
-              <span key={b} className="cbadge !border-nova/50 !text-nova-texte"><NovaSpark size={11} /> {b}</span>
-            ))}
-          </div>
+          {/* LES TROIS PASTILLES SONT PARTIES, a sa demande du 11/10/2026.
+              « Usage recherche uniquement », « Age verifie 19+ » et « Loi 25 /
+              PIPEDA » redisaient en petit ce que le titre au-dessus dit en
+              gros et ce que la porte d'entree exige deja. Le bandeau de
+              l'en-tete le dit une quatrieme fois sur chaque page.
+              Une mention repetee quatre fois ne rassure plus : elle devient
+              du motif. */}
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 lg:px-8 py-16 grid grid-cols-2 md:grid-cols-4 gap-10">
+      {/* POURQUOI TOUT ETAIT COLLE A GAUCHE.
+          MIREILLE, 11/10/2026 : « pourquoi le contenu montre sur la photo est
+          du cote gauche du site ».
+          La grille declarait QUATRE colonnes quoi qu'il arrive : le bloc de
+          marque en occupait deux, et les colonnes de liens le reste. Mais
+          `columns` vient de `/menus` et n'en rend pas forcement deux — avec
+          une seule, le quart droit de la page restait vide, et toute la page
+          paraissait poussee vers la gauche.
+          Le nombre de colonnes suit donc desormais ce qu'il y a a mettre
+          dedans. */}
+      <div className={`max-w-7xl mx-auto px-6 lg:px-8 py-16 grid grid-cols-2 gap-10 ${
+        columns.length >= 2 ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
         <div className="col-span-2">
           <div className="flex items-center gap-3">
             <FnMark size={30} frame="#0B2E4F" spark="#00B8D4" />

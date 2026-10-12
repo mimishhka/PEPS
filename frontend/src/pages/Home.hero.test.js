@@ -106,3 +106,92 @@ describe("tout le texte du hero va dans le même sens", () => {
     expect(SOURCE).not.toMatch(/text-white\/70/);
   });
 });
+
+describe("le bloc de preuve, après les produits en vedette", () => {
+  /* MIREILLE, 11/10/2026 : « regarde ce site après les produits en vedette,
+   * est-ce qu'on peut avoir quelque chose de similaire ».
+   *
+   * Align pose là un bloc « QUALITY ASSURANCE — The paperwork ships with
+   * it », dont la phrase dit tout : la qualité se démontre par l'analyse, la
+   * traçabilité et les certificats, « not implied outcomes or marketing
+   * language ». C'est la position qu'elle tient depuis le début, et elle
+   * n'était écrite nulle part sur son site.
+   *
+   * CE QUE CE FILET PROTÈGE : que le bloc ROUTE vers ce qui se vérifie au
+   * lieu de promettre. Un bloc « assurance qualité » est exactement l'endroit
+   * où une phrase d'effet se glisse — et il perdrait alors tout son sens. */
+
+  /* LES COMMENTAIRES SONT RETIRÉS AVANT LE FILTRAGE, et ce n'est pas du
+   * confort. Le premier jet lisait la source brute, et le filtre a attrapé
+   * le mot « garantir » — dans MON PROPRE commentaire expliquant pourquoi je
+   * n'invente pas de chiffre. Un filtre qui lit ce que personne ne voit
+   * signale des défauts qui n'existent pas, et on finit par l'assouplir
+   * jusqu'à ce qu'il ne serve plus à rien. */
+  const sansCommentaires = (t) =>
+    t.replace(/\{\/\*[\s\S]*?\*\/\}/g, " ").replace(/\/\*[\s\S]*?\*\//g, " ");
+
+  const preuve = () => {
+    const i = SOURCE.indexOf('data-testid="preuve-section"');
+    expect(i).toBeGreaterThan(-1);
+    return sansCommentaires(SOURCE.slice(i, SOURCE.indexOf('data-testid="newsletter-section"')));
+  };
+
+  test("il vient APRÈS les vedettes et AVANT l'infolettre", () => {
+    const vedettes = SOURCE.indexOf('data-testid="featured-products"');
+    const bloc = SOURCE.indexOf('data-testid="preuve-section"');
+    const infolettre = SOURCE.indexOf('data-testid="newsletter-section"');
+    expect(vedettes).toBeLessThan(bloc);
+    expect(bloc).toBeLessThan(infolettre);
+  });
+
+  test("IL ROUTE VERS LA PREUVE au lieu de la promettre", () => {
+    expect(preuve()).toContain('to="/certificats"');
+    expect(preuve()).toContain('to="/lab"');
+  });
+
+  test("et il ne promet aucun effet", () => {
+    const interdits = [/bienfait/i, /efficacit/i, /thérapeut/i, /traitement/i,
+                       /dose/i, /guéri/i, /meilleur/i, /garanti/i];
+    for (const motif of interdits) expect(preuve()).not.toMatch(motif);
+  });
+
+  test("AUCUN CHIFFRE INVENTÉ sur un bloc qui parle de preuve", () => {
+    /* Align affiche « 25 composés ». Je n'ai aucun nombre que je puisse
+     * affirmer sans le calculer — et un chiffre faux, ICI précisément,
+     * détruirait ce que le bloc est censé établir.
+     *
+     * Le premier jet cherchait un nombre entre deux chevrons. Il ne voyait
+     * pas « 25 composés analysés », parce que du texte suit les chiffres :
+     * la mutation de contrôle est passée sans rien casser. Il lit maintenant
+     * les PHRASES — les chaînes porteuses de texte visible — et refuse le
+     * moindre chiffre dedans.
+     *
+     * Si un nombre devient un jour légitime ici, ce test tombera et forcera
+     * une décision consciente. C'est le but. */
+    /* On retire les attributs de présentation AVANT d'extraire les phrases.
+     * Essayer de reconnaître une classe par son allure ne marche pas :
+     * « max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 » contient des espaces et des
+     * chiffres, et il a fait tomber le test. Il est plus sûr de couper ce
+     * qui ne peut pas être du texte visible. */
+    const sansPresentation = preuve()
+      .replace(/className=\{`[^`]*`\}/g, " ")
+      .replace(/className="[^"]*"/g, " ")
+      .replace(/style=\{\{[^}]*\}\}/g, " ")
+      .replace(/data-testid=\{?[`"][^`"]*[`"]\}?/g, " ");
+
+    const phrases = (sansPresentation.match(/"[^"]{12,}"/g) || [])
+      .map((x) => x.slice(1, -1))
+      .filter((x) => x.includes(" "));
+    expect(phrases.length).toBeGreaterThan(4);
+    for (const phrase of phrases) {
+      expect(phrase).not.toMatch(/\d/);
+    }
+  });
+
+  test("son texte clair ne s'inverse pas la nuit", () => {
+    // Le panneau est en marine codé en dur : mêmes jetons stables que le
+    // hero, pour la même raison.
+    expect(preuve()).toContain("--sur-voile-accent");
+    expect(preuve()).toContain("--sur-voile-doux");
+  });
+});

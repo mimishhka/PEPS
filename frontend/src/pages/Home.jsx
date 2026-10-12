@@ -233,6 +233,81 @@ export default function Home() {
         </div>
       </section>
 
+      {/* LA PREUVE PART AVEC LE COLIS.
+          MIREILLE, 11/10/2026 : « regarde ce site après les produits en
+          vedette, est-ce qu'on peut avoir quelque chose de similaire ».
+          Align pose à cet endroit un bloc « QUALITY ASSURANCE — The paperwork
+          ships with it », dont la phrase dit tout : la qualité se démontre
+          par l'analyse, la traçabilité et les certificats, « not implied
+          outcomes or marketing language ».
+          C'est exactement la position qu'elle tient depuis le début, et elle
+          n'était écrite nulle part. Ce bloc ne promet rien : il ROUTE vers ce
+          qui se vérifie — la page qui explique un certificat, et le
+          laboratoire où l'on contrôle un lot. */}
+      <section className="py-20 lg:py-28" data-testid="preuve-section">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-[1.15fr_.85fr] gap-5 lg:gap-6 items-stretch">
+
+            <div className="bg-nordfjord text-clinical p-8 sm:p-10 lg:p-12 flex flex-col"
+                 style={{ borderRadius: "var(--r-l)" }} data-testid="preuve-panneau">
+              <p className="font-data text-[10px] uppercase tracking-[0.24em] mb-4"
+                 style={{ color: "var(--sur-voile-accent)" }}>
+                {lang === "fr" ? "ASSURANCE QUALITÉ" : "QUALITY ASSURANCE"}
+              </p>
+              <h2 className="font-display font-semibold leading-[1.12] tracking-[-0.01em] max-w-[18ch]"
+                  style={{ fontSize: "clamp(26px,3.2vw,36px)" }}>
+                {lang === "fr" ? "Le certificat part avec le colis." : "The certificate ships with the parcel."}
+              </h2>
+              <p className="mt-5 text-[15px] leading-relaxed max-w-[46ch]"
+                 style={{ color: "var(--sur-voile-doux)" }}>
+                {lang === "fr"
+                  ? "La qualité se démontre par l'analyse, la traçabilité et les certificats de lot — pas par des promesses ni du vocabulaire publicitaire."
+                  : "Quality is demonstrated through testing, traceability and batch certificates — not through promises or marketing language."}
+              </p>
+              <div className="mt-8 flex flex-wrap items-center gap-4">
+                <Link to="/certificats" data-testid="preuve-vers-certificats"
+                      className="inline-flex items-center gap-2 bg-white text-nordfjord text-[13px] font-medium tracking-[0.04em] px-6 py-3 hover:bg-nova hover:text-white transition-colors"
+                      style={{ borderRadius: "var(--r-m)" }}>
+                  {lang === "fr" ? "Lire un certificat" : "Read a certificate"}
+                </Link>
+                <Link to="/lab" data-testid="preuve-vers-lab"
+                      className="text-[13px] hover:text-nova transition-colors"
+                      style={{ color: "var(--sur-voile-doux)" }}>
+                  {lang === "fr" ? "Vérifier un lot →" : "Check a lot →"}
+                </Link>
+              </div>
+            </div>
+
+            {/* LES TROIS FAITS, ET AUCUN CHIFFRE INVENTÉ. Align affiche
+                « 25 composés » ; je n'ai pas de nombre que je puisse garantir
+                sans le calculer, et un chiffre faux sur un bloc qui parle de
+                preuve serait pire que pas de chiffre du tout. */}
+            <div className="border border-ash bg-white p-8 sm:p-10 flex flex-col justify-center"
+                 style={{ borderRadius: "var(--r-l)" }} data-testid="preuve-faits">
+              <p className="font-data text-[10px] uppercase tracking-[0.24em] text-nova-texte mb-6">
+                {lang === "fr" ? "CE QUI EST VÉRIFIABLE" : "WHAT CAN BE CHECKED"}
+              </p>
+              <dl className="space-y-5">
+                {(lang === "fr"
+                  ? [["Laboratoire indépendant", "Chaque lot est analysé par un tiers, qui n'achète ni ne vend la matière."],
+                     ["LC-MS/MS", "Séparation et identification dans la même analyse, deux fragments suivis."],
+                     ["Lot par lot", "Un certificat ne vaut que pour le lot qu'il nomme. Le numéro figure sur le flacon."]]
+                  : [["Independent laboratory", "Every batch is tested by a third party that neither buys nor sells the material."],
+                     ["LC-MS/MS", "Separation and identification in one analysis, two fragments tracked."],
+                     ["Batch by batch", "A certificate holds only for the batch it names. The number is on the vial."]]
+                ).map(([titre, detail]) => (
+                  <div key={titre}>
+                    <dt className="font-display font-semibold text-[15px] text-nordfjord">{titre}</dt>
+                    <dd className="text-[13.5px] text-glacier leading-relaxed mt-1 max-w-[42ch]">{detail}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
       {/* INFOLETTRE : section claire a filet : une page, un theme. Le
           bandeau sombre isole etait une rupture de theme que le skill
           interdit ; le contenu, lui, ne change pas. */}
@@ -261,20 +336,21 @@ export default function Home() {
                       data-testid="newsletter-submit">{t("home.subscribe")}</button>
                   </div>
                 </div>
-                {/* LA CASE DE CONSENTEMENT EST UNE CASE, PAS UN DÉTAIL.
-                    Audit, section 1 : les cibles sous 44 px font rater le
-                    tap. 16 px de côté, c'était la plus petite du site — et
-                    c'est la case qui décide si l'infolettre part ou non.
-                    Elle passe à 24 px (`accent-color` la peint, donc elle
-                    grandit sans se déformer), et le `<label>` l'englobe
-                    déjà : toute la ligne de texte est cliquable, ce qui
-                    donne une rangée de 44 px de haut sur toute sa largeur.
-                    `items-center` plutôt que `items-start` : à 24 px, une
-                    case alignée sur le haut d'un texte de deux lignes
-                    flottait au-dessus de lui. */}
-                <label className="flex items-center gap-3 py-1.5 text-[12px] text-glacier cursor-pointer select-none">
+                {/* LA CASE DE CONSENTEMENT : 18 PX, ET LA LIGNE ENTIÈRE RESTE
+                    CLIQUABLE.
+                    Elle faisait 16 px, puis je l'ai portée à 24 pour tenir la
+                    cible tactile de l'audit. MIREILLE, 11/10/2026 : « la case
+                    à cocher de l'infolettre est trop grosse ». Elle a raison :
+                    à 24 px, la case pesait plus lourd que la phrase de
+                    consentement qu'elle accompagne — un contrôle secondaire
+                    qui crie plus fort que son propre libellé.
+                    La cible tactile n'est pas perdue pour autant : le
+                    `<label>` englobe la case ET le texte, donc toute la
+                    rangée reste cliquable sur sa largeur. C'est le texte qui
+                    porte la surface, pas la case. */}
+                <label className="flex items-center gap-3 py-2 text-[12px] text-glacier cursor-pointer select-none">
                   <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
-                    className="shrink-0 accent-[#00B8D4] w-6 h-6" data-testid="newsletter-consent" />
+                    className="shrink-0 accent-[#00B8D4] w-[18px] h-[18px]" data-testid="newsletter-consent" />
                   {t("home.newsletterConsent")}
                 </label>
               </form>

@@ -110,6 +110,39 @@ describe("les liens du pied de page", () => {
     for (const lien of liens) expect(lien).toMatch(/\bblock\b/);
   });
 
+  test("LES TROIS PASTILLES DE CONFORMITÉ SONT PARTIES", () => {
+    /* MIREILLE, 11/10/2026 : « remove For Research Use Only / 19+ Age
+     * Verified / Loi 25 / PIPEDA ».
+     *
+     * Elles redisaient en petit ce que le titre juste au-dessus dit en gros,
+     * ce que la porte d'entrée exige déjà, et ce que le bandeau de l'en-tête
+     * répète sur chaque page. Une mention affichée quatre fois ne rassure
+     * plus : elle devient du motif. */
+    /* On lit la source SANS SES COMMENTAIRES. C'est la troisième fois
+     * aujourd'hui qu'un test lisant du code se fait piéger par la prose qui
+     * explique la correction : le commentaire ci-dessus nomme forcément les
+     * pastilles qu'il vient de retirer. */
+    const code = SOURCE.replace(/\{\/\*[\s\S]*?\*\/\}/g, " ")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      // Le point ne franchit pas une fin de ligne sans le drapeau « s » :
+      // inutile d'écrire la classe négative, qui a justement cassé ce
+      // fichier en traversant les couches d'échappement.
+      .replace(/\/\/.*/g, " ");
+    expect(code).not.toMatch(/19\+ Age Verified/);
+    expect(code).not.toMatch(/Âge vérifié 19\+/);
+    expect(code).not.toMatch(/PIPEDA/);
+    expect(code).not.toMatch(/const badges/);
+  });
+
+  test("LA GRILLE DU PIED DE PAGE SUIT LE NOMBRE DE COLONNES", () => {
+    /* MIREILLE : « pourquoi le contenu montré sur la photo est du côté
+     * gauche du site ». La grille déclarait QUATRE colonnes quoi qu'il
+     * arrive : avec une seule colonne de liens, le quart droit restait vide
+     * et toute la page paraissait poussée à gauche. */
+    expect(SOURCE).toMatch(/columns\.length >= 2/);
+    expect(SOURCE).not.toMatch(/grid grid-cols-2 md:grid-cols-4 gap-10/);
+  });
+
   test("l'écart vertical ne se cumule plus avec la marge des rangées", () => {
     // `space-y-2.5` par-dessus `py-3` aurait fait un pied de page à rallonge
     // pour rien : la respiration vient désormais des rangées elles-mêmes.
@@ -139,11 +172,25 @@ describe("la case de consentement de l'infolettre", () => {
     expect(champ).toMatch(/type="checkbox"/);
   });
 
-  test("elle fait 24 px de côté, pas 16", () => {
-    // La plus petite cible du site, et c'est elle qui décide si
-    // l'infolettre part. `w-6 h-6` = 24 px dans l'échelle de Tailwind.
-    expect(champ).toMatch(/\bw-6\b/);
-    expect(champ).toMatch(/\bh-6\b/);
+  test("elle fait 18 px, et la ligne entière porte la cible", () => {
+    /* Elle faisait 16 px, puis 24 pour tenir la cible tactile de l'audit.
+     * MIREILLE, 11/10/2026 : « la case à cocher de l'infolettre est trop
+     * grosse ». À 24 px, la case pesait plus lourd que la phrase de
+     * consentement qu'elle accompagne — un contrôle secondaire qui crie plus
+     * fort que son propre libellé.
+     *
+     * La cible tactile n'est pas perdue : le `<label>` englobe la case ET le
+     * texte, donc toute la rangée reste cliquable sur sa largeur. C'est ce
+     * que ce test vérifie vraiment — la taille seule ne dirait rien. */
+    expect(champ).toMatch(/w-\[18px\]/);
+    expect(champ).toMatch(/h-\[18px\]/);
+
+    const avant = SOURCE.slice(
+      Math.max(0, SOURCE.indexOf("newsletter-consent") - 700),
+      SOURCE.indexOf("newsletter-consent"),
+    );
+    expect(avant).toContain("<label");
+    expect(avant).toMatch(/cursor-pointer/);
   });
 
   test("le plancher de 16 px ne vient pas la déformer", () => {
