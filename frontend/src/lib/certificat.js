@@ -32,7 +32,42 @@ export const GHK = {
 export const RET = {
   compose: "Retatrutide",
   lot: "FN-ELBCJ",
+  rapport: "COA-2026-SC-01690",
+  labo: "RET-394",
+  analyse: { fr: "27 août 2026", en: "27 August 2026" },
   masse: { fr: "4731,3 g/mol", en: "4731.3 g/mol" },
   ion: "[M+5H]5+",
   mz: { fr: "947,90 Da", en: "947.90 Da" },
+
+  /* LES PIECES REELLES DE CE LOT, produites par
+   * `scripts/certificats_exemples.py` depuis le PDF du laboratoire :
+   *
+   *   `fiole`   la PHOTOGRAPHIE prise par le laboratoire — etiquette
+   *             holographique, logo, « LOT FN-ELBCJ » imprime en bas ;
+   *   `extrait` une bande CONTINUE du rapport, de l'identification de
+   *             l'echantillon au tableau des resultats ;
+   *   `lot`     la meme bande, resserree sur la colonne qui porte le numero,
+   *             pour les ecrans ou la large tomberait a sept pixels de haut ;
+   *   `pdf`     le rapport entier, telechargeable.
+   */
+  pieces: {
+    fiole: "/certificats/ret-394-fiole.webp",
+    extrait: "/certificats/ret-394-extrait.webp",
+    lotEtroit: "/certificats/ret-394-lot.webp",
+    pdf: "/certificats/ret-394.pdf",
+  },
 };
+
+/* POURQUOI C'EST LE LOT DE RETATRUTIDE QUI PASSE A L'ACCUEIL, ET PAS CELUI DE
+ * GHK-Cu, alors que toute la page /certificats s'appuie sur le second.
+ *
+ * La section d'accueil repose sur UNE seule affirmation : le numero imprime
+ * sur l'etiquette est celui qui ouvre le rapport. Sur le document GHK, la
+ * photographie de l'echantillon montre « LOT FN-5UJ92 » tandis que le rapport
+ * declare « FN-OLW8W ». Les deux ne concordent pas.
+ *
+ * Quelle que soit l'explication — a demander au laboratoire —, publier ce
+ * document-la sous cette phrase-la detruirait exactement ce qu'elle etablit :
+ * le premier lecteur attentif verrait deux numeros differents. Le lot
+ * FN-ELBCJ, lui, concorde sur les deux pieces.
+ */

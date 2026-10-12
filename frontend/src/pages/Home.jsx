@@ -7,7 +7,7 @@ import { useLang } from "../contexts/LanguageContext";
 import { useSiteConfig } from "../contexts/SiteConfigContext";
 import ProductCard from "../components/ProductCard.jsx";
 import { MolecularMesh, NovaSpark, Reveal } from "../components/brand";
-import { GHK } from "../lib/certificat";
+import { RET } from "../lib/certificat";
 import ProductImage from "../components/ProductImage";
 import { TAILLES } from "../lib/derivees";
 
@@ -238,137 +238,132 @@ export default function Home() {
         </div>
       </section>
 
-      {/* LA PREUVE PART AVEC LE COLIS.
-          MIREILLE, 11/10/2026 : « regarde ce site après les produits en
-          vedette, est-ce qu'on peut avoir quelque chose de similaire ».
-          Align pose à cet endroit un bloc « QUALITY ASSURANCE — The paperwork
-          ships with it », dont la phrase dit tout : la qualité se démontre
-          par l'analyse, la traçabilité et les certificats, « not implied
-          outcomes or marketing language ».
-          C'est exactement la position qu'elle tient depuis le début, et elle
-          n'était écrite nulle part. Ce bloc ne promet rien : il ROUTE vers ce
-          qui se vérifie — la page qui explique un certificat, et le
-          laboratoire où l'on contrôle un lot. */}
-      <section className="py-20 lg:py-28" data-testid="preuve-section">
-        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-[1.15fr_.85fr] gap-5 lg:gap-6 items-stretch">
+      {/* DEUX OBJETS RÉELS, UN SEUL NUMÉRO.
+          MIREILLE, 12/10/2026 : « le design laisse à désirer, je crois que ça
+          prend de vraies images et autre chose ».
 
-            <div className="relative overflow-hidden bg-nordfjord text-clinical p-8 sm:p-10 lg:p-12 flex flex-col"
-                 style={{ borderRadius: "var(--r-l)" }} data-testid="preuve-panneau">
-              {/* La maille de la marque, comme sur le hero sans photo : elle
-                  donne de la profondeur au panneau sans rien raconter. */}
-              <MolecularMesh opacity={0.22} animated={false} />
-              {/* ÉCRIT DANS SES MOTS, PAS DANS CEUX D'ALIGN.
-                  La première version de ce bloc était une traduction : leur
-                  « QUALITY ASSURANCE » devenait « ASSURANCE QUALITÉ », leur
-                  « The paperwork ships with it » devenait « Le certificat
-                  part avec le colis », et leur phrase sur « not implied
-                  outcomes or marketing language » passait en français presque
-                  mot pour mot.
-                  MIREILLE, 11/10/2026 : « pourquoi tu as reproduit mot à mot
-                  ce qui était sur la page d'Align ». Aucune bonne raison —
-                  et je lui avais explique deux heures plus tôt pourquoi on ne
-                  copiait pas le texte d'un autre site.
-                  Ce qu'on garde d'eux est la POSITION dans la page et le
-                  principe : router vers la preuve au lieu de la promettre.
-                  Les mots sont les siens, et ils disent quelque chose
-                  qu'eux ne disent pas — le numéro de lot, qui est ce qui
-                  relie le papier au flacon. */}
-              <p className="relative etiquette mb-4"
-                 style={{ color: "var(--sur-voile-accent)" }}>
-                {lang === "fr" ? "CHAQUE LOT, SON RAPPORT" : "EVERY BATCH, ITS REPORT"}
-              </p>
-              <h2 className="relative font-display font-semibold leading-[1.12] tracking-[-0.01em] max-w-[20ch]"
-                  style={{ fontSize: "clamp(26px,3.2vw,36px)" }}>
-                {lang === "fr" ? "Un numéro sur le flacon, un rapport qui lui répond." : "A number on the vial, a report that answers to it."}
-              </h2>
-              <p className="relative mt-5 text-[15px] leading-relaxed max-w-[48ch]"
-                 style={{ color: "var(--sur-voile-doux)" }}>
+          Elle a raison, et sa propre DESIGN.md le disait déjà : « la
+          photographie porte la page, le texte murmure », et « sans photo
+          disponible, le repli est la maille moléculaire de la marque, JAMAIS
+          un bloc de texte décoré ». La version précédente était exactement ce
+          bloc décoré — une feuille de certificat DESSINÉE en HTML, avec un
+          chromatogramme inventé au tracé.
+
+          LES VRAIES PIÈCES ÉTAIENT DANS SES PDF DEPUIS LE DÉBUT : une
+          photographie de sa fiole prise par le laboratoire, étiquette
+          holographique et numéro de lot imprimé, et le corps du rapport
+          lui-même. Elles sortent maintenant par
+          `scripts/certificats_exemples.py`.
+
+          CE QUE LA SECTION AFFIRME TIENT EN UNE LIGNE, et les deux images la
+          prouvent sans qu'on ait à y croire : « FN-ELBCJ » est lisible sur
+          l'étiquette ET dans le rapport. Aucun effet, aucune promesse —
+          le lecteur compare deux chaînes de caractères.
+
+          Le panneau marine a disparu avec la feuille dessinée : DESIGN.md
+          demande « un filet plutôt qu'une carte chaque fois que c'est
+          possible », et l'étiquette au-dessus du titre est partie avec lui —
+          le plancher de qualité l'interdit sans exception. */}
+      <section className="border-y border-ash py-20 lg:py-28" data-testid="preuve-section">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
+          {/* PROPORTIONS MESURÉES, PAS DEVINÉES. Un premier jet donnait `30ch`
+              à la colonne de texte : elle rendait 195 px sur un écran de
+              1280, et le titre se cassait en trois lignes courtes. À 1 fr
+              contre 2 fr elle fait 384 px — la mesure de lecture du corps —
+              et le document garde 475 px, soit 0,6 de son échelle native.
+              `items-center` et non `items-end` : la figure fait trois fois la
+              hauteur du texte, et l'aligner par le bas laissait 480 px de
+              vide au-dessus. */}
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_2fr] gap-10 lg:gap-16 items-center">
+
+            <div>
+              <h2 className="titre-section text-nordfjord max-w-[24ch]">
                 {lang === "fr"
-                  ? "Nous n'avons rien à vous dire sur ce que font ces composés. Nous avons un rapport de laboratoire par lot, le numéro de ce lot sur l'étiquette, et de quoi vérifier que les deux concordent."
-                  : "We have nothing to tell you about what these compounds do. We have one laboratory report per batch, that batch number on the label, and a way to check the two match."}
+                  ? "Le même numéro, sur le flacon et dans le rapport."
+                  : "The same number, on the vial and in the report."}
+              </h2>
+              <p className="mt-5 text-[15px] leading-relaxed text-glacier max-w-[46ch]">
+                {lang === "fr"
+                  ? "Chaque lot part avec son analyse. Nous ne disons rien de ce que font ces composés : nous montrons ce que le laboratoire a mesuré, et vous pouvez le lire ligne par ligne."
+                  : "Every batch ships with its analysis. We say nothing about what these compounds do: we show what the laboratory measured, and you can read it line by line."}
               </p>
-              <div className="relative mt-8 flex flex-wrap items-center gap-4">
+
+              <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
                 <Link to="/certificats" data-testid="preuve-vers-certificats"
-                      className="inline-flex items-center gap-2 bg-white text-nordfjord text-[13px] font-medium tracking-[0.04em] px-6 py-3 hover:bg-nova hover:text-white transition-colors"
-                      style={{ borderRadius: "var(--r-m)" }}>
-                  {lang === "fr" ? "Lire un certificat" : "Read a certificate"}
+                      className="text-[14px] font-medium text-nordfjord border-b border-nova pb-0.5 hover:text-nova-texte transition-colors">
+                  {lang === "fr" ? "Comment lire un certificat" : "How to read a certificate"}
                 </Link>
-                {/* CE LIEN NE S'AFFICHE QUE SI LA PAGE EXISTE. /lab est
-                    servie derrière COA_PAGE_ENABLED, et la route renvoie à
-                    l'accueil quand le drapeau est à `false` : un lien visible
-                    vers une page qui ramène à celle qu'on quitte est pire
-                    qu'un lien absent. */}
+                <a href={RET.pieces.pdf} download data-testid="preuve-vers-pdf"
+                   className="text-[14px] text-glacier hover:text-nordfjord transition-colors">
+                  {lang === "fr" ? "Le rapport de ce lot (PDF)" : "This batch's report (PDF)"}
+                </a>
+                {/* CE LIEN N'APPARAÎT QUE SI LA PAGE EXISTE. /lab est servie
+                    derrière COA_PAGE_ENABLED, et la route renvoie à l'accueil
+                    quand le drapeau est à `false` : un lien visible vers une
+                    page qui ramène à celle qu'on quitte est pire qu'un lien
+                    absent. */}
                 {coaPageEnabled && (
                   <Link to="/lab" data-testid="preuve-vers-lab"
-                        className="text-[13px] hover:text-nova transition-colors"
-                        style={{ color: "var(--sur-voile-doux)" }}>
-                    {lang === "fr" ? "Vérifier un lot →" : "Check a lot →"}
+                        className="text-[14px] text-glacier hover:text-nordfjord transition-colors">
+                    {lang === "fr" ? "Vérifier un lot" : "Check a batch"}
                   </Link>
                 )}
               </div>
             </div>
 
-            {/* L'IMAGE QUI MANQUAIT ÉTAIT SOUS MON NEZ : LE CERTIFICAT.
-                MIREILLE, 11/10/2026 : « pourquoi le design est simpliste.
-                zéro image, zéro beauté, rien qu'un bloc ». Le panneau de
-                droite était une liste à puces dans un cadre blanc.
-                Elle a raison, et la réponse n'était pas d'aller chercher une
-                photo : le document EST l'objet dont le bloc parle. Deux
-                feuilles empilées, légèrement décalées — une par lot —, avec
-                les vrais chiffres du lot FN-OLW8W et sa trace
-                chromatographique. Rien n'est inventé, rien n'est promis, et
-                l'objet se regarde.
-                `aria-hidden` : les mêmes chiffres se lisent en toutes lettres
-                sur /certificats, et une feuille décorative n'a pas à être
-                épelée par un lecteur d'écran. */}
-            <div className="relative flex items-center justify-center py-6 lg:py-0"
-                 data-testid="preuve-certificat" aria-hidden="true">
-
-              <div className="absolute w-[82%] max-w-[300px] h-[86%] bg-white border border-ash"
-                   style={{ borderRadius: "var(--r-m)", transform: "rotate(-5deg) translate(-10px, 8px)", opacity: 0.55 }} />
-              <div className="absolute w-[84%] max-w-[310px] h-[90%] bg-white border border-ash"
-                   style={{ borderRadius: "var(--r-m)", transform: "rotate(-2.5deg) translate(-4px, 4px)", opacity: 0.8 }} />
-
-              <div className="relative w-[88%] max-w-[324px] bg-white border border-ash overflow-hidden"
-                   style={{ borderRadius: "var(--r-m)", boxShadow: "var(--ombre)" }}>
-                <div className="bg-nordfjord px-4 py-3 flex items-center justify-between gap-3">
-                  <span className="etiquette text-clinical/80">
-                    {lang === "fr" ? "Certificat d'analyse" : "Certificate of analysis"}
-                  </span>
-                  <NovaSpark size={11} />
-                </div>
-
-                <div className="px-4 pt-4 pb-1">
-                  <div className="etiquette text-compliance">
-                    {lang === "fr" ? "Numéro de lot" : "Lot number"}
-                  </div>
-                  <div className="font-display text-[22px] font-bold text-nordfjord tracking-[-0.01em] leading-none mt-1">
-                    {GHK.lot}
-                  </div>
-                </div>
-
-                <svg viewBox="0 0 300 58" className="w-full h-auto px-4 mt-3" aria-hidden="true">
-                  <line x1="2" y1="50" x2="298" y2="50" stroke="currentColor" strokeWidth="0.5" className="text-ash" />
-                  <path d="M2 50 L46 49 L54 8 L62 49 L140 48 L152 39 L162 48 L240 47 L254 42 L264 47 L298 46"
-                        fill="none" stroke="currentColor" strokeWidth="1.2" className="text-nova-texte" />
-                  <path d="M46 49 L54 8 L62 49 Z" fill="currentColor" className="text-nova" opacity="0.22" />
-                </svg>
-
-                <dl className="px-4 pb-4 pt-2">
-                  {[
-                    [lang === "fr" ? "Pureté" : "Purity", lang === "fr" ? GHK.purete.res.fr : GHK.purete.res.en],
-                    [lang === "fr" ? "Teneur nette" : "Net content", lang === "fr" ? GHK.teneur.res.fr : GHK.teneur.res.en],
-                    [lang === "fr" ? "Identité" : "Identity", lang === "fr" ? "Confirmée" : "Confirmed"],
-                  ].map(([k, v]) => (
-                    <div key={k} className="flex items-baseline justify-between gap-4 py-1.5 border-b border-ash last:border-0">
-                      <dt className="etiquette text-glacier">{k}</dt>
-                      <dd className="font-data text-[11px] text-nordfjord">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
+            {/* LES DEUX PIÈCES, CÔTE À CÔTE ET À LA MÊME BASE.
+                Rien n'est dessiné ici : la photographie vient du laboratoire,
+                la bande de rapport est une découpe CONTINUE du PDF. Deux
+                fragments recollés feraient un montage ; une bande continue
+                reste une page.
+                L'EXTRAIT LARGE NE DESCEND PAS SOUS `lg`. À 340 px il
+                tomberait à 0,4 de son échelle et son texte à sept pixels — un
+                document illisible n'est pas une preuve, c'est une texture. La
+                version resserrée sur la colonne du numéro prend le relais.
+                ET ELLE EST PLAFONNÉE À SA TAILLE RÉELLE : étirée à 537 px
+                depuis 392 natifs, elle devenait floue ET son texte passait
+                au-dessus des titres de la page. Un document agrandi cesse
+                d'être un document. */}
+            <figure className="m-0" data-testid="preuve-objets">
+              <div className="flex flex-col sm:flex-row sm:items-end gap-6 sm:gap-7 lg:gap-9">
+                <img
+                  src={RET.pieces.fiole}
+                  width="375"
+                  height="500"
+                  loading="lazy"
+                  decoding="async"
+                  className="w-[56%] max-w-[210px] sm:w-[34%] sm:max-w-[240px] lg:max-w-[260px] h-auto shrink-0"
+                  alt={lang === "fr"
+                    ? `Fiole de ${RET.compose} photographiée par le laboratoire : étiquette FIRONOVA, numéro de lot ${RET.lot} imprimé au bas de l'étiquette.`
+                    : `Vial of ${RET.compose} photographed by the laboratory: FIRONOVA label, batch number ${RET.lot} printed at the foot of the label.`}
+                />
+                <img
+                  src={RET.pieces.extrait}
+                  width="830"
+                  height="700"
+                  loading="lazy"
+                  decoding="async"
+                  className="hidden lg:block w-full h-auto border border-ash"
+                  alt={lang === "fr"
+                    ? `Extrait du certificat d'analyse ${RET.rapport} : identification de l'échantillon, numéro de lot ${RET.lot}, et tableau des résultats mesurés.`
+                    : `Extract from certificate of analysis ${RET.rapport}: sample identification, batch number ${RET.lot}, and the table of measured results.`}
+                />
+                <img
+                  src={RET.pieces.lotEtroit}
+                  width="392"
+                  height="272"
+                  loading="lazy"
+                  decoding="async"
+                  className="lg:hidden w-full max-w-[392px] h-auto border border-ash"
+                  alt={lang === "fr"
+                    ? `Extrait du certificat d'analyse ${RET.rapport} : identification de l'échantillon et numéro de lot ${RET.lot}.`
+                    : `Extract from certificate of analysis ${RET.rapport}: sample identification and batch number ${RET.lot}.`}
+                />
               </div>
-            </div>
+              <figcaption className="etiquette text-compliance mt-5">
+                {RET.compose} · {lang === "fr" ? "lot" : "batch"} {RET.lot} · {RET.rapport} · SideChain Analytics
+              </figcaption>
+            </figure>
 
           </div>
         </div>

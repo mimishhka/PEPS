@@ -33,6 +33,7 @@ USAGE
 
 Le dossier par defaut est le dossier des telechargements.
 """
+import io
 import pathlib
 import sys
 
@@ -58,6 +59,32 @@ A_MASQUER = ("admin@fironova.com",)
 LARGEUR = 1400   # assez pour lire les tableaux en plein ecran
 QUALITE = 82
 
+# LES PIECES DE LA SECTION « PREUVE » DE L'ACCUEIL.
+#
+# DESIGN.md : « la photographie porte la page, le texte murmure » et « sans
+# photo disponible, le repli est la maille moleculaire de la marque, jamais un
+# bloc de texte decore ». La premiere version de cette section etait exactement
+# ce bloc decore : une feuille de certificat DESSINEE en HTML, avec un
+# chromatogramme invente au trace.
+#
+# Les vraies pieces existaient depuis le debut, a l'interieur des PDF :
+#   - une PHOTOGRAPHIE de la fiole, etiquette holographique et numero de lot
+#     lisible, posee sur une paillasse ;
+#   - le corps du rapport lui-meme.
+#
+# LA DECOUPE EST CONTINUE, de « Sample Information » jusqu'au bas du tableau
+# de resultats. Deux fragments recolles donneraient un montage ; une bande
+# continue reste une page.
+#
+# DEUX DECOUPES, parce qu'un extrait de 830 px ne sera JAMAIS lisible sur un
+# telephone. A 340 px d'affichage il tombe a 0,4 de son echelle, et le texte a
+# sept pixels. Un document illisible n'est pas une preuve, c'est une texture.
+# La version etroite ne garde que la colonne de gauche du bloc d'identification
+# -- celle qui porte le numero de lot -- et tient a 0,7 d'echelle.
+EXTRAIT = (70, 440, 900, 1140)   # x0, y0, x1, y1 dans le rendu a 1400 px
+EXTRAIT_ETROIT = (70, 440, 462, 712)
+INDEX_PHOTO = 1                  # la photo de l'echantillon, dans l'ordre du PDF
+
 
 def preparer(source: pathlib.Path) -> int:
     SORTIE.mkdir(parents=True, exist_ok=True)
@@ -74,6 +101,15 @@ def preparer(source: pathlib.Path) -> int:
         for page in doc:
             for motif in A_MASQUER:
                 for rect in page.search_for(motif):
+                    # LE RECTANGLE EST PINCE VERTICALEMENT, et ce n'est pas un
+                    # detail. `apply_redactions` efface TOUT glyphe dont la
+                    # boite touche le rectangle. A pleine hauteur, celui de
+                    # l'adresse mordait sur la ligne du dessus et emportait
+                    # « Fironova Research » avec elle -- or ce nom est ce qui
+                    # rattache le document a l'entreprise. Un certificat dont
+                    # on a efface le destinataire ne prouve plus rien.
+                    rect.y0 += 1.5
+                    rect.y1 -= 1.5
                     page.add_redact_annot(rect, fill=(1, 1, 1))
                     masques += 1
             page.apply_redactions()
@@ -83,13 +119,25 @@ def preparer(source: pathlib.Path) -> int:
         page = doc[0]
         zoom = LARGEUR / page.rect.width
         pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
-        Image.frombytes("RGB", (pix.width, pix.height), pix.samples).save(
-            SORTIE / f"{cle}.webp", "WEBP", quality=QUALITE, method=6,
-        )
+        img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        img.save(SORTIE / f"{cle}.webp", "WEBP", quality=QUALITE, method=6)
+
+        # La bande continue du rapport, pour la section « preuve ».
+        img.crop(EXTRAIT).save(SORTIE / f"{cle}-extrait.webp",
+                               "WEBP", quality=88, method=6)
+        img.crop(EXTRAIT_ETROIT).save(SORTIE / f"{cle}-lot.webp",
+                                      "WEBP", quality=88, method=6)
+
+        # La photographie de la fiole, a sa resolution d'origine : la
+        # reechantillonner ne lui ajouterait rien.
+        photo = doc.extract_image(page.get_images(full=True)[INDEX_PHOTO][0])
+        fiole = Image.open(io.BytesIO(photo["image"])).convert("RGB")
+        fiole.save(SORTIE / f"{cle}-fiole.webp", "WEBP", quality=90, method=6)
 
         poids = (SORTIE / f"{cle}.pdf").stat().st_size / 1024
         print(f"{cle} : {doc.page_count} page(s), {masques} masquage(s), "
-              f"image {pix.width}x{pix.height}, pdf {poids:.0f} ko")
+              f"page {pix.width}x{pix.height}, extrait {img.crop(EXTRAIT).size}, "
+              f"fiole {fiole.size}, pdf {poids:.0f} ko")
         doc.close()
 
     print(f"\nEcrit dans {SORTIE}")
