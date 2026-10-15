@@ -4,6 +4,7 @@ import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
+import { useSiteConfig } from "../contexts/SiteConfigContext";
 import ProductCard from "../components/ProductCard.jsx";
 import { MolecularMesh, NovaSpark, Reveal } from "../components/brand";
 import ProductImage from "../components/ProductImage";
@@ -12,10 +13,12 @@ import { TAILLES } from "../lib/derivees";
 
 export default function Home() {
   const { t, lang } = useLang();
-  // `coaPageEnabled` n'est plus lu ici : l'accueil ne renvoie plus vers /lab
-  // depuis le retrait du bloc de preuve. Seuls Header.jsx, Footer.jsx et la
-  // page des certificats en ont besoin, pour ne pas afficher un lien vers une
-  // route qui ramene a l'accueil quand le drapeau est a `false`.
+  /* LA SECTION « CHAQUE LOT, DOCUMENTE » N'EXISTE QUE SI LA RECHERCHE EXISTE.
+   * Son unique bouton mene a /lab, qui est servie derriere COA_PAGE_ENABLED.
+   * Drapeau a `false` : la route renvoie a l'accueil, et la section devient
+   * une bande marine avec un bouton qui ne fait rien. On ne l'affiche donc
+   * pas du tout plutot que de promettre a moitie. */
+  const { coaPageEnabled } = useSiteConfig();
   const [products, setProducts] = useState([]);
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
@@ -235,6 +238,35 @@ export default function Home() {
         </div>
       </section>
 
+
+      {/* CHAQUE LOT, DOCUMENTE — d'apres sa propre maquette du 15/10/2026.
+          Elle fait un travail que rien d'autre ne fait sur cette page. Le
+          bandeau de confiance dit « nous avons des certificats » ; celle-ci
+          s'adresse a quelqu'un qui tient DEJA un flacon et veut retrouver le
+          sien. C'est la seule chose de l'accueil qui parle a un client
+          existant plutot qu'a un visiteur.
+          Elle remplace un bloc de 603 px qui redisait l'argument du bandeau
+          dans une carte marine, avec une feuille de certificat dessinee a la
+          main. Ici : un titre, une phrase, un bouton. */}
+      {coaPageEnabled && (
+        <section className="bg-nordfjord relative overflow-hidden" data-testid="lot-section">
+          <MolecularMesh opacity={0.18} animated={false} />
+          <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-16 lg:py-20">
+            <h2 className="titre-section max-w-[18ch]" style={{ color: "var(--sur-voile)" }}>
+              {lang === "fr" ? "Chaque lot, documenté." : "Every batch, documented."}
+            </h2>
+            <p className="mt-4 text-[15px] leading-relaxed max-w-[52ch]"
+               style={{ color: "var(--sur-voile-doux)" }}>
+              {lang === "fr"
+                ? "Consultez le certificat d'analyse correspondant au numéro de lot imprimé sur votre flacon."
+                : "Look up the certificate of analysis for the batch number printed on your vial."}
+            </p>
+            <Link to="/lab" data-testid="lot-vers-lab" className="btn-pill btn-nova mt-8 inline-flex">
+              {lang === "fr" ? "Rechercher un lot" : "Look up a batch"}
+            </Link>
+          </div>
+        </section>
+      )}
 
       {/* INFOLETTRE : section claire a filet : une page, un theme. Le
           bandeau sombre isole etait une rupture de theme que le skill

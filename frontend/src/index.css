@@ -246,9 +246,15 @@
 }
 
 /* ---------------------------------------------------------------------------
- * BANDE RUO — mention réglementaire du pied de page.
+ * BANDE RUO — mention réglementaire.
  *
- * Footer.jsx et ComingSoon.jsx portent la classe `fn-ruo`, qui n'était
+ * Le 15/10/2026 elle a quitté le pied de page : elle y disait une TROISIÈME
+ * fois ce que le bandeau d'en-tête et la bande de conformité disaient déjà,
+ * à trente centimètres l'une de l'autre. Seule `ComingSoon.jsx` la porte
+ * désormais — une page sans en-tête ni pied, où la mention n'est dite nulle
+ * part ailleurs.
+ *
+ * Elle n'était d'abord
  * définie que dans un fichier de jetons appartenant à une direction
  * artistique abandonnée — chaude et rouge — que rien n'importait. La mention
  * s'affichait donc sans encadré, sans police de données et sans couleur : un
@@ -453,6 +459,28 @@
     letter-spacing: 0.18em;
   }
 
+  /* LE LIEN DU PIED DE PAGE, ET UNE REGLE TACTILE QUI DEBORDAIT SUR LA SOURIS.
+   *
+   * MIREILLE, 15/10/2026, capture a l'appui : « quand je parle d'espacement je
+   * parle de ceci, c'est mal calibre ».
+   *
+   * Mesure : chaque lien faisait 44 px de haut pour un mot de 14 px, sans
+   * aucun ecart entre eux. Quinze pixels de vide au-dessus et au-dessous de
+   * chaque mot, qui se lisent comme un enorme interligne.
+   *
+   * L'audit du 06/10 avait raison sur le fond : « liens du pied de page,
+   * 17 px de haut, colles -> taps rates, ouverture du mauvais lien ». Mais
+   * j'ai pose `py-3` pour TOUS les pointeurs. Une cible de 44 px est une regle
+   * du DOIGT ; une souris vise au pixel pres et n'en a aucun besoin.
+   *
+   * Meme defaut que le plancher de 16 px sur les champs -- que j'avais su,
+   * lui, borner a `(pointer: coarse)`. La regle est bonne, sa portee etait
+   * fausse. */
+  .lien-pied {
+    display: block;
+    padding-block: 6px;
+  }
+
   /* Boutons — rectangles francs a 4 px, pas de pilule. La forme vient du
      monde « fiche de laboratoire » : un bouton s'aligne sur un formulaire,
      pas sur une capsule marketing. L'etat presse existe, le lancer au
@@ -577,4 +605,22 @@
   select {
     font-size: 16px !important;
   }
+
+  /* LA CIBLE DE 44 PX DU PIED DE PAGE VIT ICI, et pas ailleurs.
+   *
+   * MIREILLE, 15/10/2026, capture a l'appui : « quand je parle d'espacement je
+   * parle de ceci, c'est mal calibre ». Mesure : chaque lien faisait 44 px de
+   * haut pour un mot de 14 px, sans aucun ecart entre eux -- quinze pixels de
+   * vide au-dessus et au-dessous de chaque mot.
+   *
+   * L'audit du 06/10 avait raison sur le fond : « liens du pied de page,
+   * 17 px de haut, colles -> taps rates, ouverture du mauvais lien ». Mais
+   * j'avais pose `py-3` pour TOUS les pointeurs. Une cible de 44 px est une
+   * regle du DOIGT ; une souris vise au pixel pres.
+   *
+   * Exactement le meme defaut que le plancher ci-dessus, dans l'autre sens :
+   * la regle etait bonne, sa portee etait fausse. Elle rejoint donc le seul
+   * bloc tactile du fichier, plutot que d'en ouvrir un second -- deux blocs
+   * `(pointer: coarse)` et le filet du plancher attrapait le mauvais. */
+  .lien-pied { padding-block: 12px; }
 }

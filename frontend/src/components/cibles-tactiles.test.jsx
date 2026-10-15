@@ -105,12 +105,41 @@ describe("les liens du pied de page", () => {
     expect(liens).toHaveLength(2);
   });
 
-  test("chacun porte sa marge de 12 px", () => {
-    for (const lien of liens) expect(lien).toMatch(/\bpy-3\b/);
+  test("chacun porte la classe qui décide de sa cible", () => {
+    for (const lien of liens) expect(lien).toMatch(/\blien-pied\b/);
   });
 
-  test("CHACUN EST `block` — sans quoi la zone s'arrête aux lettres", () => {
-    for (const lien of liens) expect(lien).toMatch(/\bblock\b/);
+  test("LA CIBLE DE 44 PX N'EXISTE QUE SOUS LE DOIGT", () => {
+    /* MIREILLE, 15/10/2026, capture à l'appui : « quand je parle d'espacement
+     * je parle de ceci, c'est mal calibré ».
+     *
+     * Mesuré : chaque lien faisait 44 px de haut pour un mot de 14 px, sans
+     * aucun écart entre eux. Quinze pixels de vide au-dessus et au-dessous de
+     * chaque mot, qui se lisent comme un énorme interligne.
+     *
+     * L'audit avait raison sur le fond — 17 px collés font rater les taps —
+     * mais j'avais posé `py-3` pour TOUS les pointeurs. Une cible de 44 px est
+     * une règle du doigt ; une souris vise au pixel près.
+     *
+     * CE TEST VÉRIFIE LES DEUX MOITIÉS DE LA RÈGLE, et c'est le point : il ne
+     * suffit pas que la souris soit servie, il faut que le doigt le reste. Une
+     * correction qui supprimerait simplement le rembourrage passerait la
+     * première assertion et casserait la seconde. */
+    const CSS = require("fs").readFileSync(
+      require("path").join(__dirname, "..", "index.css"),
+      "utf8",
+    );
+    expect(CSS).toMatch(/\.lien-pied\s*\{[^}]*display:\s*block/);
+    expect(CSS).toMatch(/\.lien-pied\s*\{[^}]*padding-block:\s*6px/);
+
+    const i = CSS.indexOf("@media (pointer: coarse)");
+    expect(i).toBeGreaterThan(-1);
+    const tactile = CSS.slice(i, CSS.indexOf("\n}", i));
+    expect(tactile).toMatch(/\.lien-pied\s*\{\s*padding-block:\s*12px/);
+
+    // Et il n'y a qu'un seul bloc tactile : deux, et le filet du plancher de
+    // 16 px attrapait le mauvais — c'est arrivé en écrivant cette correction.
+    expect(CSS.match(/@media \(pointer: coarse\)/g)).toHaveLength(1);
   });
 
   test("LES TROIS PASTILLES DE CONFORMITÉ SONT PARTIES", () => {
@@ -157,6 +186,35 @@ describe("les liens du pied de page", () => {
     expect(SOURCE).toMatch(/useSiteConfig/);
     expect(SOURCE).toMatch(/l\.to === "\/lab" \? coaPageEnabled/);
     expect(SOURCE).toMatch(/\.filter\(\(c\) => c\.links\.length\)/);
+  });
+
+  test("LA MENTION LÉGALE NE CRIE PLUS, ET N'EST PLUS DITE TROIS FOIS ICI", () => {
+    /* MIREILLE, 15/10/2026, après avoir vu sa propre maquette : « la dernière
+     * section avec l'avertissement, est-ce que c'est mieux que ce qu'on a ? »
+     *
+     * Oui, et c'était chiffrable. Relevé sur une seule page du site en ligne,
+     * la phrase « FOR LABORATORY RESEARCH USE ONLY · NOT FOR HUMAN OR
+     * VETERINARY CONSUMPTION · 19+ ONLY » apparaissait QUATRE fois : à 10 px
+     * dans le bandeau d'en-tête, mot pour mot à 30 px gras dans le pied, une
+     * troisième fois en pastille dans le bloc de marque, et une quatrième
+     * dans le titre de l'onglet.
+     *
+     * C'est son propre constat du 11/10 appliqué à moitié : j'avais retiré
+     * trois pastilles ce jour-là et laissé la plus grosse duplication, celle
+     * de la phrase entière.
+     *
+     * ELLE RESTE — c'est une mention légale, elle a sa place au pied d'une
+     * page — mais au registre du texte courant. Deux occurrences, toutes deux
+     * calmes : le bandeau prévient à l'arrivée, le pied rappelle au départ. */
+    const decl = SOURCE.match(/<p className="([^"]*)" data-testid="footer-disclaimer"/);
+    expect(decl).not.toBeNull();
+    expect(decl[1]).not.toMatch(/text-(?:2xl|3xl|4xl)/);
+    expect(decl[1]).toMatch(/text-\[15px\]/);
+
+    const code = SOURCE.replace(/\{\/\*[\s\S]*?\*\/\}/g, " ")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/\/\/.*/g, " ");
+    expect(code).not.toMatch(/fn-ruo/);
   });
 
   test("LA BANDE DE CONFORMITÉ REMPLIT SA LARGEUR", () => {

@@ -100,9 +100,9 @@ export default function Footer() {
       : "By accessing this website you confirm you are a qualified researcher and assume full responsibility for the proper handling, storage, and disposal of these compounds in accordance with all applicable provincial and federal regulations.";
 
   return (
-    <footer className="mt-28" data-testid="footer">
+    <footer className="mt-20" data-testid="footer">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
-        <div className="border-t border-ash px-8 lg:px-14 py-14 relative overflow-hidden">
+        <div className="border-t border-ash px-8 lg:px-14 py-10 relative overflow-hidden">
           <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 w-full h-full opacity-[.12]" aria-hidden="true">
             <g stroke="#00B8D4" strokeWidth="1" fill="none">
               <line x1="30" y1="50" x2="140" y2="110" /><line x1="140" y1="110" x2="250" y2="60" /><line x1="250" y1="60" x2="370" y2="130" />
@@ -118,8 +118,21 @@ export default function Footer() {
               `items-end` et non `items-start` : les deux blocs n'ont pas la
               meme hauteur, et c'est la DERNIERE ligne de chacun qui doit
               s'aligner pour que le pave paraisse pose, pas tombe. */}
+          {/* LA MEME PHRASE ETAIT CRIEE EN BAS ET MURMUREE EN HAUT.
+              Releve sur une seule page d'accueil : « FOR LABORATORY RESEARCH
+              USE ONLY · NOT FOR HUMAN OR VETERINARY CONSUMPTION · 19+ ONLY »
+              apparaissait a 10 px dans le bandeau d'en-tete, puis MOT POUR MOT
+              a 24 px gras ici, puis une troisieme fois en pastille dans le
+              bloc de marque, et une quatrieme dans le titre de l'onglet.
+              C'est son propre constat du 11/10, applique a moitie : j'avais
+              retire trois pastilles ce jour-la et laisse la plus grosse
+              duplication, celle de la phrase entiere.
+              Elle reste -- c'est une mention legale, elle a sa place au pied
+              d'une page -- mais elle cesse de crier. Deux occurrences, toutes
+              deux calmes, chacune son travail : le bandeau previent a
+              l'arrivee, le pied rappelle au depart. */}
           <div className="relative grid lg:grid-cols-[1.3fr_1fr] gap-8 lg:gap-14 lg:items-end" data-testid="footer-conformite">
-            <p className="font-display text-2xl sm:text-3xl font-bold tracking-[-0.01em] leading-[1.2]" data-testid="footer-disclaimer">
+            <p className="font-display text-[15px] font-semibold tracking-[-0.005em] leading-relaxed text-nordfjord" data-testid="footer-disclaimer">
               {t("footer.compliance")}
             </p>
             <p className="etiquette text-glacier leading-relaxed">
@@ -146,7 +159,7 @@ export default function Footer() {
           paraissait poussee vers la gauche.
           Le nombre de colonnes suit donc desormais ce qu'il y a a mettre
           dedans. */}
-      <div className={`max-w-7xl mx-auto px-6 lg:px-8 py-16 grid grid-cols-2 gap-10 ${
+      <div className={`max-w-7xl mx-auto px-6 lg:px-8 py-12 grid grid-cols-2 gap-10 ${
         columns.length >= 2 ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
         <div className="col-span-2">
           <div className="flex items-center gap-3">
@@ -157,7 +170,10 @@ export default function Footer() {
             <Wordmark size={20} color="var(--nordfjord)" descripteur="RESEARCH" />
           </div>
           <p className="mt-4 text-sm text-glacier max-w-sm leading-relaxed">{t("footer.tagline")}</p>
-          <p className="mt-6 fn-ruo inline-block">FOR RESEARCH USE ONLY · USAGE RECHERCHE UNIQUEMENT</p>
+          {/* LA TROISIEME OCCURRENCE EST PARTIE. Cette pastille disait
+              « FOR RESEARCH USE ONLY · USAGE RECHERCHE UNIQUEMENT » a trente
+              centimetres de la bande de conformite qui le dit deja, et a deux
+              ecrans du bandeau d'en-tete qui le dit aussi. */}
         </div>
         {columns.map((col) => (
           <div key={col.key} data-testid={`footer-col-${col.key}`}>
@@ -166,9 +182,9 @@ export default function Footer() {
               {col.links.map((l) => (
                 <li key={l.to + l.label}>
                   {l.newTab ? (
-                    <a href={l.to} target="_blank" rel="noopener noreferrer" className="block py-3 text-glacier hover:text-nordfjord transition-colors">{l.label}</a>
+                    <a href={l.to} target="_blank" rel="noopener noreferrer" className="lien-pied text-glacier hover:text-nordfjord transition-colors">{l.label}</a>
                   ) : (
-                    <Link to={l.to} className="block py-3 text-glacier hover:text-nordfjord transition-colors">{l.label}</Link>
+                    <Link to={l.to} className="lien-pied text-glacier hover:text-nordfjord transition-colors">{l.label}</Link>
                   )}
                 </li>
               ))}

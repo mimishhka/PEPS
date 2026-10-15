@@ -230,7 +230,7 @@ export default function Privacy() {
                 <span className="font-data text-sm text-nova-texte mr-3">{String(i + 1).padStart(2, "0")}</span>
                 {isFr ? s.fr.title : s.en.title}
               </h2>
-              <div className="mt-4 space-y-4 text-glacier leading-relaxed">
+              <div className="mt-4 space-y-4 text-glacier leading-relaxed max-w-[68ch]">
                 {s.paras.map((p, j) => (
                   <p key={j}>{isFr ? p.fr : p.en}</p>
                 ))}

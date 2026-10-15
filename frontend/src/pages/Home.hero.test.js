@@ -156,6 +156,49 @@ describe("le bloc de preuve a été retiré", () => {
     expect(bandeau).toBeLessThan(vedettes);
   });
 
+  test("ET UNE SECTION LA REMPLACE, QUI FAIT UN AUTRE TRAVAIL", () => {
+    /* MIREILLE, 15/10/2026, d'après sa propre maquette : « est-ce qu'on peut
+     * rajouter cette section ».
+     *
+     * Elle fait ce que l'ancienne ne faisait pas. Le bandeau de confiance dit
+     * « nous avons des certificats » ; celle-ci s'adresse à quelqu'un qui
+     * tient DÉJÀ un flacon et cherche le sien. C'est la seule chose de
+     * l'accueil qui parle à un client existant plutôt qu'à un visiteur.
+     *
+     * Et elle tient en un titre, une phrase, un bouton — 290 px contre 603. */
+    expect(SOURCE).toContain('data-testid="lot-section"');
+
+    const vedettes = SOURCE.indexOf('data-testid="featured-products"');
+    const lot = SOURCE.indexOf('data-testid="lot-section"');
+    const infolettre = SOURCE.indexOf('data-testid="newsletter-section"');
+    expect(vedettes).toBeLessThan(lot);
+    expect(lot).toBeLessThan(infolettre);
+  });
+
+  test("MAIS ELLE N'EXISTE QUE SI LA RECHERCHE DE LOT EXISTE", () => {
+    /* Son unique bouton mène à /lab, servie derrière COA_PAGE_ENABLED. Drapeau
+     * à `false` : la route renvoie à l'accueil, et la section devient une bande
+     * marine avec un bouton qui ne fait rien. On ne l'affiche pas du tout
+     * plutôt que de promettre à moitié.
+     *
+     * C'est la quatrième fois cette semaine qu'un lien vers /lab est posé sans
+     * ce verrou — en-tête, pied de page, page des certificats, bloc de preuve.
+     * La règle existait ; c'est sa portée qui manquait à chaque fois. */
+    const i = SOURCE.indexOf('data-testid="lot-section"');
+    expect(SOURCE.slice(Math.max(0, i - 500), i)).toMatch(/\{coaPageEnabled && \(/);
+    expect(SOURCE).toMatch(/import \{ useSiteConfig \} from "\.\.\/contexts\/SiteConfigContext"/);
+  });
+
+  test("et elle ne promet aucun effet", () => {
+    const i = SOURCE.indexOf('data-testid="lot-section"');
+    const bloc = SOURCE.slice(i, SOURCE.indexOf('data-testid="newsletter-section"'))
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, " ");
+    for (const motif of [/bienfait/i, /efficacit/i, /thérapeut/i, /traitement/i,
+                         /\bdose/i, /guéri/i, /garanti/i]) {
+      expect(bloc).not.toMatch(motif);
+    }
+  });
+
   test("et la page des certificats reste atteignable depuis le pied de page", () => {
     const pied = fs.readFileSync(
       path.join(__dirname, "..", "components", "Footer.jsx"), "utf8",
