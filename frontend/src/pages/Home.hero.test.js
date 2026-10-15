@@ -114,105 +114,52 @@ describe("tout le texte du hero va dans le même sens", () => {
   });
 });
 
-describe("le bloc de preuve, après les produits en vedette", () => {
-  /* MIREILLE, 11/10/2026 : « regarde ce site après les produits en vedette,
-   * est-ce qu'on peut avoir quelque chose de similaire ».
+describe("le bloc de preuve a été retiré", () => {
+  /* MIREILLE, 15/10/2026 : « c'est laid — est-ce que j'ai vraiment besoin de
+   * ça ».
    *
-   * Align pose là un bloc « QUALITY ASSURANCE — The paperwork ships with
-   * it », dont la phrase dit tout : la qualité se démontre par l'analyse, la
-   * traçabilité et les certificats, « not implied outcomes or marketing
-   * language ». C'est la position qu'elle tient depuis le début, et elle
-   * n'était écrite nulle part sur son site.
+   * Non, et c'était mesurable avant de répondre. Le bandeau de confiance,
+   * posé AVANT les produits en vedette, dit déjà « Testé en laboratoire
+   * tiers ». La fiche produit renvoie au certificat de son lot à dix endroits.
+   * La page /certificats explique un COA en sept sections. Le pied de page y
+   * mène.
    *
-   * CE QUE CE FILET PROTÈGE : que le bloc ROUTE vers ce qui se vérifie au
-   * lieu de promettre. Un bloc « assurance qualité » est exactement l'endroit
-   * où une phrase d'effet se glisse — et il perdrait alors tout son sens. */
+   * Le bloc reprenait donc cet argument une quatrième fois, dans 603 px de
+   * carte marine — avec une étiquette posée au-dessus du titre, que le
+   * plancher de qualité interdit sans exception, et une feuille de certificat
+   * DESSINÉE en HTML dont le chromatogramme était tracé à la main. Du poids
+   * sans travail.
+   *
+   * CE QUE CE FILET PROTÈGE N'EST PAS L'ABSENCE DU BLOC, c'est le reste : le
+   * message doit continuer d'exister là où il était déjà. Retirer une section
+   * qui répète est une amélioration ; retirer la dernière occurrence d'un
+   * argument est une perte, et rien ne les distingue à l'œil. */
 
-  /* LES COMMENTAIRES SONT RETIRÉS AVANT LE FILTRAGE, et ce n'est pas du
-   * confort. Le premier jet lisait la source brute, et le filtre a attrapé
-   * le mot « garantir » — dans MON PROPRE commentaire expliquant pourquoi je
-   * n'invente pas de chiffre. Un filtre qui lit ce que personne ne voit
-   * signale des défauts qui n'existent pas, et on finit par l'assouplir
-   * jusqu'à ce qu'il ne serve plus à rien. */
-  const sansCommentaires = (t) =>
-    t.replace(/\{\/\*[\s\S]*?\*\/\}/g, " ").replace(/\/\*[\s\S]*?\*\//g, " ");
+  test("la section n'est plus là", () => {
+    expect(SOURCE).not.toContain('data-testid="preuve-section"');
+  });
 
-  const preuve = () => {
-    const i = SOURCE.indexOf('data-testid="preuve-section"');
-    expect(i).toBeGreaterThan(-1);
-    return sansCommentaires(SOURCE.slice(i, SOURCE.indexOf('data-testid="newsletter-section"')));
-  };
+  test("ET PLUS RIEN NE DESSINE DE CERTIFICAT", () => {
+    // La feuille et son chromatogramme inventé partent avec le bloc.
+    expect(SOURCE).not.toContain("preuve-certificat");
+    expect(SOURCE).not.toMatch(/strokeWidth/);
+    expect(SOURCE).not.toMatch(/from "\.\.\/lib\/certificat"/);
+  });
 
-  test("il vient APRÈS les vedettes et AVANT l'infolettre", () => {
+  test("MAIS LE BANDEAU DE CONFIANCE LE DIT TOUJOURS, et plus haut dans la page", () => {
+    expect(SOURCE).toContain('data-testid="trust-marquee"');
+    expect(SOURCE).toMatch(/home\.trustTested/);
+
+    const bandeau = SOURCE.indexOf('data-testid="trust-marquee"');
     const vedettes = SOURCE.indexOf('data-testid="featured-products"');
-    const bloc = SOURCE.indexOf('data-testid="preuve-section"');
-    const infolettre = SOURCE.indexOf('data-testid="newsletter-section"');
-    expect(vedettes).toBeLessThan(bloc);
-    expect(bloc).toBeLessThan(infolettre);
+    expect(bandeau).toBeGreaterThan(-1);
+    expect(bandeau).toBeLessThan(vedettes);
   });
 
-  test("IL ROUTE VERS LA PREUVE au lieu de la promettre", () => {
-    expect(preuve()).toContain('to="/certificats"');
-    expect(preuve()).toContain('to="/lab"');
-  });
-
-  test("MAIS LE RENVOI VERS /lab ATTEND QUE LA PAGE EXISTE", () => {
-    /* MIREILLE, 11/10/2026 : « pourquoi je ne vois pas la page qui permet de
-     * faire une recherche pour les COA ». Elle est derrière COA_PAGE_ENABLED,
-     * et quand ce drapeau est à `false` la route renvoie à l'accueil.
-     *
-     * Trois endroits renvoyaient vers elle sans le vérifier — ce bloc, la page
-     * des certificats, le pied de page. L'en-tête, lui, le vérifiait depuis le
-     * début : la règle était écrite, à un seul des quatre endroits. */
-    expect(preuve()).toMatch(/\{coaPageEnabled && \(/);
-    expect(SOURCE).toMatch(/import \{ useSiteConfig \} from "\.\.\/contexts\/SiteConfigContext"/);
-  });
-
-  test("et il ne promet aucun effet", () => {
-    const interdits = [/bienfait/i, /efficacit/i, /thérapeut/i, /traitement/i,
-                       /dose/i, /guéri/i, /meilleur/i, /garanti/i];
-    for (const motif of interdits) expect(preuve()).not.toMatch(motif);
-  });
-
-  test("AUCUN CHIFFRE ÉCRIT EN DUR : ils viennent du certificat", () => {
-    /* Align affiche « 25 composés ». Je n'ai aucun nombre que je puisse
-     * affirmer sans le calculer — et un chiffre faux, ICI précisément,
-     * détruirait ce que le bloc est censé établir.
-     *
-     * Ce test a d'abord refusé TOUT chiffre. Il avait tort sur l'intention :
-     * la feuille de certificat dessinée dans ce bloc porte de vrais chiffres,
-     * ceux du lot FN-OLW8W. Mais il avait raison sur le fond — je venais de
-     * recopier « 99,7 % » et « 105,32 mg » dans cette page alors que
-     * `Certificats.jsx` les portait déjà. Deux copies du même chiffre
-     * finissent toujours par diverger.
-     *
-     * Il exige donc maintenant la SOURCE UNIQUE : les valeurs viennent de
-     * `lib/certificat`, pas de littéraux. */
-    expect(preuve()).toContain("GHK.purete.res");
-    expect(preuve()).toContain("GHK.teneur.res");
-    expect(preuve()).toContain("GHK.lot");
-    expect(SOURCE).toMatch(/import \{ GHK \} from "\.\.\/lib\/certificat"/);
-
-    // Et aucune valeur recopiée à la main dans la section.
-    expect(preuve()).not.toMatch(/99,7|105,32|FN-OLW8W/);
-  });
-
-  test("le bloc montre un OBJET, pas seulement du texte", () => {
-    /* MIREILLE, 11/10/2026 : « pourquoi le design est simpliste. zéro image,
-     * zéro beauté, rien qu'un bloc ». Le panneau de droite était une liste à
-     * puces dans un cadre blanc.
-     *
-     * La réponse n'était pas d'aller chercher une photo : le document EST
-     * l'objet dont le bloc parle. */
-    expect(preuve()).toContain('data-testid="preuve-certificat"');
-    expect(preuve()).toContain("MolecularMesh");
-    expect(preuve()).toContain("<svg");
-  });
-
-  test("son texte clair ne s'inverse pas la nuit", () => {
-    // Le panneau est en marine codé en dur : mêmes jetons stables que le
-    // hero, pour la même raison.
-    expect(preuve()).toContain("--sur-voile-accent");
-    expect(preuve()).toContain("--sur-voile-doux");
+  test("et la page des certificats reste atteignable depuis le pied de page", () => {
+    const pied = fs.readFileSync(
+      path.join(__dirname, "..", "components", "Footer.jsx"), "utf8",
+    );
+    expect(pied).toContain('to: "/certificats"');
   });
 });

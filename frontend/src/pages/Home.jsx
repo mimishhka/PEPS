@@ -4,21 +4,18 @@ import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
-import { useSiteConfig } from "../contexts/SiteConfigContext";
 import ProductCard from "../components/ProductCard.jsx";
 import { MolecularMesh, NovaSpark, Reveal } from "../components/brand";
-import { GHK } from "../lib/certificat";
 import ProductImage from "../components/ProductImage";
 import { TAILLES } from "../lib/derivees";
 
 
 export default function Home() {
   const { t, lang } = useLang();
-  // L'ACCUEIL RENVOIE MAINTENANT VERS /lab, donc il lit le drapeau comme
-  // Header.jsx. Le commentaire qui vivait ici disait le contraire, et il
-  // datait d'avant le bloc de preuve : un lien y avait ete ajoute sans que
-  // personne ne revienne corriger la phrase qui jurait qu'il n'y en avait pas.
-  const { coaPageEnabled } = useSiteConfig();
+  // `coaPageEnabled` n'est plus lu ici : l'accueil ne renvoie plus vers /lab
+  // depuis le retrait du bloc de preuve. Seuls Header.jsx, Footer.jsx et la
+  // page des certificats en ont besoin, pour ne pas afficher un lien vers une
+  // route qui ramene a l'accueil quand le drapeau est a `false`.
   const [products, setProducts] = useState([]);
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
@@ -238,141 +235,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* LA PREUVE PART AVEC LE COLIS.
-          MIREILLE, 11/10/2026 : « regarde ce site après les produits en
-          vedette, est-ce qu'on peut avoir quelque chose de similaire ».
-          Align pose à cet endroit un bloc « QUALITY ASSURANCE — The paperwork
-          ships with it », dont la phrase dit tout : la qualité se démontre
-          par l'analyse, la traçabilité et les certificats, « not implied
-          outcomes or marketing language ».
-          C'est exactement la position qu'elle tient depuis le début, et elle
-          n'était écrite nulle part. Ce bloc ne promet rien : il ROUTE vers ce
-          qui se vérifie — la page qui explique un certificat, et le
-          laboratoire où l'on contrôle un lot. */}
-      <section className="py-20 lg:py-28" data-testid="preuve-section">
-        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-[1.15fr_.85fr] gap-5 lg:gap-6 items-stretch">
-
-            <div className="relative overflow-hidden bg-nordfjord text-clinical p-8 sm:p-10 lg:p-12 flex flex-col"
-                 style={{ borderRadius: "var(--r-l)" }} data-testid="preuve-panneau">
-              {/* La maille de la marque, comme sur le hero sans photo : elle
-                  donne de la profondeur au panneau sans rien raconter. */}
-              <MolecularMesh opacity={0.22} animated={false} />
-              {/* ÉCRIT DANS SES MOTS, PAS DANS CEUX D'ALIGN.
-                  La première version de ce bloc était une traduction : leur
-                  « QUALITY ASSURANCE » devenait « ASSURANCE QUALITÉ », leur
-                  « The paperwork ships with it » devenait « Le certificat
-                  part avec le colis », et leur phrase sur « not implied
-                  outcomes or marketing language » passait en français presque
-                  mot pour mot.
-                  MIREILLE, 11/10/2026 : « pourquoi tu as reproduit mot à mot
-                  ce qui était sur la page d'Align ». Aucune bonne raison —
-                  et je lui avais explique deux heures plus tôt pourquoi on ne
-                  copiait pas le texte d'un autre site.
-                  Ce qu'on garde d'eux est la POSITION dans la page et le
-                  principe : router vers la preuve au lieu de la promettre.
-                  Les mots sont les siens, et ils disent quelque chose
-                  qu'eux ne disent pas — le numéro de lot, qui est ce qui
-                  relie le papier au flacon. */}
-              <p className="relative etiquette mb-4"
-                 style={{ color: "var(--sur-voile-accent)" }}>
-                {lang === "fr" ? "CHAQUE LOT, SON RAPPORT" : "EVERY BATCH, ITS REPORT"}
-              </p>
-              <h2 className="relative font-display font-semibold leading-[1.12] tracking-[-0.01em] max-w-[20ch]"
-                  style={{ fontSize: "clamp(26px,3.2vw,36px)" }}>
-                {lang === "fr" ? "Un numéro sur le flacon, un rapport qui lui répond." : "A number on the vial, a report that answers to it."}
-              </h2>
-              <p className="relative mt-5 text-[15px] leading-relaxed max-w-[48ch]"
-                 style={{ color: "var(--sur-voile-doux)" }}>
-                {lang === "fr"
-                  ? "Nous n'avons rien à vous dire sur ce que font ces composés. Nous avons un rapport de laboratoire par lot, le numéro de ce lot sur l'étiquette, et de quoi vérifier que les deux concordent."
-                  : "We have nothing to tell you about what these compounds do. We have one laboratory report per batch, that batch number on the label, and a way to check the two match."}
-              </p>
-              <div className="relative mt-8 flex flex-wrap items-center gap-4">
-                <Link to="/certificats" data-testid="preuve-vers-certificats"
-                      className="inline-flex items-center gap-2 bg-white text-nordfjord text-[13px] font-medium tracking-[0.04em] px-6 py-3 hover:bg-nova hover:text-white transition-colors"
-                      style={{ borderRadius: "var(--r-m)" }}>
-                  {lang === "fr" ? "Lire un certificat" : "Read a certificate"}
-                </Link>
-                {/* CE LIEN NE S'AFFICHE QUE SI LA PAGE EXISTE. /lab est
-                    servie derrière COA_PAGE_ENABLED, et la route renvoie à
-                    l'accueil quand le drapeau est à `false` : un lien visible
-                    vers une page qui ramène à celle qu'on quitte est pire
-                    qu'un lien absent. */}
-                {coaPageEnabled && (
-                  <Link to="/lab" data-testid="preuve-vers-lab"
-                        className="text-[13px] hover:text-nova transition-colors"
-                        style={{ color: "var(--sur-voile-doux)" }}>
-                    {lang === "fr" ? "Vérifier un lot →" : "Check a lot →"}
-                  </Link>
-                )}
-              </div>
-            </div>
-
-            {/* L'IMAGE QUI MANQUAIT ÉTAIT SOUS MON NEZ : LE CERTIFICAT.
-                MIREILLE, 11/10/2026 : « pourquoi le design est simpliste.
-                zéro image, zéro beauté, rien qu'un bloc ». Le panneau de
-                droite était une liste à puces dans un cadre blanc.
-                Elle a raison, et la réponse n'était pas d'aller chercher une
-                photo : le document EST l'objet dont le bloc parle. Deux
-                feuilles empilées, légèrement décalées — une par lot —, avec
-                les vrais chiffres du lot FN-OLW8W et sa trace
-                chromatographique. Rien n'est inventé, rien n'est promis, et
-                l'objet se regarde.
-                `aria-hidden` : les mêmes chiffres se lisent en toutes lettres
-                sur /certificats, et une feuille décorative n'a pas à être
-                épelée par un lecteur d'écran. */}
-            <div className="relative flex items-center justify-center py-6 lg:py-0"
-                 data-testid="preuve-certificat" aria-hidden="true">
-
-              <div className="absolute w-[82%] max-w-[300px] h-[86%] bg-white border border-ash"
-                   style={{ borderRadius: "var(--r-m)", transform: "rotate(-5deg) translate(-10px, 8px)", opacity: 0.55 }} />
-              <div className="absolute w-[84%] max-w-[310px] h-[90%] bg-white border border-ash"
-                   style={{ borderRadius: "var(--r-m)", transform: "rotate(-2.5deg) translate(-4px, 4px)", opacity: 0.8 }} />
-
-              <div className="relative w-[88%] max-w-[324px] bg-white border border-ash overflow-hidden"
-                   style={{ borderRadius: "var(--r-m)", boxShadow: "var(--ombre)" }}>
-                <div className="bg-nordfjord px-4 py-3 flex items-center justify-between gap-3">
-                  <span className="etiquette text-clinical/80">
-                    {lang === "fr" ? "Certificat d'analyse" : "Certificate of analysis"}
-                  </span>
-                  <NovaSpark size={11} />
-                </div>
-
-                <div className="px-4 pt-4 pb-1">
-                  <div className="etiquette text-compliance">
-                    {lang === "fr" ? "Numéro de lot" : "Lot number"}
-                  </div>
-                  <div className="font-display text-[22px] font-bold text-nordfjord tracking-[-0.01em] leading-none mt-1">
-                    {GHK.lot}
-                  </div>
-                </div>
-
-                <svg viewBox="0 0 300 58" className="w-full h-auto px-4 mt-3" aria-hidden="true">
-                  <line x1="2" y1="50" x2="298" y2="50" stroke="currentColor" strokeWidth="0.5" className="text-ash" />
-                  <path d="M2 50 L46 49 L54 8 L62 49 L140 48 L152 39 L162 48 L240 47 L254 42 L264 47 L298 46"
-                        fill="none" stroke="currentColor" strokeWidth="1.2" className="text-nova-texte" />
-                  <path d="M46 49 L54 8 L62 49 Z" fill="currentColor" className="text-nova" opacity="0.22" />
-                </svg>
-
-                <dl className="px-4 pb-4 pt-2">
-                  {[
-                    [lang === "fr" ? "Pureté" : "Purity", lang === "fr" ? GHK.purete.res.fr : GHK.purete.res.en],
-                    [lang === "fr" ? "Teneur nette" : "Net content", lang === "fr" ? GHK.teneur.res.fr : GHK.teneur.res.en],
-                    [lang === "fr" ? "Identité" : "Identity", lang === "fr" ? "Confirmée" : "Confirmed"],
-                  ].map(([k, v]) => (
-                    <div key={k} className="flex items-baseline justify-between gap-4 py-1.5 border-b border-ash last:border-0">
-                      <dt className="etiquette text-glacier">{k}</dt>
-                      <dd className="font-data text-[11px] text-nordfjord">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </section>
 
       {/* INFOLETTRE : section claire a filet : une page, un theme. Le
           bandeau sombre isole etait une rupture de theme que le skill
