@@ -249,21 +249,41 @@ export default function Home() {
           dans une carte marine, avec une feuille de certificat dessinee a la
           main. Ici : un titre, une phrase, un bouton. */}
       {coaPageEnabled && (
-        <section className="bg-nordfjord relative overflow-hidden" data-testid="lot-section">
-          <MolecularMesh opacity={0.18} animated={false} />
-          <div className="relative max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-16 lg:py-20">
-            <h2 className="titre-section max-w-[18ch]" style={{ color: "var(--sur-voile)" }}>
-              {lang === "fr" ? "Chaque lot, documenté." : "Every batch, documented."}
-            </h2>
-            <p className="mt-4 text-[15px] leading-relaxed max-w-[52ch]"
-               style={{ color: "var(--sur-voile-doux)" }}>
-              {lang === "fr"
-                ? "Consultez le certificat d'analyse correspondant au numéro de lot imprimé sur votre flacon."
-                : "Look up the certificate of analysis for the batch number printed on your vial."}
-            </p>
-            <Link to="/lab" data-testid="lot-vers-lab" className="btn-pill btn-nova mt-8 inline-flex">
-              {lang === "fr" ? "Rechercher un lot" : "Look up a batch"}
-            </Link>
+        /* UNE SEULE LIGNE, et c'est son choix du 15/10/2026 parmi quatre
+            traitements : « l'option une seule ligne ».
+            Un service, pas une annonce. La barre dit ce qu'on peut faire et
+            donne le bouton, en trois fois moins de hauteur que la bande
+            precedente -- tout en gardant la rupture de valeur, qui est la
+            seule du bas de la page : du hero au pied, 1542 px tiennent sur un
+            unique fond clair.
+            LE TITRE RESTE SUR L'ECHELLE DU SITE. La maquette le posait a
+            19 px ; `titre-section` en fait 22 puis 26. La barre y gagne une
+            vingtaine de pixels, et le site garde une seule echelle de titres
+            -- celle qu'un test protege depuis le 12/10. La plier des le
+            lendemain, pour une barre, c'est exactement la derive que ce test
+            existe pour empecher.
+            (Commentaire JS et non `{…}` : on est dans une expression entre
+            parentheses, pas parmi des enfants JSX. Deja fait une fois sur la
+            carte produit — et refait ici.) */
+        <section className="bg-nordfjord" data-testid="lot-section">
+          <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-7 lg:py-8">
+            <div className="flex flex-wrap items-center gap-x-10 gap-y-5">
+              <div className="min-w-0">
+                <h2 className="titre-section" style={{ color: "var(--sur-voile)" }}>
+                  {lang === "fr" ? "Chaque lot, documenté." : "Every batch, documented."}
+                </h2>
+                <p className="mt-1.5 text-[14px] leading-relaxed max-w-[46ch]"
+                   style={{ color: "var(--sur-voile-doux)" }}>
+                  {lang === "fr"
+                    ? "Le certificat correspondant au numéro imprimé sur votre flacon."
+                    : "The certificate for the number printed on your vial."}
+                </p>
+              </div>
+              <Link to="/lab" data-testid="lot-vers-lab"
+                    className="btn-pill btn-nova shrink-0 sm:ml-auto">
+                {lang === "fr" ? "Rechercher un lot" : "Look up a batch"}
+              </Link>
+            </div>
           </div>
         </section>
       )}

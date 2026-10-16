@@ -165,7 +165,7 @@ describe("le bloc de preuve a été retiré", () => {
      * tient DÉJÀ un flacon et cherche le sien. C'est la seule chose de
      * l'accueil qui parle à un client existant plutôt qu'à un visiteur.
      *
-     * Et elle tient en un titre, une phrase, un bouton — 290 px contre 603. */
+     * Et elle tient en un titre, une phrase, un bouton. */
     expect(SOURCE).toContain('data-testid="lot-section"');
 
     const vedettes = SOURCE.indexOf('data-testid="featured-products"');
@@ -173,6 +173,29 @@ describe("le bloc de preuve a été retiré", () => {
     const infolettre = SOURCE.indexOf('data-testid="newsletter-section"');
     expect(vedettes).toBeLessThan(lot);
     expect(lot).toBeLessThan(infolettre);
+  });
+
+  test("UNE BARRE, PAS UNE BANDE — et elle garde sa rupture de valeur", () => {
+    /* MIREILLE, 15/10/2026, après avoir comparé quatre traitements :
+     * « l'option une seule ligne ».
+     *
+     * LES DEUX MOITIÉS COMPTENT, et c'est pour ça qu'elles sont testées
+     * ensemble. Mesuré sur la page : du bas du hero au bas du pied, 1542 px
+     * tiennent sur un seul fond clair — cinq zones, 71 % de la page, pour
+     * seul accent la barre de copyright de 88 px. La valeur sombre est donc la
+     * SEULE rupture du bas de page : l'alléger ne doit pas la faire
+     * disparaître.
+     *
+     * Une correction qui enlèverait `bg-nordfjord` passerait la première
+     * assertion et détruirait ce que la section apporte à la composition. */
+    const i = SOURCE.lastIndexOf("<section", SOURCE.indexOf('data-testid="lot-section"'));
+    const barre = SOURCE.slice(i, SOURCE.indexOf('data-testid="newsletter-section"'));
+
+    expect(barre).toContain("bg-nordfjord");
+    expect(barre).toMatch(/flex flex-wrap items-center/);
+    expect(barre).toMatch(/py-7/);
+    // Plus de maille : elle meublait une bande, elle n'a rien à meubler ici.
+    expect(barre).not.toContain("MolecularMesh");
   });
 
   test("MAIS ELLE N'EXISTE QUE SI LA RECHERCHE DE LOT EXISTE", () => {
@@ -184,8 +207,18 @@ describe("le bloc de preuve a été retiré", () => {
      * C'est la quatrième fois cette semaine qu'un lien vers /lab est posé sans
      * ce verrou — en-tête, pied de page, page des certificats, bloc de preuve.
      * La règle existait ; c'est sa portée qui manquait à chaque fois. */
-    const i = SOURCE.indexOf('data-testid="lot-section"');
-    expect(SOURCE.slice(Math.max(0, i - 500), i)).toMatch(/\{coaPageEnabled && \(/);
+    /* ON LIT LE CODE SANS SA PROSE, et une fenêtre de caractères ne suffit
+     * pas. Le premier jet cherchait la condition dans les 500 caractères
+     * précédant la section : un commentaire un peu long l'a poussée dehors, et
+     * le filet a crié alors que le verrou était bien là.
+     *
+     * Cinquième fois aujourd'hui qu'un test lisant du code se fait piéger par
+     * le commentaire qui explique ce code. */
+    const code = SOURCE.replace(/\{\/\*[\s\S]*?\*\/\}/g, " ")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/\/\/.*/g, " ");
+    const i = code.indexOf('data-testid="lot-section"');
+    expect(code.slice(Math.max(0, i - 300), i)).toMatch(/\{coaPageEnabled && \(/);
     expect(SOURCE).toMatch(/import \{ useSiteConfig \} from "\.\.\/contexts\/SiteConfigContext"/);
   });
 

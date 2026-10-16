@@ -39,21 +39,23 @@ export const RET = {
   ion: "[M+5H]5+",
   mz: { fr: "947,90 Da", en: "947.90 Da" },
 
-  /* LES PIECES REELLES DE CE LOT, produites par
-   * `scripts/certificats_exemples.py` depuis le PDF du laboratoire :
+  /* LES PIECES DE CE LOT, produites par `scripts/certificats_exemples.py`
+   * depuis le PDF du laboratoire :
    *
-   *   `fiole`   la PHOTOGRAPHIE prise par le laboratoire — etiquette
-   *             holographique, logo, « LOT FN-ELBCJ » imprime en bas ;
-   *   `extrait` une bande CONTINUE du rapport, de l'identification de
-   *             l'echantillon au tableau des resultats ;
-   *   `lot`     la meme bande, resserree sur la colonne qui porte le numero,
-   *             pour les ecrans ou la large tomberait a sept pixels de haut ;
-   *   `pdf`     le rapport entier, telechargeable.
+   *   `page1` la premiere page du rapport, rendue en WebP ;
+   *   `pdf`   le rapport entier, telechargeable.
+   *
+   * MIREILLE, 15/10/2026 : « je ne veux pas de photos de mon produit comme
+   * ca ». Le script tirait aussi la PHOTOGRAPHIE de la fiole que le
+   * laboratoire joint a son rapport, et deux decoupes du corps du document.
+   * Plus rien ne les emploie, et elles ne sont plus produites.
+   *
+   * CE QUI RESTE A DECIDER, ET QUI NE M'APPARTIENT PAS : la meme
+   * photographie se trouve DANS les deux PDF, en page 1, sous l'intitule
+   * « SAMPLE PHOTOGRAPH ». Publier les certificats, c'est publier cette image.
    */
   pieces: {
-    fiole: "/certificats/ret-394-fiole.webp",
-    extrait: "/certificats/ret-394-extrait.webp",
-    lotEtroit: "/certificats/ret-394-lot.webp",
+    page1: "/certificats/ret-394.webp",
     pdf: "/certificats/ret-394.pdf",
   },
 };

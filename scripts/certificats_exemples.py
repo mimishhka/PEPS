@@ -122,22 +122,9 @@ def preparer(source: pathlib.Path) -> int:
         img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
         img.save(SORTIE / f"{cle}.webp", "WEBP", quality=QUALITE, method=6)
 
-        # La bande continue du rapport, pour la section « preuve ».
-        img.crop(EXTRAIT).save(SORTIE / f"{cle}-extrait.webp",
-                               "WEBP", quality=88, method=6)
-        img.crop(EXTRAIT_ETROIT).save(SORTIE / f"{cle}-lot.webp",
-                                      "WEBP", quality=88, method=6)
-
-        # La photographie de la fiole, a sa resolution d'origine : la
-        # reechantillonner ne lui ajouterait rien.
-        photo = doc.extract_image(page.get_images(full=True)[INDEX_PHOTO][0])
-        fiole = Image.open(io.BytesIO(photo["image"])).convert("RGB")
-        fiole.save(SORTIE / f"{cle}-fiole.webp", "WEBP", quality=90, method=6)
-
         poids = (SORTIE / f"{cle}.pdf").stat().st_size / 1024
         print(f"{cle} : {doc.page_count} page(s), {masques} masquage(s), "
-              f"page {pix.width}x{pix.height}, extrait {img.crop(EXTRAIT).size}, "
-              f"fiole {fiole.size}, pdf {poids:.0f} ko")
+              f"page {pix.width}x{pix.height}, pdf {poids:.0f} ko")
         doc.close()
 
     print(f"\nEcrit dans {SORTIE}")
