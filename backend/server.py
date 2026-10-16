@@ -200,7 +200,23 @@ TRUSTED_PROXIES: list[str] = [
 ]
 
 # Feature flags — toggle without deploying new code, just flip the env var and restart.
-COA_PAGE_ENABLED = os.environ.get("COA_PAGE_ENABLED", "false").strip().lower() == "true"
+#
+# COA_PAGE_ENABLED passe à `true` par défaut le 15/10/2026.
+#
+# Il valait `false` « jusqu'à activation explicite côté serveur », et personne
+# ne l'a jamais activé. Résultat : /lab répondait par une redirection vers
+# l'accueil, et quatre endroits du site y renvoyaient quand même — l'en-tête,
+# le pied de page, la page des certificats et l'accueil. Un drapeau que rien
+# n'allume n'est pas une précaution, c'est une page morte avec des liens
+# dessus.
+#
+# La page ne fait que deux choses, toutes deux publiques par nature : chercher
+# un lot pour lire son certificat, et suivre une commande avec son numéro et
+# le courriel associé. Elle n'expose aucune donnée qu'on n'a pas déjà.
+#
+# Pour la rééteindre : COA_PAGE_ENABLED=false dans backend/.env, puis
+# redémarrer l'API.
+COA_PAGE_ENABLED = os.environ.get("COA_PAGE_ENABLED", "true").strip().lower() == "true"
 
 # --- Prélancement (BLOC 3) --------------------------------------------------
 # Défaut sûr : la boutique reste OUVERTE si la variable est absente.

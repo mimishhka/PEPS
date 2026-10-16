@@ -11,7 +11,11 @@ const DEFAULTS = {
   freeShippingThresholdCad: 200,
   provinces: [],
   minAge: 19,
-  coaPageEnabled: false, // hidden by default until explicitly enabled server-side
+  // Valeur d'ATTENTE, le temps que `/config` reponde — pas un defaut de
+  // produit. On ne montre pas une section qui disparaitrait une seconde plus
+  // tard si le serveur repondait non. Le defaut reel vit dans
+  // backend/server.py, et il vaut `true` depuis le 15/10/2026.
+  coaPageEnabled: false,
   canadaPostEnabled: false,
   // Défaut sûr : si /meta échoue, la boutique reste OUVERTE. Un défaut à true
   // mettrait tout le site derrière la page d'attente au moindre hoquet réseau.
