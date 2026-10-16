@@ -256,6 +256,14 @@ export default function Home() {
             precedente -- tout en gardant la rupture de valeur, qui est la
             seule du bas de la page : du hero au pied, 1542 px tiennent sur un
             unique fond clair.
+            FOND CLAIR, ET C'EST SON CHOIX CONTRE MON AVIS. J'avais mesure
+            que du bas du hero au bas du pied, 1542 px tiennent sur un SEUL
+            fond clair -- cinq zones, 71 % de la page -- et defendu que la
+            valeur sombre etait la seule rupture du bas de page. Elle a
+            tranche deux fois pour le clair. C'est sa page ; la barre se
+            detache desormais par ses deux filets, ce que sa DESIGN.md
+            demande de toute facon : « un filet plutot qu'une carte chaque
+            fois que c'est possible ».
             LE TITRE RESTE SUR L'ECHELLE DU SITE. La maquette le posait a
             19 px ; `titre-section` en fait 22 puis 26. La barre y gagne une
             vingtaine de pixels, et le site garde une seule echelle de titres
@@ -265,15 +273,14 @@ export default function Home() {
             (Commentaire JS et non `{…}` : on est dans une expression entre
             parentheses, pas parmi des enfants JSX. Deja fait une fois sur la
             carte produit — et refait ici.) */
-        <section className="bg-nordfjord" data-testid="lot-section">
+        <section className="border-y border-ash" data-testid="lot-section">
           <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-7 lg:py-8">
             <div className="flex flex-wrap items-center gap-x-10 gap-y-5">
               <div className="min-w-0">
-                <h2 className="titre-section" style={{ color: "var(--sur-voile)" }}>
+                <h2 className="titre-section text-nordfjord">
                   {lang === "fr" ? "Chaque lot, documenté." : "Every batch, documented."}
                 </h2>
-                <p className="mt-1.5 text-[14px] leading-relaxed max-w-[46ch]"
-                   style={{ color: "var(--sur-voile-doux)" }}>
+                <p className="mt-1.5 text-[14px] leading-relaxed text-glacier max-w-[46ch]">
                   {lang === "fr"
                     ? "Le certificat correspondant au numéro imprimé sur votre flacon."
                     : "The certificate for the number printed on your vial."}

@@ -175,27 +175,37 @@ describe("le bloc de preuve a été retiré", () => {
     expect(lot).toBeLessThan(infolettre);
   });
 
-  test("UNE BARRE, PAS UNE BANDE — et elle garde sa rupture de valeur", () => {
-    /* MIREILLE, 15/10/2026, après avoir comparé quatre traitements :
-     * « l'option une seule ligne ».
+  test("UNE BARRE CLAIRE, TENUE PAR SES FILETS", () => {
+    /* MIREILLE, 15/10/2026 : « l'option une seule ligne », puis « je parlais
+     * d'une seule ligne avec un fond clair ».
      *
-     * LES DEUX MOITIÉS COMPTENT, et c'est pour ça qu'elles sont testées
-     * ensemble. Mesuré sur la page : du bas du hero au bas du pied, 1542 px
-     * tiennent sur un seul fond clair — cinq zones, 71 % de la page, pour
-     * seul accent la barre de copyright de 88 px. La valeur sombre est donc la
-     * SEULE rupture du bas de page : l'alléger ne doit pas la faire
-     * disparaître.
+     * CE TEST A CHANGÉ D'AVIS AVEC ELLE, ET C'EST VOULU. Sa version
+     * précédente exigeait `bg-nordfjord` : j'avais mesuré que du bas du hero
+     * au bas du pied, 1542 px tiennent sur un seul fond clair — cinq zones,
+     * 71 % de la page — et défendu que la valeur sombre était la seule
+     * rupture du bas de page.
      *
-     * Une correction qui enlèverait `bg-nordfjord` passerait la première
-     * assertion et détruirait ce que la section apporte à la composition. */
+     * Elle a tranché deux fois pour le clair. C'est sa page, et un filet qui
+     * garderait mon avis contre le sien ne protégerait plus rien : il
+     * bloquerait la décision prise.
+     *
+     * Ce qui reste protégé est ce qu'ELLE a choisi : une seule ligne, tenue
+     * par ses deux filets et non par un aplat — ce que sa DESIGN.md demande
+     * par ailleurs, « un filet plutôt qu'une carte chaque fois que c'est
+     * possible ». */
     const i = SOURCE.lastIndexOf("<section", SOURCE.indexOf('data-testid="lot-section"'));
     const barre = SOURCE.slice(i, SOURCE.indexOf('data-testid="newsletter-section"'));
 
-    expect(barre).toContain("bg-nordfjord");
+    expect(barre).toContain("border-y border-ash");
+    expect(barre).not.toContain("bg-nordfjord");
+
+    // Une seule ligne : titre, phrase et bouton sur la meme rangee.
     expect(barre).toMatch(/flex flex-wrap items-center/);
     expect(barre).toMatch(/py-7/);
-    // Plus de maille : elle meublait une bande, elle n'a rien à meubler ici.
+
+    // Plus de maille ni de jetons de voile : ils servaient un fond sombre.
     expect(barre).not.toContain("MolecularMesh");
+    expect(barre).not.toContain("--sur-voile");
   });
 
   test("MAIS ELLE N'EXISTE QUE SI LA RECHERCHE DE LOT EXISTE", () => {
