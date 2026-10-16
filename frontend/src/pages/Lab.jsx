@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
@@ -43,6 +44,35 @@ export default function Lab() {
       setVerifying(false);
     }
   };
+
+  /* LE LOT PEUT ARRIVER DANS L'URL : /lab?lot=FN-ELBCJ
+   *
+   * L'accueil porte desormais le champ de recherche. Sans ce parametre, taper
+   * son numero sur l'accueil puis le RETAPER ici serait une plaisanterie : la
+   * barre promettrait d'ouvrir un certificat et rendrait un formulaire vide.
+   *
+   * Une seule fois, au montage. `verifierUneFois` garde la trace : sans lui,
+   * l'effet se redeclenche a chaque rendu que provoque sa propre requete, et
+   * la page part en boucle sur le reseau. */
+  const [parametres] = useSearchParams();
+  const verifierUneFois = useRef(false);
+
+  useEffect(() => {
+    const depuisUrl = (parametres.get("lot") || "").trim();
+    if (!depuisUrl || verifierUneFois.current) return;
+    verifierUneFois.current = true;
+    setLot(depuisUrl);
+  }, [parametres]);
+
+  /* La verification part quand le champ a recu la valeur, pas avant :
+   * `verify()` lit `lot` depuis l'etat, et l'appeler dans l'effet ci-dessus
+   * lui aurait fait lire la chaine vide du rendu precedent. */
+  const lanceApresRemplissage = useRef(false);
+  useEffect(() => {
+    if (!verifierUneFois.current || lanceApresRemplissage.current || !lot) return;
+    lanceApresRemplissage.current = true;
+    verify();
+  }, [lot]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doTrack = async () => {
     const id = orderId.trim();

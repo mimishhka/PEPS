@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
@@ -19,6 +19,8 @@ export default function Home() {
    * une bande marine avec un bouton qui ne fait rien. On ne l'affiche donc
    * pas du tout plutot que de promettre a moitie. */
   const { coaPageEnabled } = useSiteConfig();
+  const navigate = useNavigate();
+  const [lotCherche, setLotCherche] = useState("");
   const [products, setProducts] = useState([]);
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
@@ -286,14 +288,99 @@ export default function Home() {
                     : "The certificate for the number printed on your vial."}
                 </p>
               </div>
-              <Link to="/lab" data-testid="lot-vers-lab"
-                    className="btn-pill btn-nova shrink-0 sm:ml-auto">
-                {lang === "fr" ? "Rechercher un lot" : "Look up a batch"}
-              </Link>
+              {/* LE CHAMP EST ICI, PAS DERRIERE UN CLIC.
+                  Un bouton envoyait vers /lab ou il fallait retaper son
+                  numero. La personne qui tient son flacon le saisit
+                  maintenant au moment ou elle y pense, et arrive sur son
+                  certificat. /lab lit le parametre `lot` et verifie seule. */}
+              <form
+                data-testid="lot-formulaire"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const q = lotCherche.trim();
+                  if (q) navigate(`/lab?lot=${encodeURIComponent(q)}`);
+                }}
+                className="flex flex-col sm:flex-row gap-3 sm:items-end w-full sm:w-auto sm:ml-auto shrink-0"
+              >
+                <div className="sm:w-[240px]">
+                  <label htmlFor="lot-accueil" className="etiquette text-compliance block mb-2">
+                    {lang === "fr" ? "Numéro de lot" : "Batch number"}
+                  </label>
+                  <input
+                    id="lot-accueil"
+                    data-testid="lot-champ"
+                    value={lotCherche}
+                    onChange={(e) => setLotCherche(e.target.value)}
+                    placeholder="FN-0000-00"
+                    autoComplete="off"
+                    className="w-full font-data bg-white border border-ash text-nordfjord px-4 py-3 text-[14px] outline-none focus:border-nova placeholder:text-glacier"
+                    style={{ borderRadius: "var(--r-m)" }}
+                  />
+                </div>
+                <button type="submit" data-testid="lot-vers-lab" className="btn-pill btn-nova shrink-0">
+                  {lang === "fr" ? "Ouvrir le certificat" : "Open certificate"}
+                </button>
+              </form>
             </div>
           </div>
         </section>
       )}
+
+      {/* COMMENT COMMANDER — section nouvelle, d'apres sa maquette du 15/10.
+          Son flux de paiement est inhabituel : virement Interac ou
+          cryptomonnaie, confirmation manuelle. Aujourd'hui ca ne se decouvre
+          qu'en FAQ ou en conformite, c'est-a-dire APRES avoir decide de
+          commander. Un visiteur qui ne sait pas comment il va payer s'en va.
+
+          AUCUN DELAI N'EST AFFICHE ICI, et c'est sa consigne du 15/10 : « le
+          delai actuel est pour les tests, on ne doit pas afficher ce delai ».
+          La seule heure citee est 13 h (heure de l'Est), qui est documentee
+          mot pour mot dans la page de conformite et dans la FAQ, en deux
+          langues.
+
+          DES FILETS, PAS DES CARTES. La maquette posait trois cartes
+          encadrees identiques ; sa DESIGN.md demande « un filet plutot qu'une
+          carte chaque fois que c'est possible », et trois cartes jumelles
+          sont le reflexe que le plancher de qualite refuse. Les numeros
+          d'etape restent : ici, la suite porte une information. */}
+      <section className="py-16 lg:py-20 border-t border-ash" data-testid="commander-section">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
+          <p className="sur-titre mb-3">
+            {lang === "fr" ? "COMMENT COMMANDER" : "HOW ORDERING WORKS"}
+          </p>
+          <h2 className="titre-section text-nordfjord">
+            {lang === "fr" ? "Trois étapes, sans surprise." : "Three steps, no surprises."}
+          </h2>
+
+          <div className="mt-9 grid md:grid-cols-3 border-t border-ash">
+            {(lang === "fr"
+              ? [
+                  ["Étape 1", "Créez votre compte",
+                   "Vous confirmez avoir 19 ans et plus, et attestez que les composés sont destinés à la recherche en laboratoire."],
+                  ["Étape 2", "Payez par virement ou cryptomonnaie",
+                   "Vous recevez les instructions après la commande. Nous confirmons la réception du paiement, puis la commande part."],
+                  ["Étape 3", "Expédition le jour même",
+                   "Payée avant 13 h (heure de l'Est) un jour ouvrable, la commande quitte nos installations le jour même. Jours fériés exclus."],
+                ]
+              : [
+                  ["Step 1", "Create your account",
+                   "You confirm you are 19 or over, and attest that the compounds are for laboratory research."],
+                  ["Step 2", "Pay by e-transfer or cryptocurrency",
+                   "You receive the instructions after ordering. We confirm the payment has arrived, then the order ships."],
+                  ["Step 3", "Same-day dispatch",
+                   "Paid before 1:00 p.m. Eastern on a business day, the order leaves our facility the same day. Statutory holidays excepted."],
+                ]
+            ).map(([pas, titre, texte]) => (
+              <div key={pas}
+                   className="py-6 md:pr-7 md:border-r md:last:border-r-0 md:not-first:pl-7 border-b md:border-b-0 border-ash last:border-b-0">
+                <div className="etiquette text-nova-texte">{pas}</div>
+                <h3 className="font-display text-[17px] font-semibold text-nordfjord mt-2 mb-2">{titre}</h3>
+                <p className="text-[14px] leading-relaxed text-glacier">{texte}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* INFOLETTRE : section claire a filet : une page, un theme. Le
           bandeau sombre isole etait une rupture de theme que le skill

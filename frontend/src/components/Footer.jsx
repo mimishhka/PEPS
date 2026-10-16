@@ -100,9 +100,20 @@ export default function Footer() {
       : "By accessing this website you confirm you are a qualified researcher and assume full responsibility for the proper handling, storage, and disposal of these compounds in accordance with all applicable provincial and federal regulations.";
 
   return (
-    <footer className="mt-20" data-testid="footer">
+    /* LE PIED DE PAGE PASSE AU SOMBRE, et c'est la que l'ancre va.
+          MIREILLE, 15/10/2026, d'apres sa maquette.
+          Mesure qui justifie le changement : du bas du hero au bas de la
+          page, 1542 px tenaient sur un SEUL fond clair -- cinq zones, 71 % de
+          la page, pour seul accent la barre de copyright de 88 px. Je
+          defendais une bande sombre au MILIEU ; elle a refuse deux fois, et
+          sa maquette montre mieux : l'ancre va a la BASE. La page garde son
+          unique grand aplat au hero, la barre de lot reste claire, et le pied
+          ferme la page au lieu de s'y diluer.
+          (Commentaire JS et non `{…}` : on est dans l'expression du `return`,
+          pas parmi des enfants JSX. Troisieme fois cette semaine.) */
+    <footer className="mt-20 bg-nordfjord text-clinical" data-testid="footer">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
-        <div className="border-t border-ash px-8 lg:px-14 py-10 relative overflow-hidden">
+        <div className="px-8 lg:px-14 pt-14 pb-10 relative overflow-hidden">
           <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 w-full h-full opacity-[.12]" aria-hidden="true">
             <g stroke="#00B8D4" strokeWidth="1" fill="none">
               <line x1="30" y1="50" x2="140" y2="110" /><line x1="140" y1="110" x2="250" y2="60" /><line x1="250" y1="60" x2="370" y2="130" />
@@ -132,10 +143,10 @@ export default function Footer() {
               deux calmes, chacune son travail : le bandeau previent a
               l'arrivee, le pied rappelle au depart. */}
           <div className="relative grid lg:grid-cols-[1.3fr_1fr] gap-8 lg:gap-14 lg:items-end" data-testid="footer-conformite">
-            <p className="font-display text-[15px] font-semibold tracking-[-0.005em] leading-relaxed text-nordfjord" data-testid="footer-disclaimer">
+            <p className="font-display text-[15px] font-semibold tracking-[-0.005em] leading-relaxed text-clinical" data-testid="footer-disclaimer">
               {t("footer.compliance")}
             </p>
-            <p className="etiquette text-glacier leading-relaxed">
+            <p className="etiquette text-mist leading-relaxed">
               {confirmText}
             </p>
           </div>
@@ -163,13 +174,13 @@ export default function Footer() {
         columns.length >= 2 ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
         <div className="col-span-2">
           <div className="flex items-center gap-3">
-            <FnMark size={30} frame="#0B2E4F" spark="#00B8D4" />
+            <FnMark size={30} frame="var(--clinical)" spark="var(--nova)" />
             {/* `var(--nordfjord)` et non `#0B2E4F` : le jeton s'inverse avec
                 le theme, la valeur ecrite en dur non. En mode sombre, le
                 marine se posait sur un fond presque noir. */}
-            <Wordmark size={20} color="var(--nordfjord)" descripteur="RESEARCH" />
+            <Wordmark size={20} color="var(--clinical)" descripteur="RESEARCH" />
           </div>
-          <p className="mt-4 text-sm text-glacier max-w-sm leading-relaxed">{t("footer.tagline")}</p>
+          <p className="mt-4 text-sm text-mist max-w-sm leading-relaxed">{t("footer.tagline")}</p>
           {/* LA TROISIEME OCCURRENCE EST PARTIE. Cette pastille disait
               « FOR RESEARCH USE ONLY · USAGE RECHERCHE UNIQUEMENT » a trente
               centimetres de la bande de conformite qui le dit deja, et a deux
@@ -177,14 +188,14 @@ export default function Footer() {
         </div>
         {columns.map((col) => (
           <div key={col.key} data-testid={`footer-col-${col.key}`}>
-            <div className="etiquette mb-5 text-nova-texte">{col.title}</div>
+            <div className="etiquette mb-5 text-nova">{col.title}</div>
             <ul className="text-sm">
               {col.links.map((l) => (
                 <li key={l.to + l.label}>
                   {l.newTab ? (
-                    <a href={l.to} target="_blank" rel="noopener noreferrer" className="lien-pied text-glacier hover:text-nordfjord transition-colors">{l.label}</a>
+                    <a href={l.to} target="_blank" rel="noopener noreferrer" className="lien-pied text-mist hover:text-nova transition-colors">{l.label}</a>
                   ) : (
-                    <Link to={l.to} className="lien-pied text-glacier hover:text-nordfjord transition-colors">{l.label}</Link>
+                    <Link to={l.to} className="lien-pied text-mist hover:text-nova transition-colors">{l.label}</Link>
                   )}
                 </li>
               ))}
@@ -193,7 +204,10 @@ export default function Footer() {
         ))}
       </div>
 
-      <div className="bg-ink text-fog">
+      {/* La barre du bas garde l'ink : deux valeurs sombres l'une sur l'autre
+          posent le pied, la plus sombre en dernier. Un filet les separe --
+          `border-t` plutot qu'un saut de couleur abrupt. */}
+      <div className="bg-ink text-fog border-t border-white/10">
         <div className="max-w-7xl mx-auto px-6 lg:px-8 py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="etiquette">
             © {new Date().getFullYear()} FIRONOVA · {t("footer.rights")}
