@@ -217,6 +217,42 @@ describe("les liens du pied de page", () => {
     expect(code).not.toMatch(/fn-ruo/);
   });
 
+  test("TOUT LE PIED S'ALIGNE SUR UN SEUL AXE", () => {
+    /* MIREILLE, 18/10/2026, capture à l'appui : « regarde l'espacement,
+     * pourquoi est-ce si dur de me donner quelque chose qui a du sens ».
+     *
+     * Mesuré sur un écran de 1440 : la bande de conformité commençait à
+     * x = 107, son texte à x = 163, et le bloc de marque en dessous à x = 107.
+     * DEUX axes verticaux dans le même pied, à 56 px l'un de l'autre — c'est
+     * ce que l'œil voit avant de savoir le nommer.
+     *
+     * La cause : un `px-8 lg:px-14` posé sur la bande, EN PLUS du `px-6
+     * lg:px-8` du conteneur qui la porte. Deux rembourrages empilés sur un
+     * seul des trois blocs.
+     *
+     * Le test interdit à la bande de reprendre un rembourrage horizontal :
+     * c'est le conteneur qui décide de la marge, une fois, pour tout le pied. */
+    const bande = SOURCE.match(/<div className="([^"]*)" *\n? *>?\s*<svg viewBox="0 0 400 200"/);
+    expect(bande).not.toBeNull();
+    expect(bande[1]).not.toMatch(/\bpx-\d/);
+    expect(bande[1]).not.toMatch(/\blg:px-\d/);
+  });
+
+  test("ET LES DEUX PARAGRAPHES PARTENT DU MÊME HAUT", () => {
+    /* `lg:items-end` alignait leurs BAS : la déclaration faisait deux lignes,
+     * la confirmation quatre, donc leurs hauts se décalaient de 32 px. Sur un
+     * fond sombre, ce décalage ne se lit pas comme une intention, il se lit
+     * comme un défaut de montage. */
+    expect(SOURCE).toMatch(/lg:items-start/);
+    expect(SOURCE).not.toMatch(/lg:items-end/);
+  });
+
+  test("ET UN FILET SÉPARE LA BANDE DES COLONNES", () => {
+    // 88 px de vide sans rien dedans ne lisaient pas comme une séparation,
+    // mais comme un trou. Le filet nomme la frontière.
+    expect(SOURCE).toMatch(/border-t border-white\/10/);
+  });
+
   test("LA BANDE DE CONFORMITÉ REMPLIT SA LARGEUR", () => {
     /* MIREILLE, 11/10/2026 : « tout ce qui est du côté gauche de la page
      * n'a pas été modifié ». Mesuré sur un écran de 1920 : la déclaration

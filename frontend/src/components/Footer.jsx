@@ -113,7 +113,7 @@ export default function Footer() {
           pas parmi des enfants JSX. Troisieme fois cette semaine.) */
     <footer className="mt-20 bg-nordfjord text-clinical" data-testid="footer">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
-        <div className="px-8 lg:px-14 pt-14 pb-10 relative overflow-hidden">
+        <div className="pt-14 pb-12 relative overflow-hidden">
           <svg viewBox="0 0 400 200" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 w-full h-full opacity-[.12]" aria-hidden="true">
             <g stroke="#00B8D4" strokeWidth="1" fill="none">
               <line x1="30" y1="50" x2="140" y2="110" /><line x1="140" y1="110" x2="250" y2="60" /><line x1="250" y1="60" x2="370" y2="130" />
@@ -142,7 +142,7 @@ export default function Footer() {
               d'une page -- mais elle cesse de crier. Deux occurrences, toutes
               deux calmes, chacune son travail : le bandeau previent a
               l'arrivee, le pied rappelle au depart. */}
-          <div className="relative grid lg:grid-cols-[1.3fr_1fr] gap-8 lg:gap-14 lg:items-end" data-testid="footer-conformite">
+          <div className="relative grid lg:grid-cols-[1.3fr_1fr] gap-8 lg:gap-14 lg:items-start" data-testid="footer-conformite">
             <p className="font-display text-[15px] font-semibold tracking-[-0.005em] leading-relaxed text-clinical" data-testid="footer-disclaimer">
               {t("footer.compliance")}
             </p>
@@ -170,7 +170,7 @@ export default function Footer() {
           paraissait poussee vers la gauche.
           Le nombre de colonnes suit donc desormais ce qu'il y a a mettre
           dedans. */}
-      <div className={`max-w-7xl mx-auto px-6 lg:px-8 py-12 grid grid-cols-2 gap-10 ${
+      <div className={`max-w-7xl mx-auto px-6 lg:px-8 pt-12 pb-12 grid grid-cols-2 gap-10 border-t border-white/10 ${
         columns.length >= 2 ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
         <div className="col-span-2">
           <div className="flex items-center gap-3">
