@@ -219,3 +219,64 @@ def test_toutes_les_variantes_sont_essayees_avant_d_abandonner(srv, monkeypatch)
     # Au moins les deux formes d'authentification, sur au moins une URL.
     formes = {("X-IBM-Client-Id" in a["headers"]) for a in _ClientFactice.appels}
     assert formes == {True, False}, "les deux formes d'authentification ne sont pas essayees"
+
+
+# ---------------------------------------------------------------------------
+# « Comment je sais si c'est les bonnes cles ? »
+# ---------------------------------------------------------------------------
+
+def test_l_essai_dit_ACCEPTE_quand_le_jeton_est_obtenu(srv, monkeypatch):
+    """MIREILLE, 18/10/2026 : « mais comment je fais pour savoir si c'est les
+    bonnes cles ».
+
+    Le diagnostic de configuration ne repond pas a cette question : « present »
+    dit qu'une ligne existe dans le fichier. Une cle expiree, une cle d'une
+    autre application, un secret tronque au copier-coller sont tous
+    « present ». Seul Postes Canada peut trancher, donc on lui demande.
+    """
+    cp = _brancher(srv, monkeypatch)
+    r = asyncio.run(cp.essai_identifiants())
+    assert r["accepte"] is True
+    assert r["verdict"] == "ACCEPTE"
+    assert r["duree_du_jeton_s"] > 0
+
+
+def test_l_essai_dit_REFUSE_et_donne_une_piste(srv, monkeypatch):
+    cp = _brancher(srv, monkeypatch, reponses=[_Reponse(401, text="x")] * 8)
+    r = asyncio.run(cp.essai_identifiants())
+    assert r["accepte"] is False
+    assert r["verdict"] == "REFUSE"
+    assert "MEME application" in r["piste"]
+
+
+def test_l_essai_sans_identifiants_ne_tape_sur_rien(srv, monkeypatch):
+    """Pas d'appel reseau inutile quand il n'y a rien a essayer."""
+    cp = _brancher(srv, monkeypatch)
+    monkeypatch.setattr(srv, "CANADA_POST_OAUTH_CLIENT_ID", "", raising=False)
+    monkeypatch.setattr(srv, "CANADA_POST_OAUTH_CLIENT_SECRET", "", raising=False)
+    r = asyncio.run(cp.essai_identifiants())
+    assert r["essaye"] is False
+    assert _ClientFactice.appels == []
+
+
+def test_L_ESSAI_NE_REND_NI_LE_JETON_NI_LES_IDENTIFIANTS(srv, monkeypatch):
+    """Un jeton d'acces est un secret au meme titre qu'un mot de passe.
+
+    Le rapport dit « obtenu » et sa duree de vie. Jamais sa valeur.
+    """
+    import json
+    cp = _brancher(srv, monkeypatch)
+    rapport = json.dumps(asyncio.run(cp.essai_identifiants()), ensure_ascii=False)
+    assert "LE-JETON" not in rapport
+    assert "ID-CLIENT-AAA" not in rapport
+    assert "SECRET-BBB" not in rapport
+
+
+def test_l_essai_force_un_jeton_neuf(srv, monkeypatch):
+    """Un jeton en cache prouverait que ca marchait AVANT, pas maintenant."""
+    cp = _brancher(srv, monkeypatch)
+    asyncio.run(cp._cp_get_oauth_token())          # remplit le cache
+    appels_avant = len(_ClientFactice.appels)
+    _ClientFactice.reponses = [_Reponse(200)]
+    asyncio.run(cp.essai_identifiants())
+    assert len(_ClientFactice.appels) > appels_avant, "l'essai a repondu depuis le cache"

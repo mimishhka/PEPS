@@ -4,6 +4,10 @@
 
     cd /app && python -I scripts/diagnostic_postes_canada.py
 
+Et pour savoir si les cles sont LES BONNES, et pas seulement presentes :
+
+    cd /app && python -I scripts/diagnostic_postes_canada.py --essai
+
 MIREILLE, 18/10/2026 : « poste canada needs to go live as i am ready to go
 live ». La route `/api/admin/canada-post/diagnostic` rend la meme chose, mais
 elle exige une session d'administration — donc un jeton a recuperer et a
@@ -171,10 +175,17 @@ def main() -> int:
     print(f"  {'synchro livraison':.<30} toutes les "
           f"{r['synchro_livraison_secondes']} s")
     print()
-    print("  CE QUI EST REQUIS PAR CE MODE")
+    print("  TOUTES LES VARIABLES   (* = exigee par le mode retenu)")
     for nom, etat in r["requis"].items():
-        marque = "   " if etat == "present" else " <<"
-        print(f"  {('  ' + nom):.<32} {etat}{marque}")
+        exigee = r["exige_par_le_mode"].get(nom, False)
+        etoile = "*" if exigee else " "
+        if exigee and etat != "present":
+            marque = "  <<< MANQUE"
+        elif not exigee and etat == "present":
+            marque = "  (ignoree par ce mode)"
+        else:
+            marque = ""
+        print(f"  {etoile} {(nom):.<30} {etat}{marque}")
     print()
     print(f"  {'configure':.<30} {'oui' if r['configure'] else 'NON'}")
     print(f"  {'reperage interrogeable':.<30} "
@@ -195,6 +206,50 @@ def main() -> int:
             if ligne.strip():
                 print(ligne)
             print()
+
+    # L'ESSAI EN DIRECT : la seule facon de savoir si les cles sont les bonnes.
+    #
+    # « present » dit qu'une ligne existe dans le fichier. Une cle expiree, une
+    # cle d'une autre application, un secret tronque au copier-coller : tout
+    # cela est « present ». Seul Postes Canada peut trancher.
+    #
+    # Un appel reseau, un seul, et il ne cree RIEN : obtenir un jeton ne
+    # produit aucune etiquette et n'est pas facture. C'est pour ca qu'il est
+    # sur de le lancer sans prevenir qui que ce soit.
+    if "--essai" in sys.argv:
+        import asyncio
+        print("  " + "-" * (largeur - 4))
+        print("  ESSAI EN DIRECT — demande d un vrai jeton a Postes Canada")
+        print()
+        e = asyncio.run(canada_post.essai_identifiants())
+        if not e.get("essaye"):
+            print(f"  {'jeton OAuth':.<30} non essaye")
+            print(f"    {e['verdict']}")
+            print(f"    {e['detail']}")
+        elif e.get("accepte"):
+            print(f"  {'jeton OAuth':.<30} ACCEPTE")
+            print(f"    Postes Canada accepte vos identifiants.")
+            if e.get("duree_du_jeton_s"):
+                print(f"    Jeton valide {e['duree_du_jeton_s']} s.")
+            if e.get("variante"):
+                print(f"    Forme retenue : {e['variante']}")
+        else:
+            print(f"  {'jeton OAuth':.<30} {e['verdict']}")
+            print(f"    {e.get('detail', '')}")
+            if e.get("piste"):
+                print()
+                mots, ligne = e["piste"].split(), "    "
+                for mot in mots:
+                    if len(ligne) + len(mot) + 1 > largeur:
+                        print(ligne)
+                        ligne = "    " + mot
+                    else:
+                        ligne += (" " if ligne.strip() else "") + mot
+                if ligne.strip():
+                    print(ligne)
+        print()
+        print("  Ni le jeton ni les identifiants n apparaissent ci-dessus.")
+        print()
 
     print("  " + "-" * (largeur - 4))
     print(f"  VERDICT : {r['verdict'].upper()}")

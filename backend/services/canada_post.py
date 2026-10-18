@@ -1809,30 +1809,57 @@ def diagnostic_configuration() -> dict:
     def etat(valeur) -> str:
         return "present" if str(valeur or "").strip() else "MANQUANT"
 
-    # Ce qu'il faut selon le chemin retenu — `is_canada_post_configured`
-    # applique exactement la meme regle, on en expose juste le detail.
-    if openapi:
-        requis = {
-            "OAUTH_CLIENT_ID": etat(s.CANADA_POST_OAUTH_CLIENT_ID),
-            "OAUTH_CLIENT_SECRET": etat(s.CANADA_POST_OAUTH_CLIENT_SECRET),
-            "numero client (mailedBy)": etat(mailed_by),
-            "numero client (mobo)": etat(mobo),
-            "ORIGIN_POSTAL_CODE": etat(s.CANADA_POST_ORIGIN_POSTAL_CODE),
-        }
-    else:
-        requis = {
-            "API_KEY": etat(s.CANADA_POST_API_KEY),
-            "CUSTOMER_NUMBER": etat(s.CANADA_POST_CUSTOMER_NUMBER),
-            "ORIGIN_POSTAL_CODE": etat(s.CANADA_POST_ORIGIN_POSTAL_CODE),
-        }
+    # TOUTES LES VARIABLES SONT LISTEES, PAS SEULEMENT CELLES DU MODE RETENU.
+    #
+    # MIREILLE, 18/10/2026 : « ces informations sont deja dans le .env, c'est
+    # le meme que celui utilise pour le code du rating ». Elle avait raison de
+    # me reprendre, et le defaut etait dans cet outil.
+    #
+    # Ce bloc n'affichait QUE les variables requises par le mode selectionne.
+    # Son `.env` force `CANADA_POST_API_MODE=legacy`, donc le rapport n'a
+    # montre que les trois du chemin XML — et n'a JAMAIS REGARDE
+    # OAUTH_CLIENT_ID. J'en ai conclu qu'il etait absent alors que je n'en
+    # savais rien : un diagnostic qui masque la moitie de la question fait
+    # tirer des conclusions fausses, ce qui est pire que de ne rien dire.
+    #
+    # Desormais tout est montre, et une colonne indique ce que le mode retenu
+    # EXIGE. Voir quelque chose de present mais inutilise est une information ;
+    # ne pas le voir du tout n'en est pas une.
+    toutes = {
+        "OAUTH_CLIENT_ID": (etat(s.CANADA_POST_OAUTH_CLIENT_ID), openapi),
+        "OAUTH_CLIENT_SECRET": (etat(s.CANADA_POST_OAUTH_CLIENT_SECRET), openapi),
+        "API_KEY": (etat(s.CANADA_POST_API_KEY), not openapi),
+        "CUSTOMER_NUMBER": (etat(s.CANADA_POST_CUSTOMER_NUMBER), True),
+        "numero client (mailedBy)": (etat(mailed_by), openapi),
+        "numero client (mobo)": (etat(mobo), openapi),
+        "ORIGIN_POSTAL_CODE": (etat(s.CANADA_POST_ORIGIN_POSTAL_CODE), True),
+        "CONTRACT_ID": (etat(s.CANADA_POST_CONTRACT_ID), False),
+    }
+    requis = {nom: valeur for nom, (valeur, _) in toutes.items()}
+    exige_par_le_mode = {nom: oblig for nom, (_, oblig) in toutes.items()}
 
-    manquants = sorted(k for k, v in requis.items() if v == "MANQUANT")
+    manquants = sorted(nom for nom, (valeur, oblig) in toutes.items()
+                       if oblig and valeur == "MANQUANT")
+
+    # CE QUI EST PRESENT MAIS INUTILISE. C'est le cas qui explique un echec
+    # silencieux : la configuration a tout ce qu'il faut, et le mode choisi
+    # regarde ailleurs.
+    presents_inutilises = sorted(nom for nom, (valeur, oblig) in toutes.items()
+                                 if not oblig and valeur == "present"
+                                 and nom not in ("CONTRACT_ID", "CUSTOMER_NUMBER"))
     avertissements = []
 
     # POSTES CANADA A ETEINT XML ET SOAP LE 30 AVRIL 2026. Les pages officielles
     # de Shipping 8.0.0 et de Rating 4.0.0 l'annoncent dans les memes mots :
     # REST uniquement, et jeton OAuth 2.0 obligatoire pour toutes les requetes.
     # Rester sur l'ancien chemin, c'est parler a un serveur qui ne repond plus.
+    if not openapi and presents_inutilises:
+        avertissements.append(
+            "IDENTIFIANTS PRESENTS MAIS IGNORES : "
+            + ", ".join(presents_inutilises)
+            + ". Le mode « legacy » ne les regarde pas. Posez "
+            "CANADA_POST_API_MODE=openapi pour que le serveur s'en serve."
+        )
     if not openapi:
         avertissements.append(
             "Le chemin « legacy » (XML) est retenu. Postes Canada a cesse de "
@@ -1876,6 +1903,8 @@ def diagnostic_configuration() -> dict:
                             else s.CANADA_POST_BASE_URL),
         "format_etiquette": os.environ.get("CANADA_POST_LABEL_FORMAT", "4x6") + ", PDF",
         "requis": requis,
+        "exige_par_le_mode": exige_par_le_mode,
+        "presents_inutilises": presents_inutilises,
         "manquants": manquants,
         "configure": is_canada_post_configured(),
         "reperage_interrogeable": _cp_suivi_disponible(),
@@ -1883,4 +1912,69 @@ def diagnostic_configuration() -> dict:
         "avertissements": avertissements,
         "verdict": ("pret" if is_canada_post_configured() and not avertissements
                     else "incomplet"),
+    }
+
+
+async def essai_identifiants() -> dict:
+    """LES CLES SONT-ELLES LES BONNES ? La seule facon de savoir : demander.
+
+    MIREILLE, 18/10/2026 : « mais comment je fais pour savoir si c'est les
+    bonnes cles ». Le diagnostic de configuration ne repond PAS a cette
+    question : « present » dit qu'une ligne existe dans le fichier, rien de
+    plus. Une cle expiree, une cle d'une autre application, un secret tronque
+    au copier-coller — tout cela est « present ».
+
+    Cet essai demande un vrai jeton a Postes Canada. C'est un appel reseau, et
+    un seul : AUCUNE etiquette n'est creee, aucun envoi n'est transmis, rien
+    n'est facture. Obtenir un jeton ne coute rien et ne produit rien.
+
+    L'essai porte sur les identifiants OAuth QUEL QUE SOIT le mode configure :
+    on veut justement savoir s'ils fonctionnent avant de basculer dessus.
+
+    NI LE JETON NI LES IDENTIFIANTS NE SONT RENDUS. Un jeton d'acces est un
+    secret au meme titre qu'un mot de passe ; le rapport dit « obtenu » et sa
+    duree de vie, pas sa valeur.
+    """
+    if not (s.CANADA_POST_OAUTH_CLIENT_ID and s.CANADA_POST_OAUTH_CLIENT_SECRET):
+        return {
+            "essaye": False,
+            "verdict": "aucun identifiant OAuth a essayer",
+            "detail": "CANADA_POST_OAUTH_CLIENT_ID et/ou "
+                      "CANADA_POST_OAUTH_CLIENT_SECRET sont absents du .env.",
+        }
+
+    # On force un nouveau jeton : un jeton en cache prouverait seulement qu'il
+    # a marche AVANT, ce qui n'est pas la question posee.
+    global _CP_OAUTH_TOKEN, _CP_OAUTH_EXPIRES_AT
+    _CP_OAUTH_TOKEN, _CP_OAUTH_EXPIRES_AT = None, None
+
+    try:
+        await _cp_get_oauth_token(force_refresh=True)
+    except HTTPException as ex:
+        return {
+            "essaye": True,
+            "accepte": False,
+            "verdict": "REFUSE",
+            "detail": str(ex.detail),
+            "piste": "Verifiez que les deux valeurs viennent de la MEME "
+                     "application du portail, qu'elles sont completes (un "
+                     "secret se tronque facilement au copier-coller) et que "
+                     "l'application a bien acces aux produits Shipping et "
+                     "Rating.",
+        }
+    except Exception as ex:  # pragma: no cover
+        return {"essaye": True, "accepte": False, "verdict": "ERREUR",
+                "detail": type(ex).__name__}
+
+    duree = None
+    if _CP_OAUTH_EXPIRES_AT:
+        duree = int((_CP_OAUTH_EXPIRES_AT - datetime.now(timezone.utc)).total_seconds())
+
+    return {
+        "essaye": True,
+        "accepte": True,
+        "verdict": "ACCEPTE",
+        "duree_du_jeton_s": duree,
+        "variante": _CP_VARIANTE_JETON or "",
+        # Le jeton lui-meme n'apparait nulle part : c'est un secret.
     }
