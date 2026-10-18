@@ -97,6 +97,12 @@ def _cp_error_detail(response: httpx.Response) -> str:
     return (response.text or "").strip()[:500]
 
 
+# La variante d'authentification retenue pour le service de jeton :
+# forme des identifiants (en-tetes X-IBM ou HTTP Basic) croisee avec l'URL.
+# Memorisee pour ne pas re-essayer les quatre combinaisons a chaque jeton.
+_CP_VARIANTE_JETON = None
+
+
 async def _cp_get_oauth_token(force_refresh: bool = False) -> str:
     global _CP_OAUTH_TOKEN, _CP_OAUTH_EXPIRES_AT
     now = datetime.now(timezone.utc)
@@ -104,22 +110,82 @@ async def _cp_get_oauth_token(force_refresh: bool = False) -> str:
             and _CP_OAUTH_EXPIRES_AT > now + timedelta(seconds=30)):
         return _CP_OAUTH_TOKEN
 
+    # `scope=merchant` et `grant_type=client_credentials` : les deux sont
+    # confirmes par le guide d'authentification du portail, qui les montre
+    # dans son exemple et les redonne dans la reponse.
     data = {"grant_type": "client_credentials", "scope": "merchant"}
-    try:
-        async with httpx.AsyncClient(timeout=20) as cx:
-            r = await cx.post(
-                s.CANADA_POST_OAUTH_TOKEN_URL,
-                data=data,
-                auth=(s.CANADA_POST_OAUTH_CLIENT_ID, s.CANADA_POST_OAUTH_CLIENT_SECRET),
-                headers={"Accept": "application/json"},
-            )
-    except Exception as ex:
-        logging.error("Canada Post OAuth token request failed: %s", type(ex).__name__)
-        raise HTTPException(502, "Canada Post OAuth token endpoint unreachable")
 
-    if r.status_code >= 400:
-        logging.error("Canada Post OAuth token status=%s response_ref=%s", r.status_code, s._private_ref(r.text))
-        raise HTTPException(502, f"Canada Post OAuth rejected credentials ({r.status_code})")
+    # LES IDENTIFIANTS VONT DANS DES EN-TETES, PAS EN HTTP BASIC.
+    #
+    # Le guide d'authentification de Postes Canada est explicite :
+    #
+    #     --header 'X-IBM-Client-Id: ...'
+    #     --header 'X-IBM-Client-Secret: ...'
+    #     --data 'scope=merchant&grant_type=client_credentials'
+    #
+    # Ce code envoyait `auth=(id, secret)`, c'est-a-dire un en-tete
+    # `Authorization: Basic`. La passerelle l'accepte peut-etre, mais rien ne
+    # le garantit, et un 401 sur l'obtention du jeton ne dit pas POURQUOI.
+    #
+    # ET L'URL DU SERVICE N'EST PAS DOCUMENTEE EN DUR. Le guide n'ecrit que
+    # `https://{$server}/oauth2/token`. La base concrete est connue, le
+    # segment du fournisseur OAuth ne l'est pas. Plutot que de faire deviner
+    # a quelqu'un une URL dont l'erreur se lit « 401 », on essaie les
+    # variantes et on retient celle qui repond — exactement le patron deja
+    # utilise pour la tarification (`_CP_VARIANTE_TARIFS`).
+    global _CP_VARIANTE_JETON
+    base_openapi = s.CANADA_POST_OPENAPI_BASE_URL.rsplit("/shipping/", 1)[0]
+    urls = []
+    for candidate in (s.CANADA_POST_OAUTH_TOKEN_URL,
+                      f"{base_openapi}/oauth2/token"):
+        if candidate and candidate not in urls:
+            urls.append(candidate)
+
+    entetes_documentes = {
+        "X-IBM-Client-Id": s.CANADA_POST_OAUTH_CLIENT_ID,
+        "X-IBM-Client-Secret": s.CANADA_POST_OAUTH_CLIENT_SECRET,
+        "Accept": "application/json",
+    }
+
+    variantes = []
+    for url in urls:
+        variantes.append((f"en-tetes X-IBM @ {url}", url, entetes_documentes, None))
+        variantes.append((f"HTTP Basic @ {url}", url, {"Accept": "application/json"},
+                          (s.CANADA_POST_OAUTH_CLIENT_ID, s.CANADA_POST_OAUTH_CLIENT_SECRET)))
+    # Celle qui a marche la derniere fois passe devant.
+    if _CP_VARIANTE_JETON:
+        variantes.sort(key=lambda v: 0 if v[0] == _CP_VARIANTE_JETON else 1)
+
+    r = None
+    echecs = []
+    async with httpx.AsyncClient(timeout=20) as cx:
+        for nom, url, entetes, basic in variantes:
+            try:
+                essai = await cx.post(url, data=data, headers=entetes, auth=basic)
+            except Exception as ex:
+                echecs.append(f"{nom} -> {type(ex).__name__}")
+                continue
+            if essai.status_code < 400:
+                if _CP_VARIANTE_JETON != nom:
+                    logging.info("Canada Post OAuth: variante retenue -> %s", nom)
+                    _CP_VARIANTE_JETON = nom
+                r = essai
+                break
+            # `_private_ref` plutot que le corps : une reponse d'erreur de
+            # service de jeton peut contenir l'identifiant client.
+            echecs.append(f"{nom} -> HTTP {essai.status_code} "
+                          f"(ref {s._private_ref(essai.text)})")
+
+    if r is None:
+        # Le detail de CHAQUE variante, sinon « 401 » n'apprend rien : on ne
+        # sait pas si c'est l'URL, la forme d'authentification, ou les cles.
+        logging.error("Canada Post OAuth: aucune variante n'a repondu | %s",
+                      " ; ".join(echecs))
+        raise HTTPException(
+            502,
+            "Canada Post OAuth a refuse toutes les formes d'authentification "
+            "essayees. Voir le journal pour le detail par variante.",
+        )
 
     payload = _cp_safe_json(r)
     token = str(payload.get("access_token") or "")
