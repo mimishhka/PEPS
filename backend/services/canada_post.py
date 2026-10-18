@@ -168,12 +168,23 @@ async def _cp_get_oauth_token(force_refresh: bool = False) -> str:
     # `Authorization: Basic`. La passerelle l'accepte peut-etre, mais rien ne
     # le garantit, et un 401 sur l'obtention du jeton ne dit pas POURQUOI.
     #
-    # ET L'URL DU SERVICE N'EST PAS DOCUMENTEE EN DUR. Le guide n'ecrit que
-    # `https://{$server}/oauth2/token`. La base concrete est connue, le
-    # segment du fournisseur OAuth ne l'est pas. Plutot que de faire deviner
-    # a quelqu'un une URL dont l'erreur se lit « 401 », on essaie les
-    # variantes et on retient celle qui repond — exactement le patron deja
-    # utilise pour la tarification (`_CP_VARIANTE_TARIFS`).
+    # L'URL DU SERVICE EST CONFIRMEE PAR LA SPECIFICATION.
+    #
+    # Le guide d'authentification n'ecrivait que `https://{$server}/oauth2/
+    # token`, un gabarit — d'ou la prudence initiale. La specification
+    # Shipping 1.0.0, qu'elle a telechargee du portail, donne la valeur
+    # exacte sous `securitySchemes.Oauth2.flows.clientCredentials.tokenUrl` :
+    #
+    #   https://api.canadapost-postescanada.ca/prod/
+    #     devportal-portaildesdeveloppeurs/cpc-api-native-oauth-provider/
+    #     oauth2/token
+    #
+    # C'est exactement le defaut de `CANADA_POST_OAUTH_TOKEN_URL`. La meme
+    # specification confirme `clientCredentials` et le scope `merchant`.
+    #
+    # Les variantes restent essayees : elles ne coutent qu'un appel de plus
+    # le jour ou la passerelle changera, et le patron est deja celui de la
+    # tarification (`_CP_VARIANTE_TARIFS`).
     global _CP_VARIANTE_JETON
     base_openapi = s.CANADA_POST_OPENAPI_BASE_URL.rsplit("/shipping/", 1)[0]
     urls = []
