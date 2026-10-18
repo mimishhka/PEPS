@@ -213,8 +213,19 @@ export default function Home() {
       {/* BANDE DE CONFIANCE : statique, chaque affirmation une fois. Le
           defilement perpetuel de 24 items violait WCAG 2.2.2 (mouvement non
           controlable) et le monde (un seul geste de mouvement par page). */}
+      {/* LES QUATRE MENTIONS OCCUPENT TOUTE LA BANDE.
+          MIREILLE, 18/10/2026 : « le bandeau est aligne sur la gauche, sur la
+          page web en mode ordinateur ».
+          Elles tenaient dans environ 840 px d'un conteneur de 1280 et
+          laissaient 440 px vides a droite. Une bande qui traverse l'ecran
+          d'un bord a l'autre mais dont le contenu s'arrete aux deux tiers ne
+          se lit pas comme une bande : elle se lit comme une ligne posee la.
+          `sm:justify-between` et non `justify-between` : sous 640 px les
+          mentions passent a la ligne, et repartir trois elements sur une
+          rangee puis un seul sur la suivante donne un orphelin isole a
+          gauche. En dessous, le flux naturel est plus juste. */}
       <section className="border-y border-ash" data-testid="trust-marquee">
-        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-4 flex flex-wrap gap-x-10 gap-y-2">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-4 flex flex-wrap gap-x-10 gap-y-2 sm:justify-between">
           {trustItems.map((it, i) => (
             <span key={i} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "12px", fontWeight: 500, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--glacier)", whiteSpace: "nowrap" }}>
               <NovaSpark size={13} /> {it}
