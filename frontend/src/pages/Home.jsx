@@ -214,7 +214,7 @@ export default function Home() {
           defilement perpetuel de 24 items violait WCAG 2.2.2 (mouvement non
           controlable) et le monde (un seul geste de mouvement par page). */}
       <section className="border-y border-ash" data-testid="trust-marquee">
-        <div className="max-w-7xl mx-auto py-4 flex flex-wrap gap-x-10 gap-y-2">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-4 flex flex-wrap gap-x-10 gap-y-2">
           {trustItems.map((it, i) => (
             <span key={i} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "12px", fontWeight: 500, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--glacier)", whiteSpace: "nowrap" }}>
               <NovaSpark size={13} /> {it}
