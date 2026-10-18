@@ -9931,9 +9931,9 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "melanotan-2-10mg",
-        "name_en": "Melanotan-2",
-        "name_fr": "Mélanotan-2",
+        "slug": "melanotan-ii-10mg",
+        "name_en": "Melanotan II",
+        "name_fr": "Mélanotan II",
         "category": "cognitive",
         "sequence": "Ac-Nle-cyclo[Asp-His-D-Phe-Arg-Trp-Lys]-NH2",
         "molecular_formula": "C50H69N15O9",
@@ -9971,9 +9971,28 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "epithalon-10mg",
-        "name_en": "Epithalon",
-        "name_fr": "Épithalon",
+    # LE SLUG DOIT ETRE CELUI DE SA BASE, SINON LE GABARIT PARLE DANS LE VIDE.
+    #
+    # 18/10/2026. Son catalogue en ligne porte `epitalon-10mg` et
+    # `melanotan-ii-10mg` ; le gabarit disait `epithalon-10mg` et
+    # `melanotan-2-10mg`. Deux consequences, et la seconde est la pire :
+    #
+    # 1. Le `$setOnInsert` cree ce qu'il ne trouve pas. Un slug qui ne
+    #    correspond a rien INSERE un second document pour un compose qu'elle
+    #    vend deja — masque, sans stock, et impossible a distinguer du vrai
+    #    autrement qu'a l'orthographe. « Je vois que tu crees beaucoup de
+    #    nouveaux produits, probablement pour des tests » : c'etait ca.
+    #
+    # 2. Le remplissage scientifique visait lui aussi le mauvais slug, donc il
+    #    n'arrivait jamais. CES DEUX PRODUITS SONT LES SEULS DU SITE DONT LA
+    #    FORMULE ET LA LONGUEUR DE SEQUENCE SONT VIDES. Les dix-sept autres
+    #    les ont.
+    #
+    # Le reste du depot — la documentation, les tests, les services — ecrit
+    # « Epitalon ». C'etait le gabarit, l'intrus.
+        "slug": "epitalon-10mg",
+        "name_en": "Epitalon",
+        "name_fr": "Épitalon",
         "category": "healing",
         "sequence": "Ala-Glu-Asp-Gly",
         "molecular_formula": "C14H22N4O9",
@@ -10552,6 +10571,50 @@ async def _repair_nonprod_bpc_seed() -> None:
     )
 
 
+# Les huit champs que le gabarit sait renseigner — et que l'admin sait aussi
+# saisir. C'est tout le probleme : les deux ecrivent au meme endroit.
+CHAMPS_SCIENTIFIQUES = (
+    "molecular_formula", "molecular_weight", "cas_number", "sequence_length",
+    "sequence", "purity", "description_en", "description_fr",
+)
+
+
+async def remplir_champs_vides(slug: str, valeurs: dict) -> dict:
+    """Ecrit les champs ABSENTS OU VIDES du produit. Rend ce qui a ete ecrit.
+
+    SA SAISIE NE DOIT JAMAIS DISPARAITRE AU REDEMARRAGE.
+
+    MIREILLE, 18/10/2026 : « il ne faut surtout pas perdre les donnees au
+    redemarrage, et que tout soit reecrit ». Elle avait bien lu, et la perte
+    avait deja lieu : le seed faisait un `$set` inconditionnel des huit champs
+    de `CHAMPS_SCIENTIFIQUES` a chaque demarrage du serveur. Toute valeur
+    saisie depuis l'admin sur l'un d'eux etait remplacee par celle du gabarit.
+    Le commentaire du code annoncait « non-destructive » ; il etait faux.
+
+    La preuve etait dans ses donnees : Epitalon portait la seule purete a elle,
+    « ≥ 99,3 % », quand les dix-huit autres produits affichaient exactement le
+    « ≥ 99,0 % » du gabarit. Et Epitalon etait justement le seul que le seed
+    n'atteignait pas, son slug ne correspondant pas.
+
+    Un remplissage comble ce qui manque, rien de plus. Corriger une valeur
+    DEJA ecrite est une migration : elle se declare et se date explicitement,
+    comme celle des poids d'expedition.
+    """
+    a_ecrire = {k: v for k, v in valeurs.items() if v not in ("", None)}
+    if not a_ecrire:
+        return {}
+    existant = await db.products.find_one(
+        {"slug": slug}, {"_id": 0, **{k: 1 for k in a_ecrire}}
+    ) or {}
+    # `not existant.get(k)` traite 0 et "" comme vides : ni une masse, ni une
+    # longueur de sequence ne valent zero, donc aucune vraie valeur n'est
+    # confondue avec un trou.
+    manquants = {k: v for k, v in a_ecrire.items() if not existant.get(k)}
+    if manquants:
+        await db.products.update_one({"slug": slug}, {"$set": manquants})
+    return manquants
+
+
 async def seed_admin_and_products():
     # Indexes
     await db.rate_limit_counters.create_index("expires_at", expireAfterSeconds=0)
@@ -10734,7 +10797,7 @@ async def seed_admin_and_products():
         )
 
     # Products
-    featured_slugs = {"bpc-157-5mg", "semaglutide-5mg", "tirzepatide-10mg", "ipamorelin-5mg", "ghk-cu-50mg", "epithalon-10mg"}
+    featured_slugs = {"bpc-157-5mg", "semaglutide-5mg", "tirzepatide-10mg", "ipamorelin-5mg", "ghk-cu-50mg", "epitalon-10mg"}
     for p in SEED_PRODUCTS:
         default_variant = {
             "id": str(uuid.uuid4()),
@@ -10769,15 +10832,31 @@ async def seed_admin_and_products():
             "variants": [default_variant],
         }
         await db.products.update_one({"slug": p["slug"]}, {"$setOnInsert": defaults}, upsert=True)
-        # Backfill featured flag and scientific fields on existing docs (non-destructive)
-        sci_backfill = {k: p[k] for k in (
-            "molecular_formula", "molecular_weight", "cas_number", "sequence_length",
-            "sequence", "purity", "description_en", "description_fr",
-        ) if k in p}
-        sci_backfill["featured"] = p["slug"] in featured_slugs
+
+        # LE REMPLISSAGE NE COMBLE QUE LE VIDE. IL N'ECRASE PLUS SES SAISIES.
+        #
+        # Le commentaire disait « non-destructive » et le code faisait un `$set`
+        # inconditionnel de huit champs — dont `purity`, `description_en` et
+        # `description_fr`. A CHAQUE REDEMARRAGE, toute valeur saisie depuis
+        # l'admin sur ces huit champs etait remplacee par celle du gabarit.
+        #
+        # MIREILLE, 11/10/2026 : « je ne vois pas les changements ». On a cru
+        # a un defaut d'affichage. Une partie etait ca : elle modifiait, on
+        # redeployait, le seed remettait l'ancienne valeur.
+        #
+        # LA PREUVE EST DANS SES DONNEES. Epitalon est le SEUL produit en ligne
+        # qui porte une purete a elle, « ≥ 99,3 % » ; les dix-huit autres
+        # affichent exactement le « ≥ 99,0 % » du gabarit. Et Epitalon est
+        # justement le seul que le seed n'atteignait pas, son slug ne
+        # correspondant pas (voir la note sur les slugs plus bas).
+        #
+        # Un remplissage comble ce qui manque. Corriger une valeur DEJA ecrite
+        # est une migration, elle se declare explicitement et se date — comme
+        # celle des poids juste en dessous.
+        await remplir_champs_vides(p["slug"], {k: p[k] for k in CHAMPS_SCIENTIFIQUES if k in p})
         await db.products.update_one(
             {"slug": p["slug"]},
-            {"$set": sci_backfill},
+            {"$set": {"featured": p["slug"] in featured_slugs}},
         )
         for field, value in {"preorder_allowed": False, "low_stock_threshold": 10,
                               "coa_url": "", "coa_lot": "", "coa_date": ""}.items():

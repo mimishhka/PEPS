@@ -169,6 +169,26 @@ def test_aucun_produit_actif_ne_porte_un_prix_a_zero():
     assert fautifs == [], f"actifs sans prix : {fautifs}"
 
 
+def test_tout_slug_mis_en_vedette_existe_au_catalogue():
+    """La garde qui aurait attrape la moitie du defaut du 18/10/2026.
+
+    `featured_slugs` contenait `epithalon-10mg` quand le catalogue — et la base
+    en ligne — portent `epitalon-10mg`. Un slug en vedette qui ne correspond a
+    aucun produit ne provoque aucune erreur : il ne met simplement rien en
+    vedette, silencieusement. Son vrai Epitalon n'etait donc jamais mis en
+    avant, et rien ne le signalait.
+    """
+    source = os.path.join(os.path.dirname(__file__), "..", "server.py")
+    with open(source, encoding="utf-8") as f:
+        texte = f.read()
+    ligne = re.search(r"featured_slugs = \{([^}]*)\}", texte)
+    assert ligne, "featured_slugs introuvable"
+    vedettes = set(re.findall(r'"([^"]+)"', ligne.group(1)))
+    connus = {p["slug"] for p in PRODUITS}
+    orphelins = sorted(vedettes - connus)
+    assert orphelins == [], f"mis en vedette mais absents du catalogue : {orphelins}"
+
+
 def test_les_slugs_sont_uniques_et_les_fiches_ont_les_memes_champs():
     slugs = [p["slug"] for p in PRODUITS]
     doublons = sorted({s for s in slugs if slugs.count(s) > 1})
