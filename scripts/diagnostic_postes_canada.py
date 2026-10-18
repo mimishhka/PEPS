@@ -248,7 +248,29 @@ def main() -> int:
                 if ligne.strip():
                     print(ligne)
         print()
+
+        # L'ANCIENNE API REPOND-ELLE ENCORE ?
+        #
+        # « no longer supported » n'est pas « le serveur ne repond plus ». La
+        # difference decide si elle peut expedier aujourd'hui ou pas. Une
+        # cotation ne cree rien et n'est pas facturee : c'est la seule facon
+        # sure de poser la question.
+        print("  interrogation de l ancienne API...", flush=True)
+        a = asyncio.run(canada_post.essai_tarification())
+        if not a.get("essaye"):
+            print(f"  {'ancienne API (XML)':.<30} non essayee")
+            print(f"    {a['detail']}")
+        elif a.get("accepte"):
+            print(f"  {'ancienne API (XML)':.<30} REPOND")
+            print(f"    {a['detail']}")
+            print(f"    {a['nb_tarifs']} tarif(s) rendu(s) pour un colis d essai.")
+        else:
+            print(f"  {'ancienne API (XML)':.<30} {a['verdict']}")
+            print(f"    {a['detail']}")
+
+        print()
         print("  Ni le jeton ni les identifiants n apparaissent ci-dessus.")
+        print("  Aucune etiquette n a ete creee : une cotation ne facture rien.")
         print()
 
     print("  " + "-" * (largeur - 4))

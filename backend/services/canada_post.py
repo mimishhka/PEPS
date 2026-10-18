@@ -1978,3 +1978,65 @@ async def essai_identifiants() -> dict:
         "variante": _CP_VARIANTE_JETON or "",
         # Le jeton lui-meme n'apparait nulle part : c'est un secret.
     }
+
+
+async def essai_tarification(code_postal: str = "K1A0B1") -> dict:
+    """L'ANCIENNE API REPOND-ELLE ENCORE ? Une demande de TARIF, rien d'autre.
+
+    MIREILLE, 18/10/2026 : « il y a aussi une autre information avec les bonnes
+    cles en legacy ».
+
+    UNE CORRECTION QUE JE ME DOIS DE FAIRE. J'ai ecrit plusieurs fois que
+    Postes Canada avait « eteint » XML et SOAP. Le portail dit exactement
+    « no longer supported » — plus pris en charge. Ce n'est PAS la meme chose
+    que « le serveur ne repond plus ». Je ne l'avais jamais teste ; je l'ai
+    affirme comme un fait alors que c'etait une deduction.
+
+    La difference compte : si l'ancienne API repond encore avec de bonnes
+    cles, elle peut expedier aujourd'hui pendant qu'elle obtient ses
+    identifiants OAuth. Sinon, elle sait que c'est bloque et pourquoi.
+
+    UNE COTATION NE CREE RIEN ET N'EST PAS FACTUREE. Elle demande « combien
+    couterait cet envoi » : aucune etiquette, aucun envoi, aucun manifeste.
+    C'est la seule facon sure de verifier des identifiants d'expedition.
+
+    L'essai vise la PRODUCTION (`soa-gw.canadapost.ca`), parce que c'est la
+    reponse qui l'interesse — pas celle de l'environnement d'essai.
+    """
+    if not _cp_legacy_cotation_possible():
+        return {
+            "essaye": False,
+            "verdict": "aucun identifiant legacy a essayer",
+            "detail": "CANADA_POST_API_KEY, CANADA_POST_CUSTOMER_NUMBER ou "
+                      "CANADA_POST_ORIGIN_POSTAL_CODE manque.",
+        }
+
+    ancien_hote = s.CANADA_POST_BASE_URL
+    try:
+        # On vise la production, quel que soit CANADA_POST_ENVIRONMENT : savoir
+        # si l'hote d'essai repond n'apprend rien d'utile.
+        s.CANADA_POST_BASE_URL = "https://soa-gw.canadapost.ca"
+        tarifs = await _canada_post_get_rates_legacy(code_postal, "CA", 0.5)
+    except Exception as ex:
+        return {"essaye": True, "accepte": False, "verdict": "ERREUR",
+                "detail": type(ex).__name__}
+    finally:
+        s.CANADA_POST_BASE_URL = ancien_hote
+
+    if tarifs:
+        return {
+            "essaye": True,
+            "accepte": True,
+            "verdict": "REPOND",
+            "nb_tarifs": len(tarifs),
+            "detail": "L'ancienne API a rendu des tarifs : vos identifiants "
+                      "legacy fonctionnent encore en production.",
+        }
+    return {
+        "essaye": True,
+        "accepte": False,
+        "verdict": "AUCUN TARIF",
+        "detail": "L'ancienne API n'a rendu aucun tarif. Voir le journal pour "
+                  "le motif exact — identifiants refuses, service retire, ou "
+                  "compte sans contrat pour ce service.",
+    }
