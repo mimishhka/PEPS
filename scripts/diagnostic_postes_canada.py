@@ -27,10 +27,68 @@ from pathlib import Path
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE / "backend"))
 
+# LE PYTHON DU SYSTEME N'A PAS LES DEPENDANCES DU BACKEND.
+#
+# Premier essai sur le serveur, 18/10/2026 : « ModuleNotFoundError: No module
+# named 'dotenv' ». Le backend tourne dans un environnement virtuel, et
+# `python` tout court n'y donne pas acces. Demander a quelqu'un de retrouver
+# le bon interpreteur est une etape de trop pour une commande de diagnostic.
+#
+# On cherche donc soi-meme, et on se relance avec celui qui sait charger
+# `dotenv`. Le drapeau en fin d'arguments empeche la boucle : apres un saut,
+# on ne saute plus.
+_DEJA_RELANCE = "--interpreteur-trouve"
+
+CANDIDATS = (
+    RACINE / "backend" / ".venv" / "bin" / "python",
+    RACINE / ".venv" / "bin" / "python",
+    RACINE / "backend" / "venv" / "bin" / "python",
+    RACINE / "venv" / "bin" / "python",
+    # Windows, pour un essai en local.
+    RACINE / "backend" / ".venv" / "Scripts" / "python.exe",
+)
+
+
+def _relancer_avec_le_bon_python() -> None:
+    """Se relance avec un interpreteur qui a les dependances du backend."""
+    if _DEJA_RELANCE in sys.argv:
+        print("CONFIGURATION INCOMPLETE : aucun interpreteur Python trouve ne "
+              "sait charger `dotenv`.\n")
+        print("  Les dependances du backend ne sont pas installees, ou son")
+        print("  environnement virtuel n'est pas a un emplacement connu.")
+        print("  Essayez, depuis /app :\n")
+        print("    sudo supervisorctl status          # voir ce qui tourne")
+        print("    head -1 /etc/supervisor/conf.d/*.conf")
+        print("    <le python du backend> -I scripts/diagnostic_postes_canada.py")
+        raise SystemExit(2)
+
+    import subprocess
+    for candidat in CANDIDATS:
+        if not candidat.exists():
+            continue
+        try:
+            # `-I` : la verification doit etre insensible a un PYTHONPATH
+            # herite, sinon elle juge l'environnement de l'appelant plutot que
+            # celui du candidat.
+            subprocess.run([str(candidat), "-I", "-c", "import dotenv"],
+                           check=True, capture_output=True, timeout=30)
+        except Exception:
+            continue
+        print(f"  (relance avec {candidat})\n")
+        raise SystemExit(subprocess.run(
+            [str(candidat), "-I", str(Path(__file__).resolve()), _DEJA_RELANCE]
+        ).returncode)
+
+    sys.argv.append(_DEJA_RELANCE)
+    _relancer_avec_le_bon_python()
+
 
 def main() -> int:
     try:
         import server  # noqa: F401  (charge backend/.env et toute la config)
+    except ModuleNotFoundError:
+        _relancer_avec_le_bon_python()
+        return 2
     except RuntimeError as ex:
         # LA GARDE DE PRODUCTION PARLE ICI AUSSI. Si l'environnement d'essai
         # est configure en production, `server` refuse de se charger — et c'est
@@ -42,7 +100,7 @@ def main() -> int:
         return 2
     except KeyError as ex:
         print(f"CONFIGURATION INCOMPLETE : la variable {ex} manque dans "
-              f"/app/backend/.env")
+              f"{RACINE / 'backend' / '.env'}")
         return 2
 
     try:
