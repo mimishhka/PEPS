@@ -280,3 +280,65 @@ def test_l_essai_force_un_jeton_neuf(srv, monkeypatch):
     _ClientFactice.reponses = [_Reponse(200)]
     asyncio.run(cp.essai_identifiants())
     assert len(_ClientFactice.appels) > appels_avant, "l'essai a repondu depuis le cache"
+
+
+# ---------------------------------------------------------------------------
+# Le motif d'erreur, tel que Postes Canada l'ecrit
+# ---------------------------------------------------------------------------
+
+class _ReponseErreur:
+    def __init__(self, payload, text=""):
+        self.status_code = 400
+        self._payload = payload
+        self.text = text or "corps brut illisible"
+
+    def json(self):
+        return self._payload
+
+
+def test_LA_FORME_DOCUMENTEE_DES_ERREURS_EST_LUE(srv, monkeypatch):
+    """La page « API fundamentals » du portail decrit cette structure.
+
+    Le code lisait `title`, `detail` et `errors[].errorCode` — des formes
+    plausibles, mais pas celle-la. Sur une vraie erreur, les trois sortaient
+    vides et on retombait sur le corps brut tronque : du JSON illisible la ou
+    le transporteur disait exactement quoi corriger.
+    """
+    try:
+        from services import canada_post
+    except ImportError:
+        from backend.services import canada_post
+
+    r = _ReponseErreur({"messages": [
+        {"code": "7007", "description": "The weight value is invalid. The weight "
+                                        "of each piece must be less than or equal to 30 kg."},
+        {"code": "1722", "description": "The options are invalid for the selected Service."},
+    ]})
+    detail = canada_post._cp_error_detail(r)
+
+    assert "7007" in detail
+    assert "30 kg" in detail
+    assert "1722" in detail
+    assert "corps brut illisible" not in detail
+
+
+def test_les_anciennes_formes_restent_lues(srv, monkeypatch):
+    """Le portail a deja change de structure une fois ; les garder ne coute rien."""
+    try:
+        from services import canada_post
+    except ImportError:
+        from backend.services import canada_post
+
+    assert "Unauthorized" in canada_post._cp_error_detail(
+        _ReponseErreur({"title": "Unauthorized"}))
+    assert "mauvais client" in canada_post._cp_error_detail(
+        _ReponseErreur({"errors": [{"errorCode": "401", "message": "mauvais client"}]}))
+
+
+def test_sans_forme_connue_on_rend_le_corps(srv, monkeypatch):
+    """Mieux vaut un corps brut tronque que rien du tout."""
+    try:
+        from services import canada_post
+    except ImportError:
+        from backend.services import canada_post
+    assert canada_post._cp_error_detail(_ReponseErreur({}, text="?!")) == "?!"

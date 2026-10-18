@@ -84,14 +84,55 @@ def _cp_safe_json(response: httpx.Response) -> dict:
 
 
 def _cp_error_detail(response: httpx.Response) -> str:
+    """Le motif que Postes Canada donne, lisible, plutot qu'un code nu.
+
+    LA FORME DOCUMENTEE N'ETAIT PAS LUE. La page « API fundamentals » du
+    portail decrit precisement la structure d'une erreur :
+
+        {"messages": [{"code": "7007",
+                       "description": "The weight value is invalid. ..."}]}
+
+    Ce code lisait `title`, `detail` et `errors[].errorCode` — des formes
+    plausibles, mais pas CELLE-LA. Sur une vraie erreur de Postes Canada, les
+    trois sortaient vides et on retombait sur le corps brut tronque a 500
+    caracteres : du JSON illisible la ou le transporteur disait exactement
+    quoi corriger.
+
+    « Le poids de chaque colis doit etre inferieur ou egal a 30 kg » est une
+    phrase actionnable. `{"messages":[{"code":"7007","descrip...` ne l'est pas.
+
+    Les anciennes formes sont conservees : elles ne coutent rien et le
+    portail a deja change de structure une fois.
+    """
     payload = _cp_safe_json(response)
-    title = str(payload.get("title") or "").strip()
-    detail = str(payload.get("detail") or "").strip()
+    parts = []
+
+    # La forme documentee, en premier.
+    messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        code = str(m.get("code") or "").strip()
+        desc = str(m.get("description") or m.get("message") or "").strip()
+        if code or desc:
+            parts.append(f"[{code}] {desc}".strip() if code else desc)
+
+    # Les formes rencontrees ailleurs sur la passerelle.
+    for cle in ("title", "detail", "error_description", "moreInformation"):
+        valeur = str(payload.get(cle) or "").strip()
+        if valeur and valeur not in parts:
+            parts.append(valeur)
+
     errors = payload.get("errors") if isinstance(payload.get("errors"), list) else []
-    first = errors[0] if errors else {}
-    code = str(first.get("errorCode") or "").strip()
-    msg = str(first.get("message") or first.get("description") or "").strip()
-    parts = [p for p in [title, detail, f"{code} {msg}".strip()] if p]
+    for e in errors[:3]:
+        if not isinstance(e, dict):
+            continue
+        code = str(e.get("errorCode") or e.get("code") or "").strip()
+        msg = str(e.get("message") or e.get("description") or "").strip()
+        ligne = f"[{code}] {msg}".strip() if code else msg
+        if ligne and ligne not in parts:
+            parts.append(ligne)
+
     if parts:
         return " | ".join(parts)
     return (response.text or "").strip()[:500]
