@@ -127,13 +127,41 @@ it("le filtre de categorie se combine avec la recherche", async () => {
 });
 
 it("une nouvelle variante pese le poids par defaut, modifiable", async () => {
-  // 0,3 g : demande du 2026-09-19. Le champ doit accepter les decimales.
+  // 0,5 g : sa demande du 18/10/2026, « do not forget default weight for each
+  // is 0.5 g for shipping ». Le champ doit accepter les decimales.
   render(<AdminProducts />);
   const ajouter = await screen.findByTestId("new-product-btn");
   ajouter.click();
   const poids = await screen.findByTestId("v-weight-0");
-  expect(poids).toHaveValue(0.3);
+  expect(poids).toHaveValue(0.5);
   expect(poids).toHaveAttribute("step", "0.01");
+});
+
+test("ET CE POIDS EST LE MEME QUE CELUI DU SERVEUR", () => {
+  /* LE DEFAUT VIT EN DEUX ENDROITS, et le 18/10/2026 ils avaient divergé :
+   * `POIDS_PRODUIT_DEFAUT_G` valait déjà 0,5 côté serveur, `POIDS_DEFAUT_G`
+   * valait encore 0,3 ici. Les commandes partaient donc au bon poids — le
+   * serveur retombe sur son défaut à la lecture — mais toute variante ajoutée
+   * à la main depuis cet écran repartait avec l'ancien, et c'est l'écran qui
+   * écrit la valeur en base. Changer une constante et pas l'autre ne se voit
+   * nulle part : rien ne casse, le colis est juste pesé faux.
+   *
+   * Ce test lit les deux sources et exige l'accord. Il n'interdit pas de
+   * changer le poids, il interdit de n'en changer qu'un. */
+  const fs = require("fs");
+  const path = require("path");
+
+  const ecran = fs.readFileSync(path.join(__dirname, "AdminProducts.jsx"), "utf8");
+  const serveur = fs.readFileSync(
+    path.join(__dirname, "..", "..", "..", "..", "..", "backend", "server.py"),
+    "utf8",
+  );
+
+  const ici = ecran.match(/const POIDS_DEFAUT_G = ([\d.]+);/);
+  const la = serveur.match(/^POIDS_PRODUIT_DEFAUT_G = ([\d.]+)/m);
+  expect(ici).not.toBeNull();
+  expect(la).not.toBeNull();
+  expect(parseFloat(ici[1])).toBe(parseFloat(la[1]));
 });
 
 describe("le profil moléculaire est saisissable, et borné", () => {

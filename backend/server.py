@@ -9695,10 +9695,12 @@ async def admin_interac_graph_health(_admin: dict = Depends(get_admin_user)):
 # Seed data
 # ---------------------------------------------------------------------------
 # =============================================================================
-# FIRONOVA — Catalogue produits (19 peptides de recherche)
-# Données scientifiques vérifiées (PubChem, ChemicalBook, Sigma-Aldrich).
+# FIRONOVA — Catalogue produits (29 peptides de recherche)
+# Données scientifiques vérifiées : PubChem, ChemicalBook, Sigma-Aldrich
+# pour les 19 premiers ; ChEMBL (EMBL-EBI) pour les 10 ajoutés le
+# 18/10/2026, vérifiés un par un.
 # active: True  → 5 produits au lancement
-# active: False → 14 produits, à activer depuis l'admin
+# active: False → 24 produits, à activer depuis l'admin
 # image_url: "" → à remplir via POST /admin/upload/image
 # =============================================================================
 SEED_PRODUCTS = [
@@ -9868,7 +9870,13 @@ SEED_PRODUCTS = [
         "name_fr": "GHK-Cu",
         "category": "healing",
         "sequence": "Gly-His-Lys · Cu(II)",
-        "molecular_formula": "C14H22CuN6O4",
+        # 18/10/2026 : la paire etait INCOHERENTE. H22 avec Cu(II) pese
+        # 401,91, pas les 403,93 inscrits a cote. La deuxieme source donne
+        # C14H24CuN6O4, qui pese exactement 403,93 : c'est la formule qui
+        # etait fausse, pas la masse. Son CAS, lui, reste le bon — 89030-95-5
+        # designe le complexe cuivrique, quand le 49557-75-7 de la deuxieme
+        # source designe le tripeptide nu, sans cuivre.
+        "molecular_formula": "C14H24CuN6O4",
         "molecular_weight": 403.93,
         "cas_number": "89030-95-5",
         "sequence_length": 3,
@@ -10080,6 +10088,267 @@ SEED_PRODUCTS = [
         "stock": 0,
         "image_url": "",
         "lab_tested": True,
+        "active": False,
+    },
+    # =========================================================================
+    # AJOUT DU 18/10/2026 — dix composes, a sa demande.
+    #
+    # « Recree un catalogue complet de tous les produits existants sur le
+    # marche, avec tous les details necessaires pour chacun », puis, sur les
+    # prix : « vides, a 0, desactives ».
+    #
+    # DEUX SOURCES INDEPENDANTES, ET DEUX EPREUVES ARITHMETIQUES.
+    #
+    # Chaque identifiant vient de ChEMBL (EMBL-EBI) puis a ete recoupe avec
+    # peptideprotocolwiki.com, qu'elle m'a demande d'utiliser. Les deux
+    # concordent sur les cinq formules et les cinq masses que ChEMBL publiait.
+    #
+    # Aucune valeur n'est ecrite sans passer DEUX controles calculables :
+    #   1. la masse moleculaire doit correspondre a sa propre formule brute
+    #      (ecart tolere : 0,15 % ; les valeurs retenues sont a moins de
+    #      0,06 %) ;
+    #   2. le numero CAS doit valider son chiffre de controle.
+    # Un chiffre invente echoue l'un ou l'autre presque a coup sur. C'est
+    # ainsi que trois valeurs ont ete ECARTEES, voir plus bas.
+    #
+    # La ou une valeur echoue, le champ reste VIDE. C'est delibere et ce n'est
+    # pas un oubli : un CAS ou une formule faux, sur un site dont l'argument
+    # entier est la tracabilite, valent moins que pas de donnee du tout. Le
+    # premier lecteur qui verifie detruit la credibilite de tout le reste.
+    # Ces champs se remplissent depuis la fiche technique du fournisseur ou le
+    # certificat du laboratoire, les seules sources qui parlent de la matiere
+    # REELLEMENT vendue.
+    #
+    # CE QUI A ETE ECARTE :
+    #   - cagrilintide : trois contradictions INTERNES a la deuxieme source.
+    #     Sa masse annoncee (4030 Da) contredit sa propre formule (4409,07),
+    #     soit 9,4 % d'ecart ; son CAS echoue son chiffre de controle ; et sa
+    #     sequence compte 36 residus quand la page en annonce 37. Rien de sa
+    #     chimie n'est repris.
+    #   - survodutide : formule et masse concordent (0,016 %), donc elles sont
+    #     retenues. Son CAS echoue le chiffre de controle, et sa sequence perd
+    #     un residu face au glucagon dont elle derive : ces deux champs
+    #     restent vides.
+    #   - kisspeptine-10 : absente de la deuxieme source (404). Les valeurs de
+    #     ChEMBL sont conservees -- elles se verifient entre elles -- et le CAS
+    #     reste vide.
+    #
+    # UNE ERREUR CORRIGEE AU PASSAGE : j'avais ecrit la sequence du melanotan-1
+    # en code a une lettre, « SYSMEHFRWGKPV ». Le M affirmait une methionine,
+    # qui porte un soufre, alors que la formule verifiee n'en contient aucun :
+    # le residu est une norleucine. La notation precise la nomme, et nomme
+    # aussi la D-phenylalanine en position 7.
+    #
+    # Prix a 0, stock a 0, `active: False` : le commerce est sa decision, et
+    # rien ne part en vitrine tant qu'elle ne l'a pas renseigne.
+    # =========================================================================
+    {
+        "slug": "sermorelin-5mg",
+        "name_en": "Sermorelin",
+        "name_fr": "Sermoréline",
+        "category": "gh-secretagogues",
+        "sequence": "YADAIFTNSYRKVLGQLSARKLLQDIMSR",
+        "molecular_formula": "C149H246N44O42S",
+        "molecular_weight": 3357.93,
+        "cas_number": "86168-78-7",
+        "sequence_length": 29,
+        # PURETE ET « TESTE EN LABORATOIRE » APPARTIENNENT AU CERTIFICAT.
+        # Les deux sortent par l'API publique et « ≥ 99,0 % » est une
+        # specification, pas une valeur par defaut. Sur un compose sans
+        # certificat, sans stock et sans fiche de fournisseur, l'affirmation
+        # attendrait simplement le premier clic sur « Active » pour partir en
+        # ligne, et ce jour-la personne ne se souviendra qu'elle venait d'un
+        # gabarit. Vides, elles ne s'affichent pas du tout : la fiche produit
+        # masque les lignes sans valeur. Elle les renseigne depuis le COA, en
+        # meme temps que le prix.
+        "purity": "",
+        "dosage_mg": 5.0,
+        "description_en": "Synthetic 29-amino-acid fragment of growth hormone-releasing hormone. Lyophilized powder for laboratory research.",
+        "description_fr": "Fragment synthétique de 29 acides aminés de l'hormone de libération de l'hormone de croissance. Poudre lyophilisée pour la recherche en laboratoire.",
+        "price_cad": 0.0,
+        "stock": 0,
+        "image_url": "",
+        "lab_tested": False,
+        "active": False,
+    },
+    {
+        "slug": "thymosin-alpha-1-5mg",
+        "name_en": "Thymosin Alpha-1",
+        "name_fr": "Thymosine Alpha-1",
+        "category": "healing",
+        "sequence": "SDAAVDTSSEITTKDLKEKKEVVEEAEN",
+        "molecular_formula": "C129H215N33O55",
+        "molecular_weight": 3108.31,
+        "cas_number": "62304-98-7",
+        "sequence_length": 28,
+        "purity": "",
+        "dosage_mg": 5.0,
+        "description_en": "Acetylated 28-amino-acid peptide, also designated thymalfasin. Lyophilized powder for laboratory research.",
+        "description_fr": "Peptide acétylé de 28 acides aminés, également désigné thymalfasine. Poudre lyophilisée pour la recherche en laboratoire.",
+        "price_cad": 0.0,
+        "stock": 0,
+        "image_url": "",
+        "lab_tested": False,
+        "active": False,
+    },
+    {
+        "slug": "kisspeptin-10-5mg",
+        "name_en": "Kisspeptin-10",
+        "name_fr": "Kisspeptine-10",
+        "category": "longevity",
+        "sequence": "YNWNSFGLRF",
+        "molecular_formula": "C63H83N17O14",
+        "molecular_weight": 1302.46,
+        "cas_number": "",
+        "sequence_length": 10,
+        "purity": "",
+        "dosage_mg": 5.0,
+        "description_en": "Amidated decapeptide, the 45-54 fragment of human metastin. Lyophilized powder for laboratory research.",
+        "description_fr": "Décapeptide amidé, fragment 45-54 de la métastine humaine. Poudre lyophilisée pour la recherche en laboratoire.",
+        "price_cad": 0.0,
+        "stock": 0,
+        "image_url": "",
+        "lab_tested": False,
+        "active": False,
+    },
+    {
+        "slug": "gonadorelin-5mg",
+        "name_en": "Gonadorelin",
+        "name_fr": "Gonadoréline",
+        "category": "gh-secretagogues",
+        "sequence": "pGlu-His-Trp-Ser-Tyr-Gly-Leu-Arg-Pro-Gly-NH2",
+        "molecular_formula": "C55H75N17O13",
+        "molecular_weight": 1182.31,
+        "cas_number": "33515-09-2",
+        "sequence_length": 10,
+        "purity": "",
+        "dosage_mg": 5.0,
+        "description_en": "Amidated decapeptide with an N-terminal pyroglutamate. Lyophilized powder for laboratory research.",
+        "description_fr": "Décapeptide amidé portant un pyroglutamate en position N-terminale. Poudre lyophilisée pour la recherche en laboratoire.",
+        "price_cad": 0.0,
+        "stock": 0,
+        "image_url": "",
+        "lab_tested": False,
+        "active": False,
+    },
+    {
+        "slug": "dsip-5mg",
+        "name_en": "DSIP",
+        "name_fr": "DSIP",
+        "category": "cognitive",
+        "sequence": "WAGGDASGE",
+        "molecular_formula": "C35H48N10O15",
+        "molecular_weight": 848.82,
+        "cas_number": "62568-57-4",
+        "sequence_length": 9,
+        "purity": "",
+        "dosage_mg": 5.0,
+        "description_en": "Nonapeptide, also designated emideltide. Lyophilized powder for laboratory research.",
+        "description_fr": "Nonapeptide, également désigné émideltide. Poudre lyophilisée pour la recherche en laboratoire.",
+        "price_cad": 0.0,
+        "stock": 0,
+        "image_url": "",
+        "lab_tested": False,
+        "active": False,
+    },
+    {
+        "slug": "melanotan-1-10mg",
+        "name_en": "Melanotan-1",
+        "name_fr": "Melanotan-1",
+        "category": "cognitive",
+        "sequence": "Ac-Ser-Tyr-Ser-Nle-Glu-His-D-Phe-Arg-Trp-Gly-Lys-Pro-Val-NH2",
+        "molecular_formula": "C78H111N21O19",
+        "molecular_weight": 1646.87,
+        "cas_number": "75921-69-6",
+        "sequence_length": 13,
+        "purity": "",
+        "dosage_mg": 10.0,
+        "description_en": "Acetylated and amidated 13-amino-acid analogue, also designated afamelanotide. Lyophilized powder for laboratory research.",
+        "description_fr": "Analogue acétylé et amidé de 13 acides aminés, également désigné afamélanotide. Poudre lyophilisée pour la recherche en laboratoire.",
+        "price_cad": 0.0,
+        "stock": 0,
+        "image_url": "",
+        "lab_tested": False,
+        "active": False,
+    },
+    {
+        "slug": "oxytocin-5mg",
+        "name_en": "Oxytocin",
+        "name_fr": "Ocytocine",
+        "category": "cognitive",
+        "sequence": "CYIQNCPLG",
+        "molecular_formula": "C43H66N12O12S2",
+        "molecular_weight": 1007.21,
+        "cas_number": "50-56-6",
+        "sequence_length": 9,
+        "purity": "",
+        "dosage_mg": 5.0,
+        "description_en": "Cyclic nonapeptide closed by a disulfide bridge between residues 1 and 6. Lyophilized powder for laboratory research.",
+        "description_fr": "Nonapeptide cyclique fermé par un pont disulfure entre les résidus 1 et 6. Poudre lyophilisée pour la recherche en laboratoire.",
+        "price_cad": 0.0,
+        "stock": 0,
+        "image_url": "",
+        "lab_tested": False,
+        "active": False,
+    },
+    {
+        "slug": "cagrilintide-5mg",
+        "name_en": "Cagrilintide",
+        "name_fr": "Cagrilintide",
+        "category": "weight-loss",
+        "sequence": "",
+        "molecular_formula": "",
+        "molecular_weight": None,
+        "cas_number": "",
+        "sequence_length": None,
+        "purity": "",
+        "dosage_mg": 5.0,
+        "description_en": "Acylated amylin analogue. Lyophilized powder for laboratory research.",
+        "description_fr": "Analogue acylé de l'amyline. Poudre lyophilisée pour la recherche en laboratoire.",
+        "price_cad": 0.0,
+        "stock": 0,
+        "image_url": "",
+        "lab_tested": False,
+        "active": False,
+    },
+    {
+        "slug": "survodutide-10mg",
+        "name_en": "Survodutide",
+        "name_fr": "Survodutide",
+        "category": "weight-loss",
+        "sequence": "",
+        "molecular_formula": "C192H289N47O61",
+        "molecular_weight": 4231.69,
+        "cas_number": "",
+        "sequence_length": None,
+        "purity": "",
+        "dosage_mg": 10.0,
+        "description_en": "Oxyntomodulin analogue, development code BI 456906. Lyophilized powder for laboratory research.",
+        "description_fr": "Analogue de l'oxyntomoduline, code de développement BI 456906. Poudre lyophilisée pour la recherche en laboratoire.",
+        "price_cad": 0.0,
+        "stock": 0,
+        "image_url": "",
+        "lab_tested": False,
+        "active": False,
+    },
+    {
+        "slug": "mazdutide-10mg",
+        "name_en": "Mazdutide",
+        "name_fr": "Mazdutide",
+        "category": "weight-loss",
+        "sequence": "H-His-Aib-Gln-Gly-Thr-Phe-Thr-Ser-Asp-Tyr-Ser-Lys-Tyr-Leu-Asp-Glu-Lys-Lys-Ala-Lys(C20)-Glu-Phe-Val-Glu-Trp-Leu-Leu-Glu-Gly-Gly-Pro-Ser-Ser-Gly-OH",
+        "molecular_formula": "C210H322N46O67",
+        "molecular_weight": 4563.14,
+        "cas_number": "2259884-03-0",
+        "sequence_length": 34,
+        "purity": "",
+        "dosage_mg": 10.0,
+        "description_en": "Oxyntomodulin analogue, development codes IBI-362 and LY-3305677. Lyophilized powder for laboratory research.",
+        "description_fr": "Analogue de l'oxyntomoduline, codes de développement IBI-362 et LY-3305677. Poudre lyophilisée pour la recherche en laboratoire.",
+        "price_cad": 0.0,
+        "stock": 0,
+        "image_url": "",
+        "lab_tested": False,
         "active": False,
     },
 ]
@@ -10473,6 +10742,11 @@ async def seed_admin_and_products():
             "price": p["price_cad"],
             "stock": p["stock"],
             "sku": p["slug"].upper(),
+            # SANS CETTE LIGNE, 0,5 g NE S'ECRIVAIT JAMAIS. Le defaut n'existait
+            # qu'a la LECTURE (`v.get("weight_grams") or POIDS_PRODUIT_DEFAUT_G`),
+            # donc l'expedition tombait juste par hasard, et l'editeur affichait
+            # un champ vide. Le poids est une donnee du produit, pas un repli.
+            "weight_grams": POIDS_PRODUIT_DEFAUT_G,
             "coa_status": "available",
             "badge_coa_available": True,
             "badge_coa_pending": False,

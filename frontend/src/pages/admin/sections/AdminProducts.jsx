@@ -323,7 +323,11 @@ export default function AdminProducts() {
 
 // Poids d'une unite quand rien n'est saisi : la meme valeur que le backend
 // (POIDS_PRODUIT_DEFAUT_G). Toujours modifiable produit par produit.
-const POIDS_DEFAUT_G = 0.3;
+// 0,5 g : sa demande du 18/10/2026. DOIT SUIVRE `POIDS_PRODUIT_DEFAUT_G`
+// dans backend/server.py — les deux valeurs decrivent la meme chose, et
+// quand elles divergent c'est l'ecran qui gagne, donc la variante ajoutee
+// a la main repart avec l'ancien poids.
+const POIDS_DEFAUT_G = 0.5;
 
 function newVariant(name = "") {
   return {
