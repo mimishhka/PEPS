@@ -1784,10 +1784,28 @@ def diagnostic_configuration() -> dict:
             "livraison ne sera confirmee automatiquement."
         )
 
+    # APP_ENV COMMANDE SI LES GARDE-FOUS EXISTENT. Sans elle, `IS_PRODUCTION`
+    # est faux et le refus de demarrer sur un environnement d'essai ne se
+    # declenche PAS — ce qui explique qu'un serveur ait pu tourner en
+    # CANADA_POST_ENVIRONMENT='dev' sans rien dire.
+    #
+    # L'ordre compte : poser APP_ENV=production alors que
+    # CANADA_POST_ENVIRONMENT vaut encore 'dev' empeche le backend de
+    # demarrer. Les deux se changent ENSEMBLE.
+    if not s.IS_PRODUCTION:
+        avertissements.append(
+            f"APP_ENV={s.APP_ENV or '(non definie)'!s} : les garde-fous de "
+            "production sont inactifs, dont le refus de demarrer sur un "
+            "environnement Postes Canada d'essai. Posez APP_ENV=production ET "
+            "CANADA_POST_ENVIRONMENT=prod en meme temps."
+        )
+
     return {
         "mode_retenu": "openapi (OAuth 2.0, REST)" if openapi else "legacy (XML)",
         "mode_configure": s.CANADA_POST_API_MODE,
         "environnement": s.CANADA_POST_ENVIRONMENT,
+        "app_env": s.APP_ENV or "(non definie)",
+        "garde_fous_production": s.IS_PRODUCTION,
         "hote_etiquettes": (s.CANADA_POST_OPENAPI_BASE_URL if openapi
                             else s.CANADA_POST_BASE_URL),
         "format_etiquette": os.environ.get("CANADA_POST_LABEL_FORMAT", "4x6") + ", PDF",

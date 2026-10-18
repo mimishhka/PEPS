@@ -163,6 +163,9 @@ def main() -> int:
     print(f"  {'mode retenu':.<30} {r['mode_retenu']}")
     print(f"  {'mode configure':.<30} {r['mode_configure']}")
     print(f"  {'environnement':.<30} {r['environnement']}")
+    print(f"  {'APP_ENV':.<30} {r['app_env']}")
+    print(f"  {'garde-fous production':.<30} "
+          f"{'actifs' if r['garde_fous_production'] else 'INACTIFS'}")
     print(f"  {'hote des etiquettes':.<30} {r['hote_etiquettes']}")
     print(f"  {'format d etiquette':.<30} {r['format_etiquette']}")
     print(f"  {'synchro livraison':.<30} toutes les "
