@@ -156,90 +156,38 @@ describe("le bloc de preuve a été retiré", () => {
     expect(bandeau).toBeLessThan(vedettes);
   });
 
-  test("ET UNE SECTION LA REMPLACE, QUI FAIT UN AUTRE TRAVAIL", () => {
-    /* MIREILLE, 15/10/2026, d'après sa propre maquette : « est-ce qu'on peut
-     * rajouter cette section ».
+  test("LA BARRE DE RECHERCHE DE LOT A ETE RETIREE AUSSI", () => {
+    /* MIREILLE, 18/10/2026 : « remove this », capture a l'appui.
      *
-     * Elle fait ce que l'ancienne ne faisait pas. Le bandeau de confiance dit
-     * « nous avons des certificats » ; celle-ci s'adresse à quelqu'un qui
-     * tient DÉJÀ un flacon et cherche le sien. C'est la seule chose de
-     * l'accueil qui parle à un client existant plutôt qu'à un visiteur.
+     * La barre « Chaque lot, documente » portait le champ de recherche et
+     * son bouton. Elle part de l'accueil, et avec elle les trois filets
+     * qui la gardaient -- ils protegeaient une structure qui n'existe
+     * plus, et un filet qui garde une structure disparue bloque la
+     * decision prise au lieu de proteger quoi que ce soit.
      *
-     * Et elle tient en un titre, une phrase, un bouton. */
-    expect(SOURCE).toContain('data-testid="lot-section"');
+     * CE QUI EST GARDE N'EST PAS L'ABSENCE, C'EST LE RESTE. Retirer une
+     * section qui fait doublon est une amelioration ; retirer le dernier
+     * acces a une page est une perte, et rien ne les distingue a l'oeil.
+     * La recherche de lot reste atteignable par l'en-tete et par le pied
+     * de page, aux memes conditions qu'avant : quand la page existe. */
+    expect(SOURCE).not.toContain('data-testid="lot-section"');
+    expect(SOURCE).not.toContain("lot-champ");
 
-    const vedettes = SOURCE.indexOf('data-testid="featured-products"');
-    const lot = SOURCE.indexOf('data-testid="lot-section"');
-    const infolettre = SOURCE.indexOf('data-testid="newsletter-section"');
-    expect(vedettes).toBeLessThan(lot);
-    expect(lot).toBeLessThan(infolettre);
+    // Et l'accueil ne lit plus un drapeau dont il n'a plus l'usage.
+    expect(SOURCE).not.toContain("coaPageEnabled");
   });
 
-  test("UNE BARRE CLAIRE, TENUE PAR SES FILETS", () => {
-    /* MIREILLE, 15/10/2026 : « l'option une seule ligne », puis « je parlais
-     * d'une seule ligne avec un fond clair ».
-     *
-     * CE TEST A CHANGÉ D'AVIS AVEC ELLE, ET C'EST VOULU. Sa version
-     * précédente exigeait `bg-nordfjord` : j'avais mesuré que du bas du hero
-     * au bas du pied, 1542 px tiennent sur un seul fond clair — cinq zones,
-     * 71 % de la page — et défendu que la valeur sombre était la seule
-     * rupture du bas de page.
-     *
-     * Elle a tranché deux fois pour le clair. C'est sa page, et un filet qui
-     * garderait mon avis contre le sien ne protégerait plus rien : il
-     * bloquerait la décision prise.
-     *
-     * Ce qui reste protégé est ce qu'ELLE a choisi : une seule ligne, tenue
-     * par ses deux filets et non par un aplat — ce que sa DESIGN.md demande
-     * par ailleurs, « un filet plutôt qu'une carte chaque fois que c'est
-     * possible ». */
-    const i = SOURCE.lastIndexOf("<section", SOURCE.indexOf('data-testid="lot-section"'));
-    const barre = SOURCE.slice(i, SOURCE.indexOf('data-testid="newsletter-section"'));
+  test("MAIS /lab RESTE ATTEIGNABLE PAR L'EN-TETE ET LE PIED", () => {
+    const lire = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+    const entete = lire("components/Header.jsx");
+    const pied = lire("components/Footer.jsx");
 
-    expect(barre).toContain("border-y border-ash");
-    expect(barre).not.toContain("bg-nordfjord");
+    expect(entete).toContain('to: "/lab"');
+    expect(pied).toContain('to: "/lab"');
 
-    // Une seule ligne : titre, phrase et bouton sur la meme rangee.
-    expect(barre).toMatch(/flex flex-wrap items-center/);
-    expect(barre).toMatch(/py-7/);
-
-    // Plus de maille ni de jetons de voile : ils servaient un fond sombre.
-    expect(barre).not.toContain("MolecularMesh");
-    expect(barre).not.toContain("--sur-voile");
-  });
-
-  test("MAIS ELLE N'EXISTE QUE SI LA RECHERCHE DE LOT EXISTE", () => {
-    /* Son unique bouton mène à /lab, servie derrière COA_PAGE_ENABLED. Drapeau
-     * à `false` : la route renvoie à l'accueil, et la section devient une bande
-     * marine avec un bouton qui ne fait rien. On ne l'affiche pas du tout
-     * plutôt que de promettre à moitié.
-     *
-     * C'est la quatrième fois cette semaine qu'un lien vers /lab est posé sans
-     * ce verrou — en-tête, pied de page, page des certificats, bloc de preuve.
-     * La règle existait ; c'est sa portée qui manquait à chaque fois. */
-    /* ON LIT LE CODE SANS SA PROSE, et une fenêtre de caractères ne suffit
-     * pas. Le premier jet cherchait la condition dans les 500 caractères
-     * précédant la section : un commentaire un peu long l'a poussée dehors, et
-     * le filet a crié alors que le verrou était bien là.
-     *
-     * Cinquième fois aujourd'hui qu'un test lisant du code se fait piéger par
-     * le commentaire qui explique ce code. */
-    const code = SOURCE.replace(/\{\/\*[\s\S]*?\*\/\}/g, " ")
-      .replace(/\/\*[\s\S]*?\*\//g, " ")
-      .replace(/\/\/.*/g, " ");
-    const i = code.indexOf('data-testid="lot-section"');
-    expect(code.slice(Math.max(0, i - 300), i)).toMatch(/\{coaPageEnabled && \(/);
-    expect(SOURCE).toMatch(/import \{ useSiteConfig \} from "\.\.\/contexts\/SiteConfigContext"/);
-  });
-
-  test("et elle ne promet aucun effet", () => {
-    const i = SOURCE.indexOf('data-testid="lot-section"');
-    const bloc = SOURCE.slice(i, SOURCE.indexOf('data-testid="newsletter-section"'))
-      .replace(/\{\/\*[\s\S]*?\*\/\}/g, " ");
-    for (const motif of [/bienfait/i, /efficacit/i, /thérapeut/i, /traitement/i,
-                         /\bdose/i, /guéri/i, /garanti/i]) {
-      expect(bloc).not.toMatch(motif);
-    }
+    // Et tous deux gardent le verrou du drapeau : sans la page, pas de lien.
+    expect(entete).toMatch(/coaPageEnabled/);
+    expect(pied).toMatch(/coaPageEnabled/);
   });
 
   test("et la page des certificats reste atteignable depuis le pied de page", () => {

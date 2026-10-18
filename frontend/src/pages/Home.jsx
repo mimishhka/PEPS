@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { ArrowRight, Check } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
-import { useSiteConfig } from "../contexts/SiteConfigContext";
 import ProductCard from "../components/ProductCard.jsx";
 import { MolecularMesh, NovaSpark, Reveal } from "../components/brand";
 import ProductImage from "../components/ProductImage";
@@ -13,14 +12,6 @@ import { TAILLES } from "../lib/derivees";
 
 export default function Home() {
   const { t, lang } = useLang();
-  /* LA SECTION « CHAQUE LOT, DOCUMENTE » N'EXISTE QUE SI LA RECHERCHE EXISTE.
-   * Son unique bouton mene a /lab, qui est servie derriere COA_PAGE_ENABLED.
-   * Drapeau a `false` : la route renvoie a l'accueil, et la section devient
-   * une bande marine avec un bouton qui ne fait rien. On ne l'affiche donc
-   * pas du tout plutot que de promettre a moitie. */
-  const { coaPageEnabled } = useSiteConfig();
-  const navigate = useNavigate();
-  const [lotCherche, setLotCherche] = useState("");
   const [products, setProducts] = useState([]);
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
@@ -273,81 +264,6 @@ export default function Home() {
           Elle remplace un bloc de 603 px qui redisait l'argument du bandeau
           dans une carte marine, avec une feuille de certificat dessinee a la
           main. Ici : un titre, une phrase, un bouton. */}
-      {coaPageEnabled && (
-        /* UNE SEULE LIGNE, et c'est son choix du 15/10/2026 parmi quatre
-            traitements : « l'option une seule ligne ».
-            Un service, pas une annonce. La barre dit ce qu'on peut faire et
-            donne le bouton, en trois fois moins de hauteur que la bande
-            precedente -- tout en gardant la rupture de valeur, qui est la
-            seule du bas de la page : du hero au pied, 1542 px tiennent sur un
-            unique fond clair.
-            FOND CLAIR, ET C'EST SON CHOIX CONTRE MON AVIS. J'avais mesure
-            que du bas du hero au bas du pied, 1542 px tiennent sur un SEUL
-            fond clair -- cinq zones, 71 % de la page -- et defendu que la
-            valeur sombre etait la seule rupture du bas de page. Elle a
-            tranche deux fois pour le clair. C'est sa page ; la barre se
-            detache desormais par ses deux filets, ce que sa DESIGN.md
-            demande de toute facon : « un filet plutot qu'une carte chaque
-            fois que c'est possible ».
-            LE TITRE RESTE SUR L'ECHELLE DU SITE. La maquette le posait a
-            19 px ; `titre-section` en fait 22 puis 26. La barre y gagne une
-            vingtaine de pixels, et le site garde une seule echelle de titres
-            -- celle qu'un test protege depuis le 12/10. La plier des le
-            lendemain, pour une barre, c'est exactement la derive que ce test
-            existe pour empecher.
-            (Commentaire JS et non `{…}` : on est dans une expression entre
-            parentheses, pas parmi des enfants JSX. Deja fait une fois sur la
-            carte produit — et refait ici.) */
-        <section className="border-y border-ash" data-testid="lot-section">
-          <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-7 lg:py-8">
-            <div className="flex flex-wrap items-center gap-x-10 gap-y-5">
-              <div className="min-w-0">
-                <h2 className="titre-section text-nordfjord">
-                  {lang === "fr" ? "Chaque lot, documenté." : "Every batch, documented."}
-                </h2>
-                <p className="mt-1.5 text-[14px] leading-relaxed text-glacier max-w-[46ch]">
-                  {lang === "fr"
-                    ? "Le certificat correspondant au numéro imprimé sur votre flacon."
-                    : "The certificate for the number printed on your vial."}
-                </p>
-              </div>
-              {/* LE CHAMP EST ICI, PAS DERRIERE UN CLIC.
-                  Un bouton envoyait vers /lab ou il fallait retaper son
-                  numero. La personne qui tient son flacon le saisit
-                  maintenant au moment ou elle y pense, et arrive sur son
-                  certificat. /lab lit le parametre `lot` et verifie seule. */}
-              <form
-                data-testid="lot-formulaire"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const q = lotCherche.trim();
-                  if (q) navigate(`/lab?lot=${encodeURIComponent(q)}`);
-                }}
-                className="flex flex-col sm:flex-row gap-3 sm:items-end w-full sm:w-auto sm:ml-auto shrink-0"
-              >
-                <div className="sm:w-[240px]">
-                  <label htmlFor="lot-accueil" className="etiquette text-compliance block mb-2">
-                    {lang === "fr" ? "Numéro de lot" : "Batch number"}
-                  </label>
-                  <input
-                    id="lot-accueil"
-                    data-testid="lot-champ"
-                    value={lotCherche}
-                    onChange={(e) => setLotCherche(e.target.value)}
-                    placeholder="FN-0000-00"
-                    autoComplete="off"
-                    className="w-full font-data bg-white border border-ash text-nordfjord px-4 py-3 text-[14px] outline-none focus:border-nova placeholder:text-glacier"
-                    style={{ borderRadius: "var(--r-m)" }}
-                  />
-                </div>
-                <button type="submit" data-testid="lot-vers-lab" className="btn-pill btn-nova shrink-0">
-                  {lang === "fr" ? "Ouvrir le certificat" : "Open certificate"}
-                </button>
-              </form>
-            </div>
-          </div>
-        </section>
-      )}
 
 
       {/* INFOLETTRE : section claire a filet : une page, un theme. Le
