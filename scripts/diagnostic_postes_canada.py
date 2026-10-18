@@ -39,7 +39,10 @@ sys.path.insert(0, str(RACINE / "backend"))
 # on ne saute plus.
 _DEJA_RELANCE = "--interpreteur-trouve"
 
-CANDIDATS = (
+CANDIDATS_FIXES = (
+    # L'environnement reel du serveur, releve le 18/10/2026 : l'interpreteur
+    # vit HORS de /app, donc chercher sous la racine du depot ne suffit pas.
+    Path("/root/.venv/bin/python"),
     RACINE / "backend" / ".venv" / "bin" / "python",
     RACINE / ".venv" / "bin" / "python",
     RACINE / "backend" / "venv" / "bin" / "python",
@@ -47,6 +50,46 @@ CANDIDATS = (
     # Windows, pour un essai en local.
     RACINE / "backend" / ".venv" / "Scripts" / "python.exe",
 )
+
+
+def _candidats_de_supervisor():
+    """L'interpreteur que supervisor utilise VRAIMENT, lu dans sa config.
+
+    Deviner des emplacements est fragile : sur ce serveur, le venv du backend
+    est `/root/.venv`, hors du depot, et aucune liste raisonnable ne l'aurait
+    contenu d'avance. Or la reponse est ecrite noir sur blanc dans la
+    configuration de supervisor :
+
+        command=/root/.venv/bin/uvicorn server:app --host 0.0.0.0 --port 8001
+
+    Le `python` est le voisin de `uvicorn` dans le meme repertoire. On lit
+    donc la source de verite au lieu de parier.
+    """
+    import glob
+    import re
+    for chemin in sorted(glob.glob("/etc/supervisor/conf.d/*.conf")):
+        try:
+            with open(chemin, encoding="utf-8", errors="replace") as f:
+                contenu = f.read()
+        except OSError:
+            continue
+        for m in re.finditer(r"command\s*=\s*(\S+)", contenu):
+            exe = Path(m.group(1))
+            if exe.name not in ("uvicorn", "python", "python3", "gunicorn"):
+                continue
+            voisin = exe.parent / "python"
+            if voisin.exists():
+                yield voisin
+
+
+def _candidats():
+    """Les candidats, la source de verite d'abord."""
+    vus = set()
+    for c in list(_candidats_de_supervisor()) + list(CANDIDATS_FIXES):
+        resolu = str(c)
+        if resolu not in vus:
+            vus.add(resolu)
+            yield c
 
 
 def _relancer_avec_le_bon_python() -> None:
@@ -63,7 +106,7 @@ def _relancer_avec_le_bon_python() -> None:
         raise SystemExit(2)
 
     import subprocess
-    for candidat in CANDIDATS:
+    for candidat in _candidats():
         if not candidat.exists():
             continue
         try:
