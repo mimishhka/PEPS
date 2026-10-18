@@ -74,7 +74,9 @@ def _relancer_avec_le_bon_python() -> None:
                            check=True, capture_output=True, timeout=30)
         except Exception:
             continue
-        print(f"  (relance avec {candidat})\n")
+        # `flush` : sans lui, cette ligne sort APRES le rapport de l'enfant,
+        # et on lit « relance avec... » au bas d'un rapport deja imprime.
+        print(f"  (relance avec {candidat})", flush=True)
         raise SystemExit(subprocess.run(
             [str(candidat), "-I", str(Path(__file__).resolve()), _DEJA_RELANCE]
         ).returncode)
