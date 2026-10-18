@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """Le poids par defaut d'un produit.
 
-Demande du 2026-09-19 : 0,3 g, modifiable produit par produit. Il etait ecrit
+Demande du 2026-09-19 : 0,3 g, portee a 0,5 g le 2026-10-18 a sa demande.
+Modifiable produit par produit. Le poids etait ecrit
 en dur (50 g) a quatre endroits differents — modele, figeage du poids a
 l'achat, remplacement d'articles, estimation du colis — qui pouvaient diverger.
 """
@@ -25,7 +26,7 @@ def server_module(monkeypatch):
 
 
 def test_une_variante_sans_poids_pese_le_defaut(server_module):
-    assert server_module.POIDS_PRODUIT_DEFAUT_G == 0.3
+    assert server_module.POIDS_PRODUIT_DEFAUT_G == 0.5
     v = server_module.ProductVariant(name="5mg", price=49.0)
     assert v.weight_grams == server_module.POIDS_PRODUIT_DEFAUT_G
 

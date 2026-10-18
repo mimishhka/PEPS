@@ -814,7 +814,22 @@ class UserOut(BaseModel):
 # figeage du poids a l'achat et l'estimation du colis la lisent tous ici.
 # 0,3 g : les flacons sont quasi impalpables, c'est l'emballage qui pese. Si
 # un colis reel pese plus, Postes Canada le repese et refacture l'ecart.
-POIDS_PRODUIT_DEFAUT_G = 0.3
+# Le poids d'une fiole, pour estimer le colis chez Postes Canada.
+#
+# MIREILLE, 18/10/2026 : « n'oublie pas le poids par defaut de chacun, 0,5 g
+# pour l'expedition ».
+#
+# Il valait 0,3 g depuis le 19/09, et AUCUN produit du catalogue ne declarait
+# le sien : les dix-neuf retombaient donc tous sur ce defaut. Un ecart de
+# 0,2 g par fiole ne change rien sur une commande, mais il se cumule, et c'est
+# le genre de chiffre qu'on ne reverifie jamais une fois pose.
+#
+# Il reste modifiable variante par variante depuis l'OPS : le defaut n'est
+# qu'un point de depart.
+POIDS_PRODUIT_DEFAUT_G = 0.5
+# L'ancien defaut, garde pour savoir quelles variantes reprendre en base :
+# celles qui le portent ne l'ont pas choisi, elles l'ont subi.
+ANCIEN_POIDS_DEFAUT_G = 0.3
 
 
 class ProductVariant(BaseModel):
@@ -10500,6 +10515,31 @@ async def seed_admin_and_products():
         await db.products.update_one(
             {"slug": p["slug"], "$or": [{"variants": {"$exists": False}}, {"variants": []}]},
             {"$set": {"variants": [default_variant]}},
+        )
+
+    # LE POIDS DES VARIANTES DEJA EN BASE SUIT LE NOUVEAU DEFAUT.
+    #
+    # MIREILLE, 18/10/2026 : « n'oublie pas le poids par defaut de chacun,
+    # 0,5 g pour l'expedition ».
+    #
+    # Changer `POIDS_PRODUIT_DEFAUT_G` ne suffit pas : Pydantic ecrit le
+    # defaut DANS le document au moment de l'enregistrement, donc toute
+    # variante passee par l'OPS porte deja 0,3 en dur. Le nouveau defaut ne
+    # vaudrait que pour les variantes creees a partir d'aujourd'hui, et le
+    # catalogue resterait a l'ancien chiffre -- sans que rien ne le dise.
+    #
+    # ON NE REPRENDS QUE L'ANCIEN DEFAUT, ET RIEN D'AUTRE. Une variante a
+    # 0,3 g n'a jamais ete un choix : c'etait la valeur que personne n'avait
+    # saisie. Un poids different est une decision, et il reste intact.
+    maj_poids = await db.products.update_many(
+        {"variants.weight_grams": ANCIEN_POIDS_DEFAUT_G},
+        {"$set": {"variants.$[v].weight_grams": POIDS_PRODUIT_DEFAUT_G}},
+        array_filters=[{"v.weight_grams": ANCIEN_POIDS_DEFAUT_G}],
+    )
+    if maj_poids.modified_count:
+        logging.info(
+            "poids des variantes : %d produit(s) passe(s) de %s a %s g",
+            maj_poids.modified_count, ANCIEN_POIDS_DEFAUT_G, POIDS_PRODUIT_DEFAUT_G,
         )
 
     # Default shipping zone: Canada
