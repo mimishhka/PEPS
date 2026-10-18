@@ -142,11 +142,25 @@ export default function Footer() {
               d'une page -- mais elle cesse de crier. Deux occurrences, toutes
               deux calmes, chacune son travail : le bandeau previent a
               l'arrivee, le pied rappelle au depart. */}
-          <div className="relative grid lg:grid-cols-[1.3fr_1fr] gap-8 lg:gap-14 lg:items-start" data-testid="footer-conformite">
-            <p className="font-display text-[15px] font-semibold tracking-[-0.005em] leading-relaxed text-clinical" data-testid="footer-disclaimer">
+          {/* LA MENTION TIENT SUR UNE LIGNE, et c'est pour ca qu'elle occupe
+              toute la largeur au lieu d'une colonne.
+              MIREILLE, 18/10/2026 : « ca devrait tenir sur une seule ligne, ca
+              en prend deux ». Elle avait raison et le calcul le dit : 85
+              caracteres a 15 px en demi-gras demandent environ 690 px ; la
+              colonne de 1,3 fr lui en donnait 688. Deux pixels de trop, et la
+              phrase se brisait en plein milieu de « VETERINARY CONSUMPTION ».
+              Une mention legale coupee en deux se lit deux fois moins bien
+              qu'une mention legale d'un trait. */}
+          <div className="relative" data-testid="footer-conformite">
+            {/* `lg:whitespace-nowrap` et non `whitespace-nowrap` : sur un
+                telephone la phrase ne tient dans aucune largeur, et la forcer
+                sur une ligne la ferait defiler lateralement. Une mention
+                legale qu'il faut faire glisser pour lire est pire qu'une
+                mention legale sur deux lignes. */}
+            <p className="font-display text-[15px] font-semibold tracking-[-0.005em] leading-relaxed text-clinical lg:whitespace-nowrap" data-testid="footer-disclaimer">
               {t("footer.compliance")}
             </p>
-            <p className="etiquette text-mist leading-relaxed">
+            <p className="etiquette text-mist leading-relaxed mt-5 max-w-[104ch]">
               {confirmText}
             </p>
           </div>
@@ -189,9 +203,19 @@ export default function Footer() {
         {columns.map((col) => (
           <div key={col.key} data-testid={`footer-col-${col.key}`}>
             <div className="etiquette mb-5 text-nova">{col.title}</div>
-            <ul className="text-sm">
+            {/* DEUX COLONNES DES QUATRE LIENS, a sa demande du 18/10/2026 :
+                « les détails légaux devraient être sur deux colonnes pour
+                gagner de la place ». Quatre liens empilés font 128 px de
+                haut ; en deux colonnes, 64.
+                `columns-2` et non une grille : une liste de liens n'a pas de
+                rangées, elle a un flux. Le navigateur coupe ou il faut, et
+                `break-inside-avoid` empeche qu'un lien se retrouve a cheval
+                entre les deux colonnes.
+                Sous trois liens, la coupe ne gagne rien et laisse une colonne
+                bancale : on ne coupe qu'a partir de quatre. */}
+            <ul className={`text-sm ${col.links.length >= 4 ? "sm:columns-2 sm:gap-x-6" : ""}`}>
               {col.links.map((l) => (
-                <li key={l.to + l.label}>
+                <li key={l.to + l.label} className="break-inside-avoid">
                   {l.newTab ? (
                     <a href={l.to} target="_blank" rel="noopener noreferrer" className="lien-pied text-mist hover:text-nova transition-colors">{l.label}</a>
                   ) : (

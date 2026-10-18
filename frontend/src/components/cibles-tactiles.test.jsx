@@ -238,34 +238,48 @@ describe("les liens du pied de page", () => {
     expect(bande[1]).not.toMatch(/\blg:px-\d/);
   });
 
-  test("ET LES DEUX PARAGRAPHES PARTENT DU MÊME HAUT", () => {
-    /* `lg:items-end` alignait leurs BAS : la déclaration faisait deux lignes,
-     * la confirmation quatre, donc leurs hauts se décalaient de 32 px. Sur un
-     * fond sombre, ce décalage ne se lit pas comme une intention, il se lit
-     * comme un défaut de montage. */
-    expect(SOURCE).toMatch(/lg:items-start/);
-    expect(SOURCE).not.toMatch(/lg:items-end/);
-  });
-
   test("ET UN FILET SÉPARE LA BANDE DES COLONNES", () => {
     // 88 px de vide sans rien dedans ne lisaient pas comme une séparation,
     // mais comme un trou. Le filet nomme la frontière.
     expect(SOURCE).toMatch(/border-t border-white\/10/);
   });
 
-  test("LA BANDE DE CONFORMITÉ REMPLIT SA LARGEUR", () => {
-    /* MIREILLE, 11/10/2026 : « tout ce qui est du côté gauche de la page
-     * n'a pas été modifié ». Mesuré sur un écran de 1920 : la déclaration
-     * occupait 896 px et la confirmation 768 px dans une bande de 1216, l'une
-     * sous l'autre, toutes deux calées à gauche.
+  test("LA MENTION LÉGALE TIENT SUR UNE SEULE LIGNE", () => {
+    /* MIREILLE, 18/10/2026 : « ça devrait tenir sur une seule ligne, ça en
+     * prend deux ».
      *
-     * Les deux paragraphes ne portent plus de laisse de largeur : c'est la
-     * grille qui décide. Si l'une revient, ce test tombe. */
-    expect(SOURCE).toContain('data-testid="footer-conformite"');
-    expect(SOURCE).toMatch(/lg:grid-cols-\[1\.3fr_1fr\]/);
+     * Le calcul lui donne raison : 85 caractères à 15 px en demi-gras
+     * demandent environ 690 px, et la colonne de 1,3 fr lui en donnait 688.
+     * Deux pixels de trop, et la phrase se brisait en plein milieu de
+     * « VETERINARY CONSUMPTION ». Une mention légale coupée en deux se lit
+     * deux fois moins bien qu'une mention légale d'un trait.
+     *
+     * CE TEST A REMPLACÉ CELUI DE LA GRILLE À DEUX COLONNES, qui n'a plus
+     * d'objet : la bande n'en a plus. Les deux paragraphes occupent chacun
+     * toute la largeur, donc ni l'un ni l'autre ne peut se tasser à gauche —
+     * ce que l'ancien filet protégeait, la structure le garantit maintenant.
+     *
+     * `lg:` et non sans condition : sur un téléphone la phrase ne tient dans
+     * aucune largeur, et la forcer sur une ligne la ferait défiler
+     * latéralement. Une mention qu'il faut faire glisser pour lire est pire
+     * qu'une mention sur deux lignes. */
+    const decl = SOURCE.match(/<p className="([^"]*)" data-testid="footer-disclaimer"/);
+    expect(decl).not.toBeNull();
+    /* Des jetons nus plutot qu'une expression reguliere : il faut
+     * distinguer `lg:whitespace-nowrap` de `whitespace-nowrap`, et une
+     * regex ecrite a travers trois couches d'echappement echoue pour une
+     * raison qui n'a rien a voir avec ce qu'elle verifie -- ici mes bornes
+     * de mot sont arrivees dans le fichier en vrais caracteres de controle.
+     * Cinquieme fois cette semaine. */
+    const jetons = decl[1].split(/\s+/);
+    expect(jetons).toContain('lg:whitespace-nowrap');
+    expect(jetons).not.toContain('whitespace-nowrap');
+
+    // Et la bande ne remet pas de laisse de largeur sur ses paragraphes.
     expect(SOURCE).not.toMatch(/max-w-4xl/);
     expect(SOURCE).not.toMatch(/max-w-3xl/);
   });
+
 
   test("l'écart vertical ne se cumule plus avec la marge des rangées", () => {
     // `space-y-2.5` par-dessus `py-3` aurait fait un pied de page à rallonge

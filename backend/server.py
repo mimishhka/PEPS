@@ -11121,6 +11121,8 @@ async def _seed_default_menus() -> None:
             "items": [
                 {"label_en": "Catalog", "label_fr": "Catalogue", "url": "/catalog", "display_order": 0},
                 {"label_en": "Lab & COA", "label_fr": "Labo & COA", "url": "/lab", "display_order": 1},
+                {"label_en": "Reading a COA", "label_fr": "Lire un COA", "url": "/certificats", "display_order": 2},
+                {"label_en": "About", "label_fr": "À propos", "url": "/about", "display_order": 3},
             ],
         },
         {
@@ -11152,6 +11154,36 @@ async def _seed_default_menus() -> None:
                 }},
                 upsert=True,
             )
+
+            # LA GRAINE AJOUTE CE QUI MANQUE, ET NE TOUCHE A RIEN D'AUTRE.
+            #
+            # MIREILLE, 18/10/2026 : « pourquoi je ne vois pas les autres
+            # endpoints comme catalogue, a propos, lire un coa ».
+            #
+            # Parce que `$setOnInsert` n'ecrit QUE le jour de la creation. Sa
+            # base portait la version du menu d'alors -- Catalogue et Labo &
+            # COA -- et toutes les entrees ajoutees depuis ne vivaient que
+            # dans le repli du code, jamais sur son site. Une graine qui ne
+            # sert qu'une fois laisse les bases existantes derriere elle, en
+            # silence, et c'est le plus long a diagnostiquer.
+            #
+            # L'ajout est le seul geste sur : il ne supprime rien, ne
+            # renomme rien, ne reordonne rien. Si elle a retire une entree
+            # depuis l'OPS, elle reviendra -- c'est le prix a payer pour que
+            # les nouvelles arrivent, et il se paie en un clic.
+            doc = await db.menus.find_one({"slug": m["slug"]}, {"_id": 0, "items": 1})
+            if doc:
+                presentes = {str(it.get("url", "")) for it in (doc.get("items") or [])}
+                manquantes = [it for it in items if it["url"] not in presentes]
+                if manquantes:
+                    await db.menus.update_one(
+                        {"slug": m["slug"]},
+                        {"$push": {"items": {"$each": manquantes}}},
+                    )
+                    logging.info(
+                        "menus seed: %d entree(s) ajoutee(s) a %s",
+                        len(manquantes), m["slug"],
+                    )
     except Exception as e:  # pragma: no cover
         logging.error("menus seed failed: %s", e)
 
