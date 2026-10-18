@@ -94,3 +94,62 @@ describe("l'adresse de livraison", () => {
     expect(screen.queryByTestId("suivi-adresse")).toBeNull();
   });
 });
+
+describe("ce que dit le transporteur", () => {
+  /* MIREILLE, 18/10/2026 : « le suivi, puisque chaque commande a un suivi qui
+   * montre l'état de livraison ».
+   *
+   * La frise ci-dessus ne connaît que trois valeurs et ne bouge que lorsque le
+   * site la fait bouger. Elle ne saura jamais dire « en cours de livraison ».
+   * Ces mots viennent de Postes Canada — et le serveur les recevait DÉJÀ
+   * toutes les quinze minutes, pour chaque commande expédiée, avant de les
+   * jeter faute de les ranger. */
+  const avecStatut = (extra) => ({
+    ...COMMANDE,
+    shipping_info: { ...COMMANDE.shipping_info, ...extra },
+  });
+
+  test("le statut, le lieu et la date de vérification s'affichent", () => {
+    render(<SuiviCommande order={avecStatut({
+      cp_statut: "Objet en cours de livraison",
+      cp_lieu: "MONTREAL",
+      delivery_checked_at: "2026-10-18T14:30:00Z",
+    })} />);
+
+    expect(screen.getByTestId("suivi-transporteur-statut"))
+      .toHaveTextContent("Objet en cours de livraison");
+    expect(screen.getByTestId("suivi-transporteur-statut")).toHaveTextContent("MONTREAL");
+    expect(screen.getByTestId("suivi-transporteur-verifie")).toHaveTextContent(/Vérifié/);
+  });
+
+  test("SANS STATUT, RIEN NE S'AFFICHE — ni libellé vide, ni tiret", () => {
+    /* La règle de la fiche produit vaut ici : « une donnée absente ne se
+     * montre pas ». Une ligne « Chez le transporteur : — » occuperait une
+     * place entière pour dire qu'on ne sait pas. */
+    render(<SuiviCommande order={COMMANDE} />);
+    expect(screen.queryByTestId("suivi-transporteur")).not.toBeInTheDocument();
+  });
+
+  test("un statut sans lieu reste lisible", () => {
+    render(<SuiviCommande order={avecStatut({ cp_statut: "Objet livré" })} />);
+    expect(screen.getByTestId("suivi-transporteur-statut")).toHaveTextContent("Objet livré");
+    expect(screen.getByTestId("suivi-transporteur-statut")).not.toHaveTextContent("—");
+  });
+
+  test("un statut sans date de vérification n'invente pas d'horodatage", () => {
+    render(<SuiviCommande order={avecStatut({ cp_statut: "Objet livré" })} />);
+    expect(screen.queryByTestId("suivi-transporteur-verifie")).not.toBeInTheDocument();
+  });
+
+  test("il se place AVANT le numéro de suivi, pas après", () => {
+    /* L'ordre est l'information : on lit « où est mon colis », puis le numéro
+     * qui permet d'aller vérifier soi-même. L'inverse enterrerait le statut
+     * sous une référence que personne ne lit. */
+    render(<SuiviCommande order={avecStatut({ cp_statut: "Objet en cours de livraison" })} />);
+    const bloc = screen.getByTestId("suivi-commande");
+    const ordre = [...bloc.querySelectorAll("[data-testid]")]
+      .map((e) => e.getAttribute("data-testid"))
+      .filter((id) => ["suivi-transporteur", "suivi-numero"].includes(id));
+    expect(ordre).toEqual(["suivi-transporteur", "suivi-numero"]);
+  });
+});

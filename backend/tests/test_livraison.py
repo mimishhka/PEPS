@@ -141,14 +141,21 @@ def test_jamais_une_commande_close_ne_repasse_livree(server_module):
     assert ecrit["filtre"]["fulfillment_status"] == {"$in": ["shipped"]}
 
 
-def test_le_repli_de_test_le_dit_dans_la_note(server_module):
-    """Pas de fausse confirmation : la note dit qu'aucun transporteur n'a
-    confirme."""
-    ecrit = _base(server_module)
-    asyncio.run(server_module._cp_marquer_livree("o-1", "123", None, "sandbox_time_fallback_auto"))
-    note = ecrit["update"]["$push"]["notes"]["text"]
-    assert "TEST" in note and "aucune confirmation" in note
-    assert ecrit["update"]["$set"]["shipping_info.delivered_at_label"] == ""
+# `test_le_repli_de_test_le_dit_dans_la_note` VIVAIT ICI.
+#
+# Il verifiait qu'une livraison marquee par le repli temporel portait une note
+# « TEST — aucune confirmation Postes Canada ». C'etait un bon filet : il
+# empechait une fausse livraison de passer pour une vraie.
+#
+# Le 18/10/2026, le repli lui-meme a ete supprime : plus rien ne marque une
+# commande livree sans confirmation du transporteur. Le filet n'a donc plus de
+# sujet, et un filet qui garde une structure disparue bloque la decision prise
+# au lieu de proteger quoi que ce soit.
+#
+# Ce qu'il protegeait est desormais garanti plus haut, et plus fort :
+# `test_un_reperage_muet_n_invente_aucune_livraison` exige que la commande
+# reste « expediee ». Il n'y a plus de note a verifier parce qu'il n'y a plus
+# de fausse livraison a annoter.
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +175,7 @@ def test_le_bouton_retient_l_heure_du_transporteur(server_module, monkeypatch):
             ecrit["update"] = update
             return SimpleNamespace(modified_count=1)
 
-    async def suivi(pin):
+    async def suivi(pin, lang=None):
         return server_module._cp_lire_suivi_xml(pin, _XML)
 
     monkeypatch.setattr(server_module, "_canada_post_track", suivi)
@@ -193,7 +200,7 @@ def test_le_bouton_ne_livre_pas_une_commande_remboursee(server_module, monkeypat
             assert "refunded" not in filtre["fulfillment_status"]["$in"]
             return SimpleNamespace(modified_count=0)
 
-    async def suivi(pin):
+    async def suivi(pin, lang=None):
         return server_module._cp_lire_suivi_xml(pin, _XML)
 
     monkeypatch.setattr(server_module, "_canada_post_track", suivi)
@@ -221,7 +228,7 @@ def test_le_veilleur_retient_l_heure_du_transporteur(server_module, monkeypatch)
             ecritures.append(update)
             return SimpleNamespace(modified_count=1)
 
-    async def suivi(pin):
+    async def suivi(pin, lang=None):
         return server_module._cp_lire_suivi_xml(pin, _XML)
 
     monkeypatch.setattr(server_module, "CANADA_POST_API_KEY", "cle-de-test")
@@ -339,7 +346,7 @@ def test_le_veilleur_tourne_avec_les_seuls_identifiants_oauth(server_module, mon
             ecritures.append(update)
             return SimpleNamespace(modified_count=1)
 
-    async def suivi(pin):
+    async def suivi(pin, lang=None):
         return server_module._cp_lire_suivi_json(pin, _JSON_OFFICIEL)
 
     monkeypatch.setattr(server_module, "CANADA_POST_API_KEY", "")

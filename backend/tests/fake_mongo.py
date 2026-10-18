@@ -29,6 +29,38 @@ def _resolve(doc, path: str):
     return current
 
 
+def _poser(doc: dict, path: str, value) -> None:
+    """Ecrit `shipping_info.cp_statut` COMME MONGO, c'est-a-dire imbrique.
+
+    `$set` acceptait auparavant le chemin pointe tel quel : `doc.update()`
+    creait une cle litterale « shipping_info.cp_statut » a la racine. Un test
+    pouvait donc passer alors que le vrai Mongo aurait ecrit ailleurs, et
+    `find_one` avec une projection sur le champ imbrique ne voyait rien.
+
+    Mongo cree les niveaux manquants au passage ; on fait pareil.
+    """
+    parts = path.split(".")
+    courant = doc
+    for part in parts[:-1]:
+        suivant = courant.get(part)
+        if not isinstance(suivant, dict):
+            suivant = {}
+            courant[part] = suivant
+        courant = suivant
+    courant[parts[-1]] = value
+
+
+def _retirer(doc: dict, path: str) -> None:
+    """`$unset` sur un chemin pointe, meme logique que `_poser`."""
+    parts = path.split(".")
+    courant = doc
+    for part in parts[:-1]:
+        courant = courant.get(part)
+        if not isinstance(courant, dict):
+            return
+    courant.pop(parts[-1], None)
+
+
 def _matches(doc: dict, filt: dict) -> bool:
     for key, cond in (filt or {}).items():
         if key == "$or":
@@ -226,13 +258,18 @@ class FakeCollection:
 
     def _apply(self, doc: dict, update: dict) -> bool:
         before = copy.deepcopy(doc)
-        doc.update(update.get("$set", {}))
+        for key, value in update.get("$set", {}).items():
+            _poser(doc, key, value)
         for key in update.get("$unset", {}):
-            doc.pop(key, None)
+            _retirer(doc, key)
         for key, delta in update.get("$inc", {}).items():
-            doc[key] = doc.get(key, 0) + delta
+            _poser(doc, key, (_resolve(doc, key) if _resolve(doc, key) is not _MISSING else 0) + delta)
         for key, item in update.get("$push", {}).items():
-            doc.setdefault(key, []).append(copy.deepcopy(item))
+            cible = _resolve(doc, key)
+            if cible is _MISSING or not isinstance(cible, list):
+                cible = []
+                _poser(doc, key, cible)
+            cible.append(copy.deepcopy(item))
         return doc != before
 
     async def update_one(self, filt, update, **kwargs):

@@ -60,3 +60,14 @@ async def admin_order_post_message(order_id: str, _admin: dict = Depends(s.requi
 async def admin_void_untransmitted_labels(_admin: dict = Depends(s.require_area("orders", "manage"))):
     """Annule toutes les étiquettes non transmises (nettoyage des essais)."""
     return await canada_post.void_untransmitted_labels(admin_email=_admin.get("email", ""))
+
+
+@router.get("/admin/canada-post/diagnostic")
+async def admin_canada_post_diagnostic(_admin: dict = Depends(s.require_area("orders", "view"))):
+    """L'etat de la configuration Postes Canada, AVANT qu'un client ne la teste.
+
+    Lecture seule, aucun appel reseau, et AUCUNE valeur d'identifiant dans la
+    reponse — seulement « present » ou « MANQUANT ». Voir
+    `canada_post.diagnostic_configuration`.
+    """
+    return canada_post.diagnostic_configuration()

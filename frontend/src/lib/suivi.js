@@ -43,6 +43,42 @@ export function numeroDeSuivi(order) {
   return String(exp.tracking_number || exp.tracking || "").trim();
 }
 
+/* CE QUE LE TRANSPORTEUR DIT, par opposition aux quatre étapes du site.
+ *
+ * MIREILLE, 18/10/2026 : « le suivi, puisque chaque commande a un suivi qui
+ * montre l'état de livraison ».
+ *
+ * La frise ci-dessous est pilotée par `fulfillment_status`, qui ne connaît que
+ * trois valeurs et ne bouge que lorsque le site la fait bouger. Elle ne saura
+ * jamais dire « en cours de livraison », « au bureau de poste » ou
+ * « tentative de livraison » — ces mots viennent de Postes Canada.
+ *
+ * LE SERVEUR LES AVAIT DÉJÀ, ET LES JETAIT. Le veilleur de livraison
+ * interrogeait le repérage toutes les quinze minutes pour chaque commande
+ * expédiée, et ne posait qu'une question à la réponse : « est-ce livré ? ».
+ * Tout le reste partait. Depuis le 18/10/2026 il le range dans
+ * `shipping_info`, sans un seul appel d'API de plus.
+ *
+ * Rendre `null` plutôt qu'un objet à champs vides : l'écran teste une seule
+ * chose, et une donnée absente ne s'affiche pas du tout — la règle de la fiche
+ * produit, qui vaut ici aussi. Une ligne « Statut : — » occupe de la place
+ * pour dire qu'on ne sait pas. */
+export function statutTransporteur(order) {
+  const exp = (order && order.shipping_info) || {};
+  const texte = String(exp.cp_statut || "").trim();
+  if (!texte) return null;
+  return {
+    texte,
+    lieu: String(exp.cp_lieu || "").trim(),
+    /* `cp_evenement_a` est l'instant de l'événement chez le transporteur ;
+     * `delivery_checked_at` est celui de notre dernière vérification. Les deux
+     * répondent à des questions différentes — « quand le colis a-t-il bougé »
+     * et « à quel point est-ce à jour » — et l'écran montre les deux. */
+    evenementA: String(exp.cp_evenement_a || "").trim(),
+    verifieA: String(exp.delivery_checked_at || "").trim(),
+  };
+}
+
 export const ETATS_EXPEDITION = ["processing", "shipped", "delivered"];
 
 /**

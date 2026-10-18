@@ -402,7 +402,9 @@ def test_delivery_polling_rotates_by_last_check(server_module, monkeypatch):
             self.updates.append((query, update))
             return SimpleNamespace(modified_count=0)
 
-    async def not_delivered(tracking_number):
+    # `lang` : `_canada_post_track` a gagne ce parametre le 18/10/2026, pour
+    # demander le reperage dans la langue de la commande.
+    async def not_delivered(tracking_number, lang=None):
         return {}
 
     orders = Orders()
@@ -410,7 +412,6 @@ def test_delivery_polling_rotates_by_last_check(server_module, monkeypatch):
     monkeypatch.setattr(server_module, "CANADA_POST_API_KEY", "configured")
     monkeypatch.setattr(server_module, "_canada_post_track", not_delivered)
     monkeypatch.setattr(server_module, "_cp_tracking_indicates_delivered", lambda live: (False, ""))
-    monkeypatch.setattr(server_module, "_sandbox_fallback_ready", lambda shipped_at: False)
 
     updated = asyncio.run(server_module._auto_sync_delivered_orders_once())
 

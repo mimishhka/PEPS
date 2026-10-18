@@ -55,11 +55,20 @@ def _cp_path_customers() -> tuple[str, str]:
     return mailed_by, mobo
 
 
-def _cp_openapi_headers(token: str, accept: str = "application/json") -> dict:
+def _cp_openapi_headers(token: str, accept: str = "application/json",
+                        langue: str = "en-CA") -> dict:
+    """`Accept-Language` est un en-tete EXIGE par Postes Canada, et il decide
+    de la langue des libelles de reperage qu'on affichera a la cliente.
+
+    Il valait « en-CA » en dur. Sur un site dont la langue principale est le
+    francais, le statut du colis revenait donc toujours en anglais : « Item
+    out for delivery » sur une page entierement francaise. Le defaut reste
+    « en-CA » pour ne rien changer aux etiquettes ; le reperage, lui, demande
+    la langue de la commande."""
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": accept,
-        "Accept-Language": "en-CA",
+        "Accept-Language": langue,
     }
     if s.CANADA_POST_PLATFORM_ID:
         headers["platform-id"] = s.CANADA_POST_PLATFORM_ID
@@ -125,10 +134,11 @@ async def _cp_get_oauth_token(force_refresh: bool = False) -> str:
 
 async def _cp_openapi_call(method: str, url_or_path: str, *, json_body: Optional[dict] = None,
                            accept: str = "application/json",
+                           langue: str = "en-CA",
                            timeout: float = 45) -> httpx.Response:
     token = await s._cp_get_oauth_token()
     url = url_or_path if url_or_path.startswith("http") else f"{s.CANADA_POST_OPENAPI_BASE_URL}{url_or_path}"
-    headers = _cp_openapi_headers(token, accept=accept)
+    headers = _cp_openapi_headers(token, accept=accept, langue=langue)
     if json_body is not None:
         headers["Content-Type"] = "application/json"
 
@@ -139,7 +149,7 @@ async def _cp_openapi_call(method: str, url_or_path: str, *, json_body: Optional
         r = await cx.request(method, url, json=json_body, headers=headers)
         if r.status_code == 401:
             token = await s._cp_get_oauth_token(force_refresh=True)
-            headers = _cp_openapi_headers(token, accept=accept)
+            headers = _cp_openapi_headers(token, accept=accept, langue=langue)
             if json_body is not None:
                 headers["Content-Type"] = "application/json"
             r = await cx.request(method, url, json=json_body, headers=headers)
@@ -640,11 +650,22 @@ def _cp_lire_suivi_json(pin: str, donnees: dict) -> dict:
     return {"pin": pin, "summary": "", "events": events}
 
 
-async def _canada_post_track_openapi(pin: str) -> Optional[dict]:
+def _cp_langue_entete(lang: Optional[str]) -> str:
+    """« fr » -> « fr-CA ». Tout le reste -> « en-CA »."""
+    return "fr-CA" if str(lang or "").strip().lower().startswith("fr") else "en-CA"
+
+
+async def _canada_post_track_openapi(pin: str, lang: Optional[str] = None) -> Optional[dict]:
     """Suivi par le nouveau portail : jeton OAuth (le meme que pour les
-    etiquettes), puis GET /pins/{pin}/details. None sur toute erreur."""
+    etiquettes), puis GET /pins/{pin}/details. None sur toute erreur.
+
+    `lang` est la langue de la COMMANDE : les libelles que Postes Canada
+    renvoie sont montres tels quels a la cliente, donc ils doivent etre dans
+    sa langue. Sans elle, une page francaise affichait « Item out for
+    delivery »."""
     try:
-        r = await s._cp_openapi_call("GET", f"{s.CANADA_POST_OPENAPI_TRACKING_URL}/pins/{pin}/details")
+        r = await s._cp_openapi_call("GET", f"{s.CANADA_POST_OPENAPI_TRACKING_URL}/pins/{pin}/details",
+                                     langue=_cp_langue_entete(lang))
     except Exception as e:
         logging.error("Canada Post OpenAPI tracking failed: %s", type(e).__name__)
         return None
@@ -655,7 +676,7 @@ async def _canada_post_track_openapi(pin: str) -> Optional[dict]:
     return _cp_lire_suivi_json(pin, _cp_safe_json(r))
 
 
-async def _canada_post_track(pin: str) -> Optional[dict]:
+async def _canada_post_track(pin: str, lang: Optional[str] = None) -> Optional[dict]:
     """Live tracking lookup by PIN. Returns None if not configured or on any error.
 
     Le NOUVEAU portail d'abord, des que ses identifiants OAuth sont la : ce
@@ -664,7 +685,7 @@ async def _canada_post_track(pin: str) -> Optional[dict]:
     vers l'autre : une erreur se lit dans le journal, elle n'est pas masquee.
     """
     if s.CANADA_POST_OAUTH_CLIENT_ID and s.CANADA_POST_OAUTH_CLIENT_SECRET:
-        return await _canada_post_track_openapi(pin)
+        return await _canada_post_track_openapi(pin, lang)
     if not s.CANADA_POST_API_KEY:
         return None
     try:
@@ -731,6 +752,50 @@ def _cp_evenement_livraison(track_data: Optional[dict]) -> Optional[dict]:
     return None
 
 
+def _cp_dernier_evenement(track_data: Optional[dict]) -> Optional[dict]:
+    """L'evenement de reperage le PLUS RECENT, celui qui dit ou en est le colis.
+
+    `_cp_evenement_livraison` juste au-dessus ne cherche que « livre ». Celui-ci
+    rend l'etat courant, qui est ce que la cliente veut lire quand le colis est
+    encore en route : « en cours de livraison », « au bureau de poste »,
+    « tentative de livraison ».
+
+    Postes Canada rend ses `significantEvents` du plus recent au plus ancien,
+    mais on ne s'y fie pas : on trie sur la date et l'heure que porte
+    l'evenement lui-meme. Un ordre d'arrivee n'est pas une garantie.
+    """
+    if not isinstance(track_data, dict):
+        return None
+    evenements = [e for e in (track_data.get("events") or []) if isinstance(e, dict)]
+    if not evenements:
+        return None
+    return max(evenements, key=lambda e: (str(e.get("date") or ""), str(e.get("time") or "")))
+
+
+def _cp_instantane_suivi(live: Optional[dict]) -> dict:
+    """Ce que le transporteur dit, pret a etre ecrit dans `shipping_info`.
+
+    CE QUI ETAIT RECUPERE QUATRE FOIS PAR HEURE PUIS JETE.
+    `_auto_sync_delivered_orders_once` appelle le reperage pour chaque commande
+    expediee, recoit la reponse entiere, et ne gardait que l'horodatage de la
+    verification — le statut partait a la poubelle sauf s'il disait « livre ».
+
+    Rendre un dictionnaire vide quand il n'y a rien a dire est volontaire :
+    `$set` d'un dictionnaire vide n'ecrit rien, donc un reperage muet n'efface
+    pas le dernier statut connu.
+    """
+    evenement = _cp_dernier_evenement(live)
+    if not evenement:
+        return {}
+    instant, libelle = _cp_horodatage(evenement)
+    return {
+        "shipping_info.cp_statut": str(evenement.get("description") or "").strip(),
+        "shipping_info.cp_lieu": str(evenement.get("location") or "").strip(),
+        "shipping_info.cp_evenement_a": instant or "",
+        "shipping_info.cp_evenement_libelle": libelle,
+    }
+
+
 def _cp_horodatage(evenement: dict) -> tuple[Optional[str], str]:
     """(instant ISO en UTC, libelle tel que le donne le transporteur).
 
@@ -781,9 +846,7 @@ async def _cp_marquer_livree(order_id: str, pin: str, live: Optional[dict], sour
     evenement = _cp_evenement_livraison(live) if live else None
     instant, libelle = _cp_horodatage(evenement) if evenement else (None, "")
     lieu = str((evenement or {}).get("location") or "").strip()
-    if source.startswith("sandbox"):
-        texte = f"Statut livré par le repli de TEST après délai — aucune confirmation Postes Canada ({pin})."
-    elif libelle:
+    if libelle:
         texte = (f"Livrée le {libelle} — confirmé par Postes Canada ({pin})"
                  + (f", {lieu}" if lieu else "") + ".")
     else:
@@ -807,21 +870,18 @@ async def _cp_marquer_livree(order_id: str, pin: str, live: Optional[dict], sour
     return res.modified_count
 
 
-def _sandbox_fallback_ready(shipped_at_iso: str) -> bool:
-    """En sandbox uniquement: autorise un passage auto à delivered après délai,
-    si le tracking CP est indisponible."""
-    if not (s.CANADA_POST_ENVIRONMENT == "dev" and s.CANADA_POST_SANDBOX_DELIVERY_FALLBACK):
-        return False
-    if not shipped_at_iso:
-        return False
-    try:
-        dt = datetime.fromisoformat(shipped_at_iso.replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        age = datetime.now(timezone.utc) - dt.astimezone(timezone.utc)
-        return age >= timedelta(hours=max(1, s.CANADA_POST_SANDBOX_DELIVER_AFTER_HOURS))
-    except Exception:
-        return False
+# `_sandbox_fallback_ready` VIVAIT ICI, ET ELLE A ETE SUPPRIMEE LE 18/10/2026.
+#
+# Elle rendait Vrai quand une commande expediee avait depasse un certain
+# nombre d'heures, ce qui faisait passer son statut a « livree » SANS qu'aucun
+# transporteur n'ait rien confirme. Une seule chose etait verifiee : le temps.
+#
+# C'est la forme la plus grave de donnee inventee, parce qu'elle est
+# indiscernable de la vraie pour qui la lit. Un client voyait « livree » et
+# allait chercher un colis qui n'etait peut-etre jamais parti.
+#
+# Si le reperage est indisponible, la commande reste « expediee ». Ne pas
+# savoir et le montrer vaut mieux que de rassurer a tort.
 
 
 def is_canada_post_configured() -> bool:
@@ -1588,7 +1648,12 @@ async def _auto_sync_delivered_orders_once(limit: int = 200) -> int:
             "fulfillment_status": "shipped",
             "shipping_info.tracking_number": {"$nin": [None, ""]},
         },
-        {"_id": 0, "id": 1, "order_number": 1, "shipping_info": 1},
+        # `lang` EST DANS LA PROJECTION PARCE QU'ELLE EST LUE PLUS BAS. Une
+        # projection qui oublie un champ ne provoque aucune erreur : le
+        # `.get()` rend simplement None, et le reperage repartait en anglais
+        # sur une commande francaise. C'est le meme piege que « champ ecrit,
+        # jamais relu », a un cran plus discret.
+        {"_id": 0, "id": 1, "order_number": 1, "shipping_info": 1, "lang": 1},
     ).sort([
         ("shipping_info.delivery_checked_at", 1),
         ("shipping_info.shipped_at", 1),
@@ -1602,23 +1667,38 @@ async def _auto_sync_delivered_orders_once(limit: int = 200) -> int:
             continue
 
         checked_at = datetime.now(timezone.utc).isoformat()
+        live = await s._canada_post_track(pin, order.get("lang"))
+
+        # ON GARDE CE QUE LE TRANSPORTEUR DIT, PAS SEULEMENT S'IL DIT « LIVRE ».
+        #
+        # MIREILLE, 18/10/2026 : « aussi le suivi, puisque chaque commande a un
+        # suivi qui montre l'etat de livraison ».
+        #
+        # L'appel de reperage avait deja lieu ici, quatre fois par heure et
+        # pour chaque commande expediee. Sa reponse entiere arrivait dans
+        # `live`, et seule la question « est-ce livre ? » lui etait posee : le
+        # reste partait a la poubelle. « En cours de livraison », « au bureau
+        # de poste », « tentative de livraison » — tout etait la, recupere puis
+        # jete, et la cliente n'avait que les quatre etapes internes.
+        #
+        # L'enregistrer ne coute AUCUN appel supplementaire. Un instantane vide
+        # n'ecrit rien, donc un reperage muet n'efface pas le dernier etat
+        # connu.
         await s.db.orders.update_one(
             {"id": order["id"], "fulfillment_status": "shipped"},
-            {"$set": {"shipping_info.delivery_checked_at": checked_at}},
+            {"$set": {"shipping_info.delivery_checked_at": checked_at,
+                      **s._cp_instantane_suivi(live)}},
         )
 
-        live = await s._canada_post_track(pin)
         delivered, _ = s._cp_tracking_indicates_delivered(live)
-        source = "canada_post_tracking_auto"
         if not delivered:
-            shipped_at = str(info.get("shipped_at") or "")
-            if s._sandbox_fallback_ready(shipped_at):
-                delivered = True
-                source = "sandbox_time_fallback_auto"
-        if not delivered:
+            # Reperage muet ou colis encore en route : la commande RESTE
+            # « expediee ». Rien ne la fait avancer d'elle-meme — voir la note
+            # a l'emplacement de l'ancien `_sandbox_fallback_ready`.
             continue
 
-        if await _cp_marquer_livree(order["id"], pin, live, source, checked_at):
+        if await _cp_marquer_livree(order["id"], pin, live,
+                                    "canada_post_tracking_auto", checked_at):
             updated += 1
     return updated
 
@@ -1632,3 +1712,91 @@ async def _auto_sync_delivered_orders_watchdog() -> None:
         except Exception as ex:  # pragma: no cover
             logging.error("auto delivery watchdog failed: %s", ex)
         await asyncio.sleep(max(60, s.CANADA_POST_AUTO_DELIVERY_SYNC_SECONDS))
+
+
+# ---------------------------------------------------------------------------
+# Le diagnostic de mise en ligne
+# ---------------------------------------------------------------------------
+
+def diagnostic_configuration() -> dict:
+    """« Est-ce que Postes Canada va repondre ? », repondu AVANT qu'un client
+    ne le decouvre.
+
+    MIREILLE, 18/10/2026 : « poste canada needs to go live as i am ready to go
+    live ». Le probleme d'une mise en ligne, ce n'est pas l'echec : c'est
+    l'echec muet. Jusqu'ici la seule trace d'une mauvaise configuration etait
+    une ligne de journal parmi des milliers, et tout retombait en silence sur
+    le tarif fixe et le suivi manuel.
+
+    CE DIAGNOSTIC NE RETOURNE JAMAIS UNE VALEUR D'IDENTIFIANT, seulement
+    « present » ou « manquant ». Ses cles ne doivent ni entrer dans le depot,
+    ni passer dans un journal, ni s'afficher sur un ecran. Son numero de client
+    non plus. Un diagnostic qui fuite ce qu'il verifie est pire que pas de
+    diagnostic.
+
+    Aucun appel reseau : c'est une lecture de configuration. Les sondes vivantes
+    coutent du quota et se declenchent separement.
+    """
+    openapi = s._cp_use_openapi()
+    mailed_by, mobo = _cp_path_customers()
+
+    def etat(valeur) -> str:
+        return "present" if str(valeur or "").strip() else "MANQUANT"
+
+    # Ce qu'il faut selon le chemin retenu — `is_canada_post_configured`
+    # applique exactement la meme regle, on en expose juste le detail.
+    if openapi:
+        requis = {
+            "OAUTH_CLIENT_ID": etat(s.CANADA_POST_OAUTH_CLIENT_ID),
+            "OAUTH_CLIENT_SECRET": etat(s.CANADA_POST_OAUTH_CLIENT_SECRET),
+            "numero client (mailedBy)": etat(mailed_by),
+            "numero client (mobo)": etat(mobo),
+            "ORIGIN_POSTAL_CODE": etat(s.CANADA_POST_ORIGIN_POSTAL_CODE),
+        }
+    else:
+        requis = {
+            "API_KEY": etat(s.CANADA_POST_API_KEY),
+            "CUSTOMER_NUMBER": etat(s.CANADA_POST_CUSTOMER_NUMBER),
+            "ORIGIN_POSTAL_CODE": etat(s.CANADA_POST_ORIGIN_POSTAL_CODE),
+        }
+
+    manquants = sorted(k for k, v in requis.items() if v == "MANQUANT")
+    avertissements = []
+
+    # POSTES CANADA A ETEINT XML ET SOAP LE 30 AVRIL 2026. Les pages officielles
+    # de Shipping 8.0.0 et de Rating 4.0.0 l'annoncent dans les memes mots :
+    # REST uniquement, et jeton OAuth 2.0 obligatoire pour toutes les requetes.
+    # Rester sur l'ancien chemin, c'est parler a un serveur qui ne repond plus.
+    if not openapi:
+        avertissements.append(
+            "Le chemin « legacy » (XML) est retenu. Postes Canada a cesse de "
+            "servir XML et SOAP le 30 avril 2026 : il faut des identifiants "
+            "OAuth 2.0 du portail developpeur."
+        )
+    if s.CANADA_POST_ENVIRONMENT != "prod":
+        avertissements.append(
+            f"CANADA_POST_ENVIRONMENT={s.CANADA_POST_ENVIRONMENT!r} : les appels "
+            "partent vers l'environnement d'essai, pas vers la production."
+        )
+    if not _cp_suivi_disponible():
+        avertissements.append(
+            "Aucun identifiant ne permet d'interroger le reperage : aucune "
+            "livraison ne sera confirmee automatiquement."
+        )
+
+    return {
+        "mode_retenu": "openapi (OAuth 2.0, REST)" if openapi else "legacy (XML)",
+        "mode_configure": s.CANADA_POST_API_MODE,
+        "environnement": s.CANADA_POST_ENVIRONMENT,
+        "hote_etiquettes": (s.CANADA_POST_OPENAPI_BASE_URL if openapi
+                            else s.CANADA_POST_BASE_URL),
+        "format_etiquette": os.environ.get("CANADA_POST_LABEL_FORMAT", "4x6") + ", PDF",
+        "requis": requis,
+        "manquants": manquants,
+        "configure": is_canada_post_configured(),
+        "reperage_interrogeable": _cp_suivi_disponible(),
+        "synchro_livraison_secondes": s.CANADA_POST_AUTO_DELIVERY_SYNC_SECONDS,
+        "avertissements": avertissements,
+        "verdict": ("pret" if is_canada_post_configured() and not avertissements
+                    else "incomplet"),
+    }

@@ -4,6 +4,7 @@ import { useLang } from "../contexts/LanguageContext";
 import { momentLisible } from "../lib/periode";
 import {
   adresseEnLignes, etapesCommande, lienSuiviPostesCanada, numeroDeSuivi,
+  statutTransporteur,
 } from "../lib/suivi";
 
 /**
@@ -28,6 +29,7 @@ export default function SuiviCommande({ order }) {
   const etapes = etapesCommande(order, lang);
   const pin = numeroDeSuivi(order);
   const lien = lienSuiviPostesCanada(pin, lang);
+  const transporteur = statutTransporteur(order);
   const lignes = adresseEnLignes(order.shipping_address);
 
   return (
@@ -87,6 +89,35 @@ export default function SuiviCommande({ order }) {
             );
           })}
         </ol>
+
+        {/* CE QUE POSTES CANADA DIT, par-dessus les quatre étapes du site.
+            La frise ci-dessus ne connaît que trois valeurs et ne bouge que
+            lorsqu'on la fait bouger. « En cours de livraison », « au bureau de
+            poste », « tentative de livraison » viennent du transporteur — et
+            le serveur les recevait déjà toutes les quinze minutes avant de les
+            jeter. Rien ne s'affiche quand il n'y a pas de statut : une ligne
+            « Statut : — » occupe de la place pour dire qu'on ne sait pas. */}
+        {transporteur && (
+          <div className="mt-5 pt-5 border-t border-ash" data-testid="suivi-transporteur">
+            <div className="etiquette text-glacier mb-1.5">
+              {fr ? "Chez le transporteur" : "With the carrier"}
+            </div>
+            <div className="text-sm font-semibold text-nordfjord" data-testid="suivi-transporteur-statut">
+              {transporteur.texte}
+              {transporteur.lieu && (
+                <span className="font-normal text-glacier"> — {transporteur.lieu}</span>
+              )}
+            </div>
+            {/* L'HORODATAGE EST CE QUI ÉVITE LA QUESTION « est-ce à jour ? ».
+                Sans lui, un statut figé depuis trois jours est indiscernable
+                d'un statut de la minute. */}
+            {transporteur.verifieA && (
+              <div className="font-data text-[12px] text-glacier mt-1" data-testid="suivi-transporteur-verifie">
+                {fr ? "Vérifié " : "Checked "}{momentLisible(transporteur.verifieA, lang)}
+              </div>
+            )}
+          </div>
+        )}
 
         {pin && (
           <div className="mt-5 pt-5 border-t border-ash" data-testid="suivi-numero">

@@ -266,20 +266,58 @@ CANADA_POST_SENDER_ADDRESS = os.environ.get("CANADA_POST_SENDER_ADDRESS", "")
 CANADA_POST_SENDER_CITY = os.environ.get("CANADA_POST_SENDER_CITY", "Montreal")
 CANADA_POST_SENDER_PROVINCE = os.environ.get("CANADA_POST_SENDER_PROVINCE", "QC")
 CANADA_POST_SENDER_PHONE = os.environ.get("CANADA_POST_SENDER_PHONE", "")
-CANADA_POST_ENVIRONMENT = os.environ.get("CANADA_POST_ENVIRONMENT", "dev")  # "dev" (soa-gw) or "prod" (soa-gw prod host)
+# LE DEFAUT EST « prod ». IL VALAIT « dev », ET C'ETAIT LE DEFAUT QUI MENTAIT.
+#
+# MIREILLE, 18/10/2026 : « poste canada needs to go live as i am ready to go
+# live », puis « c'est la meme information que pour la tarification, peux-tu
+# effacer ce qui n'est pas production ».
+#
+# Ses identifiants sont des identifiants de PRODUCTION. Avec « dev » par
+# defaut, chaque appel partait vers `ct.soa-gw.canadapost.ca`, l'hote
+# d'essai — qui ne les authentifie pas. Oublier la variable suffisait donc a
+# envoyer de vraies cles a un serveur qui les refuse, en silence. CELA
+# EXPLIQUE A LUI SEUL QU'UN SUIVI N'AIT JAMAIS REPONDU.
+#
+# Un defaut doit etre le cas sur : ici, c'est la production. L'hote d'essai
+# reste joignable en posant explicitement CANADA_POST_ENVIRONMENT=dev sur un
+# poste de developpement — ce qui disparait, c'est la possibilite d'y tomber
+# par omission.
+CANADA_POST_ENVIRONMENT = os.environ.get("CANADA_POST_ENVIRONMENT", "prod").strip().lower()
 CANADA_POST_BASE_URL = (
     "https://ct.soa-gw.canadapost.ca" if CANADA_POST_ENVIRONMENT == "dev"
     else "https://soa-gw.canadapost.ca"
 )
-# New Shipping OpenAPI (OAuth2) support. Modes:
-# - legacy: existing XML/basic-auth flow
-# - openapi: OAuth2 + JSON flow from the shipping v1 OpenAPI spec
-# - auto: openapi if OAuth creds are present, otherwise legacy
+# LE DEFAUT EST « openapi », PARCE QUE « legacy » APPELLE UNE API ETEINTE.
+#
+# Modes :
+# - openapi : OAuth 2.0 + JSON, le seul que Postes Canada sert encore
+# - legacy  : XML + authentification simple vers soa-gw.canadapost.ca
+# - auto    : openapi si les identifiants OAuth sont presents, sinon legacy
+#
+# POSTES CANADA A ETEINT XML ET SOAP LE 30 AVRIL 2026. Les pages officielles
+# de Shipping 8.0.0 et de Rating 4.0.0 le disent dans les memes mots : les
+# protocoles sont desormais REST uniquement, et le jeton OAuth 2.0 est
+# obligatoire pour toutes les requetes.
+#
+# Le defaut valait « auto », et « auto » retombe sur « legacy » des qu'il
+# manque un identifiant OAuth. Une mise en ligne faite avec la seule cle API
+# et le numero de client prenait donc le chemin XML — vers une API qui ne
+# repond plus — pour la tarification, les etiquettes ET le reperage, sans rien
+# dire d'intelligible.
+#
+# « openapi » par defaut echoue BRUYAMMENT quand les identifiants OAuth
+# manquent, au lieu de reussir a parler a un serveur eteint. Un echec qu'on
+# peut lire vaut mieux qu'un silence.
+#
+# `legacy` reste selectionnable explicitement : le code existe, et le jour ou
+# un compte particulier aurait encore acces a l'ancien point d'acces, personne
+# n'a envie de reecrire cette partie. Mais on n'y tombe plus par omission.
+#
 # CE MODE NE REGIT QUE LES ETIQUETTES. Le suivi et la tarification, eux,
 # passent par le nouveau portail des que ses identifiants OAuth sont presents
 # (voir _canada_post_track et _canada_post_get_rates) : lire un suivi ou un
 # prix ne cree rien, on peut les activer sans toucher aux etiquettes.
-CANADA_POST_API_MODE = os.environ.get("CANADA_POST_API_MODE", "auto").strip().lower()
+CANADA_POST_API_MODE = os.environ.get("CANADA_POST_API_MODE", "openapi").strip().lower()
 CANADA_POST_OPENAPI_BASE_URL = os.environ.get(
     "CANADA_POST_OPENAPI_BASE_URL",
     "https://api.canadapost-postescanada.ca/prod/devportal-portaildesdeveloppeurs/shipping/v1",
@@ -318,24 +356,30 @@ CANADA_POST_INTENDED_METHOD = os.environ.get("CANADA_POST_INTENDED_METHOD", "").
 CANADA_POST_DEFAULT_SERVICE_CODE = os.environ.get("CANADA_POST_DEFAULT_SERVICE_CODE", "DOM.EP").strip() or "DOM.EP"
 CANADA_POST_AUTO_LABEL_INTERVAL_SECONDS = int(os.environ.get("CANADA_POST_AUTO_LABEL_INTERVAL_SECONDS", "60"))
 CANADA_POST_AUTO_DELIVERY_SYNC_SECONDS = int(os.environ.get("CANADA_POST_AUTO_DELIVERY_SYNC_SECONDS", "900"))
-CANADA_POST_SANDBOX_DELIVERY_FALLBACK = os.environ.get("CANADA_POST_SANDBOX_DELIVERY_FALLBACK", "false").strip().lower() == "true"
-CANADA_POST_SANDBOX_DELIVER_AFTER_HOURS = int(os.environ.get("CANADA_POST_SANDBOX_DELIVER_AFTER_HOURS", "24"))
-
-# Le repli sandbox fabrique de FAUSSES confirmations de livraison : une
-# commande jamais expédiée apparaîtrait livrée. Il est déjà conditionné à
-# CANADA_POST_ENVIRONMENT == "dev" côté service, mais cette variable vaut
-# "dev" PAR DÉFAUT — un simple oubli en production suffisait à l'activer.
-# On refuse de démarrer plutôt que de risquer de mentir à un client.
-if IS_PRODUCTION and CANADA_POST_SANDBOX_DELIVERY_FALLBACK:
-    raise RuntimeError(
-        "CANADA_POST_SANDBOX_DELIVERY_FALLBACK=true est interdit en production : "
-        "ce repli simule des livraisons et marquerait des commandes livrées à tort."
-    )
+# LA SIMULATION DE LIVRAISON EST SUPPRIMEE.
+#
+# `CANADA_POST_SANDBOX_DELIVERY_FALLBACK` et
+# `CANADA_POST_SANDBOX_DELIVER_AFTER_HOURS` faisaient passer une commande a
+# « livree » AU BOUT D'UN DELAI, sans qu'aucun transporteur n'ait rien
+# confirme. Un client pouvait lire « livree » pour un colis que personne
+# n'avait scanne.
+#
+# Le garde-fou qui les interdisait en production disparait avec elles : on ne
+# garde pas une chose qui n'existe plus. C'est plus sur qu'un drapeau bien
+# garde — un drapeau peut etre rallume, une fonction supprimee ne revient pas
+# par distraction.
+#
+# EN PRODUCTION, UN ENVIRONNEMENT D'ESSAI REFUSE LE DEMARRAGE.
+#
+# C'etait un `logging.error` : une ligne de journal, parmi des milliers, que
+# personne ne lit. Les tarifs et les etiquettes sortaient alors de
+# l'environnement d'essai de Postes Canada sans que rien ne le signale. Un
+# serveur qui ne demarre pas se remarque dans la minute.
 if IS_PRODUCTION and CANADA_POST_ENVIRONMENT != "prod":
-    logging.error(
-        "[config] CANADA_POST_ENVIRONMENT=%r en production : tarifs et étiquettes "
-        "sortiraient de l'environnement de test Postes Canada. Attendu : 'prod'.",
-        CANADA_POST_ENVIRONMENT,
+    raise RuntimeError(
+        f"CANADA_POST_ENVIRONMENT={CANADA_POST_ENVIRONMENT!r} en production : "
+        "tarifs, etiquettes et reperage sortiraient de l'environnement d'essai "
+        "de Postes Canada. Attendu : 'prod'."
     )
 
 # ---------------------------------------------------------------------------
@@ -3498,7 +3542,7 @@ try:
     from services.canada_post import (  # noqa: F401
         _cp_use_openapi, _cp_path_customers, _cp_get_oauth_token, _cp_openapi_call,
         _estimate_parcel_weight_kg, _canada_post_get_rates, _canada_post_track,
-        _cp_tracking_indicates_delivered, _sandbox_fallback_ready, is_canada_post_configured,
+        _cp_tracking_indicates_delivered, is_canada_post_configured,
         _canada_post_create_shipment_openapi, _canada_post_get_artifact_openapi,
         _canada_post_get_manifest_artifact_openapi, _canada_post_shipment_price,
         _canada_post_manifest_details,
@@ -3508,6 +3552,8 @@ try:
         _auto_sync_delivered_orders_once, _auto_sync_delivered_orders_watchdog,
         _cp_marquer_livree, _cp_evenement_livraison, _cp_horodatage, _cp_lire_suivi_xml,
         _cp_lire_suivi_json, _canada_post_track_openapi, _cp_suivi_disponible,
+        _cp_langue_entete,
+        _cp_dernier_evenement, _cp_instantane_suivi,
         _cp_lire_tarifs_json, _canada_post_get_rates_openapi, _cp_tarifs_disponibles,
         _cp_source_tarifs, _cp_choisir_tarif, _cp_derniere_source_tarifs,
         UNTRANSMITTED_MATCH, pending_manifest_state,
@@ -3516,7 +3562,7 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
     from backend.services.canada_post import (  # noqa: F401
         _cp_use_openapi, _cp_path_customers, _cp_get_oauth_token, _cp_openapi_call,
         _estimate_parcel_weight_kg, _canada_post_get_rates, _canada_post_track,
-        _cp_tracking_indicates_delivered, _sandbox_fallback_ready, is_canada_post_configured,
+        _cp_tracking_indicates_delivered, is_canada_post_configured,
         _canada_post_create_shipment_openapi, _canada_post_get_artifact_openapi,
         _canada_post_get_manifest_artifact_openapi, _canada_post_shipment_price,
         _canada_post_manifest_details,
@@ -3526,6 +3572,8 @@ except ImportError:  # package-relative import (uvicorn backend.server:app)
         _auto_sync_delivered_orders_once, _auto_sync_delivered_orders_watchdog,
         _cp_marquer_livree, _cp_evenement_livraison, _cp_horodatage, _cp_lire_suivi_xml,
         _cp_lire_suivi_json, _canada_post_track_openapi, _cp_suivi_disponible,
+        _cp_langue_entete,
+        _cp_dernier_evenement, _cp_instantane_suivi,
         _cp_lire_tarifs_json, _canada_post_get_rates_openapi, _cp_tarifs_disponibles,
         _cp_source_tarifs, _cp_choisir_tarif, _cp_derniere_source_tarifs,
         UNTRANSMITTED_MATCH, pending_manifest_state,
@@ -5512,21 +5560,10 @@ async def admin_sync_delivery_status(order_id: str,
 
     live = await _canada_post_track(pin)
     if not live:
-        # Sandbox: fallback temporel pour permettre les tests E2E malgré
-        # l'auth tracking CP indisponible.
-        shipped_at = str(info.get("shipped_at") or "")
-        if _sandbox_fallback_ready(shipped_at):
-            await _cp_marquer_livree(order_id, pin, None, "sandbox_time_fallback_manual")
-            updated = await db.orders.find_one({"id": order_id}, {"_id": 0, "fulfillment_status": 1, "shipping_info": 1})
-            return {
-                "ok": True,
-                "tracked": False,
-                "delivered": True,
-                "updated": True,
-                "reason": "sandbox_fallback",
-                "fulfillment_status": (updated or {}).get("fulfillment_status"),
-                "shipping_info": (updated or {}).get("shipping_info") or {},
-            }
+        # Le repli temporel qui marquait « livree » apres un delai a ete
+        # supprime le 18/10/2026. Un reperage indisponible ne permet de rien
+        # conclure : la commande reste « expediee », et c'est ce que dit la
+        # reponse. Ne pas savoir et le montrer vaut mieux que rassurer a tort.
         return {
             "ok": True,
             "tracked": False,
