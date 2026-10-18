@@ -2369,6 +2369,46 @@ async def list_products(category: Optional[str] = None, q: Optional[str] = None,
     return [_stock_produit_coherent(p) for p in products]
 
 
+async def admin_list_products(
+    category: Optional[str] = None,
+    q: Optional[str] = None,
+    actifs: Optional[bool] = None,
+):
+    """La liste de l'administration : TOUS les produits, masques compris.
+
+    MIREILLE, 18/10/2026 : « quand je retire un produit du catalogue dans
+    l'admin, le produit disparait de ma liste, donc si je veux le remettre
+    c'est impossible de le retrouver ».
+
+    LE DEFAUT EST UN CUL-DE-SAC, ET C'EST LA PIRE FORME. L'ecran
+    d'administration lisait `GET /products`, l'endpoint PUBLIC, qui filtre sur
+    `{"active": True}`. Decocher « Active » ne masquait donc pas le produit :
+    ca le faisait sortir de l'ecran qui sert a le modifier, sans aucun moyen
+    d'y revenir. Le document restait en base, intact et inatteignable.
+
+    L'interface le prevoyait pourtant -- elle sait afficher un badge
+    « masque » -- mais la donnee ne lui parvenait jamais. Une intention ecrite
+    dans la vue, et une requete qui la contredisait.
+
+    `actifs` permet de filtrer volontairement ; sans lui, on rend tout, ce qui
+    est le comportement attendu d'une console de gestion.
+    """
+    filt: dict = {}
+    if actifs is not None:
+        filt["active"] = bool(actifs)
+    if category and category != "all":
+        filt["category"] = category
+    if q:
+        q_safe = re.escape(q.strip())
+        filt["$or"] = [
+            {"name_en": {"$regex": q_safe, "$options": "i"}},
+            {"name_fr": {"$regex": q_safe, "$options": "i"}},
+            {"slug": {"$regex": q_safe, "$options": "i"}},
+        ]
+    produits = await db.products.find(filt, {"_id": 0}).sort("name_en", 1).to_list(500)
+    return [_stock_produit_coherent(p) for p in produits]
+
+
 async def get_product(slug: str):
     product = await db.products.find_one({"slug": slug, "active": True}, {"_id": 0})
     if not product:

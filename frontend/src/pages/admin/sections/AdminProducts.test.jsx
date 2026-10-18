@@ -44,8 +44,11 @@ const COMPLET = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  /* `/admin/products` depuis le 18/10/2026 : cet écran lisait le catalogue
+   * PUBLIC, qui ne rend que les produits actifs. Un produit retiré du
+   * catalogue sortait donc de la console qui sert à le remettre. */
   api.get.mockImplementation(async (url) => (
-    url === "/products" ? { data: [BPC, COMPLET] } : { data: [] }));
+    url === "/admin/products" ? { data: [BPC, COMPLET] } : { data: [] }));
 });
 
 it("montre la variante a zero, que le total masquait", async () => {

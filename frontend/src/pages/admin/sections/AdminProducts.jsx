@@ -40,7 +40,22 @@ export default function AdminProducts() {
   const [csvOpen, setCsvOpen] = useState(false);
   const [attentes, setAttentes] = useState([]);
 
-  const load = () => api.get("/products")
+  /* `/admin/products` ET NON `/products`.
+   *
+   * MIREILLE, 18/10/2026 : « quand je retire un produit du catalogue dans
+   * l'admin, le produit disparaît de ma liste, donc si je veux le remettre
+   * c'est impossible de le retrouver ».
+   *
+   * Cet écran lisait l'endpoint PUBLIC, qui filtre sur `{active: true}`.
+   * Décocher « Active » ne masquait donc pas le produit : ça le faisait sortir
+   * de l'écran qui sert à le modifier, sans aucun moyen d'y revenir. Le
+   * document restait en base, intact et inatteignable — un cul-de-sac, la
+   * pire forme de défaut, parce que rien ne signale la perte.
+   *
+   * Cet écran SAIT pourtant afficher un badge « masqué » (voir `etatProduit`
+   * plus haut) : l'intention était écrite dans la vue, et la requête la
+   * contredisait. */
+  const load = () => api.get("/admin/products")
     .then((r) => setProducts(r.data))
     .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message));
   useEffect(() => { load(); }, []);

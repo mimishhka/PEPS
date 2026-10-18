@@ -98,6 +98,22 @@ async def newsletter_unsubscribe(token: str, request: Request):
     return await s.newsletter_unsubscribe(token, request)
 
 
+@router.get("/admin/products")
+async def admin_list_products(
+    category: Optional[str] = None,
+    q: Optional[str] = None,
+    actifs: Optional[bool] = None,
+    _admin: dict = Depends(s.require_area("products", "manage")),
+):
+    """Tous les produits, masques compris. Voir `s.admin_list_products`.
+
+    L'ecran d'administration lisait `GET /products`, qui ne rend que les
+    produits actifs : un produit retire du catalogue sortait de la console qui
+    sert a le remettre.
+    """
+    return await s.admin_list_products(category, q, actifs)
+
+
 @router.post("/admin/products")
 async def admin_create_product(payload: s.ProductIn, _admin: dict = Depends(s.require_area("products", "manage"))):
     return await s.admin_create_product(payload, _admin)
