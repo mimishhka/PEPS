@@ -1,3 +1,4 @@
+import server as s
 from fastapi import APIRouter
 
 from server import (
@@ -27,6 +28,13 @@ async def meta():
         "provinces": PROVINCES_CA,
         "min_age": 19,
         "coa_page_enabled": COA_PAGE_ENABLED,
+        # LES PAGES VOYAGENT AVEC LE RESTE DE LA CONFIGURATION.
+        #
+        # `/meta` est deja l'aller-retour que l'ecran attend avant de rendre
+        # quoi que ce soit (`loaded`). Y ajouter les pages coute une cle ;
+        # un second appel `/pages` couterait une attente de plus, pendant
+        # laquelle chaque route gardee renverrait a l'accueil.
+        "pages": await s.list_pages(),
         "canada_post_enabled": is_canada_post_configured(),
         "prelaunch_enabled": PRELAUNCH_ENABLED,
         "seo": await _seo_get_settings(),

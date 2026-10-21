@@ -208,3 +208,70 @@ describe("le profil moléculaire est saisissable, et borné", () => {
     }
   });
 });
+
+describe("l'ajout de dosages en lot", () => {
+  /* MIREILLE, 21/10/2026 : « dans produit permets l'ajout de lot de 10 qui
+   * auront des mg différents (donc dans la fiche produit visible au client
+   * rajoute ces options si elles sont disponibles pour le client, et bien sûr
+   * ces lots peuvent aussi être en précommande) ».
+   *
+   * LE RESTE EXISTAIT DÉJÀ : la fiche produit affiche le sélecteur dès qu'il y
+   * a plus d'une variante, le COA se gère par variante, et `preorder_enabled`
+   * est un champ DE VARIANTE — donc chaque dosage part en précommande avec son
+   * propre délai, son prix et sa note. Il ne manquait que l'ajout en lot. */
+  const ouvrirEditeur = async () => {
+    render(<AdminProducts />);
+    (await screen.findByTestId("new-product-btn")).click();
+    return await screen.findByTestId("lot-dosages");
+  };
+
+  const dosages = () => [...document.querySelectorAll('[data-testid^="v-name-"]')]
+    .map((e) => e.value);
+
+  test("dix dosages en une fois, nommés et normalisés", async () => {
+    const champ = await ouvrirEditeur();
+    fireEvent.change(champ, { target: { value: "2, 5, 10, 15, 20, 25, 30, 40, 50, 100" } });
+    fireEvent.click(screen.getByTestId("add-lot-btn"));
+
+    const noms = dosages();
+    // La variante « 5mg » du produit neuf, plus les dix du lot moins le
+    // doublon « 5 » qui la rencontre.
+    expect(noms).toContain("2mg");
+    expect(noms).toContain("100mg");
+    expect(noms.filter((n) => n === "5mg")).toHaveLength(1);
+  });
+
+  test("« 10 » et « 10mg » désignent la même chose", async () => {
+    const champ = await ouvrirEditeur();
+    fireEvent.change(champ, { target: { value: "10 10mg 10MG" } });
+    fireEvent.click(screen.getByTestId("add-lot-btn"));
+    expect(dosages().filter((n) => n === "10mg")).toHaveLength(1);
+  });
+
+  test("UN DOUBLON NE S'AJOUTE PAS", async () => {
+    /* Deux variantes « 5mg » rendraient le sélecteur client ambigu et le SKU
+     * inutilisable. Le produit neuf en porte déjà une. */
+    const champ = await ouvrirEditeur();
+    fireEvent.change(champ, { target: { value: "5mg" } });
+    fireEvent.click(screen.getByTestId("add-lot-btn"));
+    expect(dosages().filter((n) => n === "5mg")).toHaveLength(1);
+  });
+
+  test("le champ se vide après l'ajout", async () => {
+    const champ = await ouvrirEditeur();
+    fireEvent.change(champ, { target: { value: "7, 9" } });
+    fireEvent.click(screen.getByTestId("add-lot-btn"));
+    expect(screen.getByTestId("lot-dosages")).toHaveValue("");
+  });
+
+  test("chaque variante du lot part avec le poids par défaut et à zéro", async () => {
+    /* Le commerce reste sa décision : prix 0, stock 0, précommande désactivée,
+     * exactement comme une variante ajoutée à la main. */
+    const champ = await ouvrirEditeur();
+    fireEvent.change(champ, { target: { value: "12" } });
+    fireEvent.click(screen.getByTestId("add-lot-btn"));
+
+    const poids = [...document.querySelectorAll('[data-testid^="v-weight-"]')];
+    expect(poids[poids.length - 1]).toHaveValue(0.5);
+  });
+});

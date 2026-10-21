@@ -13,7 +13,21 @@ export default function Header() {
   const { lang, setLang, t } = useLang();
   const { user, logout } = useAuth();
   const { count, setOpen } = useCart();
-  const { coaPageEnabled } = useSiteConfig();
+  const { coaPageEnabled, pages } = useSiteConfig();
+  /* LA NAVIGATION SUIT LES BASCULES DE L'ADMIN.
+   *
+   * MIREILLE, 21/10/2026 : « cache le endpoint coa lab... cache aussi À propos
+   * pour l'instant ». Seul `/lab` etait filtrable, et par une variable
+   * d'environnement. La regle vaut pour toutes les pages publiables : un lien
+   * vers une page masquee promet une page et livre une redirection.
+   *
+   * Tant que `/meta` n'a pas repondu, on garde l'ancien comportement : rien ne
+   * doit clignoter ni disparaitre le temps d'un aller-retour. */
+  const lienVisible = (to) => {
+    const slug = String(to || "").replace(/^\//, "");
+    if (!pages) return to === "/lab" ? coaPageEnabled : true;
+    return pages[slug] !== false;
+  };
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -31,9 +45,9 @@ export default function Header() {
 
   const fallbackNav = [
     { to: "/catalog", label: t("nav.catalog") },
-    ...(coaPageEnabled ? [{ to: "/lab", label: t("nav.lab") }] : []),
+    { to: "/lab", label: t("nav.lab") },
     { to: "/about", label: t("nav.about") },
-  ];
+  ].filter((it) => lienVisible(it.to));
 
   // Voir hrefConnexion : la page courante servait de destination, y compris
   // quand c'etait la page de connexion elle-meme ou une page d'OPS.
@@ -58,7 +72,7 @@ export default function Header() {
   const navItems =
     menuNav && menuNav.length
       ? menuNav
-          .filter((it) => (it.url === "/lab" ? coaPageEnabled : true))
+          .filter((it) => lienVisible(it.url))
           .map((it) => ({
             to: it.url,
             label: lang === "fr" ? it.label_fr : it.label_en,

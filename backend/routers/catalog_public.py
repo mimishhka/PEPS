@@ -53,6 +53,23 @@ async def admin_delete_category(cat_id: str, _admin: dict = Depends(s.get_admin_
     return await s.admin_delete_category(cat_id, _admin)
 
 
+@router.get("/pages")
+async def list_pages():
+    """Quelles pages de contenu sont publiees. Voir `s.PAGES_PUBLIABLES`."""
+    return await s.list_pages()
+
+
+@router.get("/admin/pages")
+async def admin_list_pages(_admin: dict = Depends(s.get_admin_user)):
+    return await s.admin_list_pages(_admin)
+
+
+@router.put("/admin/pages/{slug}")
+async def admin_update_page(slug: str, payload: s.PageIn,
+                            _admin: dict = Depends(s.get_admin_user)):
+    return await s.admin_update_page(slug, payload, _admin)
+
+
 @router.get("/menus")
 async def list_menus(location: Optional[str] = None):
     return await s.list_menus(location)

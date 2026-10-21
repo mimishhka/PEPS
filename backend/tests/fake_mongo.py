@@ -196,9 +196,12 @@ def _project(doc: dict, projection: Optional[dict]) -> dict:
 
 
 class _Result:
-    def __init__(self, matched: int, modified: int):
+    def __init__(self, matched: int, modified: int, upserted_id=None):
         self.matched_count = matched
         self.modified_count = modified
+        # Mongo le rend sur un upsert qui a insere ; du code peut le lire pour
+        # savoir s'il vient de creer ou de mettre a jour.
+        self.upserted_id = upserted_id
 
 
 class FakeCursor:
@@ -276,6 +279,23 @@ class FakeCollection:
         for doc in self.docs:
             if _matches(doc, filt):
                 return _Result(1, 1 if self._apply(doc, update) else 0)
+
+        # `upsert=True` ETAIT IGNORE : la doublure rendait (0, 0) sans jamais
+        # inserer. Or le seed s'en sert partout — produits, categories, menus,
+        # pages — et un test pouvait donc valider un code qui, contre un vrai
+        # Mongo, aurait cree un document.
+        #
+        # Mongo construit l'insere a partir des egalites du FILTRE, puis
+        # applique $setOnInsert et $set. On fait pareil.
+        if kwargs.get("upsert"):
+            neuf = {cle: valeur for cle, valeur in (filt or {}).items()
+                    if not cle.startswith("$") and not isinstance(valeur, dict)}
+            for cle, valeur in (update.get("$setOnInsert") or {}).items():
+                _poser(neuf, cle, valeur)
+            for cle, valeur in (update.get("$set") or {}).items():
+                _poser(neuf, cle, valeur)
+            self.docs.append(neuf)
+            return _Result(0, 0, upserted_id=neuf.get("id"))
         return _Result(0, 0)
 
     async def update_many(self, filt, update, **kwargs):

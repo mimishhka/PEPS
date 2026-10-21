@@ -131,13 +131,27 @@ function GatedApp() {
   return <Shell><AppRoutes /></Shell>;
 }
 
-// The COA/Lab page is hidden until the backend flag COA_PAGE_ENABLED is turned on
-// (env var, no code change needed). Direct navigation to /lab redirects home while
-// the flag is off, so the page can be re-enabled later without touching routing code.
-function LabRoute() {
-  const { loaded, coaPageEnabled } = useSiteConfig();
+/* UNE PAGE MASQUÉE RENVOIE À L'ACCUEIL.
+ *
+ * MIREILLE, 21/10/2026 : « cache le endpoint coa lab, rajoute-le du côté admin
+ * là où je peux publier ou non des pages, cache aussi À propos pour l'instant ».
+ *
+ * `/lab` dépendait de `COA_PAGE_ENABLED`, une variable d'environnement : pour
+ * masquer une page il fallait un accès au serveur et un redémarrage. `/about`
+ * n'avait aucun interrupteur. C'est désormais une bascule dans l'admin, et la
+ * décision éditoriale revient à qui tient la boutique.
+ *
+ * `loaded` est attendu AVANT de décider : sans lui, chaque chargement
+ * renverrait à l'accueil le temps de l'aller-retour, y compris pour une page
+ * publiée. On ne rend rien plutôt que de rendre une redirection fausse. */
+function PagePubliable({ slug, children }) {
+  const { loaded, pages } = useSiteConfig();
   if (!loaded) return null;
-  return coaPageEnabled ? <Lab /> : <Navigate to="/" replace />;
+  /* Une page absente de la réponse est PUBLIÉE. Un défaut de configuration ne
+   * doit jamais faire disparaître une page en silence — c'est la même règle
+   * que côté serveur. */
+  const publiee = pages ? pages[slug] !== false : true;
+  return publiee ? children : <Navigate to="/" replace />;
 }
 
 function AppRoutes() {
@@ -156,11 +170,11 @@ function AppRoutes() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
-      <Route path="/about" element={<About />} />
-      <Route path="/lab" element={<LabRoute />} />
+      <Route path="/about" element={<PagePubliable slug="about"><About /></PagePubliable>} />
+      <Route path="/lab" element={<PagePubliable slug="lab"><Lab /></PagePubliable>} />
       <Route path="/compliance" element={<Compliance />} />
       <Route path="/privacy" element={<Privacy />} />
-      <Route path="/certificats" element={<Certificats />} />
+      <Route path="/certificats" element={<PagePubliable slug="certificats"><Certificats /></PagePubliable>} />
       <Route path="/faq" element={<Faq />} />
       <Route path="/affiliate/join" element={<AffiliateJoin />} />
       {/* Sans garde de session, mais PAS publique pour autant : la page ne

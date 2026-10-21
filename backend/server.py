@@ -2582,6 +2582,83 @@ async def list_categories():
     return await db.categories.find({"published": True}, {"_id": 0}).sort("display_order", 1).to_list(200)
 
 
+# ---------------------------------------------------------------------------
+# PAGES PUBLIABLES
+# ---------------------------------------------------------------------------
+# MIREILLE, 21/10/2026 : « cache le endpoint coa lab, rajoute-le du cote admin
+# la ou je peux publier ou non des pages, cache aussi A propos pour l'instant ».
+#
+# L'ENDROIT N'EXISTAIT PAS. Les categories et les menus ont un drapeau
+# `published` depuis longtemps ; les PAGES, non. `/lab` etait derriere une
+# variable d'environnement (`COA_PAGE_ENABLED`) — il fallait editer un fichier
+# et redemarrer le serveur pour masquer une page — et `/about` n'avait aucun
+# interrupteur du tout.
+#
+# Une variable d'environnement est le mauvais outil pour une decision
+# editoriale : elle vit hors de l'application, personne ne sait qu'elle existe,
+# et elle demande un acces au serveur pour une decision qui lui appartient.
+#
+# Seules les pages de CONTENU sont listees ici. On ne met pas a la portee d'un
+# clic le catalogue, le panier, la caisse, le compte ou les pages legales :
+# masquer la conformite serait un probleme, pas une fonctionnalite.
+PAGES_PUBLIABLES = (
+    {"slug": "lab", "route": "/lab",
+     "name_fr": "Labo — vérification de lot", "name_en": "Lab — batch lookup"},
+    {"slug": "about", "route": "/about",
+     "name_fr": "À propos", "name_en": "About"},
+    {"slug": "certificats", "route": "/certificats",
+     "name_fr": "Certificats d'analyse", "name_en": "Certificates of analysis"},
+    {"slug": "research", "route": "/research",
+     "name_fr": "Recherche", "name_en": "Research"},
+)
+
+# Celles qui partent MASQUEES a la premiere installation. Les autres sont
+# publiees. `$setOnInsert` : une fois le document cree, l'admin seule decide.
+PAGES_MASQUEES_AU_DEPART = {"lab", "about"}
+
+
+class PageIn(BaseModel):
+    published: bool = True
+
+
+async def list_pages():
+    """Les pages et leur etat de publication. Public : l'ecran en a besoin
+    pour savoir quelles routes servir et quels liens afficher."""
+    docs = await db.pages.find({}, {"_id": 0}).to_list(100)
+    etats = {d["slug"]: bool(d.get("published", True)) for d in docs}
+    # Une page connue mais absente de la base est publiee par defaut : un
+    # document manquant ne doit jamais faire disparaitre une page en silence.
+    return {p["slug"]: etats.get(p["slug"], p["slug"] not in PAGES_MASQUEES_AU_DEPART)
+            for p in PAGES_PUBLIABLES}
+
+
+async def admin_list_pages(_admin: dict = Depends(get_admin_user)):
+    docs = {d["slug"]: d for d in await db.pages.find({}, {"_id": 0}).to_list(100)}
+    return [
+        {**p,
+         "published": bool(docs.get(p["slug"], {}).get(
+             "published", p["slug"] not in PAGES_MASQUEES_AU_DEPART))}
+        for p in PAGES_PUBLIABLES
+    ]
+
+
+async def admin_update_page(slug: str, payload: PageIn,
+                            _admin: dict = Depends(get_admin_user)):
+    connue = next((p for p in PAGES_PUBLIABLES if p["slug"] == slug), None)
+    if not connue:
+        # On ne cree pas de page a la volee : la liste est deliberement courte,
+        # et un slug libre permettrait de masquer n'importe quelle route.
+        raise HTTPException(404, f"Page inconnue : {slug}")
+    await db.pages.update_one(
+        {"slug": slug},
+        {"$set": {"published": payload.published},
+         "$setOnInsert": {"id": str(uuid.uuid4()), "slug": slug,
+                          "created_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {**connue, "published": payload.published}
+
+
 async def admin_list_categories(_admin: dict = Depends(get_admin_user)):
     return await db.categories.find({}, {"_id": 0}).sort("display_order", 1).to_list(200)
 

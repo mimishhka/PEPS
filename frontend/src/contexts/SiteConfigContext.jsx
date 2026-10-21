@@ -16,6 +16,9 @@ const DEFAULTS = {
   // tard si le serveur repondait non. Le defaut reel vit dans
   // backend/server.py, et il vaut `true` depuis le 15/10/2026.
   coaPageEnabled: false,
+  // `null` = « on ne sait pas encore », distinct de « aucune page publiee ».
+  // Rien ne doit se decider sur ce defaut : `loaded` garde les routes.
+  pages: null,
   canadaPostEnabled: false,
   // Défaut sûr : si /meta échoue, la boutique reste OUVERTE. Un défaut à true
   // mettrait tout le site derrière la page d'attente au moindre hoquet réseau.
@@ -40,6 +43,7 @@ export function SiteConfigProvider({ children }) {
           provinces: r.data.provinces || [],
           minAge: r.data.min_age,
           coaPageEnabled: !!r.data.coa_page_enabled,
+          pages: r.data.pages || null,
           canadaPostEnabled: !!r.data.canada_post_enabled,
           prelaunchEnabled: !!r.data.prelaunch_enabled,
         });

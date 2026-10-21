@@ -348,6 +348,50 @@ function ProductEditor({ product, setProduct, onSave, onCancel }) {
   const addVariant = () => setProduct({ ...product, variants: [...(product.variants || []), newVariant("")] });
   const removeVariant = (i) => setProduct({ ...product, variants: product.variants.filter((_, idx) => idx !== i) });
 
+  /* AJOUT DE PLUSIEURS DOSAGES D'UN COUP.
+   *
+   * MIREILLE, 21/10/2026 : « dans produit permets l'ajout de lot de 10 qui
+   * auront des mg différents (donc dans la fiche produit visible au client
+   * rajoute ces options si elles sont disponibles pour le client, et bien sûr
+   * ces lots peuvent aussi être en précommande) ».
+   *
+   * LE RESTE EXISTAIT DÉJÀ, et c'est la bonne nouvelle : la fiche produit
+   * affiche le sélecteur dès qu'il y a plus d'une variante, le COA se gère par
+   * variante, et `preorder_enabled` est un champ DE VARIANTE — donc chaque
+   * dosage peut partir en précommande avec son propre délai, son prix et sa
+   * note. Il ne manquait que l'ajout en lot.
+   *
+   * Les doublons sont écartés : deux variantes « 10mg » rendraient le
+   * sélecteur client ambigu et le SKU inutilisable. On garde la première.
+   *
+   * Les nouvelles variantes partent à 0 $, stock 0, précommande désactivée —
+   * comme une variante ajoutée à la main. Le commerce reste sa décision. */
+  const [lotDosages, setLotDosages] = useState("");
+  const ajouterLot = () => {
+    const dosages = lotDosages
+      .split(/[\s,;]+/)
+      .map((d) => d.trim())
+      .filter(Boolean)
+      // « 10 » et « 10mg » désignent la même chose : on normalise une fois.
+      .map((d) => (/^[\d.]+$/.test(d) ? `${d}mg` : d.toLowerCase()));
+
+    const existants = new Set((product.variants || []).map((v) => String(v.name || "").trim().toLowerCase()));
+    const nouveaux = [];
+    for (const nom of dosages) {
+      if (existants.has(nom)) continue;
+      existants.add(nom);
+      nouveaux.push(newVariant(nom));
+    }
+    if (!nouveaux.length) {
+      toast.error(L("Aucun dosage nouveau à ajouter.", "No new dosage to add."));
+      return;
+    }
+    setProduct({ ...product, variants: [...(product.variants || []), ...nouveaux] });
+    setLotDosages("");
+    toast.success(L(`${nouveaux.length} variante(s) ajoutée(s).`,
+                    `${nouveaux.length} variant(s) added.`));
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex justify-end" onClick={onCancel}>
       <div className="bg-[#fafafa] w-full max-w-3xl h-full overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="product-editor">
@@ -418,10 +462,31 @@ function ProductEditor({ product, setProduct, onSave, onCancel }) {
               <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-foreground/50">
                 Variants ({product.variants?.length || 0})
               </div>
-              <button type="button" onClick={addVariant} data-testid="add-variant-btn"
-                className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-3 py-1.5 flex items-center gap-1.5 hover:bg-foreground/80">
-                <Plus size={12} /> Add Variant
-              </button>
+              <div className="flex items-center gap-2">
+                {/* AJOUT EN LOT.
+                    MIREILLE, 21/10/2026 : « dans produit permets l'ajout de
+                    lot de 10 qui auront des mg différents ».
+                    Un champ de dosages plutôt qu'un bouton « 10 vides » : dix
+                    lignes anonymes à nommer une par une est le même travail
+                    qu'avant, en moins lisible. On écrit les dosages, on obtient
+                    les variantes. La fiche client sait déjà les afficher. */}
+                <input
+                  value={lotDosages}
+                  onChange={(e) => setLotDosages(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); ajouterLot(); } }}
+                  placeholder="2, 5, 10, 15, 20…"
+                  aria-label="Dosages à ajouter, séparés par des virgules"
+                  data-testid="lot-dosages"
+                  className="w-44 border border-ink/20 px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-ink" />
+                <button type="button" onClick={ajouterLot} data-testid="add-lot-btn"
+                  className="border border-ink/30 text-xs font-mono uppercase tracking-[0.2em] px-3 py-1.5 hover:bg-ink hover:text-white">
+                  + Lot
+                </button>
+                <button type="button" onClick={addVariant} data-testid="add-variant-btn"
+                  className="bg-ink text-white text-xs font-mono uppercase tracking-[0.2em] px-3 py-1.5 flex items-center gap-1.5 hover:bg-foreground/80">
+                  <Plus size={12} /> Add Variant
+                </button>
+              </div>
             </div>
             <div className="divide-y divide-ink/5">
               {(product.variants || []).map((v, i) => (

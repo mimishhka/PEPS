@@ -85,6 +85,12 @@ CONFIGURATION = {
     "affiliate_bindings", "payout_runs", "affiliate_payment_runs",
     "low_stock_alerts", "interac_reconciliation_queue", "test",
     "affiliate_email_jobs", "stock_notifications", "shipping_methods",
+    # `pages` ne peut pas grandir : `admin_update_page` refuse tout slug
+    # absent de `PAGES_PUBLIABLES`, une liste FERMEE de quatre entrees ecrite
+    # dans le code. Un document par page publiable, jamais davantage — et
+    # c'est cette fermeture, pas le `.to_list(100)`, qui en fait une
+    # collection de configuration.
+    "pages",
 }
 
 LECTURE = re.compile(r"\bdb\.([a-z_0-9]+)\.(find|aggregate)\s*\(")

@@ -27,7 +27,18 @@ const FALLBACK_COLS = [
 
 export default function Footer() {
   const { t, lang } = useLang();
-  const { coaPageEnabled } = useSiteConfig();
+  /* LE LIEN SUIT LA BASCULE DE L'ADMIN, plus la variable d'environnement.
+   * Une page masquee doit disparaitre de la navigation ET renvoyer a
+   * l'accueil : ne faire que la seconde laisse un lien qui promet une
+   * page et livre une redirection. */
+  const { coaPageEnabled, pages } = useSiteConfig();
+  /* Le slug d'une page publiable se lit dans son chemin : « /lab » -> « lab ».
+   * Un chemin absent de la liste n'est pas publiable et reste visible. */
+  const lienVisible = (to) => {
+    const slug = String(to || "").replace(/^\//, "");
+    if (!pages) return to === "/lab" ? coaPageEnabled : true;
+    return pages[slug] !== false;
+  };
   const [cols, setCols] = useState(null);
 
   useEffect(() => {
@@ -78,7 +89,10 @@ export default function Footer() {
     .filter((c) => c.key !== "program")
     .map((c) => ({
       ...c,
-      links: c.links.filter((l) => (l.to === "/lab" ? coaPageEnabled : true)),
+      // 21/10/2026 : la règle s'étend à TOUTES les pages publiables, et suit
+      // la bascule de l'admin. Un lien vers une page masquée promet une page
+      // et livre une redirection.
+      links: c.links.filter((l) => lienVisible(l.to)),
     }))
     .filter((c) => c.links.length);
   const { user } = useAuth();

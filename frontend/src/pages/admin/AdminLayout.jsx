@@ -3,7 +3,7 @@ import { NavLink, Routes, Route, Navigate, useNavigate, useLocation } from "reac
 import {
   LayoutDashboard, ShoppingCart, Package, Ticket, Users, Truck,
   LogOut, X, Trash2, CheckCircle2, AlertCircle, Clock, UserCog,
-  History, FolderTree, ListTree, Mail, Handshake, Globe,
+  History, FolderTree, ListTree, FileText, Mail, Handshake, Globe,
   CalendarCheck, Send, Boxes, DollarSign, Inbox,
   Link2, MessageSquare, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import api from "../../lib/api";
@@ -27,6 +27,7 @@ import AdminEmails from "./sections/AdminEmails";
 import AdminEmailOutbox from "./sections/AdminEmailOutbox";
 import AdminCategories from "./sections/AdminCategories";
 import AdminMenus from "./sections/AdminMenus";
+import AdminPages from "./sections/AdminPages";
 import AdminSubscribers from "./sections/AdminSubscribers";
 import AdminAffiliates from "./sections/AdminAffiliates";
 import AdminPayouts from "./sections/AdminPayouts";
@@ -191,6 +192,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
           { to: `${basePath}/products`, label: L("Produits", "Products"), icon: Package, area: "products", badge: lowStock, testid: "admin-nav-products" },
           { to: `${basePath}/categories`, label: L("Catégories", "Categories"), icon: FolderTree, area: "categories" },
           { to: `${basePath}/menus`, label: L("Menus", "Menus"), icon: ListTree, area: "menus" },
+          { to: `${basePath}/pages`, label: L("Pages", "Pages"), icon: FileText, area: "menus" },
         ],
       },
       {
@@ -478,6 +480,7 @@ export default function AdminLayout({ basePath = "/admin" }) {
             <Route path="subscribers" element={hasAccess(user, "subscribers") ? <AdminSubscribers /> : <Navigate to={landingPath} replace />} />
             <Route path="categories" element={hasAccess(user, "categories") ? <AdminCategories /> : <Navigate to={landingPath} replace />} />
             <Route path="menus" element={hasAccess(user, "menus") ? <AdminMenus /> : <Navigate to={landingPath} replace />} />
+            <Route path="pages" element={hasAccess(user, "menus") ? <AdminPages /> : <Navigate to={landingPath} replace />} />
             <Route path="affiliates" element={hasAccess(user, "affiliates") ? <AdminAffiliates /> : <Navigate to={landingPath} replace />} />
             <Route path="payouts" element={hasAccess(user, "affiliates") ? <AdminPayouts /> : <Navigate to={landingPath} replace />} />
             <Route path="tickets" element={hasAccess(user, "affiliates") ? <AdminTickets /> : <Navigate to={landingPath} replace />} />

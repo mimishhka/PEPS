@@ -175,16 +175,26 @@ describe("les liens du pied de page", () => {
     expect(SOURCE).not.toMatch(/grid grid-cols-2 md:grid-cols-4 gap-10/);
   });
 
-  test("L'ENTRÉE /lab TOMBE AVEC SON DRAPEAU, ICI AUSSI", () => {
-    /* L'en-tête filtrait déjà cette entrée sur `coaPageEnabled`. Le pied de
-     * page l'affichait toujours : la règle existait, à un seul des deux
-     * endroits qui en avaient besoin.
+  test("UN LIEN VERS UNE PAGE MASQUÉE NE S'AFFICHE PAS, ICI AUSSI", () => {
+    /* L'en-tête filtrait déjà `/lab` sur `coaPageEnabled`. Le pied de page
+     * l'affichait toujours : la règle existait, à un seul des deux endroits
+     * qui en avaient besoin.
+     *
+     * 21/10/2026 — LA RÈGLE S'EST ÉLARGIE. Ce test exigeait la forme exacte
+     * `l.to === "/lab" ? coaPageEnabled`, c'est-à-dire UNE page gardée par UNE
+     * variable d'environnement. Mireille a demandé de pouvoir masquer `/lab`
+     * ET `/about` depuis l'admin ; le filtre porte donc maintenant sur toutes
+     * les pages publiables, via `lienVisible`.
+     *
+     * Le filet suit la règle, pas sa vieille écriture : ce qui compte est
+     * qu'un lien vers une page masquée ne s'affiche pas — pas qu'une
+     * condition ternaire particulière existe quelque part.
      *
      * Et la colonne vidée disparaît, sinon la grille garderait une colonne de
-     * titre sans liens — exactement le quart de page vide qu'on vient de
-     * corriger juste en dessous. */
+     * titre sans liens — exactement le quart de page vide corrigé plus haut. */
     expect(SOURCE).toMatch(/useSiteConfig/);
-    expect(SOURCE).toMatch(/l\.to === "\/lab" \? coaPageEnabled/);
+    expect(SOURCE).toMatch(/lienVisible/);
+    expect(SOURCE).toMatch(/links: c\.links\.filter\(\(l\) => lienVisible\(l\.to\)\)/);
     expect(SOURCE).toMatch(/\.filter\(\(c\) => c\.links\.length\)/);
   });
 
