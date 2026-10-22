@@ -332,6 +332,9 @@ const POIDS_DEFAUT_G = 0.5;
 function newVariant(name = "") {
   return {
     name, price: 0, sale_price: null, stock: 0, sku: "", coa_url: "", weight_grams: POIDS_DEFAUT_G,
+    // Aucun format au depart : le produit se vend au flacon seul tant
+    // qu'elle n'en ajoute pas. « Par defaut c'est ajouter un produit. »
+    packs: [],
     coa_status: "none", badge_coming_soon: false,
     badge_coa_available: false, badge_coa_pending: false,
     preorder_enabled: false, preorder_delay_message: "", preorder_price: null, preorder_note: "",
@@ -529,6 +532,111 @@ function VariantRow({ index, variant, onChange, onRemove }) {
           </div>
         )}
       </div>
+
+      <FormatsDeVente index={index} variant={variant} onChange={onChange} />
+    </div>
+  );
+}
+
+/**
+ * Les formats de vente d'une variante : 3, 5, 10 flacons.
+ *
+ * MIREILLE, 21/10/2026, capture d'un concurrent à l'appui : « je parle de
+ * quantité vendue, donc un lot de 10, un paquet de 10. Il faudrait pouvoir le
+ * présenter et l'afficher seulement si je veux le rendre public — donc par
+ * défaut c'est ajouter un produit, mais j'active les paquets. »
+ *
+ * LE FLACON SEUL N'EST PAS UN FORMAT : c'est la variante, avec son prix.
+ * Lui donner une ligne ici dupliquerait le prix unitaire, et deux sources de
+ * vérité pour un prix finissent toujours par diverger.
+ *
+ * Le prix au flacon et l'économie s'affichent PENDANT la saisie, calculés,
+ * pour qu'elle voie ce que verra la cliente — et parce que les stocker ferait
+ * deux valeurs de plus à tenir à jour.
+ */
+function FormatsDeVente({ index, variant, onChange }) {
+  const L = useL();
+  const packs = variant.packs || [];
+  const prixFlacon = Number(variant.sale_price && variant.sale_price < variant.price
+    ? variant.sale_price : variant.price) || 0;
+
+  const majPack = (i, patch) => {
+    const suivant = packs.map((p, j) => (j === i ? { ...p, ...patch } : p));
+    onChange({ packs: suivant });
+  };
+  const ajouter = () => onChange({
+    packs: [...packs, { qty: 3, price: 0, active: false, preorder_enabled: false,
+                        preorder_price: null, sku: "" }],
+  });
+  const retirer = (i) => onChange({ packs: packs.filter((_, j) => j !== i) });
+
+  return (
+    <div className="border-t border-ink/10 pt-3 mt-1" data-testid={`formats-${index}`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-foreground/50">
+          {L("Formats de vente", "Pack sizes")} ({packs.length})
+        </div>
+        <button type="button" onClick={ajouter} data-testid={`add-format-${index}`}
+          className="border border-ink/30 text-[11px] font-mono uppercase tracking-[0.15em] px-2 py-1 hover:bg-ink hover:text-white">
+          + {L("Format", "Pack")}
+        </button>
+      </div>
+
+      {packs.length === 0 && (
+        <p className="text-[11px] text-foreground/50">
+          {L("Aucun format. Le produit se vend au flacon seul.",
+             "No pack. This product sells by the single vial.")}
+        </p>
+      )}
+
+      {packs.map((pack, i) => {
+        const q = Number(pack.qty) || 0;
+        const total = Number(pack.price) || 0;
+        const plein = prixFlacon * q;
+        const parFlacon = q > 0 ? total / q : 0;
+        const economie = plein > 0 ? Math.round((1 - total / plein) * 100) : 0;
+        return (
+          <div key={i} className="border border-ink/10 p-3 mb-2" data-testid={`format-${index}-${i}`}>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
+              <F label={L("Flacons", "Vials")} type="number" value={pack.qty}
+                 onChange={(v) => majPack(i, { qty: parseInt(v, 10) || 0 })}
+                 test={`f-qty-${index}-${i}`} />
+              <F label={L("Prix du paquet", "Pack price")} type="number" value={pack.price}
+                 onChange={(v) => majPack(i, { price: parseFloat(v) || 0 })}
+                 test={`f-price-${index}-${i}`} />
+              <F label={L("Prix de précommande", "Pre-order price")} type="number"
+                 value={pack.preorder_price ?? ""}
+                 onChange={(v) => majPack(i, { preorder_price: v === "" ? null : (parseFloat(v) || 0) })}
+                 test={`f-preorder-price-${index}-${i}`} />
+              <button type="button" onClick={() => retirer(i)} data-testid={`remove-format-${index}-${i}`}
+                className="border border-ink/30 px-2 py-2 hover:bg-red-600 hover:text-white hover:border-red-600 justify-self-start">
+                <Trash2 size={12} />
+              </button>
+            </div>
+
+            {/* CE QUE VERRA LA CLIENTE, calculé en direct. */}
+            <div className="font-mono text-[11px] text-foreground/60 mt-2"
+                 data-testid={`f-apercu-${index}-${i}`}>
+              {q > 0 && total > 0
+                ? `${parFlacon.toFixed(2)} $ / ${L("flacon", "vial")}${economie > 0 ? ` · ${L("Économisez", "Save")} ${economie} %` : ""}`
+                : L("Renseignez les flacons et le prix.", "Fill in vials and price.")}
+            </div>
+
+            <div className="mt-2 space-y-1">
+              {/* MASQUÉ PAR DÉFAUT : « j'active les paquets » — un format
+                  saisi ne se publie pas tant qu'elle ne l'a pas voulu. */}
+              <Toggle compact checked={!!pack.active}
+                onChange={(c) => majPack(i, { active: c })}
+                label={L("Publié sur la fiche produit", "Published on the product page")}
+                test={`f-active-${index}-${i}`} />
+              <Toggle compact checked={!!pack.preorder_enabled}
+                onChange={(c) => majPack(i, { preorder_enabled: c })}
+                label={L("Précommande si rupture", "Pre-order when out of stock")}
+                test={`f-preorder-${index}-${i}`} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

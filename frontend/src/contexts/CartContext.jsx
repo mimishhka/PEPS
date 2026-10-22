@@ -106,13 +106,27 @@ export function CartProvider({ children }) {
     };
   }, [items]);
 
-  const add = useCallback((product, qty = 1, variant = null) => {
+  const add = useCallback((product, qty = 1, variant = null, pack = null) => {
     const v = variant || (product.variants && product.variants[0]) || null;
     const variant_id = v?.id || null;
-    let unit_price = v?.price ?? product.price_cad ?? 0;
+    /* LE FORMAT FAIT PARTIE DE L'IDENTITE DE LA LIGNE.
+     *
+     * MIREILLE, 21/10/2026 : « je parle de quantité vendue, donc un lot de
+     * 10, un paquet de 10 ».
+     *
+     * Un flacon seul et un paquet de 3 du même dosage sont deux articles
+     * différents, à deux prix différents. Sans le format dans la clé, ils
+     * fusionneraient en une seule ligne — et le prix du premier écraserait
+     * celui du second, sans que rien ne le signale. */
+    const pack_qty = Number(pack?.qty) > 1 ? Number(pack.qty) : 1;
+    let unit_price = pack_qty > 1
+      ? (pack?.price ?? 0)
+      : (v?.price ?? product.price_cad ?? 0);
     // Preorder/sale price is computed inside setItems where merged qty is known.
     setItems((curr) => {
-      const idx = curr.findIndex((i) => i.product_id === product.id && i.variant_id === variant_id);
+      const idx = curr.findIndex((i) => i.product_id === product.id
+        && i.variant_id === variant_id
+        && (Number(i.pack_qty) || 1) === pack_qty);
       const mergedQty = idx >= 0 ? curr[idx].qty + qty : qty;
       /* LE PANIER SE SOUVIENT QU'UNE LIGNE EST UNE PRECOMMANDE.
        *
@@ -151,6 +165,7 @@ export function CartProvider({ children }) {
         {
           product_id: product.id,
           variant_id,
+          pack_qty,
           variant_name: (v?.name && v.name !== "Default") ? v.name : "",
           // LE SKU DE LA VARIANTE CHOISIE (rapport E2E PA-001). Le panier
           // affichait le slug du PRODUIT : « BPC-157-5MG » restait sous la
@@ -209,12 +224,26 @@ export function CartProvider({ children }) {
     ), { duration: 4000 });
   }, []);
 
-  const remove = useCallback((productId, variantId = null) => {
-    setItems((curr) => curr.filter((i) => !(i.product_id === productId && (i.variant_id || null) === (variantId || null))));
+  /* VISER UNE LIGNE DEMANDE LES TROIS : produit, variante ET format.
+   *
+   * Depuis le 21/10/2026, deux lignes peuvent partager le produit et la
+   * variante et ne differer que par le format — un flacon seul et un paquet
+   * de 3 du meme dosage. Sans le format, « retirer » ou « changer la
+   * quantite » frapperait la premiere trouvee, pas celle sur laquelle on a
+   * clique. `packQty` vaut 1 par defaut : les appels qui l'ignorent visent
+   * le flacon seul, comme avant. */
+  const memeLigne = (i, productId, variantId, packQty) =>
+    i.product_id === productId
+    && (i.variant_id || null) === (variantId || null)
+    && (Number(i.pack_qty) || 1) === (Number(packQty) || 1);
+
+  const remove = useCallback((productId, variantId = null, packQty = 1) => {
+    setItems((curr) => curr.filter((i) => !memeLigne(i, productId, variantId, packQty)));
   }, []);
 
-  const setQty = useCallback((productId, variantId, qty) => {
-    setItems((curr) => curr.map((i) => (i.product_id === productId && (i.variant_id || null) === (variantId || null) ? { ...i, qty: Math.max(1, qty) } : i)));
+  const setQty = useCallback((productId, variantId, qty, packQty = 1) => {
+    setItems((curr) => curr.map((i) => (memeLigne(i, productId, variantId, packQty)
+      ? { ...i, qty: Math.max(1, qty) } : i)));
   }, []);
 
   // Vider le panier : ou terminer une commande, qui appelle ceci : doit aussi
@@ -240,7 +269,11 @@ export function CartProvider({ children }) {
     setItems((curr) => curr.map((it) => {
       const m = frais.find((f) =>
         f.product_id === it.product_id
-        && String(f.variant_id || "") === String(it.variant_id || ""));
+        && String(f.variant_id || "") === String(it.variant_id || "")
+        // LE FORMAT FAIT PARTIE DU RACCORD. Sans lui, la reponse du flacon
+        // seul s'appliquerait a la ligne du paquet de 10, et le panier
+        // afficherait 79,99 $ pour un article a 639,99 $.
+        && (Number(f.pack_qty) || 1) === (Number(it.pack_qty) || 1));
       if (!m || m.found === false) return it;
       // Le SKU suit le prix : une ligne ajoutee avant le correctif du SKU
       // se repare d'elle-meme a la premiere revalidation.
@@ -271,7 +304,11 @@ export function CartProvider({ children }) {
         // demande depasse le stock, donc s'il s'agit d'une precommande.
         items: lignes.map((i) => ({ product_id: i.product_id,
                                     variant_id: i.variant_id || null,
-                                    qty: Number(i.qty) || 1 })),
+                                    qty: Number(i.qty) || 1,
+                                    // Sans le format, le serveur revaliderait
+                                    // le prix du flacon seul pour une ligne
+                                    // qui porte un paquet de 10.
+                                    pack_qty: Number(i.pack_qty) || 1 })),
       });
       syncPrices(data?.items || []);
     } catch {

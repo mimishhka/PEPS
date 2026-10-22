@@ -94,7 +94,7 @@ export default function CartDrawer() {
                       )}
                       <div className="flex items-center gap-2 mt-2">
                         <button
-                          onClick={() => setQty(it.product_id, it.variant_id, Math.max(1, it.qty - 1))}
+                          onClick={() => setQty(it.product_id, it.variant_id, Math.max(1, it.qty - 1), it.pack_qty)}
                           aria-label={lang === "fr" ? "Diminuer la quantité" : "Decrease quantity"}
                           className="w-8 h-8 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova-texte"
                           data-testid={`cart-qty-dec-${it.slug}`}
@@ -103,7 +103,7 @@ export default function CartDrawer() {
                         </button>
                         <span className="font-data text-sm w-8 text-center text-nordfjord" data-testid={`cart-qty-${it.slug}`}>{it.qty}</span>
                         <button
-                          onClick={() => setQty(it.product_id, it.variant_id, it.qty + 1)}
+                          onClick={() => setQty(it.product_id, it.variant_id, it.qty + 1, it.pack_qty)}
                           aria-label={lang === "fr" ? "Augmenter la quantité" : "Increase quantity"}
                           className="w-8 h-8 rounded-full border border-ash flex items-center justify-center text-nordfjord hover:border-nova hover:text-nova-texte"
                           data-testid={`cart-qty-inc-${it.slug}`}
@@ -113,7 +113,7 @@ export default function CartDrawer() {
                       </div>
                     </div>
                     <div className="flex flex-col items-end justify-between">
-                      <button onClick={() => remove(it.product_id, it.variant_id)} data-testid={`cart-remove-${it.slug}`} aria-label={lang === "fr" ? "Retirer du panier" : "Remove from cart"} className="text-glacier hover:text-error transition-colors">
+                      <button onClick={() => remove(it.product_id, it.variant_id, it.pack_qty)} data-testid={`cart-remove-${it.slug}`} aria-label={lang === "fr" ? "Retirer du panier" : "Remove from cart"} className="text-glacier hover:text-error transition-colors">
                         <Trash2 size={14} strokeWidth={1.5} />
                       </button>
                       <div className="font-data font-bold text-nordfjord">{prix(it.price_cad * it.qty, lang)}</div>

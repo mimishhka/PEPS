@@ -34,7 +34,7 @@ async def _reserve_stock_atomic(line_items: list) -> list:
     for it in line_items:
         if it.get("preorder"):
             continue
-        qty = it["qty"]
+        qty = s.unites_de(it)
         vid = it.get("variant_id")
 
         if vid in (None, "", "_default"):
@@ -67,7 +67,7 @@ async def _release_stock_atomic(line_items: list) -> None:
     for it in line_items:
         if it.get("preorder"):
             continue
-        qty = it["qty"]
+        qty = s.unites_de(it)
         vid = it.get("variant_id")
         if vid in (None, "", "_default"):
             await s.db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": qty}})
@@ -266,11 +266,11 @@ async def _restock_order_items(order: dict):
         if it.get("preorder"):
             continue
         if it.get("variant_id") in (None, "", "_default"):
-            await s.db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": it["qty"]}})
+            await s.db.products.update_one({"id": it["product_id"]}, {"$inc": {"stock": s.unites_de(it)}})
             asyncio.create_task(s._maybe_notify_restock(it["product_id"], None))
             continue
         await s.db.products.update_one(
             {"id": it["product_id"], "variants.id": it["variant_id"]},
-            {"$inc": {"variants.$.stock": it["qty"]}},
+            {"$inc": {"variants.$.stock": s.unites_de(it)}},
         )
         asyncio.create_task(s._maybe_notify_restock(it["product_id"], it["variant_id"]))

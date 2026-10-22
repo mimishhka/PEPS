@@ -876,6 +876,40 @@ POIDS_PRODUIT_DEFAUT_G = 0.5
 ANCIEN_POIDS_DEFAUT_G = 0.3
 
 
+class PackOption(BaseModel):
+    """Un format de vente : 3, 5 ou 10 flacons vendus ensemble.
+
+    MIREILLE, 21/10/2026, capture d'un concurrent a l'appui : « je parle de
+    quantite vendue, donc un lot de 10, un paquet de 10. Il faudrait pouvoir
+    le presenter et l'afficher seulement si je veux le rendre public [...] et
+    en precommande si je n'en ai pas en stock, avec tout ce qui est deja
+    programme pour les precommandes ».
+
+    LE FLACON SEUL N'EST PAS UN PACK. C'est la variante elle-meme, avec son
+    prix. Creer une entree `qty: 1` dupliquerait le prix unitaire a deux
+    endroits, et deux sources de verite pour un prix finissent toujours par
+    diverger — on en a corrige une ce mois-ci. Consequence : aucune migration,
+    et une variante sans `packs` se comporte exactement comme avant.
+
+    `active` vaut False par defaut : « par defaut c'est ajouter un produit,
+    mais j'active les paquets ». Un format saisi ne se publie pas tant qu'elle
+    ne l'a pas voulu.
+
+    CE QUI N'EST PAS ICI EST DELIBERE. Le prix au flacon, l'economie affichee
+    et la livraison gratuite se CALCULENT a l'affichage. Un drapeau
+    « livraison gratuite » par format pourrait promettre la gratuite pendant
+    que `_build_order_totals` facture le forfait ; le badge se deduit du seuil
+    reel, donc il ne peut pas mentir. Son seuil, lui, ne change pas : elle l'a
+    demande explicitement.
+    """
+    qty: int = Field(ge=2, le=100)        # 3, 5, 10 — jamais 1
+    price: float = Field(ge=0)            # prix TOTAL du paquet
+    active: bool = False
+    preorder_enabled: bool = False
+    preorder_price: Optional[float] = None
+    sku: str = ""
+
+
 class ProductVariant(BaseModel):
     id: Optional[str] = None  # generated server-side if missing
     name: str  # "5mg", "10mg", "500mcg"
@@ -900,6 +934,8 @@ class ProductVariant(BaseModel):
     preorder_price: Optional[float] = None
     preorder_note: str = ""
     weight_grams: float = POIDS_PRODUIT_DEFAUT_G  # used to estimate parcel weight for live Canada Post rating
+    # Les formats MULTIPLES seulement. Le flacon seul est la variante.
+    packs: List[PackOption] = []
 
 
 class ProductIn(BaseModel):
@@ -952,6 +988,11 @@ class CartItem(BaseModel):
     product_id: str
     variant_id: Optional[str] = None
     qty: int = Field(ge=1, le=1000)
+    # LE FORMAT ACHETE. 1 = un flacon, c'est-a-dire la variante seule et le
+    # comportement d'avant le 21/10/2026. Au-dela, le pack correspondant doit
+    # exister sur la variante ET etre actif : un `pack_qty` invente par un
+    # appel direct est refuse, pas devine.
+    pack_qty: int = Field(default=1, ge=1, le=100)
 
 
 # Les regions admises. Le formulaire propose desormais une liste
@@ -2514,11 +2555,39 @@ async def cart_revalidate(payload: CartRevalidateIn, request: Request):
         # « bientot » ou « COA en attente » force la precommande, de meme
         # qu'un stock insuffisant pour la quantite demandee.
         qte = max(1, int(getattr(ligne, "qty", 1) or 1))
-        est_precommande = precommande_requise(v, qte)
+
+        # LE FORMAT SE REVALIDE COMME LA VARIANTE, ET POUR LA MEME RAISON.
+        #
+        # Cette route existe parce que le panier vit dans le navigateur : ses
+        # valeurs peuvent etre vieilles ou trafiquees. Rendre le prix d'un
+        # paquet sans verifier que ce paquet EXISTE et est PUBLIE laisserait
+        # passer un `pack_qty` invente — et le panier afficherait un montant
+        # que la caisse refuserait, ou pire, accepterait.
+        #
+        # Un format disparu rend `found: false`, comme un produit retire :
+        # l'interface le signale au lieu de le facturer.
+        pack = None
+        try:
+            pack = resoudre_pack(v or {}, getattr(ligne, "pack_qty", 1))
+        except HTTPException:
+            sorties.append({"product_id": ligne.product_id,
+                            "variant_id": ligne.variant_id,
+                            "pack_qty": int(getattr(ligne, "pack_qty", 1) or 1),
+                            "found": False})
+            continue
+
+        # Le stock se compte en FLACONS : un paquet de 10 en sort dix.
+        unites = qte * (int(pack["qty"]) if pack else 1)
+        est_precommande = precommande_requise(v, unites)
         if not est_precommande and not v and produit.get("preorder_allowed"):
             est_precommande = True
+        if not est_precommande and v and int(v.get("stock", 0) or 0) < unites:
+            if precommande_possible(v, pack) or produit.get("preorder_allowed"):
+                est_precommande = True
 
-        if est_precommande and v:
+        if pack is not None:
+            prix = _pack_effective_price(pack, est_precommande)
+        elif est_precommande and v:
             prix = _variant_effective_price(v, True)
         else:
             prix = float((v or {}).get("price") if v else produit.get("price_cad", 0) or 0)
@@ -2528,6 +2597,10 @@ async def cart_revalidate(payload: CartRevalidateIn, request: Request):
         sorties.append({
             "product_id": ligne.product_id,
             "variant_id": ligne.variant_id,
+            # Le format revalide : deux lignes peuvent partager le meme
+            # produit et la meme variante et ne differer que par le format.
+            "pack_qty": int(pack["qty"]) if pack else 1,
+            "unites": unites,
             "found": True,
             "price_cad": round(prix, 2),
             # Le navigateur peut enfin le DIRE au client : le panier et la
@@ -3299,6 +3372,64 @@ def _resolve_variant(p: dict, variant_id: Optional[str]) -> dict:
     }
 
 
+def unites_de(ligne: dict) -> int:
+    """Combien de FLACONS represente cette ligne de commande.
+
+    LE STOCK ET LE POIDS SE COMPTENT EN FLACONS, PAS EN LIGNES. Un paquet de
+    10 est une ligne a `qty: 1`, mais il sort dix flacons du stock et pese dix
+    fois. Lire `qty` la ou il faut des unites laisse le stock trop haut et le
+    colis trop leger : deux erreurs qui ne declenchent aucune alerte et se
+    cumulent commande apres commande.
+
+    Les commandes d'avant le 21/10/2026 n'ont pas `unites` — elles retombent
+    sur `qty`, qui etait alors exact puisque tout se vendait a l'unite.
+    """
+    return int(ligne.get("unites") or ligne.get("qty") or 1)
+
+
+def resoudre_pack(v: dict, pack_qty: int) -> Optional[dict]:
+    """Le format demande, ou None pour le flacon seul. Leve si invente.
+
+    UN PACK INACTIF N'EST PAS ACHETABLE, et c'est le point qui compte. Masquer
+    un format a l'ecran sans le refuser au serveur n'est pas le masquer : il
+    suffirait d'un appel direct avec `pack_qty: 10` pour acheter au prix d'un
+    format qu'elle n'a pas publie.
+    """
+    qte = int(pack_qty or 1)
+    if qte <= 1:
+        return None
+    for pack in (v.get("packs") or []):
+        if int(pack.get("qty") or 0) == qte and pack.get("active"):
+            return pack
+    raise HTTPException(400, f"Format de {qte} indisponible pour cette variante")
+
+
+def _pack_effective_price(pack: dict, is_preorder: bool) -> float:
+    """Le prix TOTAL du paquet. Meme regle que pour une variante."""
+    if is_preorder and pack.get("preorder_price"):
+        return float(pack["preorder_price"])
+    return float(pack.get("price", 0.0))
+
+
+def prix_unitaire_vendu(v: dict, pack: Optional[dict], is_preorder: bool) -> float:
+    """Le prix de CE QUI ENTRE DANS LE PANIER : un flacon, ou un paquet."""
+    if pack is None:
+        return _variant_effective_price(v, is_preorder)
+    return _pack_effective_price(pack, is_preorder)
+
+
+def precommande_possible(v: dict, pack: Optional[dict]) -> bool:
+    """Ce format accepte-t-il la precommande ?
+
+    Pour un paquet, c'est SON drapeau qui decide : elle peut vouloir
+    precommander un 10-pack sans ouvrir la precommande sur le flacon seul, ou
+    l'inverse.
+    """
+    if pack is None:
+        return bool(v.get("preorder_enabled"))
+    return bool(pack.get("preorder_enabled"))
+
+
 def _variant_effective_price(v: dict, is_preorder: bool) -> float:
     if is_preorder and v.get("preorder_price"):
         return float(v["preorder_price"])
@@ -3559,18 +3690,33 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
             raise HTTPException(400, f"Product {p['name_en']} unavailable")
 
         v = _resolve_variant(p, it.variant_id)
+        pack = resoudre_pack(v, it.pack_qty)
+
+        # UNITES N'EST PAS QUANTITE, et tout le reste en depend.
+        #
+        # Un paquet de 10 est UNE ligne de panier, mais DIX flacons. Le stock,
+        # le poids du colis et la decision de precommande se comptent en
+        # flacons ; seul le PRIX se compte en paquets.
+        #
+        # `_order_weight_kg` faisait `weight_grams x qty` : un 10-pack aurait
+        # pese un flacon, Postes Canada aurait repese le colis et refacture
+        # l'ecart — silencieusement, commande apres commande.
+        unites = int(it.qty) * (int(pack["qty"]) if pack else 1)
+
         is_preorder = False
-        if precommande_requise(v, it.qty):
+        if precommande_requise(v, unites):
             is_preorder = True
             has_preorder = True
-        elif v.get("stock", 0) < it.qty:
-            if p.get("preorder_allowed"):
+        elif v.get("stock", 0) < unites:
+            # Le drapeau du FORMAT decide : elle peut ouvrir la precommande
+            # sur un 10-pack sans l'ouvrir sur le flacon seul.
+            if precommande_possible(v, pack) or p.get("preorder_allowed"):
                 is_preorder = True
                 has_preorder = True
             else:
                 raise HTTPException(400, f"Insufficient stock for {p['name_en']} ({v.get('name','')})")
 
-        unit_price = _variant_effective_price(v, is_preorder)
+        unit_price = prix_unitaire_vendu(v, pack, is_preorder)
         line_total = round(unit_price * it.qty, 2)
         line_items.append({
             "product_id": p["id"],
@@ -3583,6 +3729,12 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
             "category": p.get("category") or "",
             "price_cad": unit_price,
             "qty": it.qty,
+            # Le format vendu, et le nombre de flacons qu'il represente. Les
+            # deux sont figes sur la commande : le stock, le poids et
+            # l'etiquette doivent refleter CE QUI A ETE VENDU, meme si la
+            # fiche produit change ensuite.
+            "pack_qty": int(pack["qty"]) if pack else 1,
+            "unites": unites,
             "line_total": line_total,
             "image_url": p.get("image_url", ""),
             "preorder": is_preorder,
@@ -6195,7 +6347,7 @@ async def admin_reopen_order(
     for it in (existing.get("items") or []):
         if it.get("preorder"):
             continue
-        qty = int(it.get("qty", 1))
+        qty = unites_de(it)
         vid = it.get("variant_id")
         if vid in (None, "", "_default"):
             res = await db.products.update_one(
@@ -7011,7 +7163,15 @@ def _order_weight_kg(order: dict) -> float:
     le poids doit refléter ce qui a été vendu, même si la fiche a changé depuis)."""
     total_g = 0.0
     for it in _order_items(order):
-        total_g += float(it.get("weight_grams") or POIDS_PRODUIT_DEFAUT_G) * int(it.get("qty") or 1)
+        # `unites` PLUTOT QUE `qty` : un paquet de 10 est une ligne, mais dix
+        # flacons. Sans ce compte, un 10-pack aurait pese un seul flacon et
+        # Postes Canada aurait repese le colis puis refacture l'ecart.
+        #
+        # Les commandes d'avant le 21/10/2026 n'ont pas `unites` : elles
+        # retombent sur `qty`, qui etait alors exact puisque tout se vendait
+        # a l'unite.
+        unites = int(it.get("unites") or it.get("qty") or 1)
+        total_g += float(it.get("weight_grams") or POIDS_PRODUIT_DEFAUT_G) * unites
     return max(0.1, round(total_g / 1000.0, 3)) if total_g else 0.5
 
 
@@ -11366,13 +11526,13 @@ async def _release_ready_preorder_orders() -> int:
             if v and v.get("badge_coming_soon"):
                 all_ready = False
                 break
-            if stock < it.get("qty", 1):
+            if stock < unites_de(it):
                 all_ready = False
                 break
         if all_ready:
             reserved_lines = []
             for it in preorder_lines:
-                qty = int(it.get("qty", 1))
+                qty = unites_de(it)
                 vid = it.get("variant_id")
                 if vid in (None, "", "_default"):
                     res = await db.products.update_one(

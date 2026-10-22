@@ -4,6 +4,7 @@ import { Plus, Minus, BellRing, Check, FileText, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import api, { formatApiError, resolveAssetUrl } from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
+import { useSiteConfig } from "../contexts/SiteConfigContext";
 import useDocumentHead from "../hooks/useDocumentHead";
 import { prix } from "../lib/prix";
 import { dosage } from "../lib/dosage";
@@ -44,7 +45,7 @@ export default function ProductDetail() {
         : `This product is out of stock : it ships when the next batch arrives.${delai} If your order also contains available items, those ship right away, at no extra shipping cost.`,
       confirmLabel: lang === "fr" ? "Précommander" : "Pre-order",
     })) {
-      add(product, qty, selectedVariant);
+      add(product, qty, selectedVariant, packChoisi);
     }
   };
   const { affiliate } = useAffiliate();
@@ -62,6 +63,23 @@ export default function ProductDetail() {
   const [product, setProduct] = useState(null);
   const [qty, setQty] = useState(1);
   const [variantId, setVariantId] = useState(null);
+  /* LE FORMAT CHOISI — ici, avec les autres hooks.
+   *
+   * Il doit vivre AVANT les retours anticipés de `loading` et `!product` :
+   * un hook déclaré après un `return` conditionnel n'est pas appelé à tous
+   * les rendus, et React lève « Rendered fewer hooks than expected » dès que
+   * le produit arrive. Les valeurs DÉRIVÉES, elles, peuvent rester plus bas. */
+  const [packQty, setPackQty] = useState(1);
+  /* LE SEUIL DE GRATUITÉ VIENT DU SERVEUR, pas d'une constante d'écran.
+   * « Le seuil pour la livraison gratuite reste le même » — c'est celui que
+   * `_build_order_totals` applique, et le badge doit en découler, sinon il
+   * promettrait la gratuité pendant que la caisse facture le forfait. */
+  const { freeShippingThresholdCad } = useSiteConfig();
+  const seuilGratuite = Number(freeShippingThresholdCad) || Infinity;
+  /* Changer de dosage remet le format à un flacon : les formats publiés
+   * diffèrent d'une variante à l'autre, et garder un format absent
+   * laisserait un bouton sélectionné qui n'existe plus. */
+  useEffect(() => { setPackQty(1); }, [variantId]);
   const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notifyEmail, setNotifyEmail] = useState("");
@@ -148,10 +166,59 @@ export default function ProductDetail() {
   const name = lang === "fr" ? product.name_fr : product.name_en;
   const variants = product.variants || [];
   const selectedVariant = variants.find((v) => v.id === variantId) || variants[0] || null;
-  const isVariantPreorder = estPrecommande(selectedVariant, qty);
+
+  /* LES FORMATS DE VENTE — second axe, calculé, jamais stocké.
+   *
+   * MIREILLE, 21/10/2026 : « je parle de quantité vendue, donc un lot de 10,
+   * un paquet de 10 [...] et en précommande si je n'en ai pas en stock, avec
+   * tout ce qui est déjà programmé pour les précommandes ».
+   *
+   * Le flacon seul N'EST PAS un pack : c'est la variante. On le réintroduit
+   * ici, à l'affichage seulement, pour que le sélecteur montre les quatre
+   * choix côte à côte — mais le prix du flacon reste lu sur la variante,
+   * donc il n'existe qu'à un seul endroit.
+   *
+   * Le prix au flacon, l'économie et la livraison gratuite SE CALCULENT. Les
+   * stocker ferait trois valeurs de plus à tenir à jour, et elles
+   * divergeraient du prix réel au premier changement. Le badge de livraison
+   * suit le seuil que la caisse applique vraiment : il ne peut pas mentir. */
+  const packsPublies = (selectedVariant?.packs || []).filter((p) => p.active && Number(p.qty) > 1);
+
+  const prixFlaconSeul = Number(selectedVariant?.sale_price && selectedVariant.sale_price < selectedVariant.price
+    ? selectedVariant.sale_price
+    : selectedVariant?.price) || 0;
+
+  const formatsAffichables = packsPublies.length === 0 ? [] : [
+    { qty: 1, prix: prixFlaconSeul, parFlacon: prixFlaconSeul, economie: 0,
+      livraisonGratuite: prixFlaconSeul >= seuilGratuite },
+    ...packsPublies
+      .slice()
+      .sort((a, b) => Number(a.qty) - Number(b.qty))
+      .map((p) => {
+        const total = Number(p.price) || 0;
+        const q = Number(p.qty);
+        const plein = prixFlaconSeul * q;
+        return {
+          qty: q,
+          prix: total,
+          parFlacon: q > 0 ? total / q : total,
+          economie: plein > 0 ? Math.round((1 - total / plein) * 100) : 0,
+          livraisonGratuite: total >= seuilGratuite,
+        };
+      }),
+  ];
+  const packChoisi = packsPublies.find((p) => Number(p.qty) === packQty) || null;
+  /* LA PRÉCOMMANDE SE DÉCIDE SUR LES FLACONS, comme au serveur.
+   *
+   * Un paquet de 10 est une ligne, mais dix flacons : avec `qty` seul,
+   * l'écran annoncerait « ajouter au panier » pendant que la caisse
+   * basculerait la ligne en précommande. Le client l'apprendrait au moment
+   * de payer — exactement ce que la confirmation existe pour éviter. */
+  const unitesChoisies = qty * (packQty > 1 ? packQty : 1);
+  const isVariantPreorder = estPrecommande(selectedVariant, unitesChoisies);
   // L'avertissement remplace la precommande : le lot EST en stock, seul son
   // certificat manque. Voir lib/precommande.
-  const avertirCertificat = avertirCoa(selectedVariant, qty);
+  const avertirCertificat = avertirCoa(selectedVariant, unitesChoisies);
   const hasSale = !!(selectedVariant && selectedVariant.sale_price && selectedVariant.sale_price < selectedVariant.price);
   const effectivePrice = selectedVariant
     ? (isVariantPreorder && selectedVariant.preorder_price ? selectedVariant.preorder_price : hasSale ? selectedVariant.sale_price : selectedVariant.price)
@@ -341,6 +408,71 @@ export default function ProductDetail() {
               </div>
             )}
 
+            {/* LE FORMAT DE VENTE — un second axe, sous le dosage.
+                MIREILLE, 21/10/2026 : « je parle de quantité vendue, donc un
+                lot de 10, un paquet de 10 [...] l'afficher seulement si je
+                veux le rendre public ».
+                N'apparaît que s'il existe au moins un format publié : un
+                produit vendu au flacon seul garde exactement la fiche
+                d'avant. */}
+            {packsPublies.length > 0 && (
+              <div data-testid="selecteur-format" className="mb-6">
+                <div className="etiquette text-compliance mb-2">
+                  {lang === "fr" ? "FORMAT" : "PACK SIZE"}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {formatsAffichables.map((f) => {
+                    const actif = f.qty === packQty;
+                    return (
+                      <button key={f.qty} type="button" onClick={() => setPackQty(f.qty)}
+                        data-testid={`format-${f.qty}`}
+                        data-actif={actif ? "oui" : "non"}
+                        aria-pressed={actif}
+                        className={`border-[1px] px-3 py-3 text-center transition-colors ${
+                          actif ? "border-nova bg-nova/5" : "border-ash hover:border-nova"}`}
+                        style={{ borderRadius: "var(--r-m)" }}>
+                        <div className="text-sm font-semibold text-nordfjord">
+                          {f.qty === 1
+                            ? (lang === "fr" ? "1 flacon" : "1 vial")
+                            : (lang === "fr" ? `${f.qty} flacons` : `${f.qty} pack`)}
+                        </div>
+                        <div className="font-data text-[13px] text-nordfjord mt-0.5">
+                          {prix(f.prix, lang)}
+                        </div>
+                        {/* LE PRIX AU FLACON ET L'ÉCONOMIE SE CALCULENT.
+                            Les stocker en ferait deux valeurs de plus à tenir
+                            à jour, et elles divergeraient du prix réel au
+                            premier changement. */}
+                        {f.qty > 1 && (
+                          <div className="font-data text-[11px] text-glacier mt-0.5"
+                               data-testid={`format-${f.qty}-unitaire`}>
+                            {prix(f.parFlacon, lang)} {lang === "fr" ? "/ flacon" : "/ vial"}
+                          </div>
+                        )}
+                        {f.economie > 0 && (
+                          <div className="font-data text-[11px] text-nova-texte mt-1"
+                               data-testid={`format-${f.qty}-economie`}>
+                            {lang === "fr" ? `Économisez ${f.economie} %` : `Save ${f.economie}%`}
+                          </div>
+                        )}
+                        {/* LE BADGE SUIT LE SEUIL RÉEL, il ne se saisit pas.
+                            Un drapeau « livraison gratuite » par format
+                            pourrait promettre la gratuité pendant que la
+                            caisse facture le forfait. Son seuil ne change
+                            pas : elle l'a demandé explicitement. */}
+                        {f.livraisonGratuite && (
+                          <div className="font-data text-[11px] text-nova-texte mt-1"
+                               data-testid={`format-${f.qty}-livraison`}>
+                            {lang === "fr" ? "Livraison gratuite" : "Free shipping"}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {purete && (
               <div className="flex items-baseline justify-between gap-6 py-3 border-y border-ash mb-6"
                    data-testid="purete-en-tete">
@@ -404,7 +536,7 @@ export default function ProductDetail() {
                 <button onClick={() => setQty((q) => q + 1)} aria-label={lang === "fr" ? "Augmenter la quantité" : "Increase quantity"} className="w-9 h-9 flex items-center justify-center text-nordfjord hover:text-nova-texte" data-testid="product-qty-inc"><Plus size={15} /></button>
               </div>
               <button
-                onClick={() => (isVariantPreorder ? confirmerPrecommande() : add(product, qty, selectedVariant))}
+                onClick={() => (isVariantPreorder ? confirmerPrecommande() : add(product, qty, selectedVariant, packChoisi))}
                 data-testid="product-add-to-cart"
                 disabled={isOutOfStock || isComingSoon}
                 className="flex-1 inline-flex items-center justify-center gap-2 font-semibold uppercase transition-colors duration-150 cursor-pointer text-[14px] tracking-[0.04em] bg-nordfjord text-white hover:bg-nova hover:text-white disabled:opacity-40 disabled:pointer-events-none" style={{ borderRadius: "var(--r-m)", padding: "13px 22px" }}
