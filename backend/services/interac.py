@@ -180,12 +180,15 @@ async def _process_interac_deposit_emails() -> int:
         return 0
 
     processed = 0
+    if messages:
+        logging.info("[interac-watchdog] %d message(s) non lu(s) à traiter", len(messages))
     for msg in messages:
         from_addr = ((msg.get("from") or {}).get("emailAddress") or {}).get("address") or ""
         if from_addr.strip().lower() != s.INTERAC_TRUSTED_SENDER:
             continue  # pas une notification Interac — on laisse en non-lu
         if not _interac_message_authenticated(msg):
-            logging.warning("Interac notification rejected: email authentication did not pass")
+            logging.warning("Interac notification rejected: email authentication did not pass (subject=%s)",
+                            (msg.get("subject") or "")[:80])
             continue
         subject = msg.get("subject") or ""
         body = msg.get("body") or {}
@@ -194,7 +197,9 @@ async def _process_interac_deposit_emails() -> int:
         acted = False
         if not refs:
             # Missing FN reference in Interac email: queue for manual matching.
+            logging.info("[interac-watchdog] aucune réf FN trouvée dans le message — mise en file de réconciliation")
             acted = await _queue_interac_reconciliation_item(msg, text, reason="missing_reference")
+        unmatched_refs = []
         for ref in refs:
             order = await s.db.orders.find_one(
                 {"order_number": ref, "payment_status": "awaiting_etransfer"}, {"_id": 0}
@@ -212,6 +217,7 @@ async def _process_interac_deposit_emails() -> int:
                     if flagged:
                         acted = True
                         break
+                unmatched_refs.append(ref)
                 continue
             amounts = _parse_amounts(text)
             order_total = float(order.get("total", 0))
@@ -237,6 +243,12 @@ async def _process_interac_deposit_emails() -> int:
                 logging.info("Order %s marked paid via Interac Autodeposit notification", ref)
             acted = True
             break
+        # Si des refs ont été trouvées mais qu'aucune ne correspond à une commande
+        # (ni awaiting ni cancelled), on met en file de réconciliation au lieu de
+        # laisser le message tourner en boucle indéfiniment.
+        if not acted and unmatched_refs:
+            logging.warning("[interac-watchdog] réf(s) %s trouvée(s) mais aucune commande correspondante — réconciliation", unmatched_refs)
+            acted = await _queue_interac_reconciliation_item(msg, text, reason="no_matching_order")
         if acted:
             try:
                 await s._graph_mark_read(token, msg["id"])
