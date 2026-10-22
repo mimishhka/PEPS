@@ -645,7 +645,7 @@ async def _start_session(response: Response, request: Request, user: dict, famil
     # onglet. A la connexion, l'attribution de la visite s'eteint : un compte
     # qui se connecte n'arrive plus « par un lien ».
     try:
-        response.delete_cookie(s.AFFILIATE_COOKIE_NAME, path="/")
+        response.delete_cookie(AFFILIATE_COOKIE_NAME, path="/")
     except Exception:
         pass
 
@@ -4869,8 +4869,8 @@ async def checkout(payload: CheckoutIn, request: Request):
         "has_preorder": has_preorder,
         "notes": [],
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "payment_ttl_hours": UNPAID_ORDER_TTL_HOURS,
-        "payment_deadline": (datetime.now(timezone.utc) + timedelta(hours=UNPAID_ORDER_TTL_HOURS)).isoformat(),
+        "payment_ttl_hours": 0.5,
+        "payment_deadline": (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
         "compliance": {
             "accept_terms": True,
             "confirm_age": True,
@@ -11409,27 +11409,8 @@ OPERATIONAL_BATCH_SIZE = max(1, min(int(os.environ.get("OPERATIONAL_BATCH_SIZE",
 OPERATIONAL_MAX_BATCHES_PER_RUN = max(1, min(int(os.environ.get("OPERATIONAL_MAX_BATCHES_PER_RUN", "20")), 100))
 
 async def send_payment_reminders(limit: int = OPERATIONAL_BATCH_SIZE):
-    """Envoie un rappel unique aux commandes impayées ayant dépassé la moitié
-    du délai d'expiration, avant leur annulation automatique."""
-    now = datetime.now(timezone.utc)
-    cutoff = (now - timedelta(hours=PAYMENT_REMINDER_HOURS)).isoformat()
-    floor = (now - timedelta(hours=UNPAID_ORDER_TTL_HOURS)).isoformat()
-    pending = await db.orders.find(
-        {
-            "payment_status": {"$in": ["awaiting_etransfer", "awaiting_crypto"]},
-            "created_at": {"$lt": cutoff, "$gte": floor},
-            "payment_reminder_sent": {"$ne": True},
-        }, {"_id": 0}
-    ).to_list(limit)
-    for order in pending:
-        marked = await db.orders.update_one(
-            {"id": order["id"], "payment_reminder_sent": {"$ne": True}},
-            {"$set": {"payment_reminder_sent": True}},
-        )
-        if marked.modified_count and order.get("email"):
-            lang, to, ctx = _order_ctx(order)
-            await send_template_email("payment_reminder", to, lang, ctx, order)
-    return len(pending)
+    """Désactivé : aucun rappel de paiement n'est envoyé au client."""
+    return 0
 
 async def cancel_stale_unpaid_orders(limit: int = OPERATIONAL_BATCH_SIZE):
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=UNPAID_ORDER_TTL_HOURS)).isoformat()
@@ -11443,7 +11424,7 @@ async def cancel_stale_unpaid_orders(limit: int = OPERATIONAL_BATCH_SIZE):
     for order in stale:
         note = {
             "id": str(uuid.uuid4()),
-            "text": f"Auto-cancelled: payment not received within {int(UNPAID_ORDER_TTL_HOURS)}h",
+            "text": "Auto-cancelled: payment not received / Annulée automatiquement : paiement non reçu",
             "author": "system",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
