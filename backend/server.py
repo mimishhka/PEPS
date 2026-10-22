@@ -100,6 +100,10 @@ INTERAC_GRAPH_CLIENT_SECRET = _strip_placeholder(INTERAC_GRAPH_CLIENT_SECRET)
 # obscure par hasard ne voie même pas d'écran de login. Si non défini, la
 # passerelle est désactivée (aucun blocage).
 ADMIN_GATE_CODE = os.environ.get("ADMIN_GATE_CODE")
+# Endpoint interne très discret réservé au support / ops ; la route est cachée
+# derrière un chemin improbable et un mot de passe secret. Laisser vide la désactive.
+OPS_PATH = os.environ.get("OPS_PATH", "/ops/7q3k9x").strip()
+OPS_PASSWORD = os.environ.get("OPS_PASSWORD", "").strip()
 TRUST_PROXY_IPS = {
     ip.strip()
     for ip in os.environ.get("TRUST_PROXY_IPS", "").split(",")
@@ -438,6 +442,28 @@ app = FastAPI(
     openapi_url="/openapi.json" if EXPOSE_API_DOCS else None,
 )
 api = APIRouter(prefix="/api")
+
+
+@app.get(OPS_PATH)
+async def ops_private_endpoint(request: Request):
+    """Endpoint interne caché, utilisé pour diagnostics / maintenance sans
+    exposer de surface publique normale. Il répond 404 quand le mot de passe
+    manque ou est invalide, pour éviter toute fuite d'information.
+    """
+    if not OPS_PATH or not OPS_PASSWORD:
+        raise HTTPException(status_code=404)
+
+    password = request.headers.get("x-ops-password") or request.query_params.get("password")
+    if password != OPS_PASSWORD:
+        raise HTTPException(status_code=404)
+
+    return JSONResponse({
+        "ok": True,
+        "service": "ops",
+        "path": OPS_PATH,
+        "env": APP_ENV or "unset",
+        "time": datetime.now(timezone.utc).isoformat(),
+    })
 
 
 class ImmutableStaticFiles(StaticFiles):
