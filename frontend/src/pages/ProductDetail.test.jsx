@@ -8,7 +8,7 @@
 // 2. « Précommande » ne peut plus masquer la rupture. Une variante en
 //    précommande sans un seul flacon en tablette doit le dire : sinon le
 //    client lit « Précommande » et comprend « expédié demain ».
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import ProductDetail from "./ProductDetail";
 import api from "../lib/api";
@@ -29,6 +29,11 @@ jest.mock("../contexts/LanguageContext", () => ({
   useLang: () => ({ t: (k) => k, lang: "fr" }),
 }));
 jest.mock("../contexts/CartContext", () => ({ useCart: () => ({ add: jest.fn() }) }));
+// La fiche lit le seuil de gratuité depuis la configuration du site pour
+// déduire le badge « livraison gratuite » des formats de vente.
+jest.mock("../contexts/SiteConfigContext", () => ({
+  useSiteConfig: () => ({ freeShippingThresholdCad: 200 }),
+}));
 jest.mock("../hooks/useDocumentHead", () => ({ __esModule: true, default: () => {} }));
 jest.mock("../hooks/useAffiliate", () => ({ __esModule: true, default: () => ({ affiliate: null }) }));
 jest.mock("../components/brand", () => ({ Seal: () => null }));
@@ -306,5 +311,76 @@ describe("le profil moléculaire montre la matière, jamais l'effet", () => {
     expect(page).not.toMatch(/Réparation tissulaire/i);
     expect(page).not.toMatch(/Anti-inflammatoire/i);
     expect(page).not.toMatch(/guérison/i);
+  });
+});
+
+describe("les formats de vente", () => {
+  /* MIREILLE, 21/10/2026, capture d'un concurrent à l'appui : « je parle de
+   * quantité vendue, donc un lot de 10, un paquet de 10 [...] l'afficher
+   * seulement si je veux le rendre public ». Puis : « le seuil pour la
+   * livraison gratuite reste le même ».
+   *
+   * Le prix au flacon, l'économie et le badge de livraison SE CALCULENT. Les
+   * stocker ferait trois valeurs de plus à tenir à jour, et elles
+   * divergeraient du prix réel au premier changement. */
+  const avecFormats = (packs) => afficher({ price: 79.99, stock: 500, packs });
+
+  test("SANS FORMAT PUBLIÉ, LE SÉLECTEUR N'EXISTE PAS", async () => {
+    // Un produit vendu au flacon seul garde exactement la fiche d'avant.
+    await avecFormats([]);
+    expect(screen.queryByTestId("selecteur-format")).not.toBeInTheDocument();
+  });
+
+  test("un format non publié ne s'affiche pas", async () => {
+    await avecFormats([
+      { qty: 3, price: 225.99, active: true },
+      { qty: 10, price: 639.99, active: false },
+    ]);
+    expect(screen.getByTestId("format-3")).toBeInTheDocument();
+    expect(screen.queryByTestId("format-10")).not.toBeInTheDocument();
+  });
+
+  test("le flacon seul apparaît à côté des formats, et part sélectionné", async () => {
+    await avecFormats([{ qty: 3, price: 225.99, active: true }]);
+    expect(screen.getByTestId("format-1")).toHaveAttribute("data-actif", "oui");
+    expect(screen.getByTestId("format-3")).toHaveAttribute("data-actif", "non");
+  });
+
+  test("LE PRIX AU FLACON ET L'ÉCONOMIE SE CALCULENT", async () => {
+    // 225,99 $ pour 3 flacons à 79,99 $ : 75,33 $ l'unité, 6 % d'économie.
+    await avecFormats([{ qty: 3, price: 225.99, active: true }]);
+    expect(screen.getByTestId("format-3-unitaire")).toHaveTextContent("75,33");
+    expect(screen.getByTestId("format-3-economie")).toHaveTextContent("6");
+  });
+
+  test("LE BADGE DE LIVRAISON SUIT LE SEUIL, IL NE SE SAISIT PAS", async () => {
+    /* Le seuil moqué vaut 200 $. Un drapeau saisi par format pourrait
+     * promettre la gratuité pendant que la caisse facture le forfait ; en le
+     * déduisant du seuil réel, il ne peut pas mentir. */
+    await avecFormats([
+      { qty: 2, price: 150.00, active: true },
+      { qty: 5, price: 359.99, active: true },
+    ]);
+    expect(screen.queryByTestId("format-2-livraison")).not.toBeInTheDocument();
+    expect(screen.getByTestId("format-5-livraison")).toBeInTheDocument();
+  });
+
+  test("choisir un format le rend actif", async () => {
+    await avecFormats([{ qty: 5, price: 359.99, active: true }]);
+    fireEvent.click(screen.getByTestId("format-5"));
+    expect(screen.getByTestId("format-5")).toHaveAttribute("data-actif", "oui");
+    expect(screen.getByTestId("format-1")).toHaveAttribute("data-actif", "non");
+  });
+
+  test("les formats s'affichent du plus petit au plus grand", async () => {
+    await avecFormats([
+      { qty: 10, price: 639.99, active: true },
+      { qty: 3, price: 225.99, active: true },
+      { qty: 5, price: 359.99, active: true },
+    ]);
+    const ordre = [...screen.getByTestId("selecteur-format").querySelectorAll("[data-testid]")]
+      .map((e) => e.getAttribute("data-testid"))
+      .filter((id) => /^format-\d+$/.test(id));
+    expect(ordre).toEqual(["format-1", "format-3", "format-5", "format-10"]);
   });
 });

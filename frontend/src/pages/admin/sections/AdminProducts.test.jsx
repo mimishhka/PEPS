@@ -208,3 +208,67 @@ describe("le profil moléculaire est saisissable, et borné", () => {
     }
   });
 });
+
+describe("les formats de vente, côté admin", () => {
+  /* MIREILLE, 21/10/2026 : « il faudrait pouvoir le présenter et l'afficher
+   * seulement si je veux le rendre public — donc par défaut c'est ajouter un
+   * produit, mais j'active les paquets ». */
+  const ouvrir = async () => {
+    render(<AdminProducts />);
+    (await screen.findByTestId("new-product-btn")).click();
+    return await screen.findByTestId("formats-0");
+  };
+
+  test("un produit neuf n'a AUCUN format", async () => {
+    // Il se vend au flacon seul tant qu'elle n'en ajoute pas.
+    await ouvrir();
+    expect(screen.queryByTestId("format-0-0")).not.toBeInTheDocument();
+  });
+
+  test("un format ajouté part MASQUÉ", async () => {
+    /* C'est le cœur de sa demande : saisir n'est pas publier. Un format
+     * publié d'office apparaîtrait en vitrine avant qu'elle ait mis un prix. */
+    await ouvrir();
+    fireEvent.click(screen.getByTestId("add-format-0"));
+    expect(screen.getByTestId("f-active-0-0")).not.toBeChecked();
+    expect(screen.getByTestId("f-preorder-0-0")).not.toBeChecked();
+  });
+
+  test("LE PRIX AU FLACON ET L'ÉCONOMIE S'AFFICHENT PENDANT LA SAISIE", async () => {
+    /* Elle voit ce que verra la cliente, au moment où elle tape — et les deux
+     * valeurs ne sont stockées nulle part, donc elles ne peuvent pas diverger
+     * du prix réel. */
+    await ouvrir();
+    fireEvent.change(screen.getByTestId("v-price-0"), { target: { value: "79.99" } });
+    fireEvent.click(screen.getByTestId("add-format-0"));
+    fireEvent.change(screen.getByTestId("f-qty-0-0"), { target: { value: "3" } });
+    fireEvent.change(screen.getByTestId("f-price-0-0"), { target: { value: "225.99" } });
+
+    const apercu = screen.getByTestId("f-apercu-0-0");
+    expect(apercu).toHaveTextContent("75.33");
+    expect(apercu).toHaveTextContent("6");
+  });
+
+  test("tant que le prix manque, l'aperçu le dit au lieu d'afficher zéro", async () => {
+    await ouvrir();
+    fireEvent.click(screen.getByTestId("add-format-0"));
+    expect(screen.getByTestId("f-apercu-0-0")).toHaveTextContent(/Renseignez/);
+  });
+
+  test("un format se retire", async () => {
+    await ouvrir();
+    fireEvent.click(screen.getByTestId("add-format-0"));
+    expect(screen.getByTestId("format-0-0")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("remove-format-0-0"));
+    expect(screen.queryByTestId("format-0-0")).not.toBeInTheDocument();
+  });
+
+  test("chaque format a son propre prix de précommande", async () => {
+    /* Elle peut vouloir précommander un 10-pack à prix réduit sans toucher au
+     * prix du flacon seul. */
+    await ouvrir();
+    fireEvent.click(screen.getByTestId("add-format-0"));
+    fireEvent.change(screen.getByTestId("f-preorder-price-0-0"), { target: { value: "599.99" } });
+    expect(screen.getByTestId("f-preorder-price-0-0")).toHaveValue(599.99);
+  });
+});

@@ -508,7 +508,7 @@ export default function Checkout() {
     });
 
     const payload = {
-      items: (items || []).map((i) => ({ product_id: i.product_id, variant_id: i.variant_id || null, qty: Number(i.qty || 1) })),
+      items: (items || []).map((i) => ({ product_id: i.product_id, variant_id: i.variant_id || null, qty: Number(i.qty || 1), pack_qty: Number(i.pack_qty) || 1 })),
       email: email.trim(),
       shipping: toAddr(shipNorm),
       payment_method: paymentMethod,
