@@ -1,5 +1,5 @@
-import { Link, NavLink, useNavigate, useLocation } from "react-router-dom";
-import { ShoppingBag, User, Menu, X, Lock } from "lucide-react";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import { ShoppingBag, User, Menu, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
@@ -29,19 +29,10 @@ export default function Header() {
     return pages[slug] !== false;
   };
   const [mobileOpen, setMobileOpen] = useState(false);
-  const navigate = useNavigate();
   const location = useLocation();
 
   // NOTE: keep in sync with ADMIN_PATH in App.js
   const ADMIN_PATH = "/ops-portal-fn7k2q";
-
-  const enterAdmin = async () => {
-    if (user?.role === "admin") {
-      navigate(ADMIN_PATH);
-      return;
-    }
-    navigate(`/login?next=${encodeURIComponent(ADMIN_PATH)}`);
-  };
 
   const fallbackNav = [
     { to: "/catalog", label: t("nav.catalog") },
@@ -146,15 +137,6 @@ export default function Header() {
               ne sépare plus rien visuellement, et coûte 24 px au budget
               mesuré plus haut. */}
           <div className="flex items-center gap-0.5 sm:gap-3">
-            <button
-              data-testid="admin-quick-access"
-              onClick={enterAdmin}
-              className="hidden sm:inline-flex items-center gap-1.5 etiquette font-semibold bg-nordfjord text-white px-3.5 py-1.5 hover:bg-glacier transition-colors" style={{ borderRadius: "var(--r-m)" }}
-              aria-label="Ops"
-            >
-              <Lock size={11} strokeWidth={2} />
-              OPS
-            </button>
             {/* DEUX CIBLES, PAS UNE BASCULE.
 
                 Mesure sur un écran de 375 px : 84 × 29, et le pseudo-élément
@@ -277,13 +259,6 @@ export default function Header() {
                   {n.label}
                 </Link>
               ))}
-              <button
-                onClick={() => { setMobileOpen(false); enterAdmin(); }}
-                data-testid="admin-quick-access-mobile"
-                className="etiquette-nav font-semibold py-3.5 mt-2 text-left bg-nordfjord text-white px-4 inline-flex items-center gap-2 w-fit" style={{ borderRadius: "var(--r-m)" }}
-              >
-                <Lock size={11} strokeWidth={2} /> OPS
-              </button>
               {user ? (
                 <>
                   <Link to="/account" onClick={() => setMobileOpen(false)} className="etiquette-nav font-semibold py-3.5 block text-nordfjord">

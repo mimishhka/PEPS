@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import api from "../lib/api";
 import { useLang } from "../contexts/LanguageContext";
-import { useAuth } from "../contexts/AuthContext";
 import { useSiteConfig } from "../contexts/SiteConfigContext";
 import { FnMark, Wordmark } from "./brand";
 
@@ -95,19 +94,6 @@ export default function Footer() {
       links: c.links.filter((l) => lienVisible(l.to)),
     }))
     .filter((c) => c.links.length);
-  const { user } = useAuth();
-  const navigate = useNavigate();
-
-  const ADMIN_PATH = "/ops-portal-fn7k2q";
-
-  const adminBypass = async () => {
-    if (user?.role === "admin") {
-      navigate(ADMIN_PATH);
-      return;
-    }
-    navigate(`/login?next=${encodeURIComponent(ADMIN_PATH)}`);
-  };
-
   const confirmText =
     lang === "fr"
       ? "En accédant à ce site, vous confirmez être un chercheur qualifié et assumez l'entière responsabilité de la manipulation, du stockage et de l'élimination de ces composés, conformément à toutes les réglementations provinciales et fédérales applicables."
@@ -250,13 +236,6 @@ export default function Footer() {
           <p className="etiquette">
             © {new Date().getFullYear()} FIRONOVA · {t("footer.rights")}
           </p>
-          <button
-              onClick={adminBypass}
-              aria-label="•"
-              title=""
-              data-testid="hidden-admin-trigger"
-              className="inline-block w-2 h-2 rounded-full bg-nova/10 hover:bg-nova transition-colors"
-            />
         </div>
       </div>
     </footer>
