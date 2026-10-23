@@ -140,8 +140,15 @@ def _strip_html(html: str) -> str:
 
 
 def _extract_interac_refs(text: str) -> list:
-    """Références de commande 'FN-XXXXXX-XXXXXX' trouvées dans un texte (dédupliquées)."""
-    return sorted({r.upper() for r in re.findall(r"FN-\d{6}-[0-9A-F]{6,8}", text.upper())})
+    """Références de commande 'FN-XXXXXX-XXXXXXXX'. Tolère O/0 confusion dans les emails Interac."""
+    raw = sorted({r.upper() for r in re.findall(r"FN-\d{6}-[0-9A-FO]{6,8}", text.upper())})
+    normalized = []
+    for ref in raw:
+        parts = ref.split("-", 2)
+        if len(parts) == 3:
+            parts[2] = parts[2].replace("O", "0")
+        normalized.append("-".join(parts))
+    return sorted(set(normalized))
 
 
 def _parse_amounts(text: str) -> list:
