@@ -371,7 +371,7 @@ export default function ProductDetail() {
             </p>
             <h1 className="titre-page text-nordfjord mb-7" data-testid="product-name">{name}</h1>
 
-            {variants.length > 1 && (
+            {variants.length >= 1 && (
               <div data-testid="variant-selector" className="mb-6">
                 <div className="etiquette text-compliance mb-2">{lang === "fr" ? "DOSAGE" : "DOSAGE"}</div>
                 <div className="flex flex-wrap gap-2">

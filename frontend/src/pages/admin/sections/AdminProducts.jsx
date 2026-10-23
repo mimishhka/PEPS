@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, Plus, Edit, Trash2, Star, X, Save, AlertTriangle, CheckCircle2, GripVertical, PackagePlus, History, Upload, Minus } from "lucide-react";
+import { Download, Plus, Edit, Trash2, Star, X, Save, AlertTriangle, CheckCircle2, GripVertical, PackagePlus, History, Upload, Minus, EyeOff, Eye } from "lucide-react";
 import { toast } from "sonner";
 import api, { API_BASE, formatApiError, resolveAssetUrl } from "../../../lib/api";
 import { useConfirm } from "../../../components/ConfirmDialog";
@@ -82,12 +82,13 @@ export default function AdminProducts() {
   // taille. Tout se fait ici, sans requete : les produits sont deja charges.
   const [recherche, setRecherche] = useState("");
   const [categorie, setCategorie] = useState("");
-  const [etat, setEtat] = useState("");
+  const [etat, setEtat] = useState("actif");
 
   const q = recherche.trim().toLowerCase();
   const affiches = products.filter((p) => {
     if (categorie && p.category !== categorie) return false;
-    if (etat && etatProduit(p) !== etat) return false;
+    if (etat && etat !== "tout" && etatProduit(p) !== etat) return false;
+    if (!etat && etatProduit(p) === "masque") return false;
     if (!q) return true;
     // Le SKU et le nom des formats aussi : c'est souvent par la qu'on
     // cherche un produit precis.
@@ -122,9 +123,18 @@ export default function AdminProducts() {
   };
 
   const del = async (id) => {
-    if (!await confirm({ title: "Delete this product?", destructive: true })) return;
-    await api.delete(`/admin/products/${id}`);
-    toast.success("Deleted"); load();
+    if (!await confirm({ title: L("Supprimer définitivement ce produit ?", "Permanently delete this product?"), destructive: true })) return;
+    await api.delete(`/admin/products/${id}?hard=true`);
+    toast.success(L("Supprimé", "Deleted")); load();
+  };
+
+  const toggleHide = async (p) => {
+    const newActive = !p.active;
+    try {
+      await api.put(`/admin/products/${p.id}`, { ...p, active: newActive });
+      toast.success(newActive ? L("Produit visible", "Product visible") : L("Produit masqué", "Product hidden"));
+      load();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
 
   return (
@@ -201,6 +211,7 @@ export default function AdminProducts() {
           <option value="partiel">{L("Rupture partielle", "Partly out")}</option>
           <option value="rupture">{L("Rupture", "Out")}</option>
           <option value="masque">{L("Masqué", "Hidden")}</option>
+          <option value="tout">{L("Tout (incluant masqués)", "All (including hidden)")}</option>
         </select>
         {(q || categorie || etat) && (
           <button onClick={() => { setRecherche(""); setCategorie(""); setEtat(""); }}
@@ -291,6 +302,11 @@ export default function AdminProducts() {
                       <PackagePlus size={12} />
                     </button>
                     <button onClick={() => setEditing({ ...p, variants: [...(p.variants || [])] })} data-testid={`edit-${p.slug}`} className="border border-ink/30 px-2 py-2 hover:bg-ink hover:text-white mr-1"><Edit size={12} /></button>
+                    <button onClick={() => toggleHide(p)} data-testid={`hide-${p.slug}`}
+                      className={`border px-2 py-2 mr-1 ${p.active ? "border-amber-500/40 text-amber-600 hover:bg-amber-500 hover:text-white hover:border-amber-500" : "border-emerald-600/40 text-emerald-700 hover:bg-emerald-600 hover:text-white hover:border-emerald-600"}`}
+                      title={p.active ? L("Masquer", "Hide") : L("Rendre visible", "Show")}>
+                      {p.active ? <EyeOff size={12} /> : <Eye size={12} />}
+                    </button>
                     <button onClick={() => del(p.id)} data-testid={`delete-${p.slug}`} className="border border-ink/30 px-2 py-2 hover:bg-red-600 hover:text-white hover:border-red-600"><Trash2 size={12} /></button>
                   </td>
                 </tr>

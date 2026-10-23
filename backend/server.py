@@ -1004,6 +1004,7 @@ class ProductIn(BaseModel):
     meta_description_fr: str = ""
     og_image_url: str = ""
     images: List[str] = []  # galerie : image_url reste la couverture (images[0] ou saisie manuelle)
+    show_dosage_on_card: bool = False  # afficher le dosage sur la carte produit du catalogue
     variants: List[ProductVariant] = []
 
 
@@ -2540,6 +2541,9 @@ async def admin_list_products(
 async def get_product(slug: str):
     product = await db.products.find_one({"slug": slug, "active": True}, {"_id": 0})
     if not product:
+        # Try slug_aliases for backward compatibility (old URLs with dosage)
+        product = await db.products.find_one({"slug_aliases": slug, "active": True}, {"_id": 0})
+    if not product:
         raise HTTPException(404, "Product not found")
     return _stock_produit_coherent(product)
 
@@ -3136,7 +3140,13 @@ async def admin_update_product(product_id: str, payload: ProductIn, _admin: dict
     return after
 
 
-async def admin_delete_product(product_id: str, admin: dict = Depends(require_area("products", "manage"))):
+async def admin_delete_product(product_id: str, hard: bool = False, admin: dict = Depends(require_area("products", "manage"))):
+    if hard:
+        res = await db.products.delete_one({"id": product_id})
+        if not res.deleted_count:
+            raise HTTPException(404, "Product not found")
+        await _log_action(admin, "products.hard_delete", area="products", detail=f"Permanently deleted product {product_id}")
+        return {"ok": True}
     return await _soft_delete("products", product_id, admin)
 
 
@@ -10007,7 +10017,7 @@ async def admin_interac_graph_health(_admin: dict = Depends(get_admin_user)):
 # =============================================================================
 SEED_PRODUCTS = [
     {
-        "slug": "bpc-157-5mg",
+        "slug": "bpc-157",
         "name_en": "BPC-157",
         "name_fr": "BPC-157",
         "category": "healing",
@@ -10016,7 +10026,7 @@ SEED_PRODUCTS = [
         "molecular_weight": 1419.55,
         "cas_number": "137525-51-0",
         "sequence_length": 15,
-        "purity": "≥ 99.0%",
+        "purity": "≥ 99%",
         "dosage_mg": 5.0,
         "description_en": "Body Protection Compound, a 15-amino-acid synthetic peptide derived from gastric protein. Widely studied in research models for tissue repair pathways.",
         "description_fr": "Composé de protection corporelle, peptide synthétique de 15 acides aminés dérivé d'une protéine gastrique. Étudié dans des modèles de recherche sur les voies de réparation tissulaire.",
@@ -10027,7 +10037,7 @@ SEED_PRODUCTS = [
         "active": True,
     },
     {
-        "slug": "tb-500-5mg",
+        "slug": "tb-500",
         "name_en": "TB-500",
         "name_fr": "TB-500",
         "category": "healing",
@@ -10036,7 +10046,7 @@ SEED_PRODUCTS = [
         "molecular_weight": 4963.44,
         "cas_number": "77591-33-4",
         "sequence_length": 43,
-        "purity": "≥ 99.0%",
+        "purity": "≥ 99%",
         "dosage_mg": 5.0,
         "description_en": "Full-length Thymosin Beta-4 (43 amino acids). Investigated in research for actin sequestration and cellular migration studies.",
         "description_fr": "Thymosine bêta-4 complète (43 acides aminés). Étudiée en recherche pour la séquestration de l'actine et les études de migration cellulaire.",
@@ -10047,7 +10057,7 @@ SEED_PRODUCTS = [
         "active": True,
     },
     {
-        "slug": "semaglutide-5mg",
+        "slug": "semaglutide",
         "name_en": "Semaglutide",
         "name_fr": "Sémaglutide",
         "category": "weight-loss",
@@ -10067,7 +10077,7 @@ SEED_PRODUCTS = [
         "active": True,
     },
     {
-        "slug": "tirzepatide-10mg",
+        "slug": "tirzepatide",
         "name_en": "Tirzepatide",
         "name_fr": "Tirzépatide",
         "category": "weight-loss",
@@ -10087,7 +10097,7 @@ SEED_PRODUCTS = [
         "active": True,
     },
     {
-        "slug": "ipamorelin-5mg",
+        "slug": "ipamorelin",
         "name_en": "Ipamorelin",
         "name_fr": "Ipamoréline",
         "category": "cognitive",
@@ -10107,7 +10117,7 @@ SEED_PRODUCTS = [
         "active": True,
     },
     {
-        "slug": "cjc-1295-no-dac-5mg",
+        "slug": "cjc-1295-no-dac",
         "name_en": "CJC-1295 No-DAC",
         "name_fr": "CJC-1295 sans DAC",
         "category": "cognitive",
@@ -10127,7 +10137,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "selank-5mg",
+        "slug": "selank",
         "name_en": "Selank",
         "name_fr": "Sélank",
         "category": "cognitive",
@@ -10136,7 +10146,7 @@ SEED_PRODUCTS = [
         "molecular_weight": 751.87,
         "cas_number": "129954-34-3",
         "sequence_length": 7,
-        "purity": "≥ 99.0%",
+        "purity": "≥ 99%",
         "dosage_mg": 5.0,
         "description_en": "Synthetic heptapeptide derived from tuftsin, studied for anxiolytic and nootropic pathways.",
         "description_fr": "Heptapeptide synthétique dérivé de la tuftsine, étudié pour les voies anxiolytiques et nootropiques.",
@@ -10147,7 +10157,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "semax-10mg",
+        "slug": "semax",
         "name_en": "Semax",
         "name_fr": "Sémax",
         "category": "cognitive",
@@ -10156,7 +10166,7 @@ SEED_PRODUCTS = [
         "molecular_weight": 813.92,
         "cas_number": "80714-61-0",
         "sequence_length": 7,
-        "purity": "≥ 99.0%",
+        "purity": "≥ 99%",
         "dosage_mg": 10.0,
         "description_en": "Synthetic heptapeptide ACTH(4-7) analog studied for BDNF modulation and neuroprotection.",
         "description_fr": "Heptapeptide synthétique analogue de l'ACTH(4-7) étudié pour la modulation du BDNF et la neuroprotection.",
@@ -10167,7 +10177,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "ghk-cu-50mg",
+        "slug": "ghk-cu",
         "name_en": "GHK-Cu",
         "name_fr": "GHK-Cu",
         "category": "healing",
@@ -10182,7 +10192,7 @@ SEED_PRODUCTS = [
         "molecular_weight": 403.93,
         "cas_number": "89030-95-5",
         "sequence_length": 3,
-        "purity": "≥ 99.0%",
+        "purity": "≥ 99%",
         "dosage_mg": 50.0,
         "description_en": "Copper(II) complex of the tripeptide Gly-His-Lys, studied for collagen synthesis and matrix remodeling.",
         "description_fr": "Complexe cuivre(II) du tripeptide Gly-His-Lys, étudié pour la synthèse du collagène et le remodelage matriciel.",
@@ -10193,7 +10203,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "retatrutide-10mg",
+        "slug": "retatrutide",
         "name_en": "Retatrutide",
         "name_fr": "Rétatrutide",
         "category": "weight-loss",
@@ -10213,7 +10223,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "pt-141-10mg",
+        "slug": "pt-141",
         "name_en": "PT-141",
         "name_fr": "PT-141",
         "category": "cognitive",
@@ -10233,7 +10243,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "melanotan-ii-10mg",
+        "slug": "melanotan-ii",
         "name_en": "Melanotan II",
         "name_fr": "Mélanotan II",
         "category": "cognitive",
@@ -10253,7 +10263,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "mots-c-10mg",
+        "slug": "mots-c",
         "name_en": "MOTS-c",
         "name_fr": "MOTS-c",
         "category": "weight-loss",
@@ -10292,7 +10302,7 @@ SEED_PRODUCTS = [
     #
     # Le reste du depot — la documentation, les tests, les services — ecrit
     # « Epitalon ». C'etait le gabarit, l'intrus.
-        "slug": "epitalon-10mg",
+        "slug": "epitalon",
         "name_en": "Epitalon",
         "name_fr": "Épitalon",
         "category": "healing",
@@ -10301,7 +10311,7 @@ SEED_PRODUCTS = [
         "molecular_weight": 390.35,
         "cas_number": "307297-39-8",
         "sequence_length": 4,
-        "purity": "≥ 99.0%",
+        "purity": "≥ 99%",
         "dosage_mg": 10.0,
         "description_en": "Synthetic tetrapeptide (AEDG) studied for telomerase activity and circadian gene expression.",
         "description_fr": "Tétrapeptide synthétique (AEDG) étudié pour l'activité télomérase et l'expression des gènes circadiens.",
@@ -10312,7 +10322,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "tesamorelin-5mg",
+        "slug": "tesamorelin",
         "name_en": "Tesamorelin",
         "name_fr": "Tésamoréline",
         "category": "weight-loss",
@@ -10332,7 +10342,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "hexarelin-5mg",
+        "slug": "hexarelin",
         "name_en": "Hexarelin",
         "name_fr": "Hexaréline",
         "category": "cognitive",
@@ -10352,7 +10362,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "ghrp-2-5mg",
+        "slug": "ghrp-2",
         "name_en": "GHRP-2",
         "name_fr": "GHRP-2",
         "category": "cognitive",
@@ -10372,7 +10382,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "ghrp-6-5mg",
+        "slug": "ghrp-6",
         "name_en": "GHRP-6",
         "name_fr": "GHRP-6",
         "category": "cognitive",
@@ -10392,7 +10402,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "aod-9604-5mg",
+        "slug": "aod-9604",
         "name_en": "AOD-9604",
         "name_fr": "AOD-9604",
         "category": "weight-loss",
@@ -10401,7 +10411,7 @@ SEED_PRODUCTS = [
         "molecular_weight": 1815.1,
         "cas_number": "221231-10-3",
         "sequence_length": 16,
-        "purity": "≥ 99.0%",
+        "purity": "≥ 99%",
         "dosage_mg": 5.0,
         "description_en": "Modified hGH fragment (176-191) with N-terminal tyrosine, studied in lipid-metabolism research.",
         "description_fr": "Fragment modifié de l'hGH (176-191) avec tyrosine N-terminale, étudié en recherche sur le métabolisme lipidique.",
@@ -10464,7 +10474,7 @@ SEED_PRODUCTS = [
     # rien ne part en vitrine tant qu'elle ne l'a pas renseigne.
     # =========================================================================
     {
-        "slug": "sermorelin-5mg",
+        "slug": "sermorelin",
         "name_en": "Sermorelin",
         "name_fr": "Sermoréline",
         "category": "gh-secretagogues",
@@ -10493,7 +10503,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "thymosin-alpha-1-5mg",
+        "slug": "thymosin-alpha-1",
         "name_en": "Thymosin Alpha-1",
         "name_fr": "Thymosine Alpha-1",
         "category": "healing",
@@ -10513,7 +10523,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "kisspeptin-10-5mg",
+        "slug": "kisspeptin-10",
         "name_en": "Kisspeptin-10",
         "name_fr": "Kisspeptine-10",
         "category": "longevity",
@@ -10533,7 +10543,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "gonadorelin-5mg",
+        "slug": "gonadorelin",
         "name_en": "Gonadorelin",
         "name_fr": "Gonadoréline",
         "category": "gh-secretagogues",
@@ -10553,7 +10563,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "dsip-5mg",
+        "slug": "dsip",
         "name_en": "DSIP",
         "name_fr": "DSIP",
         "category": "cognitive",
@@ -10573,7 +10583,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "melanotan-1-10mg",
+        "slug": "melanotan-1",
         "name_en": "Melanotan-1",
         "name_fr": "Melanotan-1",
         "category": "cognitive",
@@ -10593,7 +10603,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "oxytocin-5mg",
+        "slug": "oxytocin",
         "name_en": "Oxytocin",
         "name_fr": "Ocytocine",
         "category": "cognitive",
@@ -10613,7 +10623,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "cagrilintide-5mg",
+        "slug": "cagrilintide",
         "name_en": "Cagrilintide",
         "name_fr": "Cagrilintide",
         "category": "weight-loss",
@@ -10633,7 +10643,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "survodutide-10mg",
+        "slug": "survodutide",
         "name_en": "Survodutide",
         "name_fr": "Survodutide",
         "category": "weight-loss",
@@ -10653,7 +10663,7 @@ SEED_PRODUCTS = [
         "active": False,
     },
     {
-        "slug": "mazdutide-10mg",
+        "slug": "mazdutide",
         "name_en": "Mazdutide",
         "name_fr": "Mazdutide",
         "category": "weight-loss",
@@ -11099,7 +11109,7 @@ async def seed_admin_and_products():
         )
 
     # Products
-    featured_slugs = {"bpc-157-5mg", "semaglutide-5mg", "tirzepatide-10mg", "ipamorelin-5mg", "ghk-cu-50mg", "epitalon-10mg"}
+    featured_slugs = {"bpc-157", "semaglutide", "tirzepatide", "ipamorelin", "ghk-cu", "epitalon"}
     for p in SEED_PRODUCTS:
         default_variant = {
             "id": str(uuid.uuid4()),
