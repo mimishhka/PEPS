@@ -1094,7 +1094,7 @@ class CheckoutIn(BaseModel):
 
 class CouponIn(BaseModel):
     code: str
-    discount_type: Literal["percent", "fixed"]
+    discount_type: Literal["percent", "fixed", "free_shipping"]
     value: float = Field(gt=0)  # percent 1-100 or absolute CAD
     min_subtotal: float = 0.0
     usage_limit: Optional[int] = None  # None = unlimited
@@ -3697,6 +3697,8 @@ async def _coupon_discount(coupon: dict, subtotal: float,
 
     if coupon["discount_type"] == "percent":
         discount = round(subtotal * (coupon["value"] / 100.0), 2)
+    elif coupon["discount_type"] == "free_shipping":
+        discount = 0.0  # shipping is zeroed out in _build_order_totals
     else:
         discount = round(min(coupon["value"], subtotal), 2)
     max_disc = coupon.get("max_discount_cad")
@@ -3813,7 +3815,8 @@ async def _build_order_totals(items: List[CartItem], coupon_code: Optional[str] 
         )
 
     tax_rate = 0.0
-    shipping = 0.0 if (subtotal - discount) >= FREE_SHIPPING_THRESHOLD_CAD else SHIPPING_FLAT_CAD
+    is_free_shipping_coupon = applied_coupon and applied_coupon.get("discount_type") == "free_shipping"
+    shipping = 0.0 if is_free_shipping_coupon or (subtotal - discount) >= FREE_SHIPPING_THRESHOLD_CAD else SHIPPING_FLAT_CAD
     tax = 0.0
     total = round(max(0, subtotal - discount) + shipping, 2)
     return line_items, subtotal, tax_rate, tax, shipping, total, discount, applied_coupon, has_preorder
@@ -9076,6 +9079,7 @@ async def validate_coupon(code: str, subtotal: float,
         "code": coupon["code"], "discount_type": coupon["discount_type"],
         "value": coupon["value"], "discount_amount": discount,
         "min_subtotal": coupon.get("min_subtotal", 0),
+        "free_shipping": coupon["discount_type"] == "free_shipping",
         "restricted": bool(coupon.get("allowed_emails") or coupon.get("first_order_only")
                            or coupon.get("per_customer_limit")
                            or coupon.get("restrict_products") or coupon.get("restrict_categories")),
