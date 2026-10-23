@@ -1086,6 +1086,7 @@ class CheckoutIn(BaseModel):
     pay_currency: Optional[str] = "btc"  # used only for nowpayments
     coupon_code: Optional[str] = None
     idempotency_key: Optional[str] = None  # optionally passed in body to avoid CORS preflight from a custom header
+    lang: Optional[str] = "fr"  # langue de navigation du client (fr/en)
     accept_terms: bool
     confirm_age: bool
     confirm_research_use: bool
@@ -2719,7 +2720,7 @@ PAGES_PUBLIABLES = (
 
 # Celles qui partent MASQUEES a la premiere installation. Les autres sont
 # publiees. `$setOnInsert` : une fois le document cree, l'admin seule decide.
-PAGES_MASQUEES_AU_DEPART = {"lab", "about"}
+PAGES_MASQUEES_AU_DEPART = {"lab", "about", "certificats", "research"}
 
 
 class PageIn(BaseModel):
@@ -4875,6 +4876,7 @@ async def checkout(payload: CheckoutIn, request: Request):
         "payment_method": payload.payment_method,
         "payment_status": payment_status,
         "payment_info": payment_info,
+        "lang": (payload.lang or "fr").lower()[:2],
         "fulfillment_status": "preorder" if has_preorder else "pending",
         "has_preorder": has_preorder,
         "notes": [],
