@@ -131,7 +131,7 @@ export default function AdminProducts() {
   const toggleHide = async (p) => {
     const newActive = !p.active;
     try {
-      await api.put(`/admin/products/${p.id}`, { ...p, active: newActive });
+      await api.patch(`/admin/products/${p.id}/visibility`, { active: newActive });
       toast.success(newActive ? L("Produit visible", "Product visible") : L("Produit masqué", "Product hidden"));
       load();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }

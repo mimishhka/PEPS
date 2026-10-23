@@ -3151,6 +3151,21 @@ async def admin_delete_product(product_id: str, hard: bool = False, admin: dict 
     return await _soft_delete("products", product_id, admin)
 
 
+
+class ProductVisibilityIn(BaseModel):
+    active: bool
+
+async def admin_toggle_product_visibility(product_id: str, payload: ProductVisibilityIn,
+                                           admin: dict = Depends(require_area("products", "manage"))):
+    res = await db.products.update_one({"id": product_id}, {"$set": {"active": payload.active}})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Product not found")
+    await _log_action(admin, "products.visibility", area="products",
+                      detail=f"{'Shown' if payload.active else 'Hidden'} product {product_id}")
+    return {"ok": True, "active": payload.active}
+
+
+
 async def admin_upload_coa(file: UploadFile = File(...), _admin: dict = Depends(require_area("products", "manage"))):
     """Uploads a Certificate of Analysis PDF and returns a URL to paste into a
     product's or variant's coa_url field. Storage is local disk under UPLOAD_DIR,

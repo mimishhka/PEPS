@@ -142,8 +142,13 @@ async def admin_update_product(product_id: str, payload: s.ProductIn, _admin: di
 
 
 @router.delete("/admin/products/{product_id}")
-async def admin_delete_product(product_id: str, admin: dict = Depends(s.require_area("products", "manage"))):
-    return await s.admin_delete_product(product_id, admin)
+async def admin_delete_product(product_id: str, hard: bool = False, admin: dict = Depends(s.require_area("products", "manage"))):
+    return await s.admin_delete_product(product_id, hard, admin)
+
+
+@router.patch("/admin/products/{product_id}/visibility")
+async def admin_toggle_product_visibility(product_id: str, payload: s.ProductVisibilityIn, admin: dict = Depends(s.require_area("products", "manage"))):
+    return await s.admin_toggle_product_visibility(product_id, payload, admin)
 
 
 @router.post("/admin/upload/coa")
