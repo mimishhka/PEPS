@@ -246,7 +246,7 @@ export default function AdminCoupons() {
                   )}
                 </td>
                 <td className="px-6 py-3 font-data text-sm text-nordfjord">
-                  {c.discount_type === "percent" ? `${c.value}%` : `$${c.value.toFixed(2)}`}
+                  {c.discount_type === "percent" ? `${c.value}%` : c.discount_type === "free_shipping" ? L("Livraison gratuite", "Free shipping") : `$${c.value.toFixed(2)}`}
                 </td>
                 <td className="px-6 py-3 font-data text-xs text-glacier">${(c.min_subtotal || 0).toFixed(2)}</td>
                 <td className="px-6 py-3 font-data text-xs text-glacier">
@@ -384,7 +384,7 @@ export default function AdminCoupons() {
                         )}
                       </td>
                       <td className="px-4 py-3 font-data tabular-nums">
-                        {c.discount_type === "percent" ? `${c.value} %` : `${c.value} $`}
+                        {c.discount_type === "percent" ? `${c.value} %` : c.discount_type === "free_shipping" ? L("Livraison gratuite", "Free shipping") : `${c.value} $`}
                       </td>
                       <td className="px-4 py-3 font-data tabular-nums">{c.used_count || 0}</td>
                       <td className="px-4 py-3">
@@ -476,19 +476,20 @@ function CouponEditor({ L, editing, setEditing, save }) {
                 select={[
                   { value: "percent", label: L("Pourcentage (%)", "Percent (%)") },
                   { value: "fixed", label: L("Montant fixe (CAD)", "Fixed amount (CAD)") },
+                  { value: "free_shipping", label: L("Livraison gratuite", "Free shipping") },
                 ]}
                 value={editing.discount_type}
                 onChange={(v) => setEditing({ ...editing, discount_type: v })}
                 test="c-type"
               />
-              <F
+              {editing.discount_type !== "free_shipping" && <F
                 label={editing.discount_type === "percent" ? L("Pourcentage (%)", "Percent (%)") : L("Montant (CAD)", "Amount (CAD)")}
                 type="number"
                 value={editing.value}
                 onChange={(v) => setEditing({ ...editing, value: v })}
                 test="c-value"
                 icon={editing.discount_type === "percent" ? <Percent size={14} /> : <DollarSign size={14} />}
-              />
+              />}
             </div>
             <F
               label={L("Sous-total minimum (CAD)", "Minimum subtotal (CAD)")}

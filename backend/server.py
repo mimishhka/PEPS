@@ -8966,6 +8966,8 @@ async def admin_create_coupon(payload: CouponIn, _admin: dict = Depends(require_
     _enforce_standard_coupon_percent_limit(payload.discount_type, payload.value, is_affiliate=False)
     _refuser_expiration_passee(payload.expires_at, payload.start_at)
     doc = payload.model_dump()
+    if doc["discount_type"] == "free_shipping":
+        doc["value"] = 0
     doc["id"] = str(uuid.uuid4())
     doc["code"] = code
     doc["allowed_emails"] = [e.lower().strip() for e in (doc.get("allowed_emails") or []) if e and e.strip()]
