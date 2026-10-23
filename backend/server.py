@@ -1095,7 +1095,7 @@ class CheckoutIn(BaseModel):
 class CouponIn(BaseModel):
     code: str
     discount_type: Literal["percent", "fixed", "free_shipping"]
-    value: float = Field(gt=0)  # percent 1-100 or absolute CAD
+    value: float = Field(ge=0)  # percent 1-100, absolute CAD, or 0 for free_shipping
     min_subtotal: float = 0.0
     usage_limit: Optional[int] = None  # None = unlimited
     active: bool = True
